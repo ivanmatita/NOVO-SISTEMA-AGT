@@ -4,14 +4,30 @@ export interface Client {
   email: string;
   nif: string;
   address: string;
+  localidade?: string;
+  codigo_postal?: string;
+  provincia?: string;
+  municipio?: string;
+  pais?: string;
+  telefone?: string;
+  webpage?: string;
+  tipo_cliente?: 'nao_grupo' | 'nacionais' | 'estrangeiro' | 'associados' | 'normal';
   created_at: string;
 }
 
 export interface Product {
   id: number;
   name: string;
-  price: number;
+  referente?: string;
+  data_registo?: string;
+  armazem?: string;
+  tipo_documento?: string;
+  preco_compra?: number;
+  price: number; // preco_venda
+  finalidade?: string;
+  tipologia?: string;
   unit: string;
+  created_at?: string;
 }
 
 export interface InvoiceItem {
@@ -21,6 +37,13 @@ export interface InvoiceItem {
   quantity: number;
   unit_price: number;
   total: number;
+  tipologia?: string;
+  desconto?: number;
+  tipo_artigo?: string;
+  comprimento?: number;
+  largura?: number;
+  altura?: number;
+  tax?: string;
 }
 
 export interface Invoice {
@@ -168,5 +191,47 @@ export interface WorkSiteMovement {
   debit: number;
   credit: number;
   balance: number;
+  created_at: string;
+}
+
+export interface IssuedDocument {
+  id: number;
+  tipo_documento: string;
+  sigla: string;
+  serie: string;
+  numero_sequencial: number;
+  numero_documento: string;
+  data_emissao: string;
+  data_vencimento: string;
+  cliente_id: number;
+  local_trabalho: string;
+  moeda: string;
+  cambio: number;
+  contravalor: number;
+  desconto_global: number;
+  tipo_cativacao_iva: 'sem' | '50' | '100';
+  utilizador_emissao: string;
+  data_registo: string;
+  estado_documento: 'ativo' | 'anulado';
+}
+
+export interface Warehouse {
+  id: number;
+  name: string;
+  localidade?: string;
+  provincia?: string;
+  responsavel?: string;
+  contacto?: string;
+  observacao?: string;
+  created_at: string;
+}
+
+export interface Supplier {
+  id: number;
+  name: string;
+  nif?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
   created_at: string;
 }

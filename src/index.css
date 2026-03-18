@@ -25,3 +25,22 @@
 ::-webkit-scrollbar-thumb:hover {
   @apply bg-zinc-400;
 }
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .fixed.inset-0.z-\[100\], .fixed.inset-0.z-\[100\] * {
+    visibility: visible;
+  }
+  .fixed.inset-0.z-\[100\] {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 80mm;
+    background: white;
+  }
+  .fixed.inset-0.z-\[100\] button {
+    display: none;
+  }
+}

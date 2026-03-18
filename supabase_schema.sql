@@ -137,7 +137,57 @@ CREATE TABLE IF NOT EXISTS pos_sales (
   id SERIAL PRIMARY KEY,
   total REAL NOT NULL,
   date TIMESTAMPTZ DEFAULT NOW(),
-  items_json TEXT NOT NULL
+  items_json TEXT NOT NULL,
+  series_id INTEGER,
+  cost_center_id INTEGER,
+  pos_point_id INTEGER,
+  session_id INTEGER,
+  discount REAL DEFAULT 0,
+  payment_method TEXT DEFAULT 'cash'
+);
+
+CREATE TABLE IF NOT EXISTS fiscal_series (
+  id SERIAL PRIMARY KEY,
+  description TEXT NOT NULL,
+  user_id INTEGER,
+  type TEXT DEFAULT 'normal',
+  is_active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS cost_centers (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  code TEXT UNIQUE NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS pos_points (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  location TEXT,
+  is_active BOOLEAN DEFAULT TRUE
+);
+
+CREATE TABLE IF NOT EXISTS cash_sessions (
+  id SERIAL PRIMARY KEY,
+  opened_at TIMESTAMPTZ DEFAULT NOW(),
+  closed_at TIMESTAMPTZ,
+  initial_balance REAL NOT NULL,
+  final_balance REAL,
+  status TEXT DEFAULT 'open',
+  pos_point_id INTEGER,
+  total_sales REAL DEFAULT 0,
+  total_discounts REAL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS payroll (
+  id SERIAL PRIMARY KEY,
+  employee_id INTEGER NOT NULL REFERENCES employees(id),
+  month TEXT NOT NULL,
+  year INTEGER NOT NULL,
+  amount REAL NOT NULL,
+  status TEXT DEFAULT 'pending',
+  paid_at TIMESTAMPTZ
 );
 
 CREATE TABLE IF NOT EXISTS warehouses (

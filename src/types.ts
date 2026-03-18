@@ -28,6 +28,7 @@ export interface Product {
   tipologia?: string;
   unit: string;
   created_at?: string;
+  image?: string;
 }
 
 export interface InvoiceItem {
@@ -63,6 +64,9 @@ export interface Invoice {
   country_code?: string;
   service_date?: string;
   service_location?: string;
+  series_id?: number;
+  currency?: string;
+  hash?: string;
 }
 
 export interface DashboardStats {
@@ -162,7 +166,33 @@ export interface CashSession {
   closed_at?: string;
   initial_balance: number;
   final_balance?: number;
+  total_sales?: number;
+  total_discounts?: number;
   status: 'open' | 'closed';
+  pos_point_id?: number;
+}
+
+export interface FiscalSeries {
+  id: number;
+  description: string;
+  user_id: number;
+  user_name?: string;
+  type: 'normal' | 'manual_recovery';
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface CostCenter {
+  id: number;
+  name: string;
+  code: string;
+}
+
+export interface POSPoint {
+  id: number;
+  name: string;
+  location: string;
+  is_active: boolean;
 }
 
 export interface WorkSite {
@@ -197,23 +227,39 @@ export interface WorkSiteMovement {
 export interface IssuedDocument {
   id: number;
   tipo_documento: string;
-  sigla: string;
-  serie: string;
-  numero_sequencial: number;
+  document_type?: string;
   numero_documento: string;
+  invoice_number?: string;
   data_emissao: string;
+  date?: string;
   data_vencimento: string;
+  due_date?: string;
   cliente_id: number;
+  client_id?: number;
+  client_name?: string;
   local_trabalho: string;
+  work_site_id?: string;
   moeda: string;
+  currency?: string;
   cambio: number;
   contravalor: number;
+  total?: number;
   desconto_global: number;
+  global_discount?: number;
   tipo_cativacao_iva: 'sem' | '50' | '100';
   utilizador_emissao: string;
   data_registo: string;
   estado_documento: 'ativo' | 'anulado';
+  status?: string;
+  is_certified?: boolean;
+  series_id?: number;
+  series_name?: string;
+  cash_box?: string;
+  payment_method?: string;
+  items?: InvoiceItem[];
 }
+
+export type POSArea = 'normal' | 'lojas' | 'restaurante' | 'bar';
 
 export interface Warehouse {
   id: number;
@@ -234,4 +280,38 @@ export interface Supplier {
   phone?: string;
   address?: string;
   created_at: string;
+}
+
+export interface SystemUser {
+  id: number;
+  name: string;
+  profession: string;
+  date: string;
+  permission_area: string;
+  contact: string;
+  address: string;
+  created_at: string;
+}
+
+export interface Purchase {
+  id: number;
+  supplier_id: number;
+  supplier_name?: string;
+  purchase_number: string;
+  date: string;
+  due_date?: string;
+  payment_method?: string;
+  status: 'pending' | 'completed' | 'cancelled';
+  total: number;
+  items?: PurchaseItem[];
+}
+
+export interface PurchaseItem {
+  id: number;
+  purchase_id: number;
+  product_id: number;
+  description: string;
+  quantity: number;
+  unit_price: number;
+  total: number;
 }

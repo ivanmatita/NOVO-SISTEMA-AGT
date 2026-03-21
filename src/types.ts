@@ -259,7 +259,7 @@ export interface IssuedDocument {
   items?: InvoiceItem[];
 }
 
-export type POSArea = 'normal' | 'lojas' | 'restaurante' | 'bar';
+export type POSArea = 'vendas normal' | 'lojas' | 'restaurante' | 'bar';
 
 export interface Warehouse {
   id: number;

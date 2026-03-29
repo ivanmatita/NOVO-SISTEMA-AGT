@@ -11,6 +11,30 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const db = new Database("invoices.db");
+
+// Ensure invoices table has all necessary columns (migration-like check)
+const columnsToAdd = [
+  { name: 'vat_withholding', type: 'REAL DEFAULT 0' },
+  { name: 'exchange_rate', type: 'REAL DEFAULT 1' },
+  { name: 'currency', type: 'TEXT DEFAULT \'Kwanza\'' },
+  { name: 'counter_value', type: 'REAL DEFAULT 0' },
+  { name: 'global_discount', type: 'REAL DEFAULT 0' },
+  { name: 'cash_box', type: 'TEXT' },
+  { name: 'payment_method', type: 'TEXT' },
+  { name: 'series_id', type: 'INTEGER' },
+  { name: 'hash', type: 'TEXT' },
+  { name: 'signature', type: 'TEXT' },
+  { name: 'is_certified', type: 'BOOLEAN DEFAULT 0' }
+];
+
+for (const col of columnsToAdd) {
+  try {
+    db.prepare(`ALTER TABLE invoices ADD COLUMN ${col.name} ${col.type}`).run();
+    console.log(`Added column ${col.name} to invoices table.`);
+  } catch (e) {
+    // Column likely already exists
+  }
+}
 db.pragma('journal_mode = WAL');
 console.log("Server starting...");
 
@@ -28,9 +52,39 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS products (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
+    referente TEXT,
+    data_registo DATE,
+    warehouse_id INTEGER,
+    tipo_documento TEXT,
+    cost_price REAL DEFAULT 0,
     price REAL NOT NULL,
+    finalidade TEXT,
+    tipologia TEXT,
     unit TEXT DEFAULT 'un',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    stock_quantity REAL DEFAULT 0,
+    min_stock REAL DEFAULT 0,
+    category TEXT,
+    barcode TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (warehouse_id) REFERENCES warehouses(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS stock_movements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_id INTEGER NOT NULL,
+    type TEXT NOT NULL, -- 'entry', 'exit', 'transfer', 'adjustment'
+    quantity REAL NOT NULL,
+    unit_price REAL DEFAULT 0, -- Cost price at the time of movement
+    previous_stock REAL NOT NULL,
+    current_stock REAL NOT NULL,
+    warehouse_id INTEGER,
+    to_warehouse_id INTEGER, -- for transfers
+    description TEXT,
+    reference_id TEXT, -- e.g. invoice_id or adjustment_id
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (product_id) REFERENCES products(id),
+    FOREIGN KEY (warehouse_id) REFERENCES warehouses(id),
+    FOREIGN KEY (to_warehouse_id) REFERENCES warehouses(id)
   );
 
   CREATE TABLE IF NOT EXISTS invoices (
@@ -46,10 +100,30 @@ db.exec(`
     service_date DATE,
     service_location TEXT,
     work_site_id INTEGER,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    vat_withholding REAL DEFAULT 0,
+    exchange_rate REAL DEFAULT 1,
+    currency TEXT DEFAULT 'Kwanza',
+    counter_value REAL DEFAULT 0,
+    global_discount REAL DEFAULT 0,
+    cash_box TEXT,
+    payment_method TEXT,
+    series_id INTEGER,
+    hash TEXT,
+    signature TEXT,
     is_certified BOOLEAN DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (client_id) REFERENCES clients(id),
-    FOREIGN KEY (work_site_id) REFERENCES work_sites(id)
+    FOREIGN KEY (work_site_id) REFERENCES work_sites(id),
+    FOREIGN KEY (series_id) REFERENCES fiscal_series(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS hash_chain (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    document_id INTEGER NOT NULL,
+    previous_hash TEXT NOT NULL,
+    current_hash TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (document_id) REFERENCES invoices(id)
   );
 
   CREATE TABLE IF NOT EXISTS invoice_items (
@@ -489,14 +563,76 @@ async function startServer() {
   });
 
   app.post("/api/products", async (req, res) => {
-    const { name, referente, data_registo, armazem, tipo_documento, preco_compra, preco_venda, finalidade, tipologia, unit } = req.body;
+    const { name, referente, data_registo, warehouse_id, tipo_documento, cost_price, price, finalidade, tipologia, unit, stock_quantity, min_stock, category, barcode } = req.body;
     if (supabaseEnabled) {
-      const { data, error } = await supabase.from("products").insert([{ name, referente, data_registo, armazem, tipo_documento, preco_compra, price: preco_venda, finalidade, tipologia, unit }]).select();
+      const { data, error } = await supabase.from("products").insert([{ name, referente, data_registo, warehouse_id, tipo_documento, cost_price, price, finalidade, tipologia, unit, stock_quantity, min_stock, category, barcode }]).select();
       if (error) return res.status(500).json({ error: error.message });
       res.json({ id: data[0].id });
     } else {
-      const info = db.prepare("INSERT INTO products (name, referente, data_registo, armazem, tipo_documento, preco_compra, price, finalidade, tipologia, unit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(name, referente, data_registo, armazem, tipo_documento, preco_compra, preco_venda, finalidade, tipologia, unit);
+      const info = db.prepare(`
+        INSERT INTO products (
+          name, referente, data_registo, warehouse_id, tipo_documento, 
+          cost_price, price, finalidade, tipologia, unit, 
+          stock_quantity, min_stock, category, barcode
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        name, referente, data_registo, warehouse_id, tipo_documento, 
+        cost_price, price, finalidade, tipologia, unit, 
+        stock_quantity, min_stock, category, barcode
+      );
       res.json({ id: info.lastInsertRowid });
+    }
+  });
+
+  app.get("/api/stock-movements", async (req, res) => {
+    if (supabaseEnabled) {
+      const { data, error } = await supabase.from("stock_movements").select("*, products(name), warehouses(name)").order("created_at", { ascending: false });
+      if (error) return res.status(500).json({ error: error.message });
+      return res.json(data);
+    }
+    const movements = db.prepare(`
+      SELECT sm.*, p.name as product_name, w.name as warehouse_name
+      FROM stock_movements sm
+      JOIN products p ON sm.product_id = p.id
+      LEFT JOIN warehouses w ON sm.warehouse_id = w.id
+      ORDER BY sm.created_at DESC
+    `).all();
+    res.json(movements);
+  });
+
+  app.post("/api/stock-movements", async (req, res) => {
+    const { product_id, type, quantity, warehouse_id, to_warehouse_id, description, reference_id, unit_price } = req.body;
+    
+    const transaction = db.transaction(() => {
+      const product = db.prepare("SELECT stock_quantity FROM products WHERE id = ?").get(product_id) as { stock_quantity: number };
+      if (!product) throw new Error("Produto não encontrado");
+      
+      const previous_stock = product.stock_quantity;
+      let current_stock = previous_stock;
+      
+      if (type === 'entry' || type === 'adjustment_plus') {
+        current_stock += quantity;
+      } else if (type === 'exit' || type === 'adjustment_minus') {
+        current_stock -= quantity;
+      }
+      
+      db.prepare("UPDATE products SET stock_quantity = ? WHERE id = ?").run(current_stock, product_id);
+      
+      const info = db.prepare(`
+        INSERT INTO stock_movements (
+          product_id, type, quantity, previous_stock, current_stock, 
+          warehouse_id, to_warehouse_id, description, reference_id, unit_price
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(product_id, type, quantity, previous_stock, current_stock, warehouse_id, to_warehouse_id, description, reference_id, unit_price || 0);
+      
+      return info.lastInsertRowid;
+    });
+    
+    try {
+      const id = transaction();
+      res.json({ id });
+    } catch (e) {
+      res.status(500).json({ error: String(e) });
     }
   });
 
@@ -535,31 +671,35 @@ async function startServer() {
   });
 
   app.get("/api/issued-documents", async (req, res) => {
-    if (supabaseEnabled) {
-      const { data, error } = await supabase
-        .from("invoices")
-        .select("*, clients(name), fiscal_series(description), work_sites(title)")
-        .order("created_at", { ascending: false });
-      if (!error) {
-        const formatted = data.map(i => ({ 
-          ...i, 
-          client_name: i.clients?.name || 'Cliente não encontrado',
-          series_name: i.fiscal_series?.description,
-          work_site_title: i.work_sites?.title
-        }));
-        return res.json(formatted);
+    try {
+      if (supabaseEnabled) {
+        const { data, error } = await supabase
+          .from("invoices")
+          .select("*, clients(name), fiscal_series(description), work_sites(title)")
+          .order("created_at", { ascending: false });
+        if (!error) {
+          const formatted = data.map(i => ({ 
+            ...i, 
+            client_name: i.clients?.name || 'Cliente não encontrado',
+            series_name: i.fiscal_series?.description,
+            work_site_title: i.work_sites?.title
+          }));
+          return res.json(formatted);
+        }
+        console.warn("Supabase error in /api/issued-documents, falling back to SQLite:", error.message);
       }
-      console.warn("Supabase error in /api/issued-documents, falling back to SQLite:", error.message);
+      const invoices = db.prepare(`
+          SELECT i.*, c.name as client_name, s.description as series_name, ws.title as work_site_title
+          FROM invoices i 
+          LEFT JOIN clients c ON i.client_id = c.id 
+          LEFT JOIN fiscal_series s ON i.series_id = s.id
+          LEFT JOIN work_sites ws ON i.work_site_id = ws.id
+          ORDER BY i.created_at DESC
+        `).all();
+      res.json(invoices);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to fetch issued documents" });
     }
-    const invoices = db.prepare(`
-        SELECT i.*, c.name as client_name, s.description as series_name, ws.title as work_site_title
-        FROM invoices i 
-        LEFT JOIN clients c ON i.client_id = c.id 
-        LEFT JOIN fiscal_series s ON i.series_id = s.id
-        LEFT JOIN work_sites ws ON i.work_site_id = ws.id
-        ORDER BY i.created_at DESC
-      `).all();
-    res.json(invoices);
   });
 
   app.post("/api/invoices/:id/certify", async (req, res) => {
@@ -809,6 +949,30 @@ async function startServer() {
         total: item.quantity * item.unit_price
       }));
       await supabase.from("invoice_items").insert(itemsToInsert);
+
+      // Update stock and record movements for products
+      for (const item of items) {
+        if (item.product_id) {
+          const { data: product } = await supabase.from("products").select("stock_quantity, warehouse_id, cost_price").eq("id", item.product_id).single();
+          if (product) {
+            const prevStock = product.stock_quantity;
+            const currStock = prevStock - item.quantity;
+            await supabase.from("products").update({ stock_quantity: currStock }).eq("id", item.product_id);
+            await supabase.from("stock_movements").insert([{
+              product_id: item.product_id,
+              type: 'exit',
+              quantity: item.quantity,
+              previous_stock: prevStock,
+              current_stock: currStock,
+              warehouse_id: product.warehouse_id,
+              description: `Venda: ${invoice_number}`,
+              reference_id: invoiceId,
+              unit_price: product.cost_price || 0
+            }]);
+          }
+        }
+      }
+
       await supabase.from("transactions").insert([{ type: 'income', category: 'sale', amount: total, description: `${document_type} ${invoice_number}`, reference_id: invoiceId }]);
       
       res.json({ id: invoiceId, invoice_number });
@@ -833,10 +997,37 @@ async function startServer() {
         const invoiceId = info.lastInsertRowid;
         
         const insertItem = db.prepare("INSERT INTO invoice_items (invoice_id, product_id, description, quantity, unit_price, total) VALUES (?, ?, ?, ?, ?, ?)");
+        const updateStock = db.prepare("UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ?");
+        const insertMovement = db.prepare(`
+          INSERT INTO stock_movements (product_id, type, quantity, previous_stock, current_stock, warehouse_id, description, reference_id, unit_price)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+
         for (const item of items) {
           insertItem.run(invoiceId, item.product_id || null, item.description, item.quantity, item.unit_price, item.quantity * item.unit_price);
+          
+          if (item.product_id) {
+            const product = db.prepare("SELECT stock_quantity, warehouse_id, cost_price FROM products WHERE id = ?").get(item.product_id);
+            if (product) {
+              const prevStock = product.stock_quantity;
+              const currStock = prevStock - item.quantity;
+              updateStock.run(item.quantity, item.product_id);
+              insertMovement.run(
+                item.product_id, 
+                'exit', 
+                item.quantity, 
+                prevStock, 
+                currStock, 
+                product.warehouse_id, 
+                `Venda: ${invoice_number}`, 
+                invoiceId,
+                product.cost_price || 0
+              );
+            }
+          }
         }
 
+        db.prepare("INSERT INTO hash_chain (document_id, previous_hash, current_hash) VALUES (?, ?, ?)").run(invoiceId, prevHash, hash);
         db.prepare("INSERT INTO transactions (type, category, amount, description, reference_id) VALUES (?, ?, ?, ?, ?)").run('income', 'sale', total, `${document_type} ${invoice_number}`, invoiceId);
         
         return invoiceId;

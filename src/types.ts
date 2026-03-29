@@ -21,12 +21,18 @@ export interface Product {
   referente?: string;
   data_registo?: string;
   armazem?: string;
+  warehouse_id?: number;
   tipo_documento?: string;
   preco_compra?: number;
+  cost_price?: number;
   price: number; // preco_venda
   finalidade?: string;
   tipologia?: string;
   unit: string;
+  stock_quantity: number;
+  min_stock?: number;
+  category?: string;
+  barcode?: string;
   created_at?: string;
   image?: string;
 }
@@ -241,11 +247,15 @@ export interface IssuedDocument {
   client_name?: string;
   local_trabalho: string;
   work_site_id?: string;
+  work_site_title?: string;
   moeda: string;
   currency?: string;
   cambio: number;
+  exchange_rate?: number;
   contravalor: number;
+  counter_value?: number;
   total?: number;
+  vat_amount?: number;
   desconto_global: number;
   global_discount?: number;
   tipo_cativacao_iva: 'sem' | '50' | '100';

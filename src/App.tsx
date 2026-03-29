@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import PrintA4 from './components/PrintA4';
 import { QRCodeCanvas } from 'qrcode.react';
 import { 
@@ -70,7 +70,9 @@ import {
   Paperclip,
   AlertCircle,
   MoreVertical,
-  Eye
+  Eye,
+  ArrowUpRight,
+  ArrowDownRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Client, Product, Invoice, DashboardStats, InvoiceItem, Employee, Profession, WorkSite, WorkSiteMovement, IssuedDocument, Warehouse, Supplier, FiscalSeries, CostCenter, POSPoint, CashSession, SystemUser, Purchase, PurchaseItem, POSArea } from './types';
@@ -416,6 +418,7 @@ const INSS_PROFESSIONS = [
 ];
 
 const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
+  const professionsRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState('list');
   const [professions, setProfessions] = useState<Profession[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -617,7 +620,12 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
                 </button>
                 
                 <button 
-                  onClick={() => setShowProfessionForm(false)}
+                  onClick={() => {
+                    setShowProfessionForm(false);
+                    setTimeout(() => {
+                      professionsRef.current?.scrollIntoView({ behavior: 'smooth' });
+                    }, 100);
+                  }}
                   className="bg-white border border-zinc-200 p-12 flex flex-col items-center gap-4 hover:border-[#003366] hover:text-[#003366] transition-all group"
                 >
                   <div className="w-16 h-16 bg-zinc-50 rounded-full flex items-center justify-center group-hover:bg-[#003366]/5 transition-colors">
@@ -747,7 +755,7 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
               </motion.div>
             )}
 
-            <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
+            <div ref={professionsRef} className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-[#003366] text-white text-[10px] uppercase tracking-wider font-bold">
@@ -889,12 +897,13 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-zinc-100">
-                          {localEmployees.map(emp => {
-                            const inss3 = emp.salary * 0.03;
-                            const inss8 = emp.salary * 0.08;
-                            const irt = calculateIRT(emp.salary);
-                            const net = emp.salary - inss3 - irt;
-                            const total = emp.salary + inss8;
+                          {Array.isArray(localEmployees) && localEmployees.map(emp => {
+  const inss3 = emp.salary * 0.03;
+  const inss8 = emp.salary * 0.08;
+  const irtBase = emp.salary - inss3;
+  const irt = calculateIRT(irtBase);
+  const net = emp.salary - inss3 - irt;
+  const total = emp.salary + inss8;
                             return (
                               <tr key={emp.id} className="hover:bg-zinc-50 transition-colors text-xs">
                                 <td className="px-6 py-4 font-bold text-[#003366]">{emp.name}</td>
@@ -912,16 +921,16 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
                         <tfoot>
                           <tr className="bg-zinc-50 font-bold text-xs">
                             <td colSpan={2} className="px-6 py-4 text-[#003366]">TOTAIS</td>
-                            <td className="px-6 py-4 text-right">{formatCurrency(localEmployees.reduce((sum, e) => sum + e.salary, 0))}</td>
-                            <td className="px-6 py-4 text-right text-red-500">{formatCurrency(localEmployees.reduce((sum, e) => sum + e.salary * 0.03, 0))}</td>
-                            <td className="px-6 py-4 text-right text-red-500">{formatCurrency(localEmployees.reduce((sum, e) => sum + calculateIRT(e.salary), 0))}</td>
-                            <td className="px-6 py-4 text-right text-emerald-600">{formatCurrency(localEmployees.reduce((sum, e) => {
+                            <td className="px-6 py-4 text-right">{formatCurrency(Array.isArray(localEmployees) ? localEmployees.reduce((sum, e) => sum + e.salary, 0) : 0)}</td>
+                            <td className="px-6 py-4 text-right text-red-500">{formatCurrency(Array.isArray(localEmployees) ? localEmployees.reduce((sum, e) => sum + e.salary * 0.03, 0) : 0)}</td>
+                            <td className="px-6 py-4 text-right text-red-500">{formatCurrency(Array.isArray(localEmployees) ? localEmployees.reduce((sum, e) => sum + calculateIRT(e.salary - (e.salary * 0.03)), 0) : 0)}</td>
+                            <td className="px-6 py-4 text-right text-emerald-600">{formatCurrency(Array.isArray(localEmployees) ? localEmployees.reduce((sum, e) => {
                               const inss3 = e.salary * 0.03;
-                              const irt = calculateIRT(e.salary);
+                              const irt = calculateIRT(e.salary - inss3);
                               return sum + (e.salary - inss3 - irt);
-                            }, 0))}</td>
-                            <td className="px-6 py-4 text-right text-zinc-500">{formatCurrency(localEmployees.reduce((sum, e) => sum + e.salary * 0.08, 0))}</td>
-                            <td className="px-6 py-4 text-right text-[#003366]">{formatCurrency(localEmployees.reduce((sum, e) => sum + e.salary * 1.08, 0))}</td>
+                            }, 0) : 0)}</td>
+                            <td className="px-6 py-4 text-right text-zinc-500">{formatCurrency(Array.isArray(localEmployees) ? localEmployees.reduce((sum, e) => sum + e.salary * 0.08, 0) : 0)}</td>
+                            <td className="px-6 py-4 text-right text-[#003366]">{formatCurrency(Array.isArray(localEmployees) ? localEmployees.reduce((sum, e) => sum + e.salary * 1.08, 0) : 0)}</td>
                           </tr>
                         </tfoot>
                       </table>
@@ -929,7 +938,131 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
                   </div>
                 )}
                 
-                {selectedReport !== 'remunerations' && (
+                {selectedReport === 'inss' && (
+                  <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
+                    <div className="p-6 border-b border-zinc-100 bg-zinc-50 flex justify-between items-center">
+                      <h3 className="font-bold text-[#003366]">Mapa de INSS - {new Date().toLocaleDateString('pt-PT', { month: 'long', year: 'numeric' })}</h3>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-[#003366] text-white text-[10px] uppercase tracking-wider font-bold">
+                            <th className="px-6 py-4">Funcionário</th>
+                            <th className="px-6 py-4 text-right">Salário Base</th>
+                            <th className="px-6 py-4 text-right">Segurado (3%)</th>
+                            <th className="px-6 py-4 text-right">Empresa (8%)</th>
+                            <th className="px-6 py-4 text-right">Total (11%)</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-100">
+                          {Array.isArray(localEmployees) && localEmployees.map(emp => (
+                            <tr key={emp.id} className="hover:bg-zinc-50 transition-colors text-xs">
+                              <td className="px-6 py-4 font-bold text-[#003366]">{emp.name}</td>
+                              <td className="px-6 py-4 text-right">{formatCurrency(emp.salary)}</td>
+                              <td className="px-6 py-4 text-right text-red-500">{formatCurrency(emp.salary * 0.03)}</td>
+                              <td className="px-6 py-4 text-right text-zinc-500">{formatCurrency(emp.salary * 0.08)}</td>
+                              <td className="px-6 py-4 text-right font-bold text-[#003366]">{formatCurrency(emp.salary * 0.11)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr className="bg-zinc-50 font-bold text-xs">
+                            <td className="px-6 py-4 text-[#003366]">TOTAIS</td>
+                            <td className="px-6 py-4 text-right">{formatCurrency(Array.isArray(localEmployees) ? localEmployees.reduce((sum, e) => sum + e.salary, 0) : 0)}</td>
+                            <td className="px-6 py-4 text-right text-red-500">{formatCurrency(Array.isArray(localEmployees) ? localEmployees.reduce((sum, e) => sum + e.salary * 0.03, 0) : 0)}</td>
+                            <td className="px-6 py-4 text-right text-zinc-500">{formatCurrency(Array.isArray(localEmployees) ? localEmployees.reduce((sum, e) => sum + e.salary * 0.08, 0) : 0)}</td>
+                            <td className="px-6 py-4 text-right text-[#003366]">{formatCurrency(Array.isArray(localEmployees) ? localEmployees.reduce((sum, e) => sum + e.salary * 0.11, 0) : 0)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {selectedReport === 'irt' && (
+                  <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
+                    <div className="p-6 border-b border-zinc-100 bg-zinc-50 flex justify-between items-center">
+                      <h3 className="font-bold text-[#003366]">Mapa de IRT - {new Date().toLocaleDateString('pt-PT', { month: 'long', year: 'numeric' })}</h3>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-[#003366] text-white text-[10px] uppercase tracking-wider font-bold">
+                            <th className="px-6 py-4">Funcionário</th>
+                            <th className="px-6 py-4 text-right">Salário Bruto</th>
+                            <th className="px-6 py-4 text-right">INSS (3%)</th>
+                            <th className="px-6 py-4 text-right">Matéria Colectável</th>
+                            <th className="px-6 py-4 text-right">IRT Devido</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-100">
+                          {Array.isArray(localEmployees) && localEmployees.map(emp => {
+                            const inss = emp.salary * 0.03;
+                            const base = emp.salary - inss;
+                            const irt = calculateIRT(base);
+                            return (
+                              <tr key={emp.id} className="hover:bg-zinc-50 transition-colors text-xs">
+                                <td className="px-6 py-4 font-bold text-[#003366]">{emp.name}</td>
+                                <td className="px-6 py-4 text-right">{formatCurrency(emp.salary)}</td>
+                                <td className="px-6 py-4 text-right text-red-500">{formatCurrency(inss)}</td>
+                                <td className="px-6 py-4 text-right font-medium">{formatCurrency(base)}</td>
+                                <td className="px-6 py-4 text-right text-red-600 font-bold">{formatCurrency(irt)}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                        <tfoot>
+                          <tr className="bg-zinc-50 font-bold text-xs">
+                            <td className="px-6 py-4 text-[#003366]">TOTAIS</td>
+                            <td className="px-6 py-4 text-right">{formatCurrency(Array.isArray(localEmployees) ? localEmployees.reduce((sum, e) => sum + e.salary, 0) : 0)}</td>
+                            <td className="px-6 py-4 text-right text-red-500">{formatCurrency(Array.isArray(localEmployees) ? localEmployees.reduce((sum, e) => sum + e.salary * 0.03, 0) : 0)}</td>
+                            <td className="px-6 py-4 text-right">{formatCurrency(Array.isArray(localEmployees) ? localEmployees.reduce((sum, e) => sum + (e.salary * 0.97), 0) : 0)}</td>
+                            <td className="px-6 py-4 text-right text-red-600">{formatCurrency(Array.isArray(localEmployees) ? localEmployees.reduce((sum, e) => sum + calculateIRT(e.salary * 0.97), 0) : 0)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {selectedReport === 'receipts' && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {Array.isArray(localEmployees) && localEmployees.map(emp => (
+                      <div key={emp.id} className="bg-white border border-zinc-200 p-6 rounded-none shadow-sm flex flex-col gap-4">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h4 className="font-bold text-[#003366]">{emp.name}</h4>
+                            <p className="text-[10px] text-zinc-400 uppercase font-bold tracking-wider">{emp.role}</p>
+                          </div>
+                          <Printer size={18} className="text-zinc-300" />
+                        </div>
+                        <div className="space-y-1 text-xs">
+                          <div className="flex justify-between">
+                            <span className="text-zinc-500">Salário Base</span>
+                            <span className="font-medium">{formatCurrency(emp.salary)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-zinc-500">INSS (3%)</span>
+                            <span className="text-red-500">-{formatCurrency(emp.salary * 0.03)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-zinc-500">IRT</span>
+                            <span className="text-red-500">-{formatCurrency(calculateIRT(emp.salary * 0.97))}</span>
+                          </div>
+                          <div className="pt-2 border-t border-zinc-50 flex justify-between font-bold text-[#003366]">
+                            <span>Líquido a Receber</span>
+                            <span>{formatCurrency(emp.salary - (emp.salary * 0.03) - calculateIRT(emp.salary * 0.97))}</span>
+                          </div>
+                        </div>
+                        <button className="mt-2 w-full bg-[#003366] text-white py-2 text-[10px] font-bold uppercase tracking-widest hover:bg-[#002244] transition-colors">
+                          Emitir Recibo
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                {['remunerations', 'inss', 'irt', 'receipts'].indexOf(selectedReport || '') === -1 && (
                   <div className="p-12 text-center text-zinc-400 italic bg-white border border-zinc-200">
                     Relatório em desenvolvimento...
                   </div>
@@ -1262,6 +1395,169 @@ const ProfitLossReport = ({ fiscalYear }: { fiscalYear: string }) => {
   );
 };
 
+const OtherMovements = ({ transactions, onRefresh }: { transactions: any[], onRefresh: () => void }) => {
+  const [showForm, setShowForm] = useState(false);
+  const [description, setDescription] = useState('');
+  const [amount, setAmount] = useState('');
+  const [type, setType] = useState('expense');
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const filteredTransactions = transactions.filter(t => 
+    t.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    t.category.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+  const totalExpense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+  const balance = totalIncome - totalExpense;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const res = await fetch('/api/transactions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ description, amount: Number(amount), type, category: 'manual' })
+    });
+    if (res.ok) {
+      setDescription('');
+      setAmount('');
+      setShowForm(false);
+      onRefresh();
+    }
+  };
+
+  return (
+    <div className="space-y-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-50 rounded-full -mr-12 -mt-12 transition-transform group-hover:scale-110" />
+          <p className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2">Total Entradas</p>
+          <p className="text-3xl font-black text-emerald-600">{formatCurrency(totalIncome)}</p>
+          <div className="mt-4 flex items-center gap-2 text-emerald-600">
+            <ArrowUpRight size={14} />
+            <span className="text-[10px] font-black uppercase tracking-widest">Receitas Diversas</span>
+          </div>
+        </div>
+        <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-red-50 rounded-full -mr-12 -mt-12 transition-transform group-hover:scale-110" />
+          <p className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2">Total Saídas</p>
+          <p className="text-3xl font-black text-red-600">{formatCurrency(totalExpense)}</p>
+          <div className="mt-4 flex items-center gap-2 text-red-600">
+            <ArrowDownRight size={14} />
+            <span className="text-[10px] font-black uppercase tracking-widest">Despesas Manuais</span>
+          </div>
+        </div>
+        <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-[#003366]/5 rounded-full -mr-12 -mt-12 transition-transform group-hover:scale-110" />
+          <p className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2">Saldo de Caixa</p>
+          <p className={`text-3xl font-black ${balance >= 0 ? 'text-[#003366]' : 'text-red-600'}`}>{formatCurrency(balance)}</p>
+          <div className="mt-4 flex items-center gap-2 text-[#003366]">
+            <Wallet size={14} />
+            <span className="text-[10px] font-black uppercase tracking-widest">Disponibilidade Atual</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 border border-zinc-200 shadow-sm">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
+          <input 
+            placeholder="Pesquisar movimentos..." 
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 bg-zinc-50 border border-zinc-200 rounded-none text-sm focus:outline-none focus:border-[#003366] font-medium" 
+          />
+        </div>
+        <button onClick={() => setShowForm(true)} className="bg-[#003366] hover:bg-[#002244] text-white font-bold px-8 py-2.5 rounded-none flex items-center gap-2 transition-all shadow-sm text-sm uppercase tracking-widest">
+          <Plus size={18} /> Novo Movimento
+        </button>
+      </div>
+
+      <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-[#003366] text-white text-[10px] font-black uppercase tracking-widest border-b border-zinc-200">
+              <th className="px-6 py-4">Data</th>
+              <th className="px-6 py-4">Descrição</th>
+              <th className="px-6 py-4">Categoria</th>
+              <th className="px-6 py-4">Tipo</th>
+              <th className="px-6 py-4 text-right">Valor</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-100">
+            {filteredTransactions.map((t) => (
+              <tr key={t.id} className="hover:bg-zinc-50 transition-colors text-xs border-b border-zinc-50">
+                <td className="px-6 py-4 text-zinc-400 font-medium">{new Date(t.created_at).toLocaleString()}</td>
+                <td className="px-6 py-4 font-bold text-zinc-900">{t.description}</td>
+                <td className="px-6 py-4 text-zinc-500 uppercase text-[10px] font-black tracking-tighter">{t.category}</td>
+                <td className="px-6 py-4">
+                  <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-none ${
+                    t.type === 'income' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'
+                  }`}>
+                    {t.type === 'income' ? 'Entrada' : 'Saída'}
+                  </span>
+                </td>
+                <td className={`px-6 py-4 text-right font-black ${t.type === 'income' ? 'text-emerald-600' : 'text-red-600'}`}>
+                  {t.type === 'income' ? '+' : '-'}{formatCurrency(t.amount)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {filteredTransactions.length === 0 && (
+          <div className="p-12 text-center text-zinc-400 text-sm font-medium">Nenhum movimento registado.</div>
+        )}
+      </div>
+
+      {showForm && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md p-8 rounded-none shadow-2xl space-y-6">
+            <h3 className="text-xl font-bold text-[#003366] uppercase tracking-tight">Novo Movimento Financeiro</h3>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Descrição</label>
+                <input 
+                  required 
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full border border-zinc-200 p-2.5 text-sm focus:outline-none focus:border-[#003366] bg-zinc-50 font-medium" 
+                  placeholder="Ex: Pagamento de luz, Venda avulsa..."
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Valor (Kz)</label>
+                <input 
+                  type="number" 
+                  required 
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className="w-full border border-zinc-200 p-2.5 text-sm focus:outline-none focus:border-[#003366] bg-zinc-50 font-bold" 
+                  placeholder="0.00"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tipo de Movimento</label>
+                <select 
+                  value={type}
+                  onChange={(e) => setType(e.target.value)}
+                  className="w-full border border-zinc-200 p-2.5 text-sm focus:outline-none focus:border-[#003366] bg-zinc-50 font-bold"
+                >
+                  <option value="income">Entrada (Receita)</option>
+                  <option value="expense">Saída (Despesa)</option>
+                </select>
+              </div>
+              <div className="flex justify-end gap-3 pt-4">
+                <button type="button" onClick={() => setShowForm(false)} className="px-6 py-2 text-zinc-500 font-bold text-xs uppercase tracking-widest">Cancelar</button>
+                <button type="submit" className="bg-[#003366] text-white px-8 py-2 font-bold text-xs uppercase tracking-widest hover:bg-[#002244] shadow-lg">Registar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const FinancialModule = () => {
   const [activeSubTab, setActiveSubTab] = useState('menu');
   const [issuedDocuments, setIssuedDocuments] = useState<IssuedDocument[]>([]);
@@ -1535,73 +1831,7 @@ const FinancialModule = () => {
       )}
 
       {activeSubTab === 'other-movements' && (
-        <div className="space-y-6">
-          <div className="flex justify-between items-center">
-            <h3 className="text-sm font-bold text-[#003366] uppercase tracking-wider">Registos Financeiros Manuais</h3>
-            <button onClick={() => setShowForm(true)} className="bg-[#003366] hover:bg-[#002244] text-white font-bold px-4 py-2 rounded-none flex items-center gap-2 transition-all shadow-sm text-xs">
-              <Plus size={14} /> Nova Transação
-            </button>
-          </div>
-
-          {showForm && (
-            <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm">
-              <form onSubmit={handleTransactionSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Descrição</label>
-                  <input placeholder="Ex: Pagamento Fornecedor" value={description} onChange={e => setDescription(e.target.value)} className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" required />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Valor</label>
-                  <input placeholder="0.00" type="number" value={amount} onChange={e => setAmount(e.target.value)} className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" required />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tipo</label>
-                  <select value={type} onChange={e => setType(e.target.value)} className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm">
-                    <option value="income">Receita</option>
-                    <option value="expense">Despesa</option>
-                  </select>
-                </div>
-                <div className="md:col-span-3 flex justify-end gap-3">
-                  <button type="button" onClick={() => setShowForm(false)} className="text-zinc-500 hover:text-zinc-700 text-sm font-medium">Cancelar</button>
-                  <button type="submit" className="bg-[#003366] text-white font-bold px-6 py-2 rounded-none hover:bg-[#002244] transition-all text-sm">Registar Transação</button>
-                </div>
-              </form>
-            </div>
-          )}
-
-          <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-[#003366] text-white text-[11px] uppercase tracking-wider font-bold">
-                  <th className="px-6 py-4">Data</th>
-                  <th className="px-6 py-4">Descrição</th>
-                  <th className="px-6 py-4">Tipo</th>
-                  <th className="px-6 py-4 text-right">Valor</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
-                {loading ? (
-                  <tr><td colSpan={4} className="p-12 text-center text-zinc-400 italic">Carregando...</td></tr>
-                ) : transactions.length === 0 ? (
-                  <tr><td colSpan={4} className="p-12 text-center text-zinc-400 italic">Nenhum registo encontrado.</td></tr>
-                ) : transactions.map(t => (
-                  <tr key={t.id} className="hover:bg-zinc-50 transition-colors text-xs text-zinc-600">
-                    <td className="px-6 py-4 text-zinc-400">{new Date(t.date).toLocaleDateString('pt-PT')}</td>
-                    <td className="px-6 py-4 font-medium text-zinc-800">{t.description}</td>
-                    <td className="px-6 py-4">
-                      <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded-full ${t.type === 'income' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
-                        {t.type === 'income' ? 'Receita' : 'Despesa'}
-                      </span>
-                    </td>
-                    <td className={`px-6 py-4 text-right font-bold ${t.type === 'income' ? 'text-emerald-600' : 'text-red-600'}`}>
-                      {t.type === 'income' ? '+' : '-'}{formatCurrency(t.amount)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <OtherMovements transactions={transactions} onRefresh={fetchTransactions} />
       )}
     </div>
   );
@@ -1609,8 +1839,8 @@ const FinancialModule = () => {
 
 const IssuedDocumentsList = ({ documents, onAction, onCertify }: { 
   documents: IssuedDocument[], 
-  onAction: (doc: IssuedDocument) => void,
-  onCertify: (doc: IssuedDocument) => void
+  onAction: (doc: IssuedDocument) => void, 
+  onCertify: (doc: IssuedDocument) => void 
 }) => {
   const [showActionsModal, setShowActionsModal] = useState<IssuedDocument | null>(null);
 
@@ -1618,7 +1848,7 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify }: {
     <div className="bg-white border border-zinc-200 rounded-none overflow-x-auto shadow-sm">
       <table className="w-full text-left border-collapse min-w-[1200px]">
         <thead>
-          <tr className="bg-[#003366] text-white text-[11px] uppercase tracking-wider font-bold">
+          <tr className="bg-[#003366] text-white text-[10px] uppercase tracking-widest font-black border-b border-zinc-200">
             <th className="px-6 py-4">Data Emissão</th>
             <th className="px-6 py-4">Vencimento</th>
             <th className="px-6 py-4">Tipo</th>
@@ -1634,28 +1864,32 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify }: {
         </thead>
         <tbody className="divide-y divide-zinc-100">
           {documents.map((doc) => (
-            <tr key={doc.id} className="hover:bg-zinc-50 text-sm border-b border-zinc-50">
-              <td className="px-6 py-4 text-zinc-900 font-medium whitespace-nowrap">
-                {new Date(doc.data_emissao || doc.date || '').toLocaleDateString()}
+            <tr key={doc.id} className="hover:bg-zinc-50 text-xs border-b border-zinc-50 group transition-colors">
+              <td className="px-6 py-4 text-zinc-900 font-bold whitespace-nowrap">
+                {new Date(doc.date || doc.data_emissao || '').toLocaleDateString()}
               </td>
-              <td className="px-6 py-4 text-zinc-700 whitespace-nowrap">
+              <td className="px-6 py-4 text-zinc-500 whitespace-nowrap font-medium">
                 {doc.due_date ? new Date(doc.due_date).toLocaleDateString() : (doc.data_vencimento ? new Date(doc.data_vencimento).toLocaleDateString() : 'N/A')}
               </td>
-              <td className="px-6 py-4 font-bold text-zinc-900 whitespace-nowrap">
-                <div>{doc.tipo_documento || doc.document_type}</div>
-                {doc.series_name && <div className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">{doc.series_name}</div>}
+              <td className="px-6 py-4 font-black text-[#003366] whitespace-nowrap">
+                <div className="uppercase tracking-tighter">{doc.document_type || doc.tipo_documento}</div>
+                {doc.series_name && <div className="text-[9px] text-zinc-400 font-black uppercase tracking-widest">{doc.series_name}</div>}
               </td>
-              <td className="px-6 py-4 font-mono text-xs text-zinc-600 font-bold whitespace-nowrap">{doc.numero_documento || doc.invoice_number}</td>
-              <td className="px-6 py-4 text-zinc-900 font-bold min-w-[150px]">{doc.client_name || doc.cliente_id || doc.client_id}</td>
-              <td className="px-6 py-4 text-zinc-700 font-medium">{doc.local_trabalho || doc.work_site_id || 'N/A'}</td>
-              <td className="px-6 py-4 text-zinc-900 uppercase text-[10px] font-black">{doc.payment_method || 'N/A'}</td>
-              <td className="px-6 py-4 text-zinc-700 text-[10px] font-bold">{doc.cash_box || 'N/A'}</td>
-              <td className="px-6 py-4 text-right font-black text-[#003366] text-base whitespace-nowrap">
-                {formatCurrency(doc.contravalor || doc.total || 0)}
+              <td className="px-6 py-4 font-mono text-[10px] text-zinc-600 font-black whitespace-nowrap bg-zinc-50/50">{doc.invoice_number || doc.numero_documento}</td>
+              <td className="px-6 py-4 text-zinc-900 font-black min-w-[150px] uppercase">{doc.client_name || doc.cliente_id || doc.client_id}</td>
+              <td className="px-6 py-4 text-zinc-500 font-bold text-[10px] uppercase tracking-tight">{doc.work_site_title || doc.local_trabalho || 'N/A'}</td>
+              <td className="px-6 py-4">
+                <span className="px-2 py-0.5 bg-zinc-100 text-zinc-600 uppercase text-[9px] font-black tracking-widest border border-zinc-200">
+                  {doc.payment_method || 'N/A'}
+                </span>
+              </td>
+              <td className="px-6 py-4 text-zinc-400 text-[9px] font-black uppercase tracking-widest">{doc.cash_box || 'N/A'}</td>
+              <td className="px-6 py-4 text-right font-black text-[#003366] text-sm whitespace-nowrap">
+                {formatCurrency(doc.counter_value || doc.total || doc.contravalor || 0)}
               </td>
               <td className="px-6 py-4 text-center">
-                <span className={`px-2 py-1 text-[10px] font-bold uppercase rounded-none ${(doc.estado_documento || doc.status) === 'ativo' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
-                  {doc.estado_documento || doc.status || 'ativo'}
+                <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-widest rounded-none border ${(doc.status || doc.estado_documento) === 'ativo' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'}`}>
+                  {doc.status || doc.estado_documento || 'ativo'}
                 </span>
               </td>
               <td className="px-6 py-4">
@@ -1663,24 +1897,24 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify }: {
                   <button 
                     onClick={() => onAction(doc)} 
                     title="Imprimir"
-                    className="text-zinc-400 hover:text-[#003366] transition-colors"
+                    className="text-zinc-300 hover:text-[#003366] transition-all p-1.5 hover:bg-zinc-100"
                   >
-                    <Printer size={16} />
+                    <Printer size={14} />
                   </button>
                   <button 
                     onClick={() => onCertify(doc)}
                     disabled={doc.is_certified}
                     title={doc.is_certified ? "Documento Certificado" : "Certificar Documento"}
-                    className={`transition-colors ${doc.is_certified ? 'text-emerald-500 cursor-default' : 'text-zinc-400 hover:text-emerald-500'}`}
+                    className={`transition-all p-1.5 ${doc.is_certified ? 'text-emerald-500 cursor-default' : 'text-zinc-300 hover:text-emerald-500 hover:bg-emerald-50'}`}
                   >
-                    <BadgeCheck size={18} />
+                    <BadgeCheck size={16} />
                   </button>
                   <button 
                     onClick={() => setShowActionsModal(doc)} 
                     title="Mais Ações"
-                    className="text-zinc-400 hover:text-[#003366] transition-colors"
+                    className="text-zinc-300 hover:text-[#003366] transition-all p-1.5 hover:bg-zinc-100"
                   >
-                    <MoreHorizontal size={16} />
+                    <MoreHorizontal size={14} />
                   </button>
                 </div>
               </td>
@@ -1689,7 +1923,10 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify }: {
         </tbody>
       </table>
       {documents.length === 0 && (
-        <div className="p-12 text-center text-zinc-400 text-sm">Nenhum documento emitido encontrado.</div>
+        <div className="p-20 text-center">
+          <FileText size={48} className="mx-auto text-zinc-100 mb-4" />
+          <p className="text-zinc-400 text-sm font-bold uppercase tracking-widest">Nenhum documento emitido até ao momento.</p>
+        </div>
       )}
 
       {/* Actions Modal */}
@@ -1767,6 +2004,19 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify }: {
                   <div className="text-left">
                     <p className="font-bold text-zinc-900 text-sm">Enviar por WhatsApp</p>
                     <p className="text-xs text-zinc-500">Partilhar link do documento via WhatsApp.</p>
+                  </div>
+                </button>
+
+                <button 
+                  onClick={() => { /* Guia de Remessa logic */ setShowActionsModal(null); }}
+                  className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-colors border border-zinc-100 group"
+                >
+                  <div className="w-10 h-10 bg-zinc-100 text-[#003366] flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                    <Truck size={20} />
+                  </div>
+                  <div className="text-left">
+                    <p className="font-bold text-zinc-900 text-sm">Emitir Guia de Remessa</p>
+                    <p className="text-xs text-zinc-500">Gerar documento de transporte associado.</p>
                   </div>
                 </button>
 
@@ -6948,68 +7198,288 @@ const SupplierModule = ({ products }: { products: Product[] }) => {
   );
 };
 
+const SalesReport = ({ issuedDocuments }: { issuedDocuments: IssuedDocument[] }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [dateFilter, setDateFilter] = useState({ start: '', end: '' });
+
+  const filteredDocs = issuedDocuments.filter(doc => {
+    const matchesSearch = (doc.client_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (doc.invoice_number || '').toLowerCase().includes(searchTerm.toLowerCase());
+    const docDate = new Date(doc.date || doc.data_emissao || '');
+    const matchesStart = !dateFilter.start || docDate >= new Date(dateFilter.start);
+    const matchesEnd = !dateFilter.end || docDate <= new Date(dateFilter.end);
+    return matchesSearch && matchesStart && matchesEnd;
+  });
+
+  const totalSold = filteredDocs.reduce((acc, doc) => acc + (doc.counter_value || doc.total || 0), 0);
+  const totalVat = filteredDocs.reduce((acc, doc) => acc + (doc.vat_amount || 0), 0);
+  const totalNet = totalSold - totalVat;
+
+  return (
+    <div className="space-y-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-50 rounded-full -mr-12 -mt-12 transition-transform group-hover:scale-110" />
+          <p className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2">Total Bruto</p>
+          <p className="text-3xl font-black text-[#003366]">{formatCurrency(totalSold)}</p>
+          <div className="mt-4 flex items-center gap-2 text-emerald-600">
+            <TrendingUp size={14} />
+            <span className="text-[10px] font-black uppercase tracking-widest">Vendas Totais</span>
+          </div>
+        </div>
+        <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-[#003366]/5 rounded-full -mr-12 -mt-12 transition-transform group-hover:scale-110" />
+          <p className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2">Total Líquido</p>
+          <p className="text-3xl font-black text-[#003366]">{formatCurrency(totalNet)}</p>
+          <div className="mt-4 flex items-center gap-2 text-[#003366]">
+            <BarChart3 size={14} />
+            <span className="text-[10px] font-black uppercase tracking-widest">Base Tributável</span>
+          </div>
+        </div>
+        <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-amber-50 rounded-full -mr-12 -mt-12 transition-transform group-hover:scale-110" />
+          <p className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2">Total Impostos</p>
+          <p className="text-3xl font-black text-amber-600">{formatCurrency(totalVat)}</p>
+          <div className="mt-4 flex items-center gap-2 text-amber-600">
+            <ShieldCheck size={14} />
+            <span className="text-[10px] font-black uppercase tracking-widest">IVA Liquidado</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white border border-zinc-200 p-6 rounded-none shadow-sm flex flex-wrap gap-6 items-end">
+        <div className="flex-1 min-w-[300px] space-y-2">
+          <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Pesquisar Movimento</label>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
+            <input 
+              type="text" 
+              placeholder="Nome do cliente ou número do documento..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full bg-zinc-50 border border-zinc-200 rounded-none pl-10 pr-4 py-3 text-xs font-bold focus:outline-none focus:border-[#003366] transition-all"
+            />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Período</label>
+          <div className="flex items-center gap-2">
+            <input 
+              type="date" 
+              value={dateFilter.start}
+              onChange={(e) => setDateFilter(prev => ({ ...prev, start: e.target.value }))}
+              className="bg-zinc-50 border border-zinc-200 rounded-none px-4 py-3 text-xs font-bold focus:outline-none focus:border-[#003366]" 
+            />
+            <span className="text-zinc-300">/</span>
+            <input 
+              type="date" 
+              value={dateFilter.end}
+              onChange={(e) => setDateFilter(prev => ({ ...prev, end: e.target.value }))}
+              className="bg-zinc-50 border border-zinc-200 rounded-none px-4 py-3 text-xs font-bold focus:outline-none focus:border-[#003366]" 
+            />
+          </div>
+        </div>
+        <button className="bg-[#003366] text-white px-8 py-3.5 text-xs font-black uppercase tracking-widest hover:bg-[#002244] transition-all flex items-center gap-2 shadow-sm">
+          <Filter size={14} /> Filtrar
+        </button>
+      </div>
+
+      <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
+        <div className="p-6 border-b border-zinc-100 flex justify-between items-center bg-zinc-50/50">
+          <h3 className="text-xs font-black text-[#003366] uppercase tracking-widest">Listagem de Movimentos de Venda</h3>
+          <button className="text-[10px] font-black text-zinc-400 hover:text-[#003366] uppercase tracking-widest flex items-center gap-2 transition-colors">
+            <FileDown size={14} /> Exportar Excel
+          </button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse min-w-[1000px]">
+            <thead>
+              <tr className="bg-white text-[10px] uppercase tracking-widest font-black text-zinc-400 border-b border-zinc-100">
+                <th className="px-6 py-4">Data</th>
+                <th className="px-6 py-4">Documento</th>
+                <th className="px-6 py-4">Cliente</th>
+                <th className="px-6 py-4">Pagamento</th>
+                <th className="px-6 py-4 text-right">Base</th>
+                <th className="px-6 py-4 text-right">IVA</th>
+                <th className="px-6 py-4 text-right">Total</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-50">
+              {filteredDocs.map((doc) => (
+                <tr key={doc.id} className="hover:bg-zinc-50 text-[11px] transition-colors group">
+                  <td className="px-6 py-4 text-zinc-500 font-bold">{new Date(doc.date || doc.data_emissao || '').toLocaleDateString()}</td>
+                  <td className="px-6 py-4">
+                    <div className="font-black text-[#003366] uppercase">{doc.document_type || doc.tipo_documento}</div>
+                    <div className="text-[9px] text-zinc-400 font-bold font-mono">{doc.invoice_number || doc.numero_documento}</div>
+                  </td>
+                  <td className="px-6 py-4 text-zinc-900 font-black uppercase">{doc.client_name || doc.cliente_id || 'Consumidor Final'}</td>
+                  <td className="px-6 py-4">
+                    <span className="px-2 py-0.5 bg-zinc-100 text-zinc-500 text-[9px] font-black uppercase tracking-widest border border-zinc-200">
+                      {doc.payment_method || 'N/A'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-right text-zinc-600 font-bold">{formatCurrency((doc.counter_value || doc.total || 0) - (doc.vat_amount || 0))}</td>
+                  <td className="px-6 py-4 text-right text-amber-600 font-bold">{formatCurrency(doc.vat_amount || 0)}</td>
+                  <td className="px-6 py-4 text-right font-black text-[#003366]">{formatCurrency(doc.counter_value || doc.total || 0)}</td>
+                </tr>
+              ))}
+              {filteredDocs.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="p-20 text-center">
+                    <BarChart3 size={48} className="mx-auto text-zinc-100 mb-4" />
+                    <p className="text-zinc-400 text-sm font-bold uppercase tracking-widest">Nenhum movimento encontrado para os filtros aplicados.</p>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const ProductList = ({ products, onRefresh }: { products: Product[], onRefresh: () => void }) => {
   const [activeTab, setActiveTab] = useState('stock');
   const [showForm, setShowForm] = useState(false);
-  const [name, setName] = useState('');
-  const [referente, setReferente] = useState('');
-  const [dataRegisto, setDataRegisto] = useState('');
-  const [armazem, setArmazem] = useState('');
-  const [tipoDocumento, setTipoDocumento] = useState('');
-  const [precoCompra, setPrecoCompra] = useState('');
-  const [precoVenda, setPrecoVenda] = useState('');
-  const [finalidade, setFinalidade] = useState('');
-  const [tipologia, setTipologia] = useState('mercadoria');
-  const [image, setImage] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [movements, setMovements] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [stockFilter, setStockFilter] = useState<'all' | 'positive' | 'negative' | 'low'>('all');
 
-  const tabs = [
-    { id: 'stock', label: 'Stock', icon: Package },
-    { id: 'movement', label: 'Movimento', icon: History },
-    { id: 'price', label: 'Preços', icon: Tag },
-    { id: 'associate', label: 'Associar', icon: LinkIcon },
-    { id: 'warehouse', label: 'Armazém', icon: Home },
-  ];
+  const calculatePOPM = () => {
+    return products.reduce((total, p) => {
+      const productMovements = movements.filter(m => m.product_id === p.id && m.type === 'entry');
+      if (productMovements.length === 0) return total + (p.stock_quantity * (p.cost_price || 0));
+      
+      const totalCost = productMovements.reduce((sum, m) => sum + (m.quantity * (m.unit_price || 0)), 0);
+      const totalQty = productMovements.reduce((sum, m) => sum + m.quantity, 0);
+      const avgPrice = totalQty > 0 ? totalCost / totalQty : (p.cost_price || 0);
+      
+      return total + (p.stock_quantity * avgPrice);
+    }, 0);
+  };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const res = await fetch('/api/products', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        name, 
-        referente, 
-        data_registo: dataRegisto, 
-        armazem, 
-        tipo_documento: tipoDocumento, 
-        preco_compra: parseFloat(precoCompra), 
-        preco_venda: parseFloat(precoVenda), 
-        finalidade, 
-        tipologia, 
-        unit: 'un',
-        image
-      })
-    });
-    if (res.ok) {
-      setName(''); setReferente(''); setDataRegisto(''); setArmazem(''); setTipoDocumento(''); setPrecoCompra(''); setPrecoVenda(''); setFinalidade(''); setTipologia('mercadoria'); setImage('');
-      setShowForm(false);
-      onRefresh();
+  const calculatePIPO = () => {
+    // Simplified FIFO: use the most recent entry price for current stock
+    return products.reduce((total, p) => {
+      const lastEntry = movements
+        .filter(m => m.product_id === p.id && m.type === 'entry')
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+      
+      const price = lastEntry ? (lastEntry.unit_price || 0) : (p.cost_price || 0);
+      return total + (p.stock_quantity * price);
+    }, 0);
+  };
+
+  const fetchStockData = async () => {
+    setLoading(true);
+    try {
+      const [wRes, mRes] = await Promise.all([
+        fetchJson('/api/warehouses'),
+        fetchJson('/api/stock-movements')
+      ]);
+      setWarehouses(Array.isArray(wRes) ? wRes : []);
+      setMovements(Array.isArray(mRes) ? mRes : []);
+    } catch (e) {
+      console.error('Error fetching stock data:', e);
+    } finally {
+      setLoading(false);
     }
   };
 
+  useEffect(() => {
+    fetchStockData();
+  }, []);
+
+  const filteredProducts = products.filter(p => {
+    const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      (p.referente && p.referente.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (p.barcode && p.barcode.includes(searchTerm));
+    
+    if (!matchesSearch) return false;
+
+    if (stockFilter === 'positive') return p.stock_quantity > 0;
+    if (stockFilter === 'negative') return p.stock_quantity < 0;
+    if (stockFilter === 'low') return p.stock_quantity <= (p.min_stock || 0) && p.stock_quantity > 0;
+    
+    return true;
+  });
+
+  const handleAdjustment = async (productId: number, type: string, quantity: number, description: string) => {
+    const res = await fetch('/api/stock-movements', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ product_id: productId, type, quantity, description })
+    });
+    if (res.ok) {
+      onRefresh();
+      fetchStockData();
+      setShowAdjustmentModal(false);
+    }
+  };
+
+  const handleTransfer = async (productId: number, fromWh: number, toWh: number, quantity: number) => {
+    const res = await fetch('/api/stock-movements', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ product_id: productId, type: 'transfer', quantity, warehouse_id: fromWh, to_warehouse_id: toWh })
+    });
+    if (res.ok) {
+      onRefresh();
+      fetchStockData();
+      setShowTransferModal(false);
+    }
+  };
+
+  const tabs = [
+    { id: 'stock', label: 'Stock Atual', icon: Package },
+    { id: 'movements', label: 'Movimentos', icon: History },
+    { id: 'warehouse', label: 'Armazéns', icon: Home },
+    { id: 'reports', label: 'Relatórios', icon: FileText },
+  ];
+
   return (
     <div className="space-y-6">
-      <div className="flex gap-8 border-b border-zinc-200">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 border border-zinc-200 shadow-sm">
+        <div>
+          <h2 className="text-xl font-bold text-[#003366] flex items-center gap-2 uppercase tracking-tight">
+            <Package size={24} /> Gestão de Stock & Inventário
+          </h2>
+          <p className="text-zinc-500 text-xs mt-1 uppercase font-bold tracking-wider">Controle total de entradas, saídas e transferências de mercadoria.</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
+            <input 
+              placeholder="Pesquisar produtos..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 pr-4 py-2.5 bg-zinc-50 border border-zinc-200 rounded-none text-sm focus:outline-none focus:border-[#003366] w-64 font-medium" 
+            />
+          </div>
+          <button onClick={() => setShowForm(true)} className="bg-[#003366] hover:bg-[#002244] text-white font-bold px-6 py-2.5 rounded-none flex items-center gap-2 transition-all shadow-sm text-sm uppercase tracking-widest">
+            <Plus size={18} /> Novo Produto
+          </button>
+        </div>
+      </div>
+
+      <div className="flex gap-8 border-b border-zinc-200 bg-white px-6">
         {tabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 pb-4 text-sm font-bold transition-all relative ${
+            className={`flex items-center gap-2 pb-4 text-[10px] font-black uppercase tracking-widest transition-all relative ${
               activeTab === tab.id 
                 ? 'text-[#003366] border-b-2 border-[#003366]' 
-                : 'text-zinc-500 hover:text-zinc-800'
+                : 'text-zinc-400 hover:text-zinc-600'
             }`}
           >
-            <tab.icon size={18} className={activeTab === tab.id ? 'text-[#003366]' : 'text-zinc-400'} />
+            <tab.icon size={14} className={activeTab === tab.id ? 'text-[#003366]' : 'text-zinc-300'} />
             {tab.label}
           </button>
         ))}
@@ -7017,133 +7487,359 @@ const ProductList = ({ products, onRefresh }: { products: Product[], onRefresh: 
 
       {activeTab === 'warehouse' ? (
         <WarehouseModule onRefresh={onRefresh} />
-      ) : (
-        <>
-          <div className="flex justify-between items-center">
-            <h3 className="text-xl font-bold text-[#003366] uppercase tracking-tight">Produtos & Serviços</h3>
+      ) : activeTab === 'stock' ? (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 bg-white p-4 border border-zinc-200">
             <button 
-              onClick={() => setShowForm(true)}
-              className="bg-[#003366] text-white px-6 py-2.5 text-sm font-bold rounded-none hover:bg-[#002244] transition-all flex items-center gap-2"
+              onClick={() => setStockFilter('all')}
+              className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest border ${stockFilter === 'all' ? 'bg-[#003366] text-white border-[#003366]' : 'bg-zinc-50 text-zinc-500 border-zinc-200'}`}
             >
-              <Plus size={18} /> Novo Produto
+              Todos
+            </button>
+            <button 
+              onClick={() => setStockFilter('positive')}
+              className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest border ${stockFilter === 'positive' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-zinc-50 text-zinc-500 border-zinc-200'}`}
+            >
+              Stock Positivo
+            </button>
+            <button 
+              onClick={() => setStockFilter('negative')}
+              className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest border ${stockFilter === 'negative' ? 'bg-red-600 text-white border-red-600' : 'bg-zinc-50 text-zinc-500 border-zinc-200'}`}
+            >
+              Stock Negativo
+            </button>
+            <button 
+              onClick={() => setStockFilter('low')}
+              className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest border ${stockFilter === 'low' ? 'bg-amber-500 text-white border-amber-500' : 'bg-zinc-50 text-zinc-500 border-zinc-200'}`}
+            >
+              Stock Baixo
             </button>
           </div>
-          {showForm && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-              <div className="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm" onClick={() => setShowForm(false)} />
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="relative w-full max-w-4xl bg-white p-10 rounded-none shadow-2xl max-h-[90vh] overflow-y-auto"
-              >
-                <div className="flex justify-between items-center mb-8 border-b border-zinc-100 pb-4">
-                  <h3 className="font-bold text-[#003366] text-2xl uppercase tracking-tight flex items-center gap-3">
-                    <Package size={24} /> Novo Produto / Serviço
-                  </h3>
-                  <button onClick={() => setShowForm(false)} className="text-zinc-400 hover:text-zinc-600">
-                    <X size={24} />
-                  </button>
-                </div>
-                <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Nome do Produto</label>
-                    <input type="text" placeholder="Ex: Cimento 50kg" value={name} onChange={e => setName(e.target.value)} required className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-3 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Referência / Código</label>
-                    <input type="text" placeholder="REF-001" value={referente} onChange={e => setReferente(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-3 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data de Registo</label>
-                    <input type="date" value={dataRegisto} onChange={e => setDataRegisto(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-3 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Armazém Padrão</label>
-                    <input type="text" placeholder="Armazém Central" value={armazem} onChange={e => setArmazem(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-3 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tipo de Documento</label>
-                    <input type="text" placeholder="Fatura" value={tipoDocumento} onChange={e => setTipoDocumento(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-3 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Preço de Compra (Kz)</label>
-                    <input type="number" step="0.01" placeholder="0.00" value={precoCompra} onChange={e => setPrecoCompra(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-3 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold" />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Preço de Venda (Kz)</label>
-                    <input type="number" step="0.01" placeholder="0.00" value={precoVenda} onChange={e => setPrecoVenda(e.target.value)} required className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-3 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold" />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Finalidade</label>
-                    <input type="text" placeholder="Revenda" value={finalidade} onChange={e => setFinalidade(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-3 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tipologia</label>
-                    <select value={tipologia} onChange={e => setTipologia(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-3 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold">
-                      <option value="mercadoria">Mercadoria</option>
-                      <option value="servico">Serviço</option>
-                      <option value="outro">Outro</option>
-                    </select>
-                  </div>
-                  <div className="md:col-span-3 space-y-2">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">URL da Imagem do Produto</label>
-                    <div className="flex gap-4">
-                      <input 
-                        type="url" 
-                        placeholder="https://exemplo.com/imagem.jpg" 
-                        value={image} 
-                        onChange={e => setImage(e.target.value)} 
-                        className="flex-1 bg-zinc-50 border border-zinc-200 rounded-none px-4 py-3 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" 
-                      />
-                      {image && (
-                        <div className="w-12 h-12 bg-zinc-100 border border-zinc-200 flex items-center justify-center overflow-hidden">
-                          <img src={image} alt="Preview" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+
+          <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-[#003366] text-white text-[10px] font-black uppercase tracking-widest border-b border-zinc-200">
+                  <th className="px-6 py-4">Produto</th>
+                  <th className="px-6 py-4">Referência</th>
+                  <th className="px-6 py-4">Armazém</th>
+                  <th className="px-6 py-4 text-center">Entradas</th>
+                  <th className="px-6 py-4 text-center">Saídas</th>
+                  <th className="px-6 py-4 text-center">Stock Atual</th>
+                  <th className="px-6 py-4 text-center">Min. Stock</th>
+                  <th className="px-6 py-4 text-center">Diferença</th>
+                  <th className="px-6 py-4 text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {filteredProducts.map((p) => {
+                  const entries = movements.filter(m => m.product_id === p.id && (m.type === 'entry' || m.type === 'adjustment_plus')).reduce((sum, m) => sum + m.quantity, 0);
+                  const exits = movements.filter(m => m.product_id === p.id && (m.type === 'exit' || m.type === 'adjustment_minus')).reduce((sum, m) => sum + m.quantity, 0);
+                  const diff = p.stock_quantity - (p.min_stock || 0);
+                  const isNegative = p.stock_quantity < 0;
+                  const isLow = p.stock_quantity <= (p.min_stock || 0);
+
+                  return (
+                    <tr key={p.id} className="hover:bg-zinc-50 transition-colors text-xs group border-b border-zinc-50">
+                      <td className="px-6 py-4">
+                        <div className="font-bold text-zinc-900">{p.name}</div>
+                        <div className="text-[9px] text-zinc-400 uppercase font-black tracking-tighter">{p.category || 'Sem categoria'}</div>
+                      </td>
+                      <td className="px-6 py-4 text-zinc-500 font-mono text-[10px]">{p.referente || '---'}</td>
+                      <td className="px-6 py-4 text-zinc-500 font-medium">{warehouses.find(w => w.id === p.warehouse_id)?.name || 'Geral'}</td>
+                      <td className="px-6 py-4 text-center text-emerald-600 font-bold">{entries}</td>
+                      <td className="px-6 py-4 text-center text-red-600 font-bold">{exits}</td>
+                      <td className="px-6 py-4 text-center">
+                        <span className={`px-3 py-1 font-black rounded-none ${isNegative ? 'text-red-600 bg-red-50' : isLow ? 'text-amber-600 bg-amber-50' : 'text-[#003366] bg-zinc-50'}`}>
+                          {p.stock_quantity} {p.unit}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-center text-zinc-400 font-bold">{p.min_stock || 0}</td>
+                      <td className="px-6 py-4 text-center">
+                        <span className={`font-bold ${diff >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                          {diff > 0 ? '+' : ''}{diff}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button 
+                            onClick={() => { setSelectedProduct(p); setShowAdjustmentModal(true); }}
+                            className="p-2 text-zinc-400 hover:text-[#003366] hover:bg-zinc-100 transition-all"
+                            title="Ajuste de Stock"
+                          >
+                            <Settings size={14} />
+                          </button>
+                          <button 
+                            onClick={() => { setSelectedProduct(p); setShowTransferModal(true); }}
+                            className="p-2 text-zinc-400 hover:text-[#003366] hover:bg-zinc-100 transition-all"
+                            title="Transferir Produto"
+                          >
+                            <Truck size={14} />
+                          </button>
                         </div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="md:col-span-3 flex justify-end gap-4 mt-8 pt-6 border-t border-zinc-100">
-                    <button type="button" onClick={() => setShowForm(false)} className="px-8 py-3 text-xs font-bold text-zinc-500 uppercase tracking-widest hover:text-zinc-700">Cancelar</button>
-                    <button type="submit" className="bg-[#003366] text-white px-10 py-3 text-xs font-bold uppercase tracking-widest hover:bg-[#002244] transition-all shadow-lg">Guardar Produto</button>
-                  </div>
-                </form>
-              </motion.div>
-            </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {filteredProducts.length === 0 && (
+              <div className="p-12 text-center text-zinc-400 text-sm font-medium">Nenhum produto encontrado no stock.</div>
+            )}
+          </div>
+        </div>
+      ) : activeTab === 'movements' ? (
+        <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-[#003366] text-white text-[10px] font-black uppercase tracking-widest border-b border-zinc-200">
+                <th className="px-6 py-4">Data</th>
+                <th className="px-6 py-4">Produto</th>
+                <th className="px-6 py-4">Tipo</th>
+                <th className="px-6 py-4">Qtd</th>
+                <th className="px-6 py-4">Stock Anterior</th>
+                <th className="px-6 py-4">Stock Atual</th>
+                <th className="px-6 py-4">Descrição</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+              {movements.map((m) => (
+                <tr key={m.id} className="hover:bg-zinc-50 transition-colors text-xs border-b border-zinc-50">
+                  <td className="px-6 py-4 text-zinc-400 font-medium">{new Date(m.created_at).toLocaleString()}</td>
+                  <td className="px-6 py-4 font-bold text-zinc-900">{m.product_name}</td>
+                  <td className="px-6 py-4">
+                    <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-none ${
+                      m.type === 'entry' ? 'bg-emerald-50 text-emerald-600' :
+                      m.type === 'exit' ? 'bg-red-50 text-red-600' :
+                      m.type === 'transfer' ? 'bg-blue-50 text-blue-600' :
+                      'bg-zinc-100 text-zinc-600'
+                    }`}>
+                      {m.type}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 font-black">{m.quantity}</td>
+                  <td className="px-6 py-4 text-zinc-400 font-bold">{m.previous_stock}</td>
+                  <td className="px-6 py-4 font-black text-[#003366]">{m.current_stock}</td>
+                  <td className="px-6 py-4 text-zinc-500 italic font-medium">{m.description || '---'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {movements.length === 0 && (
+            <div className="p-12 text-center text-zinc-400 text-sm font-medium">Nenhum movimento de stock registado.</div>
           )}
-        </>
+        </div>
+      ) : activeTab === 'reports' ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-white border border-zinc-200 p-8 space-y-6">
+            <h3 className="text-lg font-bold text-[#003366] uppercase tracking-tight flex items-center gap-2">
+              <FileText size={20} /> Valorização de Stock (POPM / PIPO)
+            </h3>
+            <div className="space-y-4">
+              <div className="p-4 bg-zinc-50 border border-zinc-100">
+                <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Método POPM (Preço Médio Ponderado)</div>
+                <div className="text-xl font-black text-[#003366]">
+                  {calculatePOPM().toLocaleString('pt-AO', { style: 'currency', currency: 'AOA' })}
+                </div>
+              </div>
+              <div className="p-4 bg-zinc-50 border border-zinc-100">
+                <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Método PIPO (First-In First-Out)</div>
+                <div className="text-xl font-black text-[#003366]">
+                  {calculatePIPO().toLocaleString('pt-AO', { style: 'currency', currency: 'AOA' })}
+                </div>
+                <p className="text-[9px] text-zinc-400 mt-2 italic">* Cálculo baseado no histórico de movimentos de entrada.</p>
+              </div>
+            </div>
+            <button className="w-full bg-[#003366] text-white font-bold py-3 text-xs uppercase tracking-widest hover:bg-[#002244] transition-all">
+              Gerar Relatório Detalhado
+            </button>
+          </div>
+
+          <div className="bg-white border border-zinc-200 p-8 space-y-6">
+            <h3 className="text-lg font-bold text-[#003366] uppercase tracking-tight flex items-center gap-2">
+              <History size={20} /> Relatórios de Movimento
+            </h3>
+            <div className="space-y-3">
+              <button className="w-full flex items-center justify-between p-4 bg-zinc-50 border border-zinc-100 hover:bg-zinc-100 transition-all group">
+                <span className="text-xs font-bold text-zinc-600 uppercase tracking-wider">Entradas do Mês</span>
+                <ChevronRight size={16} className="text-zinc-300 group-hover:text-[#003366]" />
+              </button>
+              <button className="w-full flex items-center justify-between p-4 bg-zinc-50 border border-zinc-100 hover:bg-zinc-100 transition-all group">
+                <span className="text-xs font-bold text-zinc-600 uppercase tracking-wider">Saídas do Mês</span>
+                <ChevronRight size={16} className="text-zinc-300 group-hover:text-[#003366]" />
+              </button>
+              <button className="w-full flex items-center justify-between p-4 bg-zinc-50 border border-zinc-100 hover:bg-zinc-100 transition-all group">
+                <span className="text-xs font-bold text-zinc-600 uppercase tracking-wider">Stock Abaixo do Mínimo</span>
+                <ChevronRight size={16} className="text-zinc-300 group-hover:text-[#003366]" />
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="p-12 text-center text-zinc-400 text-sm font-medium bg-white border border-zinc-200">Módulo em desenvolvimento.</div>
       )}
 
-      <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-[#003366] text-white text-[11px] uppercase tracking-wider font-bold">
-              <th className="px-6 py-4">Nome</th>
-              <th className="px-6 py-4">Unidade</th>
-              <th className="px-6 py-4">Preço Base</th>
-              <th className="px-6 py-4 text-right">Ações</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-zinc-100">
-            {products.map((prod) => (
-              <tr key={prod.id} className="hover:bg-zinc-50 transition-colors text-xs text-zinc-600">
-                <td className="px-6 py-4 text-zinc-800 font-medium">{prod.name}</td>
-                <td className="px-6 py-4 text-zinc-400">{prod.unit}</td>
-                <td className="px-6 py-4 text-zinc-800 font-bold">
-                  {formatCurrency(prod.price)}
-                </td>
-                <td className="px-6 py-4 text-right">
-                  <button className="text-zinc-300 hover:text-red-500 transition-colors">
-                    <Trash2 size={16} />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {products.length === 0 && (
-          <div className="p-12 text-center text-zinc-400 text-sm">Nenhum produto ou serviço catalogado.</div>
-        )}
-      </div>
+      {/* Modals for Adjustments and Transfers */}
+      {showTransferModal && selectedProduct && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md p-8 rounded-none shadow-2xl space-y-6">
+            <h3 className="text-xl font-bold text-[#003366] uppercase tracking-tight">Transferência de Stock: {selectedProduct.name}</h3>
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Armazém de Origem</label>
+                <select id="trans-from" className="w-full border border-zinc-200 p-2.5 text-sm focus:outline-none focus:border-[#003366] bg-zinc-50 font-bold">
+                  {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Armazém de Destino</label>
+                <select id="trans-to" className="w-full border border-zinc-200 p-2.5 text-sm focus:outline-none focus:border-[#003366] bg-zinc-50 font-bold">
+                  {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Quantidade</label>
+                <input id="trans-qty" type="number" className="w-full border border-zinc-200 p-2.5 text-sm focus:outline-none focus:border-[#003366] bg-zinc-50 font-bold" placeholder="0" />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-4">
+              <button onClick={() => setShowTransferModal(false)} className="px-6 py-2 text-zinc-500 font-bold text-xs uppercase tracking-widest">Cancelar</button>
+              <button 
+                onClick={() => {
+                  const from = Number((document.getElementById('trans-from') as HTMLSelectElement).value);
+                  const to = Number((document.getElementById('trans-to') as HTMLSelectElement).value);
+                  const qty = Number((document.getElementById('trans-qty') as HTMLInputElement).value);
+                  handleTransfer(selectedProduct.id, from, to, qty);
+                }}
+                className="bg-[#003366] text-white px-8 py-2 font-bold text-xs uppercase tracking-widest hover:bg-[#002244] shadow-lg"
+              >
+                Confirmar Transferência
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showAdjustmentModal && selectedProduct && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md p-8 rounded-none shadow-2xl space-y-6">
+            <h3 className="text-xl font-bold text-[#003366] uppercase tracking-tight">Ajuste de Stock: {selectedProduct.name}</h3>
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tipo de Ajuste</label>
+                <select id="adj-type" className="w-full border border-zinc-200 p-2.5 text-sm focus:outline-none focus:border-[#003366] bg-zinc-50 font-bold">
+                  <option value="adjustment_plus">Entrada (Acerto Positivo)</option>
+                  <option value="adjustment_minus">Saída (Acerto Negativo)</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Quantidade</label>
+                <input id="adj-qty" type="number" className="w-full border border-zinc-200 p-2.5 text-sm focus:outline-none focus:border-[#003366] bg-zinc-50 font-bold" placeholder="0" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Motivo / Descrição</label>
+                <textarea id="adj-desc" className="w-full border border-zinc-200 p-2.5 text-sm focus:outline-none focus:border-[#003366] bg-zinc-50 font-medium" rows={3} placeholder="Ex: Quebra de stock, erro de inventário..."></textarea>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-4">
+              <button onClick={() => setShowAdjustmentModal(false)} className="px-6 py-2 text-zinc-500 font-bold text-xs uppercase tracking-widest">Cancelar</button>
+              <button 
+                onClick={() => {
+                  const type = (document.getElementById('adj-type') as HTMLSelectElement).value;
+                  const qty = Number((document.getElementById('adj-qty') as HTMLInputElement).value);
+                  const desc = (document.getElementById('adj-desc') as HTMLTextAreaElement).value;
+                  handleAdjustment(selectedProduct.id, type, qty, desc);
+                }}
+                className="bg-[#003366] text-white px-8 py-2 font-bold text-xs uppercase tracking-widest hover:bg-[#002244] shadow-lg"
+              >
+                Confirmar Ajuste
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showForm && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white w-full max-w-4xl p-10 rounded-none shadow-2xl my-8">
+            <div className="flex justify-between items-center mb-8 border-b border-zinc-100 pb-4">
+              <h3 className="text-2xl font-bold text-[#003366] uppercase tracking-tight flex items-center gap-3">
+                <Package size={24} /> Registar Novo Produto
+              </h3>
+              <button onClick={() => setShowForm(false)} className="text-zinc-400 hover:text-zinc-600"><X size={24} /></button>
+            </div>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              const formData = new FormData(e.currentTarget);
+              const data = Object.fromEntries(formData.entries());
+              const res = await fetch('/api/products', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  ...data,
+                  price: Number(data.price),
+                  cost_price: Number(data.cost_price),
+                  stock_quantity: Number(data.stock_quantity),
+                  min_stock: Number(data.min_stock),
+                  warehouse_id: data.warehouse_id ? Number(data.warehouse_id) : null
+                })
+              });
+              if (res.ok) {
+                onRefresh();
+                setShowForm(false);
+              }
+            }} className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Nome do Produto</label>
+                <input name="name" required className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Referência / SKU</label>
+                <input name="referente" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Preço de Venda (Kz)</label>
+                <input name="price" type="number" step="0.01" required className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Preço de Custo (Kz)</label>
+                <input name="cost_price" type="number" step="0.01" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Stock Inicial</label>
+                <input name="stock_quantity" type="number" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Stock Mínimo</label>
+                <input name="min_stock" type="number" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Armazém</label>
+                <select name="warehouse_id" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold">
+                  <option value="">Selecione o armazém</option>
+                  {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Unidade</label>
+                <select name="unit" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold">
+                  <option value="un">Unidade (un)</option>
+                  <option value="kg">Quilograma (kg)</option>
+                  <option value="lt">Litro (lt)</option>
+                  <option value="mt">Metro (mt)</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Categoria</label>
+                <input name="category" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" />
+              </div>
+              <div className="md:col-span-3 flex justify-end gap-4 pt-8 border-t border-zinc-100">
+                <button type="button" onClick={() => setShowForm(false)} className="px-8 py-3 text-xs font-bold text-zinc-500 uppercase tracking-widest hover:text-zinc-700">Cancelar</button>
+                <button type="submit" className="bg-[#003366] text-white px-10 py-3 text-xs font-bold uppercase tracking-widest hover:bg-[#002244] transition-all shadow-lg">Salvar Produto</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -7329,6 +8025,22 @@ export default function App() {
           companyAddress={companyAddress}
           companyLogo={companyLogo}
           companyFooter={companyFooter}
+        />
+      );
+    }
+
+    if (isCreatingInvoice) {
+      return (
+        <CreateInvoice 
+          clients={clients} 
+          products={products} 
+          workSites={workSites}
+          fiscalSeries={fiscalSeries}
+          onBack={() => setIsCreatingInvoice(false)} 
+          onSuccess={() => {
+            setIsCreatingInvoice(false);
+            fetchData();
+          }} 
         />
       );
     }
@@ -7539,9 +8251,11 @@ export default function App() {
                   workSites={workSites}
                   fiscalSeries={fiscalSeries}
                   onBack={() => setIsCreatingInvoice(false)} 
-                  onSuccess={() => {
+                  onSuccess={async () => {
                     setIsCreatingInvoice(false);
-                    fetchData();
+                    // Add a small delay to ensure backend has processed the transaction
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    await fetchData();
                     setActiveTab('invoices');
                   }}
                 />

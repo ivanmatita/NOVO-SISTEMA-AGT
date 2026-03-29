@@ -34,6 +34,7 @@ import {
   Share2,
   Upload,
   X,
+  Check,
   Truck,
   Copy,
   XCircle,
@@ -143,8 +144,24 @@ const ALL_TAXES = [
   "IVA - Regime de não Sujeição"
 ];
 
-const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(value).replace('AOA', 'Kz');
+const formatCurrency = (value: number | null | undefined) => {
+  const val = value || 0;
+  return new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(val).replace('AOA', 'Kz');
+};
+
+const calculateIRT = (salary: number | null | undefined) => {
+  const s = salary || 0;
+  if (s <= 100000) return 0;
+  if (s <= 150000) return (s - 100000) * 0.13;
+  if (s <= 200000) return 6500 + (s - 150000) * 0.16;
+  if (s <= 300000) return 14500 + (s - 200000) * 0.18;
+  if (s <= 500000) return 32500 + (s - 300000) * 0.19;
+  if (s <= 1000000) return 70500 + (s - 500000) * 0.20;
+  if (s <= 1500000) return 170500 + (s - 1000000) * 0.21;
+  if (s <= 2000000) return 275500 + (s - 1500000) * 0.22;
+  if (s <= 5000000) return 385500 + (s - 2000000) * 0.23;
+  if (s <= 10000000) return 1075500 + (s - 5000000) * 0.24;
+  return 2275500 + (s - 10000000) * 0.25;
 };
 
 const PrintP89 = ({ sale, clientName }: { sale: any, clientName?: string }) => {
@@ -173,7 +190,7 @@ const PrintP89 = ({ sale, clientName }: { sale: any, clientName?: string }) => {
           </tr>
         </thead>
         <tbody>
-          {sale.items.map((item: any, i: number) => (
+          {Array.isArray(sale.items) && sale.items.map((item: any, i: number) => (
             <tr key={i}>
               <td className="py-1">{item.product.name}</td>
               <td className="text-center py-1">{item.qty}</td>
@@ -335,7 +352,7 @@ const Dashboard = ({ stats }: { stats: DashboardStats | null }) => {
             <button className="text-[#003366] text-xs font-bold hover:underline">Ver todas</button>
           </div>
           <div className="divide-y divide-zinc-100">
-            {stats.recentInvoices.map((inv) => (
+            {Array.isArray(stats.recentInvoices) && stats.recentInvoices.map((inv) => (
               <div key={inv.id} className="p-4 hover:bg-zinc-50 transition-colors flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
@@ -375,10 +392,40 @@ const Dashboard = ({ stats }: { stats: DashboardStats | null }) => {
   );
 };
 
+const INSS_PROFESSIONS = [
+  "Administrador de Empresas", "Advogado", "Agente de Viagens", "Agricultor", "Ajudante de Cozinha", "Almoxarife", 
+  "Analista de Sistemas", "Arquitecto", "Arquivista", "Assistente Administrativo", "Assistente Social", "Auditor", 
+  "Auxiliar de Enfermagem", "Auxiliar de Escritório", "Auxiliar de Limpeza", "Auxiliar de Manutenção", "Bancário", 
+  "Barbeiro", "Bibliotecário", "Biólogo", "Bombeiro", "Caixa", "Canalizador", "Carpinteiro", "Chef de Cozinha", 
+  "Cobrador", "Comercial", "Contabilista", "Copeiro", "Costureira", "Cozinheiro", "Desenhador", "Digitador", 
+  "Director Comercial", "Director de Recursos Humanos", "Director Financeiro", "Director Geral", "Director Técnico", 
+  "Economista", "Electricista de Auto", "Electricista de Instalações", "Empregada Doméstica", "Enfermeiro Geral", 
+  "Enfermeiro Especialista", "Engenheiro Civil", "Engenheiro de Minas", "Engenheiro de Petróleos", 
+  "Engenheiro de Telecomunicações", "Engenheiro Electrotécnico", "Engenheiro Informático", "Engenheiro Mecânico", 
+  "Engenheiro Químico", "Escriturário", "Estatístico", "Farmacêutico", "Fiel de Armazém", "Fisioterapeuta", 
+  "Fotógrafo", "Geólogo", "Gerente de Loja", "Gestor de Projectos", "Guarda-Nocturno", "Informático", "Inspector", 
+  "Instrumentista", "Jardineiro", "Jornalista", "Juiz", "Laborante", "Mecânico de Auto", "Mecânico de Pesados", 
+  "Médico Especialista", "Médico Geral", "Mensageiro", "Mestre de Obras", "Montador", "Motorista de Ligeiros", 
+  "Motorista de Pesados", "Nutricionista", "Oficial Administrativo", "Operador de Caixa", "Operador de Computadores", 
+  "Operador de Máquinas", "Padeiro", "Pastelheiro", "Pedreiro", "Pintor", "Porteiro", "Professor do Ensino Primário", 
+  "Professor do Ensino Secundário", "Professor Universitário", "Psicólogo", "Recepcionista", "Redactor", "Reparador", 
+  "Secretária Executiva", "Secretária de Direcção", "Serralheiro", "Servente", "Sociólogo", "Soldador", 
+  "Técnico de Contabilidade", "Técnico de Diagnóstico", "Técnico de Informática", "Técnico de Laboratório", 
+  "Técnico de Marketing", "Técnico de Recursos Humanos", "Técnico de Seguros", "Técnico de Som", "Técnico de Vendas", 
+  "Tesoureiro", "Topógrafo", "Traductor", "Vendedor", "Veterinário", "Vigilante", "Zelador"
+];
+
 const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
   const [activeTab, setActiveTab] = useState('list');
   const [professions, setProfessions] = useState<Profession[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [showProfessionForm, setShowProfessionForm] = useState(false);
+  const [showInssList, setShowInssList] = useState(false);
+  const [inssProfession, setInssProfession] = useState('');
+  const [companyProfession, setCompanyProfession] = useState('');
+  const [baseSalary, setBaseSalary] = useState('');
+  const [inssSearch, setInssSearch] = useState('');
+  const [selectedReport, setSelectedReport] = useState<string | null>(null);
   const [localEmployees, setLocalEmployees] = useState<Employee[]>([]);
   const [name, setName] = useState('');
   const [role, setRole] = useState('');
@@ -400,6 +447,16 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
 
   useEffect(() => { fetchHRData(); }, []);
 
+  const handleDeleteProfession = async (id: number) => {
+    if (!confirm('Tem a certeza que deseja eliminar esta profissão?')) return;
+    try {
+      await fetch(`/api/professions/${id}`, { method: 'DELETE' });
+      fetchHRData();
+    } catch (err) {
+      console.error('Error deleting profession:', err);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     await fetch('/api/employees', {
@@ -420,7 +477,7 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
 
   const tabs = [
     { id: 'list', label: 'Lista de Trabalhadores' },
-    { id: 'professions', label: 'Profissões' },
+    { id: 'professions', label: 'Criar Profissão' },
     { id: 'contracts', label: 'Contratos' },
     { id: 'attendance', label: 'Efetividade' },
     { id: 'payroll', label: 'Processamento Salarial' },
@@ -481,7 +538,18 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Profissão</label>
-                <select value={professionId} onChange={e => setProfessionId(e.target.value)} className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm">
+                <select 
+                  value={professionId} 
+                  onChange={e => {
+                    const pid = e.target.value;
+                    setProfessionId(pid);
+                    const prof = professions.find(p => p.id === Number(pid));
+                    if (prof && prof.base_salary) {
+                      setSalary(String(prof.base_salary));
+                    }
+                  }} 
+                  className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+                >
                   <option value="">Selecionar Profissão</option>
                   {professions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
@@ -531,33 +599,194 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
         )}
 
         {activeTab === 'professions' && (
-          <div className="bg-white border border-zinc-200 rounded-none p-8 max-w-2xl shadow-sm">
-            <h3 className="text-lg font-bold text-[#003366] mb-6">Registar Profissão</h3>
-            <form className="flex gap-4" onSubmit={async (e) => {
-              e.preventDefault();
-              const name = (e.target as any).profession.value;
-              await fetch('/api/professions', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name })
-              });
-              (e.target as any).profession.value = '';
-              fetchHRData();
-            }}>
-              <input 
-                name="profession" type="text" placeholder="Nome da Profissão"
-                className="flex-1 bg-white border border-zinc-300 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]"
-                required
-              />
-              <button className="bg-[#003366] text-white px-6 py-2 rounded-none text-sm font-bold">Adicionar</button>
-            </form>
-            <div className="mt-8 space-y-2">
-              {professions.map(p => (
-                <div key={p.id} className="flex justify-between items-center p-3 bg-zinc-50 rounded-none border border-zinc-100">
-                  <span className="text-sm text-zinc-700">{p.name}</span>
-                  <button className="text-zinc-300 hover:text-red-500"><Trash2 size={14} /></button>
+          <div className="space-y-8">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-bold text-[#003366]">Gestão de Profissões</h3>
+            </div>
+
+            {!showProfessionForm ? (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <button 
+                  onClick={() => setShowProfessionForm(true)}
+                  className="bg-white border-2 border-dashed border-zinc-200 p-12 flex flex-col items-center gap-4 hover:border-[#003366] hover:text-[#003366] transition-all group"
+                >
+                  <div className="w-16 h-16 bg-zinc-50 rounded-full flex items-center justify-center group-hover:bg-[#003366]/5 transition-colors">
+                    <Plus size={32} className="text-[#003366]" />
+                  </div>
+                  <span className="font-bold uppercase tracking-widest text-xs">Registar Profissão</span>
+                </button>
+                
+                <button 
+                  onClick={() => setShowProfessionForm(false)}
+                  className="bg-white border border-zinc-200 p-12 flex flex-col items-center gap-4 hover:border-[#003366] hover:text-[#003366] transition-all group"
+                >
+                  <div className="w-16 h-16 bg-zinc-50 rounded-full flex items-center justify-center group-hover:bg-[#003366]/5 transition-colors">
+                    <FileText size={32} className="text-[#003366]" />
+                  </div>
+                  <span className="font-bold uppercase tracking-widest text-xs">Listar Profissões</span>
+                </button>
+              </div>
+            ) : (
+              <motion.div 
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-6 relative"
+              >
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="space-y-1 relative">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Profissão INSS</label>
+                    <div 
+                      onClick={() => setShowInssList(true)}
+                      className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2.5 text-zinc-800 cursor-pointer text-sm flex justify-between items-center"
+                    >
+                      <span>{inssProfession || 'Selecionar da Lista INSS'}</span>
+                      <Search size={14} className="text-zinc-400" />
+                    </div>
+                    
+                    {showInssList && (
+                      <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                        <motion.div 
+                          initial={{ scale: 0.9, opacity: 0 }}
+                          animate={{ scale: 1, opacity: 1 }}
+                          className="bg-white w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col rounded-none shadow-2xl"
+                        >
+                          <div className="p-6 border-b border-zinc-100 flex justify-between items-center bg-[#003366] text-white">
+                            <h4 className="font-bold">Lista de Profissões INSS (Angola)</h4>
+                            <button onClick={() => setShowInssList(false)} className="hover:bg-white/10 p-1"><X size={20} /></button>
+                          </div>
+                          <div className="p-4 border-b border-zinc-100 bg-zinc-50">
+                            <div className="relative">
+                              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+                              <input 
+                                type="text"
+                                placeholder="Pesquisar profissão..."
+                                value={inssSearch}
+                                onChange={e => setInssSearch(e.target.value)}
+                                className="w-full bg-white border border-zinc-200 rounded-none pl-10 pr-4 py-2 text-sm focus:outline-none focus:border-[#003366]"
+                                autoFocus
+                              />
+                            </div>
+                          </div>
+                          <div className="overflow-y-auto p-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {INSS_PROFESSIONS.filter(p => p.toLowerCase().includes(inssSearch.toLowerCase())).map(p => (
+                              <button 
+                                key={p}
+                                onClick={() => {
+                                  setInssProfession(p);
+                                  setShowInssList(false);
+                                  setInssSearch('');
+                                }}
+                                className="text-left p-3 hover:bg-zinc-50 border border-zinc-100 text-sm text-zinc-700 transition-colors"
+                              >
+                                {p}
+                              </button>
+                            ))}
+                          </div>
+                        </motion.div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Profissão Empresa</label>
+                    <input 
+                      type="text" 
+                      value={companyProfession}
+                      onChange={e => setCompanyProfession(e.target.value)}
+                      placeholder="Ex: Técnico Especialista"
+                      className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Salário Base</label>
+                    <input 
+                      type="number" 
+                      value={baseSalary}
+                      onChange={e => setBaseSalary(e.target.value)}
+                      placeholder="0.00"
+                      className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]"
+                    />
+                  </div>
                 </div>
-              ))}
+
+                <div className="flex justify-end gap-3 pt-4 border-t border-zinc-100">
+                  <button 
+                    onClick={() => setShowProfessionForm(false)}
+                    className="text-zinc-500 hover:text-zinc-700 text-sm font-medium"
+                  >
+                    Cancelar
+                  </button>
+                  <button 
+                    onClick={async () => {
+                      if (!inssProfession || !companyProfession || !baseSalary) {
+                        alert('Por favor preencha todos os campos');
+                        return;
+                      }
+                      await fetch('/api/professions', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                          name: companyProfession,
+                          inss_profession: inssProfession,
+                          base_salary: Number(baseSalary)
+                        })
+                      });
+                      setInssProfession('');
+                      setCompanyProfession('');
+                      setBaseSalary('');
+                      setShowProfessionForm(false);
+                      fetchHRData();
+                    }}
+                    className="bg-[#003366] text-white px-8 py-2 rounded-none text-sm font-bold hover:bg-[#002244] shadow-sm flex items-center gap-2"
+                  >
+                    <Check size={16} />
+                    Registar
+                  </button>
+                </div>
+              </motion.div>
+            )}
+
+            <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-[#003366] text-white text-[10px] uppercase tracking-wider font-bold">
+                    <th className="px-6 py-4">Profissão Empresa</th>
+                    <th className="px-6 py-4">Profissão INSS</th>
+                    <th className="px-6 py-4 text-right">Salário Base</th>
+                    <th className="px-6 py-4 text-right">INSS Trab. (3%)</th>
+                    <th className="px-6 py-4 text-right">INSS Emp. (8%)</th>
+                    <th className="px-6 py-4 text-right">Custo Total</th>
+                    <th className="px-6 py-4 text-center">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {professions.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-6 py-12 text-center text-zinc-400 italic">
+                        Nenhuma profissão registada.
+                      </td>
+                    </tr>
+                  ) : professions.map(p => (
+                    <tr key={p.id} className="hover:bg-zinc-50 transition-colors text-sm">
+                      <td className="px-6 py-4 font-bold text-[#003366]">{p.name}</td>
+                      <td className="px-6 py-4 text-zinc-500">{p.inss_profession || '---'}</td>
+                      <td className="px-6 py-4 text-right font-medium text-zinc-900">{formatCurrency(p.base_salary || 0)}</td>
+                      <td className="px-6 py-4 text-right text-red-500">-{formatCurrency((p.base_salary || 0) * 0.03)}</td>
+                      <td className="px-6 py-4 text-right text-zinc-500">+{formatCurrency((p.base_salary || 0) * 0.08)}</td>
+                      <td className="px-6 py-4 text-right font-black text-[#003366]">{formatCurrency((p.base_salary || 0) * 1.08)}</td>
+                      <td className="px-6 py-4 text-center">
+                        <button 
+                          onClick={() => handleDeleteProfession(p.id)}
+                          className="text-zinc-300 hover:text-red-500 transition-colors"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
@@ -598,21 +827,115 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
         )}
 
         {activeTab === 'reports' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[
-              { label: 'Mapas de Imposto', icon: FileText },
-              { label: 'Mapas de Férias', icon: FileText },
-              { label: 'Extensão Laboral', icon: FileText },
-              { label: 'Ordem de Transferência', icon: Download },
-              { label: 'Recibos de Salário', icon: Printer },
-            ].map((report, i) => (
-              <button key={i} className="bg-white border border-zinc-200 p-6 rounded-none shadow-sm hover:border-[#003366] transition-all flex items-center gap-4 group">
-                <div className="w-10 h-10 bg-[#003366]/5 text-[#003366] rounded-none flex items-center justify-center group-hover:bg-[#003366] group-hover:text-white transition-all">
-                  <report.icon size={20} />
+          <div className="space-y-6">
+            {!selectedReport ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {[
+                  { id: 'remunerations', label: 'Mapa de Remunerações', icon: Calculator },
+                  { id: 'inss', label: 'Mapas de INSS', icon: ShieldCheck },
+                  { id: 'irt', label: 'Mapas de IRT', icon: Wallet },
+                  { id: 'vacations', label: 'Mapas de Férias', icon: Calendar },
+                  { id: 'receipts', label: 'Recibos de Salário', icon: Printer },
+                ].map((report) => (
+                  <button 
+                    key={report.id} 
+                    onClick={() => setSelectedReport(report.id)}
+                    className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm hover:border-[#003366] transition-all flex flex-col items-center gap-4 group"
+                  >
+                    <div className="w-16 h-16 bg-[#003366]/5 text-[#003366] rounded-full flex items-center justify-center group-hover:bg-[#003366] group-hover:text-white transition-all">
+                      <report.icon size={32} />
+                    </div>
+                    <span className="font-bold text-[#003366] uppercase tracking-widest text-xs">{report.label}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div className="flex justify-between items-center">
+                  <button 
+                    onClick={() => setSelectedReport(null)}
+                    className="flex items-center gap-2 text-zinc-500 hover:text-[#003366] transition-colors font-bold text-sm"
+                  >
+                    <ArrowLeft size={16} />
+                    Voltar aos Relatórios
+                  </button>
+                  <div className="flex gap-2">
+                    <button className="bg-white border border-zinc-200 px-4 py-2 text-xs font-bold flex items-center gap-2 hover:bg-zinc-50">
+                      <Printer size={14} /> Imprimir
+                    </button>
+                    <button className="bg-[#003366] text-white px-4 py-2 text-xs font-bold flex items-center gap-2 hover:bg-[#002244]">
+                      <Download size={14} /> Exportar
+                    </button>
+                  </div>
                 </div>
-                <span className="font-bold text-[#003366]">{report.label}</span>
-              </button>
-            ))}
+
+                {selectedReport === 'remunerations' && (
+                  <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
+                    <div className="p-6 border-b border-zinc-100 bg-zinc-50 flex justify-between items-center">
+                      <h3 className="font-bold text-[#003366]">Mapa de Remunerações - {new Date().toLocaleDateString('pt-PT', { month: 'long', year: 'numeric' })}</h3>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-[#003366] text-white text-[10px] uppercase tracking-wider font-bold">
+                            <th className="px-6 py-4">Funcionário</th>
+                            <th className="px-6 py-4">Cargo</th>
+                            <th className="px-6 py-4 text-right">Salário Base</th>
+                            <th className="px-6 py-4 text-right">INSS (3%)</th>
+                            <th className="px-6 py-4 text-right">IRT</th>
+                            <th className="px-6 py-4 text-right">Salário Líquido</th>
+                            <th className="px-6 py-4 text-right">INSS Emp. (8%)</th>
+                            <th className="px-6 py-4 text-right">Custo Total</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-100">
+                          {localEmployees.map(emp => {
+                            const inss3 = emp.salary * 0.03;
+                            const inss8 = emp.salary * 0.08;
+                            const irt = calculateIRT(emp.salary);
+                            const net = emp.salary - inss3 - irt;
+                            const total = emp.salary + inss8;
+                            return (
+                              <tr key={emp.id} className="hover:bg-zinc-50 transition-colors text-xs">
+                                <td className="px-6 py-4 font-bold text-[#003366]">{emp.name}</td>
+                                <td className="px-6 py-4 text-zinc-500">{emp.role}</td>
+                                <td className="px-6 py-4 text-right font-medium">{formatCurrency(emp.salary)}</td>
+                                <td className="px-6 py-4 text-right text-red-500">{formatCurrency(inss3)}</td>
+                                <td className="px-6 py-4 text-right text-red-500">{formatCurrency(irt)}</td>
+                                <td className="px-6 py-4 text-right font-bold text-emerald-600">{formatCurrency(net)}</td>
+                                <td className="px-6 py-4 text-right text-zinc-500">{formatCurrency(inss8)}</td>
+                                <td className="px-6 py-4 text-right font-black text-[#003366]">{formatCurrency(total)}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                        <tfoot>
+                          <tr className="bg-zinc-50 font-bold text-xs">
+                            <td colSpan={2} className="px-6 py-4 text-[#003366]">TOTAIS</td>
+                            <td className="px-6 py-4 text-right">{formatCurrency(localEmployees.reduce((sum, e) => sum + e.salary, 0))}</td>
+                            <td className="px-6 py-4 text-right text-red-500">{formatCurrency(localEmployees.reduce((sum, e) => sum + e.salary * 0.03, 0))}</td>
+                            <td className="px-6 py-4 text-right text-red-500">{formatCurrency(localEmployees.reduce((sum, e) => sum + calculateIRT(e.salary), 0))}</td>
+                            <td className="px-6 py-4 text-right text-emerald-600">{formatCurrency(localEmployees.reduce((sum, e) => {
+                              const inss3 = e.salary * 0.03;
+                              const irt = calculateIRT(e.salary);
+                              return sum + (e.salary - inss3 - irt);
+                            }, 0))}</td>
+                            <td className="px-6 py-4 text-right text-zinc-500">{formatCurrency(localEmployees.reduce((sum, e) => sum + e.salary * 0.08, 0))}</td>
+                            <td className="px-6 py-4 text-right text-[#003366]">{formatCurrency(localEmployees.reduce((sum, e) => sum + e.salary * 1.08, 0))}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+                )}
+                
+                {selectedReport !== 'remunerations' && (
+                  <div className="p-12 text-center text-zinc-400 italic bg-white border border-zinc-200">
+                    Relatório em desenvolvimento...
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -774,6 +1097,171 @@ const CertifyModal = ({ document, onConfirm, onClose }: {
   );
 };
 
+const ProfitLossReport = ({ fiscalYear }: { fiscalYear: string }) => {
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchJson(`/api/reports/profit-loss?year=${fiscalYear}`)
+      .then(setData)
+      .catch(err => console.error('Error fetching profit-loss report:', err))
+      .finally(() => setLoading(false));
+  }, [fiscalYear]);
+
+  const months = [
+    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+  ];
+
+  const formatValue = (val: number) => {
+    return val.toLocaleString('pt-AO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  if (loading) return <div className="p-12 text-center text-zinc-400 italic">Carregando relatório...</div>;
+
+  const totals = data.reduce((acc, curr) => {
+    Object.keys(curr).forEach(key => {
+      if (key !== 'month') {
+        acc[key] = (acc[key] || 0) + curr[key];
+      }
+    });
+    return acc;
+  }, {} as any);
+
+  // Calculations for the footer
+  const a = totals.facturacaoSImposto || 0;
+  const b = totals.fornecedoresSImposto || 0;
+  const c = totals.salarios || 0;
+  const d = totals.inss || 0;
+  const impPrevisional = (a - b - c - d) * 0.25;
+
+  return (
+    <div className="bg-white p-8 space-y-8 overflow-x-auto">
+      <div className="flex justify-between items-start border-b border-zinc-200 pb-4">
+        <div className="space-y-1">
+          <h2 className="text-sm font-bold text-zinc-800">C & V - COMERCIO GERAL E PRESTAÇÃO DE SERVIÇOS, LDA</h2>
+          <p className="text-[10px] text-zinc-400 uppercase tracking-widest font-bold">Movimentos Gerais Gestão Proveitos/Custos (Ordenados por Data Valor )</p>
+        </div>
+        <div className="text-right">
+          <p className="text-xs font-bold text-zinc-500">Exercício de {fiscalYear}</p>
+          <div className="flex gap-2 mt-2">
+            <button className="p-1.5 hover:bg-zinc-100 rounded-none border border-zinc-200 text-zinc-400">
+              <FileSpreadsheet size={16} />
+            </button>
+            <button className="p-1.5 hover:bg-zinc-100 rounded-none border border-zinc-200 text-zinc-400">
+              <FileDown size={16} />
+            </button>
+            <button className="p-1.5 bg-blue-50 text-blue-600 rounded-none border border-blue-100">
+              <AlertCircle size={16} />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <table className="w-full text-[10px] border-collapse">
+        <thead>
+          <tr className="border-b border-zinc-200">
+            <th className="text-left py-2 font-bold text-zinc-600">Proveitos</th>
+            {months.map(m => <th key={m} className="text-right py-2 px-1 font-bold text-zinc-600">{m}</th>)}
+            <th className="text-right py-2 px-1 font-bold text-zinc-600">Total</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-zinc-100">
+          <tr>
+            <td className="py-2 font-medium text-zinc-700">Facturação S/ imposto (a)</td>
+            {data.map(d => <td key={d.month} className="text-right py-2 px-1 text-zinc-500">{formatValue(d.facturacaoSImposto)}</td>)}
+            <td className="text-right py-2 px-1 font-bold text-zinc-700">{formatValue(totals.facturacaoSImposto)}</td>
+          </tr>
+          <tr>
+            <td className="py-2 font-medium text-zinc-700">Imposto Recebido</td>
+            {data.map(d => <td key={d.month} className="text-right py-2 px-1 text-zinc-500">{formatValue(d.impostoRecebido)}</td>)}
+            <td className="text-right py-2 px-1 font-bold text-zinc-700">{formatValue(totals.impostoRecebido)}</td>
+          </tr>
+          <tr className="bg-zinc-50/50">
+            <td className="py-2 font-bold text-zinc-800">Facturação c/ imposto</td>
+            {data.map(d => <td key={d.month} className="text-right py-2 px-1 text-zinc-600 font-medium">{formatValue(d.facturacaoCImposto)}</td>)}
+            <td className="text-right py-2 px-1 font-black text-zinc-900">{formatValue(totals.facturacaoCImposto)}</td>
+          </tr>
+
+          <tr><td colSpan={14} className="py-4"></td></tr>
+          <tr className="border-b border-zinc-200">
+            <th className="text-left py-2 font-bold text-zinc-600">Custos</th>
+            {months.map(m => <th key={m} className="py-2"></th>)}
+            <th></th>
+          </tr>
+          <tr>
+            <td className="py-2 font-medium text-zinc-700">Custos Aceites S/ Imposto</td>
+            {data.map(d => <td key={d.month} className="text-right py-2 px-1 text-zinc-500">{formatValue(d.custosAceites)}</td>)}
+            <td className="text-right py-2 px-1 font-bold text-zinc-700">{formatValue(totals.custosAceites)}</td>
+          </tr>
+          <tr>
+            <td className="py-2 font-medium text-zinc-700">Fornecedores S/ imposto(b)</td>
+            {data.map(d => <td key={d.month} className="text-right py-2 px-1 text-zinc-500">{formatValue(d.fornecedoresSImposto)}</td>)}
+            <td className="text-right py-2 px-1 font-bold text-zinc-700">{formatValue(totals.fornecedoresSImposto)}</td>
+          </tr>
+          <tr>
+            <td className="py-2 font-medium text-zinc-700">Iva Suportado</td>
+            {data.map(d => <td key={d.month} className="text-right py-2 px-1 text-zinc-500">{formatValue(d.ivaSuportado)}</td>)}
+            <td className="text-right py-2 px-1 font-bold text-zinc-700">{formatValue(totals.ivaSuportado)}</td>
+          </tr>
+          <tr>
+            <td className="py-2 font-medium text-zinc-700 italic text-blue-800">Salarios(c)</td>
+            {data.map(d => <td key={d.month} className="text-right py-2 px-1 text-blue-800 italic">{formatValue(d.salarios)}</td>)}
+            <td className="text-right py-2 px-1 font-bold text-blue-900 italic">{formatValue(totals.salarios)}</td>
+          </tr>
+          <tr>
+            <td className="py-2 font-medium text-zinc-700 italic text-blue-800">INSS 8%(d)</td>
+            {data.map(d => <td key={d.month} className="text-right py-2 px-1 text-blue-800 italic">{formatValue(d.inss)}</td>)}
+            <td className="text-right py-2 px-1 font-bold text-blue-900 italic">{formatValue(totals.inss)}</td>
+          </tr>
+          <tr className="bg-zinc-50/50 border-t border-zinc-200">
+            <td className="py-2 font-bold text-zinc-800">Totais</td>
+            {data.map(d => <td key={d.month} className="text-right py-2 px-1 text-zinc-600 font-medium">{formatValue(d.totaisCustos)}</td>)}
+            <td className="text-right py-2 px-1 font-black text-zinc-900">{formatValue(totals.totaisCustos)}</td>
+          </tr>
+
+          <tr><td colSpan={14} className="py-4"></td></tr>
+          <tr className="bg-zinc-100 border-y border-zinc-200">
+            <td className="py-3 font-black text-zinc-900 uppercase">Margem</td>
+            {data.map(d => <td key={d.month} className="text-right py-3 px-1 font-black text-zinc-900">{formatValue(d.margem)}</td>)}
+            <td className="text-right py-3 px-1 font-black text-zinc-900">{formatValue(totals.margem)}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-12 pt-8 border-t border-zinc-100">
+        <div className="space-y-4">
+          <p className="text-[9px] text-zinc-400 leading-relaxed italic">
+            Obs: Imposto Industrial Previsional (Pode diferir do imposto real a pagar. Não contempla os impostos já pagos e considera as facturas não aceites fiscalmente)
+          </p>
+          <p className="text-[9px] text-zinc-400 leading-relaxed italic">
+            O Imposto previsional Contab pode diferir do imposto real a pagar . Não contempla os impostos já pagos e considera apenas os custos aceites fiscalmente.
+          </p>
+          <div className="pt-8">
+            <h4 className="text-[10px] font-black text-zinc-800 uppercase tracking-widest">GRAFICO COMPARATIVO DE RECEITAS MENSAIS E ACUMULADAS</h4>
+            <div className="h-32 bg-zinc-50 border border-dashed border-zinc-200 mt-2 flex items-center justify-center text-[10px] text-zinc-400 italic">
+              Espaço reservado para o gráfico comparativo
+            </div>
+          </div>
+        </div>
+        <div className="space-y-2">
+          <div className="flex justify-between items-center text-[10px] text-zinc-600">
+            <span>Imp Previsional Gestão (a-b-c-d)*25%</span>
+            <span className="font-bold text-zinc-900">{formatValue(impPrevisional)}</span>
+          </div>
+          <div className="flex justify-between items-center text-[10px] text-zinc-600">
+            <span>Imp Previsional Contab (a-b-c-d)*25%</span>
+            <span className="font-bold text-zinc-900">{formatValue(impPrevisional)}</span>
+          </div>
+          <div className="text-right pt-8">
+            <p className="text-[9px] text-zinc-400">{new Date().toLocaleDateString('pt-PT')}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const FinancialModule = () => {
   const [activeSubTab, setActiveSubTab] = useState('menu');
   const [issuedDocuments, setIssuedDocuments] = useState<IssuedDocument[]>([]);
@@ -820,6 +1308,7 @@ const FinancialModule = () => {
   };
 
   const menuItems = [
+    { id: 'profit-loss-report', label: 'Relatório Gestão Proveitos/Custos', icon: FileText, description: 'Análise detalhada de proveitos e custos mensais' },
     { id: 'sales-reports', label: 'Relatórios de Vendas', icon: BarChart3, description: 'Movimentos de faturas, devoluções e anulações' },
     { id: 'cost-revenue', label: 'Mapas Custos Proveitos', icon: TrendingUp, description: 'Análise de rentabilidade e margens' },
     { id: 'annual-movement', label: 'Mapas Movimento Anual', icon: History, description: 'Evolução financeira ao longo do ano' },
@@ -871,6 +1360,10 @@ const FinancialModule = () => {
           <Breadcrumbs paths={['Home', 'Gestão Financeira', menuItems.find(i => i.id === activeSubTab)?.label || '']} />
         </div>
       </div>
+
+      {activeSubTab === 'profit-loss-report' && (
+        <ProfitLossReport fiscalYear="2024" />
+      )}
 
       {activeSubTab === 'sales-reports' && (
         <div className="space-y-6">
@@ -1311,6 +1804,139 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify }: {
   );
 };
 
+const POSManagementView = ({ title, icon: Icon, onBack }: { title: string, icon: any, onBack: () => void }) => {
+  const [showForm, setShowForm] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  return (
+    <div className="bg-white min-h-screen p-8 sm:p-12 space-y-10 max-w-6xl mx-auto shadow-2xl border border-zinc-100">
+      <div className="flex flex-col md:flex-row justify-between items-start gap-8 border-b-2 border-[#003366] pb-8">
+        <div className="flex items-center gap-4">
+          <div className="w-14 h-14 bg-[#003366] flex items-center justify-center text-white shadow-lg">
+            <Icon size={28} />
+          </div>
+          <div>
+            <h1 className="text-2xl font-black text-[#003366] tracking-tighter uppercase">{title}</h1>
+            <p className="text-zinc-400 text-[10px] font-bold uppercase tracking-[0.2em]">Gestão de Ponto de Venda</p>
+          </div>
+        </div>
+        <div className="flex gap-3">
+          <button 
+            onClick={() => setShowForm(true)}
+            className="bg-[#003366] text-white px-6 py-3 text-xs font-bold uppercase tracking-widest shadow-lg hover:bg-[#002244] transition-all flex items-center gap-2"
+          >
+            <Plus size={16} /> Novo Registro
+          </button>
+          <button onClick={onBack} className="bg-zinc-100 text-zinc-600 px-6 py-3 text-xs font-bold uppercase tracking-widest hover:bg-zinc-200 transition-all">
+            Voltar
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-zinc-50 p-6 border border-zinc-200">
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Total Registros</p>
+          <p className="text-2xl font-bold text-[#003366]">12</p>
+        </div>
+        <div className="bg-zinc-50 p-6 border border-zinc-200">
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Última Atividade</p>
+          <p className="text-2xl font-bold text-emerald-600">Hoje</p>
+        </div>
+        <div className="bg-zinc-50 p-6 border border-zinc-200">
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Status Geral</p>
+          <p className="text-2xl font-bold text-[#003366]">Operacional</p>
+        </div>
+      </div>
+
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="relative w-full max-w-md">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
+            <input 
+              type="text" 
+              placeholder="Pesquisar registros..." 
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="w-full pl-12 pr-4 py-3 bg-white border border-zinc-200 text-sm focus:outline-none focus:border-[#003366] transition-all shadow-sm"
+            />
+          </div>
+        </div>
+
+        <div className="bg-white border border-zinc-200 overflow-hidden shadow-sm">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-[#003366] text-white text-[11px] uppercase tracking-wider font-bold">
+                <th className="px-6 py-4">Data</th>
+                <th className="px-6 py-4">Referência</th>
+                <th className="px-6 py-4">Descrição</th>
+                <th className="px-6 py-4 text-right">Valor / Info</th>
+                <th className="px-6 py-4 text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+              {[1, 2, 3].map(i => (
+                <tr key={i} className="hover:bg-zinc-50 text-sm">
+                  <td className="px-6 py-4 text-zinc-500">{new Date().toLocaleDateString()}</td>
+                  <td className="px-6 py-4 font-bold text-zinc-900">REG-00{i}</td>
+                  <td className="px-6 py-4 text-zinc-600">Registro de atividade para {title}</td>
+                  <td className="px-6 py-4 text-right font-bold text-[#003366]">---</td>
+                  <td className="px-6 py-4 text-right">
+                    <button className="text-zinc-400 hover:text-[#003366] transition-colors"><MoreHorizontal size={18} /></button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {showForm && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white w-full max-w-lg shadow-2xl overflow-hidden relative">
+              <div className="bg-[#003366] p-6 text-white flex justify-between items-center">
+                <h3 className="font-black uppercase tracking-widest text-sm">Novo Registro: {title}</h3>
+                <button onClick={() => setShowForm(false)}><X size={20} /></button>
+              </div>
+              <form className="p-8 space-y-6" onSubmit={e => { e.preventDefault(); setShowForm(false); }}>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data</label>
+                    <input type="date" required className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366]" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tipo</label>
+                    <select className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366]">
+                      <option>Normal</option>
+                      <option>Urgente</option>
+                      <option>Informativo</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Descrição Detalhada</label>
+                  <textarea required className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] h-32" placeholder="Descreva o registro..."></textarea>
+                </div>
+                <div className="bg-blue-50 p-4 border border-blue-100">
+                  <p className="text-[10px] font-bold text-blue-600 uppercase mb-2">Cálculos / Valores</p>
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-blue-700">Total Estimado:</span>
+                    <span className="font-black text-blue-800">{formatCurrency(0)}</span>
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <button type="button" onClick={() => setShowForm(false)} className="flex-1 bg-zinc-100 text-zinc-600 py-4 font-bold text-xs uppercase tracking-widest">Cancelar</button>
+                  <button type="submit" className="flex-2 bg-[#003366] text-white py-4 px-8 font-bold text-xs uppercase tracking-widest shadow-lg">Salvar Registro</button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
 const POSModule = ({ products, onRefresh }: { products: Product[], onRefresh: () => void }) => {
   const [activeArea, setActiveArea] = useState<POSArea | 'dashboard'>('dashboard');
   const [cart, setCart] = useState<{product: Product, qty: number, discount: number}[]>([]);
@@ -1336,7 +1962,7 @@ const POSModule = ({ products, onRefresh }: { products: Product[], onRefresh: ()
   const [lastSaleClientName, setLastSaleClientName] = useState<string>('');
 
   const safeProducts = Array.isArray(products) ? products : [];
-  const activeSession = sessions.find(s => s.status === 'open');
+  const activeSession = Array.isArray(sessions) ? sessions.find(s => s.status === 'open') : null;
 
   const fetchData = async () => {
     try {
@@ -1346,12 +1972,12 @@ const POSModule = ({ products, onRefresh }: { products: Product[], onRefresh: ()
         fetchJson('/api/pos-points'),
         fetchJson('/api/cash/sessions')
       ]);
-      setSeries(s);
-      setCostCenters(cc);
-      setPosPoints(pp);
-      setSessions(sess);
-      if (pp.length > 0 && !selectedPOS) setSelectedPOS(pp[0].id.toString());
-      if (s.length > 0 && !selectedSeries) setSelectedSeries(s[0].id.toString());
+      setSeries(Array.isArray(s) ? s : []);
+      setCostCenters(Array.isArray(cc) ? cc : []);
+      setPosPoints(Array.isArray(pp) ? pp : []);
+      setSessions(Array.isArray(sess) ? sess : []);
+      if (Array.isArray(pp) && pp.length > 0 && !selectedPOS) setSelectedPOS(pp[0].id.toString());
+      if (Array.isArray(s) && s.length > 0 && !selectedSeries) setSelectedSeries(s[0].id.toString());
     } catch (err) {
       console.error('Error fetching POS data:', err);
     }
@@ -1486,6 +2112,21 @@ const POSModule = ({ products, onRefresh }: { products: Product[], onRefresh: ()
       fetchData();
     }
   };
+
+  if (activeArea !== 'dashboard' && activeArea !== 'vendas normal' && activeArea !== 'lojas' && activeArea !== 'restaurante' && activeArea !== 'bar') {
+    const item = [
+      { id: 'stock', label: 'Ver Stock', icon: Package },
+      { id: 'fechos', label: 'Ver Fechos', icon: History },
+      { id: 'utilizador', label: 'Perfil Utilizador', icon: UserCheck },
+      { id: 'caixas', label: 'Caixas Movimento', icon: Wallet },
+      { id: 'ocorrencia', label: 'Adicionar Ocorrência', icon: AlertTriangle },
+      { id: 'transferir', label: 'Transferir Vendas', icon: ArrowRightLeft },
+    ].find(i => i.id === activeArea);
+
+    if (item) {
+      return <POSManagementView title={item.label} icon={item.icon} onBack={() => setActiveArea('dashboard')} />;
+    }
+  }
 
   if (activeArea === 'dashboard') {
     const dashboardItems = [
@@ -2286,8 +2927,8 @@ const SecretaryModule = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+          <div className="lg:col-span-3 space-y-6">
             <div className="bg-white border border-zinc-200 shadow-sm overflow-hidden">
               <div className="p-4 border-b border-zinc-100 bg-zinc-50 flex justify-between items-center">
                 <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Lista de Registros</span>
@@ -2344,39 +2985,6 @@ const SecretaryModule = () => {
           </div>
 
           <div className="space-y-6">
-            <AnimatePresence>
-              {showForm && (
-                <motion.div 
-                  initial={{ opacity: 0, y: -20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  className="bg-white border border-zinc-200 p-8 shadow-xl relative overflow-hidden"
-                >
-                  <div className="absolute top-0 left-0 w-1 h-full bg-[#003366]" />
-                  <h4 className="font-bold text-[#003366] mb-6 flex items-center gap-2 uppercase tracking-tight">
-                    <PlusCircle size={18} /> Novo Registro
-                  </h4>
-                  <form className="space-y-5" onSubmit={e => { e.preventDefault(); setShowForm(false); }}>
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Título do Documento</label>
-                      <input type="text" required className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all" placeholder="Ex: Contrato de Arrendamento" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data de Emissão</label>
-                      <input type="date" required className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Observações / Notas</label>
-                      <textarea className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] h-32 transition-all" placeholder="Descreva os detalhes importantes..."></textarea>
-                    </div>
-                    <div className="pt-4">
-                      <button className="w-full bg-[#003366] text-white py-3 text-xs font-bold uppercase tracking-widest shadow-lg hover:bg-[#002244] transition-all">Guardar Registro</button>
-                    </div>
-                  </form>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
             <div className="bg-white border border-zinc-200 p-8 shadow-sm relative overflow-hidden">
               <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500" />
               <h4 className="font-bold text-[#003366] mb-4 flex items-center gap-2 uppercase tracking-tight">
@@ -2402,6 +3010,48 @@ const SecretaryModule = () => {
             </div>
           </div>
         </div>
+
+        <AnimatePresence>
+          {showForm && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="bg-white border border-zinc-200 p-8 shadow-2xl relative overflow-hidden max-w-lg w-full"
+              >
+                <button 
+                  onClick={() => setShowForm(false)}
+                  className="absolute top-4 right-4 text-zinc-400 hover:text-zinc-600 transition-colors"
+                >
+                  <X size={24} />
+                </button>
+                <div className="absolute top-0 left-0 w-1 h-full bg-[#003366]" />
+                <h4 className="font-bold text-[#003366] mb-6 flex items-center gap-2 uppercase tracking-tight">
+                  <PlusCircle size={18} /> Novo Registro: {sections.find(s => s.id === activeSection)?.label}
+                </h4>
+                <form className="space-y-5" onSubmit={e => { e.preventDefault(); setShowForm(false); }}>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Título do Documento</label>
+                    <input type="text" required className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all" placeholder="Ex: Contrato de Arrendamento" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data de Emissão</label>
+                    <input type="date" required className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Observações / Notas</label>
+                    <textarea className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] h-32 transition-all" placeholder="Descreva os detalhes importantes..."></textarea>
+                  </div>
+                  <div className="pt-4 flex gap-3">
+                    <button type="button" onClick={() => setShowForm(false)} className="flex-1 bg-zinc-100 text-zinc-600 py-3 text-xs font-bold uppercase tracking-widest hover:bg-zinc-200 transition-all">Cancelar</button>
+                    <button type="submit" className="flex-2 bg-[#003366] text-white py-3 px-8 text-xs font-bold uppercase tracking-widest shadow-lg hover:bg-[#002244] transition-all">Guardar Registro</button>
+                  </div>
+                </form>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
       </div>
     );
   };
@@ -3648,6 +4298,7 @@ const InvoiceList = ({
       <WorkSiteManagement 
         workSite={selectedWorkSite} 
         movements={movements} 
+        invoices={issuedDocuments}
         onBack={() => setShowManagementView(false)} 
       />
     );
@@ -4909,10 +5560,17 @@ const WorkSiteMovementForm = ({ onBack, onSuccess }: { onBack: () => void, onSuc
   );
 };
 
-const WorkSiteManagement = ({ workSite, movements, onBack }: { workSite: WorkSite, movements: WorkSiteMovement[], onBack: () => void }) => {
+const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack }: { 
+  workSite: WorkSite, 
+  movements: WorkSiteMovement[], 
+  invoices?: IssuedDocument[],
+  onBack: () => void 
+}) => {
+  const [activeTab, setActiveTab] = useState<'finance' | 'invoices'>('finance');
   const totalDebit = movements.reduce((sum, m) => sum + m.debit, 0);
   const totalCredit = movements.reduce((sum, m) => sum + m.credit, 0);
   const currentBalance = movements.length > 0 ? movements[movements.length - 1].balance : 0;
+  const siteInvoices = invoices.filter(inv => Number(inv.work_site_id) === workSite.id);
 
   return (
     <div className="bg-white min-h-screen p-8 sm:p-12 space-y-10 max-w-6xl mx-auto shadow-2xl border border-zinc-100">
@@ -4981,69 +5639,136 @@ const WorkSiteManagement = ({ workSite, movements, onBack }: { workSite: WorkSit
         </div>
       </div>
 
-      {/* Movements Table */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest flex items-center gap-2">
-            <div className="w-1 h-4 bg-[#003366]"></div>
-            Histórico de Movimentação Financeira
-          </h3>
-          <div className="flex gap-2 no-print">
-            <button onClick={() => window.print()} className="p-2 border border-zinc-200 hover:bg-zinc-50 transition-colors text-zinc-500">
-              <Printer size={18} />
-            </button>
-            <button onClick={onBack} className="px-4 py-2 bg-zinc-100 text-zinc-600 text-xs font-bold uppercase tracking-widest hover:bg-zinc-200 transition-colors">
-              Voltar
-            </button>
+      {/* Tabs */}
+      <div className="flex gap-4 border-b border-zinc-200 no-print">
+        <button 
+          onClick={() => setActiveTab('finance')}
+          className={`pb-4 px-4 text-xs font-bold uppercase tracking-widest transition-all relative ${
+            activeTab === 'finance' ? 'text-[#003366]' : 'text-zinc-400 hover:text-zinc-600'
+          }`}
+        >
+          Movimentação Financeira
+          {activeTab === 'finance' && <motion.div layoutId="activeTabWork" className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#003366]" />}
+        </button>
+        <button 
+          onClick={() => setActiveTab('invoices')}
+          className={`pb-4 px-4 text-xs font-bold uppercase tracking-widest transition-all relative ${
+            activeTab === 'invoices' ? 'text-[#003366]' : 'text-zinc-400 hover:text-zinc-600'
+          }`}
+        >
+          Documentos Emitidos
+          {activeTab === 'invoices' && <motion.div layoutId="activeTabWork" className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#003366]" />}
+        </button>
+      </div>
+
+      {activeTab === 'finance' ? (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest flex items-center gap-2">
+              <div className="w-1 h-4 bg-[#003366]"></div>
+              Histórico de Movimentação Financeira
+            </h3>
+            <div className="flex gap-2 no-print">
+              <button onClick={() => window.print()} className="p-2 border border-zinc-200 hover:bg-zinc-50 transition-colors text-zinc-500">
+                <Printer size={18} />
+              </button>
+              <button onClick={onBack} className="px-4 py-2 bg-zinc-100 text-zinc-600 text-xs font-bold uppercase tracking-widest hover:bg-zinc-200 transition-colors">
+                Voltar
+              </button>
+            </div>
+          </div>
+
+          <div className="border border-zinc-200">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-zinc-100 border-b border-zinc-200 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
+                  <th className="px-6 py-4">Data</th>
+                  <th className="px-6 py-4">Documento</th>
+                  <th className="px-6 py-4">Entidade</th>
+                  <th className="px-6 py-4">Descrição</th>
+                  <th className="px-6 py-4 text-right">Débito</th>
+                  <th className="px-6 py-4 text-right">Crédito</th>
+                  <th className="px-6 py-4 text-right bg-zinc-200/50">Saldo</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100 text-xs">
+                {movements.map((m) => (
+                  <tr key={m.id} className="hover:bg-zinc-50 transition-colors">
+                    <td className="px-6 py-4 font-medium text-zinc-500">{new Date(m.date).toLocaleDateString('pt-PT')}</td>
+                    <td className="px-6 py-4 font-bold text-zinc-800">{m.doc_no}</td>
+                    <td className="px-6 py-4 text-zinc-600">{m.company}</td>
+                    <td className="px-6 py-4 text-zinc-500 italic">{m.description}</td>
+                    <td className="px-6 py-4 text-right text-red-600 font-bold">{m.debit > 0 ? formatCurrency(m.debit) : '-'}</td>
+                    <td className="px-6 py-4 text-right text-emerald-600 font-bold">{m.credit > 0 ? formatCurrency(m.credit) : '-'}</td>
+                    <td className="px-6 py-4 text-right font-black text-[#003366] bg-zinc-50/50">{formatCurrency(m.balance)}</td>
+                  </tr>
+                ))}
+                {movements.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-20 text-center text-zinc-400 font-medium italic">
+                      Nenhum registo de movimentação encontrado para este local.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+              {movements.length > 0 && (
+                <tfoot>
+                  <tr className="bg-zinc-50 border-t-2 border-zinc-200 font-black text-xs">
+                    <td colSpan={4} className="px-6 py-4 text-right uppercase tracking-widest text-zinc-400">Totais Acumulados</td>
+                    <td className="px-6 py-4 text-right text-red-600">{formatCurrency(totalDebit)}</td>
+                    <td className="px-6 py-4 text-right text-emerald-600">{formatCurrency(totalCredit)}</td>
+                    <td className="px-6 py-4 text-right text-[#003366] bg-zinc-200/50">{formatCurrency(currentBalance)}</td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
           </div>
         </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest flex items-center gap-2">
+              <div className="w-1 h-4 bg-[#003366]"></div>
+              Documentos Emitidos no Local
+            </h3>
+            <div className="flex gap-2 no-print">
+              <button onClick={onBack} className="px-4 py-2 bg-zinc-100 text-zinc-600 text-xs font-bold uppercase tracking-widest hover:bg-zinc-200 transition-colors">
+                Voltar
+              </button>
+            </div>
+          </div>
 
-        <div className="border border-zinc-200">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-zinc-100 border-b border-zinc-200 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
-                <th className="px-6 py-4">Data</th>
-                <th className="px-6 py-4">Documento</th>
-                <th className="px-6 py-4">Entidade</th>
-                <th className="px-6 py-4">Descrição</th>
-                <th className="px-6 py-4 text-right">Débito</th>
-                <th className="px-6 py-4 text-right">Crédito</th>
-                <th className="px-6 py-4 text-right bg-zinc-200/50">Saldo</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100 text-xs">
-              {movements.map((m) => (
-                <tr key={m.id} className="hover:bg-zinc-50 transition-colors">
-                  <td className="px-6 py-4 font-medium text-zinc-500">{new Date(m.date).toLocaleDateString('pt-PT')}</td>
-                  <td className="px-6 py-4 font-bold text-zinc-800">{m.doc_no}</td>
-                  <td className="px-6 py-4 text-zinc-600">{m.company}</td>
-                  <td className="px-6 py-4 text-zinc-500 italic">{m.description}</td>
-                  <td className="px-6 py-4 text-right text-red-600 font-bold">{m.debit > 0 ? formatCurrency(m.debit) : '-'}</td>
-                  <td className="px-6 py-4 text-right text-emerald-600 font-bold">{m.credit > 0 ? formatCurrency(m.credit) : '-'}</td>
-                  <td className="px-6 py-4 text-right font-black text-[#003366] bg-zinc-50/50">{formatCurrency(m.balance)}</td>
+          <div className="border border-zinc-200">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-zinc-100 border-b border-zinc-200 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
+                  <th className="px-6 py-4">Data</th>
+                  <th className="px-6 py-4">Documento</th>
+                  <th className="px-6 py-4">Cliente</th>
+                  <th className="px-6 py-4 text-right">Total</th>
                 </tr>
-              ))}
-              {movements.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-6 py-20 text-center text-zinc-400 font-medium italic">
-                    Nenhum registo de movimentação encontrado para este local.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-            {movements.length > 0 && (
-              <tfoot>
-                <tr className="bg-zinc-50 border-t-2 border-zinc-200 font-black text-xs">
-                  <td colSpan={4} className="px-6 py-4 text-right uppercase tracking-widest text-zinc-400">Totais Acumulados</td>
-                  <td className="px-6 py-4 text-right text-red-600">{formatCurrency(totalDebit)}</td>
-                  <td className="px-6 py-4 text-right text-emerald-600">{formatCurrency(totalCredit)}</td>
-                  <td className="px-6 py-4 text-right text-[#003366] bg-zinc-200/50">{formatCurrency(currentBalance)}</td>
-                </tr>
-              </tfoot>
-            )}
-          </table>
+              </thead>
+              <tbody className="divide-y divide-zinc-100 text-xs">
+                {siteInvoices.map(inv => (
+                  <tr key={inv.id} className="hover:bg-zinc-50 text-sm">
+                    <td className="px-6 py-4 text-zinc-500">{new Date(inv.data_emissao).toLocaleDateString('pt-PT')}</td>
+                    <td className="px-6 py-4 font-bold text-zinc-900">{inv.numero_documento}</td>
+                    <td className="px-6 py-4 text-zinc-600">{inv.client_name}</td>
+                    <td className="px-6 py-4 text-right font-black text-[#003366]">{formatCurrency(inv.contravalor)}</td>
+                  </tr>
+                ))}
+                {siteInvoices.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="px-6 py-20 text-center text-zinc-400 font-medium italic">
+                      Nenhum documento emitido para este local.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Footer / Signature */}
       <div className="pt-20 grid grid-cols-2 gap-20 text-center">
@@ -5255,8 +5980,8 @@ const ClientAccount = ({ client, documents, onBack }: {
     // RE = Recibo (Credit)
     // NC = Nota de Crédito (Credit)
     // ND = Nota de Débito (Debit)
-    const isCredit = ['RE', 'NC', 'FR'].includes(doc.tipo_documento);
-    const isDebit = ['FT', 'ND', 'FR'].includes(doc.tipo_documento);
+    const isCredit = ['RE', 'NC', 'FR', 'Recibo', 'Fatura Recibo'].includes(doc.tipo_documento);
+    const isDebit = ['FT', 'ND', 'FR', 'Fatura', 'Fatura Recibo'].includes(doc.tipo_documento);
     
     return {
       ...doc,

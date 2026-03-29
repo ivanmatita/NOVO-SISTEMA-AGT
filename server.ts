@@ -45,9 +45,11 @@ db.exec(`
     country_code TEXT,
     service_date DATE,
     service_location TEXT,
+    work_site_id INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     is_certified BOOLEAN DEFAULT 0,
-    FOREIGN KEY (client_id) REFERENCES clients(id)
+    FOREIGN KEY (client_id) REFERENCES clients(id),
+    FOREIGN KEY (work_site_id) REFERENCES work_sites(id)
   );
 
   CREATE TABLE IF NOT EXISTS invoice_items (
@@ -65,7 +67,9 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS professions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE
+    name TEXT NOT NULL,
+    inss_profession TEXT,
+    base_salary REAL DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS employees (
@@ -502,20 +506,25 @@ async function startServer() {
       if (supabaseEnabled) {
         const { data, error } = await supabase
           .from("invoices")
-          .select("*, clients(name)")
+          .select("*, clients(name), work_sites(title)")
           .order("created_at", { ascending: false });
         
         if (!error) {
-          const formatted = data.map(i => ({ ...i, client_name: i.clients?.name }));
+          const formatted = data.map(i => ({ 
+            ...i, 
+            client_name: i.clients?.name,
+            work_site_title: i.work_sites?.title
+          }));
           return res.json(formatted);
         }
         console.warn("Supabase error in /api/invoices, falling back to SQLite:", error.message);
       }
       
       const invoices = db.prepare(`
-        SELECT i.*, c.name as client_name 
+        SELECT i.*, c.name as client_name, ws.title as work_site_title
         FROM invoices i 
         LEFT JOIN clients c ON i.client_id = c.id 
+        LEFT JOIN work_sites ws ON i.work_site_id = ws.id
         ORDER BY i.created_at DESC
       `).all();
       res.json(invoices);
@@ -529,23 +538,25 @@ async function startServer() {
     if (supabaseEnabled) {
       const { data, error } = await supabase
         .from("invoices")
-        .select("*, clients(name), fiscal_series(description)")
+        .select("*, clients(name), fiscal_series(description), work_sites(title)")
         .order("created_at", { ascending: false });
       if (!error) {
         const formatted = data.map(i => ({ 
           ...i, 
           client_name: i.clients?.name || 'Cliente não encontrado',
-          series_name: i.fiscal_series?.description
+          series_name: i.fiscal_series?.description,
+          work_site_title: i.work_sites?.title
         }));
         return res.json(formatted);
       }
       console.warn("Supabase error in /api/issued-documents, falling back to SQLite:", error.message);
     }
     const invoices = db.prepare(`
-        SELECT i.*, c.name as client_name, s.description as series_name
+        SELECT i.*, c.name as client_name, s.description as series_name, ws.title as work_site_title
         FROM invoices i 
         LEFT JOIN clients c ON i.client_id = c.id 
         LEFT JOIN fiscal_series s ON i.series_id = s.id
+        LEFT JOIN work_sites ws ON i.work_site_id = ws.id
         ORDER BY i.created_at DESC
       `).all();
     res.json(invoices);
@@ -855,15 +866,15 @@ async function startServer() {
   });
 
   app.post("/api/professions", async (req, res) => {
-    const { name } = req.body;
+    const { name, inss_profession, base_salary } = req.body;
     if (supabaseEnabled) {
-      const { data, error } = await supabase.from("professions").insert([{ name }]).select();
+      const { data, error } = await supabase.from("professions").insert([{ name, inss_profession, base_salary }]).select();
       if (!error) {
         return res.json({ id: data[0].id });
       }
       console.warn("Supabase error in POST /api/professions, falling back to SQLite:", error.message);
     }
-    const info = db.prepare("INSERT INTO professions (name) VALUES (?)").run(name);
+    const info = db.prepare("INSERT INTO professions (name, inss_profession, base_salary) VALUES (?, ?, ?)").run(name, inss_profession, base_salary);
     res.json({ id: info.lastInsertRowid });
   });
 
@@ -1429,6 +1440,90 @@ async function startServer() {
   });
 
   // Dashboard Stats
+  // Reports
+  app.delete("/api/professions/:id", async (req, res) => {
+    try {
+      if (supabaseEnabled) {
+        const { error } = await supabase.from("professions").delete().eq("id", req.params.id);
+        if (error) return res.status(500).json({ error: error.message });
+      } else {
+        db.prepare("DELETE FROM professions WHERE id = ?").run(req.params.id);
+      }
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).send(String(error));
+    }
+  });
+
+  app.get("/api/reports/profit-loss", async (req, res) => {
+    const year = req.query.year || new Date().getFullYear();
+    try {
+      const months = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+      const reportData = await Promise.all(months.map(async (month) => {
+        const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+        const endDate = `${year}-${String(month).padStart(2, '0')}-31`;
+
+        // Income from Invoices
+        const income = db.prepare(`
+          SELECT SUM(total) as total 
+          FROM invoices 
+          WHERE date >= ? AND date <= ? AND status != 'cancelled'
+        `).get(startDate, endDate) as { total: number | null };
+
+        // Expenses from Purchases
+        const purchases = db.prepare(`
+          SELECT SUM(total) as total 
+          FROM purchases 
+          WHERE date >= ? AND date <= ? AND status = 'completed'
+        `).get(startDate, endDate) as { total: number | null };
+
+        // Salaries from Payroll
+        const salaries = db.prepare(`
+          SELECT SUM(amount) as total 
+          FROM payroll 
+          WHERE year = ? AND month = ? AND status = 'paid'
+        `).get(year, String(month)) as { total: number | null };
+
+        // Other Expenses from Transactions
+        const otherExpenses = db.prepare(`
+          SELECT SUM(amount) as total 
+          FROM transactions 
+          WHERE date >= ? AND date <= ? AND type = 'expense' AND category NOT IN ('salary', 'purchase')
+        `).get(startDate, endDate) as { total: number | null };
+
+        const facturacaoSImposto = income.total || 0;
+        const impostoRecebido = facturacaoSImposto * 0.14;
+        const facturacaoCImposto = facturacaoSImposto + impostoRecebido;
+
+        const fornecedoresSImposto = purchases.total || 0;
+        const ivaSuportado = fornecedoresSImposto * 0.14;
+        const salarios = salaries.total || 0;
+        const inss = salarios * 0.08;
+        const custosAceites = otherExpenses.total || 0;
+        const totaisCustos = fornecedoresSImposto + ivaSuportado + salarios + inss + custosAceites;
+
+        return {
+          month,
+          facturacaoSImposto,
+          impostoRecebido,
+          facturacaoCImposto,
+          custosAceites,
+          fornecedoresSImposto,
+          ivaSuportado,
+          salarios,
+          inss,
+          totaisCustos,
+          margem: facturacaoCImposto - totaisCustos
+        };
+      }));
+
+      res.json(reportData);
+    } catch (error) {
+      console.error("Error in /api/reports/profit-loss:", error);
+      res.status(500).send(String(error));
+    }
+  });
+
   app.get("/api/stats", async (req, res) => {
     try {
       if (supabaseEnabled) {
@@ -1448,11 +1543,11 @@ async function startServer() {
         console.error("Supabase error in /api/stats, falling back to SQLite:", err2 || err3);
       }
       
-      const totalInvoiced = db.prepare("SELECT SUM(total) as total FROM invoices").get();
-      const pendingInvoices = db.prepare("SELECT COUNT(*) as count FROM invoices WHERE status = 'pending'").get();
-      const totalClients = db.prepare("SELECT COUNT(*) as count FROM clients").get();
-      const totalExpenses = db.prepare("SELECT SUM(amount) as total FROM transactions WHERE type = 'expense'").get();
-      const cashBalance = db.prepare("SELECT (SUM(CASE WHEN type='income' THEN amount ELSE 0 END) - SUM(CASE WHEN type='expense' THEN amount ELSE 0 END)) as balance FROM transactions").get();
+      const totalInvoiced = db.prepare("SELECT SUM(total) as total FROM invoices").get() as { total: number | null } || { total: 0 };
+      const pendingInvoices = db.prepare("SELECT COUNT(*) as count FROM invoices WHERE status = 'pending'").get() as { count: number } || { count: 0 };
+      const totalClients = db.prepare("SELECT COUNT(*) as count FROM clients").get() as { count: number } || { count: 0 };
+      const totalExpenses = db.prepare("SELECT SUM(amount) as total FROM transactions WHERE type = 'expense'").get() as { total: number | null } || { total: 0 };
+      const cashBalance = db.prepare("SELECT (SUM(CASE WHEN type='income' THEN amount ELSE 0 END) - SUM(CASE WHEN type='expense' THEN amount ELSE 0 END)) as balance FROM transactions").get() as { balance: number | null } || { balance: 0 };
 
       const recentInvoices = db.prepare(`
         SELECT i.*, c.name as client_name 

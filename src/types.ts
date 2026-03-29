@@ -95,6 +95,8 @@ export interface Employee {
 export interface Profession {
   id: number;
   name: string;
+  inss_profession?: string;
+  base_salary?: number;
 }
 
 export interface EmployeeContract {

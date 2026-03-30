@@ -1391,6 +1391,71 @@ async function startServer() {
     }
   });
 
+  app.post("/api/employees/attendance/bulk", async (req, res) => {
+    const { attendanceMap, month, year } = req.body;
+    // attendanceMap: { employeeId: { day: status } }
+    try {
+      if (supabaseEnabled) {
+        const records = [];
+        for (const [empId, days] of Object.entries(attendanceMap)) {
+          for (const [day, status] of Object.entries(days as any)) {
+            const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            records.push({ employee_id: Number(empId), date, status });
+          }
+        }
+        
+        // Delete existing records for this month/year first to avoid duplicates if we want to overwrite
+        // Or we could use upsert if we had a unique constraint on (employee_id, date)
+        // For simplicity, let's just insert. A better way would be upsert.
+        const { error } = await supabase.from("employee_attendance").upsert(records, { onConflict: 'employee_id,date' });
+        if (error) throw error;
+        return res.json({ success: true });
+      }
+
+      const transaction = db.transaction(() => {
+        const stmtDelete = db.prepare("DELETE FROM employee_attendance WHERE employee_id = ? AND date = ?");
+        const stmtInsert = db.prepare("INSERT INTO employee_attendance (employee_id, date, status) VALUES (?, ?, ?)");
+        
+        for (const [empId, days] of Object.entries(attendanceMap)) {
+          for (const [day, status] of Object.entries(days as any)) {
+            const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            stmtDelete.run(Number(empId), date);
+            stmtInsert.run(Number(empId), date, status);
+          }
+        }
+      });
+      transaction();
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error in bulk attendance:", error);
+      res.status(500).send(String(error));
+    }
+  });
+
+  app.get("/api/employees/attendance/monthly", async (req, res) => {
+    const { month, year } = req.query;
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const endDate = `${year}-${String(month).padStart(2, '0')}-31`; // Simplified
+    
+    try {
+      if (supabaseEnabled) {
+        const { data, error } = await supabase
+          .from("employee_attendance")
+          .select("*")
+          .gte("date", startDate)
+          .lte("date", endDate);
+        if (error) throw error;
+        return res.json(data);
+      }
+      
+      const records = db.prepare("SELECT * FROM employee_attendance WHERE date >= ? AND date <= ?").all(startDate, endDate);
+      res.json(records);
+    } catch (error) {
+      console.error("Error in monthly attendance:", error);
+      res.status(500).send(String(error));
+    }
+  });
+
   app.get("/api/employees/contracts", async (req, res) => {
     try {
       if (supabaseEnabled) {

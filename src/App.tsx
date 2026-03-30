@@ -30,6 +30,7 @@ import {
   FileSpreadsheet,
   History,
   MoreHorizontal,
+  MoreVertical,
   Mail,
   Share2,
   Upload,
@@ -69,12 +70,19 @@ import {
   FileBox,
   Paperclip,
   AlertCircle,
-  MoreVertical,
   Eye,
   ArrowUpRight,
   ArrowDownRight,
   User,
-  Camera
+  Camera,
+  Briefcase,
+  Table,
+  FileCheck,
+  Map,
+  CreditCard,
+  Monitor,
+  UserMinus,
+  FileSignature
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Client, Product, Invoice, DashboardStats, InvoiceItem, Employee, Profession, WorkSite, WorkSiteMovement, IssuedDocument, Warehouse, Supplier, FiscalSeries, CostCenter, POSPoint, CashSession, SystemUser, Purchase, PurchaseItem, POSArea } from './types';
@@ -421,7 +429,7 @@ const INSS_PROFESSIONS = [
 
 const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
   const professionsRef = useRef<HTMLDivElement>(null);
-  const [activeTab, setActiveTab] = useState('list');
+  const [activeTab, setActiveTab] = useState('dashboard');
   const [professions, setProfessions] = useState<Profession[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [showProfessionForm, setShowProfessionForm] = useState(false);
@@ -457,10 +465,56 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
   const [department, setDepartment] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
+  const [hiredAt, setHiredAt] = useState(new Date().toISOString().split('T')[0]);
+  const [processedReceipts, setProcessedReceipts] = useState<any[]>([]);
+  const [selectedReceipt, setSelectedReceipt] = useState<any | null>(null);
   const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
   const [absences, setAbsences] = useState<any[]>([]);
   const [attendance, setAttendance] = useState<any[]>([]);
   const [attendanceMap, setAttendanceMap] = useState<Record<number, Record<number, string>>>({});
+  const [payrollInputs, setPayrollInputs] = useState<Record<number, { 
+    premios: number, 
+    gratificacoes: number, 
+    abonos: number, 
+    subsidioNatal: number, 
+    alojamento: number, 
+    outrosSubsidios: number,
+    faltasJustificadas: number,
+    faltasInjustificadas: number,
+    ferias: number,
+    horasExtras: number,
+    horasPerdidas: number,
+    subsidioTransporte: number,
+    subsidioAlimentacao: number,
+    diasTrabalho: number,
+    diasFolga: number
+  }>>({});
+
+  const updatePayrollInput = (empId: number, field: string, value: number) => {
+    setPayrollInputs(prev => ({
+      ...prev,
+      [empId]: {
+        ...(prev[empId] || { 
+          premios: 0, 
+          gratificacoes: 0, 
+          abonos: 0, 
+          subsidioNatal: 0, 
+          alojamento: 0, 
+          outrosSubsidios: 0,
+          faltasJustificadas: 0,
+          faltasInjustificadas: 0,
+          ferias: 0,
+          horasExtras: 0,
+          horasPerdidas: 0,
+          subsidioTransporte: 0,
+          subsidioAlimentacao: 0,
+          diasTrabalho: 22,
+          diasFolga: 8
+        }),
+        [field]: value
+      }
+    }));
+  };
 
   const toggleAttendanceStatus = (empId: number, day: number) => {
     setAttendanceMap(prev => {
@@ -571,6 +625,7 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
     setMaritalStatus(emp.marital_status || 'Solteiro(a)');
     setAcademicLevel(emp.academic_level || 'Ensino Médio');
     setDepartment(emp.department || '');
+    setHiredAt(emp.hired_at || new Date().toISOString().split('T')[0]);
     setPhone(emp.phone || '');
     setEmail(emp.email || '');
     setShowForm(true);
@@ -595,7 +650,7 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
       marital_status: maritalStatus,
       academic_level: academicLevel,
       department,
-      hired_at: editingEmployee ? editingEmployee.hired_at : new Date().toISOString().split('T')[0],
+      hired_at: hiredAt,
       status: editingEmployee ? editingEmployee.status : 'active'
     };
 
@@ -611,6 +666,7 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
     setName(''); setRole(''); setSalary(''); setProfessionId(''); 
     setNif(''); setAddress(''); setIban(''); setBankName(''); 
     setImageUrl(''); setBirthDate(''); setGender('Masculino'); 
+    setHiredAt(new Date().toISOString().split('T')[0]);
     setMaritalStatus('Solteiro(a)'); setAcademicLevel('Ensino Médio'); 
     setDepartment(''); setPhone(''); setEmail('');
     setEditingEmployee(null);
@@ -652,13 +708,24 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
   };
 
   const tabs = [
-    { id: 'list', label: 'Lista de Trabalhadores' },
-    { id: 'professions', label: 'Criar Profissão' },
-    { id: 'contracts', label: 'Contratos' },
-    { id: 'attendance', label: 'Efetividade' },
-    { id: 'payroll', label: 'Processamento Salarial' },
-    { id: 'absences', label: 'Férias & Subsídios' },
-    { id: 'reports', label: 'Mapas & Relatórios' },
+    { id: 'dashboard', label: 'DASHBOARD', icon: <LayoutDashboard size={14} />, description: 'Visão geral dos recursos humanos' },
+    { id: 'attendance_map', label: 'ASSIDUIDADE', icon: <Clock size={14} />, description: 'Controle de presenças e faltas' },
+    { id: 'professions', label: 'PROFISSÕES', icon: <Briefcase size={14} />, description: 'Gestão de cargos e salários base' },
+    { id: 'list', label: 'COLABORADORES', icon: <Users size={14} />, description: 'Listagem e cadastro de pessoal' },
+    { id: 'payroll', label: 'PROCESSAMENTO', icon: <Calculator size={14} />, description: 'Cálculo de vencimentos e subsídios' },
+    { id: 'salary_receipts', label: 'RECIBOS DE SALÁRIO', icon: <FileCheck size={14} />, description: 'Emissão de recibos de vencimento' },
+    { id: 'contracts', label: 'GESTÃO DE CONTRATOS', icon: <FileText size={14} />, description: 'Controle de vínculos laborais' },
+    { id: 'irt_table', label: 'TABELA IRT', icon: <Table size={14} />, description: 'Configuração de escalões de imposto' },
+    { id: 'transfer_order', label: 'ORDEM DE TRANSFERÊNCIA', icon: <ArrowRightLeft size={14} />, description: 'Pagamentos bancários' },
+    { id: 'irt_inss_map', label: 'MAPA GERAL IRT/INSS', icon: <Layers size={14} />, description: 'Relatórios fiscais e segurança social' },
+    { id: 'personal_registry', label: 'CADASTRO PESSOAL', icon: <UserCheck size={14} />, description: 'Dossier individual do colaborador' },
+    { id: 'maps', label: 'MAPAS', icon: <Map size={14} />, description: 'Mapas estatísticos e obrigatórios' },
+    { id: 'work_card', label: 'CARTÃO DE TRABALHO', icon: <CreditCard size={14} />, description: 'Identificação profissional' },
+    { id: 'labor_registration', label: 'INSCRIÇÃO LABORAL', icon: <FilePlus size={14} />, description: 'Registo nos órgãos competentes' },
+    { id: 'performance_analysis', label: 'ANÁLISE DE DESEMPENHO', icon: <TrendingUp size={14} />, description: 'Avaliação de produtividade' },
+    { id: 'workstation_management', label: 'GESTÃO DE POSTO', icon: <Monitor size={14} />, description: 'Alocação de recursos físicos' },
+    { id: 'labor_extinction', label: 'EXTINÇÃO LABORAL', icon: <UserMinus size={14} />, description: 'Processos de rescisão' },
+    { id: 'print_list', label: 'IMPRIMIR LISTA', icon: <Printer size={14} />, description: 'Relatórios rápidos de pessoal' },
   ];
 
   return (
@@ -680,17 +747,18 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
         </div>
       </header>
 
-      <div className="flex border-b border-zinc-200 overflow-x-auto no-scrollbar">
+      <div className="flex border-b border-zinc-200 overflow-x-auto no-scrollbar bg-white p-2 gap-1">
         {tabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`px-6 py-3 text-sm font-medium whitespace-nowrap transition-all border-b-2 ${
+            className={`px-3 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all border border-zinc-200 flex items-center gap-2 whitespace-nowrap ${
               activeTab === tab.id 
-                ? 'border-[#003366] text-[#003366]' 
-                : 'border-transparent text-zinc-400 hover:text-zinc-600'
+                ? 'bg-[#003366] text-white border-[#003366]' 
+                : 'bg-white text-zinc-500 hover:bg-zinc-50'
             }`}
           >
+            {tab.icon}
             {tab.label}
           </button>
         ))}
@@ -823,6 +891,10 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
                           <option>Doutoramento</option>
                         </select>
                       </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Data de Admissão</label>
+                        <input type="date" value={hiredAt} onChange={e => setHiredAt(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                      </div>
                     </div>
 
                     {/* Contact & Banking */}
@@ -854,6 +926,290 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
                 </form>
               </div>
             </motion.div>
+          </div>
+        )}
+
+        {activeTab === 'dashboard' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {tabs.filter(t => t.id !== 'dashboard').map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className="bg-white border border-zinc-200 p-6 flex flex-col items-start gap-4 hover:border-[#003366] hover:shadow-md transition-all group text-left h-full"
+              >
+                <div className="w-12 h-12 bg-zinc-50 rounded-none flex items-center justify-center group-hover:bg-[#003366] group-hover:text-white transition-colors">
+                  {React.cloneElement(tab.icon as React.ReactElement, { size: 24 })}
+                </div>
+                <div>
+                  <h4 className="font-black text-[#003366] text-xs uppercase tracking-widest mb-1">{tab.label}</h4>
+                  <p className="text-zinc-400 text-[10px] uppercase leading-relaxed">{tab.description}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {activeTab === 'salary_receipts' && (
+          <div className="space-y-6">
+            {!selectedReceipt ? (
+              <div className="bg-white border border-zinc-200 shadow-sm overflow-hidden">
+                <div className="p-6 border-b border-zinc-100 flex justify-between items-center bg-zinc-50/50">
+                  <h3 className="font-bold text-[#003366] uppercase tracking-widest text-xs">Recibos de Salário Processados</h3>
+                  <div className="flex gap-2">
+                    <button className="bg-[#003366] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
+                      <Printer size={14} /> Imprimir Todos
+                    </button>
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-[#1e293b] text-white text-[10px] uppercase tracking-widest font-black">
+                        <th className="px-6 py-4">Funcionário</th>
+                        <th className="px-6 py-4">Cargo</th>
+                        <th className="px-6 py-4">Período</th>
+                        <th className="px-6 py-4 text-right">Vencimento Base</th>
+                        <th className="px-6 py-4 text-right">Total Líquido</th>
+                        <th className="px-6 py-4 text-center">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100">
+                      {processedReceipts.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="px-6 py-12 text-center text-zinc-400 text-xs uppercase font-bold">
+                            Nenhum recibo processado. Vá para a aba "PROCESSAMENTO" e clique em "EXECUTAR".
+                          </td>
+                        </tr>
+                      ) : (
+                        processedReceipts.map(receipt => (
+                          <tr key={receipt.id} className="hover:bg-zinc-50 transition-colors text-xs font-bold text-zinc-600">
+                            <td className="px-6 py-4 uppercase">{receipt.employee.name}</td>
+                            <td className="px-6 py-4 uppercase text-zinc-400">{receipt.employee.role}</td>
+                            <td className="px-6 py-4 uppercase">{receipt.period}</td>
+                            <td className="px-6 py-4 text-right font-mono">{Number(receipt.employee.salary).toLocaleString('pt-AO', { style: 'currency', currency: 'AOA' })}</td>
+                            <td className="px-6 py-4 text-right font-mono text-[#16A34A]">{receipt.calculations.totalNet.toLocaleString('pt-AO', { style: 'currency', currency: 'AOA' })}</td>
+                            <td className="px-6 py-4 text-center">
+                              <button 
+                                onClick={() => setSelectedReceipt(receipt)}
+                                className="text-[#003366] hover:text-[#F27D26] transition-colors uppercase text-[10px] font-black tracking-widest flex items-center gap-1 mx-auto"
+                              >
+                                <Eye size={14} /> Ver Recibo
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <div className="max-w-4xl mx-auto bg-white border border-zinc-200 shadow-2xl p-12 relative overflow-hidden">
+                <button 
+                  onClick={() => setSelectedReceipt(null)}
+                  className="absolute top-6 left-6 text-zinc-400 hover:text-[#003366] flex items-center gap-2 text-[10px] font-black uppercase tracking-widest"
+                >
+                  <ArrowLeft size={16} /> Voltar à Lista
+                </button>
+                
+                <div className="flex justify-end gap-2 absolute top-6 right-6 no-print">
+                  <button className="bg-zinc-100 hover:bg-zinc-200 text-zinc-600 p-2 rounded-none transition-all">
+                    <Printer size={18} />
+                  </button>
+                  <button className="bg-zinc-100 hover:bg-zinc-200 text-zinc-600 p-2 rounded-none transition-all">
+                    <FileDown size={18} />
+                  </button>
+                </div>
+
+                {/* Receipt Header */}
+                <div className="flex justify-between items-start mb-12 mt-8 border-b-2 border-zinc-900 pb-8">
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 bg-[#003366] flex items-center justify-center text-white font-black text-xl">TS</div>
+                      <div>
+                        <h1 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">Grupo TecnoSys</h1>
+                        <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Soluções Tecnológicas & Gestão</p>
+                      </div>
+                    </div>
+                    <div className="text-[10px] font-bold text-zinc-600 space-y-1 uppercase">
+                      <p>NIF: 000 000 000</p>
+                      <p>Endereço: Luanda, Angola</p>
+                      <p>Email: info@tecnosys.ao</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="bg-zinc-900 text-white px-6 py-2 font-black uppercase tracking-[0.3em] text-sm mb-4">
+                      Recibo de Salário
+                    </div>
+                    <div className="text-[10px] font-bold text-zinc-600 space-y-1 uppercase">
+                      <p>Nº Recibo: {new Date().getFullYear()}/{selectedReceipt.id.toString().padStart(4, '0')}</p>
+                      <p>Data de Emissão: {new Date().toLocaleDateString('pt-AO')}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Employee Info */}
+                <div className="grid grid-cols-2 gap-8 mb-12 bg-zinc-50 p-6 border border-zinc-100">
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block mb-1">Funcionário</label>
+                      <p className="text-sm font-black text-[#003366] uppercase">{selectedReceipt.employee.name}</p>
+                      <p className="text-[10px] font-bold text-zinc-500 uppercase mt-1">Nº {1000 + selectedReceipt.employee.id}</p>
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block mb-1">Cargo / Função</label>
+                      <p className="text-xs font-bold text-zinc-700 uppercase">{selectedReceipt.employee.role}</p>
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block mb-1">Data Admissão</label>
+                        <p className="text-xs font-bold text-zinc-700 uppercase">{new Date(selectedReceipt.employee.hired_at).toLocaleDateString('pt-AO')}</p>
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block mb-1">Período</label>
+                        <p className="text-xs font-bold text-zinc-700 uppercase">{selectedReceipt.period}</p>
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block mb-1">Data Pagamento</label>
+                        <p className="text-xs font-bold text-zinc-700 uppercase">{selectedReceipt.paymentDate}</p>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block mb-1">IBAN para Depósito</label>
+                      <p className="text-xs font-mono font-bold text-zinc-700">{selectedReceipt.employee.iban || 'N/A'}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Earnings & Deductions Table */}
+                <div className="mb-12">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b-2 border-zinc-900 text-[10px] font-black uppercase tracking-widest text-zinc-900">
+                        <th className="py-3 w-16">Cód.</th>
+                        <th className="py-3">Descrição das Verbas</th>
+                        <th className="py-3 text-center w-24">Qtd/Ref</th>
+                        <th className="py-3 text-right w-32">Vencimentos</th>
+                        <th className="py-3 text-right w-32">Descontos</th>
+                      </tr>
+                    </thead>
+                    <tbody className="text-[11px] font-bold text-zinc-700 uppercase">
+                      <tr className="border-b border-zinc-100">
+                        <td className="py-4">01</td>
+                        <td className="py-4">Vencimento Base</td>
+                        <td className="py-4 text-center">{selectedReceipt.inputs.diasTrabalho} Dias</td>
+                        <td className="py-4 text-right font-mono">{Number(selectedReceipt.employee.salary).toLocaleString('pt-AO', { minimumFractionDigits: 2 })}</td>
+                        <td className="py-4 text-right font-mono">-</td>
+                      </tr>
+                      {selectedReceipt.inputs.premios > 0 && (
+                        <tr className="border-b border-zinc-100">
+                          <td className="py-4">02</td>
+                          <td className="py-4">Prémios de Desempenho</td>
+                          <td className="py-4 text-center">-</td>
+                          <td className="py-4 text-right font-mono">{selectedReceipt.inputs.premios.toLocaleString('pt-AO', { minimumFractionDigits: 2 })}</td>
+                          <td className="py-4 text-right font-mono">-</td>
+                        </tr>
+                      )}
+                      {selectedReceipt.inputs.subsidioTransporte > 0 && (
+                        <tr className="border-b border-zinc-100">
+                          <td className="py-4">03</td>
+                          <td className="py-4">Subsídio de Transporte</td>
+                          <td className="py-4 text-center">-</td>
+                          <td className="py-4 text-right font-mono">{selectedReceipt.inputs.subsidioTransporte.toLocaleString('pt-AO', { minimumFractionDigits: 2 })}</td>
+                          <td className="py-4 text-right font-mono">-</td>
+                        </tr>
+                      )}
+                      {selectedReceipt.inputs.subsidioAlimentacao > 0 && (
+                        <tr className="border-b border-zinc-100">
+                          <td className="py-4">04</td>
+                          <td className="py-4">Subsídio de Alimentação</td>
+                          <td className="py-4 text-center">-</td>
+                          <td className="py-4 text-right font-mono">{selectedReceipt.inputs.subsidioAlimentacao.toLocaleString('pt-AO', { minimumFractionDigits: 2 })}</td>
+                          <td className="py-4 text-right font-mono">-</td>
+                        </tr>
+                      )}
+                      {selectedReceipt.calculations.overtimePay > 0 && (
+                        <tr className="border-b border-zinc-100">
+                          <td className="py-4">05</td>
+                          <td className="py-4">Horas Extraordinárias (50%)</td>
+                          <td className="py-4 text-center">{selectedReceipt.inputs.horasExtras} Hrs</td>
+                          <td className="py-4 text-right font-mono">{selectedReceipt.calculations.overtimePay.toLocaleString('pt-AO', { minimumFractionDigits: 2 })}</td>
+                          <td className="py-4 text-right font-mono">-</td>
+                        </tr>
+                      )}
+                      
+                      {/* Deductions */}
+                      <tr className="border-b border-zinc-100">
+                        <td className="py-4">D1</td>
+                        <td className="py-4">Segurança Social (INSS 3%)</td>
+                        <td className="py-4 text-center">3%</td>
+                        <td className="py-4 text-right font-mono">-</td>
+                        <td className="py-4 text-right font-mono text-red-600">{selectedReceipt.calculations.inss_worker.toLocaleString('pt-AO', { minimumFractionDigits: 2 })}</td>
+                      </tr>
+                      <tr className="border-b border-zinc-100">
+                        <td className="py-4">D2</td>
+                        <td className="py-4">Imposto sobre Rendimento (IRT)</td>
+                        <td className="py-4 text-center">Tabela</td>
+                        <td className="py-4 text-right font-mono">-</td>
+                        <td className="py-4 text-right font-mono text-red-600">{selectedReceipt.calculations.irt.toLocaleString('pt-AO', { minimumFractionDigits: 2 })}</td>
+                      </tr>
+                      {selectedReceipt.calculations.absenceDeduction > 0 && (
+                        <tr className="border-b border-zinc-100">
+                          <td className="py-4">D3</td>
+                          <td className="py-4">Faltas Injustificadas</td>
+                          <td className="py-4 text-center">{selectedReceipt.inputs.faltasInjustificadas} Dias</td>
+                          <td className="py-4 text-right font-mono">-</td>
+                          <td className="py-4 text-right font-mono text-red-600">{selectedReceipt.calculations.absenceDeduction.toLocaleString('pt-AO', { minimumFractionDigits: 2 })}</td>
+                        </tr>
+                      )}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-zinc-900 text-white font-black text-xs uppercase tracking-widest">
+                        <td colSpan={3} className="px-6 py-4">Totais</td>
+                        <td className="px-6 py-4 text-right font-mono">{selectedReceipt.calculations.totalGross.toLocaleString('pt-AO', { minimumFractionDigits: 2 })}</td>
+                        <td className="px-6 py-4 text-right font-mono">{(selectedReceipt.calculations.inss_worker + selectedReceipt.calculations.irt + selectedReceipt.calculations.absenceDeduction).toLocaleString('pt-AO', { minimumFractionDigits: 2 })}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+
+                {/* Net Summary */}
+                <div className="flex justify-end mb-12">
+                  <div className="w-full max-w-sm space-y-4">
+                    <div className="flex justify-between items-center bg-[#003366] text-white p-6">
+                      <span className="font-black text-xs uppercase tracking-[0.2em]">Total a Receber</span>
+                      <span className="text-xl font-black font-mono">{selectedReceipt.calculations.totalNet.toLocaleString('pt-AO', { style: 'currency', currency: 'AOA' })}</span>
+                    </div>
+                    <div className="p-4 border-2 border-dashed border-zinc-200 text-[10px] font-bold text-zinc-500 uppercase leading-relaxed italic">
+                      Recebi a importância de {selectedReceipt.calculations.totalNet.toLocaleString('pt-AO', { style: 'currency', currency: 'AOA' })} por extenso, correspondente ao vencimento do período acima indicado.
+                    </div>
+                  </div>
+                </div>
+
+                {/* Signatures */}
+                <div className="grid grid-cols-2 gap-24 mt-24">
+                  <div className="text-center space-y-4">
+                    <div className="border-t border-zinc-900 pt-4">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-zinc-900">A Administração</p>
+                      <p className="text-[8px] font-bold text-zinc-400 uppercase mt-1">Assinatura e Carimbo</p>
+                    </div>
+                  </div>
+                  <div className="text-center space-y-4">
+                    <div className="border-t border-zinc-900 pt-4">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-zinc-900">{selectedReceipt.employee.name}</p>
+                      <p className="text-[8px] font-bold text-zinc-400 uppercase mt-1">Assinatura do Colaborador</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="mt-12 pt-8 border-t border-zinc-100 text-center">
+                  <p className="text-[8px] font-bold text-zinc-300 uppercase tracking-[0.5em]">Processado por Sistema TecnoSys ERP - {new Date().getFullYear()}</p>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -947,7 +1303,7 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
           </div>
         )}
 
-        {activeTab === 'payroll' && (
+        {activeTab === 'attendance_map' && (
           <div className="space-y-6">
             {/* Header Bar */}
             <div className="bg-[#003366] text-white p-4 flex items-center justify-between shadow-md">
@@ -1142,6 +1498,399 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
                 <div className="flex justify-between items-center bg-[#003366]/5 p-4 border border-[#003366]/10">
                   <span className="text-sm font-black text-[#003366] uppercase tracking-widest">Total de Vencimentos a Pagar:</span>
                   <span className="text-xl font-black text-[#003366]">€ 5.040,00</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'payroll' && (
+          <div className="space-y-6">
+            <div className="bg-[#003366] text-white p-4">
+              <h2 className="text-lg font-black uppercase tracking-widest">LISTA DE PROCESSAMENTO DE SALÁRIO</h2>
+            </div>
+
+            <div className="bg-white p-6 border border-zinc-200 shadow-sm flex flex-wrap items-end justify-between gap-6">
+              <div className="flex gap-6 flex-wrap">
+                <div className="min-w-[200px]">
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Empresa:</label>
+                  <select className="w-full border border-zinc-200 px-4 py-2 text-xs focus:outline-none focus:border-[#003366] font-bold text-[#003366]">
+                    <option>Grupo TecnoSys</option>
+                  </select>
+                </div>
+                <div className="min-w-[200px]">
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Mês/Ano:</label>
+                  <select className="w-full border border-zinc-200 px-4 py-2 text-xs focus:outline-none focus:border-[#003366] font-bold text-[#003366]">
+                    <option>Março / 2026</option>
+                    <option>Fevereiro / 2026</option>
+                    <option>Janeiro / 2026</option>
+                  </select>
+                </div>
+              </div>
+              <div className="relative min-w-[300px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
+                <input 
+                  type="text" 
+                  placeholder="Pesquisar funcionário..." 
+                  className="w-full border border-zinc-200 pl-10 pr-4 py-2 text-xs focus:outline-none focus:border-[#003366]"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button 
+                onClick={() => {
+                  const receipts = localEmployees.map(emp => {
+                    const inputs = payrollInputs[emp.id] || { 
+                      premios: 0, gratificacoes: 0, abonos: 0, subsidioNatal: 0, alojamento: 0, outrosSubsidios: 0,
+                      faltasJustificadas: 0, faltasInjustificadas: 0, ferias: 0, horasExtras: 0, horasPerdidas: 0,
+                      subsidioTransporte: 0, subsidioAlimentacao: 0, diasTrabalho: 22, diasFolga: 8
+                    };
+                    const inss_worker = emp.salary * 0.03;
+                    const base_taxable = emp.salary - inss_worker;
+                    const irt = calculateIRT(base_taxable);
+                    
+                    const dailyRate = emp.salary / 22;
+                    const hourlyRate = emp.salary / 173.33;
+                    const overtimeRate = hourlyRate * 1.5;
+                    const absenceDeduction = inputs.faltasInjustificadas * dailyRate;
+                    const lostHoursDeduction = inputs.horasPerdidas * hourlyRate;
+                    const overtimePay = inputs.horasExtras * overtimeRate;
+                    
+                    const totalGross = emp.salary + inputs.premios + inputs.gratificacoes + inputs.abonos + 
+                                     inputs.subsidioNatal + inputs.alojamento + inputs.outrosSubsidios + 
+                                     inputs.subsidioTransporte + inputs.subsidioAlimentacao + overtimePay;
+                    
+                    const totalNet = totalGross - inss_worker - irt - absenceDeduction - lostHoursDeduction;
+
+                    return {
+                      id: emp.id,
+                      employee: emp,
+                      inputs,
+                      calculations: {
+                        inss_worker,
+                        irt,
+                        absenceDeduction,
+                        lostHoursDeduction,
+                        overtimePay,
+                        totalGross,
+                        totalNet,
+                        dailyRate,
+                        hourlyRate,
+                        overtimeRate
+                      },
+                      period: "Março / 2026",
+                      paymentDate: "31/03/2026"
+                    };
+                  });
+                  setProcessedReceipts(receipts);
+                  setActiveTab('salary_receipts');
+                }}
+                className="bg-[#F27D26] hover:bg-[#d96a1a] text-white px-8 py-2 text-xs font-black uppercase tracking-widest transition-all shadow-lg"
+              >
+                EXECUTAR
+              </button>
+              <div className="flex-1"></div>
+              <button className="bg-[#2563EB] hover:bg-[#1d4ed8] text-white px-4 py-2 text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2">
+                <Printer size={14} /> Imprimir Lista
+              </button>
+              <button className="bg-[#DC2626] hover:bg-[#b91c1c] text-white px-4 py-2 text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2">
+                <FileDown size={14} /> Baixar PDF
+              </button>
+              <button className="bg-[#16A34A] hover:bg-[#15803d] text-white px-4 py-2 text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2">
+                <FileSpreadsheet size={14} /> Baixar Excel
+              </button>
+            </div>
+
+            <div className="bg-white border border-zinc-200 shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse min-w-[1500px]">
+                  <thead>
+                    <tr className="bg-[#1e293b] text-white text-[9px] uppercase tracking-widest font-black">
+                      <th className="px-4 py-4 border-r border-white/10 w-10 sticky left-0 bg-[#1e293b] z-20">
+                        <input type="checkbox" className="rounded-none accent-[#F27D26]" />
+                      </th>
+                      <th className="px-4 py-4 border-r border-white/10 sticky left-10 bg-[#1e293b] z-20 min-w-[250px]">FUNCIONÁRIO</th>
+                      <th className="px-2 py-4 border-r border-white/10 text-center">DIAS TRAB.</th>
+                      <th className="px-2 py-4 border-r border-white/10 text-center">DIAS FOLGA</th>
+                      <th className="px-2 py-4 border-r border-white/10 text-center">F. JUST.</th>
+                      <th className="px-2 py-4 border-r border-white/10 text-center">F. INJUST.</th>
+                      <th className="px-2 py-4 border-r border-white/10 text-center">FÉRIAS</th>
+                      <th className="px-2 py-4 border-r border-white/10 text-center">H. EXTRAS</th>
+                      <th className="px-2 py-4 border-r border-white/10 text-center">H. PERDIDAS</th>
+                      <th className="px-2 py-4 border-r border-white/10 text-center">PREMIOS</th>
+                      <th className="px-2 py-4 border-r border-white/10 text-center">GRATIFICAÇÕES</th>
+                      <th className="px-2 py-4 border-r border-white/10 text-center">ABONOS</th>
+                      <th className="px-2 py-4 border-r border-white/10 text-center">SUBS. NATAL</th>
+                      <th className="px-2 py-4 border-r border-white/10 text-center">ALOJAMENTO</th>
+                      <th className="px-2 py-4 border-r border-white/10 text-center">SUBS. TRANSP.</th>
+                      <th className="px-2 py-4 border-r border-white/10 text-center">SUBS. ALIM.</th>
+                      <th className="px-2 py-4 border-r border-white/10 text-center">OUTROS SUBS.</th>
+                      <th className="px-4 py-4 border-r border-white/10 text-center sticky right-0 bg-[#1e293b] z-20">VALOR PROCESSADO</th>
+                      <th className="px-4 py-4 text-center">OPÇÕES</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100">
+                    <tr className="bg-zinc-50/50 text-[9px] font-black text-zinc-400 uppercase">
+                      <td className="px-4 py-2 border-r border-zinc-200"></td>
+                      <td className="px-4 py-2 border-r border-zinc-200" colSpan={9}>Empresa: Grupo TecnoSys</td>
+                    </tr>
+                    {localEmployees.map(emp => {
+                      const inputs = payrollInputs[emp.id] || { 
+                        premios: 0, gratificacoes: 0, abonos: 0, subsidioNatal: 0, alojamento: 0, outrosSubsidios: 0,
+                        faltasJustificadas: 0, faltasInjustificadas: 0, ferias: 0, horasExtras: 0, horasPerdidas: 0,
+                        subsidioTransporte: 0, subsidioAlimentacao: 0, diasTrabalho: 22, diasFolga: 8
+                      };
+                      
+                      // Basic calculation logic (can be refined)
+                      const dailyRate = emp.salary / 22;
+                      const overtimeRate = (emp.salary / 173.33) * 1.5; // Example overtime rate
+                      const absenceDeduction = inputs.faltasInjustificadas * dailyRate;
+                      const lostHoursDeduction = inputs.horasPerdidas * (emp.salary / 173.33);
+                      const overtimePay = inputs.horasExtras * overtimeRate;
+                      
+                      const totalProcessed = emp.salary + inputs.premios + inputs.gratificacoes + inputs.abonos + 
+                                           inputs.subsidioNatal + inputs.alojamento + inputs.outrosSubsidios + 
+                                           inputs.subsidioTransporte + inputs.subsidioAlimentacao + overtimePay - 
+                                           absenceDeduction - lostHoursDeduction;
+                      
+                      return (
+                        <tr key={emp.id} className="hover:bg-zinc-50 transition-colors group">
+                          <td className="px-4 py-4 border-r border-zinc-200 sticky left-0 bg-white group-hover:bg-zinc-50 z-10">
+                            <input type="checkbox" className="rounded-none accent-[#003366]" />
+                          </td>
+                          <td className="px-4 py-4 border-r border-zinc-200 sticky left-10 bg-white group-hover:bg-zinc-50 z-10">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-zinc-100 rounded-none overflow-hidden border border-zinc-200 flex items-center justify-center">
+                                {emp.image_url ? <img src={emp.image_url} className="w-full h-full object-cover" /> : <User size={16} className="text-zinc-300" />}
+                              </div>
+                              <div>
+                                <div className="font-black text-[#003366] uppercase text-xs">{emp.name}</div>
+                                <div className="text-[9px] text-zinc-400 uppercase">Nº {String(emp.id).padStart(3, '0')} • {emp.role}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-2 py-4 border-r border-zinc-200">
+                            <input 
+                              type="number" 
+                              value={inputs.diasTrabalho}
+                              onChange={(e) => updatePayrollInput(emp.id, 'diasTrabalho', Number(e.target.value))}
+                              className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                            />
+                          </td>
+                          <td className="px-2 py-4 border-r border-zinc-200">
+                            <input 
+                              type="number" 
+                              value={inputs.diasFolga}
+                              onChange={(e) => updatePayrollInput(emp.id, 'diasFolga', Number(e.target.value))}
+                              className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                            />
+                          </td>
+                          <td className="px-2 py-4 border-r border-zinc-200">
+                            <input 
+                              type="number" 
+                              value={inputs.faltasJustificadas}
+                              onChange={(e) => updatePayrollInput(emp.id, 'faltasJustificadas', Number(e.target.value))}
+                              className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                            />
+                          </td>
+                          <td className="px-2 py-4 border-r border-zinc-200">
+                            <input 
+                              type="number" 
+                              value={inputs.faltasInjustificadas}
+                              onChange={(e) => updatePayrollInput(emp.id, 'faltasInjustificadas', Number(e.target.value))}
+                              className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                            />
+                          </td>
+                          <td className="px-2 py-4 border-r border-zinc-200">
+                            <input 
+                              type="number" 
+                              value={inputs.ferias}
+                              onChange={(e) => updatePayrollInput(emp.id, 'ferias', Number(e.target.value))}
+                              className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                            />
+                          </td>
+                          <td className="px-2 py-4 border-r border-zinc-200">
+                            <input 
+                              type="number" 
+                              value={inputs.horasExtras}
+                              onChange={(e) => updatePayrollInput(emp.id, 'horasExtras', Number(e.target.value))}
+                              className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                            />
+                          </td>
+                          <td className="px-2 py-4 border-r border-zinc-200">
+                            <input 
+                              type="number" 
+                              value={inputs.horasPerdidas}
+                              onChange={(e) => updatePayrollInput(emp.id, 'horasPerdidas', Number(e.target.value))}
+                              className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                            />
+                          </td>
+                          <td className="px-2 py-4 border-r border-zinc-200">
+                            <input 
+                              type="number" 
+                              value={inputs.premios}
+                              onChange={(e) => updatePayrollInput(emp.id, 'premios', Number(e.target.value))}
+                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                            />
+                          </td>
+                          <td className="px-2 py-4 border-r border-zinc-200">
+                            <input 
+                              type="number" 
+                              value={inputs.gratificacoes}
+                              onChange={(e) => updatePayrollInput(emp.id, 'gratificacoes', Number(e.target.value))}
+                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                            />
+                          </td>
+                          <td className="px-2 py-4 border-r border-zinc-200">
+                            <input 
+                              type="number" 
+                              value={inputs.abonos}
+                              onChange={(e) => updatePayrollInput(emp.id, 'abonos', Number(e.target.value))}
+                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                            />
+                          </td>
+                          <td className="px-2 py-4 border-r border-zinc-200">
+                            <input 
+                              type="number" 
+                              value={inputs.subsidioNatal}
+                              onChange={(e) => updatePayrollInput(emp.id, 'subsidioNatal', Number(e.target.value))}
+                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                            />
+                          </td>
+                          <td className="px-2 py-4 border-r border-zinc-200">
+                            <input 
+                              type="number" 
+                              value={inputs.alojamento}
+                              onChange={(e) => updatePayrollInput(emp.id, 'alojamento', Number(e.target.value))}
+                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                            />
+                          </td>
+                          <td className="px-2 py-4 border-r border-zinc-200">
+                            <input 
+                              type="number" 
+                              value={inputs.subsidioTransporte}
+                              onChange={(e) => updatePayrollInput(emp.id, 'subsidioTransporte', Number(e.target.value))}
+                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                            />
+                          </td>
+                          <td className="px-2 py-4 border-r border-zinc-200">
+                            <input 
+                              type="number" 
+                              value={inputs.subsidioAlimentacao}
+                              onChange={(e) => updatePayrollInput(emp.id, 'subsidioAlimentacao', Number(e.target.value))}
+                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                            />
+                          </td>
+                          <td className="px-2 py-4 border-r border-zinc-200">
+                            <div className="flex gap-1">
+                              <input 
+                                type="number" 
+                                value={inputs.outrosSubsidios}
+                                onChange={(e) => updatePayrollInput(emp.id, 'outrosSubsidios', Number(e.target.value))}
+                                className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                              />
+                            </div>
+                          </td>
+                          <td className="px-4 py-4 border-r border-zinc-200 text-center font-black text-[#003366] text-xs sticky right-0 bg-white group-hover:bg-zinc-50 z-10">
+                            {formatCurrency(totalProcessed).replace('€', '')} Kz
+                          </td>
+                          <td className="px-4 py-4 text-center">
+                            <div className="flex items-center justify-center gap-2">
+                              <button className="bg-red-600 text-white px-3 py-1.5 text-[9px] font-black uppercase tracking-widest hover:bg-red-700">
+                                Apagar
+                              </button>
+                              <button className="text-zinc-400 hover:text-zinc-600">
+                                <MoreVertical size={16} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-zinc-50 font-black text-[#003366] text-[10px] uppercase tracking-widest">
+                      <td className="px-4 py-4 border-r border-zinc-200 sticky left-0 bg-zinc-50 z-10"></td>
+                      <td className="px-4 py-4 border-r border-zinc-200 sticky left-10 bg-zinc-50 z-10">TOTAL GERAL</td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.diasTrabalho || 22), 0)}</td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.diasFolga || 8), 0)}</td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.faltasJustificadas || 0), 0)}</td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.faltasInjustificadas || 0), 0)}</td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.ferias || 0), 0)}</td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.horasExtras || 0), 0)}</td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.horasPerdidas || 0), 0)}</td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center">
+                        {formatCurrency(localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.premios || 0), 0)).replace('€', '')} Kz
+                      </td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center">
+                        {formatCurrency(localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.gratificacoes || 0), 0)).replace('€', '')} Kz
+                      </td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center">
+                        {formatCurrency(localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.abonos || 0), 0)).replace('€', '')} Kz
+                      </td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center">
+                        {formatCurrency(localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.subsidioNatal || 0), 0)).replace('€', '')} Kz
+                      </td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center">
+                        {formatCurrency(localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.alojamento || 0), 0)).replace('€', '')} Kz
+                      </td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center">
+                        {formatCurrency(localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.subsidioTransporte || 0), 0)).replace('€', '')} Kz
+                      </td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center">
+                        {formatCurrency(localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.subsidioAlimentacao || 0), 0)).replace('€', '')} Kz
+                      </td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center">
+                        {formatCurrency(localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.outrosSubsidios || 0), 0)).replace('€', '')} Kz
+                      </td>
+                      <td className="px-4 py-4 border-r border-zinc-200 text-center text-[#F27D26] sticky right-0 bg-zinc-50 z-10">
+                        {formatCurrency(localEmployees.reduce((sum, emp) => {
+                          const inputs = payrollInputs[emp.id] || { 
+                            premios: 0, gratificacoes: 0, abonos: 0, subsidioNatal: 0, alojamento: 0, outrosSubsidios: 0,
+                            faltasJustificadas: 0, faltasInjustificadas: 0, ferias: 0, horasExtras: 0, horasPerdidas: 0,
+                            subsidioTransporte: 0, subsidioAlimentacao: 0, diasTrabalho: 22, diasFolga: 8
+                          };
+                          const dailyRate = emp.salary / 22;
+                          const overtimeRate = (emp.salary / 173.33) * 1.5;
+                          const absenceDeduction = inputs.faltasInjustificadas * dailyRate;
+                          const lostHoursDeduction = inputs.horasPerdidas * (emp.salary / 173.33);
+                          const overtimePay = inputs.horasExtras * overtimeRate;
+                          
+                          return sum + (emp.salary + inputs.premios + inputs.gratificacoes + inputs.abonos + 
+                                       inputs.subsidioNatal + inputs.alojamento + inputs.outrosSubsidios + 
+                                       inputs.subsidioTransporte + inputs.subsidioAlimentacao + overtimePay - 
+                                       absenceDeduction - lostHoursDeduction);
+                        }, 0)).replace('€', '')} Kz
+                      </td>
+                      <td className="px-4 py-4"></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-4 mt-6">
+              <div className="text-sm font-bold text-zinc-700">Funcionários: {localEmployees.length}</div>
+              <div className="flex justify-between items-center border-t border-zinc-200 pt-4">
+                <div className="text-sm font-black text-[#003366] uppercase tracking-widest">
+                  Total Processado: <span className="text-lg">{formatCurrency(localEmployees.reduce((sum, emp) => {
+                    const inputs = payrollInputs[emp.id] || { 
+                      premios: 0, gratificacoes: 0, abonos: 0, subsidioNatal: 0, alojamento: 0, outrosSubsidios: 0,
+                      faltasJustificadas: 0, faltasInjustificadas: 0, ferias: 0, horasExtras: 0, horasPerdidas: 0,
+                      subsidioTransporte: 0, subsidioAlimentacao: 0, diasTrabalho: 22, diasFolga: 8
+                    };
+                    const dailyRate = emp.salary / 22;
+                    const overtimeRate = (emp.salary / 173.33) * 1.5;
+                    const absenceDeduction = inputs.faltasInjustificadas * dailyRate;
+                    const lostHoursDeduction = inputs.horasPerdidas * (emp.salary / 173.33);
+                    const overtimePay = inputs.horasExtras * overtimeRate;
+                    
+                    return sum + (emp.salary + inputs.premios + inputs.gratificacoes + inputs.abonos + 
+                                 inputs.subsidioNatal + inputs.alojamento + inputs.outrosSubsidios + 
+                                 inputs.subsidioTransporte + inputs.subsidioAlimentacao + overtimePay - 
+                                 absenceDeduction - lostHoursDeduction);
+                  }, 0)).replace('€', '')} Kz</span>
                 </div>
               </div>
             </div>

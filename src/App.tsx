@@ -72,7 +72,9 @@ import {
   MoreVertical,
   Eye,
   ArrowUpRight,
-  ArrowDownRight
+  ArrowDownRight,
+  User,
+  Camera
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Client, Product, Invoice, DashboardStats, InvoiceItem, Employee, Profession, WorkSite, WorkSiteMovement, IssuedDocument, Warehouse, Supplier, FiscalSeries, CostCenter, POSPoint, CashSession, SystemUser, Purchase, PurchaseItem, POSArea } from './types';
@@ -430,25 +432,107 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
   const [inssSearch, setInssSearch] = useState('');
   const [selectedReport, setSelectedReport] = useState<string | null>(null);
   const [localEmployees, setLocalEmployees] = useState<Employee[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
+  
+  const filteredEmployees = Array.isArray(localEmployees) ? localEmployees.filter(emp => 
+    emp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    emp.role.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (emp.profession_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (emp.department || '').toLowerCase().includes(searchTerm.toLowerCase())
+  ) : [];
   const [name, setName] = useState('');
   const [role, setRole] = useState('');
   const [salary, setSalary] = useState('');
   const [professionId, setProfessionId] = useState('');
+  const [nif, setNif] = useState('');
+  const [address, setAddress] = useState('');
+  const [iban, setIban] = useState('');
+  const [bankName, setBankName] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
+  const [birthDate, setBirthDate] = useState('');
+  const [gender, setGender] = useState('Masculino');
+  const [maritalStatus, setMaritalStatus] = useState('Solteiro(a)');
+  const [academicLevel, setAcademicLevel] = useState('Ensino Médio');
+  const [department, setDepartment] = useState('');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
+  const [absences, setAbsences] = useState<any[]>([]);
+  const [attendance, setAttendance] = useState<any[]>([]);
+  const [attendanceMap, setAttendanceMap] = useState<Record<number, Record<number, string>>>({});
+
+  const toggleAttendanceStatus = (empId: number, day: number) => {
+    setAttendanceMap(prev => {
+      const empAttendance = prev[empId] || {};
+      const currentStatus = empAttendance[day] || 'P';
+      const statuses = ['P', 'FJ', 'FI', 'FE', 'HE', 'HP', 'D'];
+      const nextStatus = statuses[(statuses.indexOf(currentStatus) + 1) % statuses.length];
+      return {
+        ...prev,
+        [empId]: {
+          ...empAttendance,
+          [day]: nextStatus
+        }
+      };
+    });
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, callback: (url: string) => void) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        callback(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const fetchHRData = async () => {
     try {
-      const [p, e] = await Promise.all([
+      const [p, e, att, abs] = await Promise.all([
         fetchJson('/api/professions'),
-        fetchJson('/api/employees')
+        fetchJson('/api/employees'),
+        fetchJson(`/api/employees/attendance?date=${attendanceDate}`),
+        fetchJson('/api/employees/absences')
       ]);
       setProfessions(Array.isArray(p) ? p : []);
       setLocalEmployees(Array.isArray(e) ? e : []);
+      setAttendance(Array.isArray(att) ? att : []);
+      setAbsences(Array.isArray(abs) ? abs : []);
     } catch (err) {
       console.error('Error fetching HR data:', err);
     }
   };
 
-  useEffect(() => { fetchHRData(); }, []);
+  useEffect(() => { fetchHRData(); }, [attendanceDate]);
+
+  const handleMarkAttendance = async (employeeId: number, status: 'present' | 'absent' | 'late') => {
+    try {
+      await fetch('/api/employees/attendance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employee_id: employeeId, date: attendanceDate, status })
+      });
+      fetchHRData();
+    } catch (err) {
+      console.error('Error marking attendance:', err);
+    }
+  };
+
+  const handleAddAbsence = async (employeeId: number, startDate: string, endDate: string, reason: string) => {
+    try {
+      await fetch('/api/employees/absences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employee_id: employeeId, start_date: startDate, end_date: endDate, reason })
+      });
+      fetchHRData();
+    } catch (err) {
+      console.error('Error adding absence:', err);
+    }
+  };
 
   const handleDeleteProfession = async (id: number) => {
     if (!confirm('Tem a certeza que deseja eliminar esta profissão?')) return;
@@ -460,22 +544,111 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
     }
   };
 
+  const handleDeleteEmployee = async (id: number) => {
+    if (!confirm('Tem a certeza que deseja eliminar este funcionário?')) return;
+    try {
+      await fetch(`/api/employees/${id}`, { method: 'DELETE' });
+      fetchHRData();
+      onRefresh();
+    } catch (err) {
+      console.error('Error deleting employee:', err);
+    }
+  };
+
+  const handleEditEmployee = (emp: Employee) => {
+    setEditingEmployee(emp);
+    setName(emp.name);
+    setRole(emp.role);
+    setSalary(String(emp.salary));
+    setProfessionId(String(emp.profession_id || ''));
+    setNif(emp.nif || '');
+    setAddress(emp.address || '');
+    setIban(emp.iban || '');
+    setBankName(emp.bank_name || '');
+    setImageUrl(emp.image_url || '');
+    setBirthDate(emp.birth_date || '');
+    setGender(emp.gender || 'Masculino');
+    setMaritalStatus(emp.marital_status || 'Solteiro(a)');
+    setAcademicLevel(emp.academic_level || 'Ensino Médio');
+    setDepartment(emp.department || '');
+    setPhone(emp.phone || '');
+    setEmail(emp.email || '');
+    setShowForm(true);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await fetch('/api/employees', {
-      method: 'POST',
+    const payload = { 
+      name, 
+      role, 
+      profession_id: professionId ? Number(professionId) : null,
+      salary: Number(salary), 
+      email,
+      phone,
+      nif,
+      address,
+      iban,
+      bank_name: bankName,
+      image_url: imageUrl,
+      birth_date: birthDate,
+      gender,
+      marital_status: maritalStatus,
+      academic_level: academicLevel,
+      department,
+      hired_at: editingEmployee ? editingEmployee.hired_at : new Date().toISOString().split('T')[0],
+      status: editingEmployee ? editingEmployee.status : 'active'
+    };
+
+    const url = editingEmployee ? `/api/employees/${editingEmployee.id}` : '/api/employees';
+    const method = editingEmployee ? 'PUT' : 'POST';
+
+    await fetch(url, {
+      method,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        name, 
-        role, 
-        profession_id: professionId ? Number(professionId) : null,
-        salary: Number(salary), 
-        hired_at: new Date().toISOString().split('T')[0] 
-      })
+      body: JSON.stringify(payload)
     });
-    setName(''); setRole(''); setSalary(''); setProfessionId(''); setShowForm(false);
+
+    setName(''); setRole(''); setSalary(''); setProfessionId(''); 
+    setNif(''); setAddress(''); setIban(''); setBankName(''); 
+    setImageUrl(''); setBirthDate(''); setGender('Masculino'); 
+    setMaritalStatus('Solteiro(a)'); setAcademicLevel('Ensino Médio'); 
+    setDepartment(''); setPhone(''); setEmail('');
+    setEditingEmployee(null);
+    setShowForm(false);
     fetchHRData();
     onRefresh();
+  };
+
+  const handleProcessPayroll = async (emp: Employee) => {
+    const inss_worker = emp.salary * 0.03;
+    const inss_company = emp.salary * 0.08;
+    const irt = calculateIRT(emp.salary - inss_worker);
+    const net_salary = emp.salary - inss_worker - irt;
+    
+    const now = new Date();
+    const payload = {
+      employee_id: emp.id,
+      month: now.getMonth() + 1,
+      year: now.getFullYear(),
+      base_salary: emp.salary,
+      inss_worker,
+      inss_company,
+      irt,
+      net_salary
+    };
+
+    try {
+      const res = await fetch('/api/payroll', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        alert(`Salário de ${emp.name} processado com sucesso!`);
+      }
+    } catch (err) {
+      console.error('Error processing payroll:', err);
+    }
   };
 
   const tabs = [
@@ -525,79 +698,453 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
 
       <div className="mt-6">
         {showForm && (
-          <motion.div 
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm mb-8"
-          >
-            <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Nome</label>
-                <input placeholder="Nome completo" value={name} onChange={e => setName(e.target.value)} className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" required />
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowForm(false)}
+              className="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm" 
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-5xl bg-white rounded-none shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              <div className="p-4 border-b border-zinc-100 flex items-center justify-between bg-[#003366] text-white">
+                <h3 className="font-bold flex items-center gap-2 uppercase tracking-widest text-sm">
+                  <UserPlus size={18} />
+                  Registar Novo Funcionário
+                </h3>
+                <button onClick={() => setShowForm(false)} className="text-white/80 hover:text-white">
+                  <X size={20} />
+                </button>
               </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Cargo</label>
-                <input placeholder="Cargo / Função" value={role} onChange={e => setRole(e.target.value)} className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" required />
+              
+              <div className="flex-1 overflow-y-auto p-8">
+                <form onSubmit={handleSubmit} className="space-y-8">
+                  {/* Image Upload Section */}
+                  <div className="flex items-center gap-6 pb-8 border-b border-zinc-100">
+                    <div className="relative group">
+                      <div className="w-24 h-24 bg-zinc-100 rounded-none border-2 border-dashed border-zinc-300 flex items-center justify-center overflow-hidden">
+                        {imageUrl ? (
+                          <img src={imageUrl} alt="Preview" className="w-full h-full object-cover" />
+                        ) : (
+                          <User size={40} className="text-zinc-300" />
+                        )}
+                      </div>
+                      <label className="absolute inset-0 flex items-center justify-center bg-black/40 text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                        <Camera size={20} />
+                        <input type="file" className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, setImageUrl)} />
+                      </label>
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-zinc-700 uppercase text-xs tracking-wider">Foto do Funcionário</h4>
+                      <p className="text-zinc-400 text-[10px] uppercase">Clique na imagem para carregar (JPG, PNG)</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    {/* Personal Info */}
+                    <div className="space-y-4">
+                      <h4 className="font-black text-[#003366] text-[10px] uppercase tracking-[0.2em] border-b border-zinc-100 pb-2">Informação Pessoal</h4>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Nome Completo</label>
+                        <input value={name} onChange={e => setName(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" required />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Data de Nascimento</label>
+                          <input type="date" value={birthDate} onChange={e => setBirthDate(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Gênero</label>
+                          <select value={gender} onChange={e => setGender(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
+                            <option>Masculino</option>
+                            <option>Feminino</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">NIF</label>
+                        <input value={nif} onChange={e => setNif(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Estado Civil</label>
+                        <select value={maritalStatus} onChange={e => setMaritalStatus(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
+                          <option>Solteiro(a)</option>
+                          <option>Casado(a)</option>
+                          <option>Divorciado(a)</option>
+                          <option>Viúvo(a)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Professional Info */}
+                    <div className="space-y-4">
+                      <h4 className="font-black text-[#003366] text-[10px] uppercase tracking-[0.2em] border-b border-zinc-100 pb-2">Informação Profissional</h4>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Profissão / Cargo</label>
+                        <select 
+                          value={professionId} 
+                          onChange={e => {
+                            const pid = e.target.value;
+                            setProfessionId(pid);
+                            const prof = professions.find(p => p.id === Number(pid));
+                            if (prof) {
+                              setSalary(String(prof.base_salary || 0));
+                              setRole(prof.name);
+                            }
+                          }} 
+                          className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]"
+                          required
+                        >
+                          <option value="">Selecionar Profissão</option>
+                          {professions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Departamento</label>
+                        <input value={department} onChange={e => setDepartment(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Salário Base</label>
+                        <input type="number" value={salary} onChange={e => setSalary(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" required />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Habilitações Literárias</label>
+                        <select value={academicLevel} onChange={e => setAcademicLevel(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
+                          <option>Ensino Primário</option>
+                          <option>Ensino Básico</option>
+                          <option>Ensino Médio</option>
+                          <option>Licenciatura</option>
+                          <option>Mestrado</option>
+                          <option>Doutoramento</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Contact & Banking */}
+                    <div className="space-y-4">
+                      <h4 className="font-black text-[#003366] text-[10px] uppercase tracking-[0.2em] border-b border-zinc-100 pb-2">Contacto & Bancário</h4>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Telefone</label>
+                        <input value={phone} onChange={e => setPhone(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Email</label>
+                        <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Banco</label>
+                        <input value={bankName} onChange={e => setBankName(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">IBAN</label>
+                        <input value={iban} onChange={e => setIban(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-3 pt-8 border-t border-zinc-100">
+                    <button type="button" onClick={() => setShowForm(false)} className="px-6 py-2.5 text-sm font-bold text-zinc-400 hover:text-zinc-600 uppercase tracking-widest">Cancelar</button>
+                    <button type="submit" className="bg-[#003366] text-white font-bold px-10 py-2.5 rounded-none hover:bg-[#002244] transition-all shadow-lg uppercase tracking-widest text-xs">Finalizar Registo</button>
+                  </div>
+                </form>
               </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Profissão</label>
-                <select 
-                  value={professionId} 
-                  onChange={e => {
-                    const pid = e.target.value;
-                    setProfessionId(pid);
-                    const prof = professions.find(p => p.id === Number(pid));
-                    if (prof && prof.base_salary) {
-                      setSalary(String(prof.base_salary));
-                    }
-                  }} 
-                  className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-                >
-                  <option value="">Selecionar Profissão</option>
-                  {professions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Salário</label>
-                <input placeholder="0.00" type="number" value={salary} onChange={e => setSalary(e.target.value)} className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" required />
-              </div>
-              <div className="md:col-span-4 flex justify-end gap-3">
-                <button type="button" onClick={() => setShowForm(false)} className="text-zinc-500 hover:text-zinc-700 text-sm font-medium">Cancelar</button>
-                <button type="submit" className="bg-[#003366] text-white font-bold px-6 py-2 rounded-none hover:bg-[#002244] transition-all text-sm">Guardar Funcionário</button>
-              </div>
-            </form>
-          </motion.div>
+            </motion.div>
+          </div>
         )}
 
         {activeTab === 'list' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {Array.isArray(localEmployees) && localEmployees.map(emp => (
-              <div key={emp.id} className="bg-white border border-zinc-200 p-6 rounded-none shadow-sm hover:border-[#003366]/30 transition-all group">
-                <div className="flex justify-between items-start mb-4">
-                  <div className="w-12 h-12 bg-[#003366]/5 rounded-full flex items-center justify-center text-[#003366] font-bold text-xl border border-[#003366]/10">
-                    {emp.name[0]}
-                  </div>
-                  <div className="flex gap-2">
-                    <button className="text-zinc-300 hover:text-[#003366] transition-colors"><FileText size={16} /></button>
-                    <button className="text-zinc-300 hover:text-red-500 transition-colors"><Trash2 size={16} /></button>
-                  </div>
-                </div>
-                <h3 className="text-[#003366] font-bold text-lg">{emp.name}</h3>
-                <p className="text-emerald-600 text-sm font-medium">{emp.profession_name || emp.role}</p>
-                <div className="mt-4 pt-4 border-t border-zinc-50 space-y-2">
-                  <div className="flex justify-between text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                    <span>Salário</span>
-                    <span className="text-zinc-800">{formatCurrency(emp.salary)}</span>
-                  </div>
-                  <div className="flex justify-between text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                    <span>Estado</span>
-                    <span className={emp.status === 'active' ? 'text-emerald-600' : 'text-red-600'}>
-                      {emp.status === 'active' ? 'Ativo' : 'Inativo'}
-                    </span>
-                  </div>
+          <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
+            <div className="p-6 border-b border-zinc-100 flex justify-between items-center bg-zinc-50/50">
+              <h3 className="font-bold text-[#003366] uppercase tracking-widest text-xs">Quadro de Pessoal</h3>
+              <div className="flex gap-2">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={14} />
+                  <input 
+                    type="text" 
+                    placeholder="Pesquisar funcionário..." 
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-9 pr-4 py-1.5 bg-white border border-zinc-200 rounded-none text-xs focus:outline-none focus:border-[#003366]" 
+                  />
                 </div>
               </div>
-            ))}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse min-w-[1000px]">
+                <thead>
+                  <tr className="bg-[#003366] text-white text-[10px] uppercase tracking-[0.2em] font-black">
+                    <th className="px-6 py-4 w-16">Foto</th>
+                    <th className="px-6 py-4">Nome Completo</th>
+                    <th className="px-6 py-4">Cargo / Profissão</th>
+                    <th className="px-6 py-4 text-right">Salário Base</th>
+                    <th className="px-6 py-4 text-right">INSS (3%)</th>
+                    <th className="px-6 py-4 text-right">IRT</th>
+                    <th className="px-6 py-4 text-right">Líquido</th>
+                    <th className="px-6 py-4 text-center">Estado</th>
+                    <th className="px-6 py-4 text-center">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {filteredEmployees.map(emp => {
+                    const inss = (emp.salary || 0) * 0.03;
+                    const irt = calculateIRT((emp.salary || 0) - inss);
+                    const net = (emp.salary || 0) - inss - irt;
+                    return (
+                      <tr key={emp.id} className="hover:bg-zinc-50 transition-colors text-xs group">
+                        <td className="px-6 py-3">
+                          <div className="w-10 h-10 bg-zinc-100 rounded-none border border-zinc-200 overflow-hidden flex items-center justify-center">
+                            {emp.image_url ? (
+                              <img src={emp.image_url} alt={emp.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <User size={18} className="text-zinc-300" />
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 font-black text-[#003366] uppercase tracking-tight">
+                          <div>{emp.name}</div>
+                          <div className="text-[9px] text-zinc-400 font-normal lowercase">{emp.email}</div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="font-bold text-zinc-700">{emp.profession_name || emp.role}</div>
+                          <div className="text-[9px] text-zinc-400 uppercase tracking-widest">{emp.department || 'Geral'}</div>
+                        </td>
+                        <td className="px-6 py-4 text-right font-bold text-zinc-600">{formatCurrency(emp.salary)}</td>
+                        <td className="px-6 py-4 text-right text-red-400 font-medium">{formatCurrency(inss)}</td>
+                        <td className="px-6 py-4 text-right text-red-400 font-medium">{formatCurrency(irt)}</td>
+                        <td className="px-6 py-4 text-right font-black text-emerald-600 text-sm">{formatCurrency(net)}</td>
+                        <td className="px-6 py-4 text-center">
+                          <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-widest rounded-none border ${emp.status === 'active' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'}`}>
+                            {emp.status === 'active' ? 'Ativo' : 'Inativo'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button 
+                              onClick={() => handleEditEmployee(emp)}
+                              className="p-1.5 text-zinc-300 hover:text-[#003366] hover:bg-zinc-100 transition-all"
+                            >
+                              <Edit size={14} />
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteEmployee(emp.id)}
+                              className="p-1.5 text-zinc-300 hover:text-red-500 hover:bg-red-50 transition-all"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'payroll' && (
+          <div className="space-y-6">
+            {/* Header Bar */}
+            <div className="bg-[#003366] text-white p-4 flex items-center justify-between shadow-md">
+              <div className="flex items-center gap-4">
+                <div className="bg-white/10 p-2 rounded-none">
+                  <Calculator size={24} />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold uppercase tracking-widest">Mapa de Assiduidade dos Funcionários</h2>
+                  <p className="text-[10px] text-white/60 uppercase tracking-tighter">Gestão de Presenças e Faltas</p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <button className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 text-xs font-black uppercase tracking-widest transition-all">
+                  <Printer size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* Filters Section */}
+            <div className="bg-white p-6 border border-zinc-200 shadow-sm flex flex-wrap items-end gap-6">
+              <div className="flex-1 min-w-[200px]">
+                <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Empresa:</label>
+                <select className="w-full border border-zinc-200 px-4 py-2 text-xs focus:outline-none focus:border-[#003366] font-bold text-[#003366]">
+                  <option>Grupo TecnoSys</option>
+                </select>
+              </div>
+              <div className="flex-1 min-w-[200px]">
+                <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Local de Trabalho:</label>
+                <select className="w-full border border-zinc-200 px-4 py-2 text-xs focus:outline-none focus:border-[#003366] font-bold text-[#003366]">
+                  <option>Filial Lisboa</option>
+                  <option>Sede Luanda</option>
+                </select>
+              </div>
+              <div className="flex-1 min-w-[200px]">
+                <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Mês/Ano:</label>
+                <select className="w-full border border-zinc-200 px-4 py-2 text-xs focus:outline-none focus:border-[#003366] font-bold text-[#003366]">
+                  <option>Junho / 2023</option>
+                  <option>Julho / 2023</option>
+                </select>
+              </div>
+              <button className="bg-[#F27D26] hover:bg-[#d96a1a] text-white px-8 py-2 text-xs font-black uppercase tracking-widest transition-all shadow-lg h-[38px]">
+                Processar Assiduidade
+              </button>
+            </div>
+
+            {/* Attendance Grid */}
+            <div className="bg-white border border-zinc-200 shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse min-w-[1500px]">
+                  <thead>
+                    <tr className="bg-[#003366] text-white text-[10px] uppercase tracking-widest font-black">
+                      <th className="px-4 py-4 border-r border-white/10 sticky left-0 bg-[#003366] z-10" rowSpan={2}>Funcionário</th>
+                      <th className="px-2 py-2 border-r border-white/10 text-center" colSpan={5}>Resumo</th>
+                      {[...Array(22)].map((_, i) => (
+                        <th key={i} className="px-2 py-4 border-r border-white/10 text-center w-10">{i + 1}</th>
+                      ))}
+                    </tr>
+                    <tr className="bg-[#003366]/90 text-white text-[9px] uppercase tracking-tighter font-bold">
+                      <th className="px-2 py-2 border-r border-white/10 text-center">1</th>
+                      <th className="px-2 py-2 border-r border-white/10 text-center">2</th>
+                      <th className="px-2 py-2 border-r border-white/10 text-center">3</th>
+                      <th className="px-2 py-2 border-r border-white/10 text-center">4</th>
+                      <th className="px-2 py-2 border-r border-white/10 text-center">5</th>
+                      {[...Array(22)].map((_, i) => (
+                        <th key={i} className="px-2 py-2 border-r border-white/10 text-center">
+                          <input type="checkbox" className="rounded-none accent-[#F27D26]" defaultChecked />
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100">
+                    {/* Select All Row */}
+                    <tr className="bg-zinc-50 text-[10px] font-black uppercase text-zinc-400">
+                      <td className="px-4 py-3 border-r border-zinc-200 sticky left-0 bg-zinc-50 z-10 flex items-center gap-2">
+                        <input type="checkbox" className="rounded-none accent-[#003366]" />
+                        <span>Seldet:</span>
+                        <select className="bg-transparent border-none text-[10px] font-black text-[#003366] focus:outline-none">
+                          <option>Selecionar funcionários</option>
+                        </select>
+                      </td>
+                      <td className="px-2 py-3 border-r border-zinc-200 text-center"></td>
+                      <td className="px-2 py-3 border-r border-zinc-200 text-center"></td>
+                      <td className="px-2 py-3 border-r border-zinc-200 text-center"></td>
+                      <td className="px-2 py-3 border-r border-zinc-200 text-center"></td>
+                      <td className="px-2 py-3 border-r border-zinc-200 text-center"></td>
+                      {[...Array(22)].map((_, i) => (
+                        <td key={i} className="px-2 py-3 border-r border-zinc-200 text-center">
+                          <div className="w-6 h-6 bg-emerald-600 text-white flex items-center justify-center mx-auto rounded-sm">
+                            <Check size={12} />
+                          </div>
+                        </td>
+                      ))}
+                    </tr>
+
+                    {/* Employee Rows */}
+                    {localEmployees.map(emp => (
+                      <tr key={emp.id} className="hover:bg-zinc-50 transition-colors group">
+                        <td className="px-4 py-4 border-r border-zinc-200 sticky left-0 bg-white group-hover:bg-zinc-50 z-10">
+                          <div className="flex items-center gap-3">
+                            <input type="checkbox" className="rounded-none accent-[#003366]" />
+                            <div className="w-10 h-10 bg-zinc-100 rounded-none overflow-hidden border border-zinc-200">
+                              {emp.image_url ? <img src={emp.image_url} className="w-full h-full object-cover" /> : <User size={16} className="text-zinc-300 m-auto mt-3" />}
+                            </div>
+                            <div>
+                              <div className="font-black text-[#003366] uppercase text-xs">{emp.name}</div>
+                              <div className="text-[9px] text-zinc-400 uppercase">Nº {1000 + emp.id} • {emp.role}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-2 py-4 border-r border-zinc-200 text-center font-bold text-xs">2</td>
+                        <td className="px-2 py-4 border-r border-zinc-200 text-center font-bold text-xs">22</td>
+                        <td className="px-2 py-4 border-r border-zinc-200 text-center font-bold text-xs">24</td>
+                        <td className="px-2 py-4 border-r border-zinc-200 text-center font-bold text-xs">5</td>
+                        <td className="px-2 py-4 border-r border-zinc-200 text-center font-bold text-xs"></td>
+                        {[...Array(22)].map((_, i) => {
+                          const day = i + 1;
+                          const status = attendanceMap[emp.id]?.[day] || (day % 7 === 0 ? 'D' : 'P');
+                          const colors: Record<string, string> = {
+                            'P': 'bg-emerald-500',
+                            'FJ': 'bg-blue-400',
+                            'FI': 'bg-red-500',
+                            'FE': 'bg-indigo-500',
+                            'HE': 'bg-amber-400',
+                            'HP': 'bg-zinc-400',
+                            'D': 'bg-orange-500'
+                          };
+                          return (
+                            <td key={i} className="px-1 py-4 border-r border-zinc-200 text-center">
+                              <button 
+                                onClick={() => toggleAttendanceStatus(emp.id, day)}
+                                className={`w-6 h-6 ${colors[status]} text-white flex items-center justify-center mx-auto text-[10px] font-black rounded-sm mb-1 hover:scale-110 transition-transform`}
+                              >
+                                {status}
+                              </button>
+                              <input type="checkbox" className="rounded-none scale-75 accent-[#003366]" defaultChecked={status === 'P'} />
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-zinc-50 font-black text-[#003366] text-xs">
+                      <td className="px-4 py-4 border-r border-zinc-200 sticky left-0 bg-zinc-50 z-10 uppercase tracking-widest">Total Geral:</td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center">61</td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center">15</td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center"></td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center"></td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center"></td>
+                      {[...Array(22)].map((_, i) => (
+                        <td key={i} className="px-2 py-4 border-r border-zinc-200 text-center">
+                          {i % 5 === 0 ? '19:00' : i % 3 === 0 ? '11:00' : '€ 210,00'}
+                        </td>
+                      ))}
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+              <div className="p-4 bg-zinc-50 border-t border-zinc-200 flex gap-6 text-[9px] font-black uppercase tracking-widest text-zinc-400">
+                <div className="flex items-center gap-2"><div className="w-3 h-3 bg-emerald-500"></div> P: Presente</div>
+                <div className="flex items-center gap-2"><div className="w-3 h-3 bg-blue-400"></div> FJ: Justificada</div>
+                <div className="flex items-center gap-2"><div className="w-3 h-3 bg-red-500"></div> FI: Injustificada</div>
+                <div className="flex items-center gap-2"><div className="w-3 h-3 bg-indigo-500"></div> FE: Férias</div>
+                <div className="flex items-center gap-2"><div className="w-3 h-3 bg-amber-400"></div> HE: Hora Extra</div>
+                <div className="flex items-center gap-2"><div className="w-3 h-3 bg-zinc-400"></div> HP: Hora Perdida</div>
+                <div className="flex items-center gap-2"><div className="w-3 h-3 bg-orange-500"></div> D: Descanso</div>
+              </div>
+            </div>
+
+            {/* Footer Summary */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-8">
+              <div className="space-y-4">
+                <div className="flex justify-between border-b border-zinc-100 pb-2">
+                  <span className="text-xs font-bold text-[#003366] uppercase tracking-widest">Horas Totais Trabalhadas:</span>
+                  <span className="text-sm font-black">435.00</span>
+                </div>
+                <div className="flex justify-between border-b border-zinc-100 pb-2">
+                  <span className="text-xs font-bold text-[#003366] uppercase tracking-widest">Horas Totais Perdidas:</span>
+                  <span className="text-sm font-black">11:00</span>
+                </div>
+              </div>
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Base Legal:</span>
+                  <span className="text-xs font-bold text-zinc-600">Lei Geral do Trabalho</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-bold text-[#003366] uppercase tracking-widest">Desconto Faltas Injustificadas:</span>
+                  <span className="text-sm font-black text-red-600">- € 180,00</span>
+                </div>
+                <div className="flex justify-between items-center bg-[#003366]/5 p-4 border border-[#003366]/10">
+                  <span className="text-sm font-black text-[#003366] uppercase tracking-widest">Total de Vencimentos a Pagar:</span>
+                  <span className="text-xl font-black text-[#003366]">€ 5.040,00</span>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -802,35 +1349,134 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
         {activeTab === 'attendance' && (
           <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
             <div className="p-6 border-b border-zinc-100 flex justify-between items-center">
-              <h3 className="font-bold text-[#003366]">Processar Efetividade</h3>
-              <input type="date" className="bg-zinc-50 border border-zinc-200 rounded px-3 py-1 text-xs" />
+              <h3 className="font-bold text-[#003366]">Efetividade Diária</h3>
+              <input 
+                type="date" 
+                value={attendanceDate}
+                onChange={(e) => setAttendanceDate(e.target.value)}
+                className="bg-zinc-50 border border-zinc-200 rounded px-3 py-1 text-xs" 
+              />
             </div>
             <table className="w-full text-left">
               <thead>
                 <tr className="bg-zinc-50 text-[10px] font-bold uppercase text-zinc-400">
                   <th className="px-6 py-4">Funcionário</th>
-                  <th className="px-6 py-4">Estado</th>
+                  <th className="px-6 py-4">Estado Atual</th>
                   <th className="px-6 py-4 text-right">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
-                {Array.isArray(localEmployees) && localEmployees.map(emp => (
-                  <tr key={emp.id} className="text-sm">
-                    <td className="px-6 py-4 font-medium text-zinc-800">{emp.name}</td>
-                    <td className="px-6 py-4">
-                      <select className="bg-white border border-zinc-200 rounded px-2 py-1 text-xs">
-                        <option>Presente</option>
-                        <option>Ausente</option>
-                        <option>Atraso</option>
-                      </select>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <button className="text-[#003366] text-xs font-bold">Confirmar</button>
-                    </td>
-                  </tr>
-                ))}
+                {Array.isArray(localEmployees) && localEmployees.map(emp => {
+                  const record = attendance.find(a => a.employee_id === emp.id);
+                  return (
+                    <tr key={emp.id} className="text-sm">
+                      <td className="px-6 py-4 font-medium text-zinc-800">{emp.name}</td>
+                      <td className="px-6 py-4">
+                        {record ? (
+                          <span className={`px-2 py-0.5 rounded-none text-[9px] font-black uppercase tracking-widest border ${
+                            record.status === 'present' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                            record.status === 'late' ? 'bg-amber-50 text-amber-600 border-amber-100' :
+                            'bg-red-50 text-red-600 border-red-100'
+                          }`}>
+                            {record.status === 'present' ? 'Presente' : record.status === 'late' ? 'Atrasado' : 'Ausente'}
+                          </span>
+                        ) : (
+                          <span className="text-zinc-300 italic">Pendente</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex justify-end gap-2">
+                          <button 
+                            onClick={() => handleMarkAttendance(emp.id, 'present')}
+                            className="px-2 py-1 bg-emerald-600 text-white text-[9px] font-bold uppercase hover:bg-emerald-700"
+                          >
+                            Presente
+                          </button>
+                          <button 
+                            onClick={() => handleMarkAttendance(emp.id, 'late')}
+                            className="px-2 py-1 bg-amber-500 text-white text-[9px] font-bold uppercase hover:bg-amber-600"
+                          >
+                            Atraso
+                          </button>
+                          <button 
+                            onClick={() => handleMarkAttendance(emp.id, 'absent')}
+                            className="px-2 py-1 bg-red-600 text-white text-[9px] font-bold uppercase hover:bg-red-700"
+                          >
+                            Ausente
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {activeTab === 'absences' && (
+          <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm p-6">
+            <h3 className="font-bold text-[#003366] mb-6">Gestão de Férias & Ausências</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              <div className="bg-zinc-50 p-6 border border-zinc-100">
+                <h4 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-4">Registar Ausência</h4>
+                <form onSubmit={(e) => {
+                  e.preventDefault();
+                  const form = e.target as HTMLFormElement;
+                  const empId = (form.elements.namedItem('employee') as HTMLSelectElement).value;
+                  const start = (form.elements.namedItem('start') as HTMLInputElement).value;
+                  const end = (form.elements.namedItem('end') as HTMLInputElement).value;
+                  const reason = (form.elements.namedItem('reason') as HTMLInputElement).value;
+                  if (empId && start && end && reason) {
+                    handleAddAbsence(Number(empId), start, end, reason);
+                    form.reset();
+                  }
+                }} className="space-y-4">
+                  <div>
+                    <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-1">Funcionário</label>
+                    <select name="employee" className="w-full border border-zinc-200 px-3 py-2 text-xs">
+                      <option value="">Selecionar...</option>
+                      {localEmployees.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-1">Início</label>
+                    <input type="date" name="start" className="w-full border border-zinc-200 px-3 py-2 text-xs" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-1">Fim</label>
+                    <input type="date" name="end" className="w-full border border-zinc-200 px-3 py-2 text-xs" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-1">Motivo</label>
+                    <input type="text" name="reason" className="w-full border border-zinc-200 px-3 py-2 text-xs" />
+                  </div>
+                  <button type="submit" className="w-full bg-[#003366] text-white py-2 text-[10px] font-black uppercase tracking-widest hover:bg-[#002244]">
+                    Registar
+                  </button>
+                </form>
+              </div>
+              <div className="md:col-span-2">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="bg-zinc-50 text-[10px] font-bold uppercase text-zinc-400">
+                      <th className="px-6 py-4">Funcionário</th>
+                      <th className="px-6 py-4">Período</th>
+                      <th className="px-6 py-4">Motivo</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100">
+                    {absences.map(abs => (
+                      <tr key={abs.id} className="text-xs">
+                        <td className="px-6 py-4 font-bold text-[#003366]">{abs.employee_name}</td>
+                        <td className="px-6 py-4 text-zinc-500">{abs.start_date} - {abs.end_date}</td>
+                        <td className="px-6 py-4 text-zinc-500 italic">{abs.reason}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         )}
 
@@ -4562,17 +5208,13 @@ const InvoiceList = ({
     { id: 'fiscal-series', label: 'Série Fiscal', icon: BadgeCheck },
   ];
 
-  const filteredInvoices = Array.isArray(invoices) ? invoices.filter(inv => {
-    const matchesSearch = (inv.invoice_number || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (inv.client_name || '').toLowerCase().includes(searchTerm.toLowerCase());
+  const filteredIssuedDocuments = Array.isArray(issuedDocuments) ? issuedDocuments.filter(doc => {
+    const searchStr = searchTerm.toLowerCase();
+    const matchesSearch = (doc.invoice_number || doc.numero_documento || '').toLowerCase().includes(searchStr) ||
+                         (doc.client_name || '').toLowerCase().includes(searchStr);
     const matchesStatus = statusFilter === 'Todos' || 
-                         (statusFilter === 'PAGO' && inv.status === 'paid') ||
-                         (statusFilter === 'PENDENTE' && inv.status === 'pending');
-    
-    if (activeSubTab === 'recebidos') {
-      return matchesSearch && (inv.document_type === 'Fatura Recibo' || inv.document_type === 'Recibo');
-    }
-
+                         (statusFilter === 'PAGO' && (doc.status === 'paid' || doc.estado_documento === 'ativo')) ||
+                         (statusFilter === 'PENDENTE' && (doc.status === 'pending' || doc.estado_documento === 'anulado'));
     return matchesSearch && matchesStatus;
   }) : [];
 
@@ -4730,7 +5372,7 @@ const InvoiceList = ({
             {/* Table Section */}
             {activeSubTab === 'emitidos' && (
               <IssuedDocumentsList 
-                documents={issuedDocuments} 
+                documents={filteredIssuedDocuments} 
                 onAction={onAction}
                 onCertify={onCertify}
               />
@@ -4751,11 +5393,11 @@ const InvoiceList = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-100">
-                    {issuedDocuments
+                    {filteredIssuedDocuments
                       .filter(doc => 
-                        (doc.tipo_documento || '').toLowerCase().includes('fatura recibo') || 
-                        (doc.tipo_documento || '').toLowerCase().includes('recibo') ||
-                        (doc.tipo_documento || '').toLowerCase().includes('fatura-recibo')
+                        (doc.document_type || doc.tipo_documento || '').toLowerCase().includes('fatura recibo') || 
+                        (doc.document_type || doc.tipo_documento || '').toLowerCase().includes('recibo') ||
+                        (doc.document_type || doc.tipo_documento || '').toLowerCase().includes('fatura-recibo')
                       )
                       .map((doc) => (
                         <tr key={doc.id} className="hover:bg-zinc-50 text-sm border-b border-zinc-50">

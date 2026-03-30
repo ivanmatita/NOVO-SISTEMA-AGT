@@ -93,6 +93,16 @@ export interface Employee {
   salary: number;
   email: string;
   phone: string;
+  nif?: string;
+  address?: string;
+  iban?: string;
+  bank_name?: string;
+  image_url?: string;
+  birth_date?: string;
+  gender?: string;
+  marital_status?: string;
+  academic_level?: string;
+  department?: string;
   status: 'active' | 'inactive';
   hired_at: string;
   dismissed_at?: string;

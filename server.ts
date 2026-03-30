@@ -154,6 +154,16 @@ db.exec(`
     salary REAL NOT NULL,
     email TEXT,
     phone TEXT,
+    nif TEXT,
+    address TEXT,
+    iban TEXT,
+    bank_name TEXT,
+    image_url TEXT,
+    birth_date DATE,
+    gender TEXT,
+    marital_status TEXT,
+    academic_level TEXT,
+    department TEXT,
     status TEXT DEFAULT 'active',
     hired_at DATE,
     dismissed_at DATE,
@@ -277,6 +287,9 @@ db.exec(`
   INSERT OR IGNORE INTO app_settings (key, value) VALUES ('company_name', 'FaturaPronta Lda');
   INSERT OR IGNORE INTO app_settings (key, value) VALUES ('currency', 'AOA');
 
+  -- Ensure at least one fiscal series exists
+  INSERT OR IGNORE INTO fiscal_series (id, description, type, is_active) VALUES (1, 'Série 2026', 'normal', 1);
+
   CREATE TABLE IF NOT EXISTS payroll (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     employee_id INTEGER NOT NULL,
@@ -368,6 +381,36 @@ if (!columns.includes('email')) {
 }
 if (!columns.includes('phone')) {
   db.exec("ALTER TABLE employees ADD COLUMN phone TEXT");
+}
+if (!columns.includes('nif')) {
+  db.exec("ALTER TABLE employees ADD COLUMN nif TEXT");
+}
+if (!columns.includes('address')) {
+  db.exec("ALTER TABLE employees ADD COLUMN address TEXT");
+}
+if (!columns.includes('iban')) {
+  db.exec("ALTER TABLE employees ADD COLUMN iban TEXT");
+}
+if (!columns.includes('bank_name')) {
+  db.exec("ALTER TABLE employees ADD COLUMN bank_name TEXT");
+}
+if (!columns.includes('image_url')) {
+  db.exec("ALTER TABLE employees ADD COLUMN image_url TEXT");
+}
+if (!columns.includes('birth_date')) {
+  db.exec("ALTER TABLE employees ADD COLUMN birth_date DATE");
+}
+if (!columns.includes('gender')) {
+  db.exec("ALTER TABLE employees ADD COLUMN gender TEXT");
+}
+if (!columns.includes('marital_status')) {
+  db.exec("ALTER TABLE employees ADD COLUMN marital_status TEXT");
+}
+if (!columns.includes('academic_level')) {
+  db.exec("ALTER TABLE employees ADD COLUMN academic_level TEXT");
+}
+if (!columns.includes('department')) {
+  db.exec("ALTER TABLE employees ADD COLUMN department TEXT");
 }
 if (!columns.includes('status')) {
   db.exec("ALTER TABLE employees ADD COLUMN status TEXT DEFAULT 'active'");
@@ -670,7 +713,50 @@ async function startServer() {
     }
   });
 
+  app.post("/api/payroll", async (req, res) => {
+    const { employee_id, month, year, base_salary, inss_worker, inss_company, irt, net_salary } = req.body;
+    if (supabaseEnabled) {
+      const { data, error } = await supabase
+        .from("payroll")
+        .insert([{ employee_id, month, year, base_salary, inss_worker, inss_company, irt, net_salary }])
+        .select();
+      if (error) return res.status(500).json({ error: error.message });
+      res.json(data[0]);
+    } else {
+      const info = db.prepare(`
+        INSERT INTO payroll (employee_id, month, year, base_salary, inss_worker, inss_company, irt, net_salary)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(employee_id, month, year, base_salary, inss_worker, inss_company, irt, net_salary);
+      res.json({ id: info.lastInsertRowid });
+    }
+  });
+
+  app.get("/api/payroll", async (req, res) => {
+    try {
+      if (supabaseEnabled) {
+        const { data, error } = await supabase
+          .from("payroll")
+          .select("*, employees(name)")
+          .order("created_at", { ascending: false });
+        if (!error) {
+          const formatted = data.map(p => ({ ...p, employee_name: p.employees?.name }));
+          return res.json(formatted);
+        }
+      }
+      const payroll = db.prepare(`
+        SELECT p.*, e.name as employee_name 
+        FROM payroll p 
+        JOIN employees e ON p.employee_id = e.id 
+        ORDER BY p.created_at DESC
+      `).all();
+      res.json(payroll);
+    } catch (error) {
+      res.status(500).send(String(error));
+    }
+  });
+
   app.get("/api/issued-documents", async (req, res) => {
+    console.log("GET /api/issued-documents called");
     try {
       if (supabaseEnabled) {
         const { data, error } = await supabase
@@ -684,6 +770,7 @@ async function startServer() {
             series_name: i.fiscal_series?.description,
             work_site_title: i.work_sites?.title
           }));
+          console.log(`Fetched ${formatted.length} documents from Supabase`);
           return res.json(formatted);
         }
         console.warn("Supabase error in /api/issued-documents, falling back to SQLite:", error.message);
@@ -696,8 +783,10 @@ async function startServer() {
           LEFT JOIN work_sites ws ON i.work_site_id = ws.id
           ORDER BY i.created_at DESC
         `).all();
+      console.log(`Fetched ${invoices.length} documents from SQLite`);
       res.json(invoices);
     } catch (error) {
+      console.error("Error in /api/issued-documents:", error);
       res.status(500).json({ error: error instanceof Error ? error.message : "Failed to fetch issued documents" });
     }
   });
@@ -865,16 +954,22 @@ async function startServer() {
   });
 
   app.post("/api/invoices", async (req, res) => {
-    const { 
-      client_id, date, due_date, items, document_type, work_site_id, 
-      vat_withholding, exchange_rate, currency, counter_value, global_discount,
-      service_date, service_location, cash_box, payment_method, series_id
-    } = req.body;
+    console.log("POST /api/invoices called with body:", JSON.stringify(req.body, null, 2));
+    try {
+      const { 
+        client_id, date, due_date, items, document_type, work_site_id, 
+        vat_withholding, exchange_rate, currency, counter_value, global_discount,
+        service_date, service_location, cash_box, payment_method, series_id
+      } = req.body;
+
+    // Normalize IDs
+    const normalizedSeriesId = series_id === '' ? null : series_id;
+    const normalizedWorkSiteId = work_site_id === '' ? null : work_site_id;
     
     // Get Series info
     let seriesDesc = 'A';
-    if (series_id) {
-      const series = db.prepare("SELECT description FROM fiscal_series WHERE id = ?").get(series_id);
+    if (normalizedSeriesId) {
+      const series = db.prepare("SELECT description FROM fiscal_series WHERE id = ?").get(normalizedSeriesId);
       if (series) seriesDesc = series.description;
     }
 
@@ -893,7 +988,7 @@ async function startServer() {
       FROM invoices 
       WHERE series_id = ? AND document_type = ? 
       ORDER BY id DESC LIMIT 1
-    `).get(series_id || null, document_type);
+    `).get(normalizedSeriesId, document_type);
 
     let nextNum = 1;
     if (lastInvoice) {
@@ -989,10 +1084,10 @@ async function startServer() {
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           client_id, invoice_number, date, due_date, total, hash, 
-          document_type, work_site_id, vat_withholding, exchange_rate, 
+          document_type, normalizedWorkSiteId, vat_withholding, exchange_rate, 
           currency, counter_value, global_discount, signature,
           service_date, service_location, cash_box, payment_method,
-          series_id
+          normalizedSeriesId
         );
         const invoiceId = info.lastInsertRowid;
         
@@ -1035,7 +1130,11 @@ async function startServer() {
       const id = transaction();
       res.json({ id, invoice_number });
     }
-  });
+  } catch (error) {
+    console.error("Error creating invoice:", error);
+    res.status(500).json({ error: error instanceof Error ? error.message : "Failed to create invoice" });
+  }
+});
 
   // HR Endpoints
   app.get("/api/professions", async (req, res) => {
@@ -1069,6 +1168,17 @@ async function startServer() {
     res.json({ id: info.lastInsertRowid });
   });
 
+  app.delete("/api/professions/:id", async (req, res) => {
+    if (supabaseEnabled) {
+      const { error } = await supabase.from("professions").delete().eq("id", req.params.id);
+      if (error) return res.status(500).json({ error: error.message });
+      res.json({ success: true });
+    } else {
+      db.prepare("DELETE FROM professions WHERE id = ?").run(req.params.id);
+      res.json({ success: true });
+    }
+  });
+
   app.get("/api/employees", async (req, res) => {
     console.log("GET /api/employees called");
     try {
@@ -1099,17 +1209,84 @@ async function startServer() {
   });
 
   app.post("/api/employees", async (req, res) => {
-    const { name, role, profession_id, salary, email, phone, hired_at } = req.body;
+    console.log("POST /api/employees called with body:", JSON.stringify(req.body, null, 2));
+    const { 
+      name, role, profession_id, salary, email, phone, hired_at,
+      nif, address, iban, bank_name, image_url, birth_date,
+      gender, marital_status, academic_level, department
+    } = req.body;
+    
     if (supabaseEnabled) {
       const { data, error } = await supabase
         .from("employees")
-        .insert([{ name, role, profession_id, salary, email, phone, hired_at }])
+        .insert([{ 
+          name, role, profession_id, salary, email, phone, hired_at,
+          nif, address, iban, bank_name, image_url, birth_date,
+          gender, marital_status, academic_level, department
+        }])
         .select();
       if (error) return res.status(500).json({ error: error.message });
       res.json({ id: data[0].id });
     } else {
-      const info = db.prepare("INSERT INTO employees (name, role, profession_id, salary, email, phone, hired_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run(name, role, profession_id, salary, email, phone, hired_at);
+      const info = db.prepare(`
+        INSERT INTO employees (
+          name, role, profession_id, salary, email, phone, hired_at,
+          nif, address, iban, bank_name, image_url, birth_date,
+          gender, marital_status, academic_level, department
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        name, role, profession_id, salary, email, phone, hired_at,
+        nif, address, iban, bank_name, image_url, birth_date,
+        gender, marital_status, academic_level, department
+      );
       res.json({ id: info.lastInsertRowid });
+    }
+  });
+
+  app.delete("/api/employees/:id", async (req, res) => {
+    if (supabaseEnabled) {
+      const { error } = await supabase.from("employees").delete().eq("id", req.params.id);
+      if (error) return res.status(500).json({ error: error.message });
+      res.json({ success: true });
+    } else {
+      db.prepare("DELETE FROM employees WHERE id = ?").run(req.params.id);
+      res.json({ success: true });
+    }
+  });
+
+  app.put("/api/employees/:id", async (req, res) => {
+    const { 
+      name, role, profession_id, salary, email, phone, hired_at,
+      nif, address, iban, bank_name, image_url, birth_date,
+      gender, marital_status, academic_level, department, status
+    } = req.body;
+    
+    if (supabaseEnabled) {
+      const { data, error } = await supabase
+        .from("employees")
+        .update({ 
+          name, role, profession_id, salary, email, phone, hired_at,
+          nif, address, iban, bank_name, image_url, birth_date,
+          gender, marital_status, academic_level, department, status
+        })
+        .eq("id", req.params.id)
+        .select();
+      if (error) return res.status(500).json({ error: error.message });
+      res.json(data[0]);
+    } else {
+      db.prepare(`
+        UPDATE employees SET 
+          name = ?, role = ?, profession_id = ?, salary = ?, email = ?, phone = ?, hired_at = ?,
+          nif = ?, address = ?, iban = ?, bank_name = ?, image_url = ?, birth_date = ?,
+          gender = ?, marital_status = ?, academic_level = ?, department = ?, status = ?
+        WHERE id = ?
+      `).run(
+        name, role, profession_id, salary, email, phone, hired_at,
+        nif, address, iban, bank_name, image_url, birth_date,
+        gender, marital_status, academic_level, department, status,
+        req.params.id
+      );
+      res.json({ success: true });
     }
   });
 

@@ -94,6 +94,7 @@ export interface Employee {
   email: string;
   phone: string;
   nif?: string;
+  bi?: string;
   address?: string;
   iban?: string;
   bank_name?: string;
@@ -103,6 +104,10 @@ export interface Employee {
   marital_status?: string;
   academic_level?: string;
   department?: string;
+  contract_type?: 'efetivo' | 'temporario' | 'estagiario';
+  dependents?: number;
+  subject_to_irt?: boolean;
+  subject_to_inss?: boolean;
   status: 'active' | 'inactive';
   hired_at: string;
   dismissed_at?: string;

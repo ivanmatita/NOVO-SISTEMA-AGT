@@ -164,16 +164,16 @@ const formatCurrency = (value: number | null | undefined) => {
 const calculateIRT = (salary: number | null | undefined) => {
   const s = salary || 0;
   if (s <= 100000) return 0;
-  if (s <= 150000) return (s - 100000) * 0.13;
-  if (s <= 200000) return 6500 + (s - 150000) * 0.16;
-  if (s <= 300000) return 14500 + (s - 200000) * 0.18;
-  if (s <= 500000) return 32500 + (s - 300000) * 0.19;
-  if (s <= 1000000) return 70500 + (s - 500000) * 0.20;
-  if (s <= 1500000) return 170500 + (s - 1000000) * 0.21;
-  if (s <= 2000000) return 275500 + (s - 1500000) * 0.22;
-  if (s <= 5000000) return 385500 + (s - 2000000) * 0.23;
-  if (s <= 10000000) return 1075500 + (s - 5000000) * 0.24;
-  return 2275500 + (s - 10000000) * 0.25;
+  if (s <= 150000) return (s - 100000) * 0.10;
+  if (s <= 200000) return 5000 + (s - 150000) * 0.13;
+  if (s <= 300000) return 11500 + (s - 200000) * 0.16;
+  if (s <= 500000) return 27500 + (s - 300000) * 0.18;
+  if (s <= 1000000) return 63500 + (s - 500000) * 0.19;
+  if (s <= 1500000) return 158500 + (s - 1000000) * 0.20;
+  if (s <= 2000000) return 258500 + (s - 1500000) * 0.21;
+  if (s <= 5000000) return 363500 + (s - 2000000) * 0.22;
+  if (s <= 10000000) return 1023500 + (s - 5000000) * 0.23;
+  return 2173500 + (s - 10000000) * 0.25;
 };
 
 const PrintP89 = ({ sale, clientName }: { sale: any, clientName?: string }) => {
@@ -465,9 +465,17 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
   const [department, setDepartment] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
+  const [bi, setBi] = useState('');
+  const [contractType, setContractType] = useState<'efetivo' | 'temporario' | 'estagiario'>('efetivo');
+  const [dependents, setDependents] = useState('0');
+  const [subjectToIRT, setSubjectToIRT] = useState(true);
+  const [subjectToINSS, setSubjectToINSS] = useState(true);
   const [hiredAt, setHiredAt] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedMonth, setSelectedMonth] = useState('Março / 2026');
+  const [processedAttendance, setProcessedAttendance] = useState<Record<number, boolean>>({});
   const [processedReceipts, setProcessedReceipts] = useState<any[]>([]);
   const [selectedReceipt, setSelectedReceipt] = useState<any | null>(null);
+  const [draftReceipt, setDraftReceipt] = useState<any | null>(null);
   const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
   const [absences, setAbsences] = useState<any[]>([]);
   const [attendance, setAttendance] = useState<any[]>([]);
@@ -486,6 +494,8 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
     horasPerdidas: number,
     subsidioTransporte: number,
     subsidioAlimentacao: number,
+    adiantamentos: number,
+    acertos: number,
     diasTrabalho: number,
     diasFolga: number
   }>>({});
@@ -508,6 +518,8 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
           horasPerdidas: 0,
           subsidioTransporte: 0,
           subsidioAlimentacao: 0,
+          adiantamentos: 0,
+          acertos: 0,
           diasTrabalho: 22,
           diasFolga: 8
         }),
@@ -530,6 +542,22 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
         }
       };
     });
+  };
+
+  const calculateAttendanceTotals = (empId: number) => {
+    const empAttendance = attendanceMap[empId] || {};
+    let fj = 0, fi = 0, fe = 0, he = 0, hp = 0, p = 0, d = 0;
+    for (let day = 1; day <= 31; day++) {
+      const status = empAttendance[day] || (day % 7 === 0 ? 'D' : 'P');
+      if (status === 'FJ') fj++;
+      else if (status === 'FI') fi++;
+      else if (status === 'FE') fe++;
+      else if (status === 'HE') he++;
+      else if (status === 'HP') hp++;
+      else if (status === 'P') p++;
+      else if (status === 'D') d++;
+    }
+    return { fj, fi, fe, he, hp, p, d };
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, callback: (url: string) => void) => {
@@ -616,6 +644,7 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
     setSalary(String(emp.salary));
     setProfessionId(String(emp.profession_id || ''));
     setNif(emp.nif || '');
+    setBi(emp.bi || '');
     setAddress(emp.address || '');
     setIban(emp.iban || '');
     setBankName(emp.bank_name || '');
@@ -625,6 +654,10 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
     setMaritalStatus(emp.marital_status || 'Solteiro(a)');
     setAcademicLevel(emp.academic_level || 'Ensino Médio');
     setDepartment(emp.department || '');
+    setContractType(emp.contract_type || 'efetivo');
+    setDependents(String(emp.dependents || 0));
+    setSubjectToIRT(emp.subject_to_irt !== false);
+    setSubjectToINSS(emp.subject_to_inss !== false);
     setHiredAt(emp.hired_at || new Date().toISOString().split('T')[0]);
     setPhone(emp.phone || '');
     setEmail(emp.email || '');
@@ -641,6 +674,7 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
       email,
       phone,
       nif,
+      bi,
       address,
       iban,
       bank_name: bankName,
@@ -650,6 +684,10 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
       marital_status: maritalStatus,
       academic_level: academicLevel,
       department,
+      contract_type: contractType,
+      dependents: Number(dependents),
+      subject_to_irt: subjectToIRT,
+      subject_to_inss: subjectToINSS,
       hired_at: hiredAt,
       status: editingEmployee ? editingEmployee.status : 'active'
     };
@@ -664,11 +702,13 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
     });
 
     setName(''); setRole(''); setSalary(''); setProfessionId(''); 
-    setNif(''); setAddress(''); setIban(''); setBankName(''); 
+    setNif(''); setBi(''); setAddress(''); setIban(''); setBankName(''); 
     setImageUrl(''); setBirthDate(''); setGender('Masculino'); 
     setHiredAt(new Date().toISOString().split('T')[0]);
     setMaritalStatus('Solteiro(a)'); setAcademicLevel('Ensino Médio'); 
     setDepartment(''); setPhone(''); setEmail('');
+    setContractType('efetivo'); setDependents('0');
+    setSubjectToIRT(true); setSubjectToINSS(true);
     setEditingEmployee(null);
     setShowForm(false);
     fetchHRData();
@@ -834,18 +874,30 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
                           </select>
                         </div>
                       </div>
-                      <div className="space-y-1">
-                        <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">NIF</label>
-                        <input value={nif} onChange={e => setNif(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">NIF</label>
+                          <input value={nif} onChange={e => setNif(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">BI</label>
+                          <input value={bi} onChange={e => setBi(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                        </div>
                       </div>
-                      <div className="space-y-1">
-                        <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Estado Civil</label>
-                        <select value={maritalStatus} onChange={e => setMaritalStatus(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
-                          <option>Solteiro(a)</option>
-                          <option>Casado(a)</option>
-                          <option>Divorciado(a)</option>
-                          <option>Viúvo(a)</option>
-                        </select>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Estado Civil</label>
+                          <select value={maritalStatus} onChange={e => setMaritalStatus(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
+                            <option>Solteiro(a)</option>
+                            <option>Casado(a)</option>
+                            <option>Divorciado(a)</option>
+                            <option>Viúvo(a)</option>
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Dependentes</label>
+                          <input type="number" value={dependents} onChange={e => setDependents(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                        </div>
                       </div>
                     </div>
 
@@ -872,13 +924,33 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
                           {professions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                         </select>
                       </div>
-                      <div className="space-y-1">
-                        <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Departamento</label>
-                        <input value={department} onChange={e => setDepartment(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Departamento</label>
+                          <input value={department} onChange={e => setDepartment(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Tipo de Contrato</label>
+                          <select value={contractType} onChange={e => setContractType(e.target.value as any)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
+                            <option value="efetivo">Efetivo</option>
+                            <option value="temporario">Temporário</option>
+                            <option value="estagiario">Estagiário</option>
+                          </select>
+                        </div>
                       </div>
                       <div className="space-y-1">
                         <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Salário Base</label>
                         <input type="number" value={salary} onChange={e => setSalary(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" required />
+                      </div>
+                      <div className="flex gap-6 py-2">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox" checked={subjectToIRT} onChange={e => setSubjectToIRT(e.target.checked)} className="w-4 h-4 text-[#003366] border-zinc-300 rounded-none focus:ring-[#003366]" />
+                          <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-wider">Sujeito a IRT</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox" checked={subjectToINSS} onChange={e => setSubjectToINSS(e.target.checked)} className="w-4 h-4 text-[#003366] border-zinc-300 rounded-none focus:ring-[#003366]" />
+                          <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-wider">Sujeito a INSS</span>
+                        </label>
                       </div>
                       <div className="space-y-1">
                         <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Habilitações Literárias</label>
@@ -1103,18 +1175,9 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
                         <td className="py-4 text-right font-mono">{Number(selectedReceipt.employee.salary).toLocaleString('pt-AO', { minimumFractionDigits: 2 })}</td>
                         <td className="py-4 text-right font-mono">-</td>
                       </tr>
-                      {selectedReceipt.inputs.premios > 0 && (
-                        <tr className="border-b border-zinc-100">
-                          <td className="py-4">02</td>
-                          <td className="py-4">Prémios de Desempenho</td>
-                          <td className="py-4 text-center">-</td>
-                          <td className="py-4 text-right font-mono">{selectedReceipt.inputs.premios.toLocaleString('pt-AO', { minimumFractionDigits: 2 })}</td>
-                          <td className="py-4 text-right font-mono">-</td>
-                        </tr>
-                      )}
                       {selectedReceipt.inputs.subsidioTransporte > 0 && (
                         <tr className="border-b border-zinc-100">
-                          <td className="py-4">03</td>
+                          <td className="py-4">02</td>
                           <td className="py-4">Subsídio de Transporte</td>
                           <td className="py-4 text-center">-</td>
                           <td className="py-4 text-right font-mono">{selectedReceipt.inputs.subsidioTransporte.toLocaleString('pt-AO', { minimumFractionDigits: 2 })}</td>
@@ -1123,16 +1186,79 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
                       )}
                       {selectedReceipt.inputs.subsidioAlimentacao > 0 && (
                         <tr className="border-b border-zinc-100">
-                          <td className="py-4">04</td>
+                          <td className="py-4">03</td>
                           <td className="py-4">Subsídio de Alimentação</td>
                           <td className="py-4 text-center">-</td>
                           <td className="py-4 text-right font-mono">{selectedReceipt.inputs.subsidioAlimentacao.toLocaleString('pt-AO', { minimumFractionDigits: 2 })}</td>
                           <td className="py-4 text-right font-mono">-</td>
                         </tr>
                       )}
-                      {selectedReceipt.calculations.overtimePay > 0 && (
+                      {selectedReceipt.inputs.subsidioAlojamento > 0 && (
+                        <tr className="border-b border-zinc-100">
+                          <td className="py-4">04</td>
+                          <td className="py-4">Subsídio de Alojamento</td>
+                          <td className="py-4 text-center">-</td>
+                          <td className="py-4 text-right font-mono">{selectedReceipt.inputs.subsidioAlojamento.toLocaleString('pt-AO', { minimumFractionDigits: 2 })}</td>
+                          <td className="py-4 text-right font-mono">-</td>
+                        </tr>
+                      )}
+                      {selectedReceipt.inputs.premios > 0 && (
                         <tr className="border-b border-zinc-100">
                           <td className="py-4">05</td>
+                          <td className="py-4">Prémios de Desempenho</td>
+                          <td className="py-4 text-center">-</td>
+                          <td className="py-4 text-right font-mono">{selectedReceipt.inputs.premios.toLocaleString('pt-AO', { minimumFractionDigits: 2 })}</td>
+                          <td className="py-4 text-right font-mono">-</td>
+                        </tr>
+                      )}
+                      {selectedReceipt.inputs.gratificacoes > 0 && (
+                        <tr className="border-b border-zinc-100">
+                          <td className="py-4">06</td>
+                          <td className="py-4">Gratificações</td>
+                          <td className="py-4 text-center">-</td>
+                          <td className="py-4 text-right font-mono">{selectedReceipt.inputs.gratificacoes.toLocaleString('pt-AO', { minimumFractionDigits: 2 })}</td>
+                          <td className="py-4 text-right font-mono">-</td>
+                        </tr>
+                      )}
+                      {selectedReceipt.inputs.abonos > 0 && (
+                        <tr className="border-b border-zinc-100">
+                          <td className="py-4">07</td>
+                          <td className="py-4">Abonos</td>
+                          <td className="py-4 text-center">-</td>
+                          <td className="py-4 text-right font-mono">{selectedReceipt.inputs.abonos.toLocaleString('pt-AO', { minimumFractionDigits: 2 })}</td>
+                          <td className="py-4 text-right font-mono">-</td>
+                        </tr>
+                      )}
+                      {selectedReceipt.inputs.acertosSalariais > 0 && (
+                        <tr className="border-b border-zinc-100">
+                          <td className="py-4">08</td>
+                          <td className="py-4">Acertos Salariais</td>
+                          <td className="py-4 text-center">-</td>
+                          <td className="py-4 text-right font-mono">{selectedReceipt.inputs.acertosSalariais.toLocaleString('pt-AO', { minimumFractionDigits: 2 })}</td>
+                          <td className="py-4 text-right font-mono">-</td>
+                        </tr>
+                      )}
+                      {selectedReceipt.inputs.subsidioNatal > 0 && (
+                        <tr className="border-b border-zinc-100">
+                          <td className="py-4">09</td>
+                          <td className="py-4">Subsídio de Natal</td>
+                          <td className="py-4 text-center">-</td>
+                          <td className="py-4 text-right font-mono">{selectedReceipt.inputs.subsidioNatal.toLocaleString('pt-AO', { minimumFractionDigits: 2 })}</td>
+                          <td className="py-4 text-right font-mono">-</td>
+                        </tr>
+                      )}
+                      {selectedReceipt.inputs.outrosSubsidios > 0 && (
+                        <tr className="border-b border-zinc-100">
+                          <td className="py-4">10</td>
+                          <td className="py-4">Outros Subsídios</td>
+                          <td className="py-4 text-center">-</td>
+                          <td className="py-4 text-right font-mono">{selectedReceipt.inputs.outrosSubsidios.toLocaleString('pt-AO', { minimumFractionDigits: 2 })}</td>
+                          <td className="py-4 text-right font-mono">-</td>
+                        </tr>
+                      )}
+                      {selectedReceipt.calculations.overtimePay > 0 && (
+                        <tr className="border-b border-zinc-100">
+                          <td className="py-4">11</td>
                           <td className="py-4">Horas Extraordinárias (50%)</td>
                           <td className="py-4 text-center">{selectedReceipt.inputs.horasExtras} Hrs</td>
                           <td className="py-4 text-right font-mono">{selectedReceipt.calculations.overtimePay.toLocaleString('pt-AO', { minimumFractionDigits: 2 })}</td>
@@ -1164,12 +1290,48 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
                           <td className="py-4 text-right font-mono text-red-600">{selectedReceipt.calculations.absenceDeduction.toLocaleString('pt-AO', { minimumFractionDigits: 2 })}</td>
                         </tr>
                       )}
+                      {selectedReceipt.calculations.lostHoursDeduction > 0 && (
+                        <tr className="border-b border-zinc-100">
+                          <td className="py-4">D4</td>
+                          <td className="py-4">Horas Perdidas</td>
+                          <td className="py-4 text-center">{selectedReceipt.inputs.horasPerdidas} Hrs</td>
+                          <td className="py-4 text-right font-mono">-</td>
+                          <td className="py-4 text-right font-mono text-red-600">{selectedReceipt.calculations.lostHoursDeduction.toLocaleString('pt-AO', { minimumFractionDigits: 2 })}</td>
+                        </tr>
+                      )}
+                      {selectedReceipt.inputs.adiantamentos > 0 && (
+                        <tr className="border-b border-zinc-100">
+                          <td className="py-4">D5</td>
+                          <td className="py-4">Adiantamentos</td>
+                          <td className="py-4 text-center">-</td>
+                          <td className="py-4 text-right font-mono">-</td>
+                          <td className="py-4 text-right font-mono text-red-600">{selectedReceipt.inputs.adiantamentos.toLocaleString('pt-AO', { minimumFractionDigits: 2 })}</td>
+                        </tr>
+                      )}
+                      {selectedReceipt.inputs.faltasJustificadas > 0 && (
+                        <tr className="border-b border-zinc-100">
+                          <td className="py-4">I1</td>
+                          <td className="py-4 text-zinc-400 italic">Faltas Justificadas (Informativo)</td>
+                          <td className="py-4 text-center text-zinc-400 italic">{selectedReceipt.inputs.faltasJustificadas} Dias</td>
+                          <td className="py-4 text-right font-mono text-zinc-400 italic">-</td>
+                          <td className="py-4 text-right font-mono text-zinc-400 italic">-</td>
+                        </tr>
+                      )}
+                      {selectedReceipt.inputs.ferias > 0 && (
+                        <tr className="border-b border-zinc-100">
+                          <td className="py-4">I2</td>
+                          <td className="py-4 text-zinc-400 italic">Férias (Informativo)</td>
+                          <td className="py-4 text-center text-zinc-400 italic">{selectedReceipt.inputs.ferias} Dias</td>
+                          <td className="py-4 text-right font-mono text-zinc-400 italic">-</td>
+                          <td className="py-4 text-right font-mono text-zinc-400 italic">-</td>
+                        </tr>
+                      )}
                     </tbody>
                     <tfoot>
                       <tr className="bg-zinc-900 text-white font-black text-xs uppercase tracking-widest">
                         <td colSpan={3} className="px-6 py-4">Totais</td>
                         <td className="px-6 py-4 text-right font-mono">{selectedReceipt.calculations.totalGross.toLocaleString('pt-AO', { minimumFractionDigits: 2 })}</td>
-                        <td className="px-6 py-4 text-right font-mono">{(selectedReceipt.calculations.inss_worker + selectedReceipt.calculations.irt + selectedReceipt.calculations.absenceDeduction).toLocaleString('pt-AO', { minimumFractionDigits: 2 })}</td>
+                        <td className="px-6 py-4 text-right font-mono">{(selectedReceipt.calculations.inss_worker + selectedReceipt.calculations.irt + selectedReceipt.calculations.absenceDeduction + selectedReceipt.calculations.lostHoursDeduction + (selectedReceipt.inputs.adiantamentos || 0)).toLocaleString('pt-AO', { minimumFractionDigits: 2 })}</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -1340,12 +1502,43 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
               </div>
               <div className="flex-1 min-w-[200px]">
                 <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Mês/Ano:</label>
-                <select className="w-full border border-zinc-200 px-4 py-2 text-xs focus:outline-none focus:border-[#003366] font-bold text-[#003366]">
-                  <option>Junho / 2023</option>
-                  <option>Julho / 2023</option>
+                <select 
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  className="w-full border border-zinc-200 px-4 py-2 text-xs focus:outline-none focus:border-[#003366] font-bold text-[#003366]"
+                >
+                  {[
+                    "Janeiro / 2026", "Fevereiro / 2026", "Março / 2026", "Abril / 2026", "Maio / 2026", "Junho / 2026",
+                    "Julho / 2026", "Agosto / 2026", "Setembro / 2026", "Outubro / 2026", "Novembro / 2026", "Dezembro / 2026"
+                  ].map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
               </div>
-              <button className="bg-[#F27D26] hover:bg-[#d96a1a] text-white px-8 py-2 text-xs font-black uppercase tracking-widest transition-all shadow-lg h-[38px]">
+              <button 
+                onClick={() => {
+                  localEmployees.forEach(emp => {
+                    const totals = calculateAttendanceTotals(emp.id);
+                    setPayrollInputs(prev => ({
+                      ...prev,
+                      [emp.id]: {
+                        ...(prev[emp.id] || { 
+                          premios: 0, gratificacoes: 0, abonos: 0, subsidioNatal: 0, alojamento: 0, outrosSubsidios: 0,
+                          subsidioTransporte: 0, subsidioAlimentacao: 0, diasTrabalho: 22, diasFolga: 8
+                        }),
+                        faltasJustificadas: totals.fj,
+                        faltasInjustificadas: totals.fi,
+                        ferias: totals.fe,
+                        horasExtras: totals.he,
+                        horasPerdidas: totals.hp,
+                        diasTrabalho: totals.p,
+                        diasFolga: totals.d
+                      }
+                    }));
+                    setProcessedAttendance(prev => ({ ...prev, [emp.id]: true }));
+                  });
+                  setActiveTab('payroll');
+                }}
+                className="bg-[#F27D26] hover:bg-[#d96a1a] text-white px-8 py-2 text-xs font-black uppercase tracking-widest transition-all shadow-lg h-[38px]"
+              >
                 Processar Assiduidade
               </button>
             </div>
@@ -1358,17 +1551,17 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
                     <tr className="bg-[#003366] text-white text-[10px] uppercase tracking-widest font-black">
                       <th className="px-4 py-4 border-r border-white/10 sticky left-0 bg-[#003366] z-10" rowSpan={2}>Funcionário</th>
                       <th className="px-2 py-2 border-r border-white/10 text-center" colSpan={5}>Resumo</th>
-                      {[...Array(22)].map((_, i) => (
+                      {[...Array(31)].map((_, i) => (
                         <th key={i} className="px-2 py-4 border-r border-white/10 text-center w-10">{i + 1}</th>
                       ))}
                     </tr>
                     <tr className="bg-[#003366]/90 text-white text-[9px] uppercase tracking-tighter font-bold">
-                      <th className="px-2 py-2 border-r border-white/10 text-center">1</th>
-                      <th className="px-2 py-2 border-r border-white/10 text-center">2</th>
-                      <th className="px-2 py-2 border-r border-white/10 text-center">3</th>
-                      <th className="px-2 py-2 border-r border-white/10 text-center">4</th>
-                      <th className="px-2 py-2 border-r border-white/10 text-center">5</th>
-                      {[...Array(22)].map((_, i) => (
+                      <th className="px-2 py-2 border-r border-white/10 text-center">FJ</th>
+                      <th className="px-2 py-2 border-r border-white/10 text-center">FI</th>
+                      <th className="px-2 py-2 border-r border-white/10 text-center">FE</th>
+                      <th className="px-2 py-2 border-r border-white/10 text-center">HE</th>
+                      <th className="px-2 py-2 border-r border-white/10 text-center">HP</th>
+                      {[...Array(31)].map((_, i) => (
                         <th key={i} className="px-2 py-2 border-r border-white/10 text-center">
                           <input type="checkbox" className="rounded-none accent-[#F27D26]" defaultChecked />
                         </th>
@@ -1390,7 +1583,7 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
                       <td className="px-2 py-3 border-r border-zinc-200 text-center"></td>
                       <td className="px-2 py-3 border-r border-zinc-200 text-center"></td>
                       <td className="px-2 py-3 border-r border-zinc-200 text-center"></td>
-                      {[...Array(22)].map((_, i) => (
+                      {[...Array(31)].map((_, i) => (
                         <td key={i} className="px-2 py-3 border-r border-zinc-200 text-center">
                           <div className="w-6 h-6 bg-emerald-600 text-white flex items-center justify-center mx-auto rounded-sm">
                             <Check size={12} />
@@ -1414,12 +1607,22 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
                             </div>
                           </div>
                         </td>
-                        <td className="px-2 py-4 border-r border-zinc-200 text-center font-bold text-xs">2</td>
-                        <td className="px-2 py-4 border-r border-zinc-200 text-center font-bold text-xs">22</td>
-                        <td className="px-2 py-4 border-r border-zinc-200 text-center font-bold text-xs">24</td>
-                        <td className="px-2 py-4 border-r border-zinc-200 text-center font-bold text-xs">5</td>
-                        <td className="px-2 py-4 border-r border-zinc-200 text-center font-bold text-xs"></td>
-                        {[...Array(22)].map((_, i) => {
+                        <td className="px-2 py-4 border-r border-zinc-200 text-center font-bold text-xs">
+                          {calculateAttendanceTotals(emp.id).fj}
+                        </td>
+                        <td className="px-2 py-4 border-r border-zinc-200 text-center font-bold text-xs">
+                          {calculateAttendanceTotals(emp.id).fi}
+                        </td>
+                        <td className="px-2 py-4 border-r border-zinc-200 text-center font-bold text-xs">
+                          {calculateAttendanceTotals(emp.id).fe}
+                        </td>
+                        <td className="px-2 py-4 border-r border-zinc-200 text-center font-bold text-xs">
+                          {calculateAttendanceTotals(emp.id).he}
+                        </td>
+                        <td className="px-2 py-4 border-r border-zinc-200 text-center font-bold text-xs">
+                          {calculateAttendanceTotals(emp.id).hp}
+                        </td>
+                        {[...Array(31)].map((_, i) => {
                           const day = i + 1;
                           const status = attendanceMap[emp.id]?.[day] || (day % 7 === 0 ? 'D' : 'P');
                           const colors: Record<string, string> = {
@@ -1432,14 +1635,29 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
                             'D': 'bg-orange-500'
                           };
                           return (
-                            <td key={i} className="px-1 py-4 border-r border-zinc-200 text-center">
-                              <button 
-                                onClick={() => toggleAttendanceStatus(emp.id, day)}
-                                className={`w-6 h-6 ${colors[status]} text-white flex items-center justify-center mx-auto text-[10px] font-black rounded-sm mb-1 hover:scale-110 transition-transform`}
+                            <td key={i} className="px-1 py-4 border-r border-zinc-200 text-center relative">
+                              <select 
+                                value={status}
+                                onChange={(e) => {
+                                  const nextStatus = e.target.value;
+                                  setAttendanceMap(prev => ({
+                                    ...prev,
+                                    [emp.id]: {
+                                      ...(prev[emp.id] || {}),
+                                      [day]: nextStatus
+                                    }
+                                  }));
+                                }}
+                                className={`w-8 h-8 ${colors[status]} text-white text-[9px] font-black rounded-sm appearance-none text-center focus:outline-none cursor-pointer hover:scale-110 transition-transform`}
                               >
-                                {status}
-                              </button>
-                              <input type="checkbox" className="rounded-none scale-75 accent-[#003366]" defaultChecked={status === 'P'} />
+                                <option value="P">P</option>
+                                <option value="FJ">FJ</option>
+                                <option value="FI">FI</option>
+                                <option value="FE">FE</option>
+                                <option value="HE">HE</option>
+                                <option value="HP">HP</option>
+                                <option value="D">D</option>
+                              </select>
                             </td>
                           );
                         })}
@@ -1544,11 +1762,11 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
                     const inputs = payrollInputs[emp.id] || { 
                       premios: 0, gratificacoes: 0, abonos: 0, subsidioNatal: 0, alojamento: 0, outrosSubsidios: 0,
                       faltasJustificadas: 0, faltasInjustificadas: 0, ferias: 0, horasExtras: 0, horasPerdidas: 0,
-                      subsidioTransporte: 0, subsidioAlimentacao: 0, diasTrabalho: 22, diasFolga: 8
+                      subsidioTransporte: 0, subsidioAlimentacao: 0, adiantamentos: 0, acertos: 0, diasTrabalho: 22, diasFolga: 8
                     };
-                    const inss_worker = emp.salary * 0.03;
-                    const base_taxable = emp.salary - inss_worker;
-                    const irt = calculateIRT(base_taxable);
+                    const inss_worker = emp.subject_to_inss !== false ? emp.salary * 0.03 : 0;
+                    const base_taxable = emp.subject_to_irt !== false ? (emp.salary - inss_worker) : 0;
+                    const irt = emp.subject_to_irt !== false ? calculateIRT(base_taxable) : 0;
                     
                     const dailyRate = emp.salary / 22;
                     const hourlyRate = emp.salary / 173.33;
@@ -1559,9 +1777,9 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
                     
                     const totalGross = emp.salary + inputs.premios + inputs.gratificacoes + inputs.abonos + 
                                      inputs.subsidioNatal + inputs.alojamento + inputs.outrosSubsidios + 
-                                     inputs.subsidioTransporte + inputs.subsidioAlimentacao + overtimePay;
+                                     inputs.subsidioTransporte + inputs.subsidioAlimentacao + overtimePay + inputs.acertos;
                     
-                    const totalNet = totalGross - inss_worker - irt - absenceDeduction - lostHoursDeduction;
+                    const totalNet = totalGross - inss_worker - irt - absenceDeduction - lostHoursDeduction - inputs.adiantamentos;
 
                     return {
                       id: emp.id,
@@ -1579,8 +1797,8 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
                         hourlyRate,
                         overtimeRate
                       },
-                      period: "Março / 2026",
-                      paymentDate: "31/03/2026"
+                      period: selectedMonth,
+                      paymentDate: new Date().toLocaleDateString('pt-AO')
                     };
                   });
                   setProcessedReceipts(receipts);
@@ -1626,6 +1844,8 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
                       <th className="px-2 py-4 border-r border-white/10 text-center">SUBS. TRANSP.</th>
                       <th className="px-2 py-4 border-r border-white/10 text-center">SUBS. ALIM.</th>
                       <th className="px-2 py-4 border-r border-white/10 text-center">OUTROS SUBS.</th>
+                      <th className="px-2 py-4 border-r border-white/10 text-center">ADIANTAMENTOS</th>
+                      <th className="px-2 py-4 border-r border-white/10 text-center">ACERTOS</th>
                       <th className="px-4 py-4 border-r border-white/10 text-center sticky right-0 bg-[#1e293b] z-20">VALOR PROCESSADO</th>
                       <th className="px-4 py-4 text-center">OPÇÕES</th>
                     </tr>
@@ -1633,7 +1853,7 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
                   <tbody className="divide-y divide-zinc-100">
                     <tr className="bg-zinc-50/50 text-[9px] font-black text-zinc-400 uppercase">
                       <td className="px-4 py-2 border-r border-zinc-200"></td>
-                      <td className="px-4 py-2 border-r border-zinc-200" colSpan={9}>Empresa: Grupo TecnoSys</td>
+                      <td className="px-4 py-2 border-r border-zinc-200" colSpan={11}>Empresa: Grupo TecnoSys</td>
                     </tr>
                     {localEmployees.map(emp => {
                       const inputs = payrollInputs[emp.id] || { 
@@ -1642,17 +1862,42 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
                         subsidioTransporte: 0, subsidioAlimentacao: 0, diasTrabalho: 22, diasFolga: 8
                       };
                       
-                      // Basic calculation logic (can be refined)
+                      const inss_worker = emp.subject_to_inss !== false ? emp.salary * 0.03 : 0;
+                      const base_taxable = emp.subject_to_irt !== false ? (emp.salary - inss_worker) : 0;
+                      const irt = emp.subject_to_irt !== false ? calculateIRT(base_taxable) : 0;
+                      
                       const dailyRate = emp.salary / 22;
-                      const overtimeRate = (emp.salary / 173.33) * 1.5; // Example overtime rate
+                      const hourlyRate = emp.salary / 173.33;
+                      const overtimeRate = hourlyRate * 1.5;
                       const absenceDeduction = inputs.faltasInjustificadas * dailyRate;
-                      const lostHoursDeduction = inputs.horasPerdidas * (emp.salary / 173.33);
+                      const lostHoursDeduction = inputs.horasPerdidas * hourlyRate;
                       const overtimePay = inputs.horasExtras * overtimeRate;
                       
-                      const totalProcessed = emp.salary + inputs.premios + inputs.gratificacoes + inputs.abonos + 
-                                           inputs.subsidioNatal + inputs.alojamento + inputs.outrosSubsidios + 
-                                           inputs.subsidioTransporte + inputs.subsidioAlimentacao + overtimePay - 
-                                           absenceDeduction - lostHoursDeduction;
+                      const totalGross = emp.salary + inputs.premios + inputs.gratificacoes + inputs.abonos + 
+                                       inputs.subsidioNatal + inputs.alojamento + inputs.outrosSubsidios + 
+                                       inputs.subsidioTransporte + inputs.subsidioAlimentacao + overtimePay + inputs.acertos;
+                      
+                      const totalNet = totalGross - inss_worker - irt - absenceDeduction - lostHoursDeduction - inputs.adiantamentos;
+
+                      const receipt = {
+                        id: emp.id,
+                        employee: emp,
+                        inputs,
+                        calculations: {
+                          inss_worker,
+                          irt,
+                          absenceDeduction,
+                          lostHoursDeduction,
+                          overtimePay,
+                          totalGross,
+                          totalNet,
+                          dailyRate,
+                          hourlyRate,
+                          overtimeRate
+                        },
+                        period: selectedMonth,
+                        paymentDate: new Date().toLocaleDateString('pt-AO')
+                      };
                       
                       return (
                         <tr key={emp.id} className="hover:bg-zinc-50 transition-colors group">
@@ -1665,7 +1910,14 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
                                 {emp.image_url ? <img src={emp.image_url} className="w-full h-full object-cover" /> : <User size={16} className="text-zinc-300" />}
                               </div>
                               <div>
-                                <div className="font-black text-[#003366] uppercase text-xs">{emp.name}</div>
+                                <div className="flex items-center gap-2">
+                                  <div className="font-black text-[#003366] uppercase text-xs">{emp.name}</div>
+                                  {processedAttendance[emp.id] && (
+                                    <span className="px-2 py-0.5 bg-emerald-100 text-emerald-600 text-[8px] font-black uppercase tracking-widest border border-emerald-200">
+                                      Processado
+                                    </span>
+                                  )}
+                                </div>
                                 <div className="text-[9px] text-zinc-400 uppercase">Nº {String(emp.id).padStart(3, '0')} • {emp.role}</div>
                               </div>
                             </div>
@@ -1783,17 +2035,39 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
                             />
                           </td>
                           <td className="px-2 py-4 border-r border-zinc-200">
-                            <div className="flex gap-1">
-                              <input 
-                                type="number" 
-                                value={inputs.outrosSubsidios}
-                                onChange={(e) => updatePayrollInput(emp.id, 'outrosSubsidios', Number(e.target.value))}
-                                className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
-                              />
-                            </div>
+                            <input 
+                              type="number" 
+                              value={inputs.outrosSubsidios}
+                              onChange={(e) => updatePayrollInput(emp.id, 'outrosSubsidios', Number(e.target.value))}
+                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                            />
                           </td>
-                          <td className="px-4 py-4 border-r border-zinc-200 text-center font-black text-[#003366] text-xs sticky right-0 bg-white group-hover:bg-zinc-50 z-10">
-                            {formatCurrency(totalProcessed).replace('€', '')} Kz
+                          <td className="px-2 py-4 border-r border-zinc-200">
+                            <input 
+                              type="number" 
+                              value={inputs.adiantamentos}
+                              onChange={(e) => updatePayrollInput(emp.id, 'adiantamentos', Number(e.target.value))}
+                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                            />
+                          </td>
+                          <td className="px-2 py-4 border-r border-zinc-200">
+                            <input 
+                              type="number" 
+                              value={inputs.acertos}
+                              onChange={(e) => updatePayrollInput(emp.id, 'acertos', Number(e.target.value))}
+                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                            />
+                          </td>
+                          <td className="px-4 py-4 border-r border-zinc-200 text-right sticky right-0 bg-white group-hover:bg-zinc-50 z-10">
+                            <div className="flex flex-col items-end">
+                              <div className="font-black text-[#16A34A] font-mono">{formatCurrency(totalNet)}</div>
+                              <button 
+                                onClick={() => setDraftReceipt(receipt)}
+                                className="flex items-center gap-1 text-[8px] text-[#003366] hover:text-[#F27D26] mt-1 uppercase font-black"
+                              >
+                                <Eye size={10} /> Visualizar Recibo
+                              </button>
+                            </div>
                           </td>
                           <td className="px-4 py-4 text-center">
                             <div className="flex items-center justify-center gap-2">
@@ -1842,26 +2116,39 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
                         {formatCurrency(localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.subsidioAlimentacao || 0), 0)).replace('€', '')} Kz
                       </td>
                       <td className="px-2 py-4 border-r border-zinc-200 text-center">
-                        {formatCurrency(localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.outrosSubsidios || 0), 0)).replace('€', '')} Kz
+                        {formatCurrency(localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.outrosSubsidios || 0), 0))}
+                      </td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center">
+                        {formatCurrency(localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.adiantamentos || 0), 0))}
+                      </td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center">
+                        {formatCurrency(localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.acertos || 0), 0))}
                       </td>
                       <td className="px-4 py-4 border-r border-zinc-200 text-center text-[#F27D26] sticky right-0 bg-zinc-50 z-10">
                         {formatCurrency(localEmployees.reduce((sum, emp) => {
                           const inputs = payrollInputs[emp.id] || { 
                             premios: 0, gratificacoes: 0, abonos: 0, subsidioNatal: 0, alojamento: 0, outrosSubsidios: 0,
                             faltasJustificadas: 0, faltasInjustificadas: 0, ferias: 0, horasExtras: 0, horasPerdidas: 0,
-                            subsidioTransporte: 0, subsidioAlimentacao: 0, diasTrabalho: 22, diasFolga: 8
+                            subsidioTransporte: 0, subsidioAlimentacao: 0, adiantamentos: 0, acertos: 0, diasTrabalho: 22, diasFolga: 8
                           };
+                          const inss_worker = emp.subject_to_inss !== false ? emp.salary * 0.03 : 0;
+                          const base_taxable = emp.subject_to_irt !== false ? (emp.salary - inss_worker) : 0;
+                          const irt = emp.subject_to_irt !== false ? calculateIRT(base_taxable) : 0;
+                          
                           const dailyRate = emp.salary / 22;
-                          const overtimeRate = (emp.salary / 173.33) * 1.5;
+                          const hourlyRate = emp.salary / 173.33;
+                          const overtimeRate = hourlyRate * 1.5;
                           const absenceDeduction = inputs.faltasInjustificadas * dailyRate;
-                          const lostHoursDeduction = inputs.horasPerdidas * (emp.salary / 173.33);
+                          const lostHoursDeduction = inputs.horasPerdidas * hourlyRate;
                           const overtimePay = inputs.horasExtras * overtimeRate;
                           
-                          return sum + (emp.salary + inputs.premios + inputs.gratificacoes + inputs.abonos + 
-                                       inputs.subsidioNatal + inputs.alojamento + inputs.outrosSubsidios + 
-                                       inputs.subsidioTransporte + inputs.subsidioAlimentacao + overtimePay - 
-                                       absenceDeduction - lostHoursDeduction);
-                        }, 0)).replace('€', '')} Kz
+                          const totalGross = emp.salary + inputs.premios + inputs.gratificacoes + inputs.abonos + 
+                                           inputs.subsidioNatal + inputs.alojamento + inputs.outrosSubsidios + 
+                                           inputs.subsidioTransporte + inputs.subsidioAlimentacao + overtimePay + inputs.acertos;
+                          
+                          const totalNet = totalGross - inss_worker - irt - absenceDeduction - lostHoursDeduction - inputs.adiantamentos;
+                          return sum + totalNet;
+                        }, 0))}
                       </td>
                       <td className="px-4 py-4"></td>
                     </tr>
@@ -2467,10 +2754,398 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
           </div>
         )}
       </div>
+      {draftReceipt && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white w-full max-w-[800px] shadow-2xl relative">
+            <div className="sticky top-0 bg-zinc-100 p-4 border-b border-zinc-200 flex justify-between items-center z-10">
+              <h3 className="text-sm font-black uppercase tracking-widest text-[#003366]">Recibo de Salário - Rascunho</h3>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => setDraftReceipt(null)}
+                  className="px-4 py-2 text-[10px] font-black uppercase tracking-widest text-zinc-500 hover:bg-zinc-200 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={() => {
+                    setProcessedReceipts(prev => [...prev, draftReceipt]);
+                    setDraftReceipt(null);
+                    setActiveTab('salary_receipts');
+                  }}
+                  className="px-6 py-2 text-[10px] font-black uppercase tracking-widest bg-[#16A34A] text-white hover:bg-[#15803d] transition-all shadow-lg"
+                >
+                  Finalizar e Registar
+                </button>
+              </div>
+            </div>
+
+            <div className="p-8 bg-white min-h-[1123px] font-sans text-zinc-800">
+              {/* Header */}
+              <div className="flex justify-between items-start mb-8 border-b-2 border-[#003366] pb-6">
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 bg-[#003366] flex items-center justify-center text-white font-black text-2xl">
+                    TS
+                  </div>
+                  <div>
+                    <h1 className="text-xl font-black text-[#003366] uppercase tracking-tighter">Grupo TecnoSys</h1>
+                    <p className="text-[10px] text-zinc-500 uppercase font-bold">Soluções Tecnológicas Integradas</p>
+                    <p className="text-[9px] text-zinc-400 mt-1">Luanda, Angola • NIF: 5417283940</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="bg-[#003366] text-white px-4 py-1 text-[10px] font-black uppercase tracking-widest mb-2">
+                    Recibo de Salário
+                  </div>
+                  <p className="text-[10px] font-bold text-zinc-500 uppercase">Período: {draftReceipt.period}</p>
+                  <p className="text-[10px] font-bold text-zinc-500 uppercase">Data: {draftReceipt.paymentDate}</p>
+                </div>
+              </div>
+
+              {/* Employee Info */}
+              <div className="grid grid-cols-2 gap-8 mb-8 bg-zinc-50 p-6 border border-zinc-200">
+                <div className="space-y-2">
+                  <label className="block text-[9px] font-black text-zinc-400 uppercase tracking-widest">Funcionário</label>
+                  <p className="text-sm font-black text-[#003366] uppercase">{draftReceipt.employee.name}</p>
+                  <p className="text-[10px] font-bold text-zinc-500 uppercase">{draftReceipt.employee.role}</p>
+                  <p className="text-[10px] text-zinc-400 uppercase">NIF: {draftReceipt.employee.nif || '---'}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[9px] font-black text-zinc-400 uppercase tracking-widest">Nº Empregado</label>
+                    <p className="text-xs font-bold text-zinc-700">{String(draftReceipt.employee.id).padStart(4, '0')}</p>
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-black text-zinc-400 uppercase tracking-widest">Data Admissão</label>
+                    <p className="text-xs font-bold text-zinc-700">{draftReceipt.employee.hired_at || '---'}</p>
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-black text-zinc-400 uppercase tracking-widest">IBAN</label>
+                    <p className="text-[10px] font-bold text-zinc-700">{draftReceipt.employee.iban || '---'}</p>
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-black text-zinc-400 uppercase tracking-widest">Seg. Social</label>
+                    <p className="text-xs font-bold text-zinc-700">{draftReceipt.employee.inss_number || '---'}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Earnings & Deductions Table */}
+              <div className="border border-zinc-200 mb-8">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-[#003366] text-white text-[10px] uppercase font-black tracking-widest">
+                      <th className="px-4 py-3 border-r border-white/10">Descrição</th>
+                      <th className="px-4 py-3 border-r border-white/10 text-center w-24">Qtd/Base</th>
+                      <th className="px-4 py-3 border-r border-white/10 text-right w-32">Vencimentos</th>
+                      <th className="px-4 py-3 text-right w-32">Descontos</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-[11px] font-bold text-zinc-700 divide-y divide-zinc-100">
+                    {/* Salary Base */}
+                    <tr>
+                      <td className="px-4 py-3 uppercase">Salário Base</td>
+                      <td className="px-4 py-3 text-center">30 Dias</td>
+                      <td className="px-4 py-3 text-right font-mono">{formatCurrency(draftReceipt.employee.salary)}</td>
+                      <td className="px-4 py-3 text-right font-mono">---</td>
+                    </tr>
+
+                    {/* Subsidies - Editable */}
+                    {[
+                      { label: 'Subsídio de Alimentação', field: 'subsidioAlimentacao' },
+                      { label: 'Subsídio de Transporte', field: 'subsidioTransporte' },
+                      { label: 'Subsídio de Alojamento', field: 'alojamento' },
+                      { label: 'Prêmios', field: 'premios' },
+                      { label: 'Gratificações', field: 'gratificacoes' },
+                      { label: 'Abonos', field: 'abonos' },
+                      { label: 'Acertos Salariais', field: 'acertos' },
+                      { label: 'Subsídio de Natal', field: 'subsidioNatal' },
+                      { label: 'Outros Subsídios', field: 'outrosSubsidios' },
+                    ].map(item => (
+                      <tr key={item.field}>
+                        <td className="px-4 py-3 uppercase">{item.label}</td>
+                        <td className="px-4 py-3 text-center">---</td>
+                        <td className="px-4 py-3 text-right">
+                          <input 
+                            type="number"
+                            value={draftReceipt.inputs[item.field]}
+                            onChange={(e) => {
+                              const newVal = Number(e.target.value);
+                              const updatedInputs = { ...draftReceipt.inputs, [item.field]: newVal };
+                              
+                              // Recalculate
+                              const inss_worker = draftReceipt.employee.subject_to_inss !== false ? draftReceipt.employee.salary * 0.03 : 0;
+                              const base_taxable = draftReceipt.employee.subject_to_irt !== false ? (draftReceipt.employee.salary - inss_worker) : 0;
+                              const irt = draftReceipt.employee.subject_to_irt !== false ? calculateIRT(base_taxable) : 0;
+                              
+                              const dailyRate = draftReceipt.employee.salary / 22;
+                              const hourlyRate = draftReceipt.employee.salary / 173.33;
+                              const overtimeRate = hourlyRate * 1.5;
+                              const absenceDeduction = updatedInputs.faltasInjustificadas * dailyRate;
+                              const lostHoursDeduction = updatedInputs.horasPerdidas * hourlyRate;
+                              const overtimePay = updatedInputs.horasExtras * overtimeRate;
+                              
+                              const totalGross = draftReceipt.employee.salary + updatedInputs.premios + updatedInputs.gratificacoes + updatedInputs.abonos + 
+                                               updatedInputs.subsidioNatal + updatedInputs.alojamento + updatedInputs.outrosSubsidios + 
+                                               updatedInputs.subsidioTransporte + updatedInputs.subsidioAlimentacao + overtimePay + updatedInputs.acertos;
+                              
+                              const totalNet = totalGross - inss_worker - irt - absenceDeduction - lostHoursDeduction - updatedInputs.adiantamentos;
+
+                              setDraftReceipt({
+                                ...draftReceipt,
+                                inputs: updatedInputs,
+                                calculations: {
+                                  ...draftReceipt.calculations,
+                                  totalGross,
+                                  totalNet,
+                                  inss_worker,
+                                  irt,
+                                  absenceDeduction,
+                                  lostHoursDeduction,
+                                  overtimePay
+                                }
+                              });
+                            }}
+                            className="w-full bg-zinc-50 border-b border-zinc-200 text-right font-mono focus:outline-none focus:border-[#003366] p-1"
+                          />
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono">---</td>
+                      </tr>
+                    ))}
+
+                    {/* Overtime */}
+                    <tr>
+                      <td className="px-4 py-3 uppercase">Horas Extras (50%)</td>
+                      <td className="px-4 py-3 text-center">
+                        <input 
+                          type="number"
+                          value={draftReceipt.inputs.horasExtras}
+                          onChange={(e) => {
+                            const newVal = Number(e.target.value);
+                            const updatedInputs = { ...draftReceipt.inputs, horasExtras: newVal };
+                            // Recalculate...
+                            const hourlyRate = draftReceipt.employee.salary / 173.33;
+                            const overtimeRate = hourlyRate * 1.5;
+                            const overtimePay = newVal * overtimeRate;
+                            
+                            const inss_worker = draftReceipt.employee.subject_to_inss !== false ? draftReceipt.employee.salary * 0.03 : 0;
+                            const base_taxable = draftReceipt.employee.subject_to_irt !== false ? (draftReceipt.employee.salary - inss_worker) : 0;
+                            const irt = draftReceipt.employee.subject_to_irt !== false ? calculateIRT(base_taxable) : 0;
+                            const dailyRate = draftReceipt.employee.salary / 22;
+                            const absenceDeduction = updatedInputs.faltasInjustificadas * dailyRate;
+                            const lostHoursDeduction = updatedInputs.horasPerdidas * hourlyRate;
+
+                            const totalGross = draftReceipt.employee.salary + updatedInputs.premios + updatedInputs.gratificacoes + updatedInputs.abonos + 
+                                             updatedInputs.subsidioNatal + updatedInputs.alojamento + updatedInputs.outrosSubsidios + 
+                                             updatedInputs.subsidioTransporte + updatedInputs.subsidioAlimentacao + overtimePay + updatedInputs.acertos;
+                            
+                            const totalNet = totalGross - inss_worker - irt - absenceDeduction - lostHoursDeduction - updatedInputs.adiantamentos;
+
+                            setDraftReceipt({
+                              ...draftReceipt,
+                              inputs: updatedInputs,
+                              calculations: {
+                                ...draftReceipt.calculations,
+                                overtimePay,
+                                totalGross,
+                                totalNet,
+                                inss_worker,
+                                irt,
+                                absenceDeduction,
+                                lostHoursDeduction
+                              }
+                            });
+                          }}
+                          className="w-12 bg-zinc-50 border-b border-zinc-200 text-center focus:outline-none focus:border-[#003366] p-1"
+                        />
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono">{formatCurrency(draftReceipt.calculations.overtimePay)}</td>
+                      <td className="px-4 py-3 text-right font-mono">---</td>
+                    </tr>
+
+                    {/* Deductions */}
+                    <tr>
+                      <td className="px-4 py-3 uppercase">Segurança Social (3%)</td>
+                      <td className="px-4 py-3 text-center">3%</td>
+                      <td className="px-4 py-3 text-right font-mono">---</td>
+                      <td className="px-4 py-3 text-right font-mono text-red-600">{formatCurrency(draftReceipt.calculations.inss_worker)}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-3 uppercase">IRT (Imposto de Rendimento)</td>
+                      <td className="px-4 py-3 text-center">Tabela</td>
+                      <td className="px-4 py-3 text-right font-mono">---</td>
+                      <td className="px-4 py-3 text-right font-mono text-red-600">{formatCurrency(draftReceipt.calculations.irt)}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-3 uppercase">Faltas Injustificadas</td>
+                      <td className="px-4 py-3 text-center">
+                        <input 
+                          type="number"
+                          value={draftReceipt.inputs.faltasInjustificadas}
+                          onChange={(e) => {
+                            const newVal = Number(e.target.value);
+                            const updatedInputs = { ...draftReceipt.inputs, faltasInjustificadas: newVal };
+                            // Recalculate...
+                            const dailyRate = draftReceipt.employee.salary / 22;
+                            const absenceDeduction = newVal * dailyRate;
+                            
+                            const inss_worker = draftReceipt.employee.subject_to_inss !== false ? draftReceipt.employee.salary * 0.03 : 0;
+                            const base_taxable = draftReceipt.employee.subject_to_irt !== false ? (draftReceipt.employee.salary - inss_worker) : 0;
+                            const irt = draftReceipt.employee.subject_to_irt !== false ? calculateIRT(base_taxable) : 0;
+                            const hourlyRate = draftReceipt.employee.salary / 173.33;
+                            const overtimeRate = hourlyRate * 1.5;
+                            const overtimePay = updatedInputs.horasExtras * overtimeRate;
+                            const lostHoursDeduction = updatedInputs.horasPerdidas * hourlyRate;
+
+                            const totalGross = draftReceipt.employee.salary + updatedInputs.premios + updatedInputs.gratificacoes + updatedInputs.abonos + 
+                                             updatedInputs.subsidioNatal + updatedInputs.alojamento + updatedInputs.outrosSubsidios + 
+                                             updatedInputs.subsidioTransporte + updatedInputs.subsidioAlimentacao + overtimePay + updatedInputs.acertos;
+                            
+                            const totalNet = totalGross - inss_worker - irt - absenceDeduction - lostHoursDeduction - updatedInputs.adiantamentos;
+
+                            setDraftReceipt({
+                              ...draftReceipt,
+                              inputs: updatedInputs,
+                              calculations: {
+                                ...draftReceipt.calculations,
+                                absenceDeduction,
+                                totalGross,
+                                totalNet,
+                                inss_worker,
+                                irt,
+                                overtimePay,
+                                lostHoursDeduction
+                              }
+                            });
+                          }}
+                          className="w-12 bg-zinc-50 border-b border-zinc-200 text-center focus:outline-none focus:border-[#003366] p-1"
+                        />
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono">---</td>
+                      <td className="px-4 py-3 text-right font-mono text-red-600">{formatCurrency(draftReceipt.calculations.absenceDeduction)}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-3 uppercase">Horas Perdidas</td>
+                      <td className="px-4 py-3 text-center">
+                        <input 
+                          type="number"
+                          value={draftReceipt.inputs.horasPerdidas}
+                          onChange={(e) => {
+                            const newVal = Number(e.target.value);
+                            const updatedInputs = { ...draftReceipt.inputs, horasPerdidas: newVal };
+                            // Recalculate...
+                            const hourlyRate = draftReceipt.employee.salary / 173.33;
+                            const lostHoursDeduction = newVal * hourlyRate;
+                            
+                            const inss_worker = draftReceipt.employee.subject_to_inss !== false ? draftReceipt.employee.salary * 0.03 : 0;
+                            const base_taxable = draftReceipt.employee.subject_to_irt !== false ? (draftReceipt.employee.salary - inss_worker) : 0;
+                            const irt = draftReceipt.employee.subject_to_irt !== false ? calculateIRT(base_taxable) : 0;
+                            const dailyRate = draftReceipt.employee.salary / 22;
+                            const absenceDeduction = updatedInputs.faltasInjustificadas * dailyRate;
+                            const overtimeRate = hourlyRate * 1.5;
+                            const overtimePay = updatedInputs.horasExtras * overtimeRate;
+
+                            const totalGross = draftReceipt.employee.salary + updatedInputs.premios + updatedInputs.gratificacoes + updatedInputs.abonos + 
+                                             updatedInputs.subsidioNatal + updatedInputs.alojamento + updatedInputs.outrosSubsidios + 
+                                             updatedInputs.subsidioTransporte + updatedInputs.subsidioAlimentacao + overtimePay + updatedInputs.acertos;
+                            
+                            const totalNet = totalGross - inss_worker - irt - absenceDeduction - lostHoursDeduction - updatedInputs.adiantamentos;
+
+                            setDraftReceipt({
+                              ...draftReceipt,
+                              inputs: updatedInputs,
+                              calculations: {
+                                ...draftReceipt.calculations,
+                                lostHoursDeduction,
+                                totalGross,
+                                totalNet,
+                                inss_worker,
+                                irt,
+                                absenceDeduction,
+                                overtimePay
+                              }
+                            });
+                          }}
+                          className="w-12 bg-zinc-50 border-b border-zinc-200 text-center focus:outline-none focus:border-[#003366] p-1"
+                        />
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono">---</td>
+                      <td className="px-4 py-3 text-right font-mono text-red-600">{formatCurrency(draftReceipt.calculations.lostHoursDeduction)}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-3 uppercase">Adiantamentos</td>
+                      <td className="px-4 py-3 text-center">---</td>
+                      <td className="px-4 py-3 text-right font-mono">---</td>
+                      <td className="px-4 py-3 text-right font-mono text-red-600">
+                        <input 
+                          type="number"
+                          value={draftReceipt.inputs.adiantamentos}
+                          onChange={(e) => {
+                            const newVal = Number(e.target.value);
+                            const updatedInputs = { ...draftReceipt.inputs, adiantamentos: newVal };
+                            // Recalculate...
+                            const totalNet = draftReceipt.calculations.totalGross - draftReceipt.calculations.inss_worker - draftReceipt.calculations.irt - draftReceipt.calculations.absenceDeduction - draftReceipt.calculations.lostHoursDeduction - newVal;
+                            setDraftReceipt({
+                              ...draftReceipt,
+                              inputs: updatedInputs,
+                              calculations: {
+                                ...draftReceipt.calculations,
+                                totalNet
+                              }
+                            });
+                          }}
+                          className="w-full bg-zinc-50 border-b border-zinc-200 text-right font-mono focus:outline-none focus:border-[#003366] p-1"
+                        />
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Totals */}
+              <div className="grid grid-cols-3 gap-0 border-2 border-[#003366] mb-12">
+                <div className="p-4 bg-zinc-50 border-r border-[#003366]">
+                  <label className="block text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1">Total Vencimentos</label>
+                  <p className="text-lg font-black text-[#003366] font-mono">{formatCurrency(draftReceipt.calculations.totalGross)}</p>
+                </div>
+                <div className="p-4 bg-zinc-50 border-r border-[#003366]">
+                  <label className="block text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1">Total Descontos</label>
+                  <p className="text-lg font-black text-red-600 font-mono">
+                    {formatCurrency(draftReceipt.calculations.inss_worker + draftReceipt.calculations.irt + draftReceipt.calculations.absenceDeduction + draftReceipt.calculations.lostHoursDeduction + draftReceipt.inputs.adiantamentos)}
+                  </p>
+                </div>
+                <div className="p-4 bg-[#003366] text-white">
+                  <label className="block text-[9px] font-black text-white/50 uppercase tracking-widest mb-1">Líquido a Receber</label>
+                  <p className="text-xl font-black font-mono">{formatCurrency(draftReceipt.calculations.totalNet)}</p>
+                </div>
+              </div>
+
+              {/* Signatures */}
+              <div className="grid grid-cols-2 gap-16 mt-24">
+                <div className="text-center">
+                  <div className="border-t border-zinc-400 pt-2">
+                    <p className="text-[10px] font-black uppercase text-[#003366]">A Entidade Empregadora</p>
+                    <p className="text-[8px] text-zinc-400 mt-1">Carimbo e Assinatura</p>
+                  </div>
+                </div>
+                <div className="text-center">
+                  <div className="border-t border-zinc-400 pt-2">
+                    <p className="text-[10px] font-black uppercase text-[#003366]">O Funcionário</p>
+                    <p className="text-[8px] text-zinc-400 mt-1">Assinatura</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer Note */}
+              <div className="mt-16 text-center text-[8px] text-zinc-400 uppercase font-bold tracking-widest">
+                Este documento serve como comprovativo de pagamento de salário para efeitos legais.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
-
 
 const DocumentActionsModal = ({ document, onClose, onAction }: { 
   document: IssuedDocument, 

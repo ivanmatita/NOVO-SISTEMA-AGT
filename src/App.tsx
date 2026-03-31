@@ -86,6 +86,16 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Client, Product, Invoice, DashboardStats, InvoiceItem, Employee, Profession, WorkSite, WorkSiteMovement, IssuedDocument, Warehouse, Supplier, FiscalSeries, CostCenter, POSPoint, CashSession, SystemUser, Purchase, PurchaseItem, POSArea } from './types';
+import Modelo7Form from './components/Modelo7Form';
+import AnexoFornecedoresForm from './components/AnexoFornecedoresForm';
+import RegularizacaoClientesForm from './components/RegularizacaoClientesForm';
+import RegimeSimplificadoForm from './components/RegimeSimplificadoForm';
+import RetencaoPagarForm from './components/RetencaoPagarForm';
+import RetencaoReceberForm from './components/RetencaoReceberForm';
+import CalculosImpostosForm from './components/CalculosImpostosForm';
+import RegimeExclusaoForm from './components/RegimeExclusaoForm';
+import ImpostoPorContaForm from './components/ImpostoPorContaForm';
+import SaftExportForm from './components/SaftExportForm';
 
 // --- Helpers ---
 
@@ -6028,8 +6038,24 @@ const TaxSeriesModule = () => {
   );
 };
 
-const AccountingModule = () => {
+const AccountingModule = ({ invoices, clients }: { invoices: Invoice[], clients: Client[] }) => {
   const [activeSubTab, setActiveSubTab] = useState<string | null>(null);
+  const [purchases, setPurchases] = useState<Purchase[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [activeRegimeTab, setActiveRegimeTab] = useState<'geral' | 'fornecedores' | 'clientes'>('geral');
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
+
+  useEffect(() => {
+    fetch('/api/purchases').then(r => r.json()).then(setPurchases);
+    fetch('/api/suppliers').then(r => r.json()).then(setSuppliers);
+  }, []);
+
+  const totalSales = invoices.reduce((sum, inv) => sum + inv.total, 0);
+  const totalPurchases = purchases.reduce((sum, pur) => sum + pur.total, 0);
+  const vatLiquidated = invoices.reduce((sum, inv) => sum + (inv.total * 0.14), 0);
+  const vatDeductible = purchases.reduce((sum, pur) => sum + (pur.total * 0.14), 0);
+  const vatToPay = vatLiquidated - vatDeductible;
 
   const sections = [
     { id: 'daily-movements', label: 'Movimento Diário', icon: <History size={24} />, description: 'Registo cronológico de todos os movimentos contabilísticos diários.' },
@@ -6039,6 +6065,11 @@ const AccountingModule = () => {
     { id: 'accounting-calculations', label: 'Cálculos Contabilísticos', icon: <Calculator size={24} />, description: 'Processamento de amortizações, provisões e apuramentos fiscais.' },
     { id: 'accounting-maps', label: 'Mapas Contabilísticos', icon: <FileText size={24} />, description: 'Emissão de balancetes, balanços e demonstrações de resultados.' },
     { id: 'movement-maps', label: 'Mapas de Movimento', icon: <TrendingUp size={24} />, description: 'Análise gráfica e tabular dos fluxos financeiros da empresa.' },
+    { id: 'retencao-pagar', label: 'Retenção na Fonte a Pagar', icon: <FileText size={24} />, description: 'Gestão de retenções na fonte a pagar.' },
+    { id: 'retencao-receber', label: 'Retenção na Fonte a Receber', icon: <FileText size={24} />, description: 'Gestão de retenções na fonte a receber.' },
+    { id: 'calculos-impostos', label: 'Cálculos de Impostos', icon: <Calculator size={24} />, description: 'Cálculos de impostos diversos.' },
+    { id: 'regime-exclusao', label: 'Regime de Exclusão', icon: <XCircle size={24} />, description: 'Controlo de entidades isentas ou excluídas do regime de IVA.' },
+    { id: 'imposto-por-conta', label: 'Imposto por Conta', icon: <Calculator size={24} />, description: 'Gestão de impostos por conta.' },
     { id: 'pgc', label: 'PGC', icon: <Book size={24} />, description: 'Consulta e gestão do Plano Geral de Contas angolano.' },
     { id: 'accounting-settings', label: 'Configurações Contábeis', icon: <Settings size={24} />, description: 'Definição de parâmetros fiscais, anos e moedas de relato.' },
     { id: 'annual-declarations', label: 'Declarações Anuais', icon: <Calendar size={24} />, description: 'Preparação e submissão de modelos fiscais anuais (M1, M2).' },
@@ -6077,285 +6108,193 @@ const AccountingModule = () => {
 
   const renderContent = () => {
     switch (activeSubTab) {
-      case 'daily-movements':
-        return (
-          <div className="space-y-6">
-            <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm">
-              <h3 className="text-sm font-bold text-[#003366] uppercase tracking-widest mb-6 flex items-center gap-3">
-                <History size={18} /> Movimento Diário Contabilístico
-              </h3>
-              <div className="p-12 text-center text-zinc-400 italic bg-zinc-50 border border-dashed border-zinc-200">
-                Nenhum movimento registado para o dia de hoje.
-              </div>
-            </div>
-          </div>
-        );
-      case 'general-regime':
-        return (
-          <div className="space-y-6">
-            <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm">
-              <h3 className="text-sm font-bold text-[#003366] uppercase tracking-widest mb-6 flex items-center gap-3">
-                <BadgeCheck size={18} /> Contabilidade - Regime Geral
-              </h3>
-              <p className="text-zinc-500 text-sm mb-8">Gestão e apuramento de impostos para empresas no regime geral.</p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="p-6 border border-zinc-100 bg-zinc-50">
-                  <h4 className="font-bold text-zinc-900 mb-2">Apuramento de IVA</h4>
-                  <p className="text-xs text-zinc-500 mb-4">Cálculo detalhado do IVA a pagar ou a recuperar.</p>
-                  <button className="text-[#003366] text-xs font-bold uppercase tracking-widest hover:underline">Processar</button>
-                </div>
-                <div className="p-6 border border-zinc-100 bg-zinc-50">
-                  <h4 className="font-bold text-zinc-900 mb-2">Demonstração de Resultados</h4>
-                  <p className="text-xs text-zinc-500 mb-4">Relatório de proveitos e custos do período.</p>
-                  <button className="text-[#003366] text-xs font-bold uppercase tracking-widest hover:underline">Gerar Relatório</button>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
       case 'simplified-regime':
-        return (
-          <div className="space-y-6">
-            <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm">
-              <h3 className="text-sm font-bold text-[#003366] uppercase tracking-widest mb-6 flex items-center gap-3">
-                <Layers size={18} /> Contabilidade - Regime Simplificado
-              </h3>
-              <p className="text-zinc-500 text-sm mb-8">Acompanhamento simplificado de custos e proveitos.</p>
-              <div className="p-12 text-center text-zinc-400 italic bg-zinc-50 border border-dashed border-zinc-200">
-                Módulo configurado para empresas com faturação anual inferior ao limite legal.
-              </div>
-            </div>
-          </div>
-        );
-      case 'exclusion-regime':
-        return (
-          <div className="space-y-6">
-            <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm">
-              <h3 className="text-sm font-bold text-[#003366] uppercase tracking-widest mb-6 flex items-center gap-3">
-                <XCircle size={18} /> Contabilidade - Regime de Exclusão
-              </h3>
-              <p className="text-zinc-500 text-sm mb-8">Gestão de isenções e regimes especiais de exclusão de IVA.</p>
-              <div className="p-12 text-center text-zinc-400 italic bg-zinc-50 border border-dashed border-zinc-200">
-                Nenhum dado disponível para este regime.
-              </div>
-            </div>
-          </div>
-        );
-      case 'accounting-calculations':
-        return (
-          <div className="space-y-6">
-            <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm">
-              <h3 className="text-sm font-bold text-[#003366] uppercase tracking-widest mb-6 flex items-center gap-3">
-                <Calculator size={18} /> Cálculos Contabilísticos
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="p-4 border border-zinc-100 bg-zinc-50 space-y-3">
-                  <p className="text-[10px] font-bold text-zinc-400 uppercase">Amortizações</p>
-                  <p className="text-lg font-bold text-[#003366]">0,00 Kz</p>
-                  <button className="text-[10px] font-bold text-[#003366] uppercase">Calcular</button>
-                </div>
-                <div className="p-4 border border-zinc-100 bg-zinc-50 space-y-3">
-                  <p className="text-[10px] font-bold text-zinc-400 uppercase">Provisões</p>
-                  <p className="text-lg font-bold text-[#003366]">0,00 Kz</p>
-                  <button className="text-[10px] font-bold text-[#003366] uppercase">Calcular</button>
-                </div>
-                <div className="p-4 border border-zinc-100 bg-zinc-50 space-y-3">
-                  <p className="text-[10px] font-bold text-zinc-400 uppercase">Impostos Estimados</p>
-                  <p className="text-lg font-bold text-[#003366]">0,00 Kz</p>
-                  <button className="text-[10px] font-bold text-[#003366] uppercase">Calcular</button>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      case 'accounting-maps':
-        return (
-          <div className="space-y-6">
-            <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm">
-              <h3 className="text-sm font-bold text-[#003366] uppercase tracking-widest mb-6 flex items-center gap-3">
-                <FileText size={18} /> Mapas Contabilísticos
-              </h3>
-              <div className="space-y-4">
-                {['Balancete de Verificação', 'Balanço Patrimonial', 'Demonstração de Resultados', 'Mapa de Origem e Aplicação de Fundos'].map((map) => (
-                  <div key={map} className="flex justify-between items-center p-4 border-b border-zinc-100 hover:bg-zinc-50 transition-colors">
-                    <span className="text-sm text-zinc-700">{map}</span>
-                    <button className="text-[#003366] p-2 hover:bg-zinc-100 rounded-none">
-                      <Download size={16} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        );
-      case 'movement-maps':
-        return (
-          <div className="space-y-6">
-            <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm">
-              <h3 className="text-sm font-bold text-[#003366] uppercase tracking-widest mb-6 flex items-center gap-3">
-                <TrendingUp size={18} /> Mapas de Movimento
-              </h3>
-              <p className="text-zinc-500 text-sm mb-8">Análise de fluxos financeiros e variações patrimoniais.</p>
-              <div className="h-64 bg-zinc-50 border border-dashed border-zinc-200 flex items-center justify-center text-zinc-400 italic">
-                Gráficos de movimento em processamento...
-              </div>
-            </div>
-          </div>
-        );
-      case 'pgc':
-        return (
-          <div className="space-y-6">
-            <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm">
-              <h3 className="text-sm font-bold text-[#003366] uppercase tracking-widest mb-6 flex items-center gap-3">
-                <Book size={18} /> Plano Geral de Contas (PGC)
-              </h3>
-              <div className="flex gap-4 mb-6">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
-                  <input type="text" placeholder="Pesquisar conta (ex: 31, 43...)" className="w-full pl-10 pr-4 py-2 bg-zinc-50 border border-zinc-200 text-sm focus:outline-none focus:border-[#003366]" />
-                </div>
-              </div>
-              <div className="space-y-2">
-                {[
-                  { code: '1', name: 'Meios Disponíveis' },
-                  { code: '2', name: 'Contas a Receber e a Pagar' },
-                  { code: '3', name: 'Existências' },
-                  { code: '4', name: 'Imobilizações' },
-                  { code: '5', name: 'Capital Próprio' },
-                  { code: '6', name: 'Proveitos e Ganhos por Natureza' },
-                  { code: '7', name: 'Custos e Perdas por Natureza' },
-                  { code: '8', name: 'Resultados' },
-                ].map((item) => (
-                  <div key={item.code} className="flex gap-4 p-3 border border-zinc-100 hover:border-[#003366] transition-colors cursor-pointer">
-                    <span className="font-bold text-[#003366] w-8">{item.code}</span>
-                    <span className="text-sm text-zinc-700">{item.name}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        );
-      case 'accounting-settings':
-        return (
-          <div className="space-y-6">
-            <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm">
-              <h3 className="text-sm font-bold text-[#003366] uppercase tracking-widest mb-6 flex items-center gap-3">
-                <Settings size={18} /> Configurações Contábeis
-              </h3>
-              <div className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Ano Fiscal Ativo</label>
-                    <select className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
-                      <option>2026</option>
-                      <option>2025</option>
-                      <option>2024</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Moeda de Relato</label>
-                    <select className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
-                      <option>Kwanza (AOA)</option>
-                      <option>Euro (EUR)</option>
-                      <option>Dólar (USD)</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <input type="checkbox" id="auto-post" className="w-4 h-4 accent-[#003366]" />
-                  <label htmlFor="auto-post" className="text-sm text-zinc-700">Lançamento automático de faturas na contabilidade</label>
-                </div>
-                <button className="bg-[#003366] text-white px-8 py-3 text-xs font-bold uppercase tracking-widest hover:bg-[#002244] transition-all">
-                  Guardar Configurações
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      case 'annual-declarations':
-        return (
-          <div className="space-y-6">
-            <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm">
-              <h3 className="text-sm font-bold text-[#003366] uppercase tracking-widest mb-6 flex items-center gap-3">
-                <Calendar size={18} /> Declarações Anuais
-              </h3>
-              <div className="space-y-4">
-                <div className="p-6 border border-zinc-100 bg-zinc-50 flex justify-between items-center">
-                  <div>
-                    <h4 className="font-bold text-zinc-900">Modelo 1 - Imposto Industrial</h4>
-                    <p className="text-xs text-zinc-500">Declaração anual de rendimentos.</p>
-                  </div>
-                  <button className="bg-[#003366] text-white px-4 py-2 text-[10px] font-bold uppercase tracking-widest">Preparar</button>
-                </div>
-                <div className="p-6 border border-zinc-100 bg-zinc-50 flex justify-between items-center">
-                  <div>
-                    <h4 className="font-bold text-zinc-900">Modelo 2 - Retenções na Fonte</h4>
-                    <p className="text-xs text-zinc-500">Resumo anual de retenções efetuadas.</p>
-                  </div>
-                  <button className="bg-[#003366] text-white px-4 py-2 text-[10px] font-bold uppercase tracking-widest">Preparar</button>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
+        return <RegimeSimplificadoForm />;
+      case 'retencao-pagar':
+        return <RetencaoPagarForm />;
+      case 'retencao-receber':
+        return <RetencaoReceberForm />;
+      case 'calculos-impostos':
+        return <CalculosImpostosForm />;
+      case 'regime-exclusao':
+        return <RegimeExclusaoForm />;
+      case 'imposto-por-conta':
+        return <ImpostoPorContaForm />;
       case 'saft':
+        return <SaftExportForm />;
+      case 'general-regime':
+        if (selectedClient) {
+          const clientDocs = invoices.filter(i => i.client_id === selectedClient.id).map(i => ({
+            ...i,
+            tipo_documento: i.document_type || 'Fatura',
+            data_emissao: i.date,
+            numero_documento: i.invoice_number,
+            contravalor: i.total
+          }));
+          return <ClientAccount client={selectedClient} documents={clientDocs as any} onBack={() => setSelectedClient(null)} />;
+        }
+        if (selectedSupplier) {
+          // Reusing ClientAccount for SupplierAccount for simplicity, mapping fields
+          const supplierDocs = purchases.filter(p => p.supplier_id === selectedSupplier.id).map(p => ({
+            ...p,
+            tipo_documento: p.document_type || 'Fatura de Compra',
+            data_emissao: p.date,
+            numero_documento: p.invoice_number || `COMP-${p.id}`,
+            contravalor: p.total
+          }));
+          return <ClientAccount client={{...selectedSupplier, tipo_cliente: 'Fornecedor'} as any} documents={supplierDocs as any} onBack={() => setSelectedSupplier(null)} />;
+        }
         return (
           <div className="space-y-6">
-            <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm">
-              <h3 className="text-sm font-bold text-[#003366] uppercase tracking-widest mb-6 flex items-center gap-3">
-                <FileCode size={18} /> Ficheiro SAF-T (AO)
-              </h3>
-              <p className="text-zinc-500 text-sm mb-8">Gere o ficheiro XML para submissão à AGT conforme a legislação angolana.</p>
-              <div className="max-w-md space-y-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Período</label>
-                  <select className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
-                    <option>Março 2026</option>
-                    <option>Fevereiro 2026</option>
-                    <option>Janeiro 2026</option>
-                    <option>Ano Completo 2025</option>
-                  </select>
-                </div>
-                <button className="w-full bg-[#003366] text-white py-4 text-xs font-bold uppercase tracking-widest hover:bg-[#002244] transition-all flex items-center justify-center gap-3">
-                  <Download size={18} /> Gerar e Descarregar SAF-T
-                </button>
-                <p className="text-[10px] text-zinc-400 text-center italic">
-                  O ficheiro será validado automaticamente antes do download.
-                </p>
-              </div>
+            <div className="flex items-center gap-4 mb-6">
+              <button onClick={() => setActiveSubTab(null)} className="p-2 hover:bg-zinc-100 rounded-none text-zinc-400 transition-colors">
+                <ChevronLeft size={24} />
+              </button>
+              <h2 className="text-xl font-bold text-[#003366]">Regime Geral</h2>
             </div>
+            
+            <div className="flex gap-4 border-b border-zinc-200 mb-6">
+              <button 
+                onClick={() => setActiveRegimeTab('geral')}
+                className={`px-6 py-3 text-sm font-bold uppercase tracking-widest ${activeRegimeTab === 'geral' ? 'text-[#003366] border-b-2 border-[#003366]' : 'text-zinc-400 hover:text-zinc-600'}`}
+              >
+                Visão Geral
+              </button>
+              <button 
+                onClick={() => setActiveRegimeTab('fornecedores')}
+                className={`px-6 py-3 text-sm font-bold uppercase tracking-widest flex items-center gap-2 ${activeRegimeTab === 'fornecedores' ? 'text-[#003366] border-b-2 border-[#003366]' : 'text-zinc-400 hover:text-zinc-600'}`}
+              >
+                <Truck size={16} /> Anexo Fornecedores
+              </button>
+              <button 
+                onClick={() => setActiveRegimeTab('clientes')}
+                className={`px-6 py-3 text-sm font-bold uppercase tracking-widest flex items-center gap-2 ${activeRegimeTab === 'clientes' ? 'text-[#003366] border-b-2 border-[#003366]' : 'text-zinc-400 hover:text-zinc-600'}`}
+              >
+                <Users size={16} /> Regularização Clientes
+              </button>
+            </div>
+
+            {activeRegimeTab === 'geral' && (
+              <div className="space-y-8">
+                <Modelo7Form invoices={invoices} purchases={purchases} />
+                <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-8">
+                  <h3 className="text-sm font-bold text-[#003366] uppercase tracking-widest mb-6 flex items-center gap-3">
+                    <BadgeCheck size={18} /> Apuramento de IVA e Totais
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="p-6 border border-zinc-100 bg-zinc-50">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Total Vendas</p>
+                      <p className="text-2xl font-bold text-[#003366]">{formatCurrency(totalSales)}</p>
+                    </div>
+                    <div className="p-6 border border-zinc-100 bg-zinc-50">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Total Compras</p>
+                      <p className="text-2xl font-bold text-emerald-600">{formatCurrency(totalPurchases)}</p>
+                    </div>
+                    <div className="p-6 border border-zinc-100 bg-zinc-50">
+                      <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">IVA a Pagar/Recuperar</p>
+                      <p className={`text-2xl font-bold ${vatToPay > 0 ? 'text-red-600' : 'text-emerald-600'}`}>{formatCurrency(Math.abs(vatToPay))}</p>
+                      <p className="text-xs text-zinc-500 mt-1">{vatToPay > 0 ? 'A pagar' : 'A recuperar'}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeRegimeTab === 'fornecedores' && (
+              <div className="space-y-8">
+                <AnexoFornecedoresForm purchases={purchases} suppliers={suppliers} />
+                <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-6">
+                  <h3 className="text-sm font-bold text-[#003366] uppercase tracking-widest mb-6 flex items-center gap-3">
+                    <Truck size={18} /> Lista de Fornecedores
+                  </h3>
+                  <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-[#003366] text-white text-[11px] uppercase tracking-wider font-bold">
+                      <th className="px-6 py-4">Fornecedor</th>
+                      <th className="px-6 py-4">NIF</th>
+                      <th className="px-6 py-4 text-right">Total Compras</th>
+                      <th className="px-6 py-4 text-right">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100">
+                    {suppliers.map(s => {
+                      const supplierPurchases = purchases.filter(p => p.supplier_id === s.id);
+                      const total = supplierPurchases.reduce((sum, p) => sum + p.total, 0);
+                      return (
+                        <tr key={s.id} className="hover:bg-zinc-50">
+                          <td className="px-6 py-4 text-sm font-medium text-zinc-900">{s.name}</td>
+                          <td className="px-6 py-4 text-sm text-zinc-500">{s.nif}</td>
+                          <td className="px-6 py-4 text-sm text-right font-bold text-zinc-900">{formatCurrency(total)}</td>
+                          <td className="px-6 py-4 text-sm text-right">
+                            <button onClick={() => setSelectedSupplier(s)} className="text-[#003366] hover:underline font-bold text-xs uppercase">Conta Corrente</button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                </div>
+              </div>
+            )}
+
+            {activeRegimeTab === 'clientes' && (
+              <div className="space-y-8">
+                <RegularizacaoClientesForm invoices={invoices} clients={clients} />
+                <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-6">
+                  <h3 className="text-sm font-bold text-[#003366] uppercase tracking-widest mb-6 flex items-center gap-3">
+                    <Users size={18} /> Lista de Clientes
+                  </h3>
+                  <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-[#003366] text-white text-[11px] uppercase tracking-wider font-bold">
+                      <th className="px-6 py-4">Cliente</th>
+                      <th className="px-6 py-4">NIF</th>
+                      <th className="px-6 py-4 text-right">Total Vendas</th>
+                      <th className="px-6 py-4 text-right">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100">
+                    {clients.map(c => {
+                      const clientInvoices = invoices.filter(i => i.client_id === c.id);
+                      const total = clientInvoices.reduce((sum, i) => sum + i.total, 0);
+                      return (
+                        <tr key={c.id} className="hover:bg-zinc-50">
+                          <td className="px-6 py-4 text-sm font-medium text-zinc-900">{c.name}</td>
+                          <td className="px-6 py-4 text-sm text-zinc-500">{c.nif}</td>
+                          <td className="px-6 py-4 text-sm text-right font-bold text-zinc-900">{formatCurrency(total)}</td>
+                          <td className="px-6 py-4 text-sm text-right">
+                            <button onClick={() => setSelectedClient(c)} className="text-[#003366] hover:underline font-bold text-xs uppercase">Conta Corrente</button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                </div>
+              </div>
+            )}
           </div>
         );
       default:
-        return null;
+        return (
+          <div className="space-y-6">
+            <div className="flex items-center gap-4 mb-6">
+              <button onClick={() => setActiveSubTab(null)} className="p-2 hover:bg-zinc-100 rounded-none text-zinc-400 transition-colors">
+                <ChevronLeft size={24} />
+              </button>
+              <h2 className="text-xl font-bold text-[#003366] capitalize">{activeSubTab.replace('-', ' ')}</h2>
+            </div>
+            <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm">
+              <div className="p-12 text-center text-zinc-400 italic bg-zinc-50 border border-dashed border-zinc-200">
+                Em desenvolvimento.
+              </div>
+            </div>
+          </div>
+        );
     }
   };
 
-  return (
-    <div className="space-y-8">
-      <header className="flex items-center gap-4">
-        <button onClick={() => setActiveSubTab(null)} className="p-2 hover:bg-zinc-100 transition-colors">
-          <ChevronLeft size={20} />
-        </button>
-        <div>
-          <Breadcrumbs paths={['Home', 'Área Reservada', 'Contabilidade', sections.find(s => s.id === activeSubTab)?.label || '']} />
-          <h2 className="text-2xl font-bold text-[#003366] tracking-tight">
-            {sections.find(s => s.id === activeSubTab)?.label}
-          </h2>
-          <p className="text-zinc-500 text-sm">Gestão contabilística e fiscal integrada.</p>
-        </div>
-      </header>
-
-      <motion.div
-        key={activeSubTab}
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.2 }}
-      >
-        {renderContent()}
-      </motion.div>
-    </div>
-  );
+  return renderContent();
 };
 
 const FiscalSeriesModule = () => {
@@ -8288,16 +8227,26 @@ const ClientAccount = ({ client, documents, onBack }: {
   documents: IssuedDocument[], 
   onBack: () => void 
 }) => {
-  const clientDocs = documents.filter(doc => doc.cliente_id === client.id);
-  
-  const movements = clientDocs.map(doc => {
-    // FT = Fatura (Debit)
-    // FR = Fatura-Recibo (Debit & Credit)
-    // RE = Recibo (Credit)
-    // NC = Nota de Crédito (Credit)
-    // ND = Nota de Débito (Debit)
-    const isCredit = ['RE', 'NC', 'FR', 'Recibo', 'Fatura Recibo'].includes(doc.tipo_documento);
-    const isDebit = ['FT', 'ND', 'FR', 'Fatura', 'Fatura Recibo'].includes(doc.tipo_documento);
+  const movements = documents.map(doc => {
+    const isSupplier = (client as any).tipo_cliente === 'Fornecedor';
+    
+    // For Clients:
+    // FT = Fatura (Debit - they owe us)
+    // RE = Recibo (Credit - they paid us)
+    // For Suppliers:
+    // Fatura de Compra (Credit - we owe them)
+    // Pagamento (Debit - we paid them)
+    
+    let isCredit = false;
+    let isDebit = false;
+    
+    if (isSupplier) {
+      isCredit = ['Fatura de Compra', 'Fatura Recibo de Compra', 'Nota de Débito de Fornecedor'].includes(doc.tipo_documento);
+      isDebit = ['Pagamento', 'Recibo', 'Fatura Recibo de Compra', 'Nota de Crédito de Fornecedor'].includes(doc.tipo_documento);
+    } else {
+      isCredit = ['RE', 'NC', 'FR', 'Recibo', 'Fatura Recibo'].includes(doc.tipo_documento);
+      isDebit = ['FT', 'ND', 'FR', 'Fatura', 'Fatura Recibo'].includes(doc.tipo_documento);
+    }
     
     return {
       ...doc,
@@ -8664,23 +8613,49 @@ const WarehouseModule = ({ onRefresh }: { onRefresh: () => void }) => {
   );
 };
 
-const CreatePurchase = ({ suppliers, products, onBack, onSuccess }: { 
+const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, onSuccess }: { 
   suppliers: Supplier[], 
   products: Product[], 
+  workSites: WorkSite[], 
+  fiscalSeries: FiscalSeries[],
   onBack: () => void, 
   onSuccess: () => void 
 }) => {
   const [supplierId, setSupplierId] = useState<number | ''>('');
+  const [documentType, setDocumentType] = useState('Fatura de Compra');
+  const [seriesId, setSeriesId] = useState<number | ''>('');
+  const [documentNumber, setDocumentNumber] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [items, setItems] = useState<Partial<PurchaseItem>[]>([]);
+  const [countryCode, setCountryCode] = useState('Angola');
+  const [nif, setNif] = useState('');
+  const [supplierName, setSupplierName] = useState('');
+  const [workSiteId, setWorkSiteId] = useState<string>('');
+  const [dueDate, setDueDate] = useState<string>('');
+  const [vatWithholding, setVatWithholding] = useState<string>('0');
+  const [exchangeRate, setExchangeRate] = useState<string>('1');
+  const [currency, setCurrency] = useState<string>('Kwanza');
+  const [counterValue, setCounterValue] = useState<string>('0');
+  const [globalDiscount, setGlobalDiscount] = useState<string>('0');
+  const [serviceDate, setServiceDate] = useState(new Date().toISOString().split('T')[0]);
+  const [serviceLocation, setServiceLocation] = useState('');
+  const [items, setItems] = useState<Partial<InvoiceItem>[]>([]);
+  const [cashBox, setCashBox] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('');
+  const [expandedDimensions, setExpandedDimensions] = useState<number | null>(null);
 
   const addItem = () => {
     setItems([...items, { 
-      product_id: 0,
       description: '', 
       quantity: 1, 
       unit_price: 0, 
-      total: 0
+      total: 0,
+      tipologia: 'Mercadoria',
+      desconto: 0,
+      tipo_artigo: 'produto',
+      comprimento: 0,
+      largura: 0,
+      altura: 0,
+      tax: ALL_TAXES[0]
     }]);
   };
 
@@ -8688,22 +8663,23 @@ const CreatePurchase = ({ suppliers, products, onBack, onSuccess }: {
     setItems(items.filter((_, i) => i !== index));
   };
 
-  const updateItem = (index: number, field: keyof PurchaseItem, value: any) => {
+  const updateItem = (index: number, field: keyof InvoiceItem, value: any) => {
     const newItems = [...items];
     newItems[index] = { ...newItems[index], [field]: value };
     
-    if (field === 'quantity' || field === 'unit_price') {
+    if (field === 'quantity' || field === 'unit_price' || field === 'desconto') {
       const q = field === 'quantity' ? value : (newItems[index].quantity || 0);
       const p = field === 'unit_price' ? value : (newItems[index].unit_price || 0);
-      newItems[index].total = q * p;
+      const d = field === 'desconto' ? value : (newItems[index].desconto || 0);
+      newItems[index].total = (q * p) - d;
     }
 
     if (field === 'product_id' && value) {
       const prod = products.find(p => p.id === Number(value));
       if (prod) {
         newItems[index].description = prod.name;
-        newItems[index].unit_price = prod.preco_compra || 0;
-        newItems[index].total = (newItems[index].quantity || 1) * (prod.preco_compra || 0);
+        newItems[index].unit_price = prod.price;
+        newItems[index].total = ((newItems[index].quantity || 1) * prod.price) - (newItems[index].desconto || 0);
       }
     }
     
@@ -8711,139 +8687,519 @@ const CreatePurchase = ({ suppliers, products, onBack, onSuccess }: {
   };
 
   const total = items.reduce((sum, item) => sum + (item.total || 0), 0);
+  const vatAmount = total * 0.14;
+  const finalTotal = total + vatAmount - Number(globalDiscount || 0);
+
+  const handleSearchSupplier = () => {
+    const client = suppliers.find(c => c.nif === nif);
+    if (client) {
+      setSupplierId(client.id);
+      setSupplierName(client.name);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (items.length === 0 || !supplierId) return;
+    if (items.length === 0) return;
+
+    let finalSupplierId = supplierId;
+    if (!finalSupplierId && supplierName) {
+      const res = await fetch('/api/suppliers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: supplierName, nif, email: '', address: '' })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        finalSupplierId = data.id;
+      }
+    }
+
+    if (!finalSupplierId) {
+      alert('Por favor, selecione um fornecedor ou digite o nome de um novo fornecedor.');
+      return;
+    }
 
     const res = await fetch('/api/purchases', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
-        supplier_id: supplierId, 
+        supplier_id: finalSupplierId, 
         date, 
-        items 
+        due_date: dueDate,
+        items,
+        document_type: documentType,
+        work_site_id: workSiteId,
+        vat_withholding: parseFloat(vatWithholding),
+        exchange_rate: parseFloat(exchangeRate),
+        currency,
+        counter_value: parseFloat(counterValue),
+        global_discount: parseFloat(globalDiscount),
+        service_date: serviceDate,
+        service_location: serviceLocation,
+        cash_box: cashBox,
+        payment_method: paymentMethod,
+        series_id: seriesId
       })
     });
 
     if (res.ok) {
       onSuccess();
     } else {
-      alert('Erro ao registar compra');
+      const errorData = await res.json().catch(() => ({ error: 'Erro desconhecido ao emitir documento' }));
+      console.error('Erro ao emitir documento:', errorData);
+      alert('Erro ao emitir documento: ' + (errorData.error || 'Erro desconhecido'));
     }
   };
 
   return (
-    <div className="space-y-8 bg-white border border-zinc-200 p-8 rounded-none shadow-sm">
-      <div className="flex items-center gap-4 mb-6">
-        <button onClick={onBack} className="p-2 hover:bg-zinc-100 rounded-none text-zinc-400">
+    <div className="space-y-8 bg-zinc-50/30 p-4 sm:p-8 min-h-screen">
+      <div className="flex items-center gap-4 mb-8">
+        <button onClick={onBack} className="p-2 hover:bg-zinc-100 rounded-none text-zinc-400 transition-colors">
           <ChevronLeft size={24} />
         </button>
-        <h2 className="text-xl font-bold text-[#003366]">Registar Nova Compra</h2>
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-zinc-100 flex items-center justify-center text-zinc-500">
+            <FileText size={18} />
+          </div>
+          <h2 className="text-xl font-bold text-[#003366]">Informações do documento</h2>
+        </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-zinc-600 uppercase">Fornecedor</label>
-            <select 
-              value={supplierId} 
-              onChange={(e) => setSupplierId(Number(e.target.value))}
-              required
-              className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-sm"
-            >
-              <option value="">Selecionar Fornecedor</option>
-              {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-          </div>
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-zinc-600 uppercase">Data da Compra</label>
-            <input 
-              type="date" 
-              value={date} 
-              onChange={(e) => setDate(e.target.value)}
-              required
-              className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-sm"
-            />
+      <form onSubmit={handleSubmit} className="space-y-8">
+        {/* Section 1: Informações do documento */}
+        <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-600">Tipo de documento <span className="text-red-500">*</span></label>
+              <select 
+                value={documentType} 
+                onChange={(e) => setDocumentType(e.target.value)}
+                required
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+              >
+                <option value="Fatura de Compra">Fatura de Compra</option>
+                <option value="Fatura Recibo de Compra">Fatura Recibo de Compra</option>
+                <option value="Pagamento">Pagamento (Recibo)</option>
+                <option value="Nota de Crédito de Fornecedor">Nota de Crédito de Fornecedor</option>
+                <option value="Nota de Débito de Fornecedor">Nota de Débito de Fornecedor</option>
+                <option value="Guia de Entrada">Guia de Entrada</option>
+                <option value="Guia de Devolução">Guia de Devolução</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-600">Série</label>
+              <select 
+                value={seriesId} 
+                onChange={(e) => setSeriesId(e.target.value ? Number(e.target.value) : '')} 
+                required
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+              >
+                <option value="">Selecionar Série</option>
+                {fiscalSeries.filter(s => s.is_active).map(s => (
+                  <option key={s.id} value={s.id}>{s.description}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-600">Local de trabalho</label>
+              <select 
+                value={workSiteId} 
+                onChange={(e) => setWorkSiteId(e.target.value)}
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+              >
+                <option value="">Selecione o local</option>
+                {workSites.map(ws => <option key={ws.id} value={ws.id}>{ws.title}</option>)}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-600">Data de emissão</label>
+              <input 
+                type="date" 
+                value={date} 
+                disabled
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-600">Data de vencimento</label>
+              <input 
+                type="date" 
+                value={dueDate} 
+                onChange={(e) => setDueDate(e.target.value)}
+                required
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-600">Cativação de IVA</label>
+              <select 
+                value={vatWithholding} 
+                onChange={(e) => setVatWithholding(e.target.value)}
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+              >
+                <option value="0">Sem cativação</option>
+                <option value="0.5">50%</option>
+                <option value="1">100%</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-600">Câmbio</label>
+              <input 
+                type="number" 
+                value={exchangeRate} 
+                onChange={(e) => setExchangeRate(e.target.value)}
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-600">Moeda</label>
+              <select 
+                value={currency} 
+                onChange={(e) => setCurrency(e.target.value)}
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+              >
+                <option value="Kwanza">Kwanza</option>
+                <option value="USD">USD</option>
+                <option value="Euro">Euro</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-600">Contravalor</label>
+              <input 
+                type="number" 
+                value={counterValue} 
+                onChange={(e) => setCounterValue(e.target.value)}
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-600">Desconto global</label>
+              <input 
+                type="number" 
+                value={globalDiscount} 
+                onChange={(e) => setGlobalDiscount(e.target.value)}
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+              />
+            </div>
+            {(documentType === 'Fatura Recibo de Compra' || documentType === 'Pagamento') && (
+              <>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-zinc-600">Selecionar caixa de pagamento</label>
+                  <select 
+                    value={cashBox} 
+                    onChange={(e) => setCashBox(e.target.value)}
+                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+                  >
+                    <option value="">Selecione a caixa</option>
+                    <option value="Caixa Geral">Caixa Geral</option>
+                    <option value="Caixa POS">Caixa POS</option>
+                    <option value="Banco">Banco</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-zinc-600">Selecionar forma de pagamento</label>
+                  <select 
+                    value={paymentMethod} 
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+                  >
+                    <option value="">Selecione o pagamento</option>
+                    <option value="Numerário">Numerário</option>
+                    <option value="Multicaixa">Multicaixa</option>
+                    <option value="Transferência">Transferência</option>
+                    <option value="Depósito">Depósito</option>
+                  </select>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
-        <div className="space-y-4">
-          <div className="flex justify-between items-center">
-            <h3 className="font-bold text-[#003366] text-sm uppercase tracking-wider">Itens da Compra</h3>
+        {/* Section 2: Informações do fornecedor */}
+        <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-6">
+          <h3 className="text-lg font-bold text-[#003366] border-b border-zinc-100 pb-4">Informações do fornecedor</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-600">Código do país <span className="text-red-500">*</span></label>
+              <select 
+                value={countryCode} 
+                onChange={(e) => setCountryCode(e.target.value)}
+                required
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+              >
+                <option value="Angola">Angola</option>
+                <option value="Portugal">Portugal</option>
+                <option value="Brasil">Brasil</option>
+              </select>
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <label className="text-xs font-bold text-zinc-600">Selecionar fornecedor <span className="text-red-500">*</span></label>
+              <select 
+                value={supplierId} 
+                onChange={(e) => {
+                  const id = e.target.value;
+                  setSupplierId(id ? Number(id) : '');
+                  const client = suppliers.find(c => c.id === Number(id));
+                  if (client) {
+                    setSupplierName(client.name);
+                    setNif(client.nif);
+                  } else {
+                    setSupplierName('');
+                    setNif('');
+                  }
+                }}
+                required
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+              >
+                <option value="">Selecione um fornecedor</option>
+                {suppliers.map(c => <option key={c.id} value={c.id}>{c.name} ({c.nif})</option>)}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-600">Data prestação de bens/serviços <span className="text-red-500">*</span></label>
+              <input 
+                type="date" 
+                value={serviceDate} 
+                onChange={(e) => setServiceDate(e.target.value)}
+                required
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+              />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <label className="text-xs font-bold text-zinc-600">Local de prestação de bens/serviços <span className="text-red-500">*</span></label>
+              <input 
+                type="text" 
+                value={serviceLocation} 
+                onChange={(e) => setServiceLocation(e.target.value)}
+                placeholder="Informe o local da prestação de serviço"
+                required
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Section 3: Bens e serviços */}
+        <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-6">
+          <div className="flex justify-between items-center border-b border-zinc-100 pb-4">
+            <h3 className="text-lg font-bold text-[#003366]">Bens e serviços</h3>
             <button 
-              type="button" 
+              type="button"
               onClick={addItem}
-              className="text-[#003366] text-xs font-bold flex items-center gap-1 hover:underline"
+              className="bg-[#003366] text-white px-6 py-2.5 font-bold flex items-center gap-2 hover:bg-[#002244] transition-all text-sm shadow-sm rounded-none"
             >
-              <Plus size={14} /> Adicionar Item
+              <Plus size={18} /> Adicionar a lista
             </button>
           </div>
+          
+          <div className="space-y-4">
+            {items.map((item, idx) => (
+              <div key={idx} className="bg-zinc-50 p-4 border border-zinc-100 space-y-4">
+                <div className="grid grid-cols-12 gap-4 items-end">
+                  <div className="col-span-2 space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Produto/Serviço</label>
+                    <select 
+                      value={item.product_id || ''} 
+                      onChange={(e) => updateItem(idx, 'product_id', e.target.value)}
+                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
+                    >
+                      <option value="">Manual...</option>
+                      {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="col-span-6 space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Descrição</label>
+                    <input 
+                      type="text" 
+                      value={item.description} 
+                      onChange={(e) => updateItem(idx, 'description', e.target.value)}
+                      placeholder="Descrição do item"
+                      required
+                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
+                    />
+                  </div>
+                  <div className="col-span-2 space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Tipologia</label>
+                    <select 
+                      value={item.tipologia || 'Mercadoria'} 
+                      onChange={(e) => updateItem(idx, 'tipologia', e.target.value)}
+                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
+                    >
+                      <option value="Mercadoria">Mercadoria</option>
+                      <option value="importação">Importação</option>
+                      <option value="serviços no estrangeiro">Serviços no estrangeiro</option>
+                      <option value="outro">Outro</option>
+                    </select>
+                  </div>
+                  <div className="col-span-2 space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Tipo Artigo</label>
+                    <select 
+                      value={item.tipo_artigo || 'produto'} 
+                      onChange={(e) => updateItem(idx, 'tipo_artigo', e.target.value)}
+                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
+                    >
+                      <option value="produto">Produto</option>
+                      <option value="serviço">Serviço</option>
+                      <option value="outro">Outro</option>
+                    </select>
+                  </div>
+                  <div className="col-span-2 space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Taxa</label>
+                    <select 
+                      value={item.tax || ALL_TAXES[0]} 
+                      onChange={(e) => updateItem(idx, 'tax', e.target.value)}
+                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
+                    >
+                      {ALL_TAXES.map((taxName, i) => (
+                        <option key={i} value={taxName}>{taxName}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="col-span-1 flex justify-end pb-1">
+                    <button 
+                      type="button" 
+                      onClick={() => removeItem(idx)}
+                      className="text-zinc-300 hover:text-red-500 transition-colors"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
 
-          <div className="border border-zinc-200 rounded-none overflow-hidden">
-            <table className="w-full text-sm text-left">
-              <thead className="bg-zinc-50 text-zinc-400 uppercase text-[10px] font-bold">
-                <tr>
-                  <th className="px-4 py-3">Produto</th>
-                  <th className="px-4 py-3">Qtd</th>
-                  <th className="px-4 py-3">Preço Unit.</th>
-                  <th className="px-4 py-3">Total</th>
-                  <th className="px-4 py-3 w-10"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
-                {items.map((item, idx) => (
-                  <tr key={idx}>
-                    <td className="px-4 py-2">
-                      <select 
-                        value={item.product_id} 
-                        onChange={(e) => updateItem(idx, 'product_id', e.target.value)}
-                        className="w-full bg-transparent border-none focus:ring-0 p-0 text-sm"
-                      >
-                        <option value="0">Selecionar Produto</option>
-                        {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                      </select>
-                    </td>
-                    <td className="px-4 py-2">
-                      <input 
-                        type="number" 
-                        value={item.quantity} 
-                        onChange={(e) => updateItem(idx, 'quantity', Number(e.target.value))}
-                        className="w-16 bg-transparent border-none focus:ring-0 p-0 text-sm"
-                      />
-                    </td>
-                    <td className="px-4 py-2">
-                      <input 
-                        type="number" 
-                        step="0.01"
-                        value={item.unit_price} 
-                        onChange={(e) => updateItem(idx, 'unit_price', Number(e.target.value))}
-                        className="w-24 bg-transparent border-none focus:ring-0 p-0 text-sm"
-                      />
-                    </td>
-                    <td className="px-4 py-2 font-bold text-zinc-800">
+                <div className="grid grid-cols-12 gap-4 items-end">
+                  <div className="col-span-2 space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Qtd</label>
+                    <input 
+                      type="number" 
+                      value={item.quantity} 
+                      onChange={(e) => updateItem(idx, 'quantity', Number(e.target.value))}
+                      required
+                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
+                    />
+                  </div>
+                  <div className="col-span-3 space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Preço Un.</label>
+                    <input 
+                      type="number" 
+                      step="0.01"
+                      value={item.unit_price} 
+                      onChange={(e) => updateItem(idx, 'unit_price', Number(e.target.value))}
+                      required
+                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
+                    />
+                  </div>
+                  <div className="col-span-2 space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Desconto</label>
+                    <input 
+                      type="number" 
+                      step="0.01"
+                      value={item.desconto || 0} 
+                      onChange={(e) => updateItem(idx, 'desconto', Number(e.target.value))}
+                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
+                    />
+                  </div>
+                  <div className="col-span-2 text-right pb-2">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Total Item</label>
+                    <p className="text-zinc-800 font-bold text-sm">
                       {formatCurrency(item.total || 0)}
-                    </td>
-                    <td className="px-4 py-2">
-                      <button type="button" onClick={() => removeItem(idx)} className="text-red-400 hover:text-red-600">
-                        <Trash2 size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </p>
+                  </div>
+                  <div className="col-span-3 flex items-center gap-2 pb-1">
+                    <button 
+                      type="button"
+                      onClick={() => setExpandedDimensions(expandedDimensions === idx ? null : idx)}
+                      className="p-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 transition-colors"
+                      title="Dimensões"
+                    >
+                      <Layers size={16} />
+                    </button>
+                    <span className="text-[10px] text-zinc-400 font-medium">Dimensões</span>
+                  </div>
+                </div>
+
+                {expandedDimensions === idx && (
+                  <div className="grid grid-cols-3 gap-4 p-4 bg-white border border-zinc-200 animate-in fade-in slide-in-from-top-2">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase">Comprimento</label>
+                      <input 
+                        type="number" 
+                        value={item.comprimento || 0} 
+                        onChange={(e) => updateItem(idx, 'comprimento', Number(e.target.value))}
+                        className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase">Largura</label>
+                      <input 
+                        type="number" 
+                        value={item.largura || 0} 
+                        onChange={(e) => updateItem(idx, 'largura', Number(e.target.value))}
+                        className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase">Altura</label>
+                      <input 
+                        type="number" 
+                        value={item.altura || 0} 
+                        onChange={(e) => updateItem(idx, 'altura', Number(e.target.value))}
+                        className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+            {items.length === 0 && (
+              <div className="text-center py-12 text-zinc-400 border-2 border-dashed border-zinc-100 rounded-none text-sm bg-white">
+                Nenhum item adicionado. Clique em "Adicionar a lista" para começar.
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end pt-6">
+            <div className="bg-zinc-50 p-6 space-y-4 border border-zinc-200 min-w-[320px]">
+              <div className="flex justify-between text-zinc-500 text-[10px] font-bold uppercase tracking-wider">
+                <span>Subtotal</span>
+                <span>{formatCurrency(total)}</span>
+              </div>
+              {Number(globalDiscount) > 0 && (
+                <div className="flex justify-between text-red-500 text-[10px] font-bold uppercase tracking-wider">
+                  <span>Desconto Global</span>
+                  <span>-{formatCurrency(Number(globalDiscount))}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-zinc-500 text-[10px] font-bold uppercase tracking-wider">
+                <span>IVA (14%)</span>
+                <span>{formatCurrency(total * 0.14)}</span>
+              </div>
+              <div className="pt-4 border-t border-zinc-200 flex justify-between items-center">
+                <span className="text-xs font-bold text-[#003366] uppercase tracking-widest">Total Final</span>
+                <span className="text-3xl font-black text-[#003366]">{formatCurrency(finalTotal)}</span>
+              </div>
+              <div className="text-[9px] text-zinc-400 text-right italic mt-2">
+                * Valores calculados em tempo real
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="flex justify-between items-center pt-6 border-t border-zinc-100">
-          <div className="text-2xl font-black text-[#003366]">
-            Total: {formatCurrency(total)}
-          </div>
-          <div className="flex gap-4">
-            <button type="button" onClick={onBack} className="px-6 py-2 text-sm font-bold text-zinc-500">Cancelar</button>
-            <button type="submit" className="bg-[#003366] text-white px-8 py-2 text-sm font-bold rounded-none shadow-lg">Registar Compra</button>
-          </div>
+        <div className="flex justify-end gap-4">
+          <button 
+            type="button" 
+            onClick={onBack}
+            className="px-8 py-3 rounded-none border border-zinc-300 text-zinc-700 font-bold hover:bg-zinc-50 transition-all text-sm shadow-sm"
+          >
+            Cancelar
+          </button>
+          <button 
+            type="submit"
+            disabled={items.length === 0}
+            className="px-8 py-3 rounded-none bg-[#003366] text-white font-bold hover:bg-[#002244] disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm shadow-sm"
+          >
+            Registar Compra
+          </button>
         </div>
       </form>
     </div>
@@ -8907,7 +9263,7 @@ const PurchaseActionsModal = ({ purchase, onClose, onAction }: {
   );
 };
 
-const PurchasesModule = ({ suppliers, products }: { suppliers: Supplier[], products: Product[] }) => {
+const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries }: { suppliers: Supplier[], products: Product[], workSites: WorkSite[], fiscalSeries: FiscalSeries[] }) => {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -8928,6 +9284,8 @@ const PurchasesModule = ({ suppliers, products }: { suppliers: Supplier[], produ
       <CreatePurchase 
         suppliers={suppliers} 
         products={products} 
+        workSites={workSites} 
+        fiscalSeries={fiscalSeries} 
         onBack={() => setIsCreating(false)} 
         onSuccess={() => {
           setIsCreating(false);
@@ -9080,7 +9438,7 @@ const PurchasesModule = ({ suppliers, products }: { suppliers: Supplier[], produ
   );
 };
 
-const SupplierModule = ({ products }: { products: Product[] }) => {
+const SupplierModule = ({ products, workSites, fiscalSeries }: { products: Product[], workSites: WorkSite[], fiscalSeries: FiscalSeries[] }) => {
   const [activeSubTab, setActiveSubTab] = useState<string | null>(null);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -9195,7 +9553,7 @@ const SupplierModule = ({ products }: { products: Product[] }) => {
           </div>
         );
       case 'purchases-list':
-        return <PurchasesModule suppliers={suppliers} products={products} />;
+        return <PurchasesModule suppliers={suppliers} products={products} workSites={workSites} fiscalSeries={fiscalSeries} />;
       default:
         return (
           <div className="p-12 text-center text-zinc-400 italic bg-white border border-zinc-200">
@@ -10168,11 +10526,11 @@ export default function App() {
           }}
         />
       );
-      case 'suppliers': return <SupplierModule products={products} />;
+      case 'suppliers': return <SupplierModule products={products} workSites={workSites} fiscalSeries={fiscalSeries} />;
       case 'products': return <ProductList products={products} onRefresh={fetchData} />;
       case 'financial': return <FinancialModule />;
       case 'hr': return <HRModule onRefresh={fetchData} />;
-      case 'accounting': return <AccountingModule />;
+      case 'accounting': return <AccountingModule invoices={invoices} clients={clients} />;
       case 'specialized': return <SpecializedManagementModule />;
       case 'settings': return (
         <SettingsModule 

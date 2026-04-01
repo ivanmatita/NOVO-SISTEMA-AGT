@@ -1,8 +1,16 @@
 import React, { useState } from 'react';
+import { Invoice, Purchase } from '../types';
 
-const RegimeSimplificadoForm = () => {
-  const [ano, setAno] = useState('2026');
-  const [mes, setMes] = useState('03');
+const RegimeSimplificadoForm = ({ invoices, purchases }: { invoices: Invoice[], purchases: Purchase[] }) => {
+  const [ano, setAno] = useState(new Date().getFullYear().toString());
+  const [mes, setMes] = useState((new Date().getMonth() + 1).toString().padStart(2, '0'));
+
+  const totalSales = invoices.reduce((sum, inv) => sum + inv.total, 0);
+  const totalTax = totalSales * 0.07;
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(value).replace('Kz', '').trim();
+  };
 
   return (
     <div className="p-8 bg-white border border-zinc-200 shadow-sm space-y-6">
@@ -34,22 +42,24 @@ const RegimeSimplificadoForm = () => {
               <th className="p-2 text-left">Operação</th>
               <th className="p-2 text-left">Código</th>
               <th className="p-2 text-right">Taxa</th>
+              <th className="p-2 text-right">Base de Incidência</th>
               <th className="p-2 text-right">Imposto</th>
             </tr>
           </thead>
           <tbody>
             {[
-              { label: '1º INDÚSTRIA', code: 'INDUSTRIAT', taxa: '7%' },
-              { label: '2º COMERCIO', code: 'COMERCIOT', taxa: '7%' },
-              { label: '3º PRESTAÇÃO DE SERVIÇOS', code: 'SERVICOST', taxa: '7%' },
-              { label: '4º SERVIÇOS CONTRATADOS A PRESTADORES NÃO RESIDENTES', code: 'ESTRANGEIROST', taxa: '7%' },
-              { label: '5º OUTROS', code: 'OUTROST', taxa: '7%' },
+              { label: '1º INDÚSTRIA', code: 'INDUSTRIAT', taxa: '7%', base: 0, imposto: 0 },
+              { label: '2º COMERCIO', code: 'COMERCIOT', taxa: '7%', base: 0, imposto: 0 },
+              { label: '3º PRESTAÇÃO DE SERVIÇOS', code: 'SERVICOST', taxa: '7%', base: totalSales, imposto: totalTax },
+              { label: '4º SERVIÇOS CONTRATADOS A PRESTADORES NÃO RESIDENTES', code: 'ESTRANGEIROST', taxa: '7%', base: 0, imposto: 0 },
+              { label: '5º OUTROS', code: 'OUTROST', taxa: '7%', base: 0, imposto: 0 },
             ].map((op, idx) => (
               <tr key={idx} className="border-b">
                 <td className="p-2">{op.label}</td>
                 <td className="p-2">{op.code}</td>
                 <td className="p-2 text-right">{op.taxa}</td>
-                <td className="p-2 text-right">0,00</td>
+                <td className="p-2 text-right">{formatCurrency(op.base)}</td>
+                <td className="p-2 text-right">{formatCurrency(op.imposto)}</td>
               </tr>
             ))}
           </tbody>

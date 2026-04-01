@@ -51,6 +51,7 @@ export interface InvoiceItem {
   largura?: number;
   altura?: number;
   tax?: string;
+  warehouse_id?: number;
 }
 
 export interface Invoice {
@@ -108,9 +109,12 @@ export interface Employee {
   dependents?: number;
   subject_to_irt?: boolean;
   subject_to_inss?: boolean;
-  status: 'active' | 'inactive';
+  status: 'active' | 'inactive' | 'dismissed';
   hired_at: string;
   dismissed_at?: string;
+  dismissal_reason?: string;
+  dismissal_ordered_by?: string;
+  dismissal_observations?: string;
 }
 
 export interface Profession {
@@ -306,6 +310,15 @@ export interface Supplier {
   email?: string;
   phone?: string;
   address?: string;
+  localidade?: string;
+  codigo_postal?: string;
+  provincia?: string;
+  municipio?: string;
+  pais?: string;
+  webpage?: string;
+  siglas_banco?: string;
+  iban?: string;
+  tipo_cliente?: 'nao_grupo' | 'nacionais' | 'estrangeiro' | 'associados' | 'normal';
   created_at: string;
 }
 
@@ -331,6 +344,18 @@ export interface Purchase {
   status: 'pending' | 'completed' | 'cancelled';
   total: number;
   items?: PurchaseItem[];
+}
+
+export interface LaborTermination {
+  id: number;
+  employee_id: number;
+  employee_name: string;
+  dismissal_date: string;
+  ordered_by: string;
+  reason: string;
+  observations?: string;
+  calculations?: any;
+  created_at: string;
 }
 
 export interface PurchaseItem {

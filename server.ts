@@ -351,6 +351,7 @@ db.exec(`
     date DATE NOT NULL,
     status TEXT DEFAULT 'pending',
     total REAL DEFAULT 0,
+    work_site_id INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
   );
@@ -498,6 +499,12 @@ if (!productColumns.includes('finalidade')) {
 }
 if (!productColumns.includes('tipologia')) {
   db.exec("ALTER TABLE products ADD COLUMN tipologia TEXT");
+}
+
+const purchasesTableInfo = db.prepare("PRAGMA table_info(purchases)").all();
+const purchasesColumns = purchasesTableInfo.map((c: any) => c.name);
+if (!purchasesColumns.includes('work_site_id')) {
+  db.exec("ALTER TABLE purchases ADD COLUMN work_site_id INTEGER");
 }
 
 // Migration: Add missing columns to invoices table if they don't exist
@@ -1070,6 +1077,30 @@ async function startServer() {
 
       await supabase.from("transactions").insert([{ type: 'income', category: 'sale', amount: total, description: `${document_type} ${invoice_number}`, reference_id: invoiceId }]);
       
+      if (normalizedWorkSiteId) {
+        const { data: movements } = await supabase
+          .from("work_site_movements")
+          .select("balance")
+          .eq("work_site_id", normalizedWorkSiteId)
+          .order("date", { ascending: false })
+          .order("created_at", { ascending: false })
+          .limit(1);
+          
+        const currentBalance = movements && movements.length > 0 ? movements[0].balance : 0;
+        const newBalance = currentBalance + total;
+
+        await supabase.from("work_site_movements").insert([{
+          work_site_id: normalizedWorkSiteId,
+          date,
+          doc_no: invoice_number,
+          company: 'Cliente',
+          description: `${document_type} ${invoice_number}`,
+          debit: 0,
+          credit: total,
+          balance: newBalance
+        }]);
+      }
+      
       res.json({ id: invoiceId, invoice_number });
     } else {
       // SQLite fallback
@@ -1124,6 +1155,17 @@ async function startServer() {
 
         db.prepare("INSERT INTO hash_chain (document_id, previous_hash, current_hash) VALUES (?, ?, ?)").run(invoiceId, prevHash, hash);
         db.prepare("INSERT INTO transactions (type, category, amount, description, reference_id) VALUES (?, ?, ?, ?, ?)").run('income', 'sale', total, `${document_type} ${invoice_number}`, invoiceId);
+        
+        if (normalizedWorkSiteId) {
+          const lastMovement = db.prepare("SELECT balance FROM work_site_movements WHERE work_site_id = ? ORDER BY date DESC, created_at DESC LIMIT 1").get(normalizedWorkSiteId) as { balance: number } | undefined;
+          const currentBalance = lastMovement ? lastMovement.balance : 0;
+          const newBalance = currentBalance + total;
+
+          db.prepare(`
+            INSERT INTO work_site_movements (work_site_id, date, doc_no, company, description, debit, credit, balance)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(normalizedWorkSiteId, date, invoice_number, 'Cliente', `${document_type} ${invoice_number}`, 0, total, newBalance);
+        }
         
         return invoiceId;
       });
@@ -1706,14 +1748,34 @@ async function startServer() {
     }
   });
 
+// Ensure transactions table has all necessary columns
+const transactionColumnsToAdd = [
+  { name: 'payment_method', type: 'TEXT' },
+  { name: 'reference', type: 'TEXT' },
+  { name: 'observation', type: 'TEXT' }
+];
+
+for (const col of transactionColumnsToAdd) {
+  try {
+    db.prepare(`ALTER TABLE transactions ADD COLUMN ${col.name} ${col.type}`).run();
+    console.log(`Added column ${col.name} to transactions table.`);
+  } catch (e) {
+    // Column likely already exists
+  }
+}
+
   app.post("/api/transactions", async (req, res) => {
-    const { type, category, amount, description } = req.body;
+    const { type, category, amount, description, payment_method, reference, observation, date } = req.body;
     if (supabaseEnabled) {
-      const { data, error } = await supabase.from("transactions").insert([{ type, category, amount, description }]).select();
+      const { data, error } = await supabase.from("transactions").insert([{ 
+        type, category, amount, description, payment_method, reference, observation, date 
+      }]).select();
       if (error) return res.status(500).json({ error: error.message });
       res.json({ id: data[0].id });
     } else {
-      const info = db.prepare("INSERT INTO transactions (type, category, amount, description) VALUES (?, ?, ?, ?)").run(type, category, amount, description);
+      const info = db.prepare("INSERT INTO transactions (type, category, amount, description, payment_method, reference, observation, date) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(
+        type, category, amount, description, payment_method, reference, observation, date || new Date().toISOString()
+      );
       res.json({ id: info.lastInsertRowid });
     }
   });
@@ -1841,24 +1903,65 @@ async function startServer() {
   });
 
   app.post("/api/purchases", (req, res) => {
-    const { supplier_id, date, items } = req.body;
+    const { supplier_id, date, items, work_site_id } = req.body;
     const purchase_number = `PUR-${Date.now()}`;
     
     const total = items.reduce((acc: number, item: any) => acc + (item.quantity * item.unit_price), 0);
     
-    const info = db.prepare("INSERT INTO purchases (supplier_id, purchase_number, date, total) VALUES (?, ?, ?, ?)")
-      .run(supplier_id, purchase_number, date, total);
+    const info = db.prepare("INSERT INTO purchases (supplier_id, purchase_number, date, total, work_site_id) VALUES (?, ?, ?, ?, ?)")
+      .run(supplier_id, purchase_number, date, total, work_site_id || null);
     
     const purchaseId = info.lastInsertRowid;
     
     const insertItem = db.prepare("INSERT INTO purchase_items (purchase_id, product_id, description, quantity, unit_price, total) VALUES (?, ?, ?, ?, ?, ?)");
+    const getProduct = db.prepare("SELECT stock_quantity FROM products WHERE id = ?");
+    const updateProductStock = db.prepare("UPDATE products SET stock_quantity = ? WHERE id = ?");
+    const insertStockMovement = db.prepare(`
+      INSERT INTO stock_movements 
+      (product_id, type, quantity, unit_price, previous_stock, current_stock, warehouse_id, description, reference_id) 
+      VALUES (?, 'entry', ?, ?, ?, ?, ?, ?, ?)
+    `);
+
     for (const item of items) {
       insertItem.run(purchaseId, item.product_id, item.description, item.quantity, item.unit_price, item.quantity * item.unit_price);
+      
+      // If product_id and warehouse_id are provided, update stock
+      if (item.product_id && item.warehouse_id) {
+        const product = getProduct.get(item.product_id) as { stock_quantity: number } | undefined;
+        if (product) {
+          const prevStock = product.stock_quantity || 0;
+          const newStock = prevStock + Number(item.quantity);
+          
+          updateProductStock.run(newStock, item.product_id);
+          
+          insertStockMovement.run(
+            item.product_id,
+            item.quantity,
+            item.unit_price,
+            prevStock,
+            newStock,
+            item.warehouse_id,
+            `Entrada via Compra ${purchase_number}`,
+            purchaseId
+          );
+        }
+      }
     }
     
     // Also record as expense in transactions
     db.prepare("INSERT INTO transactions (type, category, amount, description, date, reference_id) VALUES ('expense', 'purchase', ?, ?, ?, ?)")
       .run(total, `Compra ${purchase_number}`, date, purchaseId);
+      
+    if (work_site_id) {
+      const lastMovement = db.prepare("SELECT balance FROM work_site_movements WHERE work_site_id = ? ORDER BY date DESC, created_at DESC LIMIT 1").get(work_site_id) as { balance: number } | undefined;
+      const currentBalance = lastMovement ? lastMovement.balance : 0;
+      const newBalance = currentBalance - total;
+
+      db.prepare(`
+        INSERT INTO work_site_movements (work_site_id, date, doc_no, company, description, debit, credit, balance)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(work_site_id, date, purchase_number, 'Fornecedor', `Compra ${purchase_number}`, total, 0, newBalance);
+    }
     
     res.json({ id: purchaseId, purchase_number });
   });

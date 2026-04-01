@@ -31,6 +31,7 @@ import {
   BarChart3,
   FileSpreadsheet,
   History,
+  Activity,
   MoreHorizontal,
   MoreVertical,
   Mail,
@@ -84,6 +85,9 @@ import {
   Monitor
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 import { Client, Product, Invoice, DashboardStats, InvoiceItem, Employee, Profession, WorkSite, WorkSiteMovement, IssuedDocument, Warehouse, Supplier, FiscalSeries, CostCenter, POSPoint, CashSession, SystemUser, Purchase, PurchaseItem, POSArea } from './types';
 import Modelo7Form from './components/Modelo7Form';
 import AnexoFornecedoresForm from './components/AnexoFornecedoresForm';
@@ -96,6 +100,10 @@ import FichaPessoal from './components/FichaPessoal';
 import DeclaracaoServico from './components/DeclaracaoServico';
 import AcordoConfidencialidade from './components/AcordoConfidencialidade';
 import ColaboradoresDemitidos from './components/ColaboradoresDemitidos';
+import RegimeExclusaoForm from './components/RegimeExclusaoForm';
+import ImpostoPorContaForm from './components/ImpostoPorContaForm';
+import DeclaracaoAnualForm from './components/DeclaracaoAnualForm';
+import SaftExportForm from './components/SaftExportForm';
 
 // --- Helpers ---
 
@@ -452,7 +460,507 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
   const [localEmployees, setLocalEmployees] = useState<Employee[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
-  
+  const [selectedEmployeeForOptions, setSelectedEmployeeForOptions] = useState<Employee | null>(null);
+  const [showOptionsMenu, setShowOptionsMenu] = useState(false);
+  const [selectedMonthForMap, setSelectedMonthForMap] = useState(new Date().toISOString().slice(0, 7));
+  const [selectedMapSubTab, setSelectedMapSubTab] = useState('irt_inss');
+  const [selectedPaymentCaixa, setSelectedPaymentCaixa] = useState('');
+  const [isProcessingComplete, setIsProcessingComplete] = useState(false);
+
+  const EmployeeOptionsMenu = ({ employee, onClose }: { employee: Employee, onClose: () => void }) => {
+    const options = [
+      { id: 'behavior', label: 'Comportamento', icon: <Activity size={20} />, color: 'text-blue-600', bg: 'bg-blue-50', desc: 'Gestão de ocorrências e méritos' },
+      { id: 'redirection', label: 'Redirecionamento', icon: <ArrowRightLeft size={20} />, color: 'text-emerald-600', bg: 'bg-emerald-50', desc: 'Transferências e atribuições' },
+      { id: 'functions', label: 'Funções', icon: <Settings size={20} />, color: 'text-amber-600', bg: 'bg-amber-50', desc: 'Definição de cargo e tarefas' },
+      { id: 'ficha_pessoal', label: 'Ficha Pessoal', icon: <FileText size={20} />, color: 'text-[#003366]', bg: 'bg-zinc-50', desc: 'Visualizar ficha completa' },
+      { id: 'declaracao_servico', label: 'Declaração de Serviço', icon: <FileSignature size={20} />, color: 'text-[#003366]', bg: 'bg-zinc-50', desc: 'Emitir comprovativo de serviço' },
+      { id: 'acordo_confidencialidade', label: 'Acordo de Confidencialidade', icon: <ShieldCheck size={20} />, color: 'text-[#003366]', bg: 'bg-zinc-50', desc: 'Termos de sigilo e ética' },
+    ];
+
+    return (
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md"
+        onClick={onClose}
+      >
+        <div 
+          className="bg-white border border-zinc-200 w-full max-w-2xl shadow-2xl overflow-hidden"
+          onClick={e => e.stopPropagation()}
+        >
+          <div className="bg-[#003366] text-white p-8 flex justify-between items-center relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32 blur-3xl"></div>
+            <div className="flex items-center gap-6 relative z-10">
+              <div className="w-20 h-20 bg-white/10 rounded-none overflow-hidden border-2 border-white/20 flex items-center justify-center shadow-inner">
+                {employee.image_url ? <img src={employee.image_url} className="w-full h-full object-cover" /> : <User size={40} />}
+              </div>
+              <div>
+                <h3 className="text-2xl font-black uppercase tracking-[0.2em]">{employee.name}</h3>
+                <p className="text-xs text-white/60 uppercase tracking-widest font-bold mt-1">{employee.role} • ID: {employee.id}</p>
+              </div>
+            </div>
+            <button onClick={onClose} className="p-3 hover:bg-white/10 transition-colors relative z-10">
+              <X size={24} />
+            </button>
+          </div>
+          <div className="p-8 grid grid-cols-2 gap-6 bg-zinc-50/50">
+            {options.map(opt => (
+              <button
+                key={opt.id}
+                onClick={() => {
+                  setSelectedEmployee(employee);
+                  setActiveTab(opt.id);
+                  onClose();
+                }}
+                className="flex items-center gap-6 p-6 bg-white border border-zinc-200 hover:border-[#003366] hover:shadow-xl transition-all group text-left"
+              >
+                <div className={`w-16 h-16 ${opt.bg} ${opt.color} rounded-none flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm`}>
+                  {opt.icon}
+                </div>
+                <div>
+                  <span className="block text-xs font-black uppercase tracking-widest text-[#003366] mb-1">{opt.label}</span>
+                  <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-tight">{opt.desc}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+          <div className="p-4 border-t border-zinc-100 bg-white text-center">
+            <p className="text-[10px] text-zinc-400 font-black uppercase tracking-[0.3em] italic">Secretária Digital • Gestão de Recursos Humanos</p>
+          </div>
+        </div>
+      </motion.div>
+    );
+  };
+
+  const MapaSalarios = () => {
+    const mapTabs = [
+      { id: 'inss', label: 'MAPA INSS', icon: <ShieldCheck size={16} /> },
+      { id: 'colaboradores', label: 'MAPA COLABORADORES', icon: <Users size={16} /> },
+      { id: 'efetividade', label: 'MAPA EFETIVIDADE', icon: <Clock size={16} /> },
+      { id: 'irt_inss', label: 'MAPA IRT E INSS', icon: <Calculator size={16} /> },
+    ];
+
+    const renderMapContent = () => {
+      switch (selectedMapSubTab) {
+        case 'inss':
+          return (
+            <table className="w-full text-left border-collapse min-w-[1000px] text-[10px]">
+              <thead>
+                <tr className="bg-[#003366] text-white uppercase tracking-widest font-black">
+                  <th className="px-4 py-4 border-r border-white/10">Nº</th>
+                  <th className="px-4 py-4 border-r border-white/10 min-w-[200px]">NOME DO FUNCIONÁRIO</th>
+                  <th className="px-4 py-4 border-r border-white/10 text-right">REMUNERAÇÃO BASE</th>
+                  <th className="px-4 py-4 border-r border-white/10 text-right">INSS SEGURADO (3%)</th>
+                  <th className="px-4 py-4 border-r border-white/10 text-right">INSS EMPRESA (8%)</th>
+                  <th className="px-4 py-4 text-right">TOTAL INSS (11%)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {localEmployees.map((emp, idx) => {
+                  const rem = emp.salary;
+                  const inss3 = rem * 0.03;
+                  const inss8 = rem * 0.08;
+                  const total = inss3 + inss8;
+                  return (
+                    <tr key={emp.id} className="hover:bg-zinc-50 transition-colors">
+                      <td className="px-4 py-3 border-r border-zinc-100 font-bold text-zinc-400">{idx + 1}</td>
+                      <td className="px-4 py-3 border-r border-zinc-100 font-black text-[#003366] uppercase">{emp.name}</td>
+                      <td className="px-4 py-3 border-r border-zinc-100 text-right font-mono">{formatCurrency(rem)}</td>
+                      <td className="px-4 py-3 border-r border-zinc-100 text-right font-mono text-red-500">{formatCurrency(inss3)}</td>
+                      <td className="px-4 py-3 border-r border-zinc-100 text-right font-mono text-blue-500">{formatCurrency(inss8)}</td>
+                      <td className="px-4 py-3 text-right font-mono font-black text-zinc-900">{formatCurrency(total)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="bg-zinc-900 text-white font-black uppercase tracking-widest">
+                  <td colSpan={2} className="px-4 py-4">TOTAIS</td>
+                  <td className="px-4 py-4 text-right font-mono">{formatCurrency(localEmployees.reduce((sum, e) => sum + e.salary, 0))}</td>
+                  <td className="px-4 py-4 text-right font-mono text-red-400">{formatCurrency(localEmployees.reduce((sum, e) => sum + e.salary * 0.03, 0))}</td>
+                  <td className="px-4 py-4 text-right font-mono text-blue-400">{formatCurrency(localEmployees.reduce((sum, e) => sum + e.salary * 0.08, 0))}</td>
+                  <td className="px-4 py-4 text-right font-mono">{formatCurrency(localEmployees.reduce((sum, e) => sum + e.salary * 0.11, 0))}</td>
+                </tr>
+              </tfoot>
+            </table>
+          );
+        case 'colaboradores':
+          return (
+            <table className="w-full text-left border-collapse min-w-[1000px] text-[10px]">
+              <thead>
+                <tr className="bg-[#003366] text-white uppercase tracking-widest font-black">
+                  <th className="px-4 py-4 border-r border-white/10">ID</th>
+                  <th className="px-4 py-4 border-r border-white/10 min-w-[200px]">NOME COMPLETO</th>
+                  <th className="px-4 py-4 border-r border-white/10">CARGO / FUNÇÃO</th>
+                  <th className="px-4 py-4 border-r border-white/10">NIF</th>
+                  <th className="px-4 py-4 border-r border-white/10">IBAN</th>
+                  <th className="px-4 py-4 text-right">SALÁRIO BASE</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {localEmployees.map((emp) => (
+                  <tr key={emp.id} className="hover:bg-zinc-50 transition-colors">
+                    <td className="px-4 py-3 border-r border-zinc-100 font-bold text-zinc-400">{emp.id}</td>
+                    <td className="px-4 py-3 border-r border-zinc-100 font-black text-[#003366] uppercase">{emp.name}</td>
+                    <td className="px-4 py-3 border-r border-zinc-100 uppercase font-bold text-zinc-500">{emp.role}</td>
+                    <td className="px-4 py-3 border-r border-zinc-100 font-mono">{emp.nif || '---'}</td>
+                    <td className="px-4 py-3 border-r border-zinc-100 font-mono text-[9px]">{emp.iban || '---'}</td>
+                    <td className="px-4 py-3 text-right font-mono font-bold">{formatCurrency(emp.salary)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          );
+        case 'efetividade':
+          return (
+            <table className="w-full text-left border-collapse min-w-[1000px] text-[10px]">
+              <thead>
+                <tr className="bg-[#003366] text-white uppercase tracking-widest font-black">
+                  <th className="px-4 py-4 border-r border-white/10">Nº</th>
+                  <th className="px-4 py-4 border-r border-white/10 min-w-[200px]">NOME DO FUNCIONÁRIO</th>
+                  <th className="px-4 py-4 border-r border-white/10 text-center">DIAS ÚTEIS</th>
+                  <th className="px-4 py-4 border-r border-white/10 text-center">PRESENÇAS</th>
+                  <th className="px-4 py-4 border-r border-white/10 text-center">FALTAS JUST.</th>
+                  <th className="px-4 py-4 border-r border-white/10 text-center">FALTAS INJUST.</th>
+                  <th className="px-4 py-4 text-center">EFETIVIDADE (%)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {localEmployees.map((emp, idx) => (
+                  <tr key={emp.id} className="hover:bg-zinc-50 transition-colors">
+                    <td className="px-4 py-3 border-r border-zinc-100 font-bold text-zinc-400">{idx + 1}</td>
+                    <td className="px-4 py-3 border-r border-zinc-100 font-black text-[#003366] uppercase">{emp.name}</td>
+                    <td className="px-4 py-3 border-r border-zinc-100 text-center font-bold">22</td>
+                    <td className="px-4 py-3 border-r border-zinc-100 text-center font-bold text-emerald-600">22</td>
+                    <td className="px-4 py-3 border-r border-zinc-100 text-center font-bold text-blue-500">0</td>
+                    <td className="px-4 py-3 border-r border-zinc-100 text-center font-bold text-red-500">0</td>
+                    <td className="px-4 py-3 text-center font-black text-emerald-600">100%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          );
+        case 'irt_inss':
+        default:
+          return (
+            <table className="w-full text-left border-collapse min-w-[1200px] text-[10px]">
+              <thead>
+                <tr className="bg-[#003366] text-white uppercase tracking-widest font-black">
+                  <th className="px-4 py-4 border-r border-white/10">Nº</th>
+                  <th className="px-4 py-4 border-r border-white/10 min-w-[200px]">NOME DO FUNCIONÁRIO</th>
+                  <th className="px-4 py-4 border-r border-white/10 text-right">SALÁRIO BASE</th>
+                  <th className="px-4 py-4 border-r border-white/10 text-right">SUBSÍDIOS</th>
+                  <th className="px-4 py-4 border-r border-white/10 text-right">BRUTO TOTAL</th>
+                  <th className="px-4 py-4 border-r border-white/10 text-right">INSS (3%)</th>
+                  <th className="px-4 py-4 border-r border-white/10 text-right">MAT. COLECTÁVEL</th>
+                  <th className="px-4 py-4 border-r border-white/10 text-right">IRT</th>
+                  <th className="px-4 py-4 border-r border-white/10 text-right">OUTROS DESC.</th>
+                  <th className="px-4 py-4 text-right">SALÁRIO LÍQUIDO</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {localEmployees.map((emp, idx) => {
+                  const inss = emp.salary * 0.03;
+                  const base = emp.salary - inss;
+                  const irt = calculateIRT(base);
+                  const subsidies = 0; // Placeholder
+                  const gross = emp.salary + subsidies;
+                  const net = gross - inss - irt;
+                  return (
+                    <tr key={emp.id} className="hover:bg-zinc-50 transition-colors">
+                      <td className="px-4 py-3 border-r border-zinc-100 font-bold text-zinc-400">{idx + 1}</td>
+                      <td className="px-4 py-3 border-r border-zinc-100 font-black text-[#003366] uppercase">{emp.name}</td>
+                      <td className="px-4 py-3 border-r border-zinc-100 text-right font-mono">{formatCurrency(emp.salary)}</td>
+                      <td className="px-4 py-3 border-r border-zinc-100 text-right font-mono">{formatCurrency(subsidies)}</td>
+                      <td className="px-4 py-3 border-r border-zinc-100 text-right font-mono font-bold">{formatCurrency(gross)}</td>
+                      <td className="px-4 py-3 border-r border-zinc-100 text-right font-mono text-red-500">{formatCurrency(inss)}</td>
+                      <td className="px-4 py-3 border-r border-zinc-100 text-right font-mono text-zinc-500">{formatCurrency(base)}</td>
+                      <td className="px-4 py-3 border-r border-zinc-100 text-right font-mono text-red-600">{formatCurrency(irt)}</td>
+                      <td className="px-4 py-3 border-r border-zinc-100 text-right font-mono text-red-400">0,00 Kz</td>
+                      <td className="px-4 py-3 text-right font-mono font-black text-emerald-600">{formatCurrency(net)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="bg-zinc-900 text-white font-black uppercase tracking-widest">
+                  <td colSpan={2} className="px-4 py-4">TOTAIS GERAIS</td>
+                  <td className="px-4 py-4 text-right font-mono">{formatCurrency(localEmployees.reduce((sum, e) => sum + e.salary, 0))}</td>
+                  <td className="px-4 py-4 text-right font-mono">0,00 Kz</td>
+                  <td className="px-4 py-4 text-right font-mono">{formatCurrency(localEmployees.reduce((sum, e) => sum + e.salary, 0))}</td>
+                  <td className="px-4 py-4 text-right font-mono">{formatCurrency(localEmployees.reduce((sum, e) => sum + e.salary * 0.03, 0))}</td>
+                  <td className="px-4 py-4 text-right font-mono">{formatCurrency(localEmployees.reduce((sum, e) => sum + (e.salary * 0.97), 0))}</td>
+                  <td className="px-4 py-4 text-right font-mono">{formatCurrency(localEmployees.reduce((sum, e) => sum + calculateIRT(e.salary * 0.97), 0))}</td>
+                  <td className="px-4 py-4 text-right font-mono">0,00 Kz</td>
+                  <td className="px-4 py-4 text-right font-mono">{formatCurrency(localEmployees.reduce((sum, e) => sum + (e.salary * 0.97 - calculateIRT(e.salary * 0.97)), 0))}</td>
+                </tr>
+              </tfoot>
+            </table>
+          );
+      }
+    };
+
+    const downloadPDF = () => {
+      const doc = new jsPDF('l', 'mm', 'a4');
+      const title = mapTabs.find(t => t.id === selectedMapSubTab)?.label || 'MAPA';
+      doc.setFontSize(18);
+      doc.text(title, 14, 22);
+      doc.setFontSize(10);
+      doc.text(`Período: ${selectedMonthForMap}`, 14, 30);
+      
+      const table = document.querySelector('.printable-area table');
+      if (table) {
+        (doc as any).autoTable({ 
+          html: table,
+          startY: 35,
+          styles: { fontSize: 7, cellPadding: 1 },
+          headStyles: { fillColor: [0, 51, 102] }
+        });
+        doc.save(`${title.toLowerCase().replace(/ /g, '_')}_${selectedMonthForMap}.pdf`);
+      }
+    };
+
+    const downloadExcel = () => {
+      const table = document.querySelector('.printable-area table');
+      if (table) {
+        const wb = XLSX.utils.table_to_book(table);
+        const title = mapTabs.find(t => t.id === selectedMapSubTab)?.label || 'MAPA';
+        XLSX.writeFile(wb, `${title.toLowerCase().replace(/ /g, '_')}_${selectedMonthForMap}.xlsx`);
+      }
+    };
+
+    return (
+      <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
+        <div className="p-6 border-b border-zinc-100 bg-zinc-50 flex flex-wrap justify-between items-center gap-4">
+          <div className="flex items-center gap-4">
+            <div className="bg-[#003366] text-white p-2">
+              <Map size={20} />
+            </div>
+            <div>
+              <h3 className="font-black text-[#003366] uppercase tracking-widest text-sm">Mapas de Salários e Encargos</h3>
+              <p className="text-[10px] text-zinc-400 uppercase tracking-tighter">Relatórios Consolidados de RH</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <select 
+              value={selectedMonthForMap}
+              onChange={(e) => setSelectedMonthForMap(e.target.value)}
+              className="border border-zinc-200 px-4 py-2 text-xs font-bold text-[#003366] focus:outline-none focus:border-[#003366]"
+            >
+              <option value="2026-01">Janeiro / 2026</option>
+              <option value="2026-02">Fevereiro / 2026</option>
+              <option value="2026-03">Março / 2026</option>
+              <option value="2026-04">Abril / 2026</option>
+              <option value="2026-05">Maio / 2026</option>
+              <option value="2026-06">Junho / 2026</option>
+              <option value="2026-07">Julho / 2026</option>
+              <option value="2026-08">Agosto / 2026</option>
+              <option value="2026-09">Setembro / 2026</option>
+              <option value="2026-10">Outubro / 2026</option>
+              <option value="2026-11">Novembro / 2026</option>
+              <option value="2026-12">Dezembro / 2026</option>
+            </select>
+            <div className="flex gap-2">
+              <button 
+                onClick={() => window.print()}
+                className="bg-white border border-zinc-200 px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-zinc-50 transition-colors"
+              >
+                <Printer size={14} /> Imprimir
+              </button>
+              <button 
+                onClick={downloadPDF}
+                className="bg-[#DC2626] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-[#b91c1c] transition-colors"
+              >
+                <FileDown size={14} /> PDF
+              </button>
+              <button 
+                onClick={downloadExcel}
+                className="bg-[#16A34A] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-[#15803d] transition-colors"
+              >
+                <FileSpreadsheet size={14} /> Excel
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex border-b border-zinc-200 bg-white">
+          {mapTabs.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setSelectedMapSubTab(tab.id)}
+              className={`px-6 py-4 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all border-b-2 ${
+                selectedMapSubTab === tab.id 
+                  ? 'border-[#003366] text-[#003366] bg-zinc-50' 
+                  : 'border-transparent text-zinc-400 hover:text-[#003366] hover:bg-zinc-50'
+              }`}
+            >
+              {tab.icon} {tab.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="overflow-x-auto p-6 printable-area">
+          <div className="text-center mb-8 hidden print:block">
+            <h1 className="text-xl font-black uppercase tracking-[0.3em] text-[#003366]">
+              {mapTabs.find(t => t.id === selectedMapSubTab)?.label}
+            </h1>
+            <p className="text-xs font-bold text-zinc-500 uppercase mt-2">Período: {selectedMonthForMap}</p>
+          </div>
+          {renderMapContent()}
+          <div className="mt-12 grid grid-cols-3 gap-12 text-center hidden print:grid">
+            <div className="border-t border-zinc-900 pt-4">
+              <p className="text-[10px] font-black uppercase tracking-widest">O Contabilista</p>
+            </div>
+            <div className="border-t border-zinc-900 pt-4">
+              <p className="text-[10px] font-black uppercase tracking-widest">Recursos Humanos</p>
+            </div>
+            <div className="border-t border-zinc-900 pt-4">
+              <p className="text-[10px] font-black uppercase tracking-widest">A Direcção</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const OrdemTransferencia = ({ employee }: { employee: Employee | null }) => {
+    if (!employee) return <div className="p-12 text-center text-zinc-400 italic">Selecione um colaborador para gerar a ordem de transferência.</div>;
+    
+    const inss = employee.salary * 0.03;
+    const irt = calculateIRT(employee.salary - inss);
+    const net = employee.salary - inss - irt;
+
+    const downloadPDF = () => {
+      const doc = new jsPDF('p', 'mm', 'a4');
+      doc.setFontSize(18);
+      doc.text('ORDEM DE TRANSFERÊNCIA', 14, 22);
+      doc.setFontSize(10);
+      doc.text(`Data: ${new Date().toLocaleDateString('pt-AO')}`, 14, 30);
+      
+      doc.text('Entidade Ordenante: Grupo TecnoSys ERP, LDA', 14, 45);
+      doc.text(`Beneficiário: ${employee.name}`, 14, 52);
+      doc.text(`IBAN: ${employee.iban || '---'}`, 14, 59);
+      doc.text(`Valor: ${formatCurrency(net)}`, 14, 66);
+      
+      doc.text('Solicitamos a transferência bancária correspondente ao pagamento de vencimentos.', 14, 80);
+      
+      doc.save(`ordem_transferencia_${employee.name.toLowerCase().replace(/ /g, '_')}.pdf`);
+    };
+
+    return (
+      <div className="bg-white border border-zinc-200 rounded-none shadow-lg max-w-4xl mx-auto overflow-hidden">
+        <div className="bg-[#003366] text-white p-8 flex justify-between items-center">
+          <div className="flex items-center gap-4">
+            <div className="bg-white/10 p-3">
+              <ArrowRightLeft size={32} />
+            </div>
+            <div>
+              <h2 className="text-2xl font-black uppercase tracking-[0.2em]">Ordem de Transferência</h2>
+              <p className="text-xs text-white/60 uppercase tracking-widest font-bold">Pagamento de Vencimentos</p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button 
+              onClick={() => window.print()}
+              className="bg-white/10 hover:bg-white/20 px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all"
+            >
+              <Printer size={14} /> Imprimir
+            </button>
+            <button 
+              onClick={downloadPDF}
+              className="bg-[#F27D26] hover:bg-[#d96a1a] px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all"
+            >
+              <FileDown size={14} /> PDF
+            </button>
+          </div>
+        </div>
+
+        <div className="p-12 space-y-12 printable-area">
+          {/* Bank Info */}
+          <div className="grid grid-cols-2 gap-12">
+            <div className="space-y-4">
+              <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 border-b border-zinc-100 pb-2">Entidade Ordenante</h3>
+              <div className="space-y-1">
+                <p className="text-sm font-black text-[#003366] uppercase">Grupo TecnoSys ERP, LDA</p>
+                <p className="text-xs text-zinc-500 font-bold">NIF: 5000123456</p>
+                <p className="text-xs text-zinc-500 font-bold">Conta: 1234567890</p>
+                <p className="text-xs text-zinc-500 font-bold">IBAN: AO06 0000 0000 1234 5678 9012 3</p>
+              </div>
+            </div>
+            <div className="space-y-4">
+              <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 border-b border-zinc-100 pb-2">Banco Destinatário</h3>
+              <div className="space-y-1">
+                <p className="text-sm font-black text-[#003366] uppercase">{employee.bank_name || 'BANCO BFA'}</p>
+                <p className="text-xs text-zinc-500 font-bold">Data de Emissão: {new Date().toLocaleDateString('pt-AO')}</p>
+                <p className="text-xs text-zinc-500 font-bold">Ref: OT-{new Date().getFullYear()}-{String(employee.id).padStart(4, '0')}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Transfer Details */}
+          <div className="bg-zinc-50 border border-zinc-200 p-8 space-y-8">
+            <div className="flex justify-between items-start">
+              <div className="flex items-center gap-6">
+                <div className="w-20 h-20 bg-white border border-zinc-200 overflow-hidden flex items-center justify-center">
+                  {employee.image_url ? <img src={employee.image_url} className="w-full h-full object-cover" /> : <User size={32} className="text-zinc-200" />}
+                </div>
+                <div>
+                  <h4 className="text-lg font-black text-[#003366] uppercase tracking-tight">{employee.name}</h4>
+                  <p className="text-xs text-zinc-400 font-bold uppercase tracking-widest">{employee.role}</p>
+                  <p className="text-xs text-[#F27D26] font-black mt-1 uppercase tracking-tighter">IBAN: {employee.iban || '---'}</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Valor a Transferir</p>
+                <p className="text-3xl font-black text-[#003366] font-mono">{formatCurrency(net)}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-6 pt-8 border-t border-zinc-200">
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-widest text-zinc-400">Salário Bruto</p>
+                <p className="text-sm font-bold text-zinc-700">{formatCurrency(employee.salary)}</p>
+              </div>
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-widest text-zinc-400">Descontos (IRT/INSS)</p>
+                <p className="text-sm font-bold text-red-500">{formatCurrency(irt + inss)}</p>
+              </div>
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-widest text-zinc-400">Período</p>
+                <p className="text-sm font-bold text-zinc-700">Março / 2026</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Description */}
+          <div className="space-y-4">
+            <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 border-b border-zinc-100 pb-2">Descrição da Operação</h3>
+            <p className="text-xs text-zinc-600 leading-relaxed font-bold italic">
+              Solicitamos a transferência bancária da importância de {formatCurrency(net)} correspondente ao pagamento de vencimentos do colaborador acima identificado, referente ao período de Março de 2026.
+            </p>
+          </div>
+
+          {/* Signatures */}
+          <div className="grid grid-cols-2 gap-24 pt-12">
+            <div className="text-center space-y-4">
+              <div className="border-t border-zinc-900 pt-4">
+                <p className="text-[10px] font-black uppercase tracking-widest">Autorizado por</p>
+                <p className="text-[8px] font-bold text-zinc-400 uppercase">Administração / Gerência</p>
+              </div>
+            </div>
+            <div className="text-center space-y-4">
+              <div className="border-t border-zinc-900 pt-4">
+                <p className="text-[10px] font-black uppercase tracking-widest">Processado por</p>
+                <p className="text-[8px] font-bold text-zinc-400 uppercase">Departamento de RH</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const filteredEmployees = Array.isArray(localEmployees) ? localEmployees.filter(emp => 
     emp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     emp.role.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -486,6 +994,7 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
   const [processedReceipts, setProcessedReceipts] = useState<any[]>([]);
   const [selectedReceipt, setSelectedReceipt] = useState<any | null>(null);
   const [draftReceipt, setDraftReceipt] = useState<any | null>(null);
+  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
   const [absences, setAbsences] = useState<any[]>([]);
   const [attendance, setAttendance] = useState<any[]>([]);
@@ -1457,6 +1966,16 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
                         <td className="px-6 py-4">
                           <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                             <button 
+                              onClick={() => {
+                                setSelectedEmployeeForOptions(emp);
+                                setShowOptionsMenu(true);
+                              }}
+                              className="p-1.5 text-zinc-300 hover:text-[#003366] hover:bg-zinc-100 transition-all"
+                              title="Opções"
+                            >
+                              <MoreVertical size={14} />
+                            </button>
+                            <button 
                               onClick={() => handleEditEmployee(emp)}
                               className="p-1.5 text-zinc-300 hover:text-[#003366] hover:bg-zinc-100 transition-all"
                             >
@@ -1738,8 +2257,16 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
 
         {activeTab === 'payroll' && (
           <div className="space-y-6">
-            <div className="bg-[#003366] text-white p-4">
+            <div className="bg-[#003366] text-white p-4 flex justify-between items-center">
               <h2 className="text-lg font-black uppercase tracking-widest">LISTA DE PROCESSAMENTO DE SALÁRIO</h2>
+              {isProcessingComplete && (
+                <button 
+                  onClick={() => setActiveTab('transfer_order')}
+                  className="bg-[#F27D26] hover:bg-[#d96a1a] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all animate-pulse"
+                >
+                  <ArrowRightLeft size={14} /> Transferir
+                </button>
+              )}
             </div>
 
             <div className="bg-white p-6 border border-zinc-200 shadow-sm flex flex-wrap items-end justify-between gap-6">
@@ -1748,6 +2275,20 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
                   <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Empresa:</label>
                   <select className="w-full border border-zinc-200 px-4 py-2 text-xs focus:outline-none focus:border-[#003366] font-bold text-[#003366]">
                     <option>Grupo TecnoSys</option>
+                  </select>
+                </div>
+                <div className="min-w-[200px]">
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Caixa de Pagamento:</label>
+                  <select 
+                    value={selectedPaymentCaixa}
+                    onChange={(e) => setSelectedPaymentCaixa(e.target.value)}
+                    className="w-full border border-zinc-200 px-4 py-2 text-xs focus:outline-none focus:border-[#003366] font-bold text-[#003366]"
+                  >
+                    <option value="">Selecionar Caixa...</option>
+                    <option value="caixa_geral">Caixa Geral</option>
+                    <option value="caixa_bfa">Caixa BFA</option>
+                    <option value="caixa_bic">Caixa BIC</option>
+                    <option value="caixa_bai">Caixa BAI</option>
                   </select>
                 </div>
                 <div className="min-w-[200px]">
@@ -1771,6 +2312,7 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
 
             <div className="flex gap-2">
               <button 
+                disabled={!selectedPaymentCaixa}
                 onClick={() => {
                   const receipts = localEmployees.map(emp => {
                     const inputs = payrollInputs[emp.id] || { 
@@ -1816,11 +2358,12 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
                     };
                   });
                   setProcessedReceipts(receipts);
-                  setActiveTab('salary_receipts');
+                  setIsProcessingComplete(true);
+                  alert('Processamento concluído com sucesso para o caixa selecionado.');
                 }}
-                className="bg-[#F27D26] hover:bg-[#d96a1a] text-white px-8 py-2 text-xs font-black uppercase tracking-widest transition-all shadow-lg"
+                className={`px-8 py-2 text-xs font-black uppercase tracking-widest transition-all shadow-lg ${!selectedPaymentCaixa ? 'bg-zinc-300 cursor-not-allowed' : 'bg-[#F27D26] hover:bg-[#d96a1a] text-white'}`}
               >
-                EXECUTAR
+                EXECUTAR PROCESSAMENTO
               </button>
               <div className="flex-1"></div>
               <button className="bg-[#2563EB] hover:bg-[#1d4ed8] text-white px-4 py-2 text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2">
@@ -1835,41 +2378,54 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
             </div>
 
             <div className="bg-white border border-zinc-200 shadow-sm overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse min-w-[1500px]">
-                  <thead>
-                    <tr className="bg-[#1e293b] text-white text-[9px] uppercase tracking-widest font-black">
-                      <th className="px-4 py-4 border-r border-white/10 w-10 sticky left-0 bg-[#1e293b] z-20">
-                        <input type="checkbox" className="rounded-none accent-[#F27D26]" />
-                      </th>
-                      <th className="px-4 py-4 border-r border-white/10 sticky left-10 bg-[#1e293b] z-20 min-w-[250px]">FUNCIONÁRIO</th>
-                      <th className="px-2 py-4 border-r border-white/10 text-center">DIAS TRAB.</th>
-                      <th className="px-2 py-4 border-r border-white/10 text-center">DIAS FOLGA</th>
-                      <th className="px-2 py-4 border-r border-white/10 text-center">F. JUST.</th>
-                      <th className="px-2 py-4 border-r border-white/10 text-center">F. INJUST.</th>
-                      <th className="px-2 py-4 border-r border-white/10 text-center">FÉRIAS</th>
-                      <th className="px-2 py-4 border-r border-white/10 text-center">H. EXTRAS</th>
-                      <th className="px-2 py-4 border-r border-white/10 text-center">H. PERDIDAS</th>
-                      <th className="px-2 py-4 border-r border-white/10 text-center">PREMIOS</th>
-                      <th className="px-2 py-4 border-r border-white/10 text-center">GRATIFICAÇÕES</th>
-                      <th className="px-2 py-4 border-r border-white/10 text-center">ABONOS</th>
-                      <th className="px-2 py-4 border-r border-white/10 text-center">SUBS. NATAL</th>
-                      <th className="px-2 py-4 border-r border-white/10 text-center">ALOJAMENTO</th>
-                      <th className="px-2 py-4 border-r border-white/10 text-center">SUBS. TRANSP.</th>
-                      <th className="px-2 py-4 border-r border-white/10 text-center">SUBS. ALIM.</th>
-                      <th className="px-2 py-4 border-r border-white/10 text-center">OUTROS SUBS.</th>
-                      <th className="px-2 py-4 border-r border-white/10 text-center">ADIANTAMENTOS</th>
-                      <th className="px-2 py-4 border-r border-white/10 text-center">ACERTOS</th>
-                      <th className="px-4 py-4 border-r border-white/10 text-center sticky right-0 bg-[#1e293b] z-20">VALOR PROCESSADO</th>
-                      <th className="px-4 py-4 text-center">OPÇÕES</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-100">
-                    <tr className="bg-zinc-50/50 text-[9px] font-black text-zinc-400 uppercase">
-                      <td className="px-4 py-2 border-r border-zinc-200"></td>
-                      <td className="px-4 py-2 border-r border-zinc-200" colSpan={11}>Empresa: Grupo TecnoSys</td>
-                    </tr>
-                    {localEmployees.map(emp => {
+              {!selectedPaymentCaixa ? (
+                <div className="p-20 text-center space-y-6 bg-zinc-50/50">
+                  <div className="w-24 h-24 bg-[#003366]/5 rounded-full flex items-center justify-center mx-auto border-2 border-dashed border-[#003366]/20">
+                    <Wallet size={40} className="text-[#003366]/30" />
+                  </div>
+                  <div className="max-w-md mx-auto">
+                    <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest mb-2">Seleção de Caixa Obrigatória</h3>
+                    <p className="text-[10px] text-zinc-400 font-bold uppercase leading-relaxed">
+                      Para visualizar a lista de processamento e executar os pagamentos, deve primeiro selecionar o caixa de pagamento correspondente no menu acima.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse min-w-[1500px]">
+                    <thead>
+                      <tr className="bg-[#1e293b] text-white text-[9px] uppercase tracking-widest font-black">
+                        <th className="px-4 py-4 border-r border-white/10 w-10 sticky left-0 bg-[#1e293b] z-20">
+                          <input type="checkbox" className="rounded-none accent-[#F27D26]" />
+                        </th>
+                        <th className="px-4 py-4 border-r border-white/10 sticky left-10 bg-[#1e293b] z-20 min-w-[250px]">FUNCIONÁRIO</th>
+                        <th className="px-2 py-4 border-r border-white/10 text-center">DIAS TRAB.</th>
+                        <th className="px-2 py-4 border-r border-white/10 text-center">DIAS FOLGA</th>
+                        <th className="px-2 py-4 border-r border-white/10 text-center">F. JUST.</th>
+                        <th className="px-2 py-4 border-r border-white/10 text-center">F. INJUST.</th>
+                        <th className="px-2 py-4 border-r border-white/10 text-center">FÉRIAS</th>
+                        <th className="px-2 py-4 border-r border-white/10 text-center">H. EXTRAS</th>
+                        <th className="px-2 py-4 border-r border-white/10 text-center">H. PERDIDAS</th>
+                        <th className="px-2 py-4 border-r border-white/10 text-center">PREMIOS</th>
+                        <th className="px-2 py-4 border-r border-white/10 text-center">GRATIFICAÇÕES</th>
+                        <th className="px-2 py-4 border-r border-white/10 text-center">ABONOS</th>
+                        <th className="px-2 py-4 border-r border-white/10 text-center">SUBS. NATAL</th>
+                        <th className="px-2 py-4 border-r border-white/10 text-center">ALOJAMENTO</th>
+                        <th className="px-2 py-4 border-r border-white/10 text-center">SUBS. TRANSP.</th>
+                        <th className="px-2 py-4 border-r border-white/10 text-center">SUBS. ALIM.</th>
+                        <th className="px-2 py-4 border-r border-white/10 text-center">OUTROS SUBS.</th>
+                        <th className="px-2 py-4 border-r border-white/10 text-center">ADIANTAMENTOS</th>
+                        <th className="px-2 py-4 border-r border-white/10 text-center">ACERTOS</th>
+                        <th className="px-4 py-4 border-r border-white/10 text-center sticky right-0 bg-[#1e293b] z-20">VALOR PROCESSADO</th>
+                        <th className="px-4 py-4 text-center">OPÇÕES</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100">
+                      <tr className="bg-zinc-50/50 text-[9px] font-black text-zinc-400 uppercase">
+                        <td className="px-4 py-2 border-r border-zinc-200"></td>
+                        <td className="px-4 py-2 border-r border-zinc-200" colSpan={11}>Empresa: Grupo TecnoSys • Caixa: {selectedPaymentCaixa.replace('_', ' ').toUpperCase()}</td>
+                      </tr>
+                      {localEmployees.map(emp => {
                       const inputs = payrollInputs[emp.id] || { 
                         premios: 0, gratificacoes: 0, abonos: 0, subsidioNatal: 0, alojamento: 0, outrosSubsidios: 0,
                         faltasJustificadas: 0, faltasInjustificadas: 0, ferias: 0, horasExtras: 0, horasPerdidas: 0,
@@ -2169,6 +2725,7 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
                   </tfoot>
                 </table>
               </div>
+              )}
             </div>
 
             <div className="flex flex-col gap-4 mt-6">
@@ -2767,6 +3324,121 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
             )}
           </div>
         )}
+
+        {activeTab === 'ficha_pessoal' && (
+          <div className="bg-white border border-zinc-200 rounded-none shadow-sm p-6">
+            {!selectedEmployee ? (
+              <div className="space-y-4">
+                <h3 className="font-bold text-[#003366] uppercase tracking-widest text-xs mb-4">Selecione um Colaborador para ver a Ficha Pessoal</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {localEmployees.map(emp => (
+                    <button
+                      key={emp.id}
+                      onClick={() => setSelectedEmployee(emp)}
+                      className="bg-zinc-50 border border-zinc-200 p-4 flex items-center gap-4 hover:border-[#003366] transition-all text-left"
+                    >
+                      <div className="w-10 h-10 bg-zinc-200 rounded-none flex items-center justify-center overflow-hidden">
+                        {emp.image_url ? <img src={emp.image_url} alt={emp.name} className="w-full h-full object-cover" /> : <User size={20} className="text-zinc-400" />}
+                      </div>
+                      <div>
+                        <p className="font-bold text-[#003366] text-xs uppercase">{emp.name}</p>
+                        <p className="text-[10px] text-zinc-500 uppercase">{emp.role}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <button 
+                  onClick={() => setSelectedEmployee(null)}
+                  className="flex items-center gap-2 text-zinc-500 hover:text-[#003366] transition-colors font-bold text-xs uppercase tracking-widest"
+                >
+                  <ArrowLeft size={14} /> Voltar à Seleção
+                </button>
+                <FichaPessoal employee={selectedEmployee} />
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'declaracao_servico' && (
+          <div className="bg-white border border-zinc-200 rounded-none shadow-sm p-6">
+            {!selectedEmployee ? (
+              <div className="space-y-4">
+                <h3 className="font-bold text-[#003366] uppercase tracking-widest text-xs mb-4">Selecione um Colaborador para a Declaração de Serviço</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {localEmployees.map(emp => (
+                    <button
+                      key={emp.id}
+                      onClick={() => setSelectedEmployee(emp)}
+                      className="bg-zinc-50 border border-zinc-200 p-4 flex items-center gap-4 hover:border-[#003366] transition-all text-left"
+                    >
+                      <div className="w-10 h-10 bg-zinc-200 rounded-none flex items-center justify-center overflow-hidden">
+                        {emp.image_url ? <img src={emp.image_url} alt={emp.name} className="w-full h-full object-cover" /> : <User size={20} className="text-zinc-400" />}
+                      </div>
+                      <div>
+                        <p className="font-bold text-[#003366] text-xs uppercase">{emp.name}</p>
+                        <p className="text-[10px] text-zinc-500 uppercase">{emp.role}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <button 
+                  onClick={() => setSelectedEmployee(null)}
+                  className="flex items-center gap-2 text-zinc-500 hover:text-[#003366] transition-colors font-bold text-xs uppercase tracking-widest"
+                >
+                  <ArrowLeft size={14} /> Voltar à Seleção
+                </button>
+                <DeclaracaoServico employee={selectedEmployee} />
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'acordo_confidencialidade' && (
+          <div className="bg-white border border-zinc-200 rounded-none shadow-sm p-6">
+            {!selectedEmployee ? (
+              <div className="space-y-4">
+                <h3 className="font-bold text-[#003366] uppercase tracking-widest text-xs mb-4">Selecione um Colaborador para o Acordo de Confidencialidade</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {localEmployees.map(emp => (
+                    <button
+                      key={emp.id}
+                      onClick={() => setSelectedEmployee(emp)}
+                      className="bg-zinc-50 border border-zinc-200 p-4 flex items-center gap-4 hover:border-[#003366] transition-all text-left"
+                    >
+                      <div className="w-10 h-10 bg-zinc-200 rounded-none flex items-center justify-center overflow-hidden">
+                        {emp.image_url ? <img src={emp.image_url} alt={emp.name} className="w-full h-full object-cover" /> : <User size={20} className="text-zinc-400" />}
+                      </div>
+                      <div>
+                        <p className="font-bold text-[#003366] text-xs uppercase">{emp.name}</p>
+                        <p className="text-[10px] text-zinc-500 uppercase">{emp.role}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <button 
+                  onClick={() => setSelectedEmployee(null)}
+                  className="flex items-center gap-2 text-zinc-500 hover:text-[#003366] transition-colors font-bold text-xs uppercase tracking-widest"
+                >
+                  <ArrowLeft size={14} /> Voltar à Seleção
+                </button>
+                <AcordoConfidencialidade employee={selectedEmployee} />
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'colaboradores_demitidos' && (
+          <ColaboradoresDemitidos employees={localEmployees.filter(e => e.status === 'dismissed')} />
+        )}
       </div>
       {draftReceipt && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
@@ -3314,6 +3986,11 @@ const CertifyModal = ({ document, onConfirm, onClose }: {
   );
 };
 
+import { 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  LineChart, Line, AreaChart, Area
+} from 'recharts';
+
 const ProfitLossReport = ({ fiscalYear }: { fiscalYear: string }) => {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -3350,7 +4027,14 @@ const ProfitLossReport = ({ fiscalYear }: { fiscalYear: string }) => {
   const b = totals.fornecedoresSImposto || 0;
   const c = totals.salarios || 0;
   const d = totals.inss || 0;
-  const impPrevisional = (a - b - c - d) * 0.25;
+  const impPrevisional = Math.max(0, (a - b - c - d) * 0.25);
+
+  const chartData = data.map(d => ({
+    name: d.month.substring(0, 3),
+    Receita: d.facturacaoSImposto,
+    Custos: d.totaisCustos,
+    Margem: d.margem
+  }));
 
   return (
     <div className="bg-white p-8 space-y-8 overflow-x-auto">
@@ -3372,6 +4056,26 @@ const ProfitLossReport = ({ fiscalYear }: { fiscalYear: string }) => {
               <AlertCircle size={16} />
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-zinc-50 p-4 border border-zinc-100">
+          <p className="text-[9px] font-black text-zinc-400 uppercase mb-1">Total Facturação (S/ Imp)</p>
+          <p className="text-lg font-black text-[#003366]">{formatCurrency(totals.facturacaoSImposto)}</p>
+        </div>
+        <div className="bg-zinc-50 p-4 border border-zinc-100">
+          <p className="text-[9px] font-black text-zinc-400 uppercase mb-1">Total Custos Aceites</p>
+          <p className="text-lg font-black text-red-600">{formatCurrency(totals.totaisCustos)}</p>
+        </div>
+        <div className="bg-zinc-50 p-4 border border-zinc-100">
+          <p className="text-[9px] font-black text-zinc-400 uppercase mb-1">Margem Bruta Acumulada</p>
+          <p className="text-lg font-black text-emerald-600">{formatCurrency(totals.margem)}</p>
+        </div>
+        <div className="bg-[#003366] p-4 text-white">
+          <p className="text-[9px] font-black text-white/60 uppercase mb-1">Imp. Industrial Prev.</p>
+          <p className="text-lg font-black">{formatCurrency(impPrevisional)}</p>
         </div>
       </div>
 
@@ -3449,15 +4153,38 @@ const ProfitLossReport = ({ fiscalYear }: { fiscalYear: string }) => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-12 pt-8 border-t border-zinc-100">
         <div className="space-y-4">
           <p className="text-[9px] text-zinc-400 leading-relaxed italic">
-            Obs: Imposto Industrial Previsional (Pode diferir do imposto real a pagar. Não contempla os impostos já pagos e considera as facturas não aceites fiscalmente)
+            Obs: Imposto Industrial Previsional (Pode dferir do imposto real a pagar. Não contempla os impostos já pagos e considera as facturas não aceites fiscalmente)
           </p>
           <p className="text-[9px] text-zinc-400 leading-relaxed italic">
-            O Imposto previsional Contab pode diferir do imposto real a pagar . Não contempla os impostos já pagos e considera apenas os custos aceites fiscalmente.
+            O Imposto previsional Contab pode dferir do imposto real a pagar . Não contempla os impostos já pagos e considera apenas os custos aceites fiscalmente.
           </p>
           <div className="pt-8">
-            <h4 className="text-[10px] font-black text-zinc-800 uppercase tracking-widest">GRAFICO COMPARATIVO DE RECEITAS MENSAIS E ACUMULADAS</h4>
-            <div className="h-32 bg-zinc-50 border border-dashed border-zinc-200 mt-2 flex items-center justify-center text-[10px] text-zinc-400 italic">
-              Espaço reservado para o gráfico comparativo
+            <h4 className="text-[10px] font-black text-zinc-800 uppercase tracking-widest mb-4">GRAFICO COMPARATIVO DE RECEITAS E CUSTOS</h4>
+            <div className="h-64 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData}>
+                  <defs>
+                    <linearGradient id="colorReceita" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#003366" stopOpacity={0.1}/>
+                      <stop offset="95%" stopColor="#003366" stopOpacity={0}/>
+                    </linearGradient>
+                    <linearGradient id="colorCustos" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#DC2626" stopOpacity={0.1}/>
+                      <stop offset="95%" stopColor="#DC2626" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#94a3b8'}} />
+                  <YAxis axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#94a3b8'}} tickFormatter={(value) => `${value/1000}k`} />
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '0px', border: '1px solid #e2e8f0', fontSize: '10px' }}
+                    formatter={(value: number) => [formatCurrency(value), '']}
+                  />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', paddingTop: '20px' }} />
+                  <Area type="monotone" dataKey="Receita" stroke="#003366" fillOpacity={1} fill="url(#colorReceita)" strokeWidth={2} />
+                  <Area type="monotone" dataKey="Custos" stroke="#DC2626" fillOpacity={1} fill="url(#colorCustos)" strokeWidth={2} />
+                </AreaChart>
+              </ResponsiveContainer>
             </div>
           </div>
         </div>
@@ -3484,6 +4211,11 @@ const OtherMovements = ({ transactions, onRefresh }: { transactions: any[], onRe
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [type, setType] = useState('expense');
+  const [category, setCategory] = useState('Outros');
+  const [paymentMethod, setPaymentMethod] = useState('Caixa');
+  const [reference, setReference] = useState('');
+  const [observation, setObservation] = useState('');
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [searchTerm, setSearchTerm] = useState('');
 
   const filteredTransactions = transactions.filter(t => 
@@ -3500,15 +4232,32 @@ const OtherMovements = ({ transactions, onRefresh }: { transactions: any[], onRe
     const res = await fetch('/api/transactions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ description, amount: Number(amount), type, category: 'manual' })
+      body: JSON.stringify({ 
+        description, 
+        amount: Number(amount), 
+        type, 
+        category,
+        payment_method: paymentMethod,
+        reference,
+        observation,
+        date
+      })
     });
     if (res.ok) {
       setDescription('');
       setAmount('');
+      setCategory('Outros');
+      setPaymentMethod('Caixa');
+      setReference('');
+      setObservation('');
+      setDate(new Date().toISOString().split('T')[0]);
       setShowForm(false);
       onRefresh();
     }
   };
+
+  const categories = ['Vendas', 'Serviços', 'Aluguer', 'Salários', 'Impostos', 'Fornecedores', 'Manutenção', 'Outros'];
+  const paymentMethods = ['Caixa', 'Banco BFA', 'Banco BIC', 'Banco BAI', 'TPA'];
 
   return (
     <div className="space-y-8">
@@ -3564,6 +4313,8 @@ const OtherMovements = ({ transactions, onRefresh }: { transactions: any[], onRe
               <th className="px-6 py-4">Data</th>
               <th className="px-6 py-4">Descrição</th>
               <th className="px-6 py-4">Categoria</th>
+              <th className="px-6 py-4">Ref/Obs</th>
+              <th className="px-6 py-4">Pagamento</th>
               <th className="px-6 py-4">Tipo</th>
               <th className="px-6 py-4 text-right">Valor</th>
             </tr>
@@ -3571,9 +4322,21 @@ const OtherMovements = ({ transactions, onRefresh }: { transactions: any[], onRe
           <tbody className="divide-y divide-zinc-100">
             {filteredTransactions.map((t) => (
               <tr key={t.id} className="hover:bg-zinc-50 transition-colors text-xs border-b border-zinc-50">
-                <td className="px-6 py-4 text-zinc-400 font-medium">{new Date(t.created_at).toLocaleString()}</td>
-                <td className="px-6 py-4 font-bold text-zinc-900">{t.description}</td>
+                <td className="px-6 py-4 text-zinc-400 font-medium">{new Date(t.date || t.created_at).toLocaleDateString('pt-PT')}</td>
+                <td className="px-6 py-4 font-bold text-zinc-900">
+                  <div>{t.description}</div>
+                </td>
                 <td className="px-6 py-4 text-zinc-500 uppercase text-[10px] font-black tracking-tighter">{t.category}</td>
+                <td className="px-6 py-4">
+                  <p className="text-[10px] text-zinc-500 font-medium">{t.reference || '---'}</p>
+                  {t.observation && <p className="text-[9px] text-zinc-400 italic mt-0.5">{t.observation}</p>}
+                </td>
+                <td className="px-6 py-4">
+                  <span className="text-[9px] font-bold text-zinc-600 flex items-center gap-1.5 uppercase">
+                    <CreditCard size={12} className="text-zinc-400" />
+                    {t.payment_method || 'Caixa'}
+                  </span>
+                </td>
                 <td className="px-6 py-4">
                   <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-none ${
                     t.type === 'income' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'
@@ -3595,9 +4358,36 @@ const OtherMovements = ({ transactions, onRefresh }: { transactions: any[], onRe
 
       {showForm && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md p-8 rounded-none shadow-2xl space-y-6">
-            <h3 className="text-xl font-bold text-[#003366] uppercase tracking-tight">Novo Movimento Financeiro</h3>
-            <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="bg-white w-full max-w-lg p-8 rounded-none shadow-2xl space-y-6">
+            <div className="flex justify-between items-center border-b border-zinc-100 pb-4">
+              <h3 className="text-xl font-bold text-[#003366] uppercase tracking-tight">Novo Movimento Financeiro</h3>
+              <button onClick={() => setShowForm(false)} className="text-zinc-400 hover:text-zinc-600"><X size={20} /></button>
+            </div>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data</label>
+                  <input 
+                    type="date"
+                    required 
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    className="w-full border border-zinc-200 p-2.5 text-sm focus:outline-none focus:border-[#003366] bg-zinc-50 font-medium" 
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tipo de Movimento</label>
+                  <select 
+                    value={type}
+                    onChange={(e) => setType(e.target.value)}
+                    className="w-full border border-zinc-200 p-2.5 text-sm focus:outline-none focus:border-[#003366] bg-zinc-50 font-bold"
+                  >
+                    <option value="income">Entrada (Receita)</option>
+                    <option value="expense">Saída (Despesa)</option>
+                  </select>
+                </div>
+              </div>
+
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Descrição</label>
                 <input 
@@ -3608,31 +4398,66 @@ const OtherMovements = ({ transactions, onRefresh }: { transactions: any[], onRe
                   placeholder="Ex: Pagamento de luz, Venda avulsa..."
                 />
               </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Categoria</label>
+                  <select 
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    className="w-full border border-zinc-200 p-2.5 text-sm focus:outline-none focus:border-[#003366] bg-zinc-50 font-medium"
+                  >
+                    {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Valor (Kz)</label>
+                  <input 
+                    type="number" 
+                    required 
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    className="w-full border border-zinc-200 p-2.5 text-sm focus:outline-none focus:border-[#003366] bg-zinc-50 font-bold" 
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Método de Pagamento</label>
+                  <select 
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    className="w-full border border-zinc-200 p-2.5 text-sm focus:outline-none focus:border-[#003366] bg-zinc-50 font-medium"
+                  >
+                    {paymentMethods.map(pm => <option key={pm} value={pm}>{pm}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Referência (Doc nº)</label>
+                  <input 
+                    value={reference}
+                    onChange={(e) => setReference(e.target.value)}
+                    className="w-full border border-zinc-200 p-2.5 text-sm focus:outline-none focus:border-[#003366] bg-zinc-50 font-medium" 
+                    placeholder="Ex: FT 2026/001"
+                  />
+                </div>
+              </div>
+
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Valor (Kz)</label>
-                <input 
-                  type="number" 
-                  required 
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  className="w-full border border-zinc-200 p-2.5 text-sm focus:outline-none focus:border-[#003366] bg-zinc-50 font-bold" 
-                  placeholder="0.00"
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Observações</label>
+                <textarea 
+                  value={observation}
+                  onChange={(e) => setObservation(e.target.value)}
+                  className="w-full border border-zinc-200 p-2.5 text-sm focus:outline-none focus:border-[#003366] bg-zinc-50 font-medium h-20 resize-none" 
+                  placeholder="Informações adicionais..."
                 />
               </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tipo de Movimento</label>
-                <select 
-                  value={type}
-                  onChange={(e) => setType(e.target.value)}
-                  className="w-full border border-zinc-200 p-2.5 text-sm focus:outline-none focus:border-[#003366] bg-zinc-50 font-bold"
-                >
-                  <option value="income">Entrada (Receita)</option>
-                  <option value="expense">Saída (Despesa)</option>
-                </select>
-              </div>
+
               <div className="flex justify-end gap-3 pt-4">
                 <button type="button" onClick={() => setShowForm(false)} className="px-6 py-2 text-zinc-500 font-bold text-xs uppercase tracking-widest">Cancelar</button>
-                <button type="submit" className="bg-[#003366] text-white px-8 py-2 font-bold text-xs uppercase tracking-widest hover:bg-[#002244] shadow-lg">Registar</button>
+                <button type="submit" className="bg-[#003366] text-white px-8 py-2 font-bold text-xs uppercase tracking-widest hover:bg-[#002244] shadow-lg">Registar Movimento</button>
               </div>
             </form>
           </div>
@@ -5386,6 +6211,275 @@ const SecretaryModule = () => {
             </div>
           )}
         </AnimatePresence>
+        {activeTab === 'transfer_order' && (
+          <OrdemTransferencia employee={selectedEmployee} />
+        )}
+
+        {activeTab === 'maps' && (
+          <MapaSalarios />
+        )}
+
+        {activeTab === 'behavior' && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <button 
+                onClick={() => setActiveTab('employees')}
+                className="flex items-center gap-2 text-zinc-500 hover:text-[#003366] transition-colors font-bold text-xs uppercase tracking-widest"
+              >
+                <ArrowLeft size={14} /> Voltar aos Colaboradores
+              </button>
+              <div className="flex gap-2">
+                <button className="bg-[#003366] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-[#002244] transition-all">
+                  <Plus size={14} /> Novo Registro
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-white border border-zinc-200 rounded-none shadow-sm overflow-hidden">
+              <div className="bg-[#003366] text-white p-6 flex items-center gap-4 border-b border-white/10">
+                <div className="w-16 h-16 bg-white/10 rounded-none overflow-hidden border border-white/20 flex items-center justify-center">
+                  {selectedEmployee?.image_url ? <img src={selectedEmployee.image_url} className="w-full h-full object-cover" /> : <User size={32} />}
+                </div>
+                <div>
+                  <h3 className="text-xl font-black uppercase tracking-widest">{selectedEmployee?.name}</h3>
+                  <p className="text-xs text-white/60 uppercase tracking-tighter font-bold">{selectedEmployee?.role} • ID: {selectedEmployee?.id}</p>
+                </div>
+              </div>
+
+              <div className="p-8">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                  <div className="bg-emerald-50 border border-emerald-100 p-6 text-center">
+                    <span className="block text-[10px] font-black uppercase tracking-widest text-emerald-600 mb-2">Elogios / Méritos</span>
+                    <span className="text-3xl font-black text-emerald-700">04</span>
+                  </div>
+                  <div className="bg-amber-50 border border-amber-100 p-6 text-center">
+                    <span className="block text-[10px] font-black uppercase tracking-widest text-amber-600 mb-2">Advertências Verbais</span>
+                    <span className="text-3xl font-black text-amber-700">01</span>
+                  </div>
+                  <div className="bg-red-50 border border-red-100 p-6 text-center">
+                    <span className="block text-[10px] font-black uppercase tracking-widest text-red-600 mb-2">Advertências Escritas</span>
+                    <span className="text-3xl font-black text-red-700">00</span>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <h4 className="font-black text-[#003366] uppercase tracking-widest text-xs border-b border-zinc-100 pb-2">Histórico de Ocorrências</h4>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-[10px]">
+                      <thead>
+                        <tr className="bg-zinc-100 text-zinc-600 uppercase tracking-widest font-black">
+                          <th className="px-4 py-3 border-b border-zinc-200">Data</th>
+                          <th className="px-4 py-3 border-b border-zinc-200">Tipo</th>
+                          <th className="px-4 py-3 border-b border-zinc-200">Descrição</th>
+                          <th className="px-4 py-3 border-b border-zinc-200">Responsável</th>
+                          <th className="px-4 py-3 border-b border-zinc-200 text-center">Ações</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-100">
+                        {[
+                          { date: '15/03/2026', type: 'Elogio', desc: 'Excelente desempenho no projeto trimestral.', resp: 'Admin' },
+                          { date: '02/02/2026', type: 'Advertência Verbal', desc: 'Atrasos recorrentes na entrada.', resp: 'Supervisor' },
+                          { date: '10/01/2026', type: 'Mérito', desc: 'Colaborador do mês de Janeiro.', resp: 'Direção' },
+                        ].map((item, idx) => (
+                          <tr key={idx} className="hover:bg-zinc-50 transition-colors">
+                            <td className="px-4 py-3 font-bold text-zinc-500">{item.date}</td>
+                            <td className="px-4 py-3">
+                              <span className={`px-2 py-1 font-black uppercase tracking-tighter ${
+                                item.type.includes('Elogio') || item.type.includes('Mérito') ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                              }`}>
+                                {item.type}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-zinc-600 italic">{item.desc}</td>
+                            <td className="px-4 py-3 font-bold text-[#003366]">{item.resp}</td>
+                            <td className="px-4 py-3 text-center">
+                              <button className="text-zinc-400 hover:text-[#003366] transition-colors"><Printer size={14} /></button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'redirection' && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <button 
+                onClick={() => setActiveTab('employees')}
+                className="flex items-center gap-2 text-zinc-500 hover:text-[#003366] transition-colors font-bold text-xs uppercase tracking-widest"
+              >
+                <ArrowLeft size={14} /> Voltar aos Colaboradores
+              </button>
+            </div>
+
+            <div className="bg-white border border-zinc-200 rounded-none shadow-sm overflow-hidden">
+              <div className="bg-[#003366] text-white p-6 flex items-center gap-4 border-b border-white/10">
+                <div className="w-16 h-16 bg-white/10 rounded-none overflow-hidden border border-white/20 flex items-center justify-center">
+                  {selectedEmployee?.image_url ? <img src={selectedEmployee.image_url} className="w-full h-full object-cover" /> : <User size={32} />}
+                </div>
+                <div>
+                  <h3 className="text-xl font-black uppercase tracking-widest">Redirecionamento Interno</h3>
+                  <p className="text-xs text-white/60 uppercase tracking-tighter font-bold">{selectedEmployee?.name} • {selectedEmployee?.role}</p>
+                </div>
+              </div>
+
+              <div className="p-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="space-y-4">
+                    <h4 className="font-black text-[#003366] uppercase tracking-widest text-xs border-b border-zinc-100 pb-2">Detalhes da Transferência</h4>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Novo Departamento:</label>
+                        <select className="w-full border border-zinc-200 px-4 py-2 text-xs focus:outline-none focus:border-[#003366] font-bold text-[#003366]">
+                          <option>Administração</option>
+                          <option>Recursos Humanos</option>
+                          <option>Financeiro</option>
+                          <option>Operações</option>
+                          <option>TI</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Nova Categoria Profissional:</label>
+                        <input type="text" className="w-full border border-zinc-200 px-4 py-2 text-xs focus:outline-none focus:border-[#003366]" placeholder="Ex: Gestor de Projetos" />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Data de Início:</label>
+                        <input type="date" className="w-full border border-zinc-200 px-4 py-2 text-xs focus:outline-none focus:border-[#003366]" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <h4 className="font-black text-[#003366] uppercase tracking-widest text-xs border-b border-zinc-100 pb-2">Justificativa / Observações</h4>
+                    <textarea 
+                      className="w-full h-40 border border-zinc-200 p-4 text-xs focus:outline-none focus:border-[#003366] resize-none"
+                      placeholder="Descreva o motivo do redirecionamento..."
+                    ></textarea>
+                    <button className="w-full bg-[#F27D26] text-white py-3 font-black uppercase tracking-widest text-[10px] hover:bg-[#d96a1a] transition-all shadow-lg">
+                      Confirmar Redirecionamento
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'functions' && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <button 
+                onClick={() => setActiveTab('employees')}
+                className="flex items-center gap-2 text-zinc-500 hover:text-[#003366] transition-colors font-bold text-xs uppercase tracking-widest"
+              >
+                <ArrowLeft size={14} /> Voltar aos Colaboradores
+              </button>
+              <button className="bg-[#003366] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-[#002244] transition-all">
+                <Edit size={14} /> Editar Funções
+              </button>
+            </div>
+
+            <div className="bg-white border border-zinc-200 rounded-none shadow-sm overflow-hidden">
+              <div className="bg-[#003366] text-white p-6 flex items-center gap-4 border-b border-white/10">
+                <div className="w-16 h-16 bg-white/10 rounded-none overflow-hidden border border-white/20 flex items-center justify-center">
+                  {selectedEmployee?.image_url ? <img src={selectedEmployee.image_url} className="w-full h-full object-cover" /> : <User size={32} />}
+                </div>
+                <div>
+                  <h3 className="text-xl font-black uppercase tracking-widest">Funções e Atribuições</h3>
+                  <p className="text-xs text-white/60 uppercase tracking-tighter font-bold">{selectedEmployee?.name} • {selectedEmployee?.role}</p>
+                </div>
+              </div>
+
+              <div className="p-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                  <div className="space-y-6">
+                    <div>
+                      <h4 className="font-black text-[#003366] uppercase tracking-widest text-[10px] mb-4 flex items-center gap-2">
+                        <div className="w-2 h-2 bg-[#F27D26]"></div> Descrição do Cargo
+                      </h4>
+                      <p className="text-xs text-zinc-600 leading-relaxed italic border-l-2 border-zinc-100 pl-4">
+                        Responsável pela coordenação e execução das atividades administrativas da unidade, garantindo a conformidade com os processos internos e a eficiência operacional.
+                      </p>
+                    </div>
+
+                    <div>
+                      <h4 className="font-black text-[#003366] uppercase tracking-widest text-[10px] mb-4 flex items-center gap-2">
+                        <div className="w-2 h-2 bg-[#F27D26]"></div> Responsabilidades Chave
+                      </h4>
+                      <ul className="space-y-3">
+                        {[
+                          'Gestão de documentos e arquivos físicos/digitais.',
+                          'Coordenação de fluxos de caixa e pequenos pagamentos.',
+                          'Supervisão da equipe de apoio administrativo.',
+                          'Elaboração de relatórios mensais de desempenho.',
+                          'Interface com fornecedores e prestadores de serviço.'
+                        ].map((resp, idx) => (
+                          <li key={idx} className="flex items-start gap-3 text-xs text-zinc-600">
+                            <Check size={14} className="text-emerald-500 mt-0.5" />
+                            <span>{resp}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+
+                  <div className="space-y-6">
+                    <div>
+                      <h4 className="font-black text-[#003366] uppercase tracking-widest text-[10px] mb-4 flex items-center gap-2">
+                        <div className="w-2 h-2 bg-[#F27D26]"></div> Competências Necessárias
+                      </h4>
+                      <div className="flex flex-wrap gap-2">
+                        {['Liderança', 'Organização', 'Comunicação Assertiva', 'Domínio de Excel', 'Gestão de Tempo'].map((comp, idx) => (
+                          <span key={idx} className="px-3 py-1 bg-zinc-100 text-zinc-600 text-[9px] font-black uppercase tracking-widest">
+                            {comp}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="bg-zinc-50 p-6 border border-zinc-100">
+                      <h4 className="font-black text-[#003366] uppercase tracking-widest text-[10px] mb-4">Metas do Trimestre</h4>
+                      <div className="space-y-4">
+                        <div>
+                          <div className="flex justify-between text-[9px] font-black uppercase tracking-widest mb-1">
+                            <span>Eficiência Operacional</span>
+                            <span>85%</span>
+                          </div>
+                          <div className="w-full h-1 bg-zinc-200">
+                            <div className="h-full bg-[#F27D26]" style={{ width: '85%' }}></div>
+                          </div>
+                        </div>
+                        <div>
+                          <div className="flex justify-between text-[9px] font-black uppercase tracking-widest mb-1">
+                            <span>Redução de Custos</span>
+                            <span>60%</span>
+                          </div>
+                          <div className="w-full h-1 bg-zinc-200">
+                            <div className="h-full bg-blue-600" style={{ width: '60%' }}></div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <AnimatePresence>
+          {showOptionsMenu && selectedEmployeeForOptions && (
+            <EmployeeOptionsMenu 
+              employee={selectedEmployeeForOptions} 
+              onClose={() => setShowOptionsMenu(false)} 
+            />
+          )}
+        </AnimatePresence>
       </div>
     );
   };
@@ -6113,13 +7207,13 @@ const AccountingModule = ({ invoices, clients }: { invoices: Invoice[], clients:
   const renderContent = () => {
     switch (activeSubTab) {
       case 'simplified-regime':
-        return <RegimeSimplificadoForm />;
+        return <RegimeSimplificadoForm invoices={invoices} purchases={purchases} />;
       case 'retencao-pagar':
-        return <RetencaoPagarForm />;
+        return <RetencaoPagarForm purchases={purchases} suppliers={suppliers} />;
       case 'retencao-receber':
-        return <RetencaoReceberForm />;
+        return <RetencaoReceberForm invoices={invoices} clients={clients} />;
       case 'calculos-impostos':
-        return <CalculosImpostosForm />;
+        return <CalculosImpostosForm invoices={invoices} />;
       case 'regime-exclusao':
         return <RegimeExclusaoForm />;
       case 'imposto-por-conta':
@@ -6128,14 +7222,6 @@ const AccountingModule = ({ invoices, clients }: { invoices: Invoice[], clients:
         return <DeclaracaoAnualForm />;
       case 'saft':
         return <SaftExportForm />;
-      case 'ficha_pessoal':
-        return <FichaPessoal />;
-      case 'declaracao_servico':
-        return <DeclaracaoServico />;
-      case 'acordo_confidencialidade':
-        return <AcordoConfidencialidade />;
-      case 'colaboradores_demitidos':
-        return <ColaboradoresDemitidos />;
       case 'general-regime':
         if (selectedClient) {
           const clientDocs = invoices.filter(i => i.client_id === selectedClient.id).map(i => ({
@@ -6581,7 +7667,7 @@ const InvoiceList = ({
     { id: 'emitidos', label: 'Documentos emitidos', icon: ClipboardList },
     { id: 'recebidos', label: 'Documentos recebidos', icon: ClipboardList },
     { id: 'adesao', label: 'Detalhes da adesão', icon: BadgeCheck },
-    { id: 'series', label: 'Séries de facturas', icon: FileTextIcon },
+    { id: 'series', label: 'Séries de facturas', icon: FileText },
     { id: 'fiscal-series', label: 'Série Fiscal', icon: BadgeCheck },
   ];
 
@@ -6902,7 +7988,7 @@ const InvoiceList = ({
                         className="w-full flex items-center gap-3 px-4 py-3 text-sm text-zinc-700 hover:bg-zinc-50 transition-colors text-left"
                       >
                         <div className="w-8 h-8 rounded-none bg-blue-50 flex items-center justify-center text-blue-600">
-                          <FileTextIcon size={16} />
+                          <FileText size={16} />
                         </div>
                         <span>Editar local de trabalho</span>
                       </button>
@@ -8656,6 +9742,11 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
   const [cashBox, setCashBox] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('');
   const [expandedDimensions, setExpandedDimensions] = useState<number | null>(null);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+
+  useEffect(() => {
+    fetchJson('/api/warehouses').then(data => setWarehouses(data || []));
+  }, []);
 
   const addItem = () => {
     setItems([...items, { 
@@ -9022,7 +10113,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
                       {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                     </select>
                   </div>
-                  <div className="col-span-6 space-y-1">
+                  <div className="col-span-4 space-y-1">
                     <label className="text-[10px] font-bold text-zinc-400 uppercase">Descrição</label>
                     <input 
                       type="text" 
@@ -9044,6 +10135,17 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
                       <option value="importação">Importação</option>
                       <option value="serviços no estrangeiro">Serviços no estrangeiro</option>
                       <option value="outro">Outro</option>
+                    </select>
+                  </div>
+                  <div className="col-span-2 space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Armazém</label>
+                    <select 
+                      value={item.warehouse_id || ''} 
+                      onChange={(e) => updateItem(idx, 'warehouse_id', e.target.value ? Number(e.target.value) : undefined)}
+                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
+                    >
+                      <option value="">Nenhum</option>
+                      {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
                     </select>
                   </div>
                   <div className="col-span-2 space-y-1">
@@ -9461,20 +10563,41 @@ const SupplierModule = ({ products, workSites, fiscalSeries }: { products: Produ
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
+  const [localidade, setLocalidade] = useState('');
+  const [codigoPostal, setCodigoPostal] = useState('');
+  const [provincia, setProvincia] = useState('');
+  const [municipio, setMunicipio] = useState('');
+  const [pais, setPais] = useState('Angola');
+  const [webpage, setWebpage] = useState('');
+  const [siglasBanco, setSiglasBanco] = useState('');
+  const [iban, setIban] = useState('');
+  const [tipoCliente, setTipoCliente] = useState('normal');
 
   useEffect(() => {
     fetch('/api/suppliers').then(r => r.json()).then(setSuppliers);
   }, []);
+
+  const handleSearchNif = () => {
+    if (nif) {
+      window.open(`https://agt.minfin.gov.ao/`, 'AGT_NIF', 'width=800,height=600,left=200,top=100');
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const res = await fetch('/api/suppliers', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, nif, email, phone, address })
+      body: JSON.stringify({ 
+        name, nif, email, phone, address, 
+        localidade, codigo_postal: codigoPostal, provincia, municipio, 
+        pais, webpage, siglas_banco: siglasBanco, iban, tipo_cliente: tipoCliente 
+      })
     });
     if (res.ok) {
       setName(''); setNif(''); setEmail(''); setPhone(''); setAddress('');
+      setLocalidade(''); setCodigoPostal(''); setProvincia(''); setMunicipio('');
+      setPais('Angola'); setWebpage(''); setSiglasBanco(''); setIban(''); setTipoCliente('normal');
       setShowForm(false);
       fetch('/api/suppliers').then(r => r.json()).then(setSuppliers);
     }
@@ -9601,28 +10724,116 @@ const SupplierModule = ({ products, workSites, fiscalSeries }: { products: Produ
                 <X size={20} />
               </button>
             </div>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Nome da Empresa / Fornecedor</label>
-                <input type="text" placeholder="Ex: Angola Trading Lda" value={name} onChange={e => setName(e.target.value)} required className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
-              </div>
+            <form onSubmit={handleSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">NIF</label>
-                  <input type="text" placeholder="000000000" value={nif} onChange={e => setNif(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Contribuinte (NIF)</label>
+                  <div className="relative">
+                    <input type="text" placeholder="000000000" value={nif} onChange={e => setNif(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none pl-4 pr-10 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                    {nif && (
+                      <button type="button" onClick={handleSearchNif} className="absolute right-2 top-1/2 -translate-y-1/2 text-[#003366] hover:text-[#002244]">
+                        <Search size={16} />
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[9px] text-zinc-400">Insira o NIF de Angola AGT e clique na lupa para consultar</p>
                 </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Nome do Fornecedor</label>
+                  <input type="text" placeholder="Ex: Angola Trading Lda" value={name} onChange={e => setName(e.target.value)} required className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                  <p className="text-[9px] text-zinc-400">Nome completo da empresa ou fornecedor</p>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Morada</label>
+                <input type="text" placeholder="Rua ..., Luanda" value={address} onChange={e => setAddress(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                <p className="text-[9px] text-zinc-400">Endereço completo do fornecedor</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Localidade</label>
+                  <input type="text" placeholder="Localidade" value={localidade} onChange={e => setLocalidade(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                  <p className="text-[9px] text-zinc-400">Bairro ou zona</p>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Código Postal</label>
+                  <input type="text" placeholder="Código Postal" value={codigoPostal} onChange={e => setCodigoPostal(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                  <p className="text-[9px] text-zinc-400">Código postal da morada</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Província</label>
+                  <input type="text" placeholder="Província" value={provincia} onChange={e => setProvincia(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                  <p className="text-[9px] text-zinc-400">Província de residência</p>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Município</label>
+                  <select value={municipio} onChange={e => setMunicipio(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]">
+                    <option value="">Selecione...</option>
+                    <option value="Luanda">Luanda</option>
+                    <option value="Belas">Belas</option>
+                    <option value="Viana">Viana</option>
+                    <option value="Cazenga">Cazenga</option>
+                    <option value="Cacuaco">Cacuaco</option>
+                    <option value="Talatona">Talatona</option>
+                    <option value="Kilamba Kiaxi">Kilamba Kiaxi</option>
+                  </select>
+                  <p className="text-[9px] text-zinc-400">Município de residência</p>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">País</label>
+                  <select value={pais} onChange={e => setPais(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]">
+                    <option value="Angola">Angola</option>
+                    <option value="Portugal">Portugal</option>
+                    <option value="Brasil">Brasil</option>
+                    <option value="Outro">Outro</option>
+                  </select>
+                  <p className="text-[9px] text-zinc-400">País de origem</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Telefone</label>
                   <input type="text" placeholder="+244 ..." value={phone} onChange={e => setPhone(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                  <p className="text-[9px] text-zinc-400">Contacto telefónico principal</p>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Email</label>
+                  <input type="email" placeholder="contato@fornecedor.com" value={email} onChange={e => setEmail(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                  <p className="text-[9px] text-zinc-400">Endereço de email</p>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">WebPage</label>
+                  <input type="url" placeholder="https://www..." value={webpage} onChange={e => setWebpage(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                  <p className="text-[9px] text-zinc-400">Website do fornecedor</p>
                 </div>
               </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Email</label>
-                <input type="email" placeholder="contato@fornecedor.com" value={email} onChange={e => setEmail(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Endereço Completo</label>
-                <input type="text" placeholder="Rua ..., Luanda" value={address} onChange={e => setAddress(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Siglas do Banco</label>
+                  <input type="text" placeholder="Ex: BAI, BFA" value={siglasBanco} onChange={e => setSiglasBanco(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                  <p className="text-[9px] text-zinc-400">Sigla do banco principal</p>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">IBAN</label>
+                  <input type="text" placeholder="AO06..." value={iban} onChange={e => setIban(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                  <p className="text-[9px] text-zinc-400">IBAN para transferências</p>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tipo de Cliente</label>
+                  <select value={tipoCliente} onChange={e => setTipoCliente(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]">
+                    <option value="normal">Cliente Normal</option>
+                    <option value="nao_grupo">Fornecedor Não Grupo Nacionais</option>
+                    <option value="estrangeiro">Estrangeiro</option>
+                  </select>
+                  <p className="text-[9px] text-zinc-400">Classificação do fornecedor</p>
+                </div>
               </div>
               <div className="flex justify-end gap-4 mt-8 pt-4 border-t border-zinc-100">
                 <button type="button" onClick={() => setShowForm(false)} className="px-6 py-2.5 text-xs font-bold text-zinc-500 uppercase tracking-widest hover:text-zinc-700">Cancelar</button>

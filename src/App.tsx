@@ -5,7 +5,6 @@ import {
   LayoutDashboard, 
   Users, 
   Package, 
-  FileText, 
   Plus, 
   Search, 
   Download, 
@@ -18,13 +17,16 @@ import {
   ArrowLeft,
   Printer,
   ClipboardList,
+  FileSignature,
+  ShieldCheck,
+  UserMinus,
   BadgeCheck,
   Layers,
   Filter,
   RefreshCw,
   UserPlus,
   FilePlus,
-  FileText as FileTextIcon,
+  FileText,
   Cloud,
   BarChart3,
   FileSpreadsheet,
@@ -43,7 +45,6 @@ import {
   FileDown,
   Send,
   ExternalLink,
-  ShieldCheck,
   TrendingUp,
   Tag,
   Wallet,
@@ -80,9 +81,7 @@ import {
   FileCheck,
   Map,
   CreditCard,
-  Monitor,
-  UserMinus,
-  FileSignature
+  Monitor
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Client, Product, Invoice, DashboardStats, InvoiceItem, Employee, Profession, WorkSite, WorkSiteMovement, IssuedDocument, Warehouse, Supplier, FiscalSeries, CostCenter, POSPoint, CashSession, SystemUser, Purchase, PurchaseItem, POSArea } from './types';
@@ -93,9 +92,10 @@ import RegimeSimplificadoForm from './components/RegimeSimplificadoForm';
 import RetencaoPagarForm from './components/RetencaoPagarForm';
 import RetencaoReceberForm from './components/RetencaoReceberForm';
 import CalculosImpostosForm from './components/CalculosImpostosForm';
-import RegimeExclusaoForm from './components/RegimeExclusaoForm';
-import ImpostoPorContaForm from './components/ImpostoPorContaForm';
-import SaftExportForm from './components/SaftExportForm';
+import FichaPessoal from './components/FichaPessoal';
+import DeclaracaoServico from './components/DeclaracaoServico';
+import AcordoConfidencialidade from './components/AcordoConfidencialidade';
+import ColaboradoresDemitidos from './components/ColaboradoresDemitidos';
 
 // --- Helpers ---
 
@@ -776,6 +776,10 @@ const HRModule = ({ onRefresh }: { onRefresh: () => void }) => {
     { id: 'workstation_management', label: 'GESTÃO DE POSTO', icon: <Monitor size={14} />, description: 'Alocação de recursos físicos' },
     { id: 'labor_extinction', label: 'EXTINÇÃO LABORAL', icon: <UserMinus size={14} />, description: 'Processos de rescisão' },
     { id: 'print_list', label: 'IMPRIMIR LISTA', icon: <Printer size={14} />, description: 'Relatórios rápidos de pessoal' },
+    { id: 'ficha_pessoal', label: 'FICHA PESSOAL', icon: <FileText size={14} />, description: 'Dossier individual do colaborador' },
+    { id: 'declaracao_servico', label: 'DECLARAÇÃO DE SERVIÇO', icon: <FileSignature size={14} />, description: 'Emissão de declarações' },
+    { id: 'acordo_confidencialidade', label: 'ACORDO DE CONFIDENCIALIDADE', icon: <ShieldCheck size={14} />, description: 'Acordo de confidencialidade' },
+    { id: 'colaboradores_demitidos', label: 'COLABORADORES DEMITIDOS', icon: <UserMinus size={14} />, description: 'Gestão de demissões' },
   ];
 
   return (
@@ -6120,8 +6124,18 @@ const AccountingModule = ({ invoices, clients }: { invoices: Invoice[], clients:
         return <RegimeExclusaoForm />;
       case 'imposto-por-conta':
         return <ImpostoPorContaForm />;
+      case 'annual-declarations':
+        return <DeclaracaoAnualForm />;
       case 'saft':
         return <SaftExportForm />;
+      case 'ficha_pessoal':
+        return <FichaPessoal />;
+      case 'declaracao_servico':
+        return <DeclaracaoServico />;
+      case 'acordo_confidencialidade':
+        return <AcordoConfidencialidade />;
+      case 'colaboradores_demitidos':
+        return <ColaboradoresDemitidos />;
       case 'general-regime':
         if (selectedClient) {
           const clientDocs = invoices.filter(i => i.client_id === selectedClient.id).map(i => ({

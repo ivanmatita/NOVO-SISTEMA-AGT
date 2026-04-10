@@ -1,3 +1,25 @@
+export interface Caixa {
+  id: string;
+  name: string;
+  account?: string;
+  responsible?: string;
+  user?: string;
+  users?: number;
+  initialBalance: number;
+  currentBalance: number;
+  obs: string;
+}
+
+export interface CaixaMovement {
+  id: string;
+  caixaId: string;
+  type: 'entrada' | 'saida' | 'transferencia';
+  amount: number;
+  description: string;
+  date: string;
+  targetCaixaId?: string; // For transfers
+}
+
 export interface Client {
   id: number;
   name: string;
@@ -99,6 +121,8 @@ export interface Employee {
   address?: string;
   iban?: string;
   bank_name?: string;
+  bank_account?: string;
+  inss_number?: string;
   image_url?: string;
   birth_date?: string;
   gender?: string;

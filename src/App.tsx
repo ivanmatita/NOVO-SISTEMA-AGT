@@ -100,6 +100,7 @@ import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import BusinessOverview from './components/BusinessOverview';
 import * as XLSX from 'xlsx';
+import { validateAngolaNIF } from './utils/nifValidation';
 import { Client, Product, Invoice, DashboardStats, InvoiceItem, Employee, Profession, WorkSite, WorkSiteMovement, IssuedDocument, Warehouse, Supplier, FiscalSeries, CostCenter, POSPoint, CashSession, SystemUser, Purchase, PurchaseItem, POSArea, Caixa, CaixaMovement, LaborTermination, StockMovement } from './types';
 import ContractModal from './components/ContractModal';
 import { CaixaModule } from './components/CaixaModule';
@@ -375,6 +376,12 @@ const Dashboard = ({
 }) => {
   if (!stats) return <div className="p-8">Carregando...</div>;
 
+  const totalInvoiced = stats.totalInvoiced || 0;
+  const totalExpenses = stats.totalExpenses || 0;
+  const cashBalance = stats.cashBalance || 0;
+  const pendingCount = stats.pendingCount || 0;
+  const clientCount = stats.clientCount || 0;
+
   const salesByPeriod = issuedDocuments.reduce((acc: any, doc) => {
     const date = new Date(doc.date).toLocaleDateString('pt-PT', { month: 'short' });
     acc[date] = (acc[date] || 0) + (doc.counter_value || doc.total || 0);
@@ -384,8 +391,8 @@ const Dashboard = ({
   const salesData = Object.keys(salesByPeriod).map(date => ({ date, value: salesByPeriod[date] }));
 
   const profitVsExpenses = [
-    { name: 'Faturação', value: stats.totalInvoiced },
-    { name: 'Despesas', value: stats.totalExpenses },
+    { name: 'Faturação', value: totalInvoiced },
+    { name: 'Despesas', value: totalExpenses },
   ];
 
   const docTypes = issuedDocuments.reduce((acc: any, doc) => {
@@ -406,10 +413,10 @@ const Dashboard = ({
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
-          { label: 'Faturação Total', value: stats.totalInvoiced, type: 'currency' },
-          { label: 'Saldo em Caixa', value: stats.cashBalance, type: 'currency', color: true },
-          { label: 'Faturas Pendentes', value: stats.pendingCount, type: 'number', color: stats.pendingCount > 0 },
-          { label: 'Clientes Ativos', value: stats.clientCount, type: 'number' },
+          { label: 'Faturação Total', value: totalInvoiced, type: 'currency' },
+          { label: 'Saldo em Caixa', value: cashBalance, type: 'currency', color: true },
+          { label: 'Faturas Pendentes', value: pendingCount, type: 'number', color: pendingCount > 0 },
+          { label: 'Clientes Ativos', value: clientCount, type: 'number' },
         ].map((card, i) => (
           <div key={i} className="bg-white border border-zinc-200 p-6 rounded-none shadow-sm">
             <p className="text-zinc-400 text-xs font-bold uppercase tracking-wider">{card.label}</p>
@@ -8572,6 +8579,8 @@ const InvoiceList = ({
   const [serieFilter, setSerieFilter] = useState('Todas');
   const [statusFilter, setStatusFilter] = useState('Todos');
   const [typeFilter, setTypeFilter] = useState('Todos');
+  const [minValue, setMinValue] = useState('');
+  const [maxValue, setMaxValue] = useState('');
   const [showWorkSiteForm, setShowWorkSiteForm] = useState(false);
   const [selectedWorkSite, setSelectedWorkSite] = useState<WorkSite | null>(null);
   const [showActionMenu, setShowActionMenu] = useState(false);
@@ -8652,7 +8661,7 @@ const InvoiceList = ({
   const tabs = [
     { id: 'emitidos', label: 'Documentos emitidos', icon: ClipboardList },
     { id: 'recebidos', label: 'Documentos recebidos', icon: ClipboardList },
-    { id: 'irt_inss_map', label: 'Mapa IRT/ INSS', icon: Calculator },
+    { id: 'sales_report', label: 'Relatório de Vendas', icon: BarChart3 },
     { id: 'adesao', label: 'Detalhes da adesão', icon: BadgeCheck },
     { id: 'series', label: 'Séries de facturas', icon: FileText },
     { id: 'fiscal-series', label: 'Série Fiscal', icon: BadgeCheck },
@@ -8661,11 +8670,16 @@ const InvoiceList = ({
   const filteredIssuedDocuments = Array.isArray(issuedDocuments) ? issuedDocuments.filter(doc => {
     const searchStr = searchTerm.toLowerCase();
     const matchesSearch = (doc.invoice_number || doc.numero_documento || '').toLowerCase().includes(searchStr) ||
-                         (doc.client_name || '').toLowerCase().includes(searchStr);
+                         (doc.client_name || doc.cliente_id || '').toString().toLowerCase().includes(searchStr);
     const matchesStatus = statusFilter === 'Todos' || 
-                         (statusFilter === 'PAGO' && (doc.status === 'paid' || doc.estado_documento === 'ativo')) ||
-                         (statusFilter === 'PENDENTE' && (doc.status === 'pending' || doc.estado_documento === 'anulado'));
-    return matchesSearch && matchesStatus;
+                         (statusFilter === 'PAGO' && (doc.status === 'paid' || doc.estado_documento === 'ativo' || doc.payment_status === 'paid')) ||
+                         (statusFilter === 'PENDENTE' && (doc.status === 'pending' || doc.estado_documento === 'anulado' || doc.payment_status === 'pending'));
+    
+    const docValue = doc.contravalor || doc.total || 0;
+    const matchesMin = minValue === '' || docValue >= Number(minValue);
+    const matchesMax = maxValue === '' || docValue <= Number(maxValue);
+
+    return matchesSearch && matchesStatus && matchesMin && matchesMax;
   }) : [];
 
   return (
@@ -8692,16 +8706,8 @@ const InvoiceList = ({
 
       <div className="p-8 space-y-6">
         {activeSubTab === 'fiscal-series' && <FiscalSeriesModule />}
-        {activeSubTab === 'irt_inss_map' && (
-          <MapaSalarios 
-            localEmployees={employees}
-            selectedMonthForMap={selectedMonthForMap}
-            setSelectedMonthForMap={setSelectedMonthForMap}
-            selectedMapSubTab="irt_inss"
-            setSelectedMapSubTab={setSelectedMapSubTab}
-            onSetEmployee={() => {}}
-            onSetIsContractModalOpen={() => {}}
-          />
+        {activeSubTab === 'sales_report' && (
+          <SalesReport issuedDocuments={issuedDocuments} />
         )}
         {(activeSubTab === 'emitidos' || activeSubTab === 'recebidos') && (
           <>
@@ -8816,12 +8822,36 @@ const InvoiceList = ({
                 </select>
               </div>
 
+              <div className="w-32 space-y-1.5">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Valor Mín.</label>
+                <input 
+                  type="number" 
+                  placeholder="0.00" 
+                  value={minValue}
+                  onChange={(e) => setMinValue(e.target.value)}
+                  className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="w-32 space-y-1.5">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Valor Máx.</label>
+                <input 
+                  type="number" 
+                  placeholder="0.00" 
+                  value={maxValue}
+                  onChange={(e) => setMaxValue(e.target.value)}
+                  className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
               <button 
                 onClick={() => {
                   setSearchTerm('');
                   setSerieFilter('Todas');
                   setStatusFilter('Todos');
                   setTypeFilter('Todos');
+                  setMinValue('');
+                  setMaxValue('');
                 }}
                 className="bg-zinc-100 text-zinc-600 font-bold px-4 py-2 rounded-none flex items-center gap-2 hover:bg-zinc-200 transition-all text-sm"
               >
@@ -9256,7 +9286,8 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
         service_location: serviceLocation,
         cash_box: cashBox,
         payment_method: paymentMethod,
-        series_id: seriesId
+        series_id: seriesId,
+        empresa_id: user?.empresa_id
       })
     });
 
@@ -10793,6 +10824,12 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (nif && !validateAngolaNIF(nif)) {
+      alert('O NIF inserido é inválido segundo as regras da AGT Angola. Deve conter 10 dígitos e começar com 1, 2, 3, 4 ou 5.');
+      return;
+    }
+
     const clientData = { 
       name, email, nif, address, localidade, codigo_postal, provincia, municipio, pais, telefone, webpage, tipo_cliente, 
       initial_balance: Number(initial_balance),
@@ -12191,6 +12228,12 @@ const SupplierModule = ({ products, workSites, fiscalSeries, caixas }: { product
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (nif && !validateAngolaNIF(nif)) {
+      alert('O NIF inserido é inválido segundo as regras da AGT Angola. Deve conter 10 dígitos e começar com 1, 2, 3, 4 ou 5.');
+      return;
+    }
+
     const res = await fetch('/api/suppliers', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

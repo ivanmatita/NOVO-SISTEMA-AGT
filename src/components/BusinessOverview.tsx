@@ -6,10 +6,14 @@ const BusinessOverview = ({ stats, invoices, products, caixas }: any) => {
     return <div className="p-8">Carregando dados...</div>;
   }
 
+  const totalInvoiced = stats.totalInvoiced || 0;
+  const totalExpenses = stats.totalExpenses || 0;
+  const pendingCount = stats.pendingCount || 0;
+
   const data = [
-    { name: 'Vendas', value: stats.totalInvoiced },
-    { name: 'Compras', value: stats.totalExpenses },
-    { name: 'Lucro', value: stats.totalInvoiced - stats.totalExpenses },
+    { name: 'Vendas', value: totalInvoiced },
+    { name: 'Compras', value: totalExpenses },
+    { name: 'Lucro', value: totalInvoiced - totalExpenses },
   ];
 
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28'];
@@ -21,19 +25,19 @@ const BusinessOverview = ({ stats, invoices, products, caixas }: any) => {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-white p-6 border border-zinc-200 shadow-sm">
           <p className="text-xs text-zinc-500 uppercase">Total Vendas</p>
-          <p className="text-2xl font-bold text-[#003366]">{stats.totalInvoiced.toLocaleString()} Kz</p>
+          <p className="text-2xl font-bold text-[#003366]">{totalInvoiced.toLocaleString()} Kz</p>
         </div>
         <div className="bg-white p-6 border border-zinc-200 shadow-sm">
           <p className="text-xs text-zinc-500 uppercase">Total Compras</p>
-          <p className="text-2xl font-bold text-red-600">{stats.totalExpenses.toLocaleString()} Kz</p>
+          <p className="text-2xl font-bold text-red-600">{totalExpenses.toLocaleString()} Kz</p>
         </div>
         <div className="bg-white p-6 border border-zinc-200 shadow-sm">
           <p className="text-xs text-zinc-500 uppercase">Lucro</p>
-          <p className="text-2xl font-bold text-emerald-600">{(stats.totalInvoiced - stats.totalExpenses).toLocaleString()} Kz</p>
+          <p className="text-2xl font-bold text-emerald-600">{(totalInvoiced - totalExpenses).toLocaleString()} Kz</p>
         </div>
         <div className="bg-white p-6 border border-zinc-200 shadow-sm">
           <p className="text-xs text-zinc-500 uppercase">Documentos Emitidos</p>
-          <p className="text-2xl font-bold text-zinc-800">{stats.pendingCount}</p>
+          <p className="text-2xl font-bold text-zinc-800">{pendingCount}</p>
         </div>
       </div>
 

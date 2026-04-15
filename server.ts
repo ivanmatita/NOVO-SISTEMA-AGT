@@ -1505,7 +1505,7 @@ async function startServer() {
       const { 
         client_id, date, due_date, items, document_type, work_site_id, 
         vat_withholding, exchange_rate, currency, counter_value, global_discount,
-        service_date, service_location, cash_box, payment_method, series_id
+        service_date, service_location, cash_box, payment_method, series_id, empresa_id
       } = req.body;
 
       if (!items || items.length === 0) {
@@ -1597,7 +1597,7 @@ async function startServer() {
           document_type, work_site_id, vat_withholding, exchange_rate, 
           currency, counter_value, global_discount, signature,
           service_date, service_location, cash_box, payment_method,
-          series_id, status: 'ativo'
+          series_id, empresa_id, status: 'ativo'
         }])
         .select();
       if (invError) return res.status(500).json({ error: invError.message });
@@ -1674,14 +1674,14 @@ async function startServer() {
             document_type, work_site_id, vat_withholding, exchange_rate, 
             currency, counter_value, global_discount, signature,
             service_date, service_location, cash_box, payment_method,
-            series_id, status
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            series_id, status, empresa_id
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           client_id, invoice_number, date, due_date, total, hash, 
           document_type, normalizedWorkSiteId, vat_withholding, exchange_rate, 
           currency, counter_value, global_discount, signature,
           service_date, service_location, cash_box, payment_method,
-          normalizedSeriesId, 'ativo'
+          normalizedSeriesId, 'ativo', empresa_id
         );
         const invoiceId = info.lastInsertRowid;
         

@@ -1,6 +1,24 @@
+export interface User {
+  id: string;
+  username: string;
+  email: string;
+  empresa_id: string;
+  role: 'admin' | 'operador';
+  created_at: string;
+}
+
+export interface AuthContextType {
+  user: User | null;
+  loading: boolean;
+  login: (identifier: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
+  error: string | null;
+}
+
 export interface Caixa {
   id: string;
   name: string;
+  bankName?: string;
   account?: string;
   responsible?: string;
   user?: string;
@@ -8,6 +26,8 @@ export interface Caixa {
   initialBalance: number;
   currentBalance: number;
   obs: string;
+  status: 'aberto' | 'fechado';
+  empresa_id?: string;
 }
 
 export interface CaixaMovement {
@@ -18,6 +38,7 @@ export interface CaixaMovement {
   description: string;
   date: string;
   targetCaixaId?: string; // For transfers
+  empresa_id?: string;
 }
 
 export interface Client {
@@ -33,7 +54,9 @@ export interface Client {
   pais?: string;
   telefone?: string;
   webpage?: string;
-  tipo_cliente?: 'nao_grupo' | 'nacionais' | 'estrangeiro' | 'associados' | 'normal';
+  tipo_cliente?: 'normal' | 'grupo_nacional' | 'nao_grupo' | 'subsidiarias' | 'nao_grupo_estrangeiro' | 'associados';
+  initial_balance?: number;
+  empresa_id: string;
   created_at: string;
 }
 
@@ -83,7 +106,7 @@ export interface Invoice {
   invoice_number: string;
   date: string;
   due_date: string;
-  status: 'pending' | 'paid' | 'cancelled';
+  status: 'ativo' | 'anulado' | 'pending' | 'paid';
   total: number;
   items?: InvoiceItem[];
   client_email?: string;
@@ -96,6 +119,13 @@ export interface Invoice {
   series_id?: number;
   currency?: string;
   hash?: string;
+  signature?: string;
+  is_certified?: boolean;
+  payment_status?: 'pending' | 'partial' | 'paid';
+  is_anulado?: boolean;
+  work_site_id?: number;
+  cash_box?: string;
+  payment_method?: string;
 }
 
 export interface DashboardStats {
@@ -249,6 +279,7 @@ export interface POSPoint {
 export interface WorkSite {
   id: number;
   client_id: number;
+  empresa_id?: string;
   client_name?: string;
   start_date: string;
   end_date: string;
@@ -265,6 +296,7 @@ export interface WorkSite {
 export interface WorkSiteMovement {
   id: number;
   work_site_id: number;
+  empresa_id?: string;
   date: string;
   doc_no: string;
   company: string;
@@ -312,6 +344,25 @@ export interface IssuedDocument {
   cash_box?: string;
   payment_method?: string;
   items?: InvoiceItem[];
+  is_anulado?: boolean;
+  payment_status?: 'pending' | 'partial' | 'paid';
+}
+
+export interface StockMovement {
+  id: number;
+  product_id: number;
+  product_name?: string;
+  empresa_id?: string;
+  type: 'entry' | 'exit' | 'transfer' | 'adjustment' | 'adjustment_plus' | 'adjustment_minus';
+  quantity: number;
+  unit_price: number;
+  previous_stock: number;
+  current_stock: number;
+  warehouse_id?: number;
+  to_warehouse_id?: number;
+  description?: string;
+  reference_id?: string;
+  created_at: string;
 }
 
 export type POSArea = 'vendas normal' | 'lojas' | 'restaurante' | 'bar';

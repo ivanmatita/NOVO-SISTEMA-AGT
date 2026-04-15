@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Plus, Wallet, ArrowRightLeft, ShieldCheck, Calculator, Search, Eye, Trash2, ChevronLeft, ChevronRight, ArrowUpCircle, ArrowDownCircle, History, FileText } from 'lucide-react';
+import { Plus, Wallet, ArrowRightLeft, ShieldCheck, Calculator, Search, Eye, Trash2, ChevronLeft, ChevronRight, ArrowUpCircle, ArrowDownCircle, History, FileText, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Caixa, CaixaMovement } from '../types';
+import { useAuth } from '../contexts/AuthContext';
 
 interface CaixaModuleProps {
   caixas: Caixa[];
@@ -11,11 +12,13 @@ interface CaixaModuleProps {
 }
 
 export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: CaixaModuleProps) => {
+  const { user } = useAuth();
   const [showForm, setShowForm] = useState(false);
-  const [newCaixa, setNewCaixa] = useState({ name: '', initialBalance: 0, obs: '', responsible: '', account: '', user: '' });
+  const [newCaixa, setNewCaixa] = useState({ name: '', initialBalance: 0, obs: '', responsible: '', account: '', user: '', bankName: '' });
   const [activeSection, setActiveSection] = useState('list');
   const [selectedCaixaId, setSelectedCaixaId] = useState<string | null>(null);
   const [activeCurrency, setActiveCurrency] = useState('AOA');
+  const [showOptionsMenu, setShowOptionsMenu] = useState<Caixa | null>(null);
 
   // Transfer form state
   const [transferData, setTransferData] = useState({ from: '', to: '', amount: 0, description: '' });
@@ -29,6 +32,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
     const caixa: Caixa = {
       id: Date.now().toString(),
       name: newCaixa.name,
+      bankName: newCaixa.bankName,
       account: newCaixa.account,
       responsible: newCaixa.responsible,
       user: newCaixa.user,
@@ -36,6 +40,8 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
       initialBalance: newCaixa.initialBalance,
       currentBalance: newCaixa.initialBalance,
       obs: newCaixa.obs,
+      status: 'aberto',
+      empresa_id: user?.empresa_id
     };
     
     try {
@@ -46,12 +52,23 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
       });
       if (res.ok) {
         setCaixas([...caixas, caixa]);
-        setNewCaixa({ name: '', initialBalance: 0, obs: '', responsible: '', account: '', user: '' });
+        setNewCaixa({ name: '', initialBalance: 0, obs: '', responsible: '', account: '', user: '', bankName: '' });
         setShowForm(false);
       }
     } catch (error) {
       console.error('Error creating caixa:', error);
       alert('Erro ao criar caixa');
+    }
+  };
+
+  const handleCloseCaixa = async (id: string) => {
+    try {
+      const res = await fetch(`/api/caixas/${id}/close`, { method: 'POST' });
+      if (res.ok) {
+        setCaixas(caixas.map(c => c.id === id ? { ...c, status: 'fechado' } : c));
+      }
+    } catch (error) {
+      console.error('Error closing caixa:', error);
     }
   };
 
@@ -72,6 +89,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
       amount: transferData.amount,
       description: transferData.description || `Transferência para ${caixas.find(c => c.id === transferData.to)?.name}`,
       date: new Date().toISOString(),
+      empresa_id: user?.empresa_id
     };
 
     try {
@@ -110,6 +128,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
       amount: paymentData.amount,
       description: paymentData.description,
       date: new Date().toISOString(),
+      empresa_id: user?.empresa_id
     };
 
     try {
@@ -145,6 +164,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
       amount: Math.abs(diff),
       description: `Conciliação: ${reconData.description}`,
       date: new Date().toISOString(),
+      empresa_id: user?.empresa_id
     };
 
     try {
@@ -201,7 +221,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
             onClick={() => setShowForm(true)}
             className="bg-[#F27D26] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-[#d96a1a] transition-all shadow-lg ml-4"
           >
-            <Plus size={14} /> Novo Caixa
+            <Plus size={14} /> Registar Caixa
           </button>
         </div>
       </div>
@@ -238,8 +258,8 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
                       <th className="px-4 py-2 border-r border-zinc-200 min-w-[200px]">Responsavel</th>
                       <th className="px-4 py-2 border-r border-zinc-200 min-w-[200px]">Obs</th>
                       <th className="px-4 py-2 border-r border-zinc-200 text-right">Saldo Caixa</th>
-                      <th className="px-2 py-2 border-r border-zinc-200 text-center">Users</th>
-                      <th className="px-2 py-2 text-center">Doc</th>
+                      <th className="px-2 py-2 border-r border-zinc-200 text-center">Status</th>
+                      <th className="px-2 py-2 text-center">Opção</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-200">
@@ -254,10 +274,17 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
                         <td className="px-4 py-2 border-r border-zinc-200 text-right font-black text-zinc-900">
                           {caixa.currentBalance.toLocaleString('pt-PT', { minimumFractionDigits: 2 })} {activeCurrency}
                         </td>
-                        <td className="px-2 py-2 border-r border-zinc-200 text-center font-bold">{caixa.users || 1}</td>
+                        <td className="px-2 py-2 border-r border-zinc-200 text-center">
+                          <span className={`px-2 py-0.5 text-[8px] font-black uppercase tracking-widest ${caixa.status === 'aberto' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+                            {caixa.status || 'aberto'}
+                          </span>
+                        </td>
                         <td className="px-2 py-2 text-center">
-                          <button className="text-zinc-400 hover:text-[#003366]">
-                            <FileText size={14} />
+                          <button 
+                            onClick={() => setShowOptionsMenu(caixa)}
+                            className="bg-[#003366] text-white px-3 py-1 text-[9px] font-black uppercase tracking-widest hover:bg-[#002244] transition-all"
+                          >
+                            Opção
                           </button>
                         </td>
                       </tr>
@@ -523,29 +550,31 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
             >
               <div className="absolute top-0 left-0 w-1 h-full bg-[#F27D26]" />
               <h3 className="font-black text-[#003366] mb-6 flex items-center gap-2 uppercase tracking-tight">
-                <Plus size={18} /> Criar Novo Caixa
+                <Plus size={18} /> Registar Novo Caixa
               </h3>
               <form onSubmit={handleCreateCaixa} className="space-y-5">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Nome do Caixa</label>
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Nome do caixa</label>
                     <input 
                       type="text" 
                       required 
                       className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all" 
-                      placeholder="Ex: Caixa Central" 
+                      placeholder="Ex: Caixa Principal, Banco BFA..." 
                       value={newCaixa.name}
                       onChange={e => setNewCaixa({...newCaixa, name: e.target.value})}
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Conta Contabilística</label>
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Valor inicial</label>
                     <input 
-                      type="text" 
+                      type="number" 
+                      required 
+                      step="0.01"
                       className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all" 
-                      placeholder="Ex: 45.01" 
-                      value={newCaixa.account}
-                      onChange={e => setNewCaixa({...newCaixa, account: e.target.value})}
+                      placeholder="0,00"
+                      value={newCaixa.initialBalance || ''}
+                      onChange={e => setNewCaixa({...newCaixa, initialBalance: parseFloat(e.target.value)})}
                     />
                   </div>
                 </div>
@@ -554,6 +583,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
                     <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Responsável</label>
                     <input 
                       type="text" 
+                      required
                       className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all" 
                       placeholder="Nome do responsável" 
                       value={newCaixa.responsible}
@@ -561,30 +591,22 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Utilizador</label>
-                    <input 
-                      type="text" 
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Selecionar utilizador</label>
+                    <select 
+                      required
                       className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all" 
-                      placeholder="Utilizador associado" 
                       value={newCaixa.user}
                       onChange={e => setNewCaixa({...newCaixa, user: e.target.value})}
-                    />
+                    >
+                      <option value="">Selecione um utilizador</option>
+                      <option value="admin">Administrador</option>
+                      <option value="financeiro">Financeiro</option>
+                      <option value="rh">Recursos Humanos</option>
+                    </select>
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Saldo Inicial</label>
-                  <input 
-                    type="number" 
-                    required 
-                    step="0.01"
-                    className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all" 
-                    placeholder="0,00"
-                    value={newCaixa.initialBalance || ''}
-                    onChange={e => setNewCaixa({...newCaixa, initialBalance: parseFloat(e.target.value)})}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Observações</label>
+                  <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Observação</label>
                   <textarea 
                     className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] h-24 transition-all" 
                     placeholder="Notas adicionais..."
@@ -594,9 +616,68 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
                 </div>
                 <div className="pt-4 flex gap-3">
                   <button type="button" onClick={() => setShowForm(false)} className="flex-1 bg-zinc-100 text-zinc-600 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-zinc-200 transition-all">Cancelar</button>
-                  <button type="submit" className="flex-2 bg-[#003366] text-white py-3 px-8 text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-[#002244] transition-all">Registar Caixa</button>
+                  <button type="submit" className="flex-2 bg-[#003366] text-white py-3 px-8 text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-[#002244] transition-all">Registar</button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      
+      {/* Central Options Menu */}
+      <AnimatePresence>
+        {showOptionsMenu && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-white border border-zinc-200 p-8 shadow-2xl relative max-w-2xl w-full"
+            >
+              <button 
+                onClick={() => setShowOptionsMenu(null)}
+                className="absolute top-4 right-4 text-zinc-400 hover:text-zinc-600"
+              >
+                <X size={24} />
+              </button>
+              
+              <div className="text-center mb-8">
+                <h3 className="text-xl font-black text-[#003366] uppercase tracking-tight">Opções do Caixa: {showOptionsMenu.name}</h3>
+                <p className="text-xs text-zinc-500 font-bold uppercase tracking-widest mt-1">Selecione uma funcionalidade para executar</p>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {[
+                  { id: 'editar', label: 'Editar', icon: FileText, color: 'bg-blue-50 text-blue-600' },
+                  { id: 'associar', label: 'Associar', icon: Plus, color: 'bg-emerald-50 text-emerald-600' },
+                  { id: 'pagar_salario', label: 'Pagar Salário', icon: Wallet, color: 'bg-indigo-50 text-indigo-600' },
+                  { id: 'pagar_imposto', label: 'Pagar Imposto', icon: Calculator, color: 'bg-red-50 text-red-600' },
+                  { id: 'transferencia', label: 'Transferência', icon: ArrowRightLeft, color: 'bg-amber-50 text-amber-600' },
+                  { id: 'relatorios', label: 'Relatórios', icon: FileText, color: 'bg-zinc-50 text-zinc-600' },
+                  { id: 'movimentos', label: 'Movimentos', icon: History, color: 'bg-purple-50 text-purple-600' },
+                  { id: 'fechar', label: 'Fechar Caixa', icon: X, color: 'bg-red-50 text-red-600' },
+                ].map((opt) => (
+                  <button
+                    key={opt.id}
+                    onClick={() => {
+                      // Handle option click
+                      if (opt.id === 'transferencia') setActiveSection('transfer');
+                      if (opt.id === 'movimentos') {
+                        setSelectedCaixaId(showOptionsMenu.id);
+                        setActiveSection('movements');
+                      }
+                      if (opt.id === 'fechar') {
+                        handleCloseCaixa(showOptionsMenu.id);
+                      }
+                      setShowOptionsMenu(null);
+                    }}
+                    className={`flex flex-col items-center justify-center p-6 gap-3 border border-zinc-100 hover:border-[#003366] hover:shadow-md transition-all group ${opt.color}`}
+                  >
+                    <opt.icon size={24} className="group-hover:scale-110 transition-transform" />
+                    <span className="text-[10px] font-black uppercase tracking-widest text-center">{opt.label}</span>
+                  </button>
+                ))}
+              </div>
             </motion.div>
           </div>
         )}

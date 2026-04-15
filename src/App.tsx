@@ -2,6 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import PrintA4 from './components/PrintA4';
 import { QRCodeCanvas } from 'qrcode.react';
 import { 
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
+  BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area 
+} from 'recharts';
+import { useAuth } from './contexts/AuthContext';
+import { ProtectedRoute } from './components/ProtectedRoute';
+import { 
   LayoutDashboard, 
   Users, 
   Package, 
@@ -46,15 +52,19 @@ import {
   FileDown,
   Send,
   ExternalLink,
+  Construction,
+  Calendar,
   Link,
   TrendingUp,
   Tag,
   Wallet,
   BookOpen,
   Calculator,
+  Receipt,
   Settings,
-  Calendar,
   Home,
+  CreditCard,
+  FileCheck,
   Link as LinkIcon,
   ShoppingCart,
   Database,
@@ -77,20 +87,20 @@ import {
   Eye,
   ArrowUpRight,
   ArrowDownRight,
-  User,
+  User as UserIcon,
   Camera,
   Briefcase,
   Table,
-  FileCheck,
   Map,
-  CreditCard,
-  Monitor
+  Monitor,
+  LogOut
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import BusinessOverview from './components/BusinessOverview';
 import * as XLSX from 'xlsx';
-import { Client, Product, Invoice, DashboardStats, InvoiceItem, Employee, Profession, WorkSite, WorkSiteMovement, IssuedDocument, Warehouse, Supplier, FiscalSeries, CostCenter, POSPoint, CashSession, SystemUser, Purchase, PurchaseItem, POSArea, Caixa, CaixaMovement, LaborTermination } from './types';
+import { Client, Product, Invoice, DashboardStats, InvoiceItem, Employee, Profession, WorkSite, WorkSiteMovement, IssuedDocument, Warehouse, Supplier, FiscalSeries, CostCenter, POSPoint, CashSession, SystemUser, Purchase, PurchaseItem, POSArea, Caixa, CaixaMovement, LaborTermination, StockMovement } from './types';
 import ContractModal from './components/ContractModal';
 import { CaixaModule } from './components/CaixaModule';
 import Modelo7Form from './components/Modelo7Form';
@@ -267,7 +277,7 @@ const Sidebar = ({ activeTab, setActiveTab, fiscalYear, setFiscalYear, onToggle 
   onToggle: () => void
 }) => {
   const menuItems = [
-    { id: 'dashboard', label: 'Painel', icon: LayoutDashboard },
+    { id: 'dashboard', label: 'Visão Geral do Negócio', icon: LayoutDashboard },
     { id: 'pos', label: 'Ponto de Venda', icon: Printer },
     { id: 'invoices', label: 'Faturas', icon: FileText },
     { id: 'cashier', label: 'Caixa', icon: Printer },
@@ -350,13 +360,46 @@ const Breadcrumbs = ({ paths }: { paths: string[] }) => (
   </nav>
 );
 
-const Dashboard = ({ stats, products }: { stats: DashboardStats | null, products: Product[] }) => {
+const Dashboard = ({ 
+  stats, 
+  products,
+  invoices,
+  issuedDocuments,
+  caixaMovements
+}: { 
+  stats: DashboardStats | null, 
+  products: Product[],
+  invoices: Invoice[],
+  issuedDocuments: IssuedDocument[],
+  caixaMovements: CaixaMovement[]
+}) => {
   if (!stats) return <div className="p-8">Carregando...</div>;
+
+  const salesByPeriod = issuedDocuments.reduce((acc: any, doc) => {
+    const date = new Date(doc.date).toLocaleDateString('pt-PT', { month: 'short' });
+    acc[date] = (acc[date] || 0) + (doc.counter_value || doc.total || 0);
+    return acc;
+  }, {});
+
+  const salesData = Object.keys(salesByPeriod).map(date => ({ date, value: salesByPeriod[date] }));
+
+  const profitVsExpenses = [
+    { name: 'Faturação', value: stats.totalInvoiced },
+    { name: 'Despesas', value: stats.totalExpenses },
+  ];
+
+  const docTypes = issuedDocuments.reduce((acc: any, doc) => {
+    const type = doc.document_type || 'Outro';
+    acc[type] = (acc[type] || 0) + 1;
+    return acc;
+  }, {});
+
+  const docTypeData = Object.keys(docTypes).map(name => ({ name, value: docTypes[name] }));
+  const COLORS = ['#003366', '#2563eb', '#16a34a', '#f59e0b'];
 
   return (
     <div className="space-y-8">
       <header>
-        <Breadcrumbs paths={['Home', 'Área Reservada', 'Painel']} />
         <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Painel Executivo</h2>
         <p className="text-zinc-500 text-sm">Visão geral do desempenho financeiro e operacional.</p>
       </header>
@@ -380,7 +423,54 @@ const Dashboard = ({ stats, products }: { stats: DashboardStats | null, products
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
+        <div className="bg-white border border-zinc-200 p-6 rounded-none shadow-sm">
+          <h3 className="font-bold text-[#003366] mb-6">Faturação por Período</h3>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={salesData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" />
+                <YAxis />
+                <Tooltip />
+                <Line type="monotone" dataKey="value" stroke="#003366" strokeWidth={2} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="bg-white border border-zinc-200 p-6 rounded-none shadow-sm">
+          <h3 className="font-bold text-[#003366] mb-6">Faturação vs Despesas</h3>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={profitVsExpenses}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="value" fill="#003366" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="bg-white border border-zinc-200 p-6 rounded-none shadow-sm lg:col-span-1">
+          <h3 className="font-bold text-[#003366] mb-6">Tipos de Documentos</h3>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={docTypeData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
+                  {docTypeData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
+                </Pie>
+                <Tooltip />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm lg:col-span-2">
           <div className="p-5 border-b border-zinc-100 flex justify-between items-center bg-zinc-50/50">
             <h3 className="font-bold text-[#003366]">Últimas Faturas</h3>
             <button className="text-[#003366] text-xs font-bold hover:underline">Ver todas</button>
@@ -407,33 +497,6 @@ const Dashboard = ({ stats, products }: { stats: DashboardStats | null, products
               </div>
             ))}
           </div>
-        </div>
-
-        <div className="bg-white border border-zinc-200 rounded-none p-8 flex flex-col items-center justify-center text-center space-y-4 shadow-sm">
-          <div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center">
-            <AlertTriangle size={32} />
-          </div>
-          <h3 className="text-xl font-bold text-[#003366]">Alertas do Sistema</h3>
-          <div className="space-y-2 w-full">
-            {stats.pendingCount > 0 && (
-              <div className="flex items-center justify-between p-3 bg-amber-50 border border-amber-100 text-amber-700 text-xs font-bold uppercase tracking-tight">
-                <span>Faturas Pendentes</span>
-                <span className="bg-amber-200 px-2 py-0.5 rounded-full">{stats.pendingCount}</span>
-              </div>
-            )}
-            {products.filter(p => p.stock_quantity <= (p.min_stock || 0)).length > 0 && (
-              <div className="flex items-center justify-between p-3 bg-red-50 border border-red-100 text-red-700 text-xs font-bold uppercase tracking-tight">
-                <span>Stock Baixo</span>
-                <span className="bg-red-200 px-2 py-0.5 rounded-full">{products.filter(p => p.stock_quantity <= (p.min_stock || 0)).length}</span>
-              </div>
-            )}
-            {stats.pendingCount === 0 && products.filter(p => p.stock_quantity <= (p.min_stock || 0)).length === 0 && (
-              <p className="text-zinc-500 text-sm">Tudo em ordem! Não há alertas pendentes.</p>
-            )}
-          </div>
-          <button className="bg-[#003366] hover:bg-[#002244] text-white px-6 py-2.5 rounded-none text-sm font-bold transition-all shadow-sm w-full">
-            Gerar Relatório Completo
-          </button>
         </div>
       </div>
     </div>
@@ -463,7 +526,7 @@ const INSS_PROFESSIONS = [
   "Tesoureiro", "Topógrafo", "Traductor", "Vendedor", "Veterinário", "Vigilante", "Zelador"
 ];
 
-const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas }: { onRefresh: () => void, onSetIsContractModalOpen: (open: boolean) => void, onSetEmployee: (emp: Employee | null) => void, caixas: Caixa[] }) => {
+const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, companyName }: { onRefresh: () => void, onSetIsContractModalOpen: (open: boolean) => void, onSetEmployee: (emp: Employee | null) => void, caixas: Caixa[], companyName: string }) => {
   const professionsRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [professions, setProfessions] = useState<Profession[]>([]);
@@ -509,16 +572,12 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas }
 
   const EmployeeOptionsMenu = ({ employee, onClose }: { employee: Employee, onClose: () => void }) => {
     const options = [
-      { id: 'ficha_pessoal', label: 'Ficha Pessoal', icon: <FileText size={20} />, color: 'text-[#003366]', bg: 'bg-zinc-50', desc: 'Visualizar ficha completa' },
-      { id: 'emitir_contrato', label: 'Contrato de Trabalho', icon: <FileSignature size={20} />, color: 'text-[#003366]', bg: 'bg-zinc-50', desc: 'Emitir contrato de trabalho' },
-      { id: 'readmitir', label: 'Readmitir', icon: <UserPlus size={20} />, color: 'text-emerald-600', bg: 'bg-emerald-50', desc: 'Reativar funcionário' },
-      { id: 'acerto_salarial', label: 'Acerto Salarial', icon: <Calculator size={20} />, color: 'text-amber-600', bg: 'bg-amber-50', desc: 'Ajustes de vencimento' },
-      { id: 'abonos', label: 'Abonos', icon: <PlusCircle size={20} />, color: 'text-blue-600', bg: 'bg-blue-50', desc: 'Gestão de abonos' },
-      { id: 'adiantamento', label: 'Adiantamento', icon: <ArrowDownCircle size={20} />, color: 'text-red-600', bg: 'bg-red-50', desc: 'Solicitar adiantamento' },
-      { id: 'multas_penalizacao', label: 'Multas e Penalização', icon: <AlertTriangle size={20} />, color: 'text-red-600', bg: 'bg-red-50', desc: 'Registo de infrações' },
-      { id: 'equipamento', label: 'Equipamento', icon: <Monitor size={20} />, color: 'text-zinc-600', bg: 'bg-zinc-50', desc: 'Entrega de material' },
-      { id: 'work_card', label: 'Cartão de Trabalho', icon: <CreditCard size={20} />, color: 'text-[#003366]', bg: 'bg-zinc-50', desc: 'Emitir identificação' },
+      { id: 'editar', label: 'Editar', icon: <Edit size={20} />, color: 'text-blue-600', bg: 'bg-blue-50', desc: 'Editar informações' },
       { id: 'demitir', label: 'Demitir', icon: <UserMinus size={20} />, color: 'text-red-600', bg: 'bg-red-50', desc: 'Processo de rescisão' },
+      { id: 'ficha_pessoal', label: 'Cadastro', icon: <FileText size={20} />, color: 'text-[#003366]', bg: 'bg-zinc-50', desc: 'Ficha Pessoal' },
+      { id: 'acerto_salarial', label: 'Situação Salarial', icon: <Calculator size={20} />, color: 'text-amber-600', bg: 'bg-amber-50', desc: 'Ajustes de vencimento' },
+      { id: 'irt_inss_map', label: 'INSS', icon: <ShieldCheck size={20} />, color: 'text-emerald-600', bg: 'bg-emerald-50', desc: 'Segurança Social' },
+      { id: 'emitir_contrato', label: 'Contrato', icon: <FileSignature size={20} />, color: 'text-[#003366]', bg: 'bg-zinc-50', desc: 'Contrato de Trabalho' },
     ];
 
     return (
@@ -537,7 +596,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas }
             <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32 blur-3xl"></div>
             <div className="flex items-center gap-6 relative z-10">
               <div className="w-20 h-20 bg-white/10 rounded-none overflow-hidden border-2 border-white/20 flex items-center justify-center shadow-inner">
-                {employee.image_url ? <img src={employee.image_url} className="w-full h-full object-cover" /> : <User size={40} />}
+                {employee.image_url ? <img src={employee.image_url} className="w-full h-full object-cover" /> : <UserIcon size={40} />}
               </div>
               <div>
                 <h3 className="text-2xl font-black uppercase tracking-[0.2em]">{employee.name}</h3>
@@ -553,7 +612,10 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas }
               <button
                 key={opt.id}
                 onClick={() => {
-                  if (opt.id === 'emitir_contrato') {
+                  if (opt.id === 'editar') {
+                    handleEditEmployee(employee);
+                    onClose();
+                  } else if (opt.id === 'emitir_contrato') {
                     onSetEmployee(employee);
                     onSetIsContractModalOpen(true);
                     onClose();
@@ -741,7 +803,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas }
             <div className="flex justify-between items-start">
               <div className="flex items-center gap-6">
                 <div className="w-20 h-20 bg-white border border-zinc-200 overflow-hidden flex items-center justify-center">
-                  {employee.image_url ? <img src={employee.image_url} className="w-full h-full object-cover" /> : <User size={32} className="text-zinc-200" />}
+                  {employee.image_url ? <img src={employee.image_url} className="w-full h-full object-cover" /> : <UserIcon size={32} className="text-zinc-200" />}
                 </div>
                 <div>
                   <h4 className="text-lg font-black text-[#003366] uppercase tracking-tight">{employee.name}</h4>
@@ -762,11 +824,27 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas }
               </div>
               <div>
                 <p className="text-[9px] font-black uppercase tracking-widest text-zinc-400">Descontos (IRT/INSS)</p>
-                <p className="text-sm font-bold text-red-500">{formatCurrency(irt + inss)}</p>
+                <p className="text-sm font-bold text-red-500">-{formatCurrency(irt + inss)}</p>
               </div>
               <div>
                 <p className="text-[9px] font-black uppercase tracking-widest text-zinc-400">Período</p>
                 <p className="text-sm font-bold text-zinc-700">Março / 2026</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Bank Info */}
+          <div className="bg-zinc-50 p-6 border border-zinc-100 mb-12 space-y-4">
+            <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 border-b border-zinc-200 pb-2">Dados do Ordenante</h3>
+            <div className="grid grid-cols-2 gap-8">
+              <div className="space-y-1">
+                <p className="text-[9px] font-black uppercase tracking-widest text-zinc-400">Empresa</p>
+                <p className="text-xs font-bold text-[#003366] uppercase">{companyName}</p>
+              </div>
+              <div className="space-y-1 text-right">
+                <p className="text-[9px] font-black uppercase tracking-widest text-zinc-400">Banco / IBAN</p>
+                <p className="text-xs font-bold text-zinc-700 uppercase">{bankName || 'BFA - Banco de Fomento Angola'}</p>
+                <p className="text-[10px] font-mono font-bold text-zinc-500">{iban || 'AO06 0000 0000 0000 0000 0000 0'}</p>
               </div>
             </div>
           </div>
@@ -1063,25 +1141,39 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas }
     const url = editingEmployee ? `/api/employees/${editingEmployee.id}` : '/api/employees';
     const method = editingEmployee ? 'PUT' : 'POST';
 
-    await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
+    try {
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
 
-    setName(''); setRole(''); setSalary(''); setProfessionId(''); 
-    setNif(''); setBi(''); setAddress(''); setIban(''); setBankName(''); 
-    setImageUrl(''); setBirthDate(''); setGender('Masculino'); 
-    setHiredAt(new Date().toISOString().split('T')[0]);
-    setMaritalStatus('Solteiro(a)'); setAcademicLevel('Ensino Médio'); 
-    setDepartment(''); setPhone(''); setEmail('');
-    setBankAccount(''); setInssNumber('');
-    setContractType('efetivo'); setDependents('0');
-    setSubjectToIRT(true); setSubjectToINSS(true);
-    setEditingEmployee(null);
-    setShowForm(false);
-    fetchHRData();
-    onRefresh();
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Erro ao registar funcionário');
+      }
+
+      setName(''); setRole(''); setSalary(''); setProfessionId(''); 
+      setNif(''); setBi(''); setAddress(''); setIban(''); setBankName(''); 
+      setImageUrl(''); setBirthDate(''); setGender('Masculino'); 
+      setHiredAt(new Date().toISOString().split('T')[0]);
+      setMaritalStatus('Solteiro(a)'); setAcademicLevel('Ensino Médio'); 
+      setDepartment(''); setPhone(''); setEmail('');
+      setBankAccount(''); setInssNumber('');
+      setContractType('efetivo'); setDependents('0');
+      setSubjectToIRT(true); setSubjectToINSS(true);
+      setEditingEmployee(null);
+      setShowForm(false);
+      
+      // Refresh data
+      await fetchHRData();
+      onRefresh();
+      
+      alert(editingEmployee ? 'Funcionário atualizado com sucesso!' : 'Funcionário registado com sucesso!');
+    } catch (err) {
+      console.error('Error submitting employee:', err);
+      alert(err instanceof Error ? err.message : 'Erro ao processar pedido');
+    }
   };
 
   const handleProcessPayroll = async (emp: Employee) => {
@@ -1215,7 +1307,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas }
                         {imageUrl ? (
                           <img src={imageUrl} alt="Preview" className="w-full h-full object-cover" />
                         ) : (
-                          <User size={40} className="text-zinc-300" />
+                          <UserIcon size={40} className="text-zinc-300" />
                         )}
                       </div>
                       <label className="absolute inset-0 flex items-center justify-center bg-black/40 text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
@@ -2088,102 +2180,93 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas }
         )}
 
         {activeTab === 'list' && (
-          <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
-            <div className="p-6 border-b border-zinc-100 flex justify-between items-center bg-zinc-50/50">
-              <h3 className="font-bold text-[#003366] uppercase tracking-widest text-xs">Quadro de Pessoal</h3>
-              <div className="flex gap-2">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={14} />
-                  <input 
-                    type="text" 
-                    placeholder="Pesquisar funcionário..." 
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-9 pr-4 py-1.5 bg-white border border-zinc-200 rounded-none text-xs focus:outline-none focus:border-[#003366]" 
-                  />
+          <div className="flex gap-6 items-start">
+            <div className="flex-1 bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
+              <div className="p-6 border-b border-zinc-100 flex justify-between items-center bg-zinc-50/50">
+                <h3 className="font-bold text-[#003366] uppercase tracking-widest text-xs">Quadro de Pessoal</h3>
+                <div className="flex gap-2">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={14} />
+                    <input 
+                      type="text" 
+                      placeholder="Pesquisar funcionário..." 
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-9 pr-4 py-1.5 bg-white border border-zinc-200 rounded-none text-xs focus:outline-none focus:border-[#003366]" 
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse min-w-[1000px]">
-                <thead>
-                  <tr className="bg-[#003366] text-white text-[10px] uppercase tracking-[0.2em] font-black">
-                    <th className="px-6 py-4 w-16">Foto</th>
-                    <th className="px-6 py-4">Nome Completo</th>
-                    <th className="px-6 py-4">Cargo / Profissão</th>
-                    <th className="px-6 py-4 text-right">Salário Base</th>
-                    <th className="px-6 py-4 text-right">INSS (3%)</th>
-                    <th className="px-6 py-4 text-right">IRT</th>
-                    <th className="px-6 py-4 text-right">Líquido</th>
-                    <th className="px-6 py-4 text-center">Estado</th>
-                    <th className="px-6 py-4 text-center">Ações</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100">
-                  {filteredEmployees.map(emp => {
-                    const inss = (emp.salary || 0) * 0.03;
-                    const irt = calculateIRT((emp.salary || 0) - inss);
-                    const net = (emp.salary || 0) - inss - irt;
-                    return (
-                      <tr key={emp.id} className="hover:bg-zinc-50 transition-colors text-xs group">
-                        <td className="px-6 py-3">
-                          <div className="w-10 h-10 bg-zinc-100 rounded-none border border-zinc-200 overflow-hidden flex items-center justify-center">
-                            {emp.image_url ? (
-                              <img src={emp.image_url} alt={emp.name} className="w-full h-full object-cover" />
-                            ) : (
-                              <User size={18} className="text-zinc-300" />
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 font-black text-[#003366] uppercase tracking-tight">
-                          <div>{emp.name}</div>
-                          <div className="text-[9px] text-zinc-400 font-normal lowercase">{emp.email}</div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="font-bold text-zinc-700">{emp.profession_name || emp.role}</div>
-                          <div className="text-[9px] text-zinc-400 uppercase tracking-widest">{emp.department || 'Geral'}</div>
-                        </td>
-                        <td className="px-6 py-4 text-right font-bold text-zinc-600">{formatCurrency(emp.salary)}</td>
-                        <td className="px-6 py-4 text-right text-red-400 font-medium">{formatCurrency(inss)}</td>
-                        <td className="px-6 py-4 text-right text-red-400 font-medium">{formatCurrency(irt)}</td>
-                        <td className="px-6 py-4 text-right font-black text-emerald-600 text-sm">{formatCurrency(net)}</td>
-                        <td className="px-6 py-4 text-center">
-                          <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-widest rounded-none border ${emp.status === 'active' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'}`}>
-                            {emp.status === 'active' ? 'Ativo' : 'Inativo'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse min-w-[800px]">
+                  <thead>
+                    <tr className="bg-[#003366] text-white text-[10px] uppercase tracking-[0.2em] font-black">
+                      <th className="px-6 py-4 w-16">Foto</th>
+                      <th className="px-6 py-4">Nome Completo</th>
+                      <th className="px-6 py-4">Cargo / Profissão</th>
+                      <th className="px-6 py-4 text-right">Salário Base</th>
+                      <th className="px-6 py-4 text-center">Estado</th>
+                      <th className="px-6 py-4 text-center">Opção</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100">
+                    {filteredEmployees.map(emp => {
+                      return (
+                        <tr 
+                          key={emp.id} 
+                          className={`hover:bg-zinc-50 transition-colors text-xs group cursor-pointer ${selectedEmployeeForOptions?.id === emp.id ? 'bg-zinc-50 border-l-4 border-l-[#003366]' : ''}`}
+                        >
+                          <td className="px-6 py-3">
+                            <div className="w-10 h-10 bg-zinc-100 rounded-none border border-zinc-200 overflow-hidden flex items-center justify-center">
+                              {emp.image_url ? (
+                                <img src={emp.image_url} alt={emp.name} className="w-full h-full object-cover" />
+                              ) : (
+                                <UserIcon size={18} className="text-zinc-300" />
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 font-black text-[#003366] uppercase tracking-tight">
+                            <div>{emp.name}</div>
+                            <div className="text-[9px] text-zinc-400 font-normal lowercase">{emp.email}</div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="font-bold text-zinc-700">{emp.profession_name || emp.role}</div>
+                            <div className="text-[9px] text-zinc-400 uppercase tracking-widest">{emp.department || 'Geral'}</div>
+                          </td>
+                          <td className="px-6 py-4 text-right font-bold text-zinc-600">{formatCurrency(emp.salary)}</td>
+                          <td className="px-6 py-4 text-center">
+                            <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-widest rounded-none border ${emp.status === 'active' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'}`}>
+                              {emp.status === 'active' ? 'Ativo' : 'Inativo'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-center">
                             <button 
                               onClick={() => {
                                 setSelectedEmployeeForOptions(emp);
                                 setShowOptionsMenu(true);
                               }}
-                              className="p-1.5 text-zinc-300 hover:text-[#003366] hover:bg-zinc-100 transition-all"
-                              title="Opções"
+                              className="bg-[#003366] text-white px-4 py-1.5 text-[9px] font-black uppercase tracking-widest hover:bg-[#002244] transition-all shadow-sm"
                             >
-                              <MoreVertical size={14} />
+                              Opção
                             </button>
-                            <button 
-                              onClick={() => handleEditEmployee(emp)}
-                              className="p-1.5 text-zinc-300 hover:text-[#003366] hover:bg-zinc-100 transition-all"
-                            >
-                              <Edit size={14} />
-                            </button>
-                            <button 
-                              onClick={() => handleDeleteEmployee(emp.id)}
-                              className="p-1.5 text-zinc-300 hover:text-red-500 hover:bg-red-50 transition-all"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
+
+            {/* Central Options Menu for HR */}
+            <AnimatePresence>
+              {showOptionsMenu && selectedEmployeeForOptions && (
+                <EmployeeOptionsMenu 
+                  employee={selectedEmployeeForOptions} 
+                  onClose={() => setShowOptionsMenu(false)} 
+                />
+              )}
+            </AnimatePresence>
           </div>
         )}
 
@@ -2321,7 +2404,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas }
                           <div className="flex items-center gap-3">
                             <input type="checkbox" className="rounded-none accent-[#003366]" />
                             <div className="w-10 h-10 bg-zinc-100 rounded-none overflow-hidden border border-zinc-200">
-                              {emp.image_url ? <img src={emp.image_url} className="w-full h-full object-cover" /> : <User size={16} className="text-zinc-300 m-auto mt-3" />}
+                              {emp.image_url ? <img src={emp.image_url} className="w-full h-full object-cover" /> : <UserIcon size={16} className="text-zinc-300 m-auto mt-3" />}
                             </div>
                             <div>
                               <div className="font-black text-[#003366] uppercase text-xs">{emp.name}</div>
@@ -2665,7 +2748,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas }
                           <td className="px-4 py-4 border-r border-zinc-200 sticky left-10 bg-white group-hover:bg-zinc-50 z-10">
                             <div className="flex items-center gap-3">
                               <div className="w-10 h-10 bg-zinc-100 rounded-none overflow-hidden border border-zinc-200 flex items-center justify-center">
-                                {emp.image_url ? <img src={emp.image_url} className="w-full h-full object-cover" /> : <User size={16} className="text-zinc-300" />}
+                                {emp.image_url ? <img src={emp.image_url} className="w-full h-full object-cover" /> : <UserIcon size={16} className="text-zinc-300" />}
                               </div>
                               <div>
                                 <div className="flex items-center gap-2">
@@ -3532,7 +3615,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas }
                       className="bg-zinc-50 border border-zinc-200 p-4 flex items-center gap-4 hover:border-[#003366] transition-all text-left"
                     >
                       <div className="w-10 h-10 bg-zinc-200 rounded-none flex items-center justify-center overflow-hidden">
-                        {emp.image_url ? <img src={emp.image_url} alt={emp.name} className="w-full h-full object-cover" /> : <User size={20} className="text-zinc-400" />}
+                        {emp.image_url ? <img src={emp.image_url} alt={emp.name} className="w-full h-full object-cover" /> : <UserIcon size={20} className="text-zinc-400" />}
                       </div>
                       <div>
                         <p className="font-bold text-[#003366] text-xs uppercase">{emp.name}</p>
@@ -3569,7 +3652,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas }
                       className="bg-zinc-50 border border-zinc-200 p-4 flex items-center gap-4 hover:border-[#003366] transition-all text-left"
                     >
                       <div className="w-10 h-10 bg-zinc-200 rounded-none flex items-center justify-center overflow-hidden">
-                        {emp.image_url ? <img src={emp.image_url} alt={emp.name} className="w-full h-full object-cover" /> : <User size={20} className="text-zinc-400" />}
+                        {emp.image_url ? <img src={emp.image_url} alt={emp.name} className="w-full h-full object-cover" /> : <UserIcon size={20} className="text-zinc-400" />}
                       </div>
                       <div>
                         <p className="font-bold text-[#003366] text-xs uppercase">{emp.name}</p>
@@ -3606,7 +3689,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas }
                       className="bg-zinc-50 border border-zinc-200 p-4 flex items-center gap-4 hover:border-[#003366] transition-all text-left"
                     >
                       <div className="w-10 h-10 bg-zinc-200 rounded-none flex items-center justify-center overflow-hidden">
-                        {emp.image_url ? <img src={emp.image_url} alt={emp.name} className="w-full h-full object-cover" /> : <User size={20} className="text-zinc-400" />}
+                        {emp.image_url ? <img src={emp.image_url} alt={emp.name} className="w-full h-full object-cover" /> : <UserIcon size={20} className="text-zinc-400" />}
                       </div>
                       <div>
                         <p className="font-bold text-[#003366] text-xs uppercase">{emp.name}</p>
@@ -3735,7 +3818,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas }
             <div className="bg-white border border-zinc-200 rounded-none shadow-sm overflow-hidden">
               <div className="bg-[#003366] text-white p-6 flex items-center gap-4 border-b border-white/10">
                 <div className="w-16 h-16 bg-white/10 rounded-none overflow-hidden border border-white/20 flex items-center justify-center">
-                  {appSelectedEmployee?.image_url ? <img src={appSelectedEmployee.image_url} className="w-full h-full object-cover" /> : <User size={32} />}
+                  {appSelectedEmployee?.image_url ? <img src={appSelectedEmployee.image_url} className="w-full h-full object-cover" /> : <UserIcon size={32} />}
                 </div>
                 <div>
                   <h3 className="text-xl font-black uppercase tracking-widest">{appSelectedEmployee?.name}</h3>
@@ -3817,7 +3900,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas }
             <div className="bg-white border border-zinc-200 rounded-none shadow-sm overflow-hidden">
               <div className="bg-[#003366] text-white p-6 flex items-center gap-4 border-b border-white/10">
                 <div className="w-16 h-16 bg-white/10 rounded-none overflow-hidden border border-white/20 flex items-center justify-center">
-                  {appSelectedEmployee?.image_url ? <img src={appSelectedEmployee.image_url} className="w-full h-full object-cover" /> : <User size={32} />}
+                  {appSelectedEmployee?.image_url ? <img src={appSelectedEmployee.image_url} className="w-full h-full object-cover" /> : <UserIcon size={32} />}
                 </div>
                 <div>
                   <h3 className="text-xl font-black uppercase tracking-widest">Redirecionamento Interno</h3>
@@ -3884,7 +3967,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas }
             <div className="bg-white border border-zinc-200 rounded-none shadow-sm overflow-hidden">
               <div className="bg-[#003366] text-white p-6 flex items-center gap-4 border-b border-white/10">
                 <div className="w-16 h-16 bg-white/10 rounded-none overflow-hidden border border-white/20 flex items-center justify-center">
-                  {appSelectedEmployee?.image_url ? <img src={appSelectedEmployee.image_url} className="w-full h-full object-cover" /> : <User size={32} />}
+                  {appSelectedEmployee?.image_url ? <img src={appSelectedEmployee.image_url} className="w-full h-full object-cover" /> : <UserIcon size={32} />}
                 </div>
                 <div>
                   <h3 className="text-xl font-black uppercase tracking-widest">Funções e Atribuições</h3>
@@ -4516,21 +4599,18 @@ const CertifyModal = ({ document, onConfirm, onClose }: {
   );
 };
 
-import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
-  LineChart, Line, AreaChart, Area
-} from 'recharts';
 
-const ProfitLossReport = ({ fiscalYear }: { fiscalYear: string }) => {
+
+const ProfitLossReport = ({ fiscalYear, empresa_id }: { fiscalYear: string, empresa_id?: string }) => {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchJson(`/api/reports/profit-loss?year=${fiscalYear}`)
+    fetchJson(`/api/reports/profit-loss?year=${fiscalYear}${empresa_id ? `&empresa_id=${empresa_id}` : ''}`)
       .then(setData)
       .catch(err => console.error('Error fetching profit-loss report:', err))
       .finally(() => setLoading(false));
-  }, [fiscalYear]);
+  }, [fiscalYear, empresa_id]);
 
   const months = [
     'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -4736,7 +4816,7 @@ const ProfitLossReport = ({ fiscalYear }: { fiscalYear: string }) => {
   );
 };
 
-const OtherMovements = ({ transactions, onRefresh, caixas }: { transactions: any[], onRefresh: () => void, caixas: Caixa[] }) => {
+const OtherMovements = ({ transactions, onRefresh, caixas, user }: { transactions: any[], onRefresh: () => void, caixas: Caixa[], user: any }) => {
   const [showForm, setShowForm] = useState(false);
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
@@ -4770,7 +4850,8 @@ const OtherMovements = ({ transactions, onRefresh, caixas }: { transactions: any
         payment_method: paymentMethod,
         reference,
         observation,
-        date
+        date,
+        empresa_id: user?.empresa_id
       })
     });
     if (res.ok) {
@@ -5004,13 +5085,15 @@ const FinancialModule = ({
   setCaixas, 
   caixaMovements, 
   setCaixaMovements, 
-  employees 
+  employees,
+  user
 }: { 
   caixas: Caixa[], 
   setCaixas: React.Dispatch<React.SetStateAction<Caixa[]>>,
   caixaMovements: CaixaMovement[],
   setCaixaMovements: React.Dispatch<React.SetStateAction<CaixaMovement[]>>,
-  employees: Employee[]
+  employees: Employee[],
+  user: any
 }) => {
   const [activeSubTab, setActiveSubTab] = useState('menu');
   const [issuedDocuments, setIssuedDocuments] = useState<IssuedDocument[]>([]);
@@ -5025,7 +5108,7 @@ const FinancialModule = ({
 
   const fetchIssuedDocuments = () => {
     setLoading(true);
-    fetchJson('/api/issued-documents')
+    fetchJson(`/api/issued-documents?empresa_id=${user?.empresa_id}`)
       .then(setIssuedDocuments)
       .catch(err => console.error('Error fetching issued documents:', err))
       .finally(() => setLoading(false));
@@ -5033,7 +5116,7 @@ const FinancialModule = ({
 
   const fetchTransactions = () => {
     setLoading(true);
-    fetchJson('/api/transactions')
+    fetchJson(`/api/transactions?empresa_id=${user?.empresa_id}`)
       .then(setTransactions)
       .catch(err => console.error('Error fetching transactions:', err))
       .finally(() => setLoading(false));
@@ -5052,7 +5135,7 @@ const FinancialModule = ({
     await fetch('/api/transactions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ description, amount: Number(amount), type, category: 'manual' })
+      body: JSON.stringify({ description, amount: Number(amount), type, category: 'manual', empresa_id: user?.empresa_id })
     });
     setDescription(''); setAmount(''); setShowForm(false);
     fetchTransactions();
@@ -5136,7 +5219,7 @@ const FinancialModule = ({
       )}
 
       {activeSubTab === 'profit-loss-report' && (
-        <ProfitLossReport fiscalYear="2024" />
+        <ProfitLossReport fiscalYear="2024" empresa_id={user?.empresa_id} />
       )}
 
       {activeSubTab === 'sales-reports' && (
@@ -5309,16 +5392,17 @@ const FinancialModule = ({
       )}
 
       {activeSubTab === 'other-movements' && (
-        <OtherMovements transactions={transactions} onRefresh={fetchTransactions} caixas={caixas} />
+        <OtherMovements transactions={transactions} onRefresh={fetchTransactions} caixas={caixas} user={user} />
       )}
     </div>
   );
 };
 
-const IssuedDocumentsList = ({ documents, onAction, onCertify }: { 
+const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail }: { 
   documents: IssuedDocument[], 
   onAction: (action: string, doc: IssuedDocument) => void, 
-  onCertify: (doc: IssuedDocument) => void 
+  onCertify: (doc: IssuedDocument) => void,
+  onViewDetail?: (doc: IssuedDocument) => void
 }) => {
   const [showActionsModal, setShowActionsModal] = useState<IssuedDocument | null>(null);
 
@@ -5342,7 +5426,11 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify }: {
         </thead>
         <tbody className="divide-y divide-zinc-100">
           {documents.map((doc) => (
-            <tr key={doc.id} className="hover:bg-zinc-50 text-xs border-b border-zinc-50 group transition-colors">
+            <tr 
+              key={doc.id} 
+              onClick={() => onViewDetail?.(doc)}
+              className="hover:bg-zinc-50 text-xs border-b border-zinc-50 group transition-colors cursor-pointer"
+            >
               <td className="px-6 py-4 text-zinc-900 font-bold whitespace-nowrap">
                 {new Date(doc.date || doc.data_emissao || '').toLocaleDateString()}
               </td>
@@ -5373,14 +5461,20 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify }: {
               <td className="px-6 py-4">
                 <div className="flex items-center justify-center gap-3">
                   <button 
-                    onClick={() => onAction('print_a4', doc)} 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onAction('print_a4', doc);
+                    }} 
                     title="Imprimir"
                     className="text-zinc-300 hover:text-[#003366] transition-all p-1.5 hover:bg-zinc-100"
                   >
                     <Printer size={14} />
                   </button>
                   <button 
-                    onClick={() => onCertify(doc)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onCertify(doc);
+                    }}
                     disabled={doc.is_certified}
                     title={doc.is_certified ? "Documento Certificado" : "Certificar Documento"}
                     className={`transition-all p-1.5 ${doc.is_certified ? 'text-emerald-500 cursor-default' : 'text-zinc-300 hover:text-emerald-500 hover:bg-emerald-50'}`}
@@ -5388,7 +5482,10 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify }: {
                     <BadgeCheck size={16} />
                   </button>
                   <button 
-                    onClick={() => setShowActionsModal(doc)} 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowActionsModal(doc);
+                    }} 
                     title="Mais Ações"
                     className="text-zinc-300 hover:text-[#003366] transition-all p-1.5 hover:bg-zinc-100"
                   >
@@ -5425,26 +5522,53 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify }: {
               className="relative w-full max-w-md bg-white p-8 rounded-none shadow-2xl"
             >
               <div className="flex justify-between items-center mb-6">
-                <h3 className="font-bold text-[#003366] text-xl uppercase tracking-tight">Ações do Documento</h3>
+                <div>
+                  <h3 className="font-bold text-[#003366] text-xl uppercase tracking-tight">Ações do Documento</h3>
+                  <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mt-1">
+                    {showActionsModal.numero_documento} • {showActionsModal.client_name}
+                  </p>
+                </div>
                 <button onClick={() => setShowActionsModal(null)} className="text-zinc-400 hover:text-zinc-600">
                   <X size={20} />
                 </button>
               </div>
               
-              <div className="grid grid-cols-1 gap-2 max-h-[60vh] overflow-y-auto pr-2">
+              <div className="grid grid-cols-1 gap-2 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+                {/* Edit Action */}
                 <button 
-                  onClick={() => { onAction('print_a4', showActionsModal); setShowActionsModal(null); }}
+                  onClick={() => { onAction('edit', showActionsModal); setShowActionsModal(null); }}
                   className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-colors border border-zinc-100 group"
                 >
                   <div className="w-10 h-10 bg-zinc-100 text-[#003366] flex items-center justify-center group-hover:bg-[#003366] group-hover:text-white transition-colors">
-                    <Printer size={20} />
+                    <Edit size={20} />
                   </div>
                   <div className="text-left">
-                    <p className="font-bold text-zinc-900 text-sm">Imprimir Documento</p>
-                    <p className="text-xs text-zinc-500">Gerar versão PDF A4 para impressão.</p>
+                    <p className="font-bold text-zinc-900 text-sm">Editar Documento</p>
+                    <p className="text-xs text-zinc-500">
+                      {showActionsModal.is_certified ? 'Edição limitada (Doc. Certificado)' : 'Edição completa permitida'}
+                    </p>
                   </div>
                 </button>
 
+                {/* Print Actions */}
+                <div className="grid grid-cols-2 gap-2">
+                  <button 
+                    onClick={() => { onAction('print_a4', showActionsModal); setShowActionsModal(null); }}
+                    className="flex items-center gap-3 p-3 hover:bg-zinc-50 transition-colors border border-zinc-100 group"
+                  >
+                    <Printer size={16} className="text-[#003366]" />
+                    <span className="font-bold text-zinc-900 text-xs">Imprimir A4</span>
+                  </button>
+                  <button 
+                    onClick={() => { onAction('print_p80', showActionsModal); setShowActionsModal(null); }}
+                    className="flex items-center gap-3 p-3 hover:bg-zinc-50 transition-colors border border-zinc-100 group"
+                  >
+                    <Printer size={16} className="text-[#003366]" />
+                    <span className="font-bold text-zinc-900 text-xs">Imprimir P80</span>
+                  </button>
+                </div>
+
+                {/* Export PDF */}
                 <button 
                   onClick={() => { onAction('export_pdf', showActionsModal); setShowActionsModal(null); }}
                   className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-colors border border-zinc-100 group"
@@ -5458,74 +5582,73 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify }: {
                   </div>
                 </button>
 
-                <button 
-                  onClick={() => { onCertify(showActionsModal); setShowActionsModal(null); }}
-                  disabled={showActionsModal.is_certified}
-                  className={`w-full flex items-center gap-4 p-4 transition-colors border border-zinc-100 group ${showActionsModal.is_certified ? 'opacity-50 cursor-not-allowed' : 'hover:bg-zinc-50'}`}
-                >
-                  <div className={`w-10 h-10 flex items-center justify-center transition-colors ${showActionsModal.is_certified ? 'bg-emerald-100 text-emerald-600' : 'bg-zinc-100 text-[#003366] group-hover:bg-emerald-600 group-hover:text-white'}`}>
-                    <BadgeCheck size={20} />
-                  </div>
-                  <div className="text-left">
-                    <p className="font-bold text-zinc-900 text-sm">Certificar Documento</p>
-                    <p className="text-xs text-zinc-500">Assinar digitalmente o documento (AGT).</p>
-                  </div>
-                </button>
+                {/* Certify Action */}
+                {!showActionsModal.is_certified && (
+                  <button 
+                    onClick={() => { onCertify(showActionsModal); setShowActionsModal(null); }}
+                    className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-colors border border-zinc-100 group"
+                  >
+                    <div className="w-10 h-10 bg-zinc-100 text-emerald-600 flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                      <BadgeCheck size={20} />
+                    </div>
+                    <div className="text-left">
+                      <p className="font-bold text-zinc-900 text-sm">Certificar Documento</p>
+                      <p className="text-xs text-zinc-500">Assinar digitalmente o documento (AGT).</p>
+                    </div>
+                  </button>
+                )}
 
+                {/* Receipt Action */}
+                {showActionsModal.payment_status !== 'paid' && (
+                  <button 
+                    onClick={() => { onAction('receipt', showActionsModal); setShowActionsModal(null); }}
+                    className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-colors border border-zinc-100 group"
+                  >
+                    <div className="w-10 h-10 bg-zinc-100 text-[#003366] flex items-center justify-center group-hover:bg-[#003366] group-hover:text-white transition-colors">
+                      <Receipt size={20} />
+                    </div>
+                    <div className="text-left">
+                      <p className="font-bold text-zinc-900 text-sm">Emitir Recibo</p>
+                      <p className="text-xs text-zinc-500">Registar pagamento e liquidar fatura.</p>
+                    </div>
+                  </button>
+                )}
+
+                {/* Convert Action */}
                 <button 
-                  onClick={() => { /* Send Email logic */ setShowActionsModal(null); }}
+                  onClick={() => { onAction('convert', showActionsModal); setShowActionsModal(null); }}
                   className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-colors border border-zinc-100 group"
                 >
                   <div className="w-10 h-10 bg-zinc-100 text-[#003366] flex items-center justify-center group-hover:bg-[#003366] group-hover:text-white transition-colors">
-                    <Mail size={20} />
+                    <RefreshCw size={20} />
                   </div>
                   <div className="text-left">
-                    <p className="font-bold text-zinc-900 text-sm">Enviar por Email</p>
-                    <p className="text-xs text-zinc-500">Enviar documento diretamente ao cliente.</p>
+                    <p className="font-bold text-zinc-900 text-sm">Faturar / Converter</p>
+                    <p className="text-xs text-zinc-500">Converter este documento noutro tipo.</p>
                   </div>
                 </button>
 
-                <button 
-                  onClick={() => { /* WhatsApp logic */ setShowActionsModal(null); }}
-                  className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-colors border border-zinc-100 group"
-                >
-                  <div className="w-10 h-10 bg-zinc-100 text-[#003366] flex items-center justify-center group-hover:bg-[#25D366] group-hover:text-white transition-colors">
-                    <MessageCircle size={20} />
-                  </div>
-                  <div className="text-left">
-                    <p className="font-bold text-zinc-900 text-sm">Enviar por WhatsApp</p>
-                    <p className="text-xs text-zinc-500">Partilhar link do documento via WhatsApp.</p>
-                  </div>
-                </button>
+                {/* Communication Actions */}
+                <div className="grid grid-cols-2 gap-2">
+                  <button 
+                    onClick={() => { onAction('email', showActionsModal); setShowActionsModal(null); }}
+                    className="flex items-center gap-3 p-3 hover:bg-zinc-50 transition-colors border border-zinc-100 group"
+                  >
+                    <Mail size={16} className="text-[#003366]" />
+                    <span className="font-bold text-zinc-900 text-xs">Enviar Email</span>
+                  </button>
+                  <button 
+                    onClick={() => { onAction('whatsapp', showActionsModal); setShowActionsModal(null); }}
+                    className="flex items-center gap-3 p-3 hover:bg-zinc-50 transition-colors border border-zinc-100 group"
+                  >
+                    <MessageCircle size={16} className="text-[#25D366]" />
+                    <span className="font-bold text-zinc-900 text-xs">WhatsApp</span>
+                  </button>
+                </div>
 
+                {/* Clone Action */}
                 <button 
-                  onClick={() => { /* Guia de Remessa logic */ setShowActionsModal(null); }}
-                  className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-colors border border-zinc-100 group"
-                >
-                  <div className="w-10 h-10 bg-zinc-100 text-[#003366] flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-colors">
-                    <Truck size={20} />
-                  </div>
-                  <div className="text-left">
-                    <p className="font-bold text-zinc-900 text-sm">Emitir Guia de Remessa</p>
-                    <p className="text-xs text-zinc-500">Gerar documento de transporte associado.</p>
-                  </div>
-                </button>
-
-                <button 
-                  onClick={() => { onAction('void', showActionsModal); setShowActionsModal(null); }}
-                  className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-colors border border-zinc-100 group"
-                >
-                  <div className="w-10 h-10 bg-zinc-100 text-red-600 flex items-center justify-center group-hover:bg-red-600 group-hover:text-white transition-colors">
-                    <XCircle size={20} />
-                  </div>
-                  <div className="text-left">
-                    <p className="font-bold text-zinc-900 text-sm">Anular Documento</p>
-                    <p className="text-xs text-zinc-500">Cancelar e emitir nota de crédito.</p>
-                  </div>
-                </button>
-
-                <button 
-                  onClick={() => { /* Clone logic */ setShowActionsModal(null); }}
+                  onClick={() => { onAction('clone', showActionsModal); setShowActionsModal(null); }}
                   className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-colors border border-zinc-100 group"
                 >
                   <div className="w-10 h-10 bg-zinc-100 text-[#003366] flex items-center justify-center group-hover:bg-[#003366] group-hover:text-white transition-colors">
@@ -5536,6 +5659,22 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify }: {
                     <p className="text-xs text-zinc-500">Criar novo documento baseado neste.</p>
                   </div>
                 </button>
+
+                {/* Annul Action */}
+                {showActionsModal.is_certified && !showActionsModal.is_anulado && (
+                  <button 
+                    onClick={() => { onAction('cancel', showActionsModal); setShowActionsModal(null); }}
+                    className="w-full flex items-center gap-4 p-4 hover:bg-red-50 transition-colors border border-red-100 group"
+                  >
+                    <div className="w-10 h-10 bg-red-100 text-red-600 flex items-center justify-center group-hover:bg-red-600 group-hover:text-white transition-colors">
+                      <XCircle size={20} />
+                    </div>
+                    <div className="text-left">
+                      <p className="font-bold text-red-600 text-sm">Anular Documento</p>
+                      <p className="text-xs text-red-400">Cancelar e emitir nota de crédito.</p>
+                    </div>
+                  </button>
+                )}
               </div>
             </motion.div>
           </div>
@@ -8409,6 +8548,7 @@ const InvoiceList = ({
   onUpdateWorkSite,
   onAction,
   onCertify,
+  onViewDetail,
   caixas
 }: { 
   invoices: Invoice[], 
@@ -8423,8 +8563,10 @@ const InvoiceList = ({
   onUpdateWorkSite: (id: number, site: Omit<WorkSite, 'id'>) => void,
   onAction: (action: string, doc: IssuedDocument) => void,
   onCertify: (doc: IssuedDocument) => void,
+  onViewDetail?: (doc: IssuedDocument) => void,
   caixas: Caixa[]
 }) => {
+  const { user } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState('emitidos');
   const [searchTerm, setSearchTerm] = useState('');
   const [serieFilter, setSerieFilter] = useState('Todas');
@@ -8434,6 +8576,7 @@ const InvoiceList = ({
   const [selectedWorkSite, setSelectedWorkSite] = useState<WorkSite | null>(null);
   const [showActionMenu, setShowActionMenu] = useState(false);
   const [showManagementView, setShowManagementView] = useState(false);
+  const [showRegistrationView, setShowRegistrationView] = useState(false);
   const [showMovementForm, setShowMovementForm] = useState(false);
   const [movements, setMovements] = useState<WorkSiteMovement[]>([]);
   const [selectedMonthForMap, setSelectedMonthForMap] = useState(new Date().toISOString().slice(0, 7));
@@ -8441,7 +8584,7 @@ const InvoiceList = ({
 
   const fetchMovements = async (workSiteId: number) => {
     try {
-      const response = await fetch(`/api/work-sites/${workSiteId}/movements`);
+      const response = await fetch(`/api/work-sites/${workSiteId}/movements?empresa_id=${user?.empresa_id}`);
       if (response.ok) {
         const data = await response.json();
         setMovements(data);
@@ -8475,7 +8618,7 @@ const InvoiceList = ({
       const response = await fetch(`/api/work-sites/${selectedWorkSite.id}/movements`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(movement)
+        body: JSON.stringify({ ...movement, empresa_id: user?.empresa_id })
       });
       if (response.ok) {
         await fetchMovements(selectedWorkSite.id);
@@ -8493,6 +8636,15 @@ const InvoiceList = ({
         movements={movements} 
         invoices={issuedDocuments}
         onBack={() => setShowManagementView(false)} 
+      />
+    );
+  }
+
+  if (showRegistrationView && selectedWorkSite) {
+    return (
+      <WorkSiteRegistration 
+        workSite={selectedWorkSite} 
+        onBack={() => setShowRegistrationView(false)} 
       />
     );
   }
@@ -8684,6 +8836,7 @@ const InvoiceList = ({
                 documents={filteredIssuedDocuments} 
                 onAction={onAction}
                 onCertify={onCertify}
+                onViewDetail={onViewDetail}
               />
             )}
 
@@ -8848,6 +9001,15 @@ const InvoiceList = ({
                         <span>Ver gestão local de trabalho</span>
                       </button>
                       <button 
+                        onClick={() => { setShowActionMenu(false); setShowRegistrationView(true); }}
+                        className="w-full flex items-center gap-3 px-4 py-3 text-sm text-zinc-700 hover:bg-zinc-50 transition-colors text-left"
+                      >
+                        <div className="w-8 h-8 rounded-none bg-purple-50 flex items-center justify-center text-purple-600">
+                          <Construction size={16} />
+                        </div>
+                        <span>Cadastro Obra</span>
+                      </button>
+                      <button 
                         onClick={handleAssociateMovement}
                         className="w-full flex items-center gap-3 px-4 py-3 text-sm text-zinc-700 hover:bg-zinc-50 transition-colors text-left"
                       >
@@ -8889,6 +9051,7 @@ const InvoiceList = ({
                       <WorkSiteMovementForm 
                         onBack={() => setShowMovementForm(false)}
                         onSuccess={handleAddMovement}
+                        movements={movements}
                       />
                     </div>
                   </motion.div>
@@ -9712,7 +9875,7 @@ const WorkSiteForm = ({ clients, onBack, onSuccess, initialData }: { clients: Cl
   );
 };
 
-const WorkSiteMovementForm = ({ onBack, onSuccess }: { onBack: () => void, onSuccess: (movement: any) => void }) => {
+const WorkSiteMovementForm = ({ onBack, onSuccess, movements = [] }: { onBack: () => void, onSuccess: (movement: any) => void, movements?: WorkSiteMovement[] }) => {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [docNo, setDocNo] = useState('');
   const [company, setCompany] = useState('');
@@ -9726,40 +9889,248 @@ const WorkSiteMovementForm = ({ onBack, onSuccess }: { onBack: () => void, onSuc
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1">
-          <label className="text-[10px] font-bold text-zinc-400 uppercase">Data</label>
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} required className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm" />
+    <div className="space-y-8">
+      <form onSubmit={handleSubmit} className="space-y-4 bg-zinc-50 p-6 border border-zinc-200">
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-zinc-400 uppercase">Data</label>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} required className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-zinc-400 uppercase">Nº Documento</label>
+            <input type="text" value={docNo} onChange={e => setDocNo(e.target.value)} placeholder="Ex: FT-2026/001" className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm" />
+          </div>
         </div>
         <div className="space-y-1">
-          <label className="text-[10px] font-bold text-zinc-400 uppercase">Nº Documento</label>
-          <input type="text" value={docNo} onChange={e => setDocNo(e.target.value)} placeholder="Ex: FT-2026/001" className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm" />
-        </div>
-      </div>
-      <div className="space-y-1">
-        <label className="text-[10px] font-bold text-zinc-400 uppercase">Empresa/Entidade</label>
-        <input type="text" value={company} onChange={e => setCompany(e.target.value)} placeholder="Nome da empresa" className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm" />
-      </div>
-      <div className="space-y-1">
-        <label className="text-[10px] font-bold text-zinc-400 uppercase">Descrição</label>
-        <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Descrição do movimento" className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm min-h-[60px]" />
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1">
-          <label className="text-[10px] font-bold text-zinc-400 uppercase">Débito (Saída)</label>
-          <input type="number" value={debit} onChange={e => setDebit(Number(e.target.value))} className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm" />
+          <label className="text-[10px] font-bold text-zinc-400 uppercase">Empresa/Entidade</label>
+          <input type="text" value={company} onChange={e => setCompany(e.target.value)} placeholder="Nome da empresa" className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm" />
         </div>
         <div className="space-y-1">
-          <label className="text-[10px] font-bold text-zinc-400 uppercase">Crédito (Entrada)</label>
-          <input type="number" value={credit} onChange={e => setCredit(Number(e.target.value))} className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm" />
+          <label className="text-[10px] font-bold text-zinc-400 uppercase">Descrição</label>
+          <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Descrição do movimento" className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm min-h-[60px]" />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-zinc-400 uppercase">Débito (Saída)</label>
+            <input type="number" value={debit} onChange={e => setDebit(Number(e.target.value))} className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-zinc-400 uppercase">Crédito (Entrada)</label>
+            <input type="number" value={credit} onChange={e => setCredit(Number(e.target.value))} className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm" />
+          </div>
+        </div>
+        <div className="flex justify-end gap-3 pt-4">
+          <button type="button" onClick={onBack} className="text-zinc-500 hover:text-zinc-700 text-sm font-medium">Cancelar</button>
+          <button type="submit" className="bg-[#003366] text-white font-bold px-6 py-2 rounded-none hover:bg-[#002244] text-sm">Salvar Movimento</button>
+        </div>
+      </form>
+
+      <div className="space-y-3">
+        <h4 className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+          <History size={14} />
+          Movimentos Associados Recentemente
+        </h4>
+        <div className="border border-zinc-200 max-h-[200px] overflow-y-auto">
+          <table className="w-full text-left text-[11px]">
+            <thead className="bg-zinc-100 sticky top-0">
+              <tr className="text-zinc-500 font-bold uppercase tracking-tighter">
+                <th className="px-4 py-2">Data</th>
+                <th className="px-4 py-2">Doc</th>
+                <th className="px-4 py-2 text-right">Valor</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+              {movements.slice().reverse().map(m => (
+                <tr key={m.id}>
+                  <td className="px-4 py-2 text-zinc-500">{new Date(m.date).toLocaleDateString()}</td>
+                  <td className="px-4 py-2 font-bold text-zinc-700">{m.doc_no}</td>
+                  <td className={`px-4 py-2 text-right font-bold ${m.debit > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                    {formatCurrency(m.debit > 0 ? m.debit : m.credit)}
+                  </td>
+                </tr>
+              ))}
+              {movements.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="px-4 py-8 text-center text-zinc-400 italic">Nenhum movimento associado.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
-      <div className="flex justify-end gap-3 pt-4">
-        <button type="button" onClick={onBack} className="text-zinc-500 hover:text-zinc-700 text-sm font-medium">Cancelar</button>
-        <button type="submit" className="bg-[#003366] text-white font-bold px-6 py-2 rounded-none hover:bg-[#002244] text-sm">Salvar Movimento</button>
+    </div>
+  );
+};
+
+const WorkSiteRegistration = ({ workSite, onBack }: { workSite: WorkSite, onBack: () => void }) => {
+  const handleDownloadPDF = () => {
+    const doc = new jsPDF();
+    doc.setFontSize(20);
+    doc.text('Ficha de Cadastro de Obra', 105, 20, { align: 'center' });
+    doc.setFontSize(12);
+    doc.text(`REF: ${workSite.code}`, 20, 40);
+    doc.text(`Título: ${workSite.title}`, 20, 50);
+    doc.text(`Cliente: ${workSite.client_name}`, 20, 60);
+    doc.text(`Localização: ${workSite.location}`, 20, 70);
+    doc.text(`Data Início: ${new Date(workSite.start_date).toLocaleDateString('pt-PT')}`, 20, 80);
+    doc.text(`Data Fim: ${new Date(workSite.end_date).toLocaleDateString('pt-PT')}`, 20, 90);
+    doc.text(`Total Efectivos: ${workSite.total_staff}`, 20, 100);
+    doc.text(`Descrição:`, 20, 110);
+    doc.setFontSize(10);
+    const splitDescription = doc.splitTextToSize(workSite.description || 'N/A', 170);
+    doc.text(splitDescription, 20, 120);
+    
+    doc.save(`cadastro_obra_${workSite.code}.pdf`);
+  };
+
+  return (
+    <div className="bg-white min-h-screen p-8 sm:p-12 space-y-10 max-w-5xl mx-auto shadow-2xl border border-zinc-100">
+      {/* Document Header */}
+      <div className="flex justify-between items-start border-b-4 border-[#003366] pb-8">
+        <div className="flex items-center gap-6">
+          <div className="w-20 h-20 bg-[#003366] flex items-center justify-center text-white">
+            <Construction size={40} />
+          </div>
+          <div>
+            <h1 className="text-3xl font-black text-[#003366] tracking-tighter uppercase">Ficha de Cadastro de Obra</h1>
+            <p className="text-zinc-400 text-xs font-bold uppercase tracking-[0.3em] mt-1">Registo Oficial de Local de Trabalho</p>
+          </div>
+        </div>
+        <div className="text-right space-y-1">
+          <div className="bg-zinc-100 px-4 py-2 font-mono text-sm font-bold text-[#003366]">
+            REF: {workSite.code}
+          </div>
+          <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">Data de Emissão: {new Date().toLocaleDateString('pt-PT')}</p>
+        </div>
       </div>
-    </form>
+
+      {/* Main Content Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        {/* Left Column - Main Info */}
+        <div className="md:col-span-2 space-y-8">
+          <section className="space-y-4">
+            <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest border-l-4 border-[#003366] pl-3">Informações Gerais</h3>
+            <div className="grid grid-cols-2 gap-6 bg-zinc-50/50 p-6 border border-zinc-100">
+              <div className="space-y-1">
+                <p className="text-[10px] font-bold text-zinc-400 uppercase">Título do Projecto</p>
+                <p className="font-bold text-zinc-800 text-lg">{workSite.title}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] font-bold text-zinc-400 uppercase">Cliente Responsável</p>
+                <p className="font-bold text-zinc-800">{workSite.client_name}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] font-bold text-zinc-400 uppercase">Localização / Endereço</p>
+                <p className="font-medium text-zinc-600">{workSite.location}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] font-bold text-zinc-400 uppercase">Contacto de Emergência</p>
+                <p className="font-bold text-zinc-800">{workSite.contact}</p>
+              </div>
+            </div>
+          </section>
+
+          <section className="space-y-4">
+            <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest border-l-4 border-[#003366] pl-3">Cronograma e Prazos</h3>
+            <div className="grid grid-cols-2 gap-6 bg-zinc-50/50 p-6 border border-zinc-100">
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
+                  <Calendar size={20} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-zinc-400 uppercase">Data de Abertura</p>
+                  <p className="font-bold text-zinc-800">{new Date(workSite.start_date).toLocaleDateString('pt-PT')}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center text-red-600">
+                  <Calendar size={20} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-zinc-400 uppercase">Previsão de Conclusão</p>
+                  <p className="font-bold text-zinc-800">{new Date(workSite.end_date).toLocaleDateString('pt-PT')}</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="space-y-4">
+            <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest border-l-4 border-[#003366] pl-3">Descrição dos Trabalhos</h3>
+            <div className="bg-zinc-50/50 p-6 border border-zinc-100 min-h-[120px]">
+              <p className="text-zinc-600 text-sm leading-relaxed whitespace-pre-wrap">{workSite.description || 'Nenhuma descrição detalhada fornecida.'}</p>
+            </div>
+          </section>
+        </div>
+
+        {/* Right Column - Stats and Meta */}
+        <div className="space-y-8">
+          <section className="space-y-4">
+            <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest border-l-4 border-[#003366] pl-3">Recursos Humanos</h3>
+            <div className="space-y-4">
+              <div className="bg-[#003366] text-white p-6 shadow-lg">
+                <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-2">Total de Efectivos</p>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-4xl font-black">{workSite.total_staff}</span>
+                  <span className="text-xs font-bold uppercase opacity-60">Colaboradores</span>
+                </div>
+              </div>
+              <div className="bg-white border border-zinc-200 p-6">
+                <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Média Diária</p>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl font-black text-zinc-800">{workSite.staff_per_day}</span>
+                  <span className="text-xs font-bold uppercase text-zinc-400">Pessoas/Dia</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="space-y-4">
+            <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest border-l-4 border-[#003366] pl-3">Observações Adicionais</h3>
+            <div className="bg-amber-50/50 p-6 border border-amber-100 min-h-[150px]">
+              <p className="text-amber-900/70 text-xs leading-relaxed italic">{workSite.observations || 'Sem observações registadas.'}</p>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      {/* Action Buttons - No Print */}
+      <div className="flex justify-end gap-4 pt-12 border-t border-zinc-100 no-print">
+        <button 
+          onClick={() => window.print()}
+          className="flex items-center gap-2 bg-white border border-zinc-300 text-zinc-700 px-6 py-3 font-bold text-sm hover:bg-zinc-50 transition-all shadow-sm"
+        >
+          <Printer size={18} /> Imprimir Ficha
+        </button>
+        <button 
+          onClick={handleDownloadPDF}
+          className="flex items-center gap-2 bg-[#003366] text-white px-6 py-3 font-bold text-sm hover:bg-[#002244] transition-all shadow-lg"
+        >
+          <Download size={18} /> Baixar PDF
+        </button>
+        <button 
+          onClick={onBack}
+          className="flex items-center gap-2 bg-zinc-100 text-zinc-600 px-6 py-3 font-bold text-sm hover:bg-zinc-200 transition-all"
+        >
+          Voltar à Lista
+        </button>
+      </div>
+
+      {/* Signatures */}
+      <div className="pt-20 grid grid-cols-2 gap-20 text-center">
+        <div className="space-y-8">
+          <div className="border-b border-zinc-300 pb-2"></div>
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Responsável pelo Cadastro</p>
+        </div>
+        <div className="space-y-8">
+          <div className="border-b border-zinc-300 pb-2"></div>
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Aprovação Direcção</p>
+        </div>
+      </div>
+
+      <div className="text-center pt-10">
+        <p className="text-[8px] text-zinc-300 font-bold uppercase tracking-[0.4em]">Este documento é um registo oficial do sistema de gestão AGT</p>
+      </div>
+    </div>
   );
 };
 
@@ -9773,7 +10144,11 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack }: {
   const totalDebit = movements.reduce((sum, m) => sum + m.debit, 0);
   const totalCredit = movements.reduce((sum, m) => sum + m.credit, 0);
   const currentBalance = movements.length > 0 ? movements[movements.length - 1].balance : 0;
+  
   const siteInvoices = invoices.filter(inv => Number(inv.work_site_id) === workSite.id);
+  const totalInvoiced = siteInvoices.reduce((sum, inv) => sum + inv.contravalor, 0);
+  const totalPaid = siteInvoices.filter(inv => inv.status === 'paid' || inv.estado_documento === 'ativo').reduce((sum, inv) => sum + inv.contravalor, 0);
+  const totalPending = totalInvoiced - totalPaid;
 
   return (
     <div className="bg-white min-h-screen p-8 sm:p-12 space-y-10 max-w-6xl mx-auto shadow-2xl border border-zinc-100">
@@ -9782,11 +10157,11 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack }: {
         <div className="space-y-4">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 bg-[#003366] flex items-center justify-center text-white">
-              <Layers size={24} />
+              <BarChart3 size={24} />
             </div>
             <div>
-              <h1 className="text-2xl font-black text-[#003366] tracking-tighter uppercase">Relatório de Gestão</h1>
-              <p className="text-zinc-400 text-[10px] font-bold uppercase tracking-[0.2em]">Local de Trabalho / Obra</p>
+              <h1 className="text-2xl font-black text-[#003366] tracking-tighter uppercase">Gestão do Local de Trabalho</h1>
+              <p className="text-zinc-400 text-[10px] font-bold uppercase tracking-[0.2em]">Controlo de Movimentação e Facturação</p>
             </div>
           </div>
           <div className="space-y-1">
@@ -9821,15 +10196,14 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack }: {
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-0 border border-zinc-200 divide-x divide-zinc-200">
         <div className="p-8 bg-zinc-50/50">
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Total de Efectivos</p>
-          <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-black text-zinc-800">{workSite.total_staff}</span>
-            <span className="text-xs text-zinc-400 font-bold uppercase">Pessoas</span>
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Total Facturado</p>
+          <p className="text-2xl font-black text-[#003366]">{formatCurrency(totalInvoiced)}</p>
+          <div className="flex items-center gap-2 mt-2">
+            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5">PAGO: {formatCurrency(totalPaid)}</span>
           </div>
-          <p className="text-[10px] text-zinc-400 mt-1 font-bold italic">{workSite.staff_per_day} por dia</p>
         </div>
         <div className="p-8">
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Total Débito</p>
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Total Débito (Custos)</p>
           <p className="text-2xl font-black text-red-600">{formatCurrency(totalDebit)}</p>
         </div>
         <div className="p-8">
@@ -9839,6 +10213,7 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack }: {
         <div className="p-8 bg-[#003366] text-white">
           <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-2">Saldo de Obra</p>
           <p className="text-2xl font-black">{formatCurrency(currentBalance)}</p>
+          <p className="text-[10px] text-white/40 mt-1 font-bold italic">Pendente Cliente: {formatCurrency(totalPending)}</p>
         </div>
       </div>
 
@@ -9872,8 +10247,12 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack }: {
               Histórico de Movimentação Financeira
             </h3>
             <div className="flex gap-2 no-print">
-              <button onClick={() => window.print()} className="p-2 border border-zinc-200 hover:bg-zinc-50 transition-colors text-zinc-500">
-                <Printer size={18} />
+              <button 
+                onClick={() => window.print()} 
+                className="flex items-center gap-2 px-4 py-2 border border-zinc-200 hover:bg-zinc-50 transition-colors text-zinc-600 text-[10px] font-bold uppercase tracking-widest"
+              >
+                <Printer size={16} />
+                Imprimir Relatório
               </button>
               <button onClick={onBack} className="px-4 py-2 bg-zinc-100 text-zinc-600 text-xs font-bold uppercase tracking-widest hover:bg-zinc-200 transition-colors">
                 Voltar
@@ -9995,6 +10374,7 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack }: {
 const InvoiceDetail = ({ 
   id, 
   onBack,
+  onPrint,
   companyName,
   companyNif,
   companyAddress,
@@ -10003,6 +10383,7 @@ const InvoiceDetail = ({
 }: { 
   id: number, 
   onBack: () => void,
+  onPrint: (invoice: Invoice) => void,
   companyName: string,
   companyNif: string,
   companyAddress: string,
@@ -10040,7 +10421,10 @@ const InvoiceDetail = ({
           <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Fatura {invoice.invoice_number}</h2>
         </div>
         <div className="flex gap-3">
-          <button className="bg-white border border-zinc-300 hover:bg-zinc-50 text-zinc-700 px-4 py-2 rounded-none flex items-center gap-2 transition-all text-sm shadow-sm">
+          <button 
+            onClick={() => invoice && onPrint(invoice)}
+            className="bg-white border border-zinc-300 hover:bg-zinc-50 text-zinc-700 px-4 py-2 rounded-none flex items-center gap-2 transition-all text-sm shadow-sm"
+          >
             <Printer size={18} /> Imprimir
           </button>
           <button className="bg-[#003366] hover:bg-[#002244] text-white font-bold px-4 py-2 rounded-none flex items-center gap-2 transition-all text-sm shadow-sm">
@@ -10175,108 +10559,216 @@ const ClientAccount = ({ client, documents, onBack }: {
   documents: IssuedDocument[], 
   onBack: () => void 
 }) => {
-  const movements = documents.map(doc => {
-    const isSupplier = (client as any).tipo_cliente === 'Fornecedor';
-    
-    // For Clients:
-    // FT = Fatura (Debit - they owe us)
-    // RE = Recibo (Credit - they paid us)
-    // For Suppliers:
-    // Fatura de Compra (Credit - we owe them)
-    // Pagamento (Debit - we paid them)
-    
-    let isCredit = false;
-    let isDebit = false;
-    
-    if (isSupplier) {
-      isCredit = ['Fatura de Compra', 'Fatura Recibo de Compra', 'Nota de Débito de Fornecedor'].includes(doc.tipo_documento);
-      isDebit = ['Pagamento', 'Recibo', 'Fatura Recibo de Compra', 'Nota de Crédito de Fornecedor'].includes(doc.tipo_documento);
-    } else {
-      isCredit = ['RE', 'NC', 'FR', 'Recibo', 'Fatura Recibo'].includes(doc.tipo_documento);
-      isDebit = ['FT', 'ND', 'FR', 'Fatura', 'Fatura Recibo'].includes(doc.tipo_documento);
-    }
-    
-    return {
-      ...doc,
-      debito: isDebit ? doc.contravalor : 0,
-      credito: isCredit ? doc.contravalor : 0
-    };
-  });
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [filteredMovements, setFilteredMovements] = useState<any[]>([]);
 
-  const totalDebito = movements.reduce((acc, m) => acc + m.debito, 0);
-  const totalCredito = movements.reduce((acc, m) => acc + m.credito, 0);
-  const saldoAtual = totalDebito - totalCredito;
+  useEffect(() => {
+    handleSearch();
+  }, [documents]);
+
+  const handleSearch = () => {
+    const movements = documents.map(doc => {
+      const isSupplier = (client as any).tipo_cliente === 'Fornecedor';
+      let isCredit = false;
+      let isDebit = false;
+      
+      if (isSupplier) {
+        isCredit = ['Fatura de Compra', 'Fatura Recibo de Compra', 'Nota de Débito de Fornecedor'].includes(doc.tipo_documento);
+        isDebit = ['Pagamento', 'Recibo', 'Fatura Recibo de Compra', 'Nota de Crédito de Fornecedor'].includes(doc.tipo_documento);
+      } else {
+        isCredit = ['RE', 'NC', 'FR', 'Recibo', 'Fatura Recibo'].includes(doc.tipo_documento);
+        isDebit = ['FT', 'ND', 'FR', 'Fatura', 'Fatura Recibo'].includes(doc.tipo_documento);
+      }
+      
+      return {
+        ...doc,
+        debito: isDebit ? doc.contravalor : 0,
+        credito: isCredit ? doc.contravalor : 0
+      };
+    }).filter(m => {
+      const date = new Date(m.data_emissao).toISOString().split('T')[0];
+      if (startDate && date < startDate) return false;
+      if (endDate && date > endDate) return false;
+      return true;
+    });
+    setFilteredMovements(movements);
+  };
+
+  const totalDebito = filteredMovements.reduce((acc, m) => acc + m.debito, 0);
+  const totalCredito = filteredMovements.reduce((acc, m) => acc + m.credito, 0);
+  const initialBalance = client.initial_balance || 0;
+  const saldoAtual = initialBalance + totalDebito - totalCredito;
+
+  const handleExportXLSX = () => {
+    const headers = ['Data', 'Documento', 'URN', 'Doc Nº', 'Descrição', 'Crédito', 'Débito', 'Saldo'];
+    let runningSaldo = initialBalance;
+    const rows = filteredMovements.map(m => {
+      runningSaldo += (m.debito - m.credito);
+      return [new Date(m.data_emissao).toLocaleDateString(), m.numero_documento, '', '', m.tipo_documento, m.credito, m.debito, runningSaldo];
+    });
+    const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].map(e => e.join(",")).join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `extrato_${client.name}.csv`);
+    document.body.appendChild(link);
+    link.click();
+  };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4 mb-8">
-        <button onClick={onBack} className="p-2 hover:bg-zinc-100 rounded-full transition-colors text-zinc-400">
-          <ChevronLeft size={24} />
-        </button>
-        <div>
-          <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Conta Corrente</h2>
-          <p className="text-zinc-500 font-medium">{client.name}</p>
+    <div className="space-y-6 bg-zinc-50/50 p-6 min-h-screen">
+      <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center gap-4">
+          <button onClick={onBack} className="p-2 hover:bg-white rounded-full transition-colors text-zinc-400 shadow-sm">
+            <ChevronLeft size={24} />
+          </button>
+          <div>
+            <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Extrato de Conta Corrente</h2>
+            <p className="text-zinc-500 font-medium uppercase text-[10px] tracking-widest">{client.name}</p>
+          </div>
+        </div>
+        <div className="flex gap-3">
+          <button onClick={handleExportXLSX} className="bg-white text-zinc-600 border border-zinc-200 px-4 py-2 text-xs font-bold flex items-center gap-2 hover:bg-zinc-50 transition-all">
+            <FileSpreadsheet size={16} /> XLSX
+          </button>
+          <button onClick={() => window.print()} className="bg-[#003366] text-white px-4 py-2 text-xs font-bold flex items-center gap-2 hover:bg-[#002244] transition-all shadow-lg">
+            <Printer size={16} /> Imprimir PDF
+          </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 border border-zinc-200 shadow-sm">
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Total Débito</p>
-          <p className="text-2xl font-bold text-[#003366]">{formatCurrency(totalDebito)}</p>
+      <div className="bg-white border border-zinc-200 p-8 shadow-sm space-y-8">
+        {/* Header Info based on Image */}
+        <div className="grid grid-cols-2 gap-8 border-b border-zinc-100 pb-8">
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4 text-[10px]">
+              <div>
+                <p className="font-bold text-zinc-400 uppercase">Data de Emissão</p>
+                <p className="text-zinc-800">{new Date().toLocaleString()}</p>
+              </div>
+              <div>
+                <p className="font-bold text-zinc-400 uppercase">Nº Contribuinte</p>
+                <p className="text-zinc-800 font-mono">{client.nif || 'N/A'}</p>
+              </div>
+            </div>
+            <div>
+              <p className="text-lg font-bold text-[#003366]">Extrato Cliente</p>
+              <p className="text-xs text-zinc-500 font-mono">CC-{client.id} {client.name.toUpperCase()}</p>
+            </div>
+          </div>
+          <div className="text-right space-y-2">
+            <div className="inline-block bg-zinc-100 px-6 py-3 border-r-4 border-[#003366]">
+              <h3 className="text-xl font-black text-[#003366]">{client.name.toUpperCase()}</h3>
+            </div>
+            <div className="text-[10px] text-zinc-500 space-y-0.5">
+              <p>{client.localidade || 'LUANDA'}</p>
+              <p>{client.municipio || 'BELAS'}</p>
+              <p>{client.codigo_postal || '0000-000'}</p>
+              <p>{client.provincia || 'LUANDA'}</p>
+              <p>{client.pais || 'AO'}</p>
+            </div>
+          </div>
         </div>
-        <div className="bg-white p-6 border border-zinc-200 shadow-sm">
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Total Crédito</p>
-          <p className="text-2xl font-bold text-emerald-600">{formatCurrency(totalCredito)}</p>
-        </div>
-        <div className="bg-white p-6 border border-zinc-200 shadow-sm">
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Saldo Atual</p>
-          <p className="text-2xl font-bold text-[#003366]">{formatCurrency(saldoAtual)}</p>
-        </div>
-      </div>
 
-      <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-[#003366] text-white text-[11px] uppercase tracking-wider font-bold">
-              <th className="px-6 py-4">Data</th>
-              <th className="px-6 py-4">Documento</th>
-              <th className="px-6 py-4">Tipo</th>
-              <th className="px-6 py-4 text-right">Débito</th>
-              <th className="px-6 py-4 text-right">Crédito</th>
-              <th className="px-6 py-4 text-right">Saldo</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-zinc-100">
-            {movements.map((m, idx) => {
-              const runningSaldo = movements.slice(0, idx + 1).reduce((acc, curr) => acc + (curr.debito - curr.credito), 0);
-              return (
-                <tr key={m.id} className="hover:bg-zinc-50 text-sm">
-                  <td className="px-6 py-4 text-zinc-500">{new Date(m.data_emissao).toLocaleDateString()}</td>
-                  <td className="px-6 py-4 font-medium text-zinc-900">{m.numero_documento}</td>
-                  <td className="px-6 py-4 text-zinc-600">{m.tipo_documento}</td>
-                  <td className="px-6 py-4 text-right text-zinc-900">{m.debito > 0 ? formatCurrency(m.debito) : '-'}</td>
-                  <td className="px-6 py-4 text-right text-emerald-600">{m.credito > 0 ? formatCurrency(m.credito) : '-'}</td>
-                  <td className="px-6 py-4 text-right font-bold text-[#003366]">{formatCurrency(runningSaldo)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        {movements.length === 0 && (
-          <div className="p-12 text-center text-zinc-400 text-sm">Nenhum movimento encontrado para este cliente.</div>
+        {/* Filters */}
+        <div className="flex items-end gap-4 bg-zinc-50 p-4 border border-zinc-100 no-print">
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data Inicial</label>
+            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="bg-white border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data Final</label>
+            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="bg-white border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+          </div>
+          <button 
+            onClick={handleSearch}
+            className="bg-[#003366] text-white px-6 py-2 text-sm font-bold hover:bg-[#002244] transition-all flex items-center gap-2"
+          >
+            <Search size={16} /> Pesquisar
+          </button>
+        </div>
+
+        {/* Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b-2 border-zinc-200 text-[10px] uppercase tracking-wider font-black text-zinc-400">
+                <th className="px-4 py-3">Data Valor<br/>Data Documento</th>
+                <th className="px-4 py-3">File Interno<br/>File Cliente</th>
+                <th className="px-4 py-3">URN<br/>EndService</th>
+                <th className="px-4 py-3">Doc Nº<br/>OriginatingOn</th>
+                <th className="px-4 py-3">Descrição<br/>Doc. Suporte</th>
+                <th className="px-4 py-3 text-right">Crédito</th>
+                <th className="px-4 py-3 text-right">Débito</th>
+                <th className="px-4 py-3 text-right">Saldo</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+              <tr className="bg-zinc-50/50 font-bold text-xs">
+                <td colSpan={5} className="px-4 py-3 text-right uppercase tracking-widest text-zinc-400">Saldo Inicial</td>
+                <td className="px-4 py-3 text-right">-</td>
+                <td className="px-4 py-3 text-right">-</td>
+                <td className="px-4 py-3 text-right text-[#003366]">{formatCurrency(initialBalance)}</td>
+              </tr>
+              {filteredMovements.map((m, idx) => {
+                const runningSaldo = initialBalance + filteredMovements.slice(0, idx + 1).reduce((acc, curr) => acc + (curr.debito - curr.credito), 0);
+                return (
+                  <tr key={m.id} className="hover:bg-zinc-50 text-[11px]">
+                    <td className="px-4 py-4 text-zinc-500">{new Date(m.data_emissao).toLocaleDateString()}</td>
+                    <td className="px-4 py-4 text-zinc-400 font-mono">INT-{m.id}</td>
+                    <td className="px-4 py-4 text-zinc-400">-</td>
+                    <td className="px-4 py-4 font-bold text-zinc-800">{m.numero_documento}</td>
+                    <td className="px-4 py-4 text-zinc-600">{m.tipo_documento}</td>
+                    <td className="px-4 py-4 text-right text-emerald-600 font-bold">{m.credito > 0 ? formatCurrency(m.credito) : '-'}</td>
+                    <td className="px-4 py-4 text-right text-red-600 font-bold">{m.debito > 0 ? formatCurrency(m.debito) : '-'}</td>
+                    <td className="px-4 py-4 text-right font-black text-[#003366]">{formatCurrency(runningSaldo)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-zinc-200 font-black text-xs">
+                <td colSpan={5} className="px-4 py-6 text-right uppercase tracking-widest text-zinc-400">Acumulados do Período</td>
+                <td className="px-4 py-6 text-right text-emerald-600 border-b-2 border-zinc-200">{formatCurrency(totalCredito)}</td>
+                <td className="px-4 py-6 text-right text-red-600 border-b-2 border-zinc-200">{formatCurrency(totalDebito)}</td>
+                <td className="px-4 py-6 text-right text-[#003366] bg-zinc-50">{formatCurrency(saldoAtual)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        {filteredMovements.length === 0 && (
+          <div className="p-12 text-center text-zinc-400 text-sm italic">Nenhum movimento encontrado no período selecionado.</div>
         )}
+
+        <div className="flex justify-between items-center pt-8 border-t border-zinc-100">
+          <div className="text-[10px] text-zinc-400 font-bold uppercase tracking-[0.2em]">
+            [AOA] Moeda Corrente
+          </div>
+          <div className="flex items-center gap-4">
+            <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Saldo Acumulado Geral</span>
+            <span className="text-xl font-black text-[#003366]">{formatCurrency(saldoAtual)}</span>
+          </div>
+        </div>
       </div>
     </div>
   );
 };
 
-const ClientList = ({ clients, onRefresh, onViewAccount }: { 
+const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: { 
   clients: Client[], 
+  issuedDocuments: IssuedDocument[],
   onRefresh: () => void,
   onViewAccount: (client: Client) => void
 }) => {
+  const { user } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [showOptionsModal, setShowOptionsModal] = useState<Client | null>(null);
+  const [showInitialBalanceModal, setShowInitialBalanceModal] = useState<Client | null>(null);
+  const [showSettledDocsModal, setShowSettledDocsModal] = useState<Client | null>(null);
+  
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [nif, setNif] = useState('');
@@ -10289,33 +10781,90 @@ const ClientList = ({ clients, onRefresh, onViewAccount }: {
   const [telefone, setTelefone] = useState('');
   const [webpage, setWebpage] = useState('');
   const [tipo_cliente, setTipoCliente] = useState('normal');
+  const [estado_nif, setEstadoNif] = useState('não encontrado');
+  const [initial_balance, setInitialBalance] = useState(0);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const filteredClients = clients.filter(c => 
+    c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    c.nif.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (c.email && c.email.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Submitting client:', { name, email, nif, address, localidade, codigo_postal, provincia, municipio, pais, telefone, webpage, tipo_cliente });
+    const clientData = { 
+      name, email, nif, address, localidade, codigo_postal, provincia, municipio, pais, telefone, webpage, tipo_cliente, 
+      initial_balance: Number(initial_balance),
+      estado_nif,
+      empresa_id: user?.empresa_id 
+    };
+    
     try {
-      const res = await fetch('/api/clients', {
-        method: 'POST',
+      const url = selectedClient ? `/api/clients/${selectedClient.id}` : '/api/clients';
+      const method = selectedClient ? 'PUT' : 'POST';
+      
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, nif, address, localidade, codigo_postal, provincia, municipio, pais, telefone, webpage, tipo_cliente })
+        body: JSON.stringify(clientData)
       });
+      
       if (res.ok) {
-        console.log('Client registered successfully');
-        setName(''); setEmail(''); setNif(''); setAddress(''); setLocalidade(''); setCodigoPostal(''); setProvincia(''); setMunicipio(''); setPais(''); setTelefone(''); setWebpage(''); setTipoCliente('normal');
+        resetForm();
         setShowForm(false);
         onRefresh();
-      } else {
-        const err = await res.text();
-        console.error('Failed to register client:', err);
       }
     } catch (error) {
-      console.error('Error registering client:', error);
+      console.error('Error saving client:', error);
     }
+  };
+
+  const resetForm = () => {
+    setSelectedClient(null);
+    setName(''); setEmail(''); setNif(''); setAddress(''); setLocalidade(''); setCodigoPostal(''); setProvincia(''); setMunicipio(''); setPais(''); setTelefone(''); setWebpage(''); setTipoCliente('normal'); setEstadoNif('não encontrado'); setInitialBalance(0);
+  };
+
+  const handleEdit = (client: Client) => {
+    setSelectedClient(client);
+    setName(client.name);
+    setEmail(client.email || '');
+    setNif(client.nif || '');
+    setAddress(client.address || '');
+    setLocalidade(client.localidade || '');
+    setCodigoPostal(client.codigo_postal || '');
+    setProvincia(client.provincia || '');
+    setMunicipio(client.municipio || '');
+    setPais(client.pais || '');
+    setTelefone(client.telefone || '');
+    setWebpage(client.webpage || '');
+    setTipoCliente(client.tipo_cliente || 'normal');
+    setEstadoNif(client.estado_nif || 'não encontrado');
+    setInitialBalance(client.initial_balance || 0);
+    setShowForm(true);
+    setShowOptionsModal(null);
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const handleExportXLSX = () => {
+    // Basic CSV export as XLSX placeholder
+    const headers = ['NIF', 'Nome', 'Email', 'Telefone', 'Localidade', 'Tipo'];
+    const rows = filteredClients.map(c => [c.nif, c.name, c.email, c.telefone, c.localidade, c.tipo_cliente]);
+    const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].map(e => e.join(",")).join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "lista_clientes.csv");
+    document.body.appendChild(link);
+    link.click();
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center bg-white p-6 border border-zinc-200 shadow-sm">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 bg-[#003366] text-white flex items-center justify-center shadow-lg">
             <Users size={24} />
@@ -10326,10 +10875,33 @@ const ClientList = ({ clients, onRefresh, onViewAccount }: {
           </div>
         </div>
         <div className="flex gap-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
+            <input 
+              type="text" 
+              placeholder="Pesquisar clientes..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 pr-4 py-2.5 bg-zinc-50 border border-zinc-200 text-sm focus:outline-none focus:border-[#003366] w-64 transition-all"
+            />
+          </div>
+          <button 
+            onClick={handlePrint}
+            className="p-2.5 bg-zinc-100 text-zinc-600 hover:bg-zinc-200 transition-all border border-zinc-200"
+            title="Imprimir Lista"
+          >
+            <Printer size={18} />
+          </button>
+          <button 
+            onClick={handleExportXLSX}
+            className="p-2.5 bg-zinc-100 text-zinc-600 hover:bg-zinc-200 transition-all border border-zinc-200"
+            title="Exportar XLSX"
+          >
+            <FileSpreadsheet size={18} />
+          </button>
           <button 
             onClick={() => {
-              setSelectedClient(null);
-              setName(''); setEmail(''); setNif(''); setAddress(''); setLocalidade(''); setCodigoPostal(''); setProvincia(''); setMunicipio(''); setPais(''); setTelefone(''); setWebpage(''); setTipoCliente('normal');
+              resetForm();
               setShowForm(true);
             }}
             className="bg-[#003366] hover:bg-[#002244] text-white font-bold px-6 py-2.5 rounded-none flex items-center gap-2 transition-all shadow-sm text-sm"
@@ -10372,7 +10944,22 @@ const ClientList = ({ clients, onRefresh, onViewAccount }: {
                 <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Contribuinte</label>
-                    <input type="text" value={nif} onChange={e => setNif(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" placeholder="NIF" />
+                    <div className="flex gap-2">
+                      <input type="text" value={nif} onChange={e => setNif(e.target.value)} className="flex-1 bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" placeholder="NIF" />
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          if (nif) {
+                            window.open(`https://portaldocontribuinte.minfin.gov.ao/consultar-nif-do-contribuinte?nif=${nif}`, '_blank');
+                          } else {
+                            alert('Por favor, insira um NIF para pesquisar.');
+                          }
+                        }}
+                        className="bg-zinc-100 hover:bg-zinc-200 text-[#003366] px-3 py-2 text-[10px] font-black uppercase tracking-widest transition-all border border-zinc-200 flex items-center gap-1"
+                      >
+                        <Search size={14} /> Pesquisar
+                      </button>
+                    </div>
                   </div>
                   <div className="space-y-1 md:col-span-2">
                     <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Nome do Cliente</label>
@@ -10411,8 +10998,37 @@ const ClientList = ({ clients, onRefresh, onViewAccount }: {
                     <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" placeholder="Email" />
                   </div>
                   <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Estado do NIF</label>
+                    <select value={estado_nif} onChange={e => setEstadoNif(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm">
+                      <option value="ativo">🟢 Ativo</option>
+                      <option value="suspenso">🔴 Suspenso</option>
+                      <option value="inválido">⚠️ Inválido</option>
+                      <option value="não encontrado">🚫 Não encontrado</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
                     <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Webpage</label>
                     <input type="text" value={webpage} onChange={e => setWebpage(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" placeholder="Webpage" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tipo de Cliente *</label>
+                    <select 
+                      value={tipo_cliente} 
+                      onChange={e => setTipoCliente(e.target.value)} 
+                      required 
+                      className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+                    >
+                      <option value="normal">Cliente Normal</option>
+                      <option value="grupo_nacional">Cliente Grupo Nacional</option>
+                      <option value="nao_grupo">Cliente Não Grupo</option>
+                      <option value="subsidiarias">Cliente Subsidiárias</option>
+                      <option value="nao_grupo_estrangeiro">Cliente Não Grupo Estrangeiro</option>
+                      <option value="associados">Cliente Associados</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Saldo Inicial</label>
+                    <input type="number" step="0.01" value={initial_balance} onChange={e => setInitialBalance(Number(e.target.value))} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" placeholder="0.00" />
                   </div>
                   <div className="flex justify-end md:col-span-3 gap-4 pt-4 border-t border-zinc-100 mt-4">
                     <button type="button" onClick={() => setShowForm(false)} className="px-6 py-2 text-sm font-bold text-zinc-500 hover:bg-zinc-100 transition-all">Cancelar</button>
@@ -10425,13 +11041,229 @@ const ClientList = ({ clients, onRefresh, onViewAccount }: {
             </motion.div>
           </div>
         )}
+
+        {showOptionsModal && (
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 sm:p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowOptionsModal(null)}
+              className="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative w-full max-w-md bg-white rounded-none shadow-2xl overflow-hidden"
+            >
+              <div className="p-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
+                <h3 className="font-bold text-[#003366] flex items-center gap-2 uppercase tracking-widest text-xs">
+                  <Settings size={16} />
+                  Opções do Cliente
+                </h3>
+                <button 
+                  onClick={() => setShowOptionsModal(null)}
+                  className="p-2 hover:bg-zinc-200 rounded-full transition-colors text-zinc-400 hover:text-zinc-600"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="p-6 space-y-4">
+                <p className="text-sm font-bold text-zinc-800 mb-4">{showOptionsModal.name}</p>
+                <button 
+                  onClick={() => handleEdit(showOptionsModal)}
+                  className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-all border border-zinc-100 group"
+                >
+                  <div className="w-10 h-10 bg-blue-50 text-blue-600 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-all">
+                    <Edit size={20} />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-sm font-bold text-zinc-800">Editar Cliente</p>
+                    <p className="text-[10px] text-zinc-400 uppercase tracking-wider">Alterar dados cadastrais</p>
+                  </div>
+                </button>
+                <button 
+                  onClick={() => {
+                    setShowInitialBalanceModal(showOptionsModal);
+                    setShowOptionsModal(null);
+                  }}
+                  className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-all border border-zinc-100 group"
+                >
+                  <div className="w-10 h-10 bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-all">
+                    <CreditCard size={20} />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-sm font-bold text-zinc-800">Saldo Inicial</p>
+                    <p className="text-[10px] text-zinc-400 uppercase tracking-wider">Configurar saldo de conta corrente</p>
+                  </div>
+                </button>
+                <button 
+                  onClick={() => {
+                    setShowSettledDocsModal(showOptionsModal);
+                    setShowOptionsModal(null);
+                  }}
+                  className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-all border border-zinc-100 group"
+                >
+                  <div className="w-10 h-10 bg-purple-50 text-purple-600 flex items-center justify-center group-hover:bg-purple-600 group-hover:text-white transition-all">
+                    <FileCheck size={20} />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-sm font-bold text-zinc-800">Documentos Liquidados</p>
+                    <p className="text-[10px] text-zinc-400 uppercase tracking-wider">Ver faturas e recibos pagos</p>
+                  </div>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {showInitialBalanceModal && (
+          <div className="fixed inset-0 z-[160] flex items-center justify-center p-4 sm:p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowInitialBalanceModal(null)}
+              className="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative w-full max-w-md bg-white rounded-none shadow-2xl overflow-hidden"
+            >
+              <div className="p-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
+                <h3 className="font-bold text-[#003366] flex items-center gap-2 uppercase tracking-widest text-xs">
+                  <CreditCard size={16} />
+                  Saldo Inicial de Conta Corrente
+                </h3>
+                <button 
+                  onClick={() => setShowInitialBalanceModal(null)}
+                  className="p-2 hover:bg-zinc-200 rounded-full transition-colors text-zinc-400 hover:text-zinc-600"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="p-8">
+                <p className="text-sm font-bold text-zinc-800 mb-6">{showInitialBalanceModal.name}</p>
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Valor do Saldo Inicial</label>
+                    <input 
+                      type="number" 
+                      step="0.01" 
+                      defaultValue={showInitialBalanceModal.initial_balance || 0}
+                      id="initial_balance_input"
+                      className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-3 text-zinc-800 focus:outline-none focus:border-[#003366] text-lg font-bold" 
+                      placeholder="0.00" 
+                    />
+                  </div>
+                  <div className="flex justify-end gap-3 pt-4">
+                    <button onClick={() => setShowInitialBalanceModal(null)} className="px-6 py-2 text-sm font-bold text-zinc-500 hover:bg-zinc-100 transition-all">Cancelar</button>
+                    <button 
+                      onClick={async () => {
+                        const val = (document.getElementById('initial_balance_input') as HTMLInputElement).value;
+                        try {
+                          const res = await fetch(`/api/clients/${showInitialBalanceModal.id}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ ...showInitialBalanceModal, initial_balance: Number(val) })
+                          });
+                          if (res.ok) {
+                            setShowInitialBalanceModal(null);
+                            onRefresh();
+                          }
+                        } catch (error) {
+                          console.error('Error updating initial balance:', error);
+                        }
+                      }}
+                      className="bg-emerald-600 text-white px-8 py-2 text-sm font-bold shadow-lg hover:bg-emerald-700 transition-all"
+                    >
+                      Guardar Saldo
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {showSettledDocsModal && (
+          <div className="fixed inset-0 z-[160] flex items-center justify-center p-4 sm:p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowSettledDocsModal(null)}
+              className="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative w-full max-w-4xl bg-white rounded-none shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+            >
+              <div className="p-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
+                <h3 className="font-bold text-[#003366] flex items-center gap-2 uppercase tracking-widest text-xs">
+                  <FileCheck size={16} />
+                  Documentos Liquidados
+                </h3>
+                <button 
+                  onClick={() => setShowSettledDocsModal(null)}
+                  className="p-2 hover:bg-zinc-200 rounded-full transition-colors text-zinc-400 hover:text-zinc-600"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="p-8 overflow-y-auto">
+                <p className="text-sm font-bold text-zinc-800 mb-6">{showSettledDocsModal.name}</p>
+                <div className="bg-white border border-zinc-200 rounded-none overflow-hidden">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-zinc-50 text-zinc-400 text-[10px] uppercase tracking-wider font-bold border-b border-zinc-100">
+                        <th className="px-6 py-3">Data</th>
+                        <th className="px-6 py-3">Documento</th>
+                        <th className="px-6 py-3">Tipo</th>
+                        <th className="px-6 py-3 text-right">Valor</th>
+                        <th className="px-6 py-3 text-right">Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100">
+                      {issuedDocuments.filter(d => d.cliente_id === showSettledDocsModal.id && d.status === 'pago').length > 0 ? (
+                        issuedDocuments.filter(d => d.cliente_id === showSettledDocsModal.id && d.status === 'pago').map(d => (
+                          <tr key={d.id} className="text-sm hover:bg-zinc-50">
+                            <td className="px-6 py-4 text-zinc-500">{new Date(d.data_emissao).toLocaleDateString()}</td>
+                            <td className="px-6 py-4 font-bold text-zinc-800">{d.numero_documento}</td>
+                            <td className="px-6 py-4 text-zinc-600">{d.tipo_documento}</td>
+                            <td className="px-6 py-4 text-right font-bold text-[#003366]">{formatCurrency(d.contravalor)}</td>
+                            <td className="px-6 py-4 text-right">
+                              <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase">Liquidado</span>
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr className="text-sm">
+                          <td className="px-6 py-4 text-zinc-500 italic" colSpan={5}>Nenhum documento liquidado encontrado.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
       </AnimatePresence>
+
+      {/* NIF Portal removed as it is now opened in a new tab */}
 
       <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-[#003366] text-white text-[11px] uppercase tracking-wider font-bold">
               <th className="px-6 py-4">NIF</th>
+              <th className="px-6 py-4">Estado NIF</th>
               <th className="px-6 py-4">Nome</th>
               <th className="px-6 py-4">Localidade</th>
               <th className="px-6 py-4">Telefone</th>
@@ -10439,9 +11271,16 @@ const ClientList = ({ clients, onRefresh, onViewAccount }: {
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100">
-            {clients.map((client) => (
+            {filteredClients.map((client) => (
               <tr key={client.id} className="hover:bg-zinc-50 text-sm transition-colors">
                 <td className="px-6 py-4 font-mono text-xs text-zinc-400">{client.nif || 'N/A'}</td>
+                <td className="px-6 py-4">
+                  {client.estado_nif === 'ativo' && <span className="text-emerald-600" title="Ativo">🟢</span>}
+                  {client.estado_nif === 'suspenso' && <span className="text-red-600" title="Suspenso">🔴</span>}
+                  {client.estado_nif === 'inválido' && <span className="text-amber-600" title="Inválido">⚠️</span>}
+                  {client.estado_nif === 'não encontrado' && <span className="text-zinc-600" title="Não encontrado">🚫</span>}
+                  {!client.estado_nif && <span className="text-zinc-400" title="Não definido">⚪</span>}
+                </td>
                 <td className="px-6 py-4">
                   <div className="font-bold text-zinc-800">{client.name}</div>
                   <div className="text-[10px] text-zinc-400">{client.email}</div>
@@ -10456,8 +11295,12 @@ const ClientList = ({ clients, onRefresh, onViewAccount }: {
                     >
                       Conta Corrente
                     </button>
-                    <button className="text-zinc-400 hover:text-zinc-600 p-1">
-                      <MoreHorizontal size={18} />
+                    <button 
+                      onClick={() => setShowOptionsModal(client)}
+                      className="text-zinc-400 hover:text-[#003366] p-1.5 hover:bg-zinc-100 transition-all"
+                      title="Opções"
+                    >
+                      <Settings size={18} />
                     </button>
                   </div>
                 </td>
@@ -10469,94 +11312,6 @@ const ClientList = ({ clients, onRefresh, onViewAccount }: {
           <div className="p-12 text-center text-zinc-400 text-sm italic">Nenhum cliente registado.</div>
         )}
       </div>
-    </div>
-  );
-};
-
-const WarehouseModule = ({ onRefresh }: { onRefresh: () => void }) => {
-  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
-  const [showForm, setShowForm] = useState(false);
-  const [name, setName] = useState('');
-  const [localidade, setLocalidade] = useState('');
-  const [provincia, setProvincia] = useState('');
-  const [responsavel, setResponsavel] = useState('');
-  const [contacto, setContacto] = useState('');
-  const [observacao, setObservacao] = useState('');
-
-  useEffect(() => {
-    fetch('/api/warehouses').then(r => r.json()).then(setWarehouses);
-  }, []);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const res = await fetch('/api/warehouses', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, localidade, provincia, responsavel, contacto, observacao })
-    });
-    if (res.ok) {
-      setName(''); setLocalidade(''); setProvincia(''); setResponsavel(''); setContacto(''); setObservacao('');
-      setShowForm(false);
-      fetch('/api/warehouses').then(r => r.json()).then(setWarehouses);
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h3 className="text-lg font-bold text-[#003366]">Armazéns</h3>
-        <button 
-          onClick={() => setShowForm(true)}
-          className="bg-[#003366] text-white px-4 py-2 text-sm font-bold rounded-none hover:bg-[#002244]"
-        >
-          Criar Armazém
-        </button>
-      </div>
-
-      <table className="w-full text-sm text-left">
-        <thead className="text-zinc-400 uppercase text-[10px] border-b border-zinc-200">
-          <tr>
-            <th className="py-3">Nome</th>
-            <th className="py-3">Localidade</th>
-            <th className="py-3">Responsável</th>
-            <th className="py-3">Contacto</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-zinc-100">
-          {warehouses.map(w => (
-            <tr key={w.id}>
-              <td className="py-3 font-semibold text-zinc-800">{w.name}</td>
-              <td className="py-3 text-zinc-600">{w.localidade}</td>
-              <td className="py-3 text-zinc-600">{w.responsavel}</td>
-              <td className="py-3 text-zinc-600">{w.contacto}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      {showForm && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm">
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-lg bg-white p-8 rounded-none shadow-2xl"
-          >
-            <h3 className="font-bold text-[#003366] mb-6 text-xl">Novo Armazém</h3>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <input type="text" placeholder="Nome do armazém" value={name} onChange={e => setName(e.target.value)} required className="w-full border border-zinc-300 rounded-none px-4 py-2 text-sm" />
-              <input type="text" placeholder="Localidade" value={localidade} onChange={e => setLocalidade(e.target.value)} className="w-full border border-zinc-300 rounded-none px-4 py-2 text-sm" />
-              <input type="text" placeholder="Província" value={provincia} onChange={e => setProvincia(e.target.value)} className="w-full border border-zinc-300 rounded-none px-4 py-2 text-sm" />
-              <input type="text" placeholder="Responsável" value={responsavel} onChange={e => setResponsavel(e.target.value)} className="w-full border border-zinc-300 rounded-none px-4 py-2 text-sm" />
-              <input type="text" placeholder="Contacto" value={contacto} onChange={e => setContacto(e.target.value)} className="w-full border border-zinc-300 rounded-none px-4 py-2 text-sm" />
-              <textarea placeholder="Observação" value={observacao} onChange={e => setObservacao(e.target.value)} className="w-full border border-zinc-300 rounded-none px-4 py-2 text-sm" />
-              <div className="flex justify-end gap-4 mt-6">
-                <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-zinc-600">Cancelar</button>
-                <button type="submit" className="bg-[#003366] text-white px-6 py-2 text-sm font-bold rounded-none">Registar</button>
-              </div>
-            </form>
-          </motion.div>
-        </div>
-      )}
     </div>
   );
 };
@@ -11839,21 +12594,160 @@ const SalesReport = ({ issuedDocuments }: { issuedDocuments: IssuedDocument[] })
   );
 };
 
-const ProductList = ({ products, onRefresh }: { products: Product[], onRefresh: () => void }) => {
+const WarehouseModule = ({ onRefresh }: { onRefresh: () => void }) => {
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [showForm, setShowForm] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const fetchWarehouses = async () => {
+    try {
+      const res = await fetch('/api/warehouses');
+      if (res.ok) {
+        const data = await res.json();
+        setWarehouses(data);
+      }
+    } catch (error) {
+      console.error('Error fetching warehouses:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchWarehouses();
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const data = Object.fromEntries(formData.entries());
+    
+    const res = await fetch('/api/warehouses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+
+    if (res.ok) {
+      fetchWarehouses();
+      onRefresh();
+      setShowForm(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center bg-white p-6 border border-zinc-200 shadow-sm">
+        <div>
+          <h3 className="text-lg font-bold text-[#003366] uppercase tracking-tight flex items-center gap-2">
+            <Home size={20} /> Gestão de Armazéns
+          </h3>
+          <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-wider mt-1">Configure os locais de armazenamento da sua empresa.</p>
+        </div>
+        <button 
+          onClick={() => setShowForm(true)}
+          className="bg-[#003366] text-white px-6 py-2.5 text-[10px] font-black uppercase tracking-widest hover:bg-[#002244] transition-all shadow-sm flex items-center gap-2"
+        >
+          <Plus size={16} /> Novo Armazém
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {warehouses.map(w => (
+          <div key={w.id} className="bg-white border border-zinc-200 p-6 space-y-4 hover:border-[#003366] transition-all group">
+            <div className="flex justify-between items-start">
+              <div className="w-10 h-10 bg-zinc-50 flex items-center justify-center text-[#003366] group-hover:bg-[#003366] group-hover:text-white transition-all">
+                <Home size={20} />
+              </div>
+              <span className="text-[9px] font-black text-zinc-300 uppercase tracking-widest">ID: {w.id}</span>
+            </div>
+            <div>
+              <h4 className="font-black text-[#003366] uppercase tracking-tight text-sm">{w.name}</h4>
+              <p className="text-zinc-400 text-[10px] font-bold uppercase tracking-wider">{w.localidade || 'Sem localização'}</p>
+            </div>
+            <div className="space-y-2 pt-4 border-t border-zinc-50">
+              <div className="flex items-center gap-2 text-[10px] text-zinc-500 font-medium">
+                <UserCheck size={12} className="text-zinc-300" />
+                <span>Resp: {w.responsavel || '---'}</span>
+              </div>
+              <div className="flex items-center gap-2 text-[10px] text-zinc-500 font-medium">
+                <Mail size={12} className="text-zinc-300" />
+                <span>Cont: {w.contacto || '---'}</span>
+              </div>
+            </div>
+          </div>
+        ))}
+        {warehouses.length === 0 && !loading && (
+          <div className="md:col-span-3 p-12 text-center text-zinc-400 text-sm font-medium bg-white border border-zinc-200 border-dashed">
+            Nenhum armazém configurado.
+          </div>
+        )}
+      </div>
+
+      {showForm && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md p-8 rounded-none shadow-2xl space-y-6">
+            <div className="flex justify-between items-center border-b border-zinc-100 pb-4">
+              <h3 className="text-lg font-bold text-[#003366] uppercase tracking-tight">Novo Armazém</h3>
+              <button onClick={() => setShowForm(false)} className="text-zinc-400 hover:text-zinc-600"><X size={24} /></button>
+            </div>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Nome do Armazém</label>
+                <input name="name" required className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Localidade</label>
+                  <input name="localidade" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Província</label>
+                  <input name="provincia" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Responsável</label>
+                <input name="responsavel" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Contacto</label>
+                <input name="contacto" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" />
+              </div>
+              <div className="flex justify-end gap-3 pt-4 border-t border-zinc-100">
+                <button type="button" onClick={() => setShowForm(false)} className="px-6 py-2 text-xs font-bold text-zinc-500 uppercase tracking-widest">Cancelar</button>
+                <button type="submit" className="bg-[#003366] text-white px-8 py-2.5 text-xs font-bold uppercase tracking-widest hover:bg-[#002244] shadow-lg transition-all">Salvar Armazém</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ProductList = ({ products, onRefresh, stockMovements, warehouses }: { 
+  products: Product[], 
+  onRefresh: () => void,
+  stockMovements: StockMovement[],
+  warehouses: Warehouse[]
+}) => {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('stock');
   const [showForm, setShowForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
-  const [movements, setMovements] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
   const [showTransferModal, setShowTransferModal] = useState(false);
+  const [showProductDetailModal, setShowProductDetailModal] = useState(false);
+  const [showStockReportModal, setShowStockReportModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [stockFilter, setStockFilter] = useState<'all' | 'positive' | 'negative' | 'low'>('all');
+  const [warehouseFilter, setWarehouseFilter] = useState<string>('all');
 
   const calculatePOPM = () => {
     return products.reduce((total, p) => {
-      const productMovements = movements.filter(m => m.product_id === p.id && m.type === 'entry');
+      const productMovements = stockMovements.filter(m => m.product_id === p.id && m.type === 'entry');
       if (productMovements.length === 0) return total + (p.stock_quantity * (p.cost_price || 0));
       
       const totalCost = productMovements.reduce((sum, m) => sum + (m.quantity * (m.unit_price || 0)), 0);
@@ -11865,9 +12759,8 @@ const ProductList = ({ products, onRefresh }: { products: Product[], onRefresh: 
   };
 
   const calculatePIPO = () => {
-    // Simplified FIFO: use the most recent entry price for current stock
     return products.reduce((total, p) => {
-      const lastEntry = movements
+      const lastEntry = [...stockMovements]
         .filter(m => m.product_id === p.id && m.type === 'entry')
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
       
@@ -11876,32 +12769,14 @@ const ProductList = ({ products, onRefresh }: { products: Product[], onRefresh: 
     }, 0);
   };
 
-  const fetchStockData = async () => {
-    setLoading(true);
-    try {
-      const [wRes, mRes] = await Promise.all([
-        fetchJson('/api/warehouses'),
-        fetchJson('/api/stock-movements')
-      ]);
-      setWarehouses(Array.isArray(wRes) ? wRes : []);
-      setMovements(Array.isArray(mRes) ? mRes : []);
-    } catch (e) {
-      console.error('Error fetching stock data:', e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchStockData();
-  }, []);
-
   const filteredProducts = products.filter(p => {
     const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
       (p.referente && p.referente.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (p.barcode && p.barcode.includes(searchTerm));
     
     if (!matchesSearch) return false;
+
+    if (warehouseFilter !== 'all' && p.warehouse_id !== Number(warehouseFilter)) return false;
 
     if (stockFilter === 'positive') return p.stock_quantity > 0;
     if (stockFilter === 'negative') return p.stock_quantity < 0;
@@ -11911,27 +12786,38 @@ const ProductList = ({ products, onRefresh }: { products: Product[], onRefresh: 
   });
 
   const handleAdjustment = async (productId: number, type: string, quantity: number, description: string) => {
-    const res = await fetch('/api/stock-movements', {
+    const res = await fetch('/api/stock/movements', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ product_id: productId, type, quantity, description })
+      body: JSON.stringify({ 
+        product_id: productId, 
+        type, 
+        quantity, 
+        description,
+        empresa_id: user?.empresa_id
+      })
     });
     if (res.ok) {
       onRefresh();
-      fetchStockData();
       setShowAdjustmentModal(false);
     }
   };
 
   const handleTransfer = async (productId: number, fromWh: number, toWh: number, quantity: number) => {
-    const res = await fetch('/api/stock-movements', {
+    const res = await fetch('/api/stock/movements', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ product_id: productId, type: 'transfer', quantity, warehouse_id: fromWh, to_warehouse_id: toWh })
+      body: JSON.stringify({ 
+        product_id: productId, 
+        type: 'transfer', 
+        quantity, 
+        warehouse_id: fromWh, 
+        to_warehouse_id: toWh,
+        empresa_id: user?.empresa_id
+      })
     });
     if (res.ok) {
       onRefresh();
-      fetchStockData();
       setShowTransferModal(false);
     }
   };
@@ -11990,75 +12876,123 @@ const ProductList = ({ products, onRefresh }: { products: Product[], onRefresh: 
       ) : activeTab === 'stock' ? (
         <div className="space-y-4">
           <div className="flex items-center gap-2 bg-white p-4 border border-zinc-200">
-            <button 
-              onClick={() => setStockFilter('all')}
-              className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest border ${stockFilter === 'all' ? 'bg-[#003366] text-white border-[#003366]' : 'bg-zinc-50 text-zinc-500 border-zinc-200'}`}
-            >
-              Todos
-            </button>
-            <button 
-              onClick={() => setStockFilter('positive')}
-              className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest border ${stockFilter === 'positive' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-zinc-50 text-zinc-500 border-zinc-200'}`}
-            >
-              Stock Positivo
-            </button>
-            <button 
-              onClick={() => setStockFilter('negative')}
-              className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest border ${stockFilter === 'negative' ? 'bg-red-600 text-white border-red-600' : 'bg-zinc-50 text-zinc-500 border-zinc-200'}`}
-            >
-              Stock Negativo
-            </button>
-            <button 
-              onClick={() => setStockFilter('low')}
-              className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest border ${stockFilter === 'low' ? 'bg-amber-500 text-white border-amber-500' : 'bg-zinc-50 text-zinc-500 border-zinc-200'}`}
-            >
-              Stock Baixo
-            </button>
+            <div className="flex-1 flex gap-2">
+              <button 
+                onClick={() => setStockFilter('all')}
+                className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest border ${stockFilter === 'all' ? 'bg-[#003366] text-white border-[#003366]' : 'bg-zinc-50 text-zinc-500 border-zinc-200'}`}
+              >
+                Todos
+              </button>
+              <button 
+                onClick={() => setStockFilter('positive')}
+                className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest border ${stockFilter === 'positive' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-zinc-50 text-zinc-500 border-zinc-200'}`}
+              >
+                Stock Positivo
+              </button>
+              <button 
+                onClick={() => setStockFilter('negative')}
+                className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest border ${stockFilter === 'negative' ? 'bg-red-600 text-white border-red-600' : 'bg-zinc-50 text-zinc-500 border-zinc-200'}`}
+              >
+                Stock Negativo
+              </button>
+              <button 
+                onClick={() => setStockFilter('low')}
+                className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest border ${stockFilter === 'low' ? 'bg-amber-500 text-white border-amber-500' : 'bg-zinc-50 text-zinc-500 border-zinc-200'}`}
+              >
+                Stock Baixo
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Armazém:</label>
+              <select 
+                value={warehouseFilter}
+                onChange={(e) => setWarehouseFilter(e.target.value)}
+                className="bg-zinc-50 border border-zinc-200 text-[10px] font-bold uppercase tracking-widest px-3 py-2 focus:outline-none focus:border-[#003366]"
+              >
+                <option value="all">Todos os Armazéns</option>
+                {warehouses.map(w => (
+                  <option key={w.id} value={w.id}>{w.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
-            <table className="w-full text-left border-collapse">
+          <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm overflow-x-auto">
+            <table className="w-full text-left border-collapse min-w-[1000px]">
               <thead>
                 <tr className="bg-[#003366] text-white text-[10px] font-black uppercase tracking-widest border-b border-zinc-200">
-                  <th className="px-6 py-4">Produto</th>
-                  <th className="px-6 py-4">Referência</th>
-                  <th className="px-6 py-4">Armazém</th>
+                  <th className="px-6 py-4">Imagem</th>
+                  <th className="px-6 py-4">Ver</th>
+                  <th className="px-6 py-4">Artº Nº</th>
+                  <th className="px-6 py-4">Descrição</th>
+                  <th className="px-6 py-4">Número</th>
+                  <th className="px-6 py-4">Série</th>
                   <th className="px-6 py-4 text-center">Entradas</th>
                   <th className="px-6 py-4 text-center">Saídas</th>
-                  <th className="px-6 py-4 text-center">Stock Atual</th>
-                  <th className="px-6 py-4 text-center">Min. Stock</th>
-                  <th className="px-6 py-4 text-center">Diferença</th>
+                  <th className="px-6 py-4 text-center">Stock Total</th>
+                  <th className="px-6 py-4 text-center">Relatório</th>
                   <th className="px-6 py-4 text-right">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
                 {filteredProducts.map((p) => {
-                  const entries = movements.filter(m => m.product_id === p.id && (m.type === 'entry' || m.type === 'adjustment_plus')).reduce((sum, m) => sum + m.quantity, 0);
-                  const exits = movements.filter(m => m.product_id === p.id && (m.type === 'exit' || m.type === 'adjustment_minus')).reduce((sum, m) => sum + m.quantity, 0);
-                  const diff = p.stock_quantity - (p.min_stock || 0);
+                  const entries = stockMovements.filter(m => m.product_id === p.id && (m.type === 'entry' || m.type === 'adjustment_plus')).reduce((sum, m) => sum + m.quantity, 0);
+                  const exits = stockMovements.filter(m => m.product_id === p.id && (m.type === 'exit' || m.type === 'adjustment_minus')).reduce((sum, m) => sum + m.quantity, 0);
                   const isNegative = p.stock_quantity < 0;
                   const isLow = p.stock_quantity <= (p.min_stock || 0);
 
                   return (
                     <tr key={p.id} className="hover:bg-zinc-50 transition-colors text-xs group border-b border-zinc-50">
                       <td className="px-6 py-4">
+                        <div className="w-10 h-10 bg-zinc-100 flex items-center justify-center overflow-hidden border border-zinc-200">
+                          {p.image ? (
+                            <img src={p.image} alt={p.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          ) : (
+                            <Package size={20} className="text-zinc-300" />
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <button 
+                          onClick={() => { setSelectedProduct(p); setShowProductDetailModal(true); }}
+                          className="p-2 bg-zinc-100 text-[#003366] hover:bg-zinc-200 transition-all"
+                        >
+                          <Eye size={14} />
+                        </button>
+                      </td>
+                      <td className="px-6 py-4 text-zinc-500 font-mono text-[10px]">{p.referente || '---'}</td>
+                      <td className="px-6 py-4">
                         <div className="font-bold text-zinc-900">{p.name}</div>
                         <div className="text-[9px] text-zinc-400 uppercase font-black tracking-tighter">{p.category || 'Sem categoria'}</div>
                       </td>
-                      <td className="px-6 py-4 text-zinc-500 font-mono text-[10px]">{p.referente || '---'}</td>
-                      <td className="px-6 py-4 text-zinc-500 font-medium">{warehouses.find(w => w.id === p.warehouse_id)?.name || 'Geral'}</td>
-                      <td className="px-6 py-4 text-center text-emerald-600 font-bold">{entries}</td>
-                      <td className="px-6 py-4 text-center text-red-600 font-bold">{exits}</td>
+                      <td className="px-6 py-4 text-zinc-500 font-medium">{p.barcode || p.id}</td>
+                      <td className="px-6 py-4 text-zinc-500 font-medium">{p.tipologia || '---'}</td>
+                      <td className="px-6 py-4 text-center text-emerald-600 font-bold">
+                        {stockMovements.filter(m => 
+                          m.product_id === p.id && 
+                          (warehouseFilter === 'all' || m.warehouse_id === Number(warehouseFilter) || m.to_warehouse_id === Number(warehouseFilter)) &&
+                          (m.type === 'entry' || m.type === 'adjustment_plus' || (m.type === 'transfer' && m.to_warehouse_id === Number(warehouseFilter)))
+                        ).reduce((sum, m) => sum + m.quantity, 0)}
+                      </td>
+                      <td className="px-6 py-4 text-center text-red-600 font-bold">
+                        {stockMovements.filter(m => 
+                          m.product_id === p.id && 
+                          (warehouseFilter === 'all' || m.warehouse_id === Number(warehouseFilter)) &&
+                          (m.type === 'exit' || m.type === 'adjustment_minus' || (m.type === 'transfer' && m.warehouse_id === Number(warehouseFilter)))
+                        ).reduce((sum, m) => sum + m.quantity, 0)}
+                      </td>
                       <td className="px-6 py-4 text-center">
                         <span className={`px-3 py-1 font-black rounded-none ${isNegative ? 'text-red-600 bg-red-50' : isLow ? 'text-amber-600 bg-amber-50' : 'text-[#003366] bg-zinc-50'}`}>
                           {p.stock_quantity} {p.unit}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-center text-zinc-400 font-bold">{p.min_stock || 0}</td>
                       <td className="px-6 py-4 text-center">
-                        <span className={`font-bold ${diff >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                          {diff > 0 ? '+' : ''}{diff}
-                        </span>
+                        <button 
+                          onClick={() => { setSelectedProduct(p); setShowStockReportModal(true); }}
+                          className="text-[#003366] hover:underline font-bold text-[10px] uppercase tracking-widest"
+                        >
+                          Ver Relatório
+                        </button>
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -12103,7 +13037,7 @@ const ProductList = ({ products, onRefresh }: { products: Product[], onRefresh: 
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
-              {movements.map((m) => (
+              {stockMovements.map((m) => (
                 <tr key={m.id} className="hover:bg-zinc-50 transition-colors text-xs border-b border-zinc-50">
                   <td className="px-6 py-4 text-zinc-400 font-medium">{new Date(m.created_at).toLocaleString()}</td>
                   <td className="px-6 py-4 font-bold text-zinc-900">{m.product_name}</td>
@@ -12125,7 +13059,7 @@ const ProductList = ({ products, onRefresh }: { products: Product[], onRefresh: 
               ))}
             </tbody>
           </table>
-          {movements.length === 0 && (
+          {stockMovements.length === 0 && (
             <div className="p-12 text-center text-zinc-400 text-sm font-medium">Nenhum movimento de stock registado.</div>
           )}
         </div>
@@ -12180,6 +13114,179 @@ const ProductList = ({ products, onRefresh }: { products: Product[], onRefresh: 
       )}
 
       {/* Modals for Adjustments and Transfers */}
+      {showStockReportModal && selectedProduct && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-4xl p-8 rounded-none shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-zinc-100 pb-4">
+              <div>
+                <h3 className="text-xl font-bold text-[#003366] uppercase tracking-tight">Relatório de Stock: {selectedProduct.name}</h3>
+                <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mt-1">Histórico completo de movimentos e variações de inventário.</p>
+              </div>
+              <button onClick={() => setShowStockReportModal(false)} className="text-zinc-400 hover:text-zinc-600"><X size={24} /></button>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="p-4 bg-zinc-50 border border-zinc-100">
+                <div className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Stock Atual</div>
+                <div className="text-xl font-black text-[#003366]">{selectedProduct.stock_quantity} {selectedProduct.unit}</div>
+              </div>
+              <div className="p-4 bg-zinc-50 border border-zinc-100">
+                <div className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Total Entradas</div>
+                <div className="text-xl font-black text-emerald-600">
+                  {stockMovements.filter(m => m.product_id === selectedProduct.id && (m.type === 'entry' || m.type === 'adjustment_plus')).reduce((sum, m) => sum + m.quantity, 0)}
+                </div>
+              </div>
+              <div className="p-4 bg-zinc-50 border border-zinc-100">
+                <div className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Total Saídas</div>
+                <div className="text-xl font-black text-red-600">
+                  {stockMovements.filter(m => m.product_id === selectedProduct.id && (m.type === 'exit' || m.type === 'adjustment_minus')).reduce((sum, m) => sum + m.quantity, 0)}
+                </div>
+              </div>
+              <div className="p-4 bg-zinc-50 border border-zinc-100">
+                <div className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Valor em Stock</div>
+                <div className="text-xl font-black text-[#003366]">
+                  {formatCurrency(selectedProduct.stock_quantity * (selectedProduct.cost_price || 0))}
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white border border-zinc-200 overflow-hidden">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-zinc-50 text-[10px] font-black uppercase tracking-widest text-zinc-400 border-b border-zinc-200">
+                    <th className="px-6 py-4">Data</th>
+                    <th className="px-6 py-4">Tipo</th>
+                    <th className="px-6 py-4">Armazém</th>
+                    <th className="px-6 py-4 text-center">Qtd</th>
+                    <th className="px-6 py-4 text-center">Stock Ant.</th>
+                    <th className="px-6 py-4 text-center">Stock Atual</th>
+                    <th className="px-6 py-4">Descrição</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {stockMovements.filter(m => m.product_id === selectedProduct.id).map(m => (
+                    <tr key={m.id} className="text-xs hover:bg-zinc-50 transition-colors">
+                      <td className="px-6 py-4 text-zinc-500 font-medium">{new Date(m.created_at).toLocaleString()}</td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-none ${
+                          m.type === 'entry' || m.type === 'adjustment_plus' ? 'bg-emerald-50 text-emerald-600' :
+                          m.type === 'exit' || m.type === 'adjustment_minus' ? 'bg-red-50 text-red-600' :
+                          m.type === 'transfer' ? 'bg-blue-50 text-blue-600' :
+                          'bg-zinc-100 text-zinc-600'
+                        }`}>
+                          {m.type}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-zinc-600 font-bold">
+                        {warehouses.find(w => w.id === m.warehouse_id)?.name || 'Geral'}
+                        {m.type === 'transfer' && ` → ${warehouses.find(w => w.id === m.to_warehouse_id)?.name || 'Geral'}`}
+                      </td>
+                      <td className="px-6 py-4 text-center font-black">{m.quantity}</td>
+                      <td className="px-6 py-4 text-center text-zinc-400 font-bold">{m.previous_stock}</td>
+                      <td className="px-6 py-4 text-center font-black text-[#003366]">{m.current_stock}</td>
+                      <td className="px-6 py-4 text-zinc-500 italic font-medium">{m.description || '---'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-6 border-t border-zinc-100">
+              <button 
+                onClick={() => window.print()}
+                className="flex items-center gap-2 px-6 py-2 text-[#003366] font-bold text-xs uppercase tracking-widest hover:bg-zinc-100"
+              >
+                <Printer size={16} /> Imprimir Relatório
+              </button>
+              <button 
+                onClick={() => setShowStockReportModal(false)}
+                className="bg-[#003366] text-white px-8 py-2 font-bold text-xs uppercase tracking-widest hover:bg-[#002244] shadow-lg"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showProductDetailModal && selectedProduct && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-2xl p-8 rounded-none shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-zinc-100 pb-4">
+              <h3 className="text-xl font-bold text-[#003366] uppercase tracking-tight">Detalhes do Produto</h3>
+              <button onClick={() => setShowProductDetailModal(false)} className="text-zinc-400 hover:text-zinc-600"><X size={24} /></button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="space-y-4">
+                <div className="aspect-square bg-zinc-100 border border-zinc-200 flex items-center justify-center overflow-hidden">
+                  {selectedProduct.image ? (
+                    <img src={selectedProduct.image} alt={selectedProduct.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  ) : (
+                    <Package size={64} className="text-zinc-300" />
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-3 bg-zinc-50 border border-zinc-100">
+                    <div className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">Stock Atual</div>
+                    <div className="text-lg font-black text-[#003366]">{selectedProduct.stock_quantity} {selectedProduct.unit}</div>
+                  </div>
+                  <div className="p-3 bg-zinc-50 border border-zinc-100">
+                    <div className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">Preço Venda</div>
+                    <div className="text-lg font-black text-[#003366]">{selectedProduct.price.toLocaleString('pt-AO', { style: 'currency', currency: 'AOA' })}</div>
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <h4 className="text-xs font-black text-[#003366] uppercase tracking-widest mb-2 border-b border-zinc-100 pb-1">Informação Geral</h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-zinc-400 font-bold uppercase">Nome:</span>
+                      <span className="text-zinc-800 font-medium">{selectedProduct.name}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-zinc-400 font-bold uppercase">Referência:</span>
+                      <span className="text-zinc-800 font-mono">{selectedProduct.referente || '---'}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-zinc-400 font-bold uppercase">Categoria:</span>
+                      <span className="text-zinc-800 font-medium">{selectedProduct.category || '---'}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-zinc-400 font-bold uppercase">Código de Barras:</span>
+                      <span className="text-zinc-800 font-medium">{selectedProduct.barcode || '---'}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-zinc-400 font-bold uppercase">Armazém:</span>
+                      <span className="text-zinc-800 font-medium">{warehouses.find(w => w.id === selectedProduct.warehouse_id)?.name || 'Geral'}</span>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <h4 className="text-xs font-black text-[#003366] uppercase tracking-widest mb-2 border-b border-zinc-100 pb-1">Histórico Recente</h4>
+                  <div className="space-y-1 max-h-40 overflow-y-auto pr-2">
+                    {stockMovements.filter(m => m.product_id === selectedProduct.id).slice(0, 5).map(m => (
+                      <div key={m.id} className="text-[10px] flex justify-between py-1 border-b border-zinc-50 last:border-0">
+                        <span className="text-zinc-400">{new Date(m.created_at).toLocaleDateString()}</span>
+                        <span className={`font-bold ${m.type === 'entry' ? 'text-emerald-600' : 'text-red-600'}`}>
+                          {m.type === 'entry' ? '+' : '-'}{m.quantity}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-6 border-t border-zinc-100">
+              <button 
+                onClick={() => setShowProductDetailModal(false)}
+                className="bg-[#003366] text-white px-8 py-2 font-bold text-xs uppercase tracking-widest hover:bg-[#002244] shadow-lg"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showTransferModal && selectedProduct && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-md p-8 rounded-none shadow-2xl space-y-6">
@@ -12271,21 +13378,30 @@ const ProductList = ({ products, onRefresh }: { products: Product[], onRefresh: 
               e.preventDefault();
               const formData = new FormData(e.currentTarget);
               const data = Object.fromEntries(formData.entries());
-              const res = await fetch('/api/products', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  ...data,
-                  price: Number(data.price),
-                  cost_price: Number(data.cost_price),
-                  stock_quantity: Number(data.stock_quantity),
-                  min_stock: Number(data.min_stock),
-                  warehouse_id: data.warehouse_id ? Number(data.warehouse_id) : null
-                })
-              });
-              if (res.ok) {
-                onRefresh();
-                setShowForm(false);
+              try {
+                const res = await fetch('/api/products', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    ...data,
+                    price: Number(data.price),
+                    cost_price: Number(data.cost_price),
+                    stock_quantity: Number(data.stock_quantity),
+                    min_stock: Number(data.min_stock),
+                    warehouse_id: data.warehouse_id ? Number(data.warehouse_id) : null,
+                    empresa_id: user?.empresa_id
+                  })
+                });
+                if (res.ok) {
+                  onRefresh();
+                  setShowForm(false);
+                } else {
+                  const errorData = await res.json().catch(() => ({ error: 'Erro desconhecido' }));
+                  alert('Erro ao salvar produto: ' + (errorData.error || 'Verifique os dados e tente novamente.'));
+                }
+              } catch (error) {
+                console.error('Erro de rede:', error);
+                alert('Erro de rede ao salvar produto.');
               }
             }} className="grid grid-cols-1 md:grid-cols-3 gap-8">
               <div className="space-y-1">
@@ -12313,15 +13429,25 @@ const ProductList = ({ products, onRefresh }: { products: Product[], onRefresh: 
                 <input name="min_stock" type="number" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold" />
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Armazém</label>
-                <select name="warehouse_id" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold">
-                  <option value="">Selecione o armazém</option>
-                  {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-                </select>
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Categoria</label>
+                <input name="category" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Unidade</label>
+                <input name="unit" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Barcode</label>
+                <input name="barcode" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data de Registo</label>
+                <input name="data_registo" type="date" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" />
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Unidade</label>
                 <select name="unit" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold">
+                  <option value="">Selecione a unidade</option>
                   <option value="un">Unidade (un)</option>
                   <option value="kg">Quilograma (kg)</option>
                   <option value="lt">Litro (lt)</option>
@@ -12329,12 +13455,14 @@ const ProductList = ({ products, onRefresh }: { products: Product[], onRefresh: 
                 </select>
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Categoria</label>
-                <input name="category" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" />
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Armazém</label>
+                <select name="warehouse_id" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold">
+                  <option value="">Selecione o armazém</option>
+                  {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                </select>
               </div>
-              <div className="md:col-span-3 flex justify-end gap-4 pt-8 border-t border-zinc-100">
-                <button type="button" onClick={() => setShowForm(false)} className="px-8 py-3 text-xs font-bold text-zinc-500 uppercase tracking-widest hover:text-zinc-700">Cancelar</button>
-                <button type="submit" className="bg-[#003366] text-white px-10 py-3 text-xs font-bold uppercase tracking-widest hover:bg-[#002244] transition-all shadow-lg">Salvar Produto</button>
+              <div className="md:col-span-3 flex justify-end pt-4">
+                <button type="submit" className="bg-[#003366] text-white px-8 py-3 text-sm font-bold hover:bg-[#002244] transition-all">Registar Produto</button>
               </div>
             </form>
           </div>
@@ -12346,7 +13474,174 @@ const ProductList = ({ products, onRefresh }: { products: Product[], onRefresh: 
 
 // --- Main App ---
 
+const ReceiptModal = ({ document, caixas, onClose, onSuccess }: { 
+  document: IssuedDocument, 
+  caixas: Caixa[], 
+  onClose: () => void, 
+  onSuccess: () => void 
+}) => {
+  const { user } = useAuth();
+  const [amount, setAmount] = useState(document.contravalor || 0);
+  const [paymentMethod, setPaymentMethod] = useState('Dinheiro');
+  const [cashBox, setCashBox] = useState(caixas[0]?.name || '');
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/receipts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          invoice_id: document.id,
+          empresa_id: user?.empresa_id,
+          amount,
+          payment_method: paymentMethod,
+          cash_box: cashBox,
+          date
+        })
+      });
+      if (res.ok) onSuccess();
+    } catch (error) {
+      console.error('Error creating receipt:', error);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm">
+      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white w-full max-w-md p-8 rounded-none shadow-2xl">
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="font-bold text-[#003366] text-xl uppercase tracking-tight">Emitir Recibo</h3>
+          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-600"><X size={20} /></button>
+        </div>
+        <div className="mb-6 p-4 bg-zinc-50 border border-zinc-100">
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Documento</p>
+          <p className="font-bold text-[#003366]">{document.numero_documento}</p>
+          <p className="text-xs text-zinc-500">{document.client_name}</p>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Valor a Liquidar</label>
+            <input 
+              type="number" 
+              step="0.01" 
+              value={amount} 
+              onChange={(e) => setAmount(Number(e.target.value))} 
+              className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold"
+              required 
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Forma de Pagamento</label>
+            <select 
+              value={paymentMethod} 
+              onChange={(e) => setPaymentMethod(e.target.value)}
+              className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold"
+            >
+              <option>Dinheiro</option>
+              <option>Transferência</option>
+              <option>Multicaixa</option>
+              <option>Depósito</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Caixa / Banco</label>
+            <select 
+              value={cashBox} 
+              onChange={(e) => setCashBox(e.target.value)}
+              className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold"
+            >
+              {caixas.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data do Pagamento</label>
+            <input 
+              type="date" 
+              value={date} 
+              onChange={(e) => setDate(e.target.value)} 
+              className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold"
+              required 
+            />
+          </div>
+          <div className="flex justify-end gap-4 pt-6">
+            <button type="button" onClick={onClose} className="px-6 py-2 text-xs font-bold text-zinc-500 uppercase tracking-widest">Cancelar</button>
+            <button type="submit" className="bg-[#003366] text-white px-8 py-2 text-xs font-bold uppercase tracking-widest hover:bg-[#002244] shadow-lg">Confirmar Pagamento</button>
+          </div>
+        </form>
+      </motion.div>
+    </div>
+  );
+};
+
+const ConvertDocumentModal = ({ document, onClose, onSuccess }: { 
+  document: IssuedDocument, 
+  onClose: () => void, 
+  onSuccess: () => void 
+}) => {
+  const { user } = useAuth();
+  const [targetType, setTargetType] = useState('Fatura');
+
+  const handleConvert = async () => {
+    try {
+      // In a real app, this would call a backend endpoint to create a new document based on this one
+      // For now, we'll just simulate it by creating a new invoice with the same items
+      const res = await fetch('/api/invoices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...document,
+          id: undefined,
+          document_type: targetType,
+          date: new Date().toISOString().split('T')[0],
+          empresa_id: user?.empresa_id,
+          items: document.items || [] // Assuming items are available
+        })
+      });
+      if (res.ok) onSuccess();
+    } catch (error) {
+      console.error('Error converting document:', error);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm">
+      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white w-full max-w-md p-8 rounded-none shadow-2xl">
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="font-bold text-[#003366] text-xl uppercase tracking-tight">Faturar / Converter</h3>
+          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-600"><X size={20} /></button>
+        </div>
+        <div className="mb-6 p-4 bg-zinc-50 border border-zinc-100">
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Documento Origem</p>
+          <p className="font-bold text-[#003366]">{document.numero_documento}</p>
+          <p className="text-xs text-zinc-500">{document.tipo_documento}</p>
+        </div>
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Converter para Tipo</label>
+            <select 
+              value={targetType} 
+              onChange={(e) => setTargetType(e.target.value)}
+              className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold"
+            >
+              <option>Fatura</option>
+              <option>Fatura Recibo</option>
+              <option>Orçamento</option>
+              <option>Fatura Proforma</option>
+            </select>
+          </div>
+          <div className="flex justify-end gap-4 pt-6">
+            <button type="button" onClick={onClose} className="px-6 py-2 text-xs font-bold text-zinc-500 uppercase tracking-widest">Cancelar</button>
+            <button onClick={handleConvert} className="bg-[#003366] text-white px-8 py-2 text-xs font-bold uppercase tracking-widest hover:bg-[#002244] shadow-lg">Converter Documento</button>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
 export default function App() {
+  const { user, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [fiscalYear, setFiscalYear] = useState('2026');
@@ -12369,29 +13664,37 @@ export default function App() {
   const [selectedDocument, setSelectedDocument] = useState<IssuedDocument | null>(null);
   const [showActionsModal, setShowActionsModal] = useState(false);
   const [showCertifyModal, setShowCertifyModal] = useState(false);
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [showConvertModal, setShowConvertModal] = useState(false);
   const [selectedClientForAccount, setSelectedClientForAccount] = useState<Client | null>(null);
   const [appSelectedEmployee, setAppSelectedEmployee] = useState<Employee | null>(null);
   const [isContractModalOpen, setIsContractModalOpen] = useState(false);
   const [caixas, setCaixas] = useState<Caixa[]>([]);
   const [caixaMovements, setCaixaMovements] = useState<CaixaMovement[]>([]);
+  const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
 
   const fetchData = async () => {
+    if (!user) return;
     try {
-      console.log('Fetching data...');
+      console.log('Fetching data for empresa:', user.empresa_id);
+      const empresaId = user.empresa_id;
       const results = await Promise.allSettled([
-        fetchJson('/api/stats'),
-        fetchJson('/api/clients'),
-        fetchJson('/api/products'),
-        fetchJson('/api/invoices'),
-        fetchJson('/api/issued-documents'),
-        fetchJson('/api/work-sites'),
-        fetchJson('/api/employees'),
-        fetchJson('/api/fiscal-series'),
-        fetchJson('/api/caixas'),
-        fetchJson('/api/caixa-movements')
+        fetchJson(`/api/stats?empresa_id=${empresaId}`),
+        fetchJson(`/api/clients?empresa_id=${empresaId}`),
+        fetchJson(`/api/products?empresa_id=${empresaId}`),
+        fetchJson(`/api/invoices?empresa_id=${empresaId}`),
+        fetchJson(`/api/issued-documents?empresa_id=${empresaId}`),
+        fetchJson(`/api/work-sites?empresa_id=${empresaId}`),
+        fetchJson(`/api/employees?empresa_id=${empresaId}`),
+        fetchJson(`/api/fiscal-series?empresa_id=${empresaId}`),
+        fetchJson(`/api/caixas?empresa_id=${empresaId}`),
+        fetchJson(`/api/caixa-movements?empresa_id=${empresaId}`),
+        fetchJson(`/api/stock/movements?empresa_id=${empresaId}`),
+        fetchJson(`/api/warehouses?empresa_id=${empresaId}`)
       ]);
 
-      const [s, c, p, i, d, w, e, fs, cx, cm] = results.map((res, idx) => {
+      const [s, c, p, i, d, w, e, fs, cx, cm, sm, wh] = results.map((res, idx) => {
         if (res.status === 'fulfilled') return res.value;
         console.error(`Fetch failed for index ${idx}:`, res.reason);
         return null;
@@ -12409,6 +13712,8 @@ export default function App() {
       setFiscalSeries(Array.isArray(fs) ? fs : []);
       setCaixas(Array.isArray(cx) ? cx : []);
       setCaixaMovements(Array.isArray(cm) ? cm : []);
+      setStockMovements(Array.isArray(sm) ? sm : []);
+      setWarehouses(Array.isArray(wh) ? wh : []);
       
       console.log('Data state updated');
     } catch (error) {
@@ -12422,7 +13727,7 @@ export default function App() {
       const res = await fetch('/api/work-sites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(site)
+        body: JSON.stringify({ ...site, empresa_id: user?.empresa_id })
       });
       if (res.ok) {
         console.log('Work site added successfully');
@@ -12442,7 +13747,7 @@ export default function App() {
       const res = await fetch(`/api/work-sites/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(site)
+        body: JSON.stringify({ ...site, empresa_id: user?.empresa_id })
       });
       if (res.ok) {
         console.log('Work site updated successfully');
@@ -12471,7 +13776,10 @@ export default function App() {
   };
 
   const handleDocumentAction = async (action: string, doc: IssuedDocument) => {
-    if (action === 'print_a4' || action === 'print_p24' || action === 'print_p24xl' || action === 'print_p80') {
+    if (action === 'edit') {
+      setSelectedDocument(doc);
+      setIsCreatingInvoice(true);
+    } else if (action === 'print_a4' || action === 'print_p24' || action === 'print_p24xl' || action === 'print_p80') {
       try {
         const res = await fetch(`/api/invoices/${doc.id}`);
         if (res.ok) {
@@ -12580,15 +13888,19 @@ export default function App() {
   };
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (user) {
+      fetchData();
+    }
+  }, [user]);
 
   const renderContent = () => {
     if (viewingInvoiceId) {
+      const inv = issuedDocuments.find(i => i.id === viewingInvoiceId) || invoices.find(i => i.id === viewingInvoiceId);
       return (
         <InvoiceDetail 
           id={viewingInvoiceId} 
           onBack={() => setViewingInvoiceId(null)}
+          onPrint={(doc) => setPrintingInvoice(doc as any)}
           companyName={companyName}
           companyNif={companyNif}
           companyAddress={companyAddress}
@@ -12616,7 +13928,14 @@ export default function App() {
     }
 
     switch (activeTab) {
-      case 'dashboard': return <Dashboard stats={stats} products={products} />;
+      case 'dashboard': return (
+        <BusinessOverview 
+          stats={stats} 
+          products={products} 
+          invoices={invoices}
+          caixas={caixas}
+        />
+      );
       case 'pos': return <POSModule products={products} onRefresh={fetchData} caixas={caixas} />;
       case 'invoices': return (
         <InvoiceList 
@@ -12630,14 +13949,12 @@ export default function App() {
           onRegisterClient={() => setActiveTab('clients')}
           onAddWorkSite={handleAddWorkSite}
           onUpdateWorkSite={handleUpdateWorkSite}
-          onAction={(doc) => {
-            setSelectedDocument(doc);
-            setShowActionsModal(true);
-          }}
+          onAction={handleDocumentAction}
           onCertify={(doc) => {
             setSelectedDocument(doc);
             setShowCertifyModal(true);
           }}
+          onViewDetail={(doc) => setViewingInvoiceId(doc.id)}
           caixas={caixas}
         />
       );
@@ -12650,6 +13967,7 @@ export default function App() {
             setSelectedDocument(doc);
             setShowCertifyModal(true);
           }}
+          onViewDetail={(doc) => setViewingInvoiceId(doc.id)}
         />
       );
       case 'client-account': return selectedClientForAccount ? (
@@ -12658,12 +13976,21 @@ export default function App() {
           documents={issuedDocuments.filter(d => d.cliente_id === selectedClientForAccount.id)}
           onBack={() => setActiveTab('clients')}
         />
-      ) : <Dashboard stats={stats} products={products} />;
+      ) : (
+        <Dashboard 
+          stats={stats} 
+          products={products} 
+          invoices={invoices}
+          issuedDocuments={issuedDocuments}
+          caixaMovements={caixaMovements}
+        />
+      );
       case 'cashier': return <CashierModule issuedDocuments={issuedDocuments} />;
       case 'caixa': return <CaixaModule caixas={caixas} setCaixas={setCaixas} movements={caixaMovements} setMovements={setCaixaMovements} />;
       case 'clients': return (
         <ClientList 
           clients={clients} 
+          issuedDocuments={issuedDocuments}
           onRefresh={fetchData} 
           onViewAccount={(client) => {
             setSelectedClientForAccount(client);
@@ -12672,7 +13999,14 @@ export default function App() {
         />
       );
       case 'suppliers': return <SupplierModule products={products} workSites={workSites} fiscalSeries={fiscalSeries} caixas={caixas} />;
-      case 'products': return <ProductList products={products} onRefresh={fetchData} />;
+      case 'products': return (
+        <ProductList 
+          products={products} 
+          onRefresh={fetchData} 
+          stockMovements={stockMovements}
+          warehouses={warehouses}
+        />
+      );
       case 'financial': return (
         <FinancialModule 
           caixas={caixas} 
@@ -12680,9 +14014,10 @@ export default function App() {
           caixaMovements={caixaMovements} 
           setCaixaMovements={setCaixaMovements} 
           employees={employees}
+          user={user}
         />
       );
-      case 'hr': return <HRModule onRefresh={fetchData} onSetIsContractModalOpen={setIsContractModalOpen} onSetEmployee={setAppSelectedEmployee} caixas={caixas} />;
+      case 'hr': return <HRModule onRefresh={fetchData} onSetIsContractModalOpen={setIsContractModalOpen} onSetEmployee={setAppSelectedEmployee} caixas={caixas} companyName={companyName} />;
       case 'accounting': return <AccountingModule invoices={invoices} clients={clients} />;
       case 'specialized': return <SpecializedManagementModule />;
       case 'settings': return (
@@ -12702,55 +14037,81 @@ export default function App() {
         />
       );
       case 'secretary': return <SecretaryModule appSelectedEmployee={appSelectedEmployee} />;
-      default: return <Dashboard stats={stats} products={products} />;
+      default: return (
+        <Dashboard 
+          stats={stats} 
+          products={products} 
+          invoices={invoices}
+          issuedDocuments={issuedDocuments}
+          caixaMovements={caixaMovements}
+        />
+      );
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#f4f7f9] text-zinc-800 font-sans selection:bg-[#003366]/10 flex overflow-x-hidden">
-      {sidebarOpen ? (
-        <Sidebar 
-          activeTab={activeTab} 
-          setActiveTab={(t) => {
-            setActiveTab(t);
-            setViewingInvoiceId(null);
-            setIsCreatingInvoice(false);
-          }} 
-          fiscalYear={fiscalYear} 
-          setFiscalYear={setFiscalYear} 
-          onToggle={() => setSidebarOpen(false)}
-        />
-      ) : (
-        <div className="fixed left-4 top-4 z-50">
-          <button 
-            onClick={() => setSidebarOpen(true)}
-            className="p-3 bg-white border border-zinc-200 rounded-none text-[#003366] hover:bg-zinc-50 transition-all shadow-lg flex items-center justify-center"
-            title="Mostrar Barra Lateral"
-          >
-            <ChevronRight size={20} />
-          </button>
-        </div>
-      )}
-      <main className="flex-1 min-h-screen transition-all duration-300 min-w-0">
-        <div className="p-12">
-          <div className="mb-8 flex items-center gap-4">
-            <div className="flex items-center gap-2 text-xs font-bold text-zinc-400 uppercase tracking-widest">
-              <LayoutDashboard size={14} />
-              <span>Sistema de Gestão</span>
-              <ChevronRight size={12} />
-              <span className="text-[#003366]">{activeTab}</span>
-            </div>
+    <ProtectedRoute>
+      <div className="min-h-screen bg-[#f4f7f9] text-zinc-800 font-sans selection:bg-[#003366]/10 flex overflow-x-hidden">
+        {sidebarOpen ? (
+          <Sidebar 
+            activeTab={activeTab} 
+            setActiveTab={(t) => {
+              setActiveTab(t);
+              setViewingInvoiceId(null);
+              setIsCreatingInvoice(false);
+            }} 
+            fiscalYear={fiscalYear} 
+            setFiscalYear={setFiscalYear} 
+            onToggle={() => setSidebarOpen(false)}
+          />
+        ) : (
+          <div className="fixed left-4 top-4 z-50">
+            <button 
+              onClick={() => setSidebarOpen(true)}
+              className="p-3 bg-white border border-zinc-200 rounded-none text-[#003366] hover:bg-zinc-50 transition-all shadow-lg flex items-center justify-center"
+              title="Mostrar Barra Lateral"
+            >
+              <ChevronRight size={20} />
+            </button>
           </div>
-          <motion.div
-            key={activeTab + viewingInvoiceId + sidebarOpen}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            {renderContent()}
-          </motion.div>
-        </div>
-      </main>
+        )}
+        <main className="flex-1 min-h-screen transition-all duration-300 min-w-0">
+          <div className="p-12">
+            <div className="mb-8 flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 text-xs font-bold text-zinc-400 uppercase tracking-widest">
+                  <LayoutDashboard size={14} />
+                  <span>Sistema de Gestão</span>
+                  <ChevronRight size={12} />
+                  <span className="text-[#003366]">{activeTab}</span>
+                </div>
+              </div>
+
+              {/* User Profile & Logout */}
+              <div className="flex items-center gap-4">
+                <div className="text-right">
+                  <p className="text-[10px] font-black text-[#003366] uppercase tracking-widest">{user?.username}</p>
+                  <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-tight">Empresa ID: {user?.empresa_id}</p>
+                </div>
+                <button 
+                  onClick={logout}
+                  className="p-2 bg-white border border-zinc-200 text-red-500 hover:bg-red-50 transition-all shadow-sm flex items-center justify-center"
+                  title="Sair do Sistema"
+                >
+                  <LogOut size={18} />
+                </button>
+              </div>
+            </div>
+            <motion.div
+              key={activeTab + viewingInvoiceId + sidebarOpen}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              {renderContent()}
+            </motion.div>
+          </div>
+        </main>
 
       {showActionsModal && selectedDocument && (
         <DocumentActionsModal 
@@ -12790,6 +14151,29 @@ export default function App() {
           document={selectedDocument} 
           onConfirm={() => handleCertifyDocument(selectedDocument.id)}
           onClose={() => setShowCertifyModal(false)} 
+        />
+      )}
+
+      {showReceiptModal && selectedDocument && (
+        <ReceiptModal 
+          document={selectedDocument}
+          caixas={caixas}
+          onClose={() => setShowReceiptModal(false)}
+          onSuccess={() => {
+            setShowReceiptModal(false);
+            fetchData();
+          }}
+        />
+      )}
+
+      {showConvertModal && selectedDocument && (
+        <ConvertDocumentModal 
+          document={selectedDocument}
+          onClose={() => setShowConvertModal(false)}
+          onSuccess={() => {
+            setShowConvertModal(false);
+            fetchData();
+          }}
         />
       )}
 
@@ -12849,5 +14233,6 @@ export default function App() {
         />
       )}
     </div>
+    </ProtectedRoute>
   );
 }

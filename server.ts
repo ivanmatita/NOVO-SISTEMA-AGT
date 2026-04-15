@@ -2,6 +2,7 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import Database from "better-sqlite3";
 import path from "node:path";
+import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { supabase } from "./src/services/supabaseClient.js";
 import { generateDocumentHash, signDocument, getPreviousHash } from "./src/services/fiscalService.js";
@@ -37,6 +38,10 @@ const employeeColumnsToAdd = [
   { name: 'inss_number', type: 'TEXT' }
 ];
 
+const userColumnsToAdd = [
+  { name: 'password_hash', type: 'TEXT' }
+];
+
 for (const col of columnsToAdd) {
   try {
     db.prepare(`ALTER TABLE invoices ADD COLUMN ${col.name} ${col.type}`).run();
@@ -50,24 +55,79 @@ for (const col of employeeColumnsToAdd) {
     console.log(`Added column ${col.name} to employees table.`);
   } catch (e) {}
 }
+
+for (const col of userColumnsToAdd) {
+  try {
+    db.prepare(`ALTER TABLE users ADD COLUMN ${col.name} ${col.type}`).run();
+    console.log(`Added column ${col.name} to users table.`);
+  } catch (e) {}
+}
+
+const tablesToMigrateEmpresaId = [
+  'clients', 'products', 'invoices', 'stock_movements', 'employees', 
+  'professions', 'employee_contracts', 'generated_contracts', 
+  'employee_absences', 'fiscal_series', 'warehouses', 'work_sites',
+  'cost_centers', 'pos_points', 'employee_attendance', 'work_site_movements',
+  'pos_sales', 'app_settings', 'payroll', 'cash_sessions', 'suppliers',
+  'transactions', 'purchases', 'caixas', 'employee_dismissals', 
+  'labor_terminations', 'caixa_movements'
+];
+
+for (const table of tablesToMigrateEmpresaId) {
+  try {
+    db.prepare(`ALTER TABLE ${table} ADD COLUMN empresa_id TEXT`).run();
+    console.log(`Added column empresa_id to ${table} table.`);
+  } catch (e) {}
+}
+
 db.pragma('journal_mode = WAL');
 console.log("Server starting...");
 
 // Initialize database
 db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    username TEXT UNIQUE NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    empresa_id TEXT NOT NULL,
+    role TEXT DEFAULT 'operador',
+    password_hash TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE TABLE IF NOT EXISTS clients (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     email TEXT,
     nif TEXT,
     address TEXT,
+    localidade TEXT,
+    codigo_postal TEXT,
+    provincia TEXT,
+    municipio TEXT,
+    pais TEXT,
+    telefone TEXT,
+    webpage TEXT,
+    tipo_cliente TEXT,
+    initial_balance REAL DEFAULT 0,
+    estado_nif TEXT DEFAULT 'não encontrado',
+    empresa_id TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+`);
 
+// Migrations
+try { db.prepare("ALTER TABLE clients ADD COLUMN initial_balance REAL DEFAULT 0").run(); } catch (e) {}
+try { db.prepare("ALTER TABLE clients ADD COLUMN estado_nif TEXT DEFAULT 'não encontrado'").run(); } catch (e) {}
+try { db.prepare("ALTER TABLE invoices ADD COLUMN payment_status TEXT DEFAULT 'pending'").run(); } catch (e) {}
+try { db.prepare("ALTER TABLE invoices ADD COLUMN is_anulado BOOLEAN DEFAULT 0").run(); } catch (e) {}
+
+db.exec(`
   CREATE TABLE IF NOT EXISTS products (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     referente TEXT,
+    empresa_id TEXT,
     data_registo DATE,
     warehouse_id INTEGER,
     tipo_documento TEXT,
@@ -87,6 +147,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS stock_movements (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     product_id INTEGER NOT NULL,
+    empresa_id TEXT,
     type TEXT NOT NULL, -- 'entry', 'exit', 'transfer', 'adjustment'
     quantity REAL NOT NULL,
     unit_price REAL DEFAULT 0, -- Cost price at the time of movement
@@ -105,6 +166,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS invoices (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     client_id INTEGER NOT NULL,
+    empresa_id TEXT,
     invoice_number TEXT UNIQUE NOT NULL,
     date DATE NOT NULL,
     due_date DATE,
@@ -126,10 +188,25 @@ db.exec(`
     hash TEXT,
     signature TEXT,
     is_certified BOOLEAN DEFAULT 0,
+    payment_status TEXT DEFAULT 'pending', -- pending, partial, paid
+    is_anulado BOOLEAN DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (client_id) REFERENCES clients(id),
     FOREIGN KEY (work_site_id) REFERENCES work_sites(id),
     FOREIGN KEY (series_id) REFERENCES fiscal_series(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS receipts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    invoice_id INTEGER NOT NULL,
+    empresa_id TEXT,
+    receipt_number TEXT UNIQUE NOT NULL,
+    date DATE NOT NULL,
+    amount REAL NOT NULL,
+    payment_method TEXT,
+    cash_box TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (invoice_id) REFERENCES invoices(id)
   );
 
   CREATE TABLE IF NOT EXISTS hash_chain (
@@ -157,6 +234,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS professions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
+    empresa_id TEXT,
     inss_profession TEXT,
     base_salary REAL DEFAULT 0
   );
@@ -164,6 +242,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS employees (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
+    empresa_id TEXT,
     role TEXT NOT NULL,
     profession_id INTEGER,
     salary REAL NOT NULL,
@@ -189,6 +268,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS employee_contracts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     employee_id INTEGER NOT NULL,
+    empresa_id TEXT,
     contract_type TEXT NOT NULL,
     start_date DATE NOT NULL,
     end_date DATE,
@@ -199,6 +279,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS generated_contracts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     employee_id INTEGER NOT NULL,
+    empresa_id TEXT,
     content TEXT NOT NULL,
     generated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (employee_id) REFERENCES employees(id)
@@ -207,6 +288,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS employee_absences (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     employee_id INTEGER NOT NULL,
+    empresa_id TEXT,
     type TEXT NOT NULL, -- 'vacation', 'sick', 'subsidy', etc.
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
@@ -218,6 +300,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS fiscal_series (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     description TEXT NOT NULL,
+    empresa_id TEXT,
     user_id INTEGER,
     type TEXT DEFAULT 'normal', -- 'normal', 'manual_recovery'
     is_active BOOLEAN DEFAULT 1,
@@ -227,12 +310,14 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS cost_centers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
+    empresa_id TEXT,
     code TEXT UNIQUE NOT NULL
   );
 
   CREATE TABLE IF NOT EXISTS pos_points (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
+    empresa_id TEXT,
     location TEXT,
     is_active BOOLEAN DEFAULT 1
   );
@@ -251,6 +336,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS employee_attendance (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     employee_id INTEGER NOT NULL,
+    empresa_id TEXT,
     date DATE NOT NULL,
     status TEXT NOT NULL, -- 'present', 'absent', 'late'
     FOREIGN KEY (employee_id) REFERENCES employees(id)
@@ -259,6 +345,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS work_sites (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     client_id INTEGER NOT NULL,
+    empresa_id TEXT,
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
     title TEXT NOT NULL,
@@ -276,6 +363,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS work_site_movements (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     work_site_id INTEGER NOT NULL,
+    empresa_id TEXT,
     date DATE NOT NULL,
     doc_no TEXT,
     company TEXT,
@@ -287,8 +375,19 @@ db.exec(`
     FOREIGN KEY (work_site_id) REFERENCES work_sites(id)
   );
 
+  CREATE TABLE IF NOT EXISTS obras (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    work_site_id INTEGER NOT NULL,
+    empresa_id TEXT,
+    status TEXT DEFAULT 'active',
+    budget REAL DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (work_site_id) REFERENCES work_sites(id)
+  );
+
   CREATE TABLE IF NOT EXISTS pos_sales (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    empresa_id TEXT,
     total REAL NOT NULL,
     date DATETIME DEFAULT CURRENT_TIMESTAMP,
     items_json TEXT NOT NULL,
@@ -316,6 +415,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS payroll (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     employee_id INTEGER NOT NULL,
+    empresa_id TEXT,
     month TEXT NOT NULL,
     year INTEGER NOT NULL,
     amount REAL NOT NULL,
@@ -326,6 +426,7 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS cash_sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    empresa_id TEXT,
     opened_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     closed_at DATETIME,
     initial_balance REAL NOT NULL,
@@ -335,30 +436,50 @@ db.exec(`
     total_sales REAL DEFAULT 0,
     total_discounts REAL DEFAULT 0
   );
+  `);
 
-  CREATE TABLE IF NOT EXISTS warehouses (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    localidade TEXT,
-    provincia TEXT,
-    responsavel TEXT,
-    contacto TEXT,
-    observacao TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
+  const productColumnsToAdd = [
+    { name: 'image', type: 'TEXT' }
+  ];
 
-  CREATE TABLE IF NOT EXISTS suppliers (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    nif TEXT,
-    email TEXT,
-    phone TEXT,
-    address TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
+  for (const col of productColumnsToAdd) {
+    try {
+      db.prepare(`ALTER TABLE products ADD COLUMN ${col.name} ${col.type}`).run();
+      console.log(`Added column ${col.name} to products table.`);
+    } catch (e) {}
+  }
 
-  CREATE TABLE IF NOT EXISTS transactions (
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS warehouses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      empresa_id TEXT,
+      localidade TEXT,
+      provincia TEXT,
+      responsavel TEXT,
+      contacto TEXT,
+      observacao TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run();
+
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS suppliers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      empresa_id TEXT,
+      nif TEXT,
+      email TEXT,
+      phone TEXT,
+      address TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run();
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS transactions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    empresa_id TEXT,
     type TEXT NOT NULL, -- 'income' or 'expense'
     category TEXT NOT NULL, -- 'sale', 'salary', 'purchase', etc.
     amount REAL NOT NULL,
@@ -370,6 +491,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS purchases (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     supplier_id INTEGER NOT NULL,
+    empresa_id TEXT,
     purchase_number TEXT UNIQUE NOT NULL,
     date DATE NOT NULL,
     status TEXT DEFAULT 'pending',
@@ -393,18 +515,22 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS caixas (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
+    empresa_id TEXT,
+    bankName TEXT,
     account TEXT,
     responsible TEXT,
     user TEXT,
     users INTEGER DEFAULT 1,
     initialBalance REAL DEFAULT 0,
     currentBalance REAL DEFAULT 0,
-    obs TEXT
+    obs TEXT,
+    status TEXT DEFAULT 'aberto'
   );
 
   CREATE TABLE IF NOT EXISTS employee_dismissals (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     employee_id INTEGER NOT NULL,
+    empresa_id TEXT,
     dismissal_date DATE NOT NULL,
     reason TEXT,
     observations TEXT,
@@ -416,6 +542,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS labor_terminations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     employee_id INTEGER NOT NULL,
+    empresa_id TEXT,
     dismissal_date DATE NOT NULL,
     reason TEXT,
     observations TEXT,
@@ -427,6 +554,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS caixa_movements (
     id TEXT PRIMARY KEY,
     caixaId TEXT NOT NULL,
+    empresa_id TEXT,
     type TEXT NOT NULL, -- 'entrada', 'saida', 'transferencia'
     amount REAL NOT NULL,
     description TEXT,
@@ -632,58 +760,208 @@ async function startServer() {
 
   // API Routes
   
-  // Clients
-  app.get("/api/clients", async (req, res) => {
+  // Users
+  app.post("/api/login-local", (req, res) => {
+    const { identifier, password } = req.body;
+    try {
+      const user = db.prepare(`
+        SELECT * FROM users 
+        WHERE (username = ? OR email = ?) AND password_hash = ?
+      `).get(identifier, identifier, password) as any;
+
+      if (!user) {
+        return res.status(401).json({ error: "Credenciais inválidas ou utilizador não encontrado no modo de teste." });
+      }
+
+      res.json(user);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/register-company", async (req, res) => {
+    const { companyName, username, email, password } = req.body;
+    
+    const localRegister = () => {
+      console.warn("⚠️ Realizando registo apenas na base de dados local.");
+      try {
+        const userId = crypto.randomUUID();
+        const empresaId = crypto.randomUUID();
+        
+        // Inserir na tabela local 'users' (senha em plain text apenas para teste local sem Supabase)
+        db.prepare(`
+          INSERT INTO users (id, username, email, empresa_id, role, password_hash)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).run(userId, username, email, empresaId, 'admin', password);
+
+        return res.json({ success: true, empresaId, message: "Registo local concluído (Modo de Teste)" });
+      } catch (err: any) {
+        return res.status(500).json({ error: "Erro no registo local: " + err.message });
+      }
+    };
+
+    // Se o Supabase não estiver configurado ou habilitado, fazemos apenas o registo local
+    if (!supabase || !supabaseEnabled) {
+      return localRegister();
+    }
+
+    try {
+      // 1. Criar utilizador no Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            username,
+            company_name: companyName
+          }
+        }
+      });
+
+      if (authError) {
+        // Se o erro for de conexão, tenta local
+        if (authError.message === 'fetch failed' || (authError as any).code === 'ENOTFOUND') {
+          return localRegister();
+        }
+        return res.status(400).json({ error: authError.message });
+      }
+
+      if (!authData.user) {
+        return res.status(400).json({ error: "Erro ao criar utilizador." });
+      }
+
+      const empresaId = crypto.randomUUID();
+      
+      // 2. Inserir na tabela local 'users'
+      db.prepare(`
+        INSERT INTO users (id, username, email, empresa_id, role)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(authData.user.id, username, email, empresaId, 'admin');
+
+      res.json({ success: true, empresaId });
+    } catch (err: any) {
+      console.error("Registration error:", err);
+      if (err.message === 'fetch failed' || err.code === 'ENOTFOUND' || err.message.includes('ENOTFOUND')) {
+        return localRegister();
+      }
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/users/by-username/:username", async (req, res) => {
+    const { username } = req.params;
     try {
       if (supabaseEnabled) {
-        const { data, error } = await supabase.from("clients").select("*").order("name", { ascending: true });
-        if (!error) {
-          return res.json(data);
-        }
-        console.warn("Supabase error in /api/clients, falling back to SQLite:", error.message);
+        const { data, error } = await supabase.from("users").select("email, username").eq("username", username).single();
+        if (!error && data) return res.json(data);
       }
-      const clients = db.prepare("SELECT * FROM clients ORDER BY name ASC").all();
+      const user = db.prepare("SELECT email, username FROM users WHERE username = ?").get(username);
+      if (!user) return res.status(404).json({ error: "Utilizador não encontrado" });
+      res.json(user);
+    } catch (error) {
+      res.status(500).json({ error: String(error) });
+    }
+  });
+
+  app.get("/api/users/profile/:id", async (req, res) => {
+    const { id } = req.params;
+    try {
+      if (supabaseEnabled) {
+        const { data, error } = await supabase.from("users").select("*").eq("id", id).single();
+        if (!error && data) return res.json(data);
+      }
+      const user = db.prepare("SELECT * FROM users WHERE id = ?").get(id);
+      if (!user) return res.status(404).json({ error: "Perfil não encontrado" });
+      res.json(user);
+    } catch (error) {
+      res.status(500).json({ error: String(error) });
+    }
+  });
+
+  // Clients
+  app.get("/api/clients", async (req, res) => {
+    const { empresa_id } = req.query;
+    try {
+      if (supabaseEnabled) {
+        let query = supabase.from("clients").select("*").order("name", { ascending: true });
+        if (empresa_id) query = query.eq("empresa_id", empresa_id);
+        const { data, error } = await query;
+        if (!error) return res.json(data);
+      }
+      let sql = "SELECT * FROM clients";
+      const params = [];
+      if (empresa_id) {
+        sql += " WHERE empresa_id = ?";
+        params.push(empresa_id);
+      }
+      sql += " ORDER BY name ASC";
+      const clients = db.prepare(sql).all(...params);
       res.json(clients);
     } catch (error) {
-      console.error("Error in /api/clients:", error);
       res.status(500).send(String(error));
     }
   });
 
   app.post("/api/clients", async (req, res) => {
-    const { name, email, nif, address, localidade, codigo_postal, provincia, municipio, pais, telefone, webpage, tipo_cliente } = req.body;
+    const { name, email, nif, address, localidade, codigo_postal, provincia, municipio, pais, telefone, webpage, tipo_cliente, initial_balance, empresa_id, estado_nif } = req.body;
     if (supabaseEnabled) {
-      const { data, error } = await supabase.from("clients").insert([{ name, email, nif, address, localidade, codigo_postal, provincia, municipio, pais, telefone, webpage, tipo_cliente }]).select();
+      const { data, error } = await supabase.from("clients").insert([{ name, email, nif, address, localidade, codigo_postal, provincia, municipio, pais, telefone, webpage, tipo_cliente, initial_balance, empresa_id, estado_nif: estado_nif || 'não encontrado' }]).select();
       if (error) return res.status(500).json({ error: error.message });
       res.json({ id: data[0].id });
     } else {
-      const info = db.prepare("INSERT INTO clients (name, email, nif, address, localidade, codigo_postal, provincia, municipio, pais, telefone, webpage, tipo_cliente) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(name, email, nif, address, localidade, codigo_postal, provincia, municipio, pais, telefone, webpage, tipo_cliente);
+      const info = db.prepare("INSERT INTO clients (name, email, nif, address, localidade, codigo_postal, provincia, municipio, pais, telefone, webpage, tipo_cliente, initial_balance, empresa_id, estado_nif) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(name, email, nif, address, localidade, codigo_postal, provincia, municipio, pais, telefone, webpage, tipo_cliente, initial_balance || 0, empresa_id, estado_nif || 'não encontrado');
       res.json({ id: info.lastInsertRowid });
+    }
+  });
+
+  app.put("/api/clients/:id", async (req, res) => {
+    const { id } = req.params;
+    const { name, email, nif, address, localidade, codigo_postal, provincia, municipio, pais, telefone, webpage, tipo_cliente, initial_balance, estado_nif } = req.body;
+    try {
+      if (supabaseEnabled) {
+        const { error } = await supabase.from("clients").update({ name, email, nif, address, localidade, codigo_postal, provincia, municipio, pais, telefone, webpage, tipo_cliente, initial_balance, estado_nif }).eq("id", id);
+        if (error) return res.status(500).json({ error: error.message });
+      } else {
+        db.prepare(`
+          UPDATE clients 
+          SET name = ?, email = ?, nif = ?, address = ?, localidade = ?, codigo_postal = ?, provincia = ?, municipio = ?, pais = ?, telefone = ?, webpage = ?, tipo_cliente = ?, initial_balance = ?, estado_nif = ?
+          WHERE id = ?
+        `).run(name, email, nif, address, localidade, codigo_postal, provincia, municipio, pais, telefone, webpage, tipo_cliente, initial_balance, estado_nif, id);
+      }
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: String(error) });
     }
   });
 
   // Products
   app.get("/api/products", async (req, res) => {
+    const { empresa_id } = req.query;
     try {
       if (supabaseEnabled) {
-        const { data, error } = await supabase.from("products").select("*").order("name", { ascending: true });
-        if (!error) {
-          return res.json(data);
-        }
-        console.warn("Supabase error in /api/products, falling back to SQLite:", error.message);
+        let query = supabase.from("products").select("*").order("name", { ascending: true });
+        if (empresa_id) query = query.eq("empresa_id", empresa_id);
+        const { data, error } = await query;
+        if (!error) return res.json(data);
       }
-      const products = db.prepare("SELECT * FROM products ORDER BY name ASC").all();
+      let sql = "SELECT * FROM products";
+      const params = [];
+      if (empresa_id) {
+        sql += " WHERE empresa_id = ?";
+        params.push(empresa_id);
+      }
+      sql += " ORDER BY name ASC";
+      const products = db.prepare(sql).all(...params);
       res.json(products);
     } catch (error) {
-      console.error("Error in /api/products:", error);
       res.status(500).send(String(error));
     }
   });
 
   app.post("/api/products", async (req, res) => {
-    const { name, referente, data_registo, warehouse_id, tipo_documento, cost_price, price, finalidade, tipologia, unit, stock_quantity, min_stock, category, barcode } = req.body;
+    const { name, referente, data_registo, warehouse_id, tipo_documento, cost_price, price, finalidade, tipologia, unit, stock_quantity, min_stock, category, barcode, empresa_id } = req.body;
     if (supabaseEnabled) {
-      const { data, error } = await supabase.from("products").insert([{ name, referente, data_registo, warehouse_id, tipo_documento, cost_price, price, finalidade, tipologia, unit, stock_quantity, min_stock, category, barcode }]).select();
+      const { data, error } = await supabase.from("products").insert([{ name, referente, data_registo, warehouse_id, tipo_documento, cost_price, price, finalidade, tipologia, unit, stock_quantity, min_stock, category, barcode, empresa_id }]).select();
       if (error) return res.status(500).json({ error: error.message });
       res.json({ id: data[0].id });
     } else {
@@ -691,12 +969,12 @@ async function startServer() {
         INSERT INTO products (
           name, referente, data_registo, warehouse_id, tipo_documento, 
           cost_price, price, finalidade, tipologia, unit, 
-          stock_quantity, min_stock, category, barcode
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          stock_quantity, min_stock, category, barcode, empresa_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         name, referente, data_registo, warehouse_id, tipo_documento, 
         cost_price, price, finalidade, tipologia, unit, 
-        stock_quantity, min_stock, category, barcode
+        stock_quantity, min_stock, category, barcode, empresa_id
       );
       res.json({ id: info.lastInsertRowid });
     }
@@ -832,12 +1110,18 @@ async function startServer() {
 
   app.get("/api/issued-documents", async (req, res) => {
     console.log("GET /api/issued-documents called");
+    const { empresa_id } = req.query;
     try {
       if (supabaseEnabled) {
-        const { data, error } = await supabase
+        let query = supabase
           .from("invoices")
-          .select("*, clients(name), fiscal_series(description), work_sites(title)")
-          .order("created_at", { ascending: false });
+          .select("*, clients(name), fiscal_series(description), work_sites(title)");
+        
+        if (empresa_id) {
+          query = query.eq("empresa_id", empresa_id);
+        }
+        
+        const { data, error } = await query.order("created_at", { ascending: false });
         if (!error) {
           const formatted = data.map(i => ({ 
             ...i, 
@@ -850,14 +1134,22 @@ async function startServer() {
         }
         console.warn("Supabase error in /api/issued-documents, falling back to SQLite:", error.message);
       }
-      const invoices = db.prepare(`
+      
+      let queryStr = `
           SELECT i.*, c.name as client_name, s.description as series_name, ws.title as work_site_title
           FROM invoices i 
           LEFT JOIN clients c ON i.client_id = c.id 
           LEFT JOIN fiscal_series s ON i.series_id = s.id
           LEFT JOIN work_sites ws ON i.work_site_id = ws.id
-          ORDER BY i.created_at DESC
-        `).all();
+      `;
+      const params: any[] = [];
+      if (empresa_id) {
+        queryStr += " WHERE i.empresa_id = ?";
+        params.push(empresa_id);
+      }
+      queryStr += " ORDER BY i.created_at DESC";
+      
+      const invoices = db.prepare(queryStr).all(...params);
       console.log(`Fetched ${invoices.length} documents from SQLite`);
       res.json(invoices);
     } catch (error) {
@@ -875,6 +1167,141 @@ async function startServer() {
     } else {
       db.prepare("UPDATE invoices SET is_certified = 1 WHERE id = ?").run(id);
       res.json({ success: true });
+    }
+  });
+
+  app.post("/api/invoices/:id/cancel", async (req, res) => {
+    const { id } = req.params;
+    try {
+      let invoice: any;
+      if (supabaseEnabled) {
+        const { data } = await supabase.from("invoices").select("*, invoice_items(*)").eq("id", id).single();
+        invoice = data;
+      } else {
+        invoice = db.prepare("SELECT * FROM invoices WHERE id = ?").get(id);
+        if (invoice) {
+          invoice.items = db.prepare("SELECT * FROM invoice_items WHERE invoice_id = ?").all(id);
+        }
+      }
+
+      if (!invoice) return res.status(404).json({ error: "Invoice not found" });
+      if (!invoice.is_certified) return res.status(400).json({ error: "Only certified documents can be canceled" });
+
+      if (supabaseEnabled) {
+        await supabase.from("invoices").update({ status: 'anulado', is_anulado: 1 }).eq("id", id);
+      } else {
+        db.prepare("UPDATE invoices SET status = 'anulado', is_anulado = 1 WHERE id = ?").run(id);
+      }
+
+      for (const item of (invoice.items || invoice.invoice_items || [])) {
+        if (item.product_id) {
+          if (supabaseEnabled) {
+            const { data: product } = await supabase.from("products").select("stock_quantity").eq("id", item.product_id).single();
+            if (product) {
+              await supabase.from("products").update({ stock_quantity: product.stock_quantity + item.quantity }).eq("id", item.product_id);
+            }
+          } else {
+            db.prepare("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?").run(item.quantity, item.product_id);
+          }
+        }
+      }
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to cancel document" });
+    }
+  });
+
+  app.post("/api/invoices/:id/clone", async (req, res) => {
+    const { id } = req.params;
+    try {
+      let original: any;
+      if (supabaseEnabled) {
+        const { data } = await supabase.from("invoices").select("*, invoice_items(*)").eq("id", id).single();
+        original = data;
+      } else {
+        original = db.prepare("SELECT * FROM invoices WHERE id = ?").get(id);
+        if (original) {
+          original.items = db.prepare("SELECT * FROM invoice_items WHERE invoice_id = ?").all(id);
+        }
+      }
+      if (!original) return res.status(404).json({ error: "Original invoice not found" });
+      res.json(original);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to clone document" });
+    }
+  });
+
+  app.post("/api/receipts", async (req, res) => {
+    const { invoice_id, empresa_id, amount, payment_method, cash_box, date } = req.body;
+    try {
+      const lastReceipt = db.prepare("SELECT receipt_number FROM receipts WHERE empresa_id = ? ORDER BY id DESC LIMIT 1").get(empresa_id);
+      let nextNum = 1;
+      if (lastReceipt && lastReceipt.receipt_number) {
+        const numMatch = lastReceipt.receipt_number.match(/\d+$/);
+        if (numMatch) nextNum = parseInt(numMatch[0]) + 1;
+      }
+      const receipt_number = `RC${String(nextNum).padStart(3, '0')}`;
+
+      if (supabaseEnabled) {
+        await supabase.from("receipts").insert([{ invoice_id, empresa_id, receipt_number, amount, payment_method, cash_box, date }]);
+      } else {
+        db.prepare(`
+          INSERT INTO receipts (invoice_id, empresa_id, receipt_number, amount, payment_method, cash_box, date)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(invoice_id, empresa_id, receipt_number, amount, payment_method, cash_box, date);
+      }
+
+      let invoice: any;
+      if (supabaseEnabled) {
+        const { data } = await supabase.from("invoices").select("total").eq("id", invoice_id).single();
+        const { data: receipts } = await supabase.from("receipts").select("amount").eq("invoice_id", invoice_id);
+        invoice = data;
+        const totalPaid = receipts?.reduce((sum, r) => sum + r.amount, 0) || 0;
+        const newStatus = totalPaid >= invoice.total ? 'paid' : 'partial';
+        await supabase.from("invoices").update({ payment_status: newStatus }).eq("id", invoice_id);
+      } else {
+        invoice = db.prepare("SELECT total FROM invoices WHERE id = ?").get(invoice_id);
+        const totalPaid = db.prepare("SELECT SUM(amount) as total FROM receipts WHERE invoice_id = ?").get(invoice_id).total || 0;
+        const newStatus = totalPaid >= invoice.total ? 'paid' : 'partial';
+        db.prepare("UPDATE invoices SET payment_status = ? WHERE id = ?").run(newStatus, invoice_id);
+      }
+      res.json({ success: true, receipt_number });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create receipt" });
+    }
+  });
+
+  app.get("/api/invoices/:id/receipts", async (req, res) => {
+    const { id } = req.params;
+    try {
+      if (supabaseEnabled) {
+        const { data } = await supabase.from("receipts").select("*").eq("invoice_id", id);
+        res.json(data);
+      } else {
+        const receipts = db.prepare("SELECT * FROM receipts WHERE invoice_id = ?").all(id);
+        res.json(receipts);
+      }
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch receipts" });
+    }
+  });
+
+  app.put("/api/invoices/:id/partial", async (req, res) => {
+    const { id } = req.params;
+    const { due_date, payment_method, cash_box, work_site_id } = req.body;
+    try {
+      if (supabaseEnabled) {
+        await supabase.from("invoices").update({ due_date, payment_method, cash_box, work_site_id }).eq("id", id);
+      } else {
+        db.prepare(`
+          UPDATE invoices 
+          SET due_date = ?, payment_method = ?, cash_box = ?, work_site_id = ?
+          WHERE id = ?
+        `).run(due_date, payment_method, cash_box, work_site_id, id);
+      }
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update document" });
     }
   });
 
@@ -989,30 +1416,73 @@ async function startServer() {
     }
   });
 
-  app.get("/api/work-sites/:id/movements", (req, res) => {
-    const rows = db.prepare(`
-      SELECT * FROM work_site_movements 
-      WHERE work_site_id = ? 
-      ORDER BY date ASC, created_at ASC
-    `).all(req.params.id);
+  app.get("/api/work-sites/:id/movements", async (req, res) => {
+    const { id } = req.params;
+    const empresa_id = req.query.empresa_id;
+
+    if (supabaseEnabled) {
+      let query = supabase.from("work_site_movements").select("*").eq("work_site_id", id);
+      if (empresa_id) {
+        query = query.eq("empresa_id", empresa_id);
+      }
+      const { data, error } = await query.order("date", { ascending: true }).order("created_at", { ascending: true });
+      if (!error) return res.json(data);
+      console.warn("Supabase error in /api/work-sites/:id/movements, falling back to SQLite:", error.message);
+    }
+
+    let queryStr = "SELECT * FROM work_site_movements WHERE work_site_id = ?";
+    const params: any[] = [id];
+    if (empresa_id) {
+      queryStr += " AND empresa_id = ?";
+      params.push(empresa_id);
+    }
+    queryStr += " ORDER BY date ASC, created_at ASC";
+
+    const rows = db.prepare(queryStr).all(...params);
     res.json(rows);
   });
 
-  app.post("/api/work-sites/:id/movements", (req, res) => {
-    const { date, doc_no, company, description, debit, credit } = req.body;
+  app.post("/api/work-sites/:id/movements", async (req, res) => {
+    const { date, doc_no, company, description, debit, credit, empresa_id } = req.body;
     const work_site_id = req.params.id;
 
     // Calculate new balance
-    const lastMovement = db.prepare("SELECT balance FROM work_site_movements WHERE work_site_id = ? ORDER BY date DESC, created_at DESC LIMIT 1").get(work_site_id);
-    const currentBalance = lastMovement ? lastMovement.balance : 0;
-    const newBalance = currentBalance + (credit || 0) - (debit || 0);
+    let currentBalance = 0;
+    if (supabaseEnabled) {
+      const { data, error } = await supabase
+        .from("work_site_movements")
+        .select("balance")
+        .eq("work_site_id", work_site_id)
+        .order("date", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (!error && data && data.length > 0) {
+        currentBalance = data[0].balance;
+      }
+    } else {
+      const lastMovement = db.prepare("SELECT balance FROM work_site_movements WHERE work_site_id = ? ORDER BY date DESC, created_at DESC LIMIT 1").get(work_site_id);
+      if (lastMovement) {
+        currentBalance = lastMovement.balance;
+      }
+    }
 
-    const info = db.prepare(`
-      INSERT INTO work_site_movements (work_site_id, date, doc_no, company, description, debit, credit, balance)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(work_site_id, date, doc_no, company, description, debit || 0, credit || 0, newBalance);
-    
-    res.json({ id: info.lastInsertRowid, balance: newBalance });
+    const newBalance = currentBalance + (Number(credit) || 0) - (Number(debit) || 0);
+
+    if (supabaseEnabled) {
+      const { data, error } = await supabase
+        .from("work_site_movements")
+        .insert([{ work_site_id, date, doc_no, company, description, debit: debit || 0, credit: credit || 0, balance: newBalance, empresa_id }])
+        .select();
+      if (error) return res.status(500).json({ error: error.message });
+      res.json({ id: data[0].id, balance: newBalance });
+    } else {
+      const info = db.prepare(`
+        INSERT INTO work_site_movements (work_site_id, date, doc_no, company, description, debit, credit, balance, empresa_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(work_site_id, date, doc_no, company, description, debit || 0, credit || 0, newBalance, empresa_id);
+      
+      res.json({ id: info.lastInsertRowid, balance: newBalance });
+    }
   });
 
   app.get("/api/invoices/:id", (req, res) => {
@@ -1038,10 +1508,27 @@ async function startServer() {
         service_date, service_location, cash_box, payment_method, series_id
       } = req.body;
 
+      if (!items || items.length === 0) {
+        return res.status(400).json({ error: "A fatura deve conter pelo menos um item." });
+      }
+
     // Normalize IDs
     const normalizedSeriesId = series_id === '' ? null : series_id;
     const normalizedWorkSiteId = work_site_id === '' ? null : work_site_id;
     
+    // Check client NIF status
+    let client;
+    if (supabaseEnabled) {
+      const { data, error } = await supabase.from("clients").select("estado_nif").eq("id", client_id).single();
+      if (!error) client = data;
+    } else {
+      client = db.prepare("SELECT estado_nif FROM clients WHERE id = ?").get(client_id);
+    }
+    
+    if (client && client.estado_nif === 'suspenso') {
+      return res.status(400).json({ error: "Não é possível emitir fatura: O NIF do cliente está suspenso." });
+    }
+
     // Get Series info
     let seriesDesc = 'A';
     if (normalizedSeriesId) {
@@ -1725,6 +2212,149 @@ async function startServer() {
     }
   });
 
+  app.get("/api/stock/movements", async (req, res) => {
+    const { empresa_id, product_id, warehouse_id } = req.query;
+    try {
+      if (supabaseEnabled) {
+        let query = supabase.from("stock_movements").select("*, products(name, referente), warehouses(name)");
+        if (empresa_id) query = query.eq("empresa_id", empresa_id);
+        if (product_id) query = query.eq("product_id", product_id);
+        if (warehouse_id) query = query.eq("warehouse_id", warehouse_id);
+        const { data, error } = await query.order("created_at", { ascending: false });
+        if (!error) return res.json(data);
+      }
+      let sql = `
+        SELECT sm.*, p.name as product_name, p.referente as product_ref, w.name as warehouse_name 
+        FROM stock_movements sm
+        JOIN products p ON sm.product_id = p.id
+        LEFT JOIN warehouses w ON sm.warehouse_id = w.id
+      `;
+      const params = [];
+      const conditions = [];
+      if (empresa_id) {
+        conditions.push("sm.empresa_id = ?");
+        params.push(empresa_id);
+      }
+      if (product_id) {
+        conditions.push("sm.product_id = ?");
+        params.push(product_id);
+      }
+      if (warehouse_id) {
+        conditions.push("sm.warehouse_id = ?");
+        params.push(warehouse_id);
+      }
+      if (conditions.length > 0) {
+        sql += " WHERE " + conditions.join(" AND ");
+      }
+      sql += " ORDER BY sm.created_at DESC";
+      const rows = db.prepare(sql).all(...params);
+      res.json(rows);
+    } catch (error) {
+      res.status(500).send(String(error));
+    }
+  });
+
+  app.post("/api/stock/movements", async (req, res) => {
+    const { product_id, type, quantity, warehouse_id, to_warehouse_id, description, empresa_id, unit_price } = req.body;
+    try {
+      // 1. Get current stock
+      let currentStock = 0;
+      if (supabaseEnabled) {
+        const { data } = await supabase.from("products").select("stock_quantity").eq("id", product_id).single();
+        currentStock = data?.stock_quantity || 0;
+      } else {
+        const row = db.prepare("SELECT stock_quantity FROM products WHERE id = ?").get(product_id) as { stock_quantity: number };
+        currentStock = row?.stock_quantity || 0;
+      }
+
+      const previousStock = currentStock;
+      let newStock = currentStock;
+
+      if (type === 'entry') newStock += Number(quantity);
+      else if (type === 'exit') newStock -= Number(quantity);
+      else if (type === 'adjustment') newStock = Number(quantity);
+      else if (type === 'adjustment_plus') newStock += Number(quantity);
+      else if (type === 'adjustment_minus') newStock -= Number(quantity);
+      else if (type === 'transfer') {
+        newStock -= Number(quantity);
+        // Handle destination stock
+        if (to_warehouse_id) {
+          if (supabaseEnabled) {
+            const { data: product } = await supabase.from("products").select("*").eq("id", product_id).single();
+            if (product) {
+              const { data: destProduct } = await supabase.from("products")
+                .select("*")
+                .eq("name", product.name)
+                .eq("warehouse_id", to_warehouse_id)
+                .single();
+              
+              if (destProduct) {
+                await supabase.from("products").update({ stock_quantity: destProduct.stock_quantity + Number(quantity) }).eq("id", destProduct.id);
+              } else {
+                await supabase.from("products").insert([{
+                  ...product,
+                  id: undefined,
+                  warehouse_id: to_warehouse_id,
+                  stock_quantity: Number(quantity),
+                  created_at: undefined
+                }]);
+              }
+            }
+          } else {
+            const product = db.prepare("SELECT * FROM products WHERE id = ?").get(product_id) as any;
+            if (product) {
+              const destProduct = db.prepare("SELECT * FROM products WHERE name = ? AND warehouse_id = ?").get(product.name, to_warehouse_id) as any;
+              if (destProduct) {
+                db.prepare("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?").run(Number(quantity), destProduct.id);
+              } else {
+                db.prepare(`
+                  INSERT INTO products (name, referente, price, cost_price, stock_quantity, min_stock, warehouse_id, unit, category, barcode, image, empresa_id)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `).run(product.name, product.referente, product.price, product.cost_price, Number(quantity), product.min_stock, to_warehouse_id, product.unit, product.category, product.barcode, product.image, empresa_id);
+              }
+            }
+          }
+        }
+      }
+
+      // 2. Update product stock (source)
+      if (supabaseEnabled) {
+        await supabase.from("products").update({ stock_quantity: newStock }).eq("id", product_id);
+        const { data, error } = await supabase.from("stock_movements").insert([{
+          product_id, type, quantity, previous_stock: previousStock, current_stock: newStock,
+          warehouse_id, to_warehouse_id, description, empresa_id, unit_price
+        }]).select();
+        if (error) throw error;
+        res.json(data[0]);
+      } else {
+        db.prepare("UPDATE products SET stock_quantity = ? WHERE id = ?").run(newStock, product_id);
+        const info = db.prepare(`
+          INSERT INTO stock_movements (product_id, type, quantity, previous_stock, current_stock, warehouse_id, to_warehouse_id, description, empresa_id, unit_price)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(product_id, type, quantity, previousStock, newStock, warehouse_id, to_warehouse_id, description, empresa_id, unit_price || 0);
+        res.json({ id: info.lastInsertRowid });
+      }
+    } catch (error) {
+      res.status(500).send(String(error));
+    }
+  });
+
+  app.put("/api/products/:id/price", async (req, res) => {
+    const { id } = req.params;
+    const { price, cost_price } = req.body;
+    try {
+      if (supabaseEnabled) {
+        const { error } = await supabase.from("products").update({ price, cost_price }).eq("id", id);
+        if (error) throw error;
+      } else {
+        db.prepare("UPDATE products SET price = ?, cost_price = ? WHERE id = ?").run(price, cost_price, id);
+      }
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).send(String(error));
+    }
+  });
+
   app.get("/api/warehouses", (req, res) => {
     const warehouses = db.prepare("SELECT * FROM warehouses ORDER BY name ASC").all();
     res.json(warehouses);
@@ -1743,8 +2373,16 @@ async function startServer() {
 
   // Caixa Endpoints
   app.get("/api/caixas", (req, res) => {
+    const { empresa_id } = req.query;
     try {
-      const caixas = db.prepare("SELECT * FROM caixas ORDER BY name ASC").all();
+      let query = "SELECT * FROM caixas";
+      const params: any[] = [];
+      if (empresa_id) {
+        query += " WHERE empresa_id = ?";
+        params.push(empresa_id);
+      }
+      query += " ORDER BY name ASC";
+      const caixas = db.prepare(query).all(...params);
       res.json(caixas);
     } catch (error) {
       res.status(500).json({ error: String(error) });
@@ -1752,9 +2390,18 @@ async function startServer() {
   });
 
   app.post("/api/caixas", (req, res) => {
-    const { id, name, account, responsible, user, users, initialBalance, currentBalance, obs } = req.body;
+    const { id, name, account, responsible, user, users, initialBalance, currentBalance, obs, bankName, status, empresa_id } = req.body;
     try {
-      db.prepare("INSERT INTO caixas (id, name, account, responsible, user, users, initialBalance, currentBalance, obs) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run(id, name, account, responsible, user, users || 1, initialBalance, currentBalance, obs);
+      db.prepare("INSERT INTO caixas (id, name, account, responsible, user, users, initialBalance, currentBalance, obs, bankName, status, empresa_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(id, name, account, responsible, user, users || 1, initialBalance, currentBalance, obs, bankName, status || 'aberto', empresa_id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: String(error) });
+    }
+  });
+
+  app.post("/api/caixas/:id/close", (req, res) => {
+    try {
+      db.prepare("UPDATE caixas SET status = 'fechado' WHERE id = ?").run(req.params.id);
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: String(error) });
@@ -1762,8 +2409,16 @@ async function startServer() {
   });
 
   app.get("/api/caixa-movements", (req, res) => {
+    const { empresa_id } = req.query;
     try {
-      const movements = db.prepare("SELECT * FROM caixa_movements ORDER BY date DESC").all();
+      let query = "SELECT * FROM caixa_movements";
+      const params: any[] = [];
+      if (empresa_id) {
+        query += " WHERE empresa_id = ?";
+        params.push(empresa_id);
+      }
+      query += " ORDER BY date DESC";
+      const movements = db.prepare(query).all(...params);
       res.json(movements);
     } catch (error) {
       res.status(500).json({ error: String(error) });
@@ -1771,10 +2426,10 @@ async function startServer() {
   });
 
   app.post("/api/caixa-movements", (req, res) => {
-    const { id, caixaId, type, amount, description, date, targetCaixaId } = req.body;
+    const { id, caixaId, type, amount, description, date, targetCaixaId, empresa_id } = req.body;
     try {
       const transaction = db.transaction(() => {
-        db.prepare("INSERT INTO caixa_movements (id, caixaId, type, amount, description, date, targetCaixaId) VALUES (?, ?, ?, ?, ?, ?, ?)").run(id, caixaId, type, amount, description, date, targetCaixaId);
+        db.prepare("INSERT INTO caixa_movements (id, caixaId, type, amount, description, date, targetCaixaId, empresa_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(id, caixaId, type, amount, description, date, targetCaixaId, empresa_id);
         
         if (type === 'entrada') {
           db.prepare("UPDATE caixas SET currentBalance = currentBalance + ? WHERE id = ?").run(amount, caixaId);
@@ -1951,15 +2606,29 @@ async function startServer() {
   // Financial Endpoints
   app.get("/api/transactions", async (req, res) => {
     console.log("GET /api/transactions called");
+    const { empresa_id } = req.query;
     try {
       if (supabaseEnabled) {
-        const { data, error } = await supabase.from("transactions").select("*").order("date", { ascending: false });
+        let query = supabase.from("transactions").select("*");
+        if (empresa_id) {
+          query = query.eq("empresa_id", empresa_id);
+        }
+        const { data, error } = await query.order("date", { ascending: false });
         if (!error) {
           return res.json(data);
         }
         console.error("Supabase error in /api/transactions, falling back to SQLite:", error);
       }
-      const transactions = db.prepare("SELECT * FROM transactions ORDER BY date DESC").all();
+      
+      let queryStr = "SELECT * FROM transactions";
+      const params: any[] = [];
+      if (empresa_id) {
+        queryStr += " WHERE empresa_id = ?";
+        params.push(empresa_id);
+      }
+      queryStr += " ORDER BY date DESC";
+      
+      const transactions = db.prepare(queryStr).all(...params);
       res.json(transactions);
     } catch (error) {
       console.error("Error in /api/transactions:", error);
@@ -1984,16 +2653,16 @@ for (const col of transactionColumnsToAdd) {
 }
 
   app.post("/api/transactions", async (req, res) => {
-    const { type, category, amount, description, payment_method, reference, observation, date } = req.body;
+    const { type, category, amount, description, payment_method, reference, observation, date, empresa_id } = req.body;
     if (supabaseEnabled) {
       const { data, error } = await supabase.from("transactions").insert([{ 
-        type, category, amount, description, payment_method, reference, observation, date 
+        type, category, amount, description, payment_method, reference, observation, date, empresa_id 
       }]).select();
       if (error) return res.status(500).json({ error: error.message });
       res.json({ id: data[0].id });
     } else {
-      const info = db.prepare("INSERT INTO transactions (type, category, amount, description, payment_method, reference, observation, date) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(
-        type, category, amount, description, payment_method, reference, observation, date || new Date().toISOString()
+      const info = db.prepare("INSERT INTO transactions (type, category, amount, description, payment_method, reference, observation, date, empresa_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
+        type, category, amount, description, payment_method, reference, observation, date || new Date().toISOString(), empresa_id
       );
       res.json({ id: info.lastInsertRowid });
     }
@@ -2212,6 +2881,7 @@ for (const col of transactionColumnsToAdd) {
 
   app.get("/api/reports/profit-loss", async (req, res) => {
     const year = req.query.year || new Date().getFullYear();
+    const { empresa_id } = req.query;
     try {
       const months = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
       const reportData = await Promise.all(months.map(async (month) => {
@@ -2219,32 +2889,40 @@ for (const col of transactionColumnsToAdd) {
         const endDate = `${year}-${String(month).padStart(2, '0')}-31`;
 
         // Income from Invoices
-        const income = db.prepare(`
-          SELECT SUM(total) as total 
-          FROM invoices 
-          WHERE date >= ? AND date <= ? AND status != 'cancelled'
-        `).get(startDate, endDate) as { total: number | null };
+        let incomeQuery = "SELECT SUM(total) as total FROM invoices WHERE date >= ? AND date <= ? AND status != 'cancelled'";
+        const incomeParams = [startDate, endDate];
+        if (empresa_id) {
+          incomeQuery += " AND empresa_id = ?";
+          incomeParams.push(empresa_id as string);
+        }
+        const income = db.prepare(incomeQuery).get(...incomeParams) as { total: number | null };
 
         // Expenses from Purchases
-        const purchases = db.prepare(`
-          SELECT SUM(total) as total 
-          FROM purchases 
-          WHERE date >= ? AND date <= ? AND status = 'completed'
-        `).get(startDate, endDate) as { total: number | null };
+        let purchasesQuery = "SELECT SUM(total) as total FROM purchases WHERE date >= ? AND date <= ? AND status = 'completed'";
+        const purchasesParams = [startDate, endDate];
+        if (empresa_id) {
+          purchasesQuery += " AND empresa_id = ?";
+          purchasesParams.push(empresa_id as string);
+        }
+        const purchases = db.prepare(purchasesQuery).get(...purchasesParams) as { total: number | null };
 
         // Salaries from Payroll
-        const salaries = db.prepare(`
-          SELECT SUM(amount) as total 
-          FROM payroll 
-          WHERE year = ? AND month = ? AND status = 'paid'
-        `).get(year, String(month)) as { total: number | null };
+        let payrollQuery = "SELECT SUM(amount) as total FROM payroll WHERE year = ? AND month = ? AND status = 'paid'";
+        const payrollParams = [year, String(month)];
+        if (empresa_id) {
+          payrollQuery += " AND empresa_id = ?";
+          payrollParams.push(empresa_id as string);
+        }
+        const salaries = db.prepare(payrollQuery).get(...payrollParams) as { total: number | null };
 
         // Other Expenses from Transactions
-        const otherExpenses = db.prepare(`
-          SELECT SUM(amount) as total 
-          FROM transactions 
-          WHERE date >= ? AND date <= ? AND type = 'expense' AND category NOT IN ('salary', 'purchase')
-        `).get(startDate, endDate) as { total: number | null };
+        let transQuery = "SELECT SUM(amount) as total FROM transactions WHERE date >= ? AND date <= ? AND type = 'expense' AND category NOT IN ('salary', 'purchase')";
+        const transParams = [startDate, endDate];
+        if (empresa_id) {
+          transQuery += " AND empresa_id = ?";
+          transParams.push(empresa_id as string);
+        }
+        const otherExpenses = db.prepare(transQuery).get(...transParams) as { total: number | null };
 
         const facturacaoSImposto = income.total || 0;
         const impostoRecebido = facturacaoSImposto * 0.14;

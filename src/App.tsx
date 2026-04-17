@@ -92,6 +92,7 @@ import {
   Briefcase,
   Table,
   Map,
+  MapPin,
   Monitor,
   LogOut
 } from 'lucide-react';
@@ -122,8 +123,31 @@ import SaftExportForm from './components/SaftExportForm';
 
 // --- Helpers ---
 
+import { supabase } from './services/supabaseClient';
+
+
+const fetchWithAuth = async (url: string, options?: RequestInit) => {
+  const session = await supabase?.auth?.getSession();
+  const token = session?.data?.session?.access_token;
+  
+  const headers = new Headers(options?.headers || {});
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  return fetch(url, { ...options, headers });
+};
+
 const fetchJson = async (url: string, options?: RequestInit) => {
-  const response = await fetch(url, options);
+  const session = await supabase?.auth?.getSession();
+  const token = session?.data?.session?.access_token;
+  
+  const headers = new Headers(options?.headers || {});
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  const response = await fetch(url, { ...options, headers });
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`Failed to fetch ${url}: ${errorText || response.statusText}`);
@@ -270,6 +294,133 @@ const PrintP89 = ({ sale, clientName }: { sale: any, clientName?: string }) => {
 
 // --- Components ---
 
+const WorkplaceModule = ({ onRefresh }: { onRefresh: () => void }) => {
+  const { user } = useAuth();
+  const [workplaces, setWorkplaces] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [name, setName] = useState('');
+  const [location, setLocation] = useState('');
+  const [code, setCode] = useState('');
+
+  const fetchWorkplaces = async () => {
+    try {
+      const data = await fetchJson(`/api/workplaces?company_id=${user?.company_id}`);
+      setWorkplaces(data);
+    } catch (err) {
+      console.error('Error fetching workplaces:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchWorkplaces();
+  }, [user?.company_id]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await fetchJson('/api/workplaces', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, location, code, company_id: user?.company_id })
+      });
+      setName('');
+      setLocation('');
+      setCode('');
+      setShowForm(false);
+      fetchWorkplaces();
+      onRefresh();
+    } catch (err) {
+      console.error('Error creating workplace:', err);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <div className="space-y-1">
+          <h2 className="text-2xl font-bold text-zinc-800 flex items-center gap-3">
+            <MapPin size={24} className="text-[#003366]" />
+            Locais de Trabalho
+          </h2>
+          <p className="text-zinc-500 text-sm">Gestão de obras e locais de prestação de serviços da empresa.</p>
+        </div>
+        <button 
+          onClick={() => setShowForm(true)}
+          className="bg-[#003366] text-white px-6 py-2.5 font-bold text-xs uppercase tracking-widest hover:bg-[#002244] shadow-lg flex items-center gap-2"
+        >
+          <Plus size={18} /> Novo Local
+        </button>
+      </div>
+
+      <div className="bg-white border border-zinc-200 rounded-none shadow-sm overflow-hidden">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-[#003366] text-white text-[11px] uppercase tracking-wider font-bold">
+              <th className="px-6 py-4">Código</th>
+              <th className="px-6 py-4">Nome / Designação</th>
+              <th className="px-6 py-4">Localização</th>
+              <th className="px-6 py-4">Data de Registo</th>
+              <th className="px-6 py-4 text-right">Ações</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-100">
+            {loading ? (
+              <tr><td colSpan={5} className="p-12 text-center text-zinc-400 italic">Carregando...</td></tr>
+            ) : workplaces.length === 0 ? (
+              <tr><td colSpan={5} className="p-12 text-center text-zinc-400 italic">Nenhum local de trabalho registado.</td></tr>
+            ) : workplaces.map((w) => (
+              <tr key={w.id} className="hover:bg-zinc-50 transition-colors text-sm">
+                <td className="px-6 py-4 font-mono text-xs font-bold text-[#003366]">{w.code || 'N/A'}</td>
+                <td className="px-6 py-4 font-bold text-zinc-900">{w.name}</td>
+                <td className="px-6 py-4 text-zinc-600">{w.location || 'N/A'}</td>
+                <td className="px-6 py-4 text-zinc-500">{new Date(w.created_at).toLocaleDateString()}</td>
+                <td className="px-6 py-4 text-right">
+                  <button className="text-zinc-400 hover:text-[#003366]"><MoreHorizontal size={18} /></button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {showForm && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-full max-w-md bg-white p-8 rounded-none shadow-2xl"
+          >
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="font-bold text-[#003366] text-xl uppercase tracking-tight">Novo Local de Trabalho</h3>
+              <button onClick={() => setShowForm(false)} className="text-zinc-400 hover:text-zinc-600">
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Código</label>
+                <input type="text" value={code} onChange={e => setCode(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm" placeholder="Ex: OBRA-001" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Nome do Local</label>
+                <input type="text" required value={name} onChange={e => setName(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm" placeholder="Ex: Edifício Kilamba" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Localização</label>
+                <input type="text" value={location} onChange={e => setLocation(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm" placeholder="Ex: Luanda, Talatona" />
+              </div>
+              <button type="submit" className="w-full bg-[#003366] text-white font-bold py-3 shadow-lg uppercase text-xs tracking-widest mt-4">Registar Local</button>
+            </form>
+          </motion.div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const Sidebar = ({ activeTab, setActiveTab, fiscalYear, setFiscalYear, onToggle }: { 
   activeTab: string, 
   setActiveTab: (t: string) => void, 
@@ -281,8 +432,9 @@ const Sidebar = ({ activeTab, setActiveTab, fiscalYear, setFiscalYear, onToggle 
     { id: 'dashboard', label: 'Visão Geral do Negócio', icon: LayoutDashboard },
     { id: 'pos', label: 'Ponto de Venda', icon: Printer },
     { id: 'invoices', label: 'Faturas', icon: FileText },
-    { id: 'cashier', label: 'Caixa', icon: Printer },
+    { id: 'security', label: 'Segurança Gestão privada', icon: ShieldCheck },
     { id: 'clients', label: 'Clientes', icon: Users },
+    { id: 'workplaces', label: 'Locais de Trabalho', icon: MapPin },
     { id: 'suppliers', label: 'Fornecedores', icon: Truck },
     { id: 'products', label: 'Produtos', icon: Package },
     { id: 'financial', label: 'Financeiro', icon: Download },
@@ -327,13 +479,13 @@ const Sidebar = ({ activeTab, setActiveTab, fiscalYear, setFiscalYear, onToggle 
           <button
             key={item.id}
             onClick={() => setActiveTab(item.id)}
-            className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-none transition-all ${
+            className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-none transition-all mb-1 ${
               activeTab === item.id 
-                ? 'bg-[#003366]/5 text-[#003366] border border-[#003366]/10 font-semibold' 
-                : 'hover:bg-zinc-50 hover:text-zinc-900'
+                ? 'bg-[#003366] text-white font-semibold shadow-md' 
+                : 'bg-[#003366]/90 text-white/90 hover:bg-[#003366] hover:text-white'
             }`}
           >
-            <item.icon size={18} className={activeTab === item.id ? 'text-[#003366]' : 'text-zinc-400'} />
+            <item.icon size={18} className={activeTab === item.id ? 'text-white' : 'text-white/70'} />
             <span className="text-sm">{item.label}</span>
           </button>
         ))}
@@ -382,7 +534,7 @@ const Dashboard = ({
   const pendingCount = stats.pendingCount || 0;
   const clientCount = stats.clientCount || 0;
 
-  const salesByPeriod = issuedDocuments.reduce((acc: any, doc) => {
+  const salesByPeriod = (issuedDocuments || []).reduce((acc: any, doc) => {
     const date = new Date(doc.date).toLocaleDateString('pt-PT', { month: 'short' });
     acc[date] = (acc[date] || 0) + (doc.counter_value || doc.total || 0);
     return acc;
@@ -395,7 +547,7 @@ const Dashboard = ({
     { name: 'Despesas', value: totalExpenses },
   ];
 
-  const docTypes = issuedDocuments.reduce((acc: any, doc) => {
+  const docTypes = (issuedDocuments || []).reduce((acc: any, doc) => {
     const type = doc.document_type || 'Outro';
     acc[type] = (acc[type] || 0) + 1;
     return acc;
@@ -561,7 +713,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
   const handleDismissEmployee = async () => {
     if (!selectedEmployeeForOptions) return;
     try {
-      const res = await fetch(`/api/employees/dismiss/${selectedEmployeeForOptions.id}`, {
+      const res = await fetchWithAuth(`/api/employees/dismiss/${selectedEmployeeForOptions.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(dismissData)
@@ -1041,7 +1193,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
 
   const handleMarkAttendance = async (employeeId: number, status: 'present' | 'absent' | 'late') => {
     try {
-      await fetch('/api/employees/attendance', {
+      await fetchWithAuth('/api/employees/attendance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ employee_id: employeeId, date: attendanceDate, status })
@@ -1054,7 +1206,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
 
   const handleAddAbsence = async (employeeId: number, startDate: string, endDate: string, reason: string) => {
     try {
-      await fetch('/api/employees/absences', {
+      await fetchWithAuth('/api/employees/absences', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ employee_id: employeeId, start_date: startDate, end_date: endDate, reason })
@@ -1068,7 +1220,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
   const handleDeleteProfession = async (id: number) => {
     if (!confirm('Tem a certeza que deseja eliminar esta profissão?')) return;
     try {
-      await fetch(`/api/professions/${id}`, { method: 'DELETE' });
+      await fetchWithAuth(`/api/professions/${id}`, { method: 'DELETE' });
       fetchHRData();
     } catch (err) {
       console.error('Error deleting profession:', err);
@@ -1078,7 +1230,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
   const handleDeleteEmployee = async (id: number) => {
     if (!confirm('Tem a certeza que deseja eliminar este funcionário?')) return;
     try {
-      await fetch(`/api/employees/${id}`, { method: 'DELETE' });
+      await fetchWithAuth(`/api/employees/${id}`, { method: 'DELETE' });
       fetchHRData();
       onRefresh();
     } catch (err) {
@@ -1202,7 +1354,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
     };
 
     try {
-      const res = await fetch('/api/payroll', {
+      const res = await fetchWithAuth('/api/payroll', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -2941,45 +3093,45 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
                     <tr className="bg-zinc-50 font-black text-[#003366] text-[10px] uppercase tracking-widest">
                       <td className="px-4 py-4 border-r border-zinc-200 sticky left-0 bg-zinc-50 z-10"></td>
                       <td className="px-4 py-4 border-r border-zinc-200 sticky left-10 bg-zinc-50 z-10">TOTAL GERAL</td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.diasTrabalho || 22), 0)}</td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.diasFolga || 8), 0)}</td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.faltasJustificadas || 0), 0)}</td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.faltasInjustificadas || 0), 0)}</td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.ferias || 0), 0)}</td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.horasExtras || 0), 0)}</td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.horasPerdidas || 0), 0)}</td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{(localEmployees || []).reduce((sum, emp) => sum + (payrollInputs[emp.id]?.diasTrabalho || 22), 0)}</td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{(localEmployees || []).reduce((sum, emp) => sum + (payrollInputs[emp.id]?.diasFolga || 8), 0)}</td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{(localEmployees || []).reduce((sum, emp) => sum + (payrollInputs[emp.id]?.faltasJustificadas || 0), 0)}</td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{(localEmployees || []).reduce((sum, emp) => sum + (payrollInputs[emp.id]?.faltasInjustificadas || 0), 0)}</td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{(localEmployees || []).reduce((sum, emp) => sum + (payrollInputs[emp.id]?.ferias || 0), 0)}</td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{(localEmployees || []).reduce((sum, emp) => sum + (payrollInputs[emp.id]?.horasExtras || 0), 0)}</td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{(localEmployees || []).reduce((sum, emp) => sum + (payrollInputs[emp.id]?.horasPerdidas || 0), 0)}</td>
                       <td className="px-2 py-4 border-r border-zinc-200 text-center">
-                        {formatCurrency(localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.premios || 0), 0)).replace('€', '')} Kz
+                        {formatCurrency((localEmployees || []).reduce((sum, emp) => sum + (payrollInputs[emp.id]?.premios || 0), 0)).replace('€', '')} Kz
                       </td>
                       <td className="px-2 py-4 border-r border-zinc-200 text-center">
-                        {formatCurrency(localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.gratificacoes || 0), 0)).replace('€', '')} Kz
+                        {formatCurrency((localEmployees || []).reduce((sum, emp) => sum + (payrollInputs[emp.id]?.gratificacoes || 0), 0)).replace('€', '')} Kz
                       </td>
                       <td className="px-2 py-4 border-r border-zinc-200 text-center">
-                        {formatCurrency(localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.abonos || 0), 0)).replace('€', '')} Kz
+                        {formatCurrency((localEmployees || []).reduce((sum, emp) => sum + (payrollInputs[emp.id]?.abonos || 0), 0)).replace('€', '')} Kz
                       </td>
                       <td className="px-2 py-4 border-r border-zinc-200 text-center">
-                        {formatCurrency(localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.subsidioNatal || 0), 0)).replace('€', '')} Kz
+                        {formatCurrency((localEmployees || []).reduce((sum, emp) => sum + (payrollInputs[emp.id]?.subsidioNatal || 0), 0)).replace('€', '')} Kz
                       </td>
                       <td className="px-2 py-4 border-r border-zinc-200 text-center">
-                        {formatCurrency(localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.alojamento || 0), 0)).replace('€', '')} Kz
+                        {formatCurrency((localEmployees || []).reduce((sum, emp) => sum + (payrollInputs[emp.id]?.alojamento || 0), 0)).replace('€', '')} Kz
                       </td>
                       <td className="px-2 py-4 border-r border-zinc-200 text-center">
-                        {formatCurrency(localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.subsidioTransporte || 0), 0)).replace('€', '')} Kz
+                        {formatCurrency((localEmployees || []).reduce((sum, emp) => sum + (payrollInputs[emp.id]?.subsidioTransporte || 0), 0)).replace('€', '')} Kz
                       </td>
                       <td className="px-2 py-4 border-r border-zinc-200 text-center">
-                        {formatCurrency(localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.subsidioAlimentacao || 0), 0)).replace('€', '')} Kz
+                        {formatCurrency((localEmployees || []).reduce((sum, emp) => sum + (payrollInputs[emp.id]?.subsidioAlimentacao || 0), 0)).replace('€', '')} Kz
                       </td>
                       <td className="px-2 py-4 border-r border-zinc-200 text-center">
-                        {formatCurrency(localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.outrosSubsidios || 0), 0))}
+                        {formatCurrency((localEmployees || []).reduce((sum, emp) => sum + (payrollInputs[emp.id]?.outrosSubsidios || 0), 0))}
                       </td>
                       <td className="px-2 py-4 border-r border-zinc-200 text-center">
-                        {formatCurrency(localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.adiantamentos || 0), 0))}
+                        {formatCurrency((localEmployees || []).reduce((sum, emp) => sum + (payrollInputs[emp.id]?.adiantamentos || 0), 0))}
                       </td>
                       <td className="px-2 py-4 border-r border-zinc-200 text-center">
-                        {formatCurrency(localEmployees.reduce((sum, emp) => sum + (payrollInputs[emp.id]?.acertos || 0), 0))}
+                        {formatCurrency((localEmployees || []).reduce((sum, emp) => sum + (payrollInputs[emp.id]?.acertos || 0), 0))}
                       </td>
                       <td className="px-4 py-4 border-r border-zinc-200 text-center text-[#F27D26] sticky right-0 bg-zinc-50 z-10">
-                        {formatCurrency(localEmployees.reduce((sum, emp) => {
+                        {formatCurrency((localEmployees || []).reduce((sum, emp) => {
                           const inputs = payrollInputs[emp.id] || { 
                             premios: 0, gratificacoes: 0, abonos: 0, subsidioNatal: 0, alojamento: 0, outrosSubsidios: 0,
                             faltasJustificadas: 0, faltasInjustificadas: 0, ferias: 0, horasExtras: 0, horasPerdidas: 0,
@@ -3016,7 +3168,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
               <div className="text-sm font-bold text-zinc-700">Funcionários: {localEmployees.length}</div>
               <div className="flex justify-between items-center border-t border-zinc-200 pt-4">
                 <div className="text-sm font-black text-[#003366] uppercase tracking-widest">
-                  Total Processado: <span className="text-lg">{formatCurrency(localEmployees.reduce((sum, emp) => {
+                  Total Processado: <span className="text-lg">{formatCurrency((localEmployees || []).reduce((sum, emp) => {
                     const inputs = payrollInputs[emp.id] || { 
                       premios: 0, gratificacoes: 0, abonos: 0, subsidioNatal: 0, alojamento: 0, outrosSubsidios: 0,
                       faltasJustificadas: 0, faltasInjustificadas: 0, ferias: 0, horasExtras: 0, horasPerdidas: 0,
@@ -3169,7 +3321,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
                         alert('Por favor preencha todos os campos');
                         return;
                       }
-                      await fetch('/api/professions', {
+                      await fetchWithAuth('/api/professions', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ 
@@ -4608,16 +4760,16 @@ const CertifyModal = ({ document, onConfirm, onClose }: {
 
 
 
-const ProfitLossReport = ({ fiscalYear, empresa_id }: { fiscalYear: string, empresa_id?: string }) => {
+const ProfitLossReport = ({ fiscalYear, company_id }: { fiscalYear: string, company_id?: string }) => {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchJson(`/api/reports/profit-loss?year=${fiscalYear}${empresa_id ? `&empresa_id=${empresa_id}` : ''}`)
+    fetchJson(`/api/reports/profit-loss?year=${fiscalYear}${company_id ? `&company_id=${company_id}` : ''}`)
       .then(setData)
       .catch(err => console.error('Error fetching profit-loss report:', err))
       .finally(() => setLoading(false));
-  }, [fiscalYear, empresa_id]);
+  }, [fiscalYear, company_id]);
 
   const months = [
     'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -4630,7 +4782,7 @@ const ProfitLossReport = ({ fiscalYear, empresa_id }: { fiscalYear: string, empr
 
   if (loading) return <div className="p-12 text-center text-zinc-400 italic">Carregando relatório...</div>;
 
-  const totals = data.reduce((acc, curr) => {
+  const totals = (data || []).reduce((acc, curr) => {
     Object.keys(curr).forEach(key => {
       if (key !== 'month') {
         acc[key] = (acc[key] || 0) + curr[key];
@@ -4835,18 +4987,18 @@ const OtherMovements = ({ transactions, onRefresh, caixas, user }: { transaction
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [searchTerm, setSearchTerm] = useState('');
 
-  const filteredTransactions = transactions.filter(t => 
+  const filteredTransactions = (transactions || []).filter(t => 
     t.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
     t.category.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-  const totalExpense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+  const totalIncome = (transactions || []).filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+  const totalExpense = (transactions || []).filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
   const balance = totalIncome - totalExpense;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await fetch('/api/transactions', {
+    const res = await fetchWithAuth('/api/transactions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
@@ -4858,7 +5010,7 @@ const OtherMovements = ({ transactions, onRefresh, caixas, user }: { transaction
         reference,
         observation,
         date,
-        empresa_id: user?.empresa_id
+        company_id: user?.company_id
       })
     });
     if (res.ok) {
@@ -5115,7 +5267,7 @@ const FinancialModule = ({
 
   const fetchIssuedDocuments = () => {
     setLoading(true);
-    fetchJson(`/api/issued-documents?empresa_id=${user?.empresa_id}`)
+    fetchJson(`/api/issued-documents?company_id=${user?.company_id}`)
       .then(setIssuedDocuments)
       .catch(err => console.error('Error fetching issued documents:', err))
       .finally(() => setLoading(false));
@@ -5123,7 +5275,7 @@ const FinancialModule = ({
 
   const fetchTransactions = () => {
     setLoading(true);
-    fetchJson(`/api/transactions?empresa_id=${user?.empresa_id}`)
+    fetchJson(`/api/transactions?company_id=${user?.company_id}`)
       .then(setTransactions)
       .catch(err => console.error('Error fetching transactions:', err))
       .finally(() => setLoading(false));
@@ -5139,10 +5291,10 @@ const FinancialModule = ({
 
   const handleTransactionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await fetch('/api/transactions', {
+    await fetchWithAuth('/api/transactions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ description, amount: Number(amount), type, category: 'manual', empresa_id: user?.empresa_id })
+      body: JSON.stringify({ description, amount: Number(amount), type, category: 'manual', company_id: user?.company_id })
     });
     setDescription(''); setAmount(''); setShowForm(false);
     fetchTransactions();
@@ -5226,7 +5378,7 @@ const FinancialModule = ({
       )}
 
       {activeSubTab === 'profit-loss-report' && (
-        <ProfitLossReport fiscalYear="2024" empresa_id={user?.empresa_id} />
+        <ProfitLossReport fiscalYear="2024" company_id={user?.company_id} />
       )}
 
       {activeSubTab === 'sales-reports' && (
@@ -5316,11 +5468,11 @@ const FinancialModule = ({
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <span className="text-zinc-500 text-sm">Vendas de Produtos</span>
-                  <span className="font-bold text-emerald-600">{formatCurrency(transactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0))}</span>
+                  <span className="font-bold text-emerald-600">{formatCurrency((transactions || []).filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0))}</span>
                 </div>
                 <div className="border-t border-zinc-100 pt-4 flex justify-between items-center font-bold">
                   <span className="text-zinc-900">Total Proveitos</span>
-                  <span className="text-[#003366]">{formatCurrency(transactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0))}</span>
+                  <span className="text-[#003366]">{formatCurrency((transactions || []).filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0))}</span>
                 </div>
               </div>
             </div>
@@ -5329,11 +5481,11 @@ const FinancialModule = ({
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <span className="text-zinc-500 text-sm">Despesas Operacionais</span>
-                  <span className="font-bold text-red-600">{formatCurrency(transactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0))}</span>
+                  <span className="font-bold text-red-600">{formatCurrency((transactions || []).filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0))}</span>
                 </div>
                 <div className="border-t border-zinc-100 pt-4 flex justify-between items-center font-bold">
                   <span className="text-zinc-900">Total Custos</span>
-                  <span className="text-red-600">{formatCurrency(transactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0))}</span>
+                  <span className="text-red-600">{formatCurrency((transactions || []).filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0))}</span>
                 </div>
               </div>
             </div>
@@ -5342,7 +5494,7 @@ const FinancialModule = ({
             <h3 className="text-sm font-bold text-[#003366] uppercase tracking-wider mb-4">Resultado Líquido</h3>
             <div className="flex items-center gap-4">
               <div className="text-3xl font-bold text-[#003366]">
-                {formatCurrency(transactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0) - transactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0))}
+                {formatCurrency((transactions || []).filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0) - (transactions || []).filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0))}
               </div>
               <div className="text-xs text-zinc-400 uppercase font-bold tracking-widest">Margem Operacional</div>
             </div>
@@ -5917,8 +6069,8 @@ const POSModule = ({ products, onRefresh, caixas }: { products: Product[], onRef
     }
   };
 
-  const subtotal = cart.reduce((sum, item) => sum + (item.product.price * item.qty), 0);
-  const itemDiscounts = cart.reduce((sum, item) => sum + (item.discount), 0);
+  const subtotal = (cart ?? []).reduce((sum, item) => sum + (item.product.price * item.qty), 0);
+  const itemDiscounts = (cart ?? []).reduce((sum, item) => sum + (item.discount), 0);
   const total = subtotal - itemDiscounts - globalDiscount;
   const change = parseFloat(amountPaid) > total ? parseFloat(amountPaid) - total : 0;
 
@@ -5931,7 +6083,7 @@ const POSModule = ({ products, onRefresh, caixas }: { products: Product[], onRef
     
     try {
       // 1. Create POS Sale
-      const posRes = await fetch('/api/pos/sales', {
+      const posRes = await fetchWithAuth('/api/pos/sales', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -5950,7 +6102,7 @@ const POSModule = ({ products, onRefresh, caixas }: { products: Product[], onRef
       const posData = await posRes.json();
 
       // 2. Create Invoice (Integration)
-      const invRes = await fetch('/api/invoices', {
+      const invRes = await fetchWithAuth('/api/invoices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -5995,7 +6147,7 @@ const POSModule = ({ products, onRefresh, caixas }: { products: Product[], onRef
   };
 
   const handleOpenSession = async () => {
-    const res = await fetch('/api/cash/open', {
+    const res = await fetchWithAuth('/api/cash/open', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
@@ -6011,7 +6163,7 @@ const POSModule = ({ products, onRefresh, caixas }: { products: Product[], onRef
 
   const handleCloseSession = async () => {
     if (!activeSession) return;
-    const res = await fetch(`/api/cash/close/${activeSession.id}`, {
+    const res = await fetchWithAuth(`/api/cash/close/${activeSession.id}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ final_balance: total }) // Simplified
@@ -6023,7 +6175,7 @@ const POSModule = ({ products, onRefresh, caixas }: { products: Product[], onRef
   };
 
   const handleAddPOS = async (name: string, location: string) => {
-    const res = await fetch('/api/pos-points', {
+    const res = await fetchWithAuth('/api/pos-points', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, location })
@@ -6684,7 +6836,7 @@ const UsersSettings = () => {
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch('/api/system-users');
+      const res = await fetchWithAuth('/api/system-users');
       if (res.ok) {
         const data = await res.json();
         setUsers(data);
@@ -6701,7 +6853,7 @@ const UsersSettings = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch('/api/system-users', {
+      const res = await fetchWithAuth('/api/system-users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -6835,6 +6987,7 @@ const MapaSalarios = ({ localEmployees, selectedMonthForMap, setSelectedMonthFor
     { id: 'colaboradores', label: 'MAPA COLABORADORES', icon: <Users size={16} /> },
     { id: 'efetividade', label: 'MAPA EFETIVIDADE', icon: <Clock size={16} /> },
     { id: 'irt_inss', label: 'MAPA IRT E INSS', icon: <Calculator size={16} /> },
+    { id: 'relatorios', label: 'RELATÓRIOS', icon: <FileText size={16} /> },
   ];
 
   const renderMapContent = () => {
@@ -6900,13 +7053,13 @@ const MapaSalarios = ({ localEmployees, selectedMonthForMap, setSelectedMonthFor
               <tfoot>
                 <tr className="bg-zinc-900 text-white font-black uppercase tracking-widest">
                   <td colSpan={3} className="px-4 py-4">TOTAIS ACUMULADOS</td>
-                  <td className="px-4 py-4 text-right font-mono">{formatCurrency(localEmployees.reduce((sum, e) => sum + e.salary, 0))}</td>
+                  <td className="px-4 py-4 text-right font-mono">{formatCurrency((localEmployees || []).reduce((sum, e) => sum + e.salary, 0))}</td>
                   <td className="px-4 py-4 text-right font-mono">0,00 Kz</td>
-                  <td className="px-4 py-4 text-right font-mono text-blue-400">{formatCurrency(localEmployees.reduce((sum, e) => sum + e.salary * 0.08, 0))}</td>
-                  <td className="px-4 py-4 text-right font-mono text-red-400">{formatCurrency(localEmployees.reduce((sum, e) => sum + e.salary * 0.03, 0))}</td>
+                  <td className="px-4 py-4 text-right font-mono text-blue-400">{formatCurrency((localEmployees || []).reduce((sum, e) => sum + e.salary * 0.08, 0))}</td>
+                  <td className="px-4 py-4 text-right font-mono text-red-400">{formatCurrency((localEmployees || []).reduce((sum, e) => sum + e.salary * 0.03, 0))}</td>
                   <td className="px-4 py-4 text-center">---</td>
-                  <td className="px-4 py-4 text-right font-mono">{formatCurrency(localEmployees.reduce((sum, e) => sum + e.salary * 0.11, 0))}</td>
-                  <td className="px-4 py-4 text-right font-mono">{formatCurrency(localEmployees.reduce((sum, e) => sum + e.salary, 0))}</td>
+                  <td className="px-4 py-4 text-right font-mono">{formatCurrency((localEmployees || []).reduce((sum, e) => sum + e.salary * 0.11, 0))}</td>
+                  <td className="px-4 py-4 text-right font-mono">{formatCurrency((localEmployees || []).reduce((sum, e) => sum + e.salary, 0))}</td>
                 </tr>
               </tfoot>
             </table>
@@ -6976,6 +7129,27 @@ const MapaSalarios = ({ localEmployees, selectedMonthForMap, setSelectedMonthFor
               ))}
             </tbody>
           </table>
+        );
+      case 'relatorios':
+        return (
+          <div className="space-y-6">
+            <div className="flex justify-between items-end border-b-2 border-[#003366] pb-4">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-[#003366] flex items-center justify-center">
+                  <FileText className="text-white" size={24} />
+                </div>
+                <div>
+                  <h4 className="text-lg font-black text-[#003366] uppercase tracking-tighter">Relatórios</h4>
+                  <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">Relatórios Diversos</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-white border border-zinc-200 p-8 text-center text-zinc-500">
+              <FileText size={48} className="mx-auto text-zinc-300 mb-4" />
+              <h3 className="text-lg font-bold text-[#003366] mb-2">Relatórios em Desenvolvimento</h3>
+              <p className="text-sm">Esta secção estará disponível em breve.</p>
+            </div>
+          </div>
         );
       case 'irt_inss':
       default:
@@ -7060,7 +7234,7 @@ const MapaSalarios = ({ localEmployees, selectedMonthForMap, setSelectedMonthFor
                 <tfoot>
                   <tr className="bg-zinc-900 text-white font-black uppercase tracking-widest">
                     <td colSpan={2} className="px-2 py-4 sticky left-0 bg-zinc-900 z-10">TOTAIS GERAIS</td>
-                    <td className="px-2 py-4 text-right font-mono">{formatCurrency(localEmployees.reduce((sum, e) => sum + e.salary, 0))}</td>
+                    <td className="px-2 py-4 text-right font-mono">{formatCurrency((localEmployees || []).reduce((sum, e) => sum + e.salary, 0))}</td>
                     <td className="px-2 py-4 text-right font-mono">0,00</td>
                     <td className="px-2 py-4 text-right font-mono">0,00</td>
                     <td className="px-2 py-4 text-right font-mono">0,00</td>
@@ -7068,13 +7242,13 @@ const MapaSalarios = ({ localEmployees, selectedMonthForMap, setSelectedMonthFor
                     <td className="px-2 py-4 text-right font-mono">0,00</td>
                     <td className="px-2 py-4 text-right font-mono">0,00</td>
                     <td className="px-2 py-4 text-right font-mono">0,00</td>
-                    <td className="px-2 py-4 text-right font-mono">{formatCurrency(localEmployees.reduce((sum, e) => sum + e.salary, 0))}</td>
-                    <td className="px-2 py-4 text-right font-mono text-red-400">{formatCurrency(localEmployees.reduce((sum, e) => sum + e.salary * 0.03, 0))}</td>
-                    <td className="px-2 py-4 text-right font-mono text-blue-400">{formatCurrency(localEmployees.reduce((sum, e) => sum + e.salary * 0.08, 0))}</td>
-                    <td className="px-2 py-4 text-right font-mono">{formatCurrency(localEmployees.reduce((sum, e) => sum + (e.salary * 0.97), 0))}</td>
-                    <td className="px-2 py-4 text-right font-mono text-red-400">{formatCurrency(localEmployees.reduce((sum, e) => sum + calculateIRT(e.salary * 0.97), 0))}</td>
+                    <td className="px-2 py-4 text-right font-mono">{formatCurrency((localEmployees || []).reduce((sum, e) => sum + e.salary, 0))}</td>
+                    <td className="px-2 py-4 text-right font-mono text-red-400">{formatCurrency((localEmployees || []).reduce((sum, e) => sum + e.salary * 0.03, 0))}</td>
+                    <td className="px-2 py-4 text-right font-mono text-blue-400">{formatCurrency((localEmployees || []).reduce((sum, e) => sum + e.salary * 0.08, 0))}</td>
+                    <td className="px-2 py-4 text-right font-mono">{formatCurrency((localEmployees || []).reduce((sum, e) => sum + (e.salary * 0.97), 0))}</td>
+                    <td className="px-2 py-4 text-right font-mono text-red-400">{formatCurrency((localEmployees || []).reduce((sum, e) => sum + calculateIRT(e.salary * 0.97), 0))}</td>
                     <td className="px-2 py-4 text-right font-mono">0,00</td>
-                    <td className="px-2 py-4 text-right font-mono text-emerald-400">{formatCurrency(localEmployees.reduce((sum, e) => sum + (e.salary * 0.97 - calculateIRT(e.salary * 0.97)), 0))}</td>
+                    <td className="px-2 py-4 text-right font-mono text-emerald-400">{formatCurrency((localEmployees || []).reduce((sum, e) => sum + (e.salary * 0.97 - calculateIRT(e.salary * 0.97)), 0))}</td>
                   </tr>
                 </tfoot>
               </table>
@@ -7620,7 +7794,10 @@ const SettingsModule = ({
             </div>
           </div>
           <div className="p-8 flex justify-end">
-            <button className="bg-[#003366] text-white font-bold px-8 py-2.5 rounded-none text-sm shadow-sm">Guardar Alterações</button>
+            <button className="bg-[#003366] text-white font-bold px-8 py-2.5 rounded-none text-sm shadow-sm flex items-center gap-2 hover:bg-[#002244] transition-colors">
+              <RefreshCw size={16} />
+              Actualizar dados da empresa
+            </button>
           </div>
         </div>
       ) : (
@@ -7642,7 +7819,7 @@ const CashierModule = ({ issuedDocuments = [] }: { issuedDocuments?: IssuedDocum
   const fetchSessions = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/cash/sessions');
+      const res = await fetchWithAuth('/api/cash/sessions');
       if (res.ok) {
         const data = await res.json();
         setSessions(data);
@@ -7661,7 +7838,7 @@ const CashierModule = ({ issuedDocuments = [] }: { issuedDocuments?: IssuedDocum
   const handleCreateSession = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch('/api/cash/open', {
+      const res = await fetchWithAuth('/api/cash/open', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ initial_balance: Number(initialBalance), pos_point_id: posPointId ? Number(posPointId) : null })
@@ -7677,7 +7854,7 @@ const CashierModule = ({ issuedDocuments = [] }: { issuedDocuments?: IssuedDocum
 
   const handleCloseSession = async (id: number, finalBalance: number) => {
     try {
-      const res = await fetch(`/api/cash/close/${id}`, {
+      const res = await fetchWithAuth(`/api/cash/close/${id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ final_balance: finalBalance })
@@ -7909,7 +8086,7 @@ const CashierModule = ({ issuedDocuments = [] }: { issuedDocuments?: IssuedDocum
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <div className="bg-zinc-50 p-6 border border-zinc-200">
               <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Total Entradas</p>
-              <p className="text-2xl font-black text-emerald-600">{formatCurrency(issuedDocuments.reduce((acc, doc) => acc + (doc.contravalor || 0), 0))}</p>
+              <p className="text-2xl font-black text-emerald-600">{formatCurrency((issuedDocuments ?? []).reduce((acc, doc) => acc + (doc.contravalor || 0), 0))}</p>
             </div>
             <div className="bg-zinc-50 p-6 border border-zinc-200">
               <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Total Saídas</p>
@@ -7917,7 +8094,7 @@ const CashierModule = ({ issuedDocuments = [] }: { issuedDocuments?: IssuedDocum
             </div>
             <div className="bg-zinc-50 p-6 border border-zinc-200">
               <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Saldo Consolidado</p>
-              <p className="text-2xl font-black text-[#003366]">{formatCurrency(issuedDocuments.reduce((acc, doc) => acc + (doc.contravalor || 0), 0))}</p>
+              <p className="text-2xl font-black text-[#003366]">{formatCurrency((issuedDocuments ?? []).reduce((acc, doc) => acc + (doc.contravalor || 0), 0))}</p>
             </div>
           </div>
 
@@ -7977,7 +8154,7 @@ const CashierModule = ({ issuedDocuments = [] }: { issuedDocuments?: IssuedDocum
             <div className="grid grid-cols-2 gap-8">
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Saldo do Sistema</label>
-                <p className="text-xl font-black text-[#003366]">{formatCurrency(issuedDocuments.reduce((acc, doc) => acc + (doc.contravalor || 0), 0))}</p>
+                <p className="text-xl font-black text-[#003366]">{formatCurrency((issuedDocuments ?? []).reduce((acc, doc) => acc + (doc.contravalor || 0), 0))}</p>
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Saldo Físico (Contado)</label>
@@ -8125,10 +8302,10 @@ const AccountingModule = ({ invoices, clients }: { invoices: Invoice[], clients:
     fetch('/api/suppliers').then(r => r.json()).then(setSuppliers);
   }, []);
 
-  const totalSales = invoices.reduce((sum, inv) => sum + inv.total, 0);
-  const totalPurchases = purchases.reduce((sum, pur) => sum + pur.total, 0);
-  const vatLiquidated = invoices.reduce((sum, inv) => sum + (inv.total * 0.14), 0);
-  const vatDeductible = purchases.reduce((sum, pur) => sum + (pur.total * 0.14), 0);
+  const totalSales = (invoices || []).reduce((sum, inv) => sum + inv.total, 0);
+  const totalPurchases = (purchases || []).reduce((sum, pur) => sum + pur.total, 0);
+  const vatLiquidated = (invoices || []).reduce((sum, inv) => sum + (inv.total * 0.14), 0);
+  const vatDeductible = (purchases || []).reduce((sum, pur) => sum + (pur.total * 0.14), 0);
   const vatToPay = vatLiquidated - vatDeductible;
 
   const sections = [
@@ -8295,7 +8472,7 @@ const AccountingModule = ({ invoices, clients }: { invoices: Invoice[], clients:
                   <tbody className="divide-y divide-zinc-100">
                     {suppliers.map(s => {
                       const supplierPurchases = purchases.filter(p => p.supplier_id === s.id);
-                      const total = supplierPurchases.reduce((sum, p) => sum + p.total, 0);
+                      const total = (supplierPurchases ?? []).reduce((sum, p) => sum + p.total, 0);
                       return (
                         <tr key={s.id} className="hover:bg-zinc-50">
                           <td className="px-6 py-4 text-sm font-medium text-zinc-900">{s.name}</td>
@@ -8332,7 +8509,7 @@ const AccountingModule = ({ invoices, clients }: { invoices: Invoice[], clients:
                   <tbody className="divide-y divide-zinc-100">
                     {clients.map(c => {
                       const clientInvoices = invoices.filter(i => i.client_id === c.id);
-                      const total = clientInvoices.reduce((sum, i) => sum + i.total, 0);
+                      const total = (clientInvoices ?? []).reduce((sum, i) => sum + i.total, 0);
                       return (
                         <tr key={c.id} className="hover:bg-zinc-50">
                           <td className="px-6 py-4 text-sm font-medium text-zinc-900">{c.name}</td>
@@ -8593,7 +8770,7 @@ const InvoiceList = ({
 
   const fetchMovements = async (workSiteId: number) => {
     try {
-      const response = await fetch(`/api/work-sites/${workSiteId}/movements?empresa_id=${user?.empresa_id}`);
+      const response = await fetchWithAuth(`/api/work-sites/${workSiteId}/movements?company_id=${user?.company_id}`);
       if (response.ok) {
         const data = await response.json();
         setMovements(data);
@@ -8624,10 +8801,10 @@ const InvoiceList = ({
   const handleAddMovement = async (movement: any) => {
     if (!selectedWorkSite) return;
     try {
-      const response = await fetch(`/api/work-sites/${selectedWorkSite.id}/movements`, {
+      const response = await fetchWithAuth(`/api/work-sites/${selectedWorkSite.id}/movements`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...movement, empresa_id: user?.empresa_id })
+        body: JSON.stringify({ ...movement, company_id: user?.company_id })
       });
       if (response.ok) {
         await fetchMovements(selectedWorkSite.id);
@@ -9168,6 +9345,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
   onSuccess: () => void,
   caixas: Caixa[]
 }) => {
+  const { user } = useAuth();
   const [clientId, setClientId] = useState<number | ''>('');
   const [documentType, setDocumentType] = useState('Fatura');
   const [seriesId, setSeriesId] = useState<number | ''>('');
@@ -9233,7 +9411,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
     setItems(newItems);
   };
 
-  const total = items.reduce((sum, item) => sum + (item.total || 0), 0);
+  const total = (items ?? []).reduce((sum, item) => sum + (item.total || 0), 0);
   const vatAmount = total * 0.14;
   const finalTotal = total + vatAmount - Number(globalDiscount || 0);
 
@@ -9247,18 +9425,20 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (items.length === 0) return;
+    if (items.length === 0) {
+      alert('Por favor, adicione pelo menos um item ao documento.');
+      return;
+    }
 
     let finalClientId = clientId;
     if (!finalClientId && clientName) {
-      const res = await fetch('/api/clients', {
+      const res = await fetchJson('/api/clients', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: clientName, nif, email: '', address: '' })
+        body: JSON.stringify({ name: clientName, nif, email: '', address: '', company_id: user?.company_id })
       });
-      if (res.ok) {
-        const data = await res.json();
-        finalClientId = data.id;
+      if (res && res.id) {
+        finalClientId = res.id;
       }
     }
 
@@ -9267,36 +9447,41 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
       return;
     }
 
-    const res = await fetch('/api/invoices', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        client_id: finalClientId, 
-        date, 
-        due_date: dueDate,
-        items,
-        document_type: documentType,
-        work_site_id: workSiteId,
-        vat_withholding: parseFloat(vatWithholding),
-        exchange_rate: parseFloat(exchangeRate),
-        currency,
-        counter_value: parseFloat(counterValue),
-        global_discount: parseFloat(globalDiscount),
-        service_date: serviceDate,
-        service_location: serviceLocation,
-        cash_box: cashBox,
-        payment_method: paymentMethod,
-        series_id: seriesId,
-        empresa_id: user?.empresa_id
-      })
-    });
+    try {
+      const res = await fetchWithAuth('/api/invoices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          client_id: finalClientId, 
+          date, 
+          due_date: dueDate,
+          items,
+          document_type: documentType,
+          work_site_id: workSiteId,
+          vat_withholding: parseFloat(vatWithholding),
+          exchange_rate: parseFloat(exchangeRate),
+          currency,
+          counter_value: parseFloat(counterValue),
+          global_discount: parseFloat(globalDiscount),
+          service_date: serviceDate,
+          service_location: serviceLocation,
+          cash_box: cashBox,
+          payment_method: paymentMethod,
+          series_id: seriesId,
+          empresa_id: user?.empresa_id
+        })
+      });
 
-    if (res.ok) {
-      onSuccess();
-    } else {
-      const errorData = await res.json().catch(() => ({ error: 'Erro desconhecido ao emitir documento' }));
-      console.error('Erro ao emitir documento:', errorData);
-      alert('Erro ao emitir documento: ' + (errorData.error || 'Erro desconhecido'));
+      if (res.ok) {
+        onSuccess();
+      } else {
+        const errorData = await res.json().catch(() => ({ error: 'Erro desconhecido ao emitir documento' }));
+        console.error('Erro ao emitir documento:', errorData);
+        alert('Erro ao emitir documento: ' + (errorData.error || 'Erro desconhecido'));
+      }
+    } catch (error) {
+      console.error('Erro de rede ao emitir documento:', error);
+      alert('Erro de rede ao emitir documento. Por favor, tente novamente.');
     }
   };
 
@@ -9502,7 +9687,6 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
                     setNif('');
                   }
                 }}
-                required
                 className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
               >
                 <option value="">Selecione um cliente</option>
@@ -10172,13 +10356,13 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack }: {
   onBack: () => void 
 }) => {
   const [activeTab, setActiveTab] = useState<'finance' | 'invoices'>('finance');
-  const totalDebit = movements.reduce((sum, m) => sum + m.debit, 0);
-  const totalCredit = movements.reduce((sum, m) => sum + m.credit, 0);
+  const totalDebit = (movements ?? []).reduce((sum, m) => sum + m.debit, 0);
+  const totalCredit = (movements ?? []).reduce((sum, m) => sum + m.credit, 0);
   const currentBalance = movements.length > 0 ? movements[movements.length - 1].balance : 0;
   
   const siteInvoices = invoices.filter(inv => Number(inv.work_site_id) === workSite.id);
-  const totalInvoiced = siteInvoices.reduce((sum, inv) => sum + inv.contravalor, 0);
-  const totalPaid = siteInvoices.filter(inv => inv.status === 'paid' || inv.estado_documento === 'ativo').reduce((sum, inv) => sum + inv.contravalor, 0);
+  const totalInvoiced = (siteInvoices ?? []).reduce((sum, inv) => sum + inv.contravalor, 0);
+  const totalPaid = (siteInvoices ?? []).filter(inv => inv.status === 'paid' || inv.estado_documento === 'ativo').reduce((sum, inv) => sum + inv.contravalor, 0);
   const totalPending = totalInvoiced - totalPaid;
 
   return (
@@ -10626,8 +10810,8 @@ const ClientAccount = ({ client, documents, onBack }: {
     setFilteredMovements(movements);
   };
 
-  const totalDebito = filteredMovements.reduce((acc, m) => acc + m.debito, 0);
-  const totalCredito = filteredMovements.reduce((acc, m) => acc + m.credito, 0);
+  const totalDebito = (filteredMovements ?? []).reduce((acc, m) => acc + m.debito, 0);
+  const totalCredito = (filteredMovements ?? []).reduce((acc, m) => acc + m.credito, 0);
   const initialBalance = client.initial_balance || 0;
   const saldoAtual = initialBalance + totalDebito - totalCredito;
 
@@ -10743,7 +10927,7 @@ const ClientAccount = ({ client, documents, onBack }: {
                 <td className="px-4 py-3 text-right text-[#003366]">{formatCurrency(initialBalance)}</td>
               </tr>
               {filteredMovements.map((m, idx) => {
-                const runningSaldo = initialBalance + filteredMovements.slice(0, idx + 1).reduce((acc, curr) => acc + (curr.debito - curr.credito), 0);
+                const runningSaldo = initialBalance + (filteredMovements ?? []).slice(0, idx + 1).reduce((acc, curr) => acc + (curr.debito - curr.credito), 0);
                 return (
                   <tr key={m.id} className="hover:bg-zinc-50 text-[11px]">
                     <td className="px-4 py-4 text-zinc-500">{new Date(m.data_emissao).toLocaleDateString()}</td>
@@ -10834,24 +11018,22 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
       name, email, nif, address, localidade, codigo_postal, provincia, municipio, pais, telefone, webpage, tipo_cliente, 
       initial_balance: Number(initial_balance),
       estado_nif,
-      empresa_id: user?.empresa_id 
+      company_id: user?.company_id 
     };
     
     try {
       const url = selectedClient ? `/api/clients/${selectedClient.id}` : '/api/clients';
       const method = selectedClient ? 'PUT' : 'POST';
       
-      const res = await fetch(url, {
+      await fetchJson(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(clientData)
       });
       
-      if (res.ok) {
-        resetForm();
-        setShowForm(false);
-        onRefresh();
-      }
+      resetForm();
+      setShowForm(false);
+      onRefresh();
     } catch (error) {
       console.error('Error saving client:', error);
     }
@@ -11202,15 +11384,13 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
                       onClick={async () => {
                         const val = (document.getElementById('initial_balance_input') as HTMLInputElement).value;
                         try {
-                          const res = await fetch(`/api/clients/${showInitialBalanceModal.id}`, {
+                          await fetchJson(`/api/clients/${showInitialBalanceModal.id}`, {
                             method: 'PUT',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ ...showInitialBalanceModal, initial_balance: Number(val) })
                           });
-                          if (res.ok) {
-                            setShowInitialBalanceModal(null);
-                            onRefresh();
-                          }
+                          setShowInitialBalanceModal(null);
+                          onRefresh();
                         } catch (error) {
                           console.error('Error updating initial balance:', error);
                         }
@@ -11432,7 +11612,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
     setItems(newItems);
   };
 
-  const total = items.reduce((sum, item) => sum + (item.total || 0), 0);
+  const total = (items ?? []).reduce((sum, item) => sum + (item.total || 0), 0);
   const vatAmount = total * 0.14;
   const finalTotal = total + vatAmount - Number(globalDiscount || 0);
 
@@ -11450,7 +11630,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
 
     let finalSupplierId = supplierId;
     if (!finalSupplierId && supplierName) {
-      const res = await fetch('/api/suppliers', {
+      const res = await fetchWithAuth('/api/suppliers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: supplierName, nif, email: '', address: '' })
@@ -11466,7 +11646,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
       return;
     }
 
-    const res = await fetch('/api/purchases', {
+    const res = await fetchWithAuth('/api/purchases', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
@@ -11696,7 +11876,6 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
                     setNif('');
                   }
                 }}
-                required
                 className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
               >
                 <option value="">Selecione um fornecedor</option>
@@ -12234,7 +12413,7 @@ const SupplierModule = ({ products, workSites, fiscalSeries, caixas }: { product
       return;
     }
 
-    const res = await fetch('/api/suppliers', {
+    const res = await fetchWithAuth('/api/suppliers', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
@@ -12644,7 +12823,7 @@ const WarehouseModule = ({ onRefresh }: { onRefresh: () => void }) => {
 
   const fetchWarehouses = async () => {
     try {
-      const res = await fetch('/api/warehouses');
+      const res = await fetchWithAuth('/api/warehouses');
       if (res.ok) {
         const data = await res.json();
         setWarehouses(data);
@@ -12665,7 +12844,7 @@ const WarehouseModule = ({ onRefresh }: { onRefresh: () => void }) => {
     const formData = new FormData(e.currentTarget);
     const data = Object.fromEntries(formData.entries());
     
-    const res = await fetch('/api/warehouses', {
+    const res = await fetchWithAuth('/api/warehouses', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -12829,7 +13008,7 @@ const ProductList = ({ products, onRefresh, stockMovements, warehouses }: {
   });
 
   const handleAdjustment = async (productId: number, type: string, quantity: number, description: string) => {
-    const res = await fetch('/api/stock/movements', {
+    const res = await fetchWithAuth('/api/stock/movements', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
@@ -12847,7 +13026,7 @@ const ProductList = ({ products, onRefresh, stockMovements, warehouses }: {
   };
 
   const handleTransfer = async (productId: number, fromWh: number, toWh: number, quantity: number) => {
-    const res = await fetch('/api/stock/movements', {
+    const res = await fetchWithAuth('/api/stock/movements', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
@@ -12979,8 +13158,8 @@ const ProductList = ({ products, onRefresh, stockMovements, warehouses }: {
               </thead>
               <tbody className="divide-y divide-zinc-100">
                 {filteredProducts.map((p) => {
-                  const entries = stockMovements.filter(m => m.product_id === p.id && (m.type === 'entry' || m.type === 'adjustment_plus')).reduce((sum, m) => sum + m.quantity, 0);
-                  const exits = stockMovements.filter(m => m.product_id === p.id && (m.type === 'exit' || m.type === 'adjustment_minus')).reduce((sum, m) => sum + m.quantity, 0);
+                  const entries = (stockMovements ?? []).filter(m => m.product_id === p.id && (m.type === 'entry' || m.type === 'adjustment_plus')).reduce((sum, m) => sum + m.quantity, 0);
+                  const exits = (stockMovements ?? []).filter(m => m.product_id === p.id && (m.type === 'exit' || m.type === 'adjustment_minus')).reduce((sum, m) => sum + m.quantity, 0);
                   const isNegative = p.stock_quantity < 0;
                   const isLow = p.stock_quantity <= (p.min_stock || 0);
 
@@ -13011,14 +13190,14 @@ const ProductList = ({ products, onRefresh, stockMovements, warehouses }: {
                       <td className="px-6 py-4 text-zinc-500 font-medium">{p.barcode || p.id}</td>
                       <td className="px-6 py-4 text-zinc-500 font-medium">{p.tipologia || '---'}</td>
                       <td className="px-6 py-4 text-center text-emerald-600 font-bold">
-                        {stockMovements.filter(m => 
+                        {(stockMovements ?? []).filter(m => 
                           m.product_id === p.id && 
                           (warehouseFilter === 'all' || m.warehouse_id === Number(warehouseFilter) || m.to_warehouse_id === Number(warehouseFilter)) &&
                           (m.type === 'entry' || m.type === 'adjustment_plus' || (m.type === 'transfer' && m.to_warehouse_id === Number(warehouseFilter)))
                         ).reduce((sum, m) => sum + m.quantity, 0)}
                       </td>
                       <td className="px-6 py-4 text-center text-red-600 font-bold">
-                        {stockMovements.filter(m => 
+                        {(stockMovements ?? []).filter(m => 
                           m.product_id === p.id && 
                           (warehouseFilter === 'all' || m.warehouse_id === Number(warehouseFilter)) &&
                           (m.type === 'exit' || m.type === 'adjustment_minus' || (m.type === 'transfer' && m.warehouse_id === Number(warehouseFilter)))
@@ -13176,13 +13355,13 @@ const ProductList = ({ products, onRefresh, stockMovements, warehouses }: {
               <div className="p-4 bg-zinc-50 border border-zinc-100">
                 <div className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Total Entradas</div>
                 <div className="text-xl font-black text-emerald-600">
-                  {stockMovements.filter(m => m.product_id === selectedProduct.id && (m.type === 'entry' || m.type === 'adjustment_plus')).reduce((sum, m) => sum + m.quantity, 0)}
+                  {(stockMovements ?? []).filter(m => m.product_id === selectedProduct.id && (m.type === 'entry' || m.type === 'adjustment_plus')).reduce((sum, m) => sum + m.quantity, 0)}
                 </div>
               </div>
               <div className="p-4 bg-zinc-50 border border-zinc-100">
                 <div className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Total Saídas</div>
                 <div className="text-xl font-black text-red-600">
-                  {stockMovements.filter(m => m.product_id === selectedProduct.id && (m.type === 'exit' || m.type === 'adjustment_minus')).reduce((sum, m) => sum + m.quantity, 0)}
+                  {(stockMovements ?? []).filter(m => m.product_id === selectedProduct.id && (m.type === 'exit' || m.type === 'adjustment_minus')).reduce((sum, m) => sum + m.quantity, 0)}
                 </div>
               </div>
               <div className="p-4 bg-zinc-50 border border-zinc-100">
@@ -13422,7 +13601,7 @@ const ProductList = ({ products, onRefresh, stockMovements, warehouses }: {
               const formData = new FormData(e.currentTarget);
               const data = Object.fromEntries(formData.entries());
               try {
-                const res = await fetch('/api/products', {
+                const res = await fetchWithAuth('/api/products', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
@@ -13532,7 +13711,7 @@ const ReceiptModal = ({ document, caixas, onClose, onSuccess }: {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch('/api/receipts', {
+      const res = await fetchWithAuth('/api/receipts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -13629,7 +13808,7 @@ const ConvertDocumentModal = ({ document, onClose, onSuccess }: {
     try {
       // In a real app, this would call a backend endpoint to create a new document based on this one
       // For now, we'll just simulate it by creating a new invoice with the same items
-      const res = await fetch('/api/invoices', {
+      const res = await fetchWithAuth('/api/invoices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -13683,6 +13862,49 @@ const ConvertDocumentModal = ({ document, onClose, onSuccess }: {
   );
 };
 
+const SecurityModule = () => {
+  const [activeSubTab, setActiveSubTab] = useState('users');
+
+  const tabs = [
+    { id: 'users', label: 'Utilizadores', icon: Users, description: 'Gestão de acessos e perfis' },
+    { id: 'roles', label: 'Cargos e Permissões', icon: ShieldCheck, description: 'Definição de níveis de acesso' },
+    { id: 'audit', label: 'Auditoria', icon: FileText, description: 'Registo de atividades do sistema' },
+  ];
+
+  return (
+    <div className="space-y-8">
+      <header>
+        <Breadcrumbs paths={['Home', 'Segurança Gestão Privada']} />
+        <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Segurança Gestão Privada</h2>
+        <p className="text-zinc-500 text-sm">Controlo de acessos, permissões e auditoria do sistema.</p>
+      </header>
+
+      <div className="flex gap-8 border-b border-zinc-200 bg-white px-6">
+        {tabs.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveSubTab(tab.id)}
+            className={`flex items-center gap-2 pb-4 text-[10px] font-black uppercase tracking-widest transition-all relative ${
+              activeSubTab === tab.id 
+                ? 'text-[#003366] border-b-2 border-[#003366]' 
+                : 'text-zinc-400 hover:text-zinc-600'
+            }`}
+          >
+            <tab.icon size={14} className={activeSubTab === tab.id ? 'text-[#003366]' : 'text-zinc-300'} />
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="bg-white border border-zinc-200 p-8 text-center text-zinc-500">
+        <ShieldCheck size={48} className="mx-auto text-zinc-300 mb-4" />
+        <h3 className="text-lg font-bold text-[#003366] mb-2">Módulo em Desenvolvimento</h3>
+        <p className="text-sm">As funcionalidades de {tabs.find(t => t.id === activeSubTab)?.label} estarão disponíveis em breve.</p>
+      </div>
+    </div>
+  );
+};
+
 export default function App() {
   const { user, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -13716,34 +13938,36 @@ export default function App() {
   const [caixaMovements, setCaixaMovements] = useState<CaixaMovement[]>([]);
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [companyData, setCompanyData] = useState<any>(null);
 
   const fetchData = async () => {
     if (!user) return;
     try {
-      console.log('Fetching data for empresa:', user.empresa_id);
-      const empresaId = user.empresa_id;
+      console.log('Fetching data for company:', user.company_id);
+      const companyId = user.company_id;
       const results = await Promise.allSettled([
-        fetchJson(`/api/stats?empresa_id=${empresaId}`),
-        fetchJson(`/api/clients?empresa_id=${empresaId}`),
-        fetchJson(`/api/products?empresa_id=${empresaId}`),
-        fetchJson(`/api/invoices?empresa_id=${empresaId}`),
-        fetchJson(`/api/issued-documents?empresa_id=${empresaId}`),
-        fetchJson(`/api/work-sites?empresa_id=${empresaId}`),
-        fetchJson(`/api/employees?empresa_id=${empresaId}`),
-        fetchJson(`/api/fiscal-series?empresa_id=${empresaId}`),
-        fetchJson(`/api/caixas?empresa_id=${empresaId}`),
-        fetchJson(`/api/caixa-movements?empresa_id=${empresaId}`),
-        fetchJson(`/api/stock/movements?empresa_id=${empresaId}`),
-        fetchJson(`/api/warehouses?empresa_id=${empresaId}`)
+        fetchJson(`/api/stats?company_id=${companyId}`),
+        fetchJson(`/api/clients?company_id=${companyId}`),
+        fetchJson(`/api/products?company_id=${companyId}`),
+        fetchJson(`/api/invoices?company_id=${companyId}`),
+        fetchJson(`/api/issued-documents?company_id=${companyId}`),
+        fetchJson(`/api/work-sites?company_id=${companyId}`),
+        fetchJson(`/api/employees?company_id=${companyId}`),
+        fetchJson(`/api/fiscal-series?company_id=${companyId}`),
+        fetchJson(`/api/caixas?company_id=${companyId}`),
+        fetchJson(`/api/caixa-movements?company_id=${companyId}`),
+        fetchJson(`/api/stock/movements?company_id=${companyId}`),
+        fetchJson(`/api/warehouses?company_id=${companyId}`),
+        fetchJson(`/api/company/${companyId}`)
       ]);
 
-      const [s, c, p, i, d, w, e, fs, cx, cm, sm, wh] = results.map((res, idx) => {
+      const [s, c, p, i, d, w, e, fs, cx, cm, sm, wh, comp] = results.map((res, idx) => {
         if (res.status === 'fulfilled') return res.value;
         console.error(`Fetch failed for index ${idx}:`, res.reason);
         return null;
       });
       
-      console.log('Data fetched results:', { s, c, p, i, d, w, e, fs });
+      console.log('Data fetched results:', { s, c, p, i, d, w, e, fs, comp });
       
       if (s) setStats(s);
       setClients(Array.isArray(c) ? c : []);
@@ -13753,6 +13977,10 @@ export default function App() {
       setWorkSites(Array.isArray(w) ? w : []);
       setEmployees(Array.isArray(e) ? e : []);
       setFiscalSeries(Array.isArray(fs) ? fs : []);
+      if (comp) {
+        setCompanyData(comp);
+        setCompanyName(comp.name);
+      }
       setCaixas(Array.isArray(cx) ? cx : []);
       setCaixaMovements(Array.isArray(cm) ? cm : []);
       setStockMovements(Array.isArray(sm) ? sm : []);
@@ -13767,7 +13995,7 @@ export default function App() {
   const handleAddWorkSite = async (site: Omit<WorkSite, 'id'>) => {
     console.log('Adding work site:', site);
     try {
-      const res = await fetch('/api/work-sites', {
+      const res = await fetchWithAuth('/api/work-sites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...site, empresa_id: user?.empresa_id })
@@ -13787,7 +14015,7 @@ export default function App() {
   const handleUpdateWorkSite = async (id: number, site: Omit<WorkSite, 'id'>) => {
     console.log('Updating work site:', id, site);
     try {
-      const res = await fetch(`/api/work-sites/${id}`, {
+      const res = await fetchWithAuth(`/api/work-sites/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...site, empresa_id: user?.empresa_id })
@@ -13806,7 +14034,7 @@ export default function App() {
 
   const handleCertifyDocument = async (id: number) => {
     try {
-      const res = await fetch(`/api/invoices/${id}/certify`, {
+      const res = await fetchWithAuth(`/api/invoices/${id}/certify`, {
         method: 'POST'
       });
       if (res.ok) {
@@ -13824,7 +14052,7 @@ export default function App() {
       setIsCreatingInvoice(true);
     } else if (action === 'print_a4' || action === 'print_p24' || action === 'print_p24xl' || action === 'print_p80') {
       try {
-        const res = await fetch(`/api/invoices/${doc.id}`);
+        const res = await fetchWithAuth(`/api/invoices/${doc.id}`);
         if (res.ok) {
           const invoiceData = await res.json();
           setPrintingInvoice(invoiceData);
@@ -13838,7 +14066,7 @@ export default function App() {
       }
     } else if (action === 'export_pdf') {
       try {
-        const res = await fetch(`/api/invoices/${doc.id}`);
+        const res = await fetchWithAuth(`/api/invoices/${doc.id}`);
         if (res.ok) {
           const invoiceData = await res.json();
           const pdf = new jsPDF();
@@ -13898,7 +14126,7 @@ export default function App() {
       const confirmMsg = action === 'delete' ? 'eliminar' : 'anular';
       if (confirm(`Tem a certeza que deseja ${confirmMsg} o documento ${doc.numero_documento || doc.invoice_number}?`)) {
         try {
-          const res = await fetch(`/api/invoices/${doc.id}`, { method: 'DELETE' });
+          const res = await fetchWithAuth(`/api/invoices/${doc.id}`, { method: 'DELETE' });
           if (res.ok) {
             await fetchData();
             setSelectedDocument(null);
@@ -13911,7 +14139,7 @@ export default function App() {
       }
     } else if (action === 'clone') {
       try {
-        const res = await fetch(`/api/invoices/${doc.id}/clone`, { method: 'POST' });
+        const res = await fetchWithAuth(`/api/invoices/${doc.id}/clone`, { method: 'POST' });
         if (res.ok) {
           await fetchData();
           setSelectedDocument(null);
@@ -13977,6 +14205,7 @@ export default function App() {
           products={products} 
           invoices={invoices}
           caixas={caixas}
+          companyData={companyData}
         />
       );
       case 'pos': return <POSModule products={products} onRefresh={fetchData} caixas={caixas} />;
@@ -14030,6 +14259,7 @@ export default function App() {
       );
       case 'cashier': return <CashierModule issuedDocuments={issuedDocuments} />;
       case 'caixa': return <CaixaModule caixas={caixas} setCaixas={setCaixas} movements={caixaMovements} setMovements={setCaixaMovements} />;
+      case 'workplaces': return <WorkplaceModule onRefresh={fetchData} />;
       case 'clients': return (
         <ClientList 
           clients={clients} 
@@ -14063,6 +14293,7 @@ export default function App() {
       case 'hr': return <HRModule onRefresh={fetchData} onSetIsContractModalOpen={setIsContractModalOpen} onSetEmployee={setAppSelectedEmployee} caixas={caixas} companyName={companyName} />;
       case 'accounting': return <AccountingModule invoices={invoices} clients={clients} />;
       case 'specialized': return <SpecializedManagementModule />;
+      case 'security': return <SecurityModule />;
       case 'settings': return (
         <SettingsModule 
           fiscalYear={fiscalYear} 
@@ -14134,7 +14365,7 @@ export default function App() {
               <div className="flex items-center gap-4">
                 <div className="text-right">
                   <p className="text-[10px] font-black text-[#003366] uppercase tracking-widest">{user?.username}</p>
-                  <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-tight">Empresa ID: {user?.empresa_id}</p>
+                  <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-tight">Empresa ID: {user?.company_id}</p>
                 </div>
                 <button 
                   onClick={logout}

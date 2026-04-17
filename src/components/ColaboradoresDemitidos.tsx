@@ -5,9 +5,9 @@ import { Search, Printer, Calculator, Info, UserMinus, Eye } from 'lucide-react'
 const ColaboradoresDemitidos = ({ employees }: { employees: Employee[] }) => {
   const [searchTerm, setSearchTerm] = useState('');
   
-  const dismissedEmployees = employees.filter(emp => emp.status === 'dismissed');
+  const dismissedEmployees = (employees || []).filter(emp => emp.status === 'dismissed');
   
-  const filteredEmployees = dismissedEmployees.filter(emp => 
+  const filteredEmployees = (dismissedEmployees || []).filter(emp => 
     emp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     emp.role.toLowerCase().includes(searchTerm.toLowerCase())
   );

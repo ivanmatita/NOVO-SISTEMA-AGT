@@ -41,7 +41,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
       currentBalance: newCaixa.initialBalance,
       obs: newCaixa.obs,
       status: 'aberto',
-      empresa_id: user?.empresa_id
+      company_id: user?.company_id
     };
     
     try {
@@ -65,7 +65,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
     try {
       const res = await fetch(`/api/caixas/${id}/close`, { method: 'POST' });
       if (res.ok) {
-        setCaixas(caixas.map(c => c.id === id ? { ...c, status: 'fechado' } : c));
+        setCaixas((caixas || []).map(c => c.id === id ? { ...c, status: 'fechado' } : c));
       }
     } catch (error) {
       console.error('Error closing caixa:', error);
@@ -77,7 +77,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
     if (transferData.from === transferData.to) return alert('Selecione caixas diferentes');
     if (transferData.amount <= 0) return;
 
-    const fromCaixa = caixas.find(c => c.id === transferData.from);
+    const fromCaixa = (caixas || []).find(c => c.id === transferData.from);
     if (!fromCaixa || fromCaixa.currentBalance < transferData.amount) return alert('Saldo insuficiente');
 
     const movementId = Date.now().toString();
@@ -87,9 +87,9 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
       targetCaixaId: transferData.to,
       type: 'transferencia',
       amount: transferData.amount,
-      description: transferData.description || `Transferência para ${caixas.find(c => c.id === transferData.to)?.name}`,
+      description: transferData.description || `Transferência para ${(caixas || []).find(c => c.id === transferData.to)?.name}`,
       date: new Date().toISOString(),
-      empresa_id: user?.empresa_id
+      company_id: user?.company_id
     };
 
     try {
@@ -100,7 +100,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
       });
       if (res.ok) {
         setMovements([...movements, newMovement]);
-        setCaixas(caixas.map(c => {
+        setCaixas((caixas || []).map(c => {
           if (c.id === transferData.from) return { ...c, currentBalance: c.currentBalance - transferData.amount };
           if (c.id === transferData.to) return { ...c, currentBalance: c.currentBalance + transferData.amount };
           return c;
@@ -118,7 +118,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
     e.preventDefault();
     if (paymentData.amount <= 0) return;
 
-    const caixa = caixas.find(c => c.id === paymentData.caixaId);
+    const caixa = (caixas || []).find(c => c.id === paymentData.caixaId);
     if (!caixa || caixa.currentBalance < paymentData.amount) return alert('Saldo insuficiente');
 
     const newMovement: CaixaMovement = {
@@ -128,7 +128,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
       amount: paymentData.amount,
       description: paymentData.description,
       date: new Date().toISOString(),
-      empresa_id: user?.empresa_id
+      company_id: user?.company_id
     };
 
     try {
@@ -139,7 +139,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
       });
       if (res.ok) {
         setMovements([...movements, newMovement]);
-        setCaixas(caixas.map(c => c.id === paymentData.caixaId ? { ...c, currentBalance: c.currentBalance - paymentData.amount } : c));
+        setCaixas((caixas || []).map(c => c.id === paymentData.caixaId ? { ...c, currentBalance: c.currentBalance - paymentData.amount } : c));
         setPaymentData({ caixaId: '', amount: 0, description: '' });
         setActiveSection('list');
       }
@@ -151,7 +151,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
 
   const handleReconciliation = async (e: React.FormEvent) => {
     e.preventDefault();
-    const caixa = caixas.find(c => c.id === reconData.caixaId);
+    const caixa = (caixas || []).find(c => c.id === reconData.caixaId);
     if (!caixa) return;
 
     const diff = reconData.actualBalance - caixa.currentBalance;
@@ -164,7 +164,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
       amount: Math.abs(diff),
       description: `Conciliação: ${reconData.description}`,
       date: new Date().toISOString(),
-      empresa_id: user?.empresa_id
+      company_id: user?.company_id
     };
 
     try {
@@ -175,7 +175,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
       });
       if (res.ok) {
         setMovements([...movements, newMovement]);
-        setCaixas(caixas.map(c => c.id === reconData.caixaId ? { ...c, currentBalance: reconData.actualBalance } : c));
+        setCaixas((caixas || []).map(c => c.id === reconData.caixaId ? { ...c, currentBalance: reconData.actualBalance } : c));
         setReconData({ caixaId: '', actualBalance: 0, description: '' });
         setActiveSection('list');
       }
@@ -263,7 +263,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-200">
-                    {caixas.map((caixa, idx) => (
+                    {(caixas || []).map((caixa, idx) => (
                       <tr key={caixa.id} className="hover:bg-zinc-50 transition-colors group">
                         <td className="px-2 py-2 border-r border-zinc-200 text-center text-zinc-500">{idx + 1}</td>
                         <td className="px-4 py-2 border-r border-zinc-200 font-mono text-zinc-600">{caixa.account || '45'}</td>
@@ -313,7 +313,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
                 onChange={e => setSelectedCaixaId(e.target.value || null)}
               >
                 <option value="" className="text-zinc-800">Todos os Caixas</option>
-                {caixas.map(c => <option key={c.id} value={c.id} className="text-zinc-800">{c.name}</option>)}
+                {(caixas || []).map(c => <option key={c.id} value={c.id} className="text-zinc-800">{c.name}</option>)}
               </select>
             </div>
             <div className="overflow-x-auto">
@@ -328,15 +328,15 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
-                  {movements
+                  {(movements || [])
                     .filter(m => !selectedCaixaId || m.caixaId === selectedCaixaId || m.targetCaixaId === selectedCaixaId)
                     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                     .map(m => (
                       <tr key={m.id} className="hover:bg-zinc-50 transition-colors">
                         <td className="px-6 py-4 text-[10px] font-bold text-zinc-500">{new Date(m.date).toLocaleString()}</td>
                         <td className="px-6 py-4 text-[10px] font-black text-[#003366] uppercase">
-                          {caixas.find(c => c.id === m.caixaId)?.name}
-                          {m.targetCaixaId && ` → ${caixas.find(c => c.id === m.targetCaixaId)?.name}`}
+                          {(caixas || []).find(c => c.id === m.caixaId)?.name}
+                          {m.targetCaixaId && ` → ${(caixas || []).find(c => c.id === m.targetCaixaId)?.name}`}
                         </td>
                         <td className="px-6 py-4 text-[10px] text-zinc-600 italic">{m.description}</td>
                         <td className="px-6 py-4">
@@ -384,7 +384,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
                     onChange={e => setTransferData({...transferData, from: e.target.value})}
                   >
                     <option value="">Selecione o caixa</option>
-                    {caixas.map(c => <option key={c.id} value={c.id}>{c.name} (Saldo: {c.currentBalance.toLocaleString()})</option>)}
+                    {(caixas || []).map(c => <option key={c.id} value={c.id}>{c.name} (Saldo: {c.currentBalance.toLocaleString()})</option>)}
                   </select>
                 </div>
                 <div className="space-y-2">
@@ -396,7 +396,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
                     onChange={e => setTransferData({...transferData, to: e.target.value})}
                   >
                     <option value="">Selecione o caixa</option>
-                    {caixas.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    {(caixas || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
               </div>
@@ -449,7 +449,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
                   onChange={e => setPaymentData({...paymentData, caixaId: e.target.value})}
                 >
                   <option value="">Selecione o caixa</option>
-                  {caixas.map(c => <option key={c.id} value={c.id}>{c.name} (Saldo: {c.currentBalance.toLocaleString()})</option>)}
+                  {(caixas || []).map(c => <option key={c.id} value={c.id}>{c.name} (Saldo: {c.currentBalance.toLocaleString()})</option>)}
                 </select>
               </div>
               <div className="space-y-2">
@@ -502,7 +502,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
                   onChange={e => setReconData({...reconData, caixaId: e.target.value})}
                 >
                   <option value="">Selecione o caixa</option>
-                  {caixas.map(c => <option key={c.id} value={c.id}>{c.name} (Saldo Sistema: {c.currentBalance.toLocaleString()})</option>)}
+                  {(caixas || []).map(c => <option key={c.id} value={c.id}>{c.name} (Saldo Sistema: {c.currentBalance.toLocaleString()})</option>)}
                 </select>
               </div>
               <div className="space-y-2">

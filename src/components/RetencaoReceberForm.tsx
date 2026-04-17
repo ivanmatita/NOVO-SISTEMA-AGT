@@ -9,8 +9,8 @@ const RetencaoReceberForm = ({ invoices, clients }: { invoices: Invoice[], clien
   // Assuming a default withholding tax of 6.5% for services
   const retentionRate = 0.065;
 
-  const retentions = invoices.map(i => {
-    const client = clients.find(c => c.id === i.client_id);
+  const retentions = (invoices || []).map(i => {
+    const client = (clients || []).find(c => c.id === i.client_id);
     const base = i.total;
     const value = base * retentionRate;
     return {
@@ -23,7 +23,7 @@ const RetencaoReceberForm = ({ invoices, clients }: { invoices: Invoice[], clien
     };
   });
 
-  const totalRetention = retentions.reduce((sum, r) => sum + r.value, 0);
+  const totalRetention = (retentions || []).reduce((sum, r) => sum + r.value, 0);
 
   return (
     <div className="p-8 bg-white border border-zinc-200 shadow-sm space-y-6">

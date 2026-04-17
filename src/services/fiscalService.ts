@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 
 // Nota: Em produção, a chave privada deve ser armazenada de forma segura (ex: AWS KMS, Azure Key Vault, ou Supabase Vault)
-const PRIVATE_KEY = process.env.FISCAL_PRIVATE_KEY || '';
+const PRIVATE_KEY = (import.meta as any).env?.VITE_FISCAL_PRIVATE_KEY || '';
 
 export const generateDocumentHash = (content: string) => {
   return crypto.createHash('sha256').update(content).digest('hex');

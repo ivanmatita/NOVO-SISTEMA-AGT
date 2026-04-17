@@ -34,7 +34,7 @@ const POSPage = ({ products = [], onRefresh = () => {}, onNavigate = () => {} }:
   const [printingSale, setPrintingSale] = useState<any>(null);
 
   const safeProducts = Array.isArray(products) ? products : [];
-  const activeSession = sessions.find(s => s.status === 'open');
+  const activeSession = (sessions || []).find(s => s.status === 'open');
 
   const fetchData = async () => {
     const [s, cc, pp, sess] = await Promise.all([
@@ -56,16 +56,16 @@ const POSPage = ({ products = [], onRefresh = () => {}, onNavigate = () => {} }:
   }, []);
 
   const addToCart = (product: Product) => {
-    const existing = cart.find(item => item.product.id === product.id);
+    const existing = (cart || []).find(item => item.product.id === product.id);
     if (existing) {
-      setCart(cart.map(item => item.product.id === product.id ? {...item, qty: item.qty + 1} : item));
+      setCart((cart || []).map(item => item.product.id === product.id ? {...item, qty: item.qty + 1} : item));
     } else {
       setCart([...cart, { product, qty: 1, discount: 0 }]);
     }
   };
 
-  const subtotal = cart.reduce((sum, item) => sum + (item.product.price * item.qty), 0);
-  const itemDiscounts = cart.reduce((sum, item) => sum + (item.discount), 0);
+  const subtotal = (cart || []).reduce((sum, item) => sum + (item.product.price * item.qty), 0);
+  const itemDiscounts = (cart || []).reduce((sum, item) => sum + (item.discount), 0);
   const total = subtotal - itemDiscounts - globalDiscount;
   const change = parseFloat(amountPaid) > total ? parseFloat(amountPaid) - total : 0;
 
@@ -102,7 +102,7 @@ const POSPage = ({ products = [], onRefresh = () => {}, onNavigate = () => {} }:
         body: JSON.stringify({
           client_id: 1, // Default Consumidor Final
           date: new Date().toISOString().split('T')[0],
-          items: cart.map(c => ({
+          items: (cart || []).map(c => ({
             product_id: c.product.id,
             description: c.product.name,
             quantity: c.qty,
@@ -325,7 +325,7 @@ const POSPage = ({ products = [], onRefresh = () => {}, onNavigate = () => {} }:
                     <span className="text-[10px] font-bold text-[#003366] bg-[#003366]/5 px-2 py-0.5">Últimas 5 sessões</span>
                   </div>
                   <div className="border border-zinc-100 divide-y divide-zinc-100">
-                    {sessions.slice(0, 5).map(s => (
+                    {(sessions || []).slice(0, 5).map(s => (
                       <div key={s.id} className="p-4 flex justify-between items-center hover:bg-zinc-50 transition-colors">
                         <div className="flex items-center gap-4">
                           <div className={`w-2 h-2 rounded-full ${s.status === 'open' ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-300'}`} />
@@ -381,7 +381,7 @@ const POSPage = ({ products = [], onRefresh = () => {}, onNavigate = () => {} }:
                 onChange={e => setSelectedSeries(e.target.value)}
                 className="bg-transparent border-none focus:ring-0 font-bold p-0 cursor-pointer"
               >
-                {series.map(s => <option key={s.id} value={s.id} className="text-zinc-800">{s.description}</option>)}
+                {(series || []).map(s => <option key={s.id} value={s.id} className="text-zinc-800">{s.description}</option>)}
               </select>
             </div>
             
@@ -393,7 +393,7 @@ const POSPage = ({ products = [], onRefresh = () => {}, onNavigate = () => {} }:
                   onChange={e => setSelectedPOS(e.target.value)}
                   className="bg-transparent border-none focus:ring-0 font-bold p-0 cursor-pointer"
                 >
-                  {posPoints.map(p => <option key={p.id} value={p.id} className="text-zinc-800">{p.name}</option>)}
+                  {(posPoints || []).map(p => <option key={p.id} value={p.id} className="text-zinc-800">{p.name}</option>)}
                 </select>
               </div>
             </div>

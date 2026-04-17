@@ -9,8 +9,8 @@ const RetencaoPagarForm = ({ purchases, suppliers }: { purchases: Purchase[], su
   // Assuming a default withholding tax of 6.5% for services
   const retentionRate = 0.065;
 
-  const retentions = purchases.map(p => {
-    const supplier = suppliers.find(s => s.id === p.supplier_id);
+  const retentions = (purchases || []).map(p => {
+    const supplier = (suppliers || []).find(s => s.id === p.supplier_id);
     const base = p.total;
     const value = base * retentionRate;
     return {
@@ -23,7 +23,7 @@ const RetencaoPagarForm = ({ purchases, suppliers }: { purchases: Purchase[], su
     };
   });
 
-  const totalRetention = retentions.reduce((sum, r) => sum + r.value, 0);
+  const totalRetention = (retentions || []).reduce((sum, r) => sum + r.value, 0);
 
   return (
     <div className="p-8 bg-white border border-zinc-200 shadow-sm space-y-6">

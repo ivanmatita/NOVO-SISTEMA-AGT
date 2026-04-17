@@ -1,227 +1,112 @@
--- SQL Script to initialize Supabase database for FaturaPronta
--- Run this in the Supabase SQL Editor
-
-CREATE TABLE IF NOT EXISTS clients (
-  id SERIAL PRIMARY KEY,
-  name TEXT NOT NULL,
-  email TEXT,
-  nif TEXT,
-  address TEXT,
-  localidade TEXT,
-  codigo_postal TEXT,
-  provincia TEXT,
-  municipio TEXT,
-  pais TEXT,
-  telefone TEXT,
-  webpage TEXT,
-  tipo_cliente TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+-- 1. Create companies table
+CREATE TABLE IF NOT EXISTS public.companies (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    type TEXT, -- tecnologia, comércio, serviços, saúde, educação, outros
+    nif TEXT,
+    address_street TEXT,
+    address_neighborhood TEXT,
+    address_municipality TEXT,
+    address_province TEXT,
+    address_postal_code TEXT,
+    address_country TEXT,
+    phone TEXT,
+    email TEXT,
+    admin_name TEXT,
+    billing_name TEXT,
+    billing_nif TEXT,
+    billing_street TEXT,
+    billing_neighborhood TEXT,
+    billing_municipality TEXT,
+    billing_province TEXT,
+    billing_postal_code TEXT,
+    billing_country TEXT,
+    billing_phone TEXT,
+    billing_email TEXT,
+    promo_code TEXT,
+    pre_registration_date TIMESTAMPTZ DEFAULT now(),
+    created_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS products (
-  id SERIAL PRIMARY KEY,
-  name TEXT NOT NULL,
-  price REAL NOT NULL,
-  unit TEXT DEFAULT 'un',
-  created_at TIMESTAMPTZ DEFAULT NOW()
+-- 2. Create users table (public profile)
+CREATE TABLE IF NOT EXISTS public.users (
+    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    email TEXT NOT NULL,
+    company_id UUID REFERENCES public.companies(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS professions (
-  id SERIAL PRIMARY KEY,
-  name TEXT NOT NULL UNIQUE
+-- 3. Create clients table
+CREATE TABLE IF NOT EXISTS public.clients (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS employees (
-  id SERIAL PRIMARY KEY,
-  name TEXT NOT NULL,
-  role TEXT NOT NULL,
-  profession_id INTEGER REFERENCES professions(id),
-  salary REAL NOT NULL,
-  email TEXT,
-  phone TEXT,
-  status TEXT DEFAULT 'active',
-  hired_at DATE,
-  dismissed_at DATE,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+-- 4. Create workplaces table
+CREATE TABLE IF NOT EXISTS public.workplaces (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS employee_contracts (
-  id SERIAL PRIMARY KEY,
-  employee_id INTEGER NOT NULL REFERENCES employees(id),
-  contract_type TEXT NOT NULL,
-  start_date DATE NOT NULL,
-  end_date DATE,
-  status TEXT DEFAULT 'active'
-);
+-- Enable Row Level Security (RLS)
+ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.clients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.workplaces ENABLE ROW LEVEL SECURITY;
 
-CREATE TABLE IF NOT EXISTS employee_absences (
-  id SERIAL PRIMARY KEY,
-  employee_id INTEGER NOT NULL REFERENCES employees(id),
-  type TEXT NOT NULL,
-  start_date DATE NOT NULL,
-  end_date DATE NOT NULL,
-  amount REAL DEFAULT 0,
-  status TEXT DEFAULT 'pending'
-);
+-- RLS Policies
 
-CREATE TABLE IF NOT EXISTS employee_attendance (
-  id SERIAL PRIMARY KEY,
-  employee_id INTEGER NOT NULL REFERENCES employees(id),
-  date DATE NOT NULL,
-  status TEXT NOT NULL
-);
+-- Users: can only see their own profile
+CREATE POLICY "Users can view their own profile" ON public.users
+    FOR SELECT USING (auth.uid() = id);
 
-CREATE TABLE IF NOT EXISTS work_sites (
-  id SERIAL PRIMARY KEY,
-  client_id INTEGER NOT NULL REFERENCES clients(id),
-  start_date DATE NOT NULL,
-  end_date DATE NOT NULL,
-  title TEXT NOT NULL,
-  code TEXT NOT NULL,
-  staff_per_day INTEGER NOT NULL,
-  total_staff INTEGER NOT NULL,
-  location TEXT NOT NULL,
-  description TEXT,
-  contact TEXT,
-  observations TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
+CREATE POLICY "Enable insert for users own profile" ON public.users
+    FOR INSERT WITH CHECK (true);
 
-CREATE TABLE IF NOT EXISTS work_site_movements (
-  id SERIAL PRIMARY KEY,
-  work_site_id INTEGER NOT NULL REFERENCES work_sites(id),
-  date DATE NOT NULL,
-  doc_no TEXT,
-  company TEXT,
-  description TEXT,
-  debit REAL DEFAULT 0,
-  credit REAL DEFAULT 0,
-  balance REAL DEFAULT 0,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
+-- Companies: users can see their own company
+CREATE POLICY "Users can view their own company" ON public.companies
+    FOR SELECT USING (
+        id IN (SELECT company_id FROM public.users WHERE id = auth.uid())
+    );
 
-CREATE TABLE IF NOT EXISTS invoices (
-  id SERIAL PRIMARY KEY,
-  client_id INTEGER NOT NULL REFERENCES clients(id),
-  invoice_number TEXT UNIQUE NOT NULL,
-  date DATE NOT NULL,
-  due_date DATE,
-  status TEXT DEFAULT 'pending',
-  total REAL DEFAULT 0,
-  document_type TEXT,
-  country_code TEXT,
-  service_date DATE,
-  service_location TEXT,
-  hash TEXT,
-  signature TEXT,
-  vat_withholding REAL DEFAULT 0,
-  exchange_rate REAL DEFAULT 1,
-  currency TEXT DEFAULT 'Kwanza',
-  counter_value REAL DEFAULT 0,
-  global_discount REAL DEFAULT 0,
-  work_site_id INTEGER REFERENCES work_sites(id),
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
+CREATE POLICY "Enable insert for companies" ON public.companies
+    FOR INSERT WITH CHECK (true);
 
-CREATE TABLE IF NOT EXISTS invoice_items (
-  id SERIAL PRIMARY KEY,
-  invoice_id INTEGER NOT NULL REFERENCES invoices(id),
-  product_id INTEGER REFERENCES products(id),
-  description TEXT NOT NULL,
-  quantity REAL NOT NULL,
-  unit_price REAL NOT NULL,
-  total REAL NOT NULL
-);
+-- Clients: users can manage clients of their company
+CREATE POLICY "Users can manage their company's clients" ON public.clients
+    FOR ALL USING (
+        company_id IN (SELECT company_id FROM public.users WHERE id = auth.uid())
+    )
+    WITH CHECK (
+        company_id IN (SELECT company_id FROM public.users WHERE id = auth.uid())
+    );
 
-CREATE TABLE IF NOT EXISTS pos_sales (
-  id SERIAL PRIMARY KEY,
-  total REAL NOT NULL,
-  date TIMESTAMPTZ DEFAULT NOW(),
-  items_json TEXT NOT NULL,
-  series_id INTEGER,
-  cost_center_id INTEGER,
-  pos_point_id INTEGER,
-  session_id INTEGER,
-  discount REAL DEFAULT 0,
-  payment_method TEXT DEFAULT 'cash'
-);
+-- Workplaces: users can manage workplaces of their company
+CREATE POLICY "Users can manage their company's workplaces" ON public.workplaces
+    FOR ALL USING (
+        company_id IN (SELECT company_id FROM public.users WHERE id = auth.uid())
+    )
+    WITH CHECK (
+        company_id IN (SELECT company_id FROM public.users WHERE id = auth.uid())
+    );
 
-CREATE TABLE IF NOT EXISTS fiscal_series (
-  id SERIAL PRIMARY KEY,
-  description TEXT NOT NULL,
-  user_id INTEGER,
-  type TEXT DEFAULT 'normal',
-  is_active BOOLEAN DEFAULT TRUE,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
+-- Automation: Trigger to set company_id automatically
+CREATE OR REPLACE FUNCTION public.set_company_id()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.company_id := (SELECT company_id FROM public.users WHERE id = auth.uid());
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
-CREATE TABLE IF NOT EXISTS cost_centers (
-  id SERIAL PRIMARY KEY,
-  name TEXT NOT NULL,
-  code TEXT UNIQUE NOT NULL
-);
+CREATE TRIGGER tr_set_client_company_id
+BEFORE INSERT ON public.clients
+FOR EACH ROW EXECUTE FUNCTION public.set_company_id();
 
-CREATE TABLE IF NOT EXISTS pos_points (
-  id SERIAL PRIMARY KEY,
-  name TEXT NOT NULL,
-  location TEXT,
-  is_active BOOLEAN DEFAULT TRUE
-);
-
-CREATE TABLE IF NOT EXISTS cash_sessions (
-  id SERIAL PRIMARY KEY,
-  opened_at TIMESTAMPTZ DEFAULT NOW(),
-  closed_at TIMESTAMPTZ,
-  initial_balance REAL NOT NULL,
-  final_balance REAL,
-  status TEXT DEFAULT 'open',
-  pos_point_id INTEGER,
-  total_sales REAL DEFAULT 0,
-  total_discounts REAL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS payroll (
-  id SERIAL PRIMARY KEY,
-  employee_id INTEGER NOT NULL REFERENCES employees(id),
-  month TEXT NOT NULL,
-  year INTEGER NOT NULL,
-  amount REAL NOT NULL,
-  status TEXT DEFAULT 'pending',
-  paid_at TIMESTAMPTZ
-);
-
-CREATE TABLE IF NOT EXISTS warehouses (
-  id SERIAL PRIMARY KEY,
-  name TEXT NOT NULL,
-  localidade TEXT,
-  provincia TEXT,
-  responsavel TEXT,
-  contacto TEXT,
-  observacao TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS suppliers (
-  id SERIAL PRIMARY KEY,
-  name TEXT NOT NULL,
-  nif TEXT,
-  email TEXT,
-  phone TEXT,
-  address TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS app_settings (
-  key TEXT PRIMARY KEY,
-  value TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS transactions (
-  id SERIAL PRIMARY KEY,
-  type TEXT NOT NULL,
-  category TEXT NOT NULL,
-  amount REAL NOT NULL,
-  description TEXT,
-  date TIMESTAMPTZ DEFAULT NOW(),
-  reference_id INTEGER
-);
+CREATE TRIGGER tr_set_workplace_company_id
+BEFORE INSERT ON public.workplaces
+FOR EACH ROW EXECUTE FUNCTION public.set_company_id();

@@ -6,7 +6,7 @@ const CalculosImpostosForm = ({ invoices }: { invoices: Invoice[] }) => {
     return new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(value).replace('Kz', '').trim();
   };
 
-  const totalSales = invoices.reduce((sum, inv) => sum + inv.total, 0);
+  const totalSales = (invoices || []).reduce((sum, inv) => sum + inv.total, 0);
   const iva = totalSales * 0.14;
   const irt = totalSales * 0.065;
   const is = totalSales * 0.01;

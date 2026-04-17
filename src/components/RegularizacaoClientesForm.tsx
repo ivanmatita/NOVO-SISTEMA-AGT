@@ -2,7 +2,7 @@ import React from 'react';
 import { Invoice, Client } from '../types';
 
 const RegularizacaoClientesForm = ({ invoices, clients }: { invoices: Invoice[], clients: Client[] }) => {
-  const totalSalesBase = invoices.reduce((acc, inv) => acc + (inv.total || 0), 0);
+  const totalSalesBase = (invoices || []).reduce((acc, inv) => acc + (inv.total || 0), 0);
   const totalSalesTax = 0; // Calculate from items if needed
 
   const formatValue = (val: number) => new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(val).replace('Kz', '').trim();

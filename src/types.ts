@@ -1,8 +1,27 @@
+export interface CompanyData {
+  name: string;
+  nif: string;
+  address: string;
+  provincia: string;
+  contact: string;
+  email: string;
+  responsavel: string;
+  regime: string;
+  alvara: string;
+  matricula: string;
+  inss: string;
+  coordenadas_bancarias: string;
+  tipo_empresa: string;
+  logo: string;
+  marca_agua: string;
+  footer: string;
+}
+
 export interface User {
   id: string;
   username: string;
   email: string;
-  empresa_id: string;
+  company_id: string;
   role: 'admin' | 'operador';
   created_at: string;
 }
@@ -27,7 +46,7 @@ export interface Caixa {
   currentBalance: number;
   obs: string;
   status: 'aberto' | 'fechado';
-  empresa_id?: string;
+  company_id?: string;
 }
 
 export interface CaixaMovement {
@@ -38,7 +57,7 @@ export interface CaixaMovement {
   description: string;
   date: string;
   targetCaixaId?: string; // For transfers
-  empresa_id?: string;
+  company_id?: string;
 }
 
 export interface Client {
@@ -55,8 +74,9 @@ export interface Client {
   telefone?: string;
   webpage?: string;
   tipo_cliente?: 'normal' | 'grupo_nacional' | 'nao_grupo' | 'subsidiarias' | 'nao_grupo_estrangeiro' | 'associados';
+  estado_nif?: 'ativo' | 'suspenso' | 'inválido' | 'não encontrado';
   initial_balance?: number;
-  empresa_id: string;
+  company_id: string;
   created_at: string;
 }
 
@@ -276,10 +296,19 @@ export interface POSPoint {
   is_active: boolean;
 }
 
+export interface Workplace {
+  id: number;
+  name: string;
+  company_id: string;
+  location?: string;
+  code?: string;
+  created_at: string;
+}
+
 export interface WorkSite {
   id: number;
   client_id: number;
-  empresa_id?: string;
+  company_id?: string;
   client_name?: string;
   start_date: string;
   end_date: string;
@@ -296,7 +325,7 @@ export interface WorkSite {
 export interface WorkSiteMovement {
   id: number;
   work_site_id: number;
-  empresa_id?: string;
+  company_id?: string;
   date: string;
   doc_no: string;
   company: string;
@@ -352,7 +381,7 @@ export interface StockMovement {
   id: number;
   product_id: number;
   product_name?: string;
-  empresa_id?: string;
+  company_id?: string;
   type: 'entry' | 'exit' | 'transfer' | 'adjustment' | 'adjustment_plus' | 'adjustment_minus';
   quantity: number;
   unit_price: number;

@@ -1,14 +1,21 @@
 import { createClient } from '@supabase/supabase-js';
 
-let supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_KEY;
+// In Vite, environment variables are exposed on import.meta.env
+// In Node.js, they are on process.env
+let supabaseUrl = (typeof process !== 'undefined' && process.env.VITE_SUPABASE_URL) || 
+                   (import.meta as any).env?.VITE_SUPABASE_URL ||
+                   (typeof process !== 'undefined' && process.env.SUPABASE_URL);
+
+const supabaseKey = (typeof process !== 'undefined' && process.env.VITE_SUPABASE_ANON_KEY) || 
+                    (import.meta as any).env?.VITE_SUPABASE_ANON_KEY ||
+                    (typeof process !== 'undefined' && process.env.SUPABASE_KEY);
 
 if (supabaseUrl && !supabaseUrl.startsWith('http')) {
   supabaseUrl = `https://${supabaseUrl}`;
 }
 
 if (!supabaseUrl || !supabaseKey) {
-  console.warn('⚠️ Supabase credentials are missing. Please set SUPABASE_URL and SUPABASE_KEY in your environment variables.');
+  console.warn('⚠️ Supabase credentials are missing. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your environment variables.');
 } else {
   try {
     const url = new URL(supabaseUrl);

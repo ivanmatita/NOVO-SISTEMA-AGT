@@ -5,7 +5,7 @@ const RegimeSimplificadoForm = ({ invoices, purchases }: { invoices: Invoice[], 
   const [ano, setAno] = useState(new Date().getFullYear().toString());
   const [mes, setMes] = useState((new Date().getMonth() + 1).toString().padStart(2, '0'));
 
-  const totalSales = invoices.reduce((sum, inv) => sum + inv.total, 0);
+  const totalSales = (invoices || []).reduce((sum, inv) => sum + inv.total, 0);
   const totalTax = totalSales * 0.07;
 
   const formatCurrency = (value: number) => {

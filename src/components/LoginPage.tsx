@@ -37,10 +37,35 @@ export const LoginPage: React.FC = () => {
   const { login, loading, error: authError } = useAuth();
 
   // Registration state
+  const [regStep, setRegStep] = useState(1);
   const [regCompanyName, setRegCompanyName] = useState('');
-  const [regUsername, setRegUsername] = useState('');
+  const [regCompanyType, setRegCompanyType] = useState('tecnologia');
+  const [regNif, setRegNif] = useState('');
+  const [regAddressStreet, setRegAddressStreet] = useState('');
+  const [regAddressNeighborhood, setRegAddressNeighborhood] = useState('');
+  const [regAddressMunicipality, setRegAddressMunicipality] = useState('');
+  const [regAddressProvince, setRegAddressProvince] = useState('');
+  const [regAddressPostalCode, setRegAddressPostalCode] = useState('');
+  const [regAddressCountry, setRegAddressCountry] = useState('Angola');
+  const [regPhone, setRegPhone] = useState('');
+  const [regCompanyEmail, setRegCompanyEmail] = useState('');
+  const [regAdminName, setRegAdminName] = useState('');
+  const [regBillingName, setRegBillingName] = useState('');
+  const [regBillingNif, setRegBillingNif] = useState('');
+  const [regBillingStreet, setRegBillingStreet] = useState('');
+  const [regBillingNeighborhood, setRegBillingNeighborhood] = useState('');
+  const [regBillingMunicipality, setRegBillingMunicipality] = useState('');
+  const [regBillingProvince, setRegBillingProvince] = useState('');
+  const [regBillingPostalCode, setRegBillingPostalCode] = useState('');
+  const [regBillingCountry, setRegBillingCountry] = useState('AO');
+  const [regBillingPhone, setRegBillingPhone] = useState('');
+  const [regBillingEmail, setRegBillingEmail] = useState('');
+  const [regPromoCode, setRegPromoCode] = useState('');
+  const [regPreRegistrationDate] = useState(new Date().toISOString().split('T')[0]);
+
   const [regEmail, setRegEmail] = useState('');
   const [regPassword, setRegPassword] = useState('');
+  const [regConfirmPassword, setRegConfirmPassword] = useState('');
   const [regLoading, setRegLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -61,6 +86,16 @@ export const LoginPage: React.FC = () => {
 
   const handleRegisterCompany = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (regStep < 3) {
+      setRegStep(prev => prev + 1);
+      return;
+    }
+
+    if (regPassword !== regConfirmPassword) {
+      alert('As senhas não coincidem.');
+      return;
+    }
+
     setRegLoading(true);
     try {
       const res = await fetch('/api/register-company', {
@@ -68,16 +103,39 @@ export const LoginPage: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           companyName: regCompanyName,
-          username: regUsername,
+          companyType: regCompanyType,
           email: regEmail,
-          password: regPassword
+          password: regPassword,
+          nif: regNif,
+          address_street: regAddressStreet,
+          address_neighborhood: regAddressNeighborhood,
+          address_municipality: regAddressMunicipality,
+          address_province: regAddressProvince,
+          address_postal_code: regAddressPostalCode,
+          address_country: regAddressCountry,
+          phone: regPhone,
+          company_email: regCompanyEmail,
+          admin_name: regAdminName,
+          billing_name: regBillingName,
+          billing_nif: regBillingNif,
+          billing_street: regBillingStreet,
+          billing_neighborhood: regBillingNeighborhood,
+          billing_municipality: regBillingMunicipality,
+          billing_province: regBillingProvince,
+          billing_postal_code: regBillingPostalCode,
+          billing_country: regBillingCountry,
+          billing_phone: regBillingPhone,
+          billing_email: regBillingEmail,
+          promo_code: regPromoCode,
+          pre_registration_date: regPreRegistrationDate
         })
       });
       
       const data = await res.json();
       if (res.ok) {
-        alert(data.message || 'Empresa e utilizador registados com sucesso! Agora pode fazer login.');
+        alert(data.message || 'Empresa e utilizador registados com sucesso! Verifique o seu email para confirmar a conta.');
         setShowRegisterModal(false);
+        setRegStep(1);
       } else {
         alert(data.error || 'Erro ao registar empresa.');
       }
@@ -87,6 +145,12 @@ export const LoginPage: React.FC = () => {
       setRegLoading(false);
     }
   };
+
+  const plans = [
+    { id: 'trial', name: 'Gratuito (Trial)', price: '0 Kz', period: '/14 dias', features: ['Até 5 utilizadores', 'Faturação básica', 'Suporte por email'] },
+    { id: 'básico', name: 'Básico', price: '25.000 Kz', period: '/mês', features: ['Até 20 utilizadores', 'Gestão de stocks', 'RH Simplificado', 'Suporte 24/7'] },
+    { id: 'premium', name: 'Premium', price: '50.000 Kz', period: '/mês', features: ['Utilizadores ilimitados', 'Contabilidade avançada', 'Multi-armazém', 'Consultoria dedicada'] }
+  ];
 
   const displayError = localError || authError;
 
@@ -252,7 +316,7 @@ export const LoginPage: React.FC = () => {
               <motion.div 
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden border-t-4 border-[#00D17F]"
+                className="w-full max-w-lg bg-white rounded-none shadow-2xl overflow-hidden border-t-4 border-[#00D17F]"
               >
                 <div className="p-10 space-y-8">
                   <div className="space-y-2 text-center">
@@ -270,7 +334,7 @@ export const LoginPage: React.FC = () => {
 
                     <div className="space-y-4">
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Utilizador ou Email</label>
+                        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider ml-1">Utilizador ou Email</label>
                         <div className="relative group">
                           <div className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400 group-focus-within:text-[#003366] transition-colors">
                             <Mail size={18} />
@@ -279,7 +343,7 @@ export const LoginPage: React.FC = () => {
                             type="text" 
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
-                            className="w-full bg-zinc-50 border border-zinc-200 pl-12 pr-4 py-4 text-sm focus:outline-none focus:border-[#003366] focus:bg-white transition-all font-medium rounded-xl"
+                            className="w-full bg-zinc-50 border border-zinc-200 pl-12 pr-4 py-4 text-sm focus:outline-none focus:border-[#003366] focus:bg-white transition-all font-medium rounded-none"
                             placeholder="admin ou exemplo@imatec.ao"
                             disabled={loading}
                           />
@@ -287,7 +351,7 @@ export const LoginPage: React.FC = () => {
                       </div>
 
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Palavra-Passe</label>
+                        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider ml-1">Palavra-Passe</label>
                         <div className="relative group">
                           <div className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400 group-focus-within:text-[#003366] transition-colors">
                             <Lock size={18} />
@@ -296,7 +360,7 @@ export const LoginPage: React.FC = () => {
                             type="password" 
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
-                            className="w-full bg-zinc-50 border border-zinc-200 pl-12 pr-4 py-4 text-sm focus:outline-none focus:border-[#003366] focus:bg-white transition-all font-medium rounded-xl"
+                            className="w-full bg-zinc-50 border border-zinc-200 pl-12 pr-4 py-4 text-sm focus:outline-none focus:border-[#003366] focus:bg-white transition-all font-medium rounded-none"
                             placeholder="••••••••"
                             disabled={loading}
                           />
@@ -306,7 +370,7 @@ export const LoginPage: React.FC = () => {
 
                     <div className="flex items-center justify-between px-1">
                       <label className="flex items-center gap-2 cursor-pointer group">
-                        <input type="checkbox" className="w-4 h-4 rounded border-zinc-300 text-[#003366] focus:ring-[#003366]" />
+                        <input type="checkbox" className="w-4 h-4 rounded-none border-zinc-300 text-[#003366] focus:ring-[#003366]" />
                         <span className="text-xs font-bold text-zinc-500 group-hover:text-zinc-700 transition-colors">Lembrar-me</span>
                       </label>
                       <button type="button" className="text-xs font-black text-[#003366] uppercase tracking-widest hover:underline">Esqueceu a senha?</button>
@@ -315,7 +379,7 @@ export const LoginPage: React.FC = () => {
                     <button 
                       type="submit" 
                       disabled={loading}
-                      className="w-full bg-[#001A33] text-white py-5 font-black uppercase tracking-widest text-xs hover:bg-black transition-all shadow-xl flex items-center justify-center gap-3 disabled:opacity-70 rounded-xl"
+                      className="w-full bg-[#001A33] text-white py-5 font-black uppercase tracking-widest text-xs hover:bg-black transition-all shadow-xl flex items-center justify-center gap-3 disabled:opacity-70 rounded-none"
                     >
                       {loading ? (
                         <>
@@ -576,98 +640,81 @@ export const LoginPage: React.FC = () => {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden"
+              className="relative w-full max-w-4xl bg-white rounded-none shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
             >
-              <div className="bg-[#003366] p-8 text-white flex justify-between items-center">
+              <div className="bg-[#003366] p-8 text-white flex justify-between items-center shrink-0">
                 <div>
                   <h3 className="text-2xl font-black uppercase tracking-tight">Registar Empresa</h3>
-                  <p className="text-white/60 text-xs font-bold uppercase tracking-widest mt-1">Crie a sua conta empresarial</p>
+                  <p className="text-white/60 text-[10px] font-bold uppercase tracking-widest mt-1">
+                    Passo {regStep} de 3: {
+                      regStep === 1 ? 'Dados da Empresa e Adm' : 
+                      regStep === 2 ? 'Seleção de Plano' : 
+                      'Confirmação Final'
+                    }
+                  </p>
                 </div>
                 <button onClick={() => setShowRegisterModal(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
                   <X size={24} />
                 </button>
               </div>
 
-              <form onSubmit={handleRegisterCompany} className="p-8 space-y-6">
-                <div className="space-y-4">
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Nome da Empresa</label>
-                    <div className="relative">
-                      <div className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400">
-                        <Building2 size={18} />
-                      </div>
-                      <input 
-                        type="text" 
-                        required
-                        value={regCompanyName}
-                        onChange={e => setRegCompanyName(e.target.value)}
-                        className="w-full bg-zinc-50 border border-zinc-200 pl-12 pr-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-all font-medium rounded-xl"
-                        placeholder="Ex: Minha Empresa Lda"
-                      />
-                    </div>
-                  </div>
+              <div className="flex-1 overflow-y-auto">
+                <form onSubmit={handleRegisterCompany} className="p-8 space-y-8">
+                  <AnimatePresence mode="wait">
+                    {/* Registration steps */}
+                    {regStep === 1 && (
+                      <motion.div key="step1" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data do Pré-Registo</label>
+                            <input type="date" readOnly value={regPreRegistrationDate} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm" />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Código Promocional</label>
+                            <input type="text" value={regPromoCode} onChange={e => setRegPromoCode(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm" placeholder="Ex: PROMO2024" />
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                    
+                    {regStep === 2 && (
+                      <motion.div key="step2" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <input type="text" value={regCompanyName} onChange={e => setRegCompanyName(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm" placeholder="Nome da Empresa" />
+                        </div>
+                      </motion.div>
+                    )}
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Username Admin</label>
-                      <input 
-                        type="text" 
-                        required
-                        value={regUsername}
-                        onChange={e => setRegUsername(e.target.value)}
-                        className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-all font-medium rounded-xl"
-                        placeholder="admin"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Email</label>
-                      <input 
-                        type="email" 
-                        required
-                        value={regEmail}
-                        onChange={e => setRegEmail(e.target.value)}
-                        className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-all font-medium rounded-xl"
-                        placeholder="admin@empresa.ao"
-                      />
-                    </div>
-                  </div>
+                    {regStep === 3 && (
+                      <motion.div key="step3" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <input type="email" value={regEmail} onChange={e => setRegEmail(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm" placeholder="Email" />
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
 
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Senha</label>
-                    <div className="relative">
-                      <div className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400">
-                        <Lock size={18} />
-                      </div>
-                      <input 
-                        type="password" 
-                        required
-                        value={regPassword}
-                        onChange={e => setRegPassword(e.target.value)}
-                        className="w-full bg-zinc-50 border border-zinc-200 pl-12 pr-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-all font-medium rounded-xl"
-                        placeholder="••••••••"
-                      />
-                    </div>
+                  <div className="flex justify-between gap-4 pt-8 border-t border-zinc-100">                
+                    {regStep > 1 && (
+                      <button 
+                        type="button"
+                        onClick={() => setRegStep(prev => prev - 1)}
+                        className="px-8 py-3 text-xs font-black uppercase tracking-widest text-zinc-500 hover:bg-zinc-100 transition-all rounded-none border border-zinc-200"
+                      >
+                        Voltar
+                      </button>
+                    )}
+                    <div className="flex-1" />
+                    <button 
+                      type="submit"
+                      disabled={regLoading}
+                      className="bg-[#003366] text-white px-12 py-3 text-xs font-black uppercase tracking-widest hover:bg-black transition-all shadow-xl flex items-center justify-center gap-2 rounded-none disabled:opacity-50"
+                    >
+                      {regLoading ? 'Processando...' : 'Próximo Passo'}
+                    </button>
                   </div>
-                </div>
-
-                <button 
-                  type="submit" 
-                  disabled={regLoading}
-                  className="w-full bg-[#00D17F] text-white py-4 font-black uppercase tracking-widest text-xs hover:bg-[#00B36B] transition-all shadow-xl flex items-center justify-center gap-2 disabled:opacity-70 rounded-xl"
-                >
-                  {regLoading ? (
-                    <>
-                      <Loader2 className="animate-spin" size={18} />
-                      Processando...
-                    </>
-                  ) : (
-                    <>
-                      Criar Conta Empresarial
-                      <Check size={18} />
-                    </>
-                  )}
-                </button>
-              </form>
+                </form>
+              </div>
             </motion.div>
           </div>
         )}

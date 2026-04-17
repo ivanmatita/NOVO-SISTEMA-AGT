@@ -27,36 +27,21 @@ export const authService = {
     let email = identifier;
 
     try {
-      // Se não parecer um email, assume que é um username e busca o email
-      if (!identifier.includes('@')) {
-        const { data: userData, error: userError } = await supabase
-          .from('users')
-          .select('email')
-          .eq('username', identifier)
-          .single();
-
-        if (userError || !userData) {
-          // Se falhar no Supabase, tenta local antes de desistir
-          return localLogin();
-        }
-        email = userData.email;
-      }
-
-      // Autenticar com Supabase Auth usando o email encontrado
+      // Autenticar com Supabase Auth usando o email
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: email,
+        email: identifier,
         password: password,
       });
 
       if (authError) {
-        if (authError.message === 'Invalid login credentials') {
-          // Tenta local se as credenciais do Supabase falharem (pode ser um user local)
+        if (authError.message === 'Invalid login credentials' || authError.message === 'Email not confirmed') {
+          console.warn('Erro no Supabase Auth, tentando fallback local:', authError.message);
           return localLogin();
         }
         throw new Error(authError.message);
       }
 
-      // Buscar os dados completos do utilizador (incluindo empresa_id)
+      // Buscar os dados completos do utilizador (incluindo company_id)
       const { data: profileData, error: profileError } = await supabase
         .from('users')
         .select('*')
@@ -64,6 +49,7 @@ export const authService = {
         .single();
 
       if (profileError || !profileData) {
+        console.warn('Perfil não encontrado no Supabase, tentando local');
         return localLogin();
       }
 

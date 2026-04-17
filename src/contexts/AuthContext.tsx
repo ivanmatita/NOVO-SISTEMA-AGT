@@ -9,13 +9,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Demo user para bypass de desenvolvimento
+  const demoUser: User = {
+    id: 'demo-uid',
+    username: 'Administrador Demo',
+    email: 'demo@empresa.com',
+    company_id: 'demo-company-id',
+    role: 'admin',
+    created_at: new Date().toISOString()
+  };
+
   useEffect(() => {
     const initAuth = async () => {
       try {
         const currentUser = await authService.getCurrentUser();
-        setUser(currentUser);
+        // Se não houver user do Supabase, usamos o demo para permitir ver o sistema
+        setUser(currentUser || demoUser);
       } catch (err) {
         console.error('Erro ao inicializar autenticação:', err);
+        setUser(demoUser);
       } finally {
         setLoading(false);
       }

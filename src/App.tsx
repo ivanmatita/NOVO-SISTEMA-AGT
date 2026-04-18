@@ -94,7 +94,8 @@ import {
   Map,
   MapPin,
   Monitor,
-  LogOut
+  LogOut,
+  GraduationCap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import jsPDF from 'jspdf';
@@ -6882,27 +6883,56 @@ const POSModule = ({ products, onRefresh, caixas }: { products: Product[], onRef
   );
 };
 
+import SchoolModule from './components/SchoolModule';
+import RestaurantModule from './components/RestaurantModule';
+
 const SpecializedManagementModule = () => {
+  const [activeModule, setActiveModule] = useState<string | null>(null);
+
+  if (activeModule === 'school') return (
+    <div>
+      <button onClick={() => setActiveModule(null)} className="mb-4 text-[#003366] font-bold text-xs uppercase hover:underline flex items-center gap-1">← Voltar para Gestão Especializada</button>
+      <SchoolModule />
+    </div>
+  );
+  
+  if (activeModule === 'restaurant') return (
+    <div>
+      <button onClick={() => setActiveModule(null)} className="mb-4 text-[#003366] font-bold text-xs uppercase hover:underline flex items-center gap-1">← Voltar para Gestão Especializada</button>
+      <RestaurantModule />
+    </div>
+  );
+
   return (
     <div className="space-y-8">
       <header>
         <Breadcrumbs paths={['Home', 'Área Reservada', 'Gestão Especializada']} />
         <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Gestão Especializada</h2>
-        <p className="text-zinc-500 text-sm">Módulos de gestão avançada para setores específicos.</p>
+        <p className="text-zinc-500 text-sm">Módulos de ERP focados para gerir fluxos de trabalho do seu setor.</p>
       </header>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {[
-          { label: 'Gestão de Inventário', desc: 'Controlo de stock e armazéns.' },
-          { label: 'Gestão de Projetos', desc: 'Acompanhamento de tarefas e prazos.' },
-          { label: 'Gestão de Frotas', desc: 'Manutenção e custos de veículos.' },
-        ].map((m, i) => (
-          <div key={i} className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-4">
+          { id: 'school', label: 'Gestão Escolar ERP', desc: 'Matrículas, Turmas, Notas e Tesouraria Académica.', icon: GraduationCap },
+          { id: 'restaurant', label: 'Restaurante / Bar', desc: 'Gestão de mesas, pedidos Cozinha/Bar e Ementa.', icon: Utensils },
+          { id: 'inventory', label: 'Inventário / Stock', desc: 'Controlo de stock e múltiplos armazéns.', icon: Package },
+          { id: 'projects', label: 'Gestão de Projetos', desc: 'Acompanhamento de tarefas e prazos.', icon: LayoutDashboard },
+          { id: 'fleet', label: 'Gestão de Frotas', desc: 'Manutenção e custos de veículos.', icon: LayoutDashboard },
+        ].map((m) => (
+          <div key={m.id} className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-4 hover:border-[#003366] transition-colors">
             <div className="w-12 h-12 bg-[#003366]/5 text-[#003366] rounded-none flex items-center justify-center">
-              <LayoutDashboard size={24} />
+              <m.icon size={24} />
             </div>
             <h3 className="font-bold text-[#003366] text-lg">{m.label}</h3>
-            <p className="text-zinc-500 text-sm">{m.desc}</p>
-            <button className="text-[#003366] text-xs font-bold hover:underline">Aceder Módulo →</button>
+            <p className="text-zinc-500 text-sm min-h-[40px]">{m.desc}</p>
+            <button 
+              onClick={() => {
+                if(m.id === 'school' || m.id === 'restaurant') setActiveModule(m.id);
+                else alert('Módulo ainda em desenvolvimento.');
+              }}
+              className="text-[#003366] text-xs font-bold hover:underline py-2"
+            >
+              Aceder Módulo →
+            </button>
           </div>
         ))}
       </div>

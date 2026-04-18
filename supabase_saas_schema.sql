@@ -172,6 +172,8 @@ CREATE TABLE IF NOT EXISTS public.transactions (
     description TEXT,
     reference_id UUID,
     payment_method TEXT,
+    reference TEXT,
+    observation TEXT,
     date TIMESTAMP WITH TIME ZONE DEFAULT now(),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );

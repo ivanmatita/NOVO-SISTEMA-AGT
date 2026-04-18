@@ -6,12 +6,21 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, PieChart as RechartsPieChart, Pie, Cell } from 'recharts';
 
-type TabType = 'dashboard' | 'membros' | 'departamentos' | 'eventos' | 'tesouraria' | 'patrimonio';
+type TabType = 'dashboard' | 'membros' | 'departamentos' | 'eventos' | 'tesouraria' | 'patrimonio' | 'missoes' | 'social';
 
 export default function ChurchModule() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [searchTerm, setSearchTerm] = useState('');
   
+  const [missoes, setMissoes] = useState([
+    { id: 1, pais: 'Angola (Zonas Rurais)', projeto: 'Água Vida', status: 'Ativo', investimento: 500000 },
+    { id: 2, pais: 'Namíbia', projeto: 'Alfabetização', status: 'Planeado', investimento: 300000 },
+  ]);
+
+  const [social, setSocial] = useState([
+    { id: 1, atividade: 'Sopa Solidária', beneficiarios: 150, data: '2026-04-12', local: 'Cazenga' },
+    { id: 2, atividade: 'Doação de Roupas', beneficiarios: 80, data: '2026-04-15', local: 'Viana' },
+  ]);
   const [members, setMembers] = useState([
     { id: 1, name: 'Armando Cossa', role: 'Pastor', phone: '923123456', status: 'Ativo', department: 'Liderança', dataNasc: '1980-05-12' },
     { id: 2, name: 'Lúcia Fernandes', role: 'Membro', phone: '912000111', status: 'Ativo', department: 'Coro', dataNasc: '1995-10-20' },
@@ -91,7 +100,9 @@ export default function ChurchModule() {
           { id: 'departamentos', label: 'Grupos & Departamentos', icon: Target },
           { id: 'eventos', label: 'Agenda & Cultos', icon: Calendar },
           { id: 'tesouraria', label: 'Dízimos & Tesouraria', icon: Banknote },
-          { id: 'patrimonio', label: 'Ativos & Património', icon: Shield }
+          { id: 'patrimonio', label: 'Ativos & Património', icon: Shield },
+          { id: 'missoes', label: 'Missões & Expansão', icon: MapPin },
+          { id: 'social', label: 'Ação Social', icon: Heart }
         ].map(tab => (
           <button 
             key={tab.id}
@@ -279,6 +290,64 @@ export default function ChurchModule() {
                ))}
              </div>
            )}
+        </div>
+      )}
+
+      {activeTab === 'missoes' && (
+        <div className="bg-white border border-zinc-200 shadow-sm">
+          <div className="p-4 border-b border-zinc-200 flex justify-between items-center bg-zinc-50">
+            <h3 className="font-bold text-zinc-800 uppercase tracking-wide">Frentes Missionárias & Expansão</h3>
+            <button className="bg-[#003366] text-white px-4 py-2 text-xs font-bold uppercase flex items-center gap-2">
+              <Plus size={16} /> Novo Campo
+            </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6">
+            {missoes.map(m => (
+              <div key={m.id} className="p-4 border border-zinc-200 shadow-sm relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-4 opacity-5"><MapPin size={80} /></div>
+                <h4 className="font-black text-indigo-900 text-lg">{m.projeto}</h4>
+                <p className="text-zinc-500 font-bold text-xs uppercase tracking-widest">{m.pais}</p>
+                <div className="mt-4 flex justify-between items-end">
+                  <div>
+                    <p className="text-[10px] text-zinc-400 font-bold uppercase">Investimento Acumulado</p>
+                    <p className="font-bold text-emerald-700">{new Intl.NumberFormat('pt-AO', {style:'currency', currency:'AOA'}).format(m.investimento)}</p>
+                  </div>
+                  <span className={`px-2 py-1 text-[10px] uppercase font-bold rounded-sm ${m.status === 'Ativo' ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'}`}>{m.status}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'social' && (
+        <div className="bg-white border border-zinc-200 shadow-sm">
+          <div className="p-4 border-b border-zinc-200 flex justify-between items-center bg-zinc-50">
+            <h3 className="font-bold text-zinc-800 uppercase tracking-wide">Ação Social & Comunidade</h3>
+            <button className="bg-rose-600 text-white px-4 py-2 text-xs font-bold uppercase flex items-center gap-2 hover:bg-rose-700">
+              <Plus size={16} /> Registar Atividade
+            </button>
+          </div>
+          <table className="w-full text-left">
+            <thead className="bg-[#003366] text-white text-[11px] uppercase tracking-wider">
+              <tr>
+                <th className="px-4 py-3">Atividade / Projeto</th>
+                <th className="px-4 py-3">Data</th>
+                <th className="px-4 py-3">Local / Bairro</th>
+                <th className="px-4 py-3 text-right">Beneficiários</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+              {social.map(s => (
+                <tr key={s.id} className="hover:bg-zinc-50 text-sm">
+                  <td className="px-4 py-3 font-bold text-zinc-800">{s.atividade}</td>
+                  <td className="px-4 py-3 text-zinc-600">{s.data}</td>
+                  <td className="px-4 py-3 text-zinc-600">{s.local}</td>
+                  <td className="px-4 py-3 text-right font-black text-rose-700">{s.beneficiarios} pessoas</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 

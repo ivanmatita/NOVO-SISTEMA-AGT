@@ -2,13 +2,19 @@ import React, { useState, useMemo } from 'react';
 import { Sprout, Tractor, Package, DollarSign, Search, Plus, MapPin, Calendar, Activity, BarChart3, CheckCircle, AlertTriangle, Leaf, Store, Edit, Trash2, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-type TabType = 'dashboard' | 'fazendas' | 'culturas' | 'pecuaria' | 'insumos' | 'vendas';
+type TabType = 'dashboard' | 'fazendas' | 'culturas' | 'pecuaria' | 'insumos' | 'vendas' | 'maquinaria' | 'clima' | 'relatorios';
 
 export default function AgrobusinessModule() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Estados de dados simulados provisórios para o Dashboard
+  // Estados de dados simulados
+  const [maquinaria, setMaquinaria] = useState([
+    { id: 1, nome: 'Trator Massey Ferguson 4x4', status: 'Operacional', manutencao: '2026-05-10', horas: 1250, consumo: '15L/h' },
+    { id: 2, nome: 'Colheitadeira John Deere', status: 'Em Manutenção', manutencao: '2026-04-15', horas: 840, consumo: '45L/h' },
+    { id: 3, nome: 'Camião Cisterna (Distribuição)', status: 'Operacional', manutencao: '2026-06-01', horas: 54000, consumo: '30L/100km' },
+  ]);
+
   const [culturas, setCulturas] = useState<any[]>([
     { id: 1, nome: 'Milho Branco', fazenda: 'Fazenda Esperança (Huambo)', area: 50, plantio: '2025-10-15', colheitaPrev: '2026-04-20', status: 'Em Crescimento', estRendimento: 150 },
     { id: 2, nome: 'Feijão Manteiga', fazenda: 'Fazenda Boa Vista (Uíge)', area: 30, plantio: '2026-02-10', colheitaPrev: '2026-05-15', status: 'Germinação', estRendimento: 45 },
@@ -77,7 +83,10 @@ export default function AgrobusinessModule() {
           { id: 'culturas', label: 'Lavouras & Culturas', icon: Sprout },
           { id: 'pecuaria', label: 'Pecuária & Animais', icon: Activity },
           { id: 'insumos', label: 'Estoque / Insumos', icon: Package },
-          { id: 'vendas', label: 'Comercialização', icon: Store }
+          { id: 'vendas', label: 'Comercialização', icon: Store },
+          { id: 'maquinaria', label: 'Frota & Maquinaria', icon: Tractor },
+          { id: 'clima', label: 'Clima & Rega', icon: MapPin },
+          { id: 'relatorios', label: 'Análise Avançada', icon: BarChart3 }
         ].map(tab => (
           <button 
             key={tab.id}
@@ -355,6 +364,105 @@ export default function AgrobusinessModule() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'maquinaria' && (
+        <div className="bg-white border border-zinc-200 shadow-sm rounded-md overflow-hidden">
+          <div className="p-4 border-b border-zinc-200 flex justify-between items-center bg-zinc-50">
+            <h3 className="font-bold text-zinc-800 uppercase tracking-wide">Frota & Maquinaria Agrícola</h3>
+            <button className="bg-[#003366] text-white px-4 py-2 text-xs font-bold uppercase tracking-widest flex items-center gap-2 rounded-sm transition-colors hover:bg-blue-900">
+              <Plus size={16} /> Novo Veículo
+            </button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead className="bg-[#003366] text-white text-[11px] uppercase tracking-wider">
+                <tr>
+                  <th className="px-4 py-3">Equipamento</th>
+                  <th className="px-4 py-3">Status Atual</th>
+                  <th className="px-4 py-3 text-right">Horas de Uso</th>
+                  <th className="px-4 py-3 text-right">Consumo Méd.</th>
+                  <th className="px-4 py-3">Próx. Manutenção</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {maquinaria.map(m => (
+                  <tr key={m.id} className="hover:bg-zinc-50 text-sm">
+                    <td className="px-4 py-3 font-bold text-zinc-800">{m.nome}</td>
+                    <td className="px-4 py-3">
+                      <span className={`px-2 py-1 text-[10px] font-bold uppercase rounded-sm ${m.status === 'Operacional' ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}`}>{m.status}</span>
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono text-zinc-600">{m.horas} h</td>
+                    <td className="px-4 py-3 text-right font-mono text-zinc-600">{m.consumo}</td>
+                    <td className="px-4 py-3 text-zinc-500">{m.manutencao}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'clima' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-white p-6 border border-zinc-200 shadow-sm rounded-md">
+            <h3 className="font-bold text-[#003366] uppercase text-sm mb-4">Monitoramento Meteorológico (Simulado)</h3>
+            <div className="flex items-center justify-between p-4 bg-blue-50 border border-blue-100 rounded-md">
+              <div className="flex items-center gap-4">
+                <div className="text-blue-600 text-5xl font-black">28°C</div>
+                <div>
+                  <p className="font-bold text-blue-900">Huambo, Angola</p>
+                  <p className="text-xs text-blue-700">Céu Limpo • Humidade: 45%</p>
+                </div>
+              </div>
+              <Activity size={40} className="text-blue-400 opacity-30" />
+            </div>
+            <div className="mt-4 grid grid-cols-3 gap-4">
+              <div className="text-center p-2 bg-zinc-50 border border-zinc-100">
+                <p className="text-[10px] font-bold text-zinc-400 uppercase">Precipitação</p>
+                <p className="font-black text-zinc-800 text-lg">5mm</p>
+              </div>
+              <div className="text-center p-2 bg-zinc-50 border border-zinc-100">
+                <p className="text-[10px] font-bold text-zinc-400 uppercase">Vento</p>
+                <p className="font-black text-zinc-800 text-lg">12km/h</p>
+              </div>
+              <div className="text-center p-2 bg-zinc-50 border border-zinc-100">
+                <p className="text-[10px] font-bold text-zinc-400 uppercase">Pressão</p>
+                <p className="font-black text-zinc-800 text-lg">1012hPa</p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-white p-6 border border-zinc-200 shadow-sm rounded-md">
+            <h3 className="font-bold text-[#003366] uppercase text-sm mb-4">Controlo de Rega</h3>
+            <p className="text-xs text-zinc-500 mb-4 italic">Defina os horários de ativação dos pivôs centrais e gotejamento.</p>
+            <div className="space-y-3">
+              <div className="flex justify-between items-center p-3 border border-zinc-100 bg-zinc-50">
+                <span className="font-bold text-sm text-zinc-700">Pivô Central 01 (Milho)</span>
+                <span className="text-[10px] font-bold px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full">Ativo</span>
+              </div>
+              <div className="flex justify-between items-center p-3 border border-zinc-100 bg-zinc-50 opacity-60">
+                <span className="font-bold text-sm text-zinc-700">Gotejamento Lote 12</span>
+                <span className="text-[10px] font-bold px-2 py-0.5 bg-zinc-200 text-zinc-600 rounded-full">Desligado</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'relatorios' && (
+        <div className="bg-white p-12 border border-zinc-200 shadow-sm rounded-md text-center">
+          <BarChart3 size={48} className="mx-auto text-emerald-600/30 mb-4" />
+          <h3 className="font-black text-emerald-900 text-xl uppercase tracking-tighter">Relatórios de Produtividade</h3>
+          <p className="text-zinc-500 text-sm mt-2 max-w-md mx-auto">Gere relatórios detalhados de rendimento por hectare, custo de produção vs faturado e previsões de colheita baseadas no clima.</p>
+          <div className="mt-8 flex justify-center gap-4">
+            <button className="px-6 py-2 bg-emerald-600 text-white font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-700 transition-colors">
+              <Download size={14} /> PDF Safra 2025
+            </button>
+            <button className="px-6 py-2 bg-zinc-800 text-white font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-black transition-colors">
+              <Download size={14} /> CSV Inventário
+            </button>
           </div>
         </div>
       )}

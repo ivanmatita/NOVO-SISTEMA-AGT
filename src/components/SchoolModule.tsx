@@ -1,17 +1,28 @@
 import React, { useState } from 'react';
 import { 
   Users, BookOpen, GraduationCap, Calendar, DollarSign, LayoutDashboard, 
-  Search, Plus, MapPin, BarChart3, Clock, CheckCircle, FileText, Settings, BookCopy, Wallet
+  Search, Plus, MapPin, BarChart3, Clock, CheckCircle, FileText, Settings, BookCopy, Wallet,
+  Library, Truck, SearchCode
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, yAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
-type TabType = 'dashboard' | 'alunos' | 'professores' | 'turmas' | 'propinas' | 'notas';
+type TabType = 'dashboard' | 'alunos' | 'professores' | 'turmas' | 'propinas' | 'notas' | 'biblioteca' | 'transporte';
 
 export default function SchoolModule() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [searchTerm, setSearchTerm] = useState('');
   const [showForm, setShowForm] = useState<TabType | null>(null);
+
+  const [livros, setLivros] = useState([
+    { id: 1, titulo: 'Matemática 10ª Classe', autor: 'António Silva', status: 'Disponível', isbn: '978-0123456789' },
+    { id: 2, titulo: 'História de Angola', autor: 'Mário Pinto', status: 'Emprestado', isbn: '978-9876543210' },
+  ]);
+
+  const [rotas, setRotas] = useState([
+    { id: 1, nome: 'Rota Sul (Talatona)', motorista: 'João Pedro', passageiros: 22, status: 'Em Rota' },
+    { id: 2, nome: 'Rota Norte (Cacuaco)', motorista: 'Pedro Simão', passageiros: 18, status: 'Garagem' },
+  ]);
 
   // Data
   const [alunos, setAlunos] = useState([
@@ -76,7 +87,9 @@ export default function SchoolModule() {
           { id: 'professores', label: 'Professores', icon: BookOpen },
           { id: 'turmas', label: 'Turmas & Horários', icon: Calendar },
           { id: 'propinas', label: 'Tesouraria (Propinas)', icon: Wallet },
-          { id: 'notas', label: 'Pautas & Avaliações', icon: FileText }
+          { id: 'notas', label: 'Pautas & Avaliações', icon: FileText },
+          { id: 'biblioteca', label: 'Biblioteca', icon: Library },
+          { id: 'transporte', label: 'Transporte & Rotas', icon: Truck }
         ].map(tab => (
           <button 
             key={tab.id}
@@ -219,6 +232,66 @@ export default function SchoolModule() {
       {(activeTab === 'professores' || activeTab === 'turmas' || activeTab === 'notas') && (
         <div className="bg-zinc-50 border border-zinc-200 p-12 text-center text-zinc-500">
           Módulo em desenvolvimento contínuo. Explore o Dashboard, Alunos e Propinas.
+        </div>
+      )}
+
+      {activeTab === 'biblioteca' && (
+        <div className="bg-white border border-zinc-200 shadow-sm">
+          <div className="p-4 border-b border-zinc-200 flex justify-between items-center bg-zinc-50">
+            <h3 className="font-bold text-zinc-800 uppercase tracking-wide">Acervo Bibliográfico</h3>
+            <button className="bg-blue-600 text-white px-4 py-2 text-xs font-bold uppercase flex items-center gap-2">
+              <Plus size={16} /> Novo Livro
+            </button>
+          </div>
+          <table className="w-full text-left">
+            <thead className="bg-[#003366] text-white text-[11px] uppercase tracking-wider">
+              <tr>
+                <th className="px-4 py-3">ISBN / Código</th>
+                <th className="px-4 py-3">Título do Livro</th>
+                <th className="px-4 py-3">Autor</th>
+                <th className="px-4 py-3 text-center">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+              {livros.map(l => (
+                <tr key={l.id} className="hover:bg-zinc-50 text-sm">
+                  <td className="px-4 py-3 font-mono text-xs text-zinc-500">{l.isbn}</td>
+                  <td className="px-4 py-3 font-bold text-zinc-800">{l.titulo}</td>
+                  <td className="px-4 py-3 text-zinc-600">{l.autor}</td>
+                  <td className="px-4 py-3 text-center">
+                    <span className={`px-2 py-1 text-[10px] uppercase font-bold rounded-sm ${l.status === 'Disponível' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>{l.status}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {activeTab === 'transporte' && (
+        <div className="bg-white border border-zinc-200 shadow-sm">
+          <div className="p-4 border-b border-zinc-200 flex justify-between items-center bg-zinc-50">
+            <h3 className="font-bold text-zinc-800 uppercase tracking-wide">Frota & Rotas Escolares</h3>
+            <button className="bg-blue-600 text-white px-4 py-2 text-xs font-bold uppercase flex items-center gap-2">
+              <Plus size={16} /> Nova Rota
+            </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6">
+            {rotas.map(r => (
+              <div key={r.id} className="p-4 border border-zinc-200 shadow-sm relative overflow-hidden group">
+                <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:scale-110 transition-transform"><Truck size={80} /></div>
+                <h4 className="font-black text-blue-900 text-lg uppercase tracking-tighter">{r.nome}</h4>
+                <p className="text-zinc-500 font-bold text-xs uppercase">Motorista: {r.motorista}</p>
+                <div className="mt-4 flex justify-between items-center">
+                  <div>
+                    <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">Capacidade / Ocupação</p>
+                    <p className="font-black text-zinc-800 text-xl">{r.passageiros} Alunos</p>
+                  </div>
+                  <span className={`px-2 py-1 text-[10px] uppercase font-bold rounded-sm ${r.status === 'Em Rota' ? 'bg-blue-100 text-blue-800' : 'bg-zinc-100 text-zinc-600'}`}>{r.status}</span>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

@@ -95,7 +95,8 @@ import {
   MapPin,
   Monitor,
   LogOut,
-  GraduationCap
+  GraduationCap,
+  Bed
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import jsPDF from 'jspdf';
@@ -107,6 +108,9 @@ import { Client, Product, Invoice, DashboardStats, InvoiceItem, Employee, Profes
 import ContractModal from './components/ContractModal';
 import ChurchModule from './components/ChurchModule';
 import AgrobusinessModule from './components/AgrobusinessModule';
+import SchoolModule from './components/SchoolModule';
+import RestaurantModule from './components/RestaurantModule';
+import HotelModule from './components/HotelModule';
 import { CaixaModule } from './components/CaixaModule';
 import Modelo7Form from './components/Modelo7Form';
 import AnexoFornecedoresForm from './components/AnexoFornecedoresForm';
@@ -527,6 +531,7 @@ const Sidebar = ({ activeTab, setActiveTab }: {
     { id: 'secretary', label: 'Secretaria Beta', icon: Paperclip },
     { id: 'archives', label: 'Arquivos', icon: FileBox },
     { id: 'pos', label: 'Ponto de Venda', icon: Monitor, hasChevron: true },
+    { id: 'electronic_invoices', label: 'Faturação Electrónica', icon: FileCheck },
     { id: 'security', label: 'Segurança Gestão privada', icon: ShieldCheck },
     { id: 'specialized', label: 'Gestão Especializada', icon: Briefcase, hasChevron: true },
     { id: 'invoices', label: 'Vendas', icon: FileText, hasChevron: true },
@@ -4885,7 +4890,7 @@ const ProfitLossReport = ({ fiscalYear, company_id }: { fiscalYear: string, comp
   const d = totals.inss || 0;
   const impPrevisional = Math.max(0, (a - b - c - d) * 0.25);
 
-  const chartData = data.map(d => ({
+  const chartData = (data || []).map(d => ({
     name: typeof d.month === 'string' ? d.month.substring(0, 3) : months[d.month - 1]?.substring(0, 3) || `M${d.month}`,
     Receita: d.facturacaoSImposto,
     Custos: d.totaisCustos,
@@ -4946,17 +4951,17 @@ const ProfitLossReport = ({ fiscalYear, company_id }: { fiscalYear: string, comp
         <tbody className="divide-y divide-zinc-100">
           <tr>
             <td className="py-2 font-medium text-zinc-700">Facturação S/ imposto (a)</td>
-            {data.map(d => <td key={d.month} className="text-right py-2 px-1 text-zinc-500">{formatValue(d.facturacaoSImposto)}</td>)}
+            { (data || []).map(d => <td key={d.month} className="text-right py-2 px-1 text-zinc-500">{formatValue(d.facturacaoSImposto)}</td>) }
             <td className="text-right py-2 px-1 font-bold text-zinc-700">{formatValue(totals.facturacaoSImposto)}</td>
           </tr>
           <tr>
             <td className="py-2 font-medium text-zinc-700">Imposto Recebido</td>
-            {data.map(d => <td key={d.month} className="text-right py-2 px-1 text-zinc-500">{formatValue(d.impostoRecebido)}</td>)}
+            { (data || []).map(d => <td key={d.month} className="text-right py-2 px-1 text-zinc-500">{formatValue(d.impostoRecebido)}</td>) }
             <td className="text-right py-2 px-1 font-bold text-zinc-700">{formatValue(totals.impostoRecebido)}</td>
           </tr>
           <tr className="bg-zinc-50/50">
             <td className="py-2 font-bold text-zinc-800">Facturação c/ imposto</td>
-            {data.map(d => <td key={d.month} className="text-right py-2 px-1 text-zinc-600 font-medium">{formatValue(d.facturacaoCImposto)}</td>)}
+            { (data || []).map(d => <td key={d.month} className="text-right py-2 px-1 text-zinc-600 font-medium">{formatValue(d.facturacaoCImposto)}</td>) }
             <td className="text-right py-2 px-1 font-black text-zinc-900">{formatValue(totals.facturacaoCImposto)}</td>
           </tr>
 
@@ -4968,27 +4973,27 @@ const ProfitLossReport = ({ fiscalYear, company_id }: { fiscalYear: string, comp
           </tr>
           <tr>
             <td className="py-2 font-medium text-zinc-700">Custos Aceites S/ Imposto</td>
-            {data.map(d => <td key={d.month} className="text-right py-2 px-1 text-zinc-500">{formatValue(d.custosAceites)}</td>)}
+            { (data || []).map(d => <td key={d.month} className="text-right py-2 px-1 text-zinc-500">{formatValue(d.custosAceites)}</td>) }
             <td className="text-right py-2 px-1 font-bold text-zinc-700">{formatValue(totals.custosAceites)}</td>
           </tr>
           <tr>
             <td className="py-2 font-medium text-zinc-700">Fornecedores S/ imposto(b)</td>
-            {data.map(d => <td key={d.month} className="text-right py-2 px-1 text-zinc-500">{formatValue(d.fornecedoresSImposto)}</td>)}
+            { (data || []).map(d => <td key={d.month} className="text-right py-2 px-1 text-zinc-500">{formatValue(d.fornecedoresSImposto)}</td>) }
             <td className="text-right py-2 px-1 font-bold text-zinc-700">{formatValue(totals.fornecedoresSImposto)}</td>
           </tr>
           <tr>
             <td className="py-2 font-medium text-zinc-700">Iva Suportado</td>
-            {data.map(d => <td key={d.month} className="text-right py-2 px-1 text-zinc-500">{formatValue(d.ivaSuportado)}</td>)}
+            { (data || []).map(d => <td key={d.month} className="text-right py-2 px-1 text-zinc-500">{formatValue(d.ivaSuportado)}</td>) }
             <td className="text-right py-2 px-1 font-bold text-zinc-700">{formatValue(totals.ivaSuportado)}</td>
           </tr>
           <tr>
             <td className="py-2 font-medium text-zinc-700 italic text-blue-800">Salarios(c)</td>
-            {data.map(d => <td key={d.month} className="text-right py-2 px-1 text-blue-800 italic">{formatValue(d.salarios)}</td>)}
+            { (data || []).map(d => <td key={d.month} className="text-right py-2 px-1 text-blue-800 italic">{formatValue(d.salarios)}</td>) }
             <td className="text-right py-2 px-1 font-bold text-blue-900 italic">{formatValue(totals.salarios)}</td>
           </tr>
           <tr>
             <td className="py-2 font-medium text-zinc-700 italic text-blue-800">INSS 8%(d)</td>
-            {data.map(d => <td key={d.month} className="text-right py-2 px-1 text-blue-800 italic">{formatValue(d.inss)}</td>)}
+            { (data || []).map(d => <td key={d.month} className="text-right py-2 px-1 text-blue-800 italic">{formatValue(d.inss)}</td>) }
             <td className="text-right py-2 px-1 font-bold text-blue-900 italic">{formatValue(totals.inss)}</td>
           </tr>
           <tr className="bg-zinc-50/50 border-t border-zinc-200">
@@ -5465,7 +5470,7 @@ const FinancialModule = ({
       )}
 
       {activeSubTab === 'profit-loss-report' && (
-        <ProfitLossReport fiscalYear="2024" company_id={user?.company_id} />
+        <ProfitLossReport fiscalYear={new Date().getFullYear().toString()} company_id={user?.company_id} />
       )}
 
       {activeSubTab === 'sales-reports' && (
@@ -6883,9 +6888,6 @@ const POSModule = ({ products, onRefresh, caixas }: { products: Product[], onRef
   );
 };
 
-import SchoolModule from './components/SchoolModule';
-import RestaurantModule from './components/RestaurantModule';
-
 const SpecializedManagementModule = () => {
   const [activeModule, setActiveModule] = useState<string | null>(null);
 
@@ -6903,6 +6905,13 @@ const SpecializedManagementModule = () => {
     </div>
   );
 
+  if (activeModule === 'hotel') return (
+    <div>
+      <button onClick={() => setActiveModule(null)} className="mb-4 text-[#003366] font-bold text-xs uppercase hover:underline flex items-center gap-1">← Voltar para Gestão Especializada</button>
+      <HotelModule />
+    </div>
+  );
+
   return (
     <div className="space-y-8">
       <header>
@@ -6914,32 +6923,29 @@ const SpecializedManagementModule = () => {
         {[
           { id: 'school', label: 'Gestão Escolar ERP', desc: 'Matrículas, Turmas, Notas e Tesouraria Académica.', icon: GraduationCap },
           { id: 'restaurant', label: 'Restaurante / Bar', desc: 'Gestão de mesas, pedidos Cozinha/Bar e Ementa.', icon: Utensils },
+          { id: 'hotel', label: 'Hotelaria / Alojamento', desc: 'Check-in, Reservas, Quartos e Housekeeping.', icon: Bed },
           { id: 'inventory', label: 'Inventário / Stock', desc: 'Controlo de stock e múltiplos armazéns.', icon: Package },
           { id: 'projects', label: 'Gestão de Projetos', desc: 'Acompanhamento de tarefas e prazos.', icon: LayoutDashboard },
           { id: 'fleet', label: 'Gestão de Frotas', desc: 'Manutenção e custos de veículos.', icon: LayoutDashboard },
         ].map((m) => (
-          <div key={m.id} className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-4 hover:border-[#003366] transition-colors">
-            <div className="w-12 h-12 bg-[#003366]/5 text-[#003366] rounded-none flex items-center justify-center">
+          <div key={m.id} 
+            onClick={() => setActiveModule(m.id)}
+            className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-4 hover:border-[#003366] transition-colors cursor-pointer group"
+          >
+            <div className="w-12 h-12 bg-[#003366]/5 text-[#003366] rounded-none flex items-center justify-center transition-colors group-hover:bg-[#003366] group-hover:text-white">
               <m.icon size={24} />
             </div>
             <h3 className="font-bold text-[#003366] text-lg">{m.label}</h3>
             <p className="text-zinc-500 text-sm min-h-[40px]">{m.desc}</p>
-            <button 
-              onClick={() => {
-                if(m.id === 'school' || m.id === 'restaurant') setActiveModule(m.id);
-                else alert('Módulo ainda em desenvolvimento.');
-              }}
-              className="text-[#003366] text-xs font-bold hover:underline py-2"
-            >
-              Aceder Módulo →
-            </button>
+            <div className="pt-4 flex items-center text-xs font-bold text-[#003366] uppercase tracking-widest">
+              Entrar no Módulo <ChevronRight size={14} />
+            </div>
           </div>
         ))}
       </div>
     </div>
   );
 };
-
 const UsersSettings = () => {
   const { user } = useAuth();
   const [users, setUsers] = useState<SystemUser[]>([]);
@@ -9054,7 +9060,8 @@ const InvoiceList = ({
   onAction,
   onCertify,
   onViewDetail,
-  caixas
+  caixas,
+  mode = 'standard'
 }: { 
   invoices: Invoice[], 
   issuedDocuments: IssuedDocument[],
@@ -9069,7 +9076,8 @@ const InvoiceList = ({
   onAction: (action: string, doc: IssuedDocument) => void,
   onCertify: (doc: IssuedDocument) => void,
   onViewDetail?: (doc: IssuedDocument) => void,
-  caixas: Caixa[]
+  caixas: Caixa[],
+  mode?: 'standard' | 'electronic'
 }) => {
   const { user } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState('emitidos');
@@ -9235,7 +9243,7 @@ const InvoiceList = ({
                     className="bg-[#2563eb] hover:bg-blue-700 text-white font-bold px-6 py-2.5 rounded-none flex items-center gap-2 transition-all shadow-sm text-sm"
                   >
                     <Plus size={20} className="bg-white/20 rounded-none p-0.5" />
-                    Nova Fatura
+                    {mode === 'electronic' ? 'Emitir Fatura Electrónica' : 'Nova Fatura'}
                   </button>
                 )}
                 <button className="bg-white border border-zinc-200 text-zinc-600 font-bold px-6 py-2.5 rounded-none flex items-center gap-2 hover:bg-zinc-50 transition-all shadow-sm text-sm">
@@ -14583,6 +14591,7 @@ export default function App() {
         />
       );
       case 'pos': return <POSModule products={products} onRefresh={fetchData} caixas={caixas} />;
+      case 'electronic_invoices':
       case 'invoices': return (
         <InvoiceList 
           invoices={invoices} 
@@ -14602,6 +14611,7 @@ export default function App() {
           }}
           onViewDetail={(doc) => setViewingInvoiceId(doc.id)}
           caixas={caixas}
+          mode={activeTab === 'electronic_invoices' ? 'electronic' : 'standard'}
         />
       );
       case 'tax-settings': return <TaxSeriesModule />;

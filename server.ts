@@ -341,6 +341,21 @@ db.exec(`
     total_sales REAL DEFAULT 0,
     total_discounts REAL DEFAULT 0
   );
+
+  CREATE TABLE IF NOT EXISTS transactions (
+    id TEXT PRIMARY KEY,
+    company_id TEXT,
+    type TEXT,
+    category TEXT,
+    amount REAL,
+    description TEXT,
+    payment_method TEXT,
+    reference TEXT,
+    observation TEXT,
+    date DATETIME DEFAULT CURRENT_TIMESTAMP,
+    reference_id TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
   `);
 }
 console.log("Database initialized");
@@ -2379,20 +2394,25 @@ app.use((req, res, next) => {
           return res.json(data);
         }
         console.error("Supabase Query/Schema Error (/api/transactions):", error);
+        // Fallback to empty list if table is missing or columns mismatch
+        return res.json([]);
       }
       
-      let queryStr = "SELECT * FROM transactions";
-      const params: any[] = [];
-      if (company_id) {
-        queryStr += " WHERE company_id = ?";
-        params.push(company_id);
+      if (db) {
+        let queryStr = "SELECT * FROM transactions";
+        const params: any[] = [];
+        if (company_id) {
+          queryStr += " WHERE company_id = ?";
+          params.push(company_id);
+        }
+        queryStr += " ORDER BY date DESC";
+        const transactions = db.prepare(queryStr).all(...params);
+        return res.json(transactions);
       }
-      queryStr += " ORDER BY date DESC";
-      
-      /* SQLite Fallback Removed */ res.json([]);
+      res.json([]);
     } catch (error) {
       console.error("Error in /api/transactions:", error);
-      res.status(500).send(String(error));
+      res.status(500).json({ error: String(error) });
     }
   });
 
@@ -2400,12 +2420,13 @@ app.use((req, res, next) => {
 const transactionColumnsToAdd = [
   { name: 'payment_method', type: 'TEXT' },
   { name: 'reference', type: 'TEXT' },
-  { name: 'observation', type: 'TEXT' }
+  { name: 'observation', type: 'TEXT' },
+  { name: 'reference_id', type: 'TEXT' }
 ];
 
 for (const col of transactionColumnsToAdd) {
   try {
-    /* SQLite disabled */
+    if (db) db.prepare(`ALTER TABLE transactions ADD COLUMN ${col.name} ${col.type}`).run();
     console.log(`Added column ${col.name} to transactions table.`);
   } catch (e) {
     // Column likely already exists
@@ -2413,20 +2434,35 @@ for (const col of transactionColumnsToAdd) {
 }
 
   app.post("/api/transactions", async (req, res) => {
-    const { type, category, amount, description, payment_method, reference, observation, date, company_id } = req.body;
+    const { type, category, amount, description, payment_method, reference, observation, date, company_id, reference_id } = req.body;
     var supabase = req.supabase || globalSupabase;
+    try {
       if (supabaseEnabled) {
-      const { data, error } = await supabase.from("transactions").insert([{ 
-        type, category, amount, description, payment_method, reference, observation, date, company_id 
-      }]).select();
-      if (error) return res.status(500).json({ error: error.message });
-      res.json({ id: data[0].id });
-    } else {
-      /* SQLite disabled */
-      /* SQLite disabled */ const INVALID = db.prepare("INSERT INTO transactions (type, category, amount, description, payment_method, reference, observation, date, company_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
-        type, category, amount, description, payment_method, reference, observation, date || new Date().toISOString(), company_id
-      );
-      res.json({ id: info.lastInsertRowid });
+        const { data, error } = await supabase.from("transactions").insert([{ 
+          type, category, amount, description, payment_method, reference, observation, 
+          date: date || new Date().toISOString(), 
+          company_id,
+          reference_id: reference_id || null
+        }]).select();
+        
+        if (error) {
+          console.error("Supabase insert transaction error:", error);
+          return res.status(500).json({ error: error.message });
+        }
+        return res.json({ id: data[0].id });
+      }
+      
+      if (db) {
+        const id = crypto.randomUUID();
+        db.prepare("INSERT INTO transactions (id, type, category, amount, description, payment_method, reference, observation, date, company_id, reference_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(
+          id, type, category, amount, description, payment_method, reference, observation, date || new Date().toISOString(), company_id, reference_id || null
+        );
+        return res.json({ id });
+      }
+      throw new Error("Local DB disabled");
+    } catch (err: any) {
+      console.error("Post transaction error:", err);
+      res.status(500).json({ error: err.message });
     }
   });
 
@@ -2659,44 +2695,75 @@ for (const col of transactionColumnsToAdd) {
       const months = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
       const reportData = await Promise.all(months.map(async (month) => {
         const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-        const endDate = `${year}-${String(month).padStart(2, '0')}-31`;
+        const nextMonth = month === 12 ? 1 : month + 1;
+        const nextYear = month === 12 ? Number(year) + 1 : year;
+        const endDate = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
 
-        // Income from Invoices
-        let incomeQuery = "SELECT SUM(total) as total FROM invoices WHERE date >= ? AND date <= ? AND status != 'cancelled'";
-        const incomeParams = [startDate, endDate];
-        if (company_id) {
-          incomeQuery += " AND company_id = ?";
-          incomeParams.push(company_id as string);
-        }
-        /* SQLite disabled */
-        const purchasesParams = [startDate, endDate];
-        if (company_id) {
-          purchasesQuery += " AND company_id = ?";
-          purchasesParams.push(company_id as string);
-        }
-        /* SQLite disabled */
-        const payrollParams = [year, String(month)];
-        if (company_id) {
-          payrollQuery += " AND company_id = ?";
-          payrollParams.push(company_id as string);
-        }
-        /* SQLite disabled */
-        const transParams = [startDate, endDate];
-        if (company_id) {
-          transQuery += " AND company_id = ?";
-          transParams.push(company_id as string);
-        }
-        /* SQLite disabled */
+        let incomeTotal = 0;
+        let purchasesTotal = 0;
+        let salariesTotal = 0;
+        let otherExpensesTotal = 0;
 
-        const facturacaoSImposto = income.total || 0;
+        var supabase = req.supabase || globalSupabase;
+        if (supabaseEnabled) {
+          // Income from faturas
+          let incomeQuery = supabase.from("faturas").select("total").gte("date", startDate).lt("date", endDate).neq("status", "cancelled");
+          if (company_id) incomeQuery = incomeQuery.eq("company_id", company_id);
+          const { data: incomeData } = await incomeQuery;
+          incomeTotal = incomeData?.reduce((acc, curr) => acc + (curr.total || 0), 0) || 0;
+
+          // Purchases/Expenses from transactions
+          let transQuery = supabase.from("transactions").select("amount, category, type").gte("date", startDate).lt("date", endDate);
+          if (company_id) transQuery = transQuery.eq("company_id", company_id);
+          const { data: transData } = await transQuery;
+          
+          if (transData) {
+            transData.forEach(t => {
+              if (t.type === 'expense') {
+                if (t.category === 'compra') {
+                  purchasesTotal += (t.amount || 0);
+                } else {
+                  otherExpensesTotal += (t.amount || 0);
+                }
+              }
+            });
+          }
+
+          // Salaries from payroll
+          let payrollQuery = supabase.from("payroll").select("base_salary").eq("year", year).eq("month", String(month));
+          if (company_id) payrollQuery = payrollQuery.eq("company_id", company_id);
+          const { data: payrollData } = await payrollQuery;
+          salariesTotal = payrollData?.reduce((acc, curr) => acc + (curr.base_salary || 0), 0) || 0;
+
+        } else if (db) {
+          // SQLite fallback
+          const incomeRes = db.prepare("SELECT SUM(total) as total FROM invoices WHERE date >= ? AND date < ? AND status != 'cancelled'" + (company_id ? " AND company_id = ?" : "")).get(startDate, endDate, ...(company_id ? [company_id] : []));
+          incomeTotal = incomeRes?.total || 0;
+
+          const transRes = db.prepare("SELECT amount, category, type FROM transactions WHERE date >= ? AND date < ?" + (company_id ? " AND company_id = ?" : "")).all(startDate, endDate, ...(company_id ? [company_id] : []));
+          transRes.forEach((t: any) => {
+            if (t.type === 'expense') {
+              if (t.category === 'compra') {
+                purchasesTotal += (t.amount || 0);
+              } else {
+                otherExpensesTotal += (t.amount || 0);
+              }
+            }
+          });
+
+          const payrollRes = db.prepare("SELECT SUM(base_salary) as total FROM payroll WHERE year = ? AND month = ?" + (company_id ? " AND company_id = ?" : "")).get(year, String(month), ...(company_id ? [company_id] : []));
+          salariesTotal = payrollRes?.total || 0;
+        }
+
+        const facturacaoSImposto = incomeTotal;
         const impostoRecebido = facturacaoSImposto * 0.14;
         const facturacaoCImposto = facturacaoSImposto + impostoRecebido;
 
-        const fornecedoresSImposto = purchases.total || 0;
+        const fornecedoresSImposto = purchasesTotal;
         const ivaSuportado = fornecedoresSImposto * 0.14;
-        const salarios = salaries.total || 0;
+        const salarios = salariesTotal;
         const inss = salarios * 0.08;
-        const custosAceites = otherExpenses.total || 0;
+        const custosAceites = otherExpensesTotal;
         const totaisCustos = fornecedoresSImposto + ivaSuportado + salarios + inss + custosAceites;
 
         return {
@@ -2717,7 +2784,7 @@ for (const col of transactionColumnsToAdd) {
       res.json(reportData);
     } catch (error) {
       console.error("Error in /api/reports/profit-loss:", error);
-      res.status(500).send(String(error));
+      res.status(500).json({ error: String(error) });
     }
   });
 

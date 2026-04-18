@@ -1,16 +1,27 @@
 import React, { useState } from 'react';
 import { 
   Utensils, Coffee, ShoppingCart, UserCheck, CalendarDays, BarChart4,
-  Plus, Edit, Trash2, CheckCircle, Clock, TrendingUp
+  Plus, Edit, Trash2, CheckCircle, Clock, TrendingUp, Wine, ChefHat, Truck,
+  Users
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from 'recharts';
 
-type TabType = 'dashboard' | 'mesas' | 'pedidos' | 'menu' | 'estoque';
+type TabType = 'dashboard' | 'mesas' | 'pedidos' | 'menu' | 'estoque' | 'bar' | 'cozinha' | 'fornecedores';
 
 export default function RestaurantModule() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [showForm, setShowForm] = useState<TabType | null>(null);
+
+  const [drinks, setDrinks] = useState([
+    { id: 1, nome: 'Cerveja Cuca (Lata)', categoria: 'Nacional', stock: 120, preco: 800 },
+    { id: 2, nome: 'Vinho Tinto Reserve', categoria: 'Importado', stock: 15, preco: 12000 },
+  ]);
+
+  const [kitchenStatus, setKitchenStatus] = useState([
+    { id: 1, pedido: '#1052', prato: 'Mufete de Peixe', tempo: '12 min', status: 'Preparando' },
+    { id: 2, pedido: '#1055', prato: 'Galinha à Cafreal', tempo: '40 min', status: 'Fila de Espera' },
+  ]);
 
   // Mocks
   const [mesas, setMesas] = useState([
@@ -65,7 +76,10 @@ export default function RestaurantModule() {
           { id: 'dashboard', label: 'Dashboard', icon: BarChart4 },
           { id: 'mesas', label: 'Salão & Mesas', icon: Users },
           { id: 'pedidos', label: 'Gestão de Pedidos', icon: ShoppingCart },
-          { id: 'menu', label: 'Ementa Virtual', icon: Coffee }
+          { id: 'menu', label: 'Ementa Virtual', icon: Coffee },
+          { id: 'bar', label: 'Gestão de Bar', icon: Wine },
+          { id: 'cozinha', label: 'KDS (Cozinha)', icon: ChefHat },
+          { id: 'fornecedores', label: 'Fornecedores', icon: Truck }
         ].map(tab => (
           <button 
             key={tab.id}
@@ -203,6 +217,74 @@ export default function RestaurantModule() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {activeTab === 'bar' && (
+        <div className="bg-white border border-zinc-200 shadow-sm">
+          <div className="p-4 border-b border-zinc-200 flex justify-between items-center bg-zinc-50">
+            <h3 className="font-bold text-zinc-800 uppercase tracking-wide">Controlo de Bar & Bebidas</h3>
+            <button className="bg-rose-700 text-white px-4 py-2 text-xs font-bold uppercase flex items-center gap-2">
+              <Plus size={16} /> Registar Entrada
+            </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-6">
+            {drinks.map(d => (
+              <div key={d.id} className="p-4 border border-zinc-200 shadow-sm relative group cursor-pointer hover:border-rose-500 transition-colors">
+                <div className="absolute top-2 right-2 opacity-10 group-hover:scale-125 transition-transform"><Wine size={40} /></div>
+                <h4 className="font-black text-rose-900 text-lg uppercase leading-tight">{d.nome}</h4>
+                <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">{d.categoria}</p>
+                <div className="mt-4 flex justify-between items-end">
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-zinc-400 font-bold uppercase">Preço Unitário</p>
+                    <p className="font-bold text-zinc-800 text-lg">{new Intl.NumberFormat('pt-AO').format(d.preco)} AOA</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] text-zinc-400 font-bold uppercase">Stock Atual</p>
+                    <p className={`font-black text-2xl ${d.stock < 20 ? 'text-red-600 animate-pulse' : 'text-emerald-700'}`}>{d.stock}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'cozinha' && (
+        <div className="bg-zinc-900 text-white p-6 border border-zinc-800 shadow-2xl min-h-[400px]">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="font-black text-2xl uppercase tracking-tighter flex items-center gap-2">
+              <ChefHat className="text-rose-500" /> Cozinha Central (KDS)
+            </h3>
+            <div className="flex gap-4 text-xs font-bold uppercase tracking-widest">
+              <span className="flex items-center gap-1 text-emerald-400"><CheckCircle size={14} /> Sistema Online</span>
+              <span className="flex items-center gap-1 text-amber-400"><Clock size={14} /> 2 Em Espera</span>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {kitchenStatus.map(k => (
+              <div key={k.id} className="bg-zinc-800 border-l-4 border-rose-600 p-4 shadow-lg space-y-4">
+                <div className="flex justify-between items-start">
+                  <h4 className="text-zinc-500 font-bold text-sm uppercase">{k.pedido}</h4>
+                  <span className="bg-rose-900 text-rose-100 px-2 py-0.5 text-[10px] uppercase font-bold rounded-sm animate-pulse">{k.status}</span>
+                </div>
+                <h5 className="text-xl font-black text-zinc-100 uppercase tracking-wide">{k.prato}</h5>
+                <div className="pt-4 border-t border-zinc-700 flex justify-between items-center text-xs">
+                  <span className="text-zinc-400 font-bold uppercase">Tempo Decorrido:</span>
+                  <span className="text-rose-400 font-black">{k.tempo}</span>
+                </div>
+                <button className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-2 text-xs uppercase tracking-widest transition-colors">
+                  Marcar como Pronto
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'fornecedores' && (
+        <div className="bg-white border border-zinc-200 shadow-sm p-12 text-center text-zinc-400 italic">
+          Gestão de Fornecedores e Encomendas Automáticas em desenvolvimento.
         </div>
       )}
     </div>

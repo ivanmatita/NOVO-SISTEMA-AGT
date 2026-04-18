@@ -1703,8 +1703,7 @@ app.use((req, res, next) => {
           .select("*, funcionarios(name, role)");
         if (!error) return res.json(data);
       }
-      /* SQLite disabled */
-      res.json(data);
+      return res.json([]);
     } catch (err) {
       res.status(500).json({ error: "Internal server error" });
     }
@@ -1726,8 +1725,7 @@ app.use((req, res, next) => {
         console.error("Supabase Query/Schema Error (/api/employees/absences):", error);
       }
       
-      /* SQLite disabled */
-      res.json(absences);
+      return res.json([]);
     } catch (error) {
       console.error("Error in /api/employees/absences:", error);
       res.status(500).send(String(error));
@@ -1743,11 +1741,9 @@ app.use((req, res, next) => {
         .insert([{ employee_id, type, start_date, end_date, amount, company_id }])
         .select();
       if (error) return res.status(500).json({ error: error.message });
-      res.json({ id: data[0].id });
+      return res.json({ id: data[0].id });
     } else {
-      /* SQLite disabled */
-      /* SQLite disabled */
-      res.json({ id: info.lastInsertRowid });
+      return res.json({ id: Date.now() });
     }
   });
 
@@ -1767,8 +1763,7 @@ app.use((req, res, next) => {
         console.error("Supabase Query/Schema Error (/api/employees/attendance):", error);
       }
       
-      /* SQLite disabled */
-      res.json(attendance);
+      return res.json([]);
     } catch (error) {
       console.error("Error in /api/employees/attendance:", error);
       res.status(500).send(String(error));
@@ -1784,11 +1779,9 @@ app.use((req, res, next) => {
         .insert([{ employee_id, date, status, company_id }])
         .select();
       if (error) return res.status(500).json({ error: error.message });
-      res.json({ id: data[0].id });
+      return res.json({ id: data[0].id });
     } else {
-      /* SQLite disabled */
-      /* SQLite disabled */
-      res.json({ id: info.lastInsertRowid });
+      return res.json({ id: Date.now() });
     }
   });
 
@@ -1839,8 +1832,7 @@ app.use((req, res, next) => {
         return res.json(data);
       }
       
-      /* SQLite disabled */
-      res.json(records);
+      return res.json([]);
     } catch (error) {
       console.error("Error in monthly attendance:", error);
       res.status(500).send(String(error));
@@ -1862,8 +1854,7 @@ app.use((req, res, next) => {
         console.error("Supabase Query/Schema Error (/api/employees/contracts):", error);
       }
       
-      /* SQLite disabled */
-      res.json(contracts);
+      return res.json([]);
     } catch (error) {
       console.error("Error in /api/employees/contracts:", error);
       res.status(500).send(String(error));
@@ -1871,15 +1862,11 @@ app.use((req, res, next) => {
   });
 
   app.get("/api/generated-contracts", (req, res) => {
-    /* SQLite disabled */
-    res.json(contracts);
+    return res.json([]);
   });
 
   app.post("/api/generated-contracts", (req, res) => {
-    const { employee_id, content } = req.body;
-    /* SQLite disabled */
-      /* SQLite disabled */
-    res.json({ id: info.lastInsertRowid });
+    return res.json({ id: Date.now() });
   });
 
   app.post("/api/employees/contracts", async (req, res) => {

@@ -104,6 +104,8 @@ import * as XLSX from 'xlsx';
 import { validateAngolaNIF } from './utils/nifValidation';
 import { Client, Product, Invoice, DashboardStats, InvoiceItem, Employee, Profession, WorkSite, WorkSiteMovement, IssuedDocument, Warehouse, Supplier, FiscalSeries, CostCenter, POSPoint, CashSession, SystemUser, Purchase, PurchaseItem, POSArea, Caixa, CaixaMovement, LaborTermination, StockMovement } from './types';
 import ContractModal from './components/ContractModal';
+import ChurchModule from './components/ChurchModule';
+import AgrobusinessModule from './components/AgrobusinessModule';
 import { CaixaModule } from './components/CaixaModule';
 import Modelo7Form from './components/Modelo7Form';
 import AnexoFornecedoresForm from './components/AnexoFornecedoresForm';
@@ -3376,7 +3378,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
                       value={companyProfession}
                       onChange={e => setCompanyProfession(e.target.value)}
                       placeholder="Ex: Técnico Especialista"
-                      className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]"
+                      className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]"
                     />
                   </div>
 
@@ -3387,7 +3389,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
                       value={baseSalary}
                       onChange={e => setBaseSalary(e.target.value)}
                       placeholder="0.00"
-                      className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]"
+                      className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]"
                     />
                   </div>
                 </div>
@@ -6987,19 +6989,19 @@ const UsersSettings = () => {
             <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Nome</label>
-                <input type="text" value={name} onChange={e => setName(e.target.value)} required className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" />
+                <input type="text" value={name} onChange={e => setName(e.target.value)} required className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" />
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Profissão</label>
-                <input type="text" value={profession} onChange={e => setProfession(e.target.value)} className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" />
+                <input type="text" value={profession} onChange={e => setProfession(e.target.value)} className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" />
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data</label>
-                <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" />
+                <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" />
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Área de Permissão</label>
-                <select value={permissionArea} onChange={e => setPermissionArea(e.target.value)} className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm">
+                <select value={permissionArea} onChange={e => setPermissionArea(e.target.value)} className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm">
                   <option value="">Selecionar Área</option>
                   <option value="admin">Administrador</option>
                   <option value="faturacao">Faturação</option>
@@ -7009,11 +7011,11 @@ const UsersSettings = () => {
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Contacto</label>
-                <input type="text" value={contact} onChange={e => setContact(e.target.value)} className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" />
+                <input type="text" value={contact} onChange={e => setContact(e.target.value)} className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" />
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Morada</label>
-                <input type="text" value={morada} onChange={e => setMorada(e.target.value)} className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" />
+                <input type="text" value={morada} onChange={e => setMorada(e.target.value)} className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" />
               </div>
               <div className="md:col-span-2 flex justify-end gap-3 mt-6">
                 <button type="button" onClick={() => setShowForm(false)} className="text-zinc-500 hover:text-zinc-700 text-sm font-medium">Cancelar</button>
@@ -7857,23 +7859,23 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Nome da Empresa *</label>
-                  <input required type="text" name="nome_empresa" value={formData.nome_empresa} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                  <input required type="text" name="nome_empresa" value={formData.nome_empresa} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">NIF da Empresa *</label>
-                  <input required type="text" name="nif" value={formData.nif} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                  <input required type="text" name="nif" value={formData.nif} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Número de Matrícula</label>
-                  <input type="text" name="matricula" value={formData.matricula} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                  <input type="text" name="matricula" value={formData.matricula} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Número de Alvará</label>
-                  <input type="text" name="alvara" value={formData.alvara} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                  <input type="text" name="alvara" value={formData.alvara} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Regime</label>
-                  <select name="regime" value={formData.regime} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
+                  <select name="regime" value={formData.regime} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
                     <option value="Regime geral">Regime geral</option>
                     <option value="Regime simplificado">Regime simplificado</option>
                     <option value="Regime de exclusão">Regime de exclusão</option>
@@ -7881,7 +7883,7 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Tipo de Empresa</label>
-                  <select name="tipo_empresa" value={formData.tipo_empresa} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
+                  <select name="tipo_empresa" value={formData.tipo_empresa} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
                     <option value="Serviços">Serviços</option>
                     <option value="Comércio">Comércio</option>
                     <option value="Outro">Outro</option>
@@ -7895,23 +7897,23 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-1 md:col-span-2">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Localização (Morada)</label>
-                  <input type="text" name="localizacao" value={formData.localizacao} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                  <input type="text" name="localizacao" value={formData.localizacao} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Província</label>
-                  <input type="text" name="provincia" value={formData.provincia} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                  <input type="text" name="provincia" value={formData.provincia} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Código Postal</label>
-                  <input type="text" name="codigo_postal" value={formData.codigo_postal} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                  <input type="text" name="codigo_postal" value={formData.codigo_postal} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Contacto Telefónico</label>
-                  <input type="text" name="contacto" value={formData.contacto} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                  <input type="text" name="contacto" value={formData.contacto} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Email</label>
-                  <input type="email" name="email" value={formData.email} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                  <input type="email" name="email" value={formData.email} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
                 </div>
               </div>
             </div>
@@ -7921,15 +7923,15 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Nº Contribuinte INSS</label>
-                  <input type="text" name="inss" value={formData.inss} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                  <input type="text" name="inss" value={formData.inss} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Responsável</label>
-                  <input type="text" name="responsavel" value={formData.responsavel} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                  <input type="text" name="responsavel" value={formData.responsavel} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
                 </div>
                 <div className="space-y-1 md:col-span-2">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Coordenadas Bancárias (IBAN, Swift, etc)</label>
-                  <textarea name="coordenadas_bancarias" value={formData.coordenadas_bancarias} onChange={handleChange} rows={3} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" placeholder="Ex: AO06.0040.0000.1234.5678.9 (BAI)"></textarea>
+                  <textarea name="coordenadas_bancarias" value={formData.coordenadas_bancarias} onChange={handleChange} rows={3} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" placeholder="Ex: AO06.0040.0000.1234.5678.9 (BAI)"></textarea>
                 </div>
               </div>
             </div>
@@ -7939,15 +7941,15 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
               <div className="grid grid-cols-1 gap-6">
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Logotipo (URL)</label>
-                  <input type="text" name="logo_url" value={formData.logo_url} onChange={handleChange} placeholder="https://exemplo.com/logo.png" className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                  <input type="text" name="logo_url" value={formData.logo_url} onChange={handleChange} placeholder="https://exemplo.com/logo.png" className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Marca d'água (URL)</label>
-                  <input type="text" name="watermark_url" value={formData.watermark_url} onChange={handleChange} placeholder="https://exemplo.com/watermark.png" className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                  <input type="text" name="watermark_url" value={formData.watermark_url} onChange={handleChange} placeholder="https://exemplo.com/watermark.png" className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Rodapé (URL ou Texto)</label>
-                  <input type="text" name="footer_image_url" value={formData.footer_image_url} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                  <input type="text" name="footer_image_url" value={formData.footer_image_url} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
                 </div>
               </div>
             </div>
@@ -7966,7 +7968,51 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
   );
 };
 
-const SettingsModule = ({ companyData, onRefreshData }: { companyData: any, onRefreshData: () => void }) => {
+const AlertsManagement = ({ alerts, setAlerts }: { alerts: any[], setAlerts: (a: any[]) => void }) => {
+  return (
+    <div className="bg-white border border-zinc-200 p-8">
+      <div className="flex justify-between items-center mb-6">
+        <h3 className="text-xl font-bold text-[#003366] tracking-tight">Gestão de Alertas</h3>
+      </div>
+      
+      <table className="w-full text-left border-collapse">
+        <thead>
+          <tr className="bg-[#003366] text-white text-[11px] uppercase tracking-wider font-bold">
+            <th className="px-4 py-3">Nome</th>
+            <th className="px-4 py-3">Tipo</th>
+            <th className="px-4 py-3">Responsável</th>
+            <th className="px-4 py-3">Início</th>
+            <th className="px-4 py-3">Fim</th>
+            <th className="px-4 py-3">Aviso (Dias)</th>
+            <th className="px-4 py-3 text-right">Ações</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-zinc-200">
+          {alerts.length === 0 ? (
+            <tr><td colSpan={7} className="p-8 text-center text-zinc-400">Nenhum alerta registado</td></tr>
+          ) : (
+            alerts.map((a: any) => (
+              <tr key={a.id} className="hover:bg-zinc-50 text-sm">
+                <td className="px-4 py-3 font-bold text-zinc-800">{a.name}</td>
+                <td className="px-4 py-3 text-zinc-500 capitalize">{a.type.replace('_', ' ')}</td>
+                <td className="px-4 py-3 text-zinc-600">{a.responsible}</td>
+                <td className="px-4 py-3 text-zinc-500">{new Date(a.startDate).toLocaleDateString()}</td>
+                <td className="px-4 py-3 text-zinc-500">{new Date(a.endDate).toLocaleDateString()}</td>
+                <td className="px-4 py-3 text-zinc-500">{a.advanceTime}</td>
+                <td className="px-4 py-3 text-right space-x-2">
+                  <button className="text-blue-600 hover:text-blue-800 text-xs font-bold uppercase tracking-widest"><Edit size={14} className="inline mr-1"/>Editar</button>
+                  <button className="text-zinc-600 hover:text-zinc-800 text-xs font-bold uppercase tracking-widest"><LinkIcon size={14} className="inline mr-1"/>Associar</button>
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+const SettingsModule = ({ companyData, onRefreshData, alerts, setAlerts }: { companyData: any, onRefreshData: () => void, alerts: any[], setAlerts: (a: any[]) => void }) => {
   const [activeTab, setActiveTab] = useState('geral');
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -7985,6 +8031,18 @@ const SettingsModule = ({ companyData, onRefreshData }: { companyData: any, onRe
           Geral
         </button>
         <button 
+          onClick={() => setActiveTab('alertas')}
+          className={`pb-2 text-sm font-bold ${activeTab === 'alertas' ? 'text-[#003366] border-b-2 border-[#003366]' : 'text-zinc-500 hover:text-zinc-800'}`}
+        >
+          Gestão de Alertas
+        </button>
+        <button 
+          onClick={() => setActiveTab('metrica')}
+          className={`pb-2 text-sm font-bold ${activeTab === 'metrica' ? 'text-[#003366] border-b-2 border-[#003366]' : 'text-zinc-500 hover:text-zinc-800'}`}
+        >
+          Métrica
+        </button>
+        <button 
           onClick={() => setActiveTab('utilizadores')}
           className={`pb-2 text-sm font-bold ${activeTab === 'utilizadores' ? 'text-[#003366] border-b-2 border-[#003366]' : 'text-zinc-500 hover:text-zinc-800'}`}
         >
@@ -7992,7 +8050,7 @@ const SettingsModule = ({ companyData, onRefreshData }: { companyData: any, onRe
         </button>
       </div>
 
-      {activeTab === 'geral' ? (
+      {activeTab === 'geral' && (
         <div className="bg-white border border-zinc-200 rounded-none shadow-sm p-8">
           <div className="flex flex-col items-center justify-center p-12 text-center max-w-2xl mx-auto">
             <div className="w-24 h-24 bg-zinc-100 rounded-full flex items-center justify-center mb-6 border border-zinc-200 overflow-hidden">
@@ -8021,9 +8079,11 @@ const SettingsModule = ({ companyData, onRefreshData }: { companyData: any, onRe
             initialData={companyData} 
           />
         </div>
-      ) : (
-        <UsersSettings />
       )}
+      
+      {activeTab === 'alertas' && <AlertsManagement alerts={alerts} setAlerts={setAlerts} />}
+      {activeTab === 'metrica' && <MetricsModule />}
+      {activeTab === 'utilizadores' && <UsersSettings />}
     </div>
   );
 };
@@ -8130,7 +8190,7 @@ const CashierModule = ({ issuedDocuments = [] }: { issuedDocuments?: IssuedDocum
               <form onSubmit={handleCreateSession} className="space-y-4">
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Saldo Inicial</label>
-                  <input type="number" step="0.01" value={initialBalance} onChange={e => setInitialBalance(e.target.value)} required className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" />
+                  <input type="number" step="0.01" value={initialBalance} onChange={e => setInitialBalance(e.target.value)} required className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" />
                 </div>
                 <div className="flex justify-end gap-3 mt-6">
                   <button type="button" onClick={() => setShowForm(false)} className="text-zinc-500 hover:text-zinc-700 text-sm font-medium">Cancelar</button>
@@ -8860,7 +8920,7 @@ const FiscalSeriesModule = () => {
                   value={formData.description} 
                   onChange={e => setFormData({ ...formData, description: e.target.value })} 
                   required 
-                  className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" 
+                  className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" 
                 />
               </div>
               <div className="space-y-1">
@@ -8869,7 +8929,7 @@ const FiscalSeriesModule = () => {
                   value={formData.user_id} 
                   onChange={e => setFormData({ ...formData, user_id: e.target.value })} 
                   required 
-                  className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+                  className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
                 >
                   <option value="">Selecionar Utilizador</option>
                   {systemUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
@@ -8881,7 +8941,7 @@ const FiscalSeriesModule = () => {
                   value={formData.type} 
                   onChange={e => setFormData({ ...formData, type: e.target.value as any })} 
                   required 
-                  className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+                  className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
                 >
                   <option value="normal">Normal</option>
                   <option value="manual_recovery">Recuperação Manual</option>
@@ -10248,7 +10308,7 @@ const WorkSiteForm = ({ clients, onBack, onSuccess, initialData }: { clients: Cl
         <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Seleccione um Cliente</label>
         <select 
           value={clientId} onChange={e => setClientId(Number(e.target.value))} required
-          className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
         >
           <option value="">Selecionar Cliente...</option>
           {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -10259,21 +10319,21 @@ const WorkSiteForm = ({ clients, onBack, onSuccess, initialData }: { clients: Cl
         <input 
           type="text" value={title} onChange={e => setTitle(e.target.value)} required
           placeholder="Digite o título da obra ou serviço"
-          className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
         />
       </div>
       <div className="space-y-1">
         <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data de Abertura de Obra/Serviço</label>
         <input 
           type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required
-          className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
         />
       </div>
       <div className="space-y-1">
         <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data de Encerramento de Obra/Serviço</label>
         <input 
           type="date" value={endDate} onChange={e => setEndDate(e.target.value)} required
-          className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
         />
       </div>
       <div className="space-y-1">
@@ -10281,7 +10341,7 @@ const WorkSiteForm = ({ clients, onBack, onSuccess, initialData }: { clients: Cl
         <input 
           type="text" value={code} onChange={e => setCode(e.target.value)} required
           placeholder="Código identificador da obra"
-          className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
         />
       </div>
       <div className="space-y-1">
@@ -10289,7 +10349,7 @@ const WorkSiteForm = ({ clients, onBack, onSuccess, initialData }: { clients: Cl
         <input 
           type="number" value={staffPerDay} onChange={e => setStaffPerDay(Number(e.target.value))} required
           placeholder="Número de trabalhadores diários"
-          className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
         />
       </div>
       <div className="space-y-1">
@@ -10297,7 +10357,7 @@ const WorkSiteForm = ({ clients, onBack, onSuccess, initialData }: { clients: Cl
         <input 
           type="number" value={totalStaff} onChange={e => setTotalStaff(Number(e.target.value))} required
           placeholder="Total de trabalhadores no projeto"
-          className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
         />
       </div>
       <div className="space-y-1">
@@ -10305,7 +10365,7 @@ const WorkSiteForm = ({ clients, onBack, onSuccess, initialData }: { clients: Cl
         <input 
           type="text" value={location} onChange={e => setLocation(e.target.value)} required
           placeholder="Endereço ou coordenadas da obra"
-          className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
         />
       </div>
       <div className="space-y-1">
@@ -10313,7 +10373,7 @@ const WorkSiteForm = ({ clients, onBack, onSuccess, initialData }: { clients: Cl
         <input 
           type="text" value={contact} onChange={e => setContact(e.target.value)} required
           placeholder="Telefone ou responsável no local"
-          className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
         />
       </div>
       <div className="space-y-1">
@@ -10321,7 +10381,7 @@ const WorkSiteForm = ({ clients, onBack, onSuccess, initialData }: { clients: Cl
         <textarea 
           value={description} onChange={e => setDescription(e.target.value)} required
           placeholder="Breve descrição dos trabalhos a realizar"
-          className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm min-h-[80px]"
+          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm min-h-[80px]"
         />
       </div>
       <div className="md:col-span-2 space-y-1">
@@ -10329,7 +10389,7 @@ const WorkSiteForm = ({ clients, onBack, onSuccess, initialData }: { clients: Cl
         <textarea 
           value={observations} onChange={e => setObservations(e.target.value)}
           placeholder="Notas adicionais ou restrições"
-          className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm min-h-[80px]"
+          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm min-h-[80px]"
         />
       </div>
       <div className="md:col-span-2 flex justify-end gap-3">
@@ -14203,6 +14263,25 @@ export default function App() {
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [companyData, setCompanyData] = useState<any>(null);
+  
+  // Task/Alert modal state
+  const [alerts, setAlerts] = useState<any[]>(() => {
+    const saved = localStorage.getItem('app_alerts');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [taskFormData, setTaskFormData] = useState({
+    name: '', type: 'imposto', description: '', responsible: '', startDate: '', endDate: '', advanceTime: '', obs: ''
+  });
+
+  const handleSaveTask = (e: React.FormEvent) => {
+    e.preventDefault();
+    const newAlerts = [...alerts, { ...taskFormData, id: Date.now().toString() }];
+    setAlerts(newAlerts);
+    localStorage.setItem('app_alerts', JSON.stringify(newAlerts));
+    setIsTaskModalOpen(false);
+    setTaskFormData({ name: '', type: 'imposto', description: '', responsible: '', startDate: '', endDate: '', advanceTime: '', obs: '' });
+  };
 
   const fetchData = async () => {
     if (!user) return;
@@ -14553,12 +14632,17 @@ export default function App() {
       case 'accounting': return <AccountingModule invoices={invoices} clients={clients} />;
       case 'specialized': return <SpecializedManagementModule />;
       case 'security': return <SecurityModule />;
-      case 'metrics': return <MetricsModule />;
+      case 'church': return <ChurchModule />;
+      case 'agrobusiness': return <AgrobusinessModule />;
       case 'settings': return (
-        <SettingsModule 
-          companyData={companyData}
-          onRefreshData={fetchData}
-        />
+        <div className="space-y-6">
+          <SettingsModule 
+            companyData={companyData}
+            onRefreshData={fetchData}
+            alerts={alerts}
+            setAlerts={setAlerts}
+          />
+        </div>
       );
       case 'secretary': return <SecretaryModule appSelectedEmployee={appSelectedEmployee} />;
       default: return (
@@ -14586,7 +14670,8 @@ export default function App() {
             fiscalYear={fiscalYear} 
             setFiscalYear={setFiscalYear} 
             onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-            onAddTask={() => alert('Função de adicionar tarefa em desenvolvimento')}
+            onAddTask={() => setIsTaskModalOpen(true)}
+            alerts={alerts}
           />
           <main className="flex-1 overflow-y-auto w-full transition-all duration-300">
             <div className="p-6 md:p-8 max-w-[1600px] mx-auto">
@@ -14739,6 +14824,78 @@ export default function App() {
           onClose={() => { setIsContractModalOpen(false); setAppSelectedEmployee(null); }}
         />
       )}
+
+      {/* Tarefas / Alertas Modal */}
+      <AnimatePresence>
+        {isTaskModalOpen && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-2xl rounded-none shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+            >
+              <div className="px-6 py-4 border-b border-zinc-100 flex justify-between items-center bg-[#003366] text-white">
+                <h3 className="font-bold text-lg flex items-center gap-2 uppercase tracking-wide">
+                  <AlertCircle size={20} /> Registar Alerta / Tarefa
+                </h3>
+                <button onClick={() => setIsTaskModalOpen(false)} className="text-white/70 hover:text-white">
+                  <X size={24} />
+                </button>
+              </div>
+              <div className="p-6 overflow-y-auto">
+                <form onSubmit={handleSaveTask} className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Nome</label>
+                      <input required type="text" value={taskFormData.name} onChange={e => setTaskFormData({...taskFormData, name: e.target.value})} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tipo de Tarefa</label>
+                      <select required value={taskFormData.type} onChange={e => setTaskFormData({...taskFormData, type: e.target.value})} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
+                        <option value="imposto">Imposto</option>
+                        <option value="tarefas_empresa">Tarefas Empresa</option>
+                        <option value="outras_tarefas">Outras Tarefas</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1.5 md:col-span-2">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Descrição</label>
+                      <input required type="text" value={taskFormData.description} onChange={e => setTaskFormData({...taskFormData, description: e.target.value})} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Responsável</label>
+                      <input required type="text" value={taskFormData.responsible} onChange={e => setTaskFormData({...taskFormData, responsible: e.target.value})} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Antecedência Alerta (Dias)</label>
+                      <input required type="number" min="0" value={taskFormData.advanceTime} onChange={e => setTaskFormData({...taskFormData, advanceTime: e.target.value})} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data de Início</label>
+                      <input required type="date" value={taskFormData.startDate} onChange={e => setTaskFormData({...taskFormData, startDate: e.target.value})} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data de Fim</label>
+                      <input required type="date" value={taskFormData.endDate} onChange={e => setTaskFormData({...taskFormData, endDate: e.target.value})} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                    </div>
+                    <div className="space-y-1.5 md:col-span-2">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Observações</label>
+                      <textarea value={taskFormData.obs} onChange={e => setTaskFormData({...taskFormData, obs: e.target.value})} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366] min-h-[60px]" />
+                    </div>
+                  </div>
+                  <div className="pt-4 flex justify-end gap-3 border-t border-zinc-100 mt-6">
+                    <button type="button" onClick={() => setIsTaskModalOpen(false)} className="px-6 py-2.5 text-zinc-500 font-bold uppercase tracking-widest text-xs hover:bg-zinc-100 transition-colors">Cancelar</button>
+                    <button type="submit" className="bg-[#003366] text-white px-8 py-2.5 font-bold uppercase tracking-widest text-xs hover:bg-[#002244] shadow-lg flex items-center gap-2">
+                      <CheckCircle size={16} /> Registar Alerta
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
     </div>
     </ProtectedRoute>
   );

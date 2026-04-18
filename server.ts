@@ -356,6 +356,33 @@ db.exec(`
     reference_id TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS security_occurrences (
+    id TEXT PRIMARY KEY,
+    company_id TEXT,
+    description TEXT,
+    date DATETIME,
+    location TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS security_armory (
+    id TEXT PRIMARY KEY,
+    company_id TEXT,
+    item_name TEXT,
+    quantity INTEGER,
+    status TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS security_rostering (
+    id TEXT PRIMARY KEY,
+    company_id TEXT,
+    employee_id TEXT,
+    shift TEXT,
+    date DATE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
   `);
 }
 console.log("Database initialized");
@@ -2389,7 +2416,7 @@ app.use((req, res, next) => {
         if (company_id) {
           query = query.eq("company_id", company_id);
         }
-        const { data, error } = await query.order("date", { ascending: false }).catch(e => ({ data: null, error: e }));
+        let { data, error } = await query.order("date", { ascending: false });
         if (!error && data) {
           return res.json(data);
         }

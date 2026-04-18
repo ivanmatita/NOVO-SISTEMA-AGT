@@ -1,21 +1,19 @@
 import React from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
-import { Landmark, PieChart as PieChartIcon, Activity } from 'lucide-react';
+import { Landmark, PieChart as PieChartIcon, Activity, Truck, FolderKanban } from 'lucide-react';
 
 const ECOSYSTEM_ITEMS = [
-  { title: "GESTÃO EMPRESARIAL", subtitle: "CONTROLE TOTAL", imgUrl: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&q=80&w=800", icon: <Activity size={18} /> },
-  { title: "SOFTWARE POS", subtitle: "VENDAS ÁGEIS", imgUrl: "https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?auto=format&fit=crop&q=80&w=800", icon: <ShoppingCartIcon /> },
-  { title: "FINANÇAS & CAIXA", subtitle: "FLUXO SEGURO", imgUrl: "https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&q=80&w=800", icon: <DollarSignIcon /> },
-  { title: "SATISFAÇÃO CLIENTE", subtitle: "FIDELIZAÇÃO", imgUrl: "https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&q=80&w=800", icon: <HeartIcon /> },
-  { title: "CONFIANÇA IMATEC", subtitle: "PARCERIA SÓLIDA", imgUrl: "https://images.unsplash.com/photo-1552664730-d307ca884978?auto=format&fit=crop&q=80&w=800", icon: <ShieldIcon /> },
+  { id: 'management', title: "GESTÃO EMPRESARIAL", subtitle: "CONTROLE TOTAL", imgUrl: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&q=80&w=800", icon: <Activity size={18} /> },
+  { id: 'pos', title: "SOFTWARE POS", subtitle: "VENDAS ÁGEIS", imgUrl: "https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?auto=format&fit=crop&q=80&w=800", icon: <ShoppingCartIcon /> },
+  { id: 'financial', title: "FINANÇAS & CAIXA", subtitle: "FLUXO SEGURO", imgUrl: "https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&q=80&w=800", icon: <DollarSignIcon /> },
+  { id: 'fleet', title: "GESTÃO DE FROTAS", subtitle: "CONTROLE VEÍCULOS", imgUrl: "https://images.unsplash.com/photo-1581092160607-ee22896c21a4?auto=format&fit=crop&q=80&w=800", icon: <Truck size={18} /> },
+  { id: 'projects', title: "GESTÃO DE PROJETOS", subtitle: "PLANEAMENTO", imgUrl: "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&q=80&w=800", icon: <FolderKanban size={18} /> },
 ];
 
 function ShoppingCartIcon() { return <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>; }
 function DollarSignIcon() { return <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>; }
-function HeartIcon() { return <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>; }
-function ShieldIcon() { return <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 13c0 5-3.5 9-8 10-4.5-1-8-5-8-10V5l8-3 8 3v8Z"/></svg>; }
 
-const EcosystemDashboard = ({ stats, issuedDocuments }: { stats: any, issuedDocuments: any[] }) => {
+const EcosystemDashboard = ({ stats, issuedDocuments, setActiveTab }: { stats: any, issuedDocuments: any[], setActiveTab: (tab: string) => void }) => {
   const volumeData = [
     { month: 'Jan', amount: 0 }, { month: 'Fev', amount: 800000000 }, { month: 'Mar', amount: 0 },
     { month: 'Abr', amount: 0 }, { month: 'Mai', amount: 0 }, { month: 'Jun', amount: 0 },
@@ -36,9 +34,9 @@ const EcosystemDashboard = ({ stats, issuedDocuments }: { stats: any, issuedDocu
         <Landmark className="text-blue-700" size={20} /> ECOSSISTEMA DE GESTÃO IMATEC
       </h2>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {ECOSYSTEM_ITEMS.map((item, i) => (
-          <div key={i} className="bg-white rounded-xl shadow-sm border border-zinc-200 overflow-hidden relative pb-16">
+          <button key={i} onClick={() => setActiveTab(item.id)} className="bg-white rounded-xl shadow-sm border border-zinc-200 overflow-hidden relative pb-16 text-left w-full hover:shadow-md transition-all">
             <div className="h-48 relative">
               <img src={item.imgUrl} alt={item.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
               <div className="absolute left-4 bottom-4 w-10 h-10 bg-[#0d6efd] rounded-full flex items-center justify-center text-white shadow-lg">
@@ -49,7 +47,7 @@ const EcosystemDashboard = ({ stats, issuedDocuments }: { stats: any, issuedDocu
               <h3 className="font-extrabold text-zinc-900 text-[13px]">{item.title}</h3>
               <p className="text-[10px] text-blue-500 font-bold tracking-widest mt-0.5">{item.subtitle}</p>
             </div>
-          </div>
+          </button>
         ))}
       </div>
 

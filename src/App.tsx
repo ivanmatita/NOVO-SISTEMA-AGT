@@ -534,8 +534,6 @@ const Sidebar = ({ activeTab, setActiveTab }: {
   const menuItems = [
     { id: 'dashboard', label: 'Painel de Bordo', icon: LayoutDashboard },
     { id: 'workplaces', label: 'Locais de Trabalho', icon: Briefcase },
-    { id: 'fleet', label: 'Gestão de Frotas', icon: Truck },
-    { id: 'projects', label: 'Gestão de Projetos', icon: FolderKanban },
     { id: 'secretary', label: 'Secretaria Beta', icon: Paperclip },
     { id: 'archives', label: 'Arquivos', icon: FileBox },
     { id: 'pos', label: 'Ponto de Venda', icon: Monitor, hasChevron: true },
@@ -9201,6 +9199,7 @@ const InvoiceList = ({
   const tabs = [
     { id: 'emitidos', label: 'Documentos emitidos', icon: ClipboardList },
     { id: 'recebidos', label: 'Documentos recebidos', icon: ClipboardList },
+    { id: 'clientes', label: 'Clientes', icon: Users },
     { id: 'sales_report', label: 'Relatório de Vendas', icon: BarChart3 },
     { id: 'adesao', label: 'Detalhes da adesão', icon: BadgeCheck },
     { id: 'series', label: 'Séries de facturas', icon: FileText },
@@ -9230,7 +9229,7 @@ const InvoiceList = ({
           {tabs.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveSubTab(tab.id)}
+              onClick={() => tab.id === 'clientes' ? setActiveTab('clients') : setActiveSubTab(tab.id)}
               className={`flex items-center gap-3 pb-4 px-1 text-sm transition-all relative ${
                 activeSubTab === tab.id 
                   ? 'text-[#003366] font-bold border-b-2 border-[#003366]' 
@@ -14597,6 +14596,7 @@ export default function App() {
         <EcosystemDashboard 
           stats={stats} 
           issuedDocuments={issuedDocuments}
+          setActiveTab={setActiveTab}
         />
       );
       case 'pos': return <POSModule products={products} onRefresh={fetchData} caixas={caixas} />;
@@ -14644,7 +14644,7 @@ export default function App() {
           onBack={() => setActiveTab('clients')}
         />
       ) : (
-        <EcosystemDashboard stats={stats} issuedDocuments={issuedDocuments} />
+        <EcosystemDashboard stats={stats} issuedDocuments={issuedDocuments} setActiveTab={setActiveTab} />
       );
       case 'cashier': return <CashierModule issuedDocuments={issuedDocuments} />;
       case 'caixa': return <CaixaModule caixas={caixas} setCaixas={setCaixas} movements={caixaMovements} setMovements={setCaixaMovements} />;
@@ -14716,7 +14716,7 @@ export default function App() {
       );
       case 'secretary': return <SecretaryModule appSelectedEmployee={appSelectedEmployee} />;
       default: return (
-        <EcosystemDashboard stats={stats} issuedDocuments={issuedDocuments} />
+        <EcosystemDashboard stats={stats} issuedDocuments={issuedDocuments} setActiveTab={setActiveTab} />
       );
     }
   };

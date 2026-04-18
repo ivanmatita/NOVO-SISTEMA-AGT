@@ -11,10 +11,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Demo user para bypass de desenvolvimento
   const demoUser: User = {
-    id: 'demo-uid',
+    id: '00000000-0000-0000-0000-000000000000',
     username: 'Administrador Demo',
     email: 'demo@empresa.com',
-    company_id: 'demo-company-id',
+    company_id: '11111111-1111-1111-1111-111111111111',
     role: 'admin',
     created_at: new Date().toISOString()
   };

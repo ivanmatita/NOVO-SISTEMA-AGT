@@ -61,11 +61,11 @@ export interface CaixaMovement {
 }
 
 export interface Client {
-  id: number;
+  id: string | number;
   name: string;
   email: string;
-  nif: string;
-  address: string;
+  contribuinte: string;
+  morada: string;
   localidade?: string;
   codigo_postal?: string;
   provincia?: string;
@@ -75,7 +75,7 @@ export interface Client {
   webpage?: string;
   tipo_cliente?: 'normal' | 'grupo_nacional' | 'nao_grupo' | 'subsidiarias' | 'nao_grupo_estrangeiro' | 'associados';
   estado_nif?: 'ativo' | 'suspenso' | 'inválido' | 'não encontrado';
-  initial_balance?: number;
+  saldo_inicial?: number;
   company_id: string;
   created_at: string;
 }
@@ -427,13 +427,14 @@ export interface Supplier {
 }
 
 export interface SystemUser {
-  id: number;
+  id: string;
   name: string;
   profession: string;
   date: string;
   permission_area: string;
   contact: string;
-  address: string;
+  morada: string;
+  company_id: string;
   created_at: string;
 }
 

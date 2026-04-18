@@ -99,7 +99,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
-import BusinessOverview from './components/BusinessOverview';
+import EcosystemDashboard from './components/EcosystemDashboard';
 import * as XLSX from 'xlsx';
 import { validateAngolaNIF } from './utils/nifValidation';
 import { Client, Product, Invoice, DashboardStats, InvoiceItem, Employee, Profession, WorkSite, WorkSiteMovement, IssuedDocument, Warehouse, Supplier, FiscalSeries, CostCenter, POSPoint, CashSession, SystemUser, Purchase, PurchaseItem, POSArea, Caixa, CaixaMovement, LaborTermination, StockMovement } from './types';
@@ -120,6 +120,9 @@ import RegimeExclusaoForm from './components/RegimeExclusaoForm';
 import ImpostoPorContaForm from './components/ImpostoPorContaForm';
 import DeclaracaoAnualForm from './components/DeclaracaoAnualForm';
 import SaftExportForm from './components/SaftExportForm';
+import { TopHeader } from './components/TopHeader';
+import { RightSidebar } from './components/RightSidebar';
+import { MetricsModule, fetchMetrics, Metric } from './components/MetricsModule';
 
 // --- Helpers ---
 
@@ -294,18 +297,27 @@ const PrintP89 = ({ sale, clientName }: { sale: any, clientName?: string }) => {
 
 // --- Components ---
 
-const WorkplaceModule = ({ onRefresh }: { onRefresh: () => void }) => {
+const WorkplaceModule = ({ onRefresh, clients }: { onRefresh: () => void, clients: Client[] }) => {
   const { user } = useAuth();
   const [workplaces, setWorkplaces] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  
+  const [clientId, setClientId] = useState('');
   const [name, setName] = useState('');
   const [location, setLocation] = useState('');
   const [code, setCode] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [staffPerDay, setStaffPerDay] = useState(0);
+  const [totalStaff, setTotalStaff] = useState(0);
+  const [description, setDescription] = useState('');
+  const [contact, setContact] = useState('');
+  const [observations, setObservations] = useState('');
 
   const fetchWorkplaces = async () => {
     try {
-      const data = await fetchJson(`/api/workplaces?company_id=${user?.company_id}`);
+      const data = await fetchJson(`/api/work-sites?company_id=${user?.company_id}`);
       setWorkplaces(data);
     } catch (err) {
       console.error('Error fetching workplaces:', err);
@@ -321,17 +333,40 @@ const WorkplaceModule = ({ onRefresh }: { onRefresh: () => void }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await fetchJson('/api/workplaces', {
+      await fetchJson('/api/work-sites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, location, code, company_id: user?.company_id })
+        body: JSON.stringify({ 
+          client_id: clientId,
+          title: name,
+          start_date: startDate,
+          end_date: endDate,
+          staff_per_day: staffPerDay,
+          total_staff: totalStaff,
+          description,
+          contact,
+          observations,
+          location, 
+          code, 
+          company_id: user?.company_id 
+        })
       });
-      setName('');
-      setLocation('');
-      setCode('');
       setShowForm(false);
       fetchWorkplaces();
       onRefresh();
+      
+      // reset
+      setClientId('');
+      setName('');
+      setLocation('');
+      setCode('');
+      setStartDate('');
+      setEndDate('');
+      setStaffPerDay(0);
+      setTotalStaff(0);
+      setDescription('');
+      setContact('');
+      setObservations('');
     } catch (err) {
       console.error('Error creating workplace:', err);
     }
@@ -349,20 +384,20 @@ const WorkplaceModule = ({ onRefresh }: { onRefresh: () => void }) => {
         </div>
         <button 
           onClick={() => setShowForm(true)}
-          className="bg-[#003366] text-white px-6 py-2.5 font-bold text-xs uppercase tracking-widest hover:bg-[#002244] shadow-lg flex items-center gap-2"
+          className="bg-[#003366] text-white px-6 py-2.5 font-bold text-xs uppercase tracking-widest flex items-center gap-2"
         >
           <Plus size={18} /> Novo Local
         </button>
       </div>
 
-      <div className="bg-white border border-zinc-200 rounded-none shadow-sm overflow-hidden">
+      <div className="bg-white border border-zinc-200 shadow-none overflow-hidden">
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-[#003366] text-white text-[11px] uppercase tracking-wider font-bold">
               <th className="px-6 py-4">Código</th>
               <th className="px-6 py-4">Nome / Designação</th>
               <th className="px-6 py-4">Localização</th>
-              <th className="px-6 py-4">Data de Registo</th>
+              <th className="px-6 py-4">Cliente Associado</th>
               <th className="px-6 py-4 text-right">Ações</th>
             </tr>
           </thead>
@@ -374,9 +409,9 @@ const WorkplaceModule = ({ onRefresh }: { onRefresh: () => void }) => {
             ) : workplaces.map((w) => (
               <tr key={w.id} className="hover:bg-zinc-50 transition-colors text-sm">
                 <td className="px-6 py-4 font-mono text-xs font-bold text-[#003366]">{w.code || 'N/A'}</td>
-                <td className="px-6 py-4 font-bold text-zinc-900">{w.name}</td>
+                <td className="px-6 py-4 font-bold text-zinc-900">{w.title || w.name}</td>
                 <td className="px-6 py-4 text-zinc-600">{w.location || 'N/A'}</td>
-                <td className="px-6 py-4 text-zinc-500">{new Date(w.created_at).toLocaleDateString()}</td>
+                <td className="px-6 py-4 text-zinc-500 font-bold">{w.client_name || 'N/A'}</td>
                 <td className="px-6 py-4 text-right">
                   <button className="text-zinc-400 hover:text-[#003366]"><MoreHorizontal size={18} /></button>
                 </td>
@@ -391,28 +426,71 @@ const WorkplaceModule = ({ onRefresh }: { onRefresh: () => void }) => {
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-md bg-white p-8 rounded-none shadow-2xl"
+            className="w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-white p-8 rounded-none shadow-2xl"
           >
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="font-bold text-[#003366] text-xl uppercase tracking-tight">Novo Local de Trabalho</h3>
-              <button onClick={() => setShowForm(false)} className="text-zinc-400 hover:text-zinc-600">
-                <X size={20} />
+            <div className="flex justify-between items-center mb-6 border-b border-zinc-100 pb-4">
+              <h3 className="font-bold text-[#003366] text-xl uppercase tracking-tight text-center w-full">Novo Local de Trabalho</h3>
+              <button type="button" onClick={() => setShowForm(false)} className="text-zinc-400 hover:text-zinc-600 absolute right-8">
+                <X size={24} />
               </button>
             </div>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Código</label>
-                <input type="text" value={code} onChange={e => setCode(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm" placeholder="Ex: OBRA-001" />
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Seleccione um Cliente</label>
+                  <select 
+                    value={clientId} onChange={e => setClientId(e.target.value)} required
+                    className="w-full border border-zinc-200 bg-white rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]"
+                  >
+                    <option value="">Selecionar Cliente...</option>
+                    {clients?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Código</label>
+                  <input type="text" value={code} onChange={e => setCode(e.target.value)} className="w-full border border-zinc-200 bg-white rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" placeholder="Ex: OBRA-001" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Titulo da Obra/Serviço (Nome)</label>
+                  <input type="text" required value={name} onChange={e => setName(e.target.value)} className="w-full border border-zinc-200 bg-white rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" placeholder="Ex: Edifício Kilamba" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Localização</label>
+                  <input type="text" value={location} onChange={e => setLocation(e.target.value)} className="w-full border border-zinc-200 bg-white rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" placeholder="Ex: Luanda, Talatona" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data de Abertura de Obra/Serviço</label>
+                  <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required className="w-full border border-zinc-200 bg-white rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data de Encerramento de Obra/Serviço</label>
+                  <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} required className="w-full border border-zinc-200 bg-white rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Total de Pessoal</label>
+                  <input type="number" value={totalStaff} onChange={e => setTotalStaff(Number(e.target.value))} className="w-full border border-zinc-200 bg-white rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Pessoal por Dia</label>
+                  <input type="number" value={staffPerDay} onChange={e => setStaffPerDay(Number(e.target.value))} className="w-full border border-zinc-200 bg-white rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Contacto</label>
+                  <input type="text" value={contact} onChange={e => setContact(e.target.value)} className="w-full border border-zinc-200 bg-white rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                </div>
+                <div className="col-span-1 md:col-span-2 space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Descrição</label>
+                  <input type="text" value={description} onChange={e => setDescription(e.target.value)} className="w-full border border-zinc-200 bg-white rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                </div>
+                <div className="col-span-1 md:col-span-2 space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Observações</label>
+                  <textarea value={observations} onChange={e => setObservations(e.target.value)} className="w-full border border-zinc-200 bg-white rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] min-h-[80px]" />
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Nome do Local</label>
-                <input type="text" required value={name} onChange={e => setName(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm" placeholder="Ex: Edifício Kilamba" />
+              <div className="flex justify-end gap-4 mt-6 border-t border-zinc-100 pt-6">
+                <button type="button" onClick={() => setShowForm(false)} className="px-6 py-2.5 font-bold text-sm tracking-widest bg-zinc-100 text-zinc-500 hover:bg-zinc-200 uppercase">Cancelar</button>
+                <button type="submit" className="bg-[#003366] text-white font-bold py-2.5 px-8 uppercase text-xs tracking-widest hover:bg-[#002244]">Registar Local</button>
               </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Localização</label>
-                <input type="text" value={location} onChange={e => setLocation(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm" placeholder="Ex: Luanda, Talatona" />
-              </div>
-              <button type="submit" className="w-full bg-[#003366] text-white font-bold py-3 shadow-lg uppercase text-xs tracking-widest mt-4">Registar Local</button>
             </form>
           </motion.div>
         </div>
@@ -421,80 +499,86 @@ const WorkplaceModule = ({ onRefresh }: { onRefresh: () => void }) => {
   );
 };
 
-const Sidebar = ({ activeTab, setActiveTab, fiscalYear, setFiscalYear, onToggle }: { 
+const Sidebar = ({ activeTab, setActiveTab }: { 
   activeTab: string, 
-  setActiveTab: (t: string) => void, 
-  fiscalYear: string, 
-  setFiscalYear: (y: string) => void,
-  onToggle: () => void
+  setActiveTab: (t: string) => void
 }) => {
+  const [profileImg, setProfileImg] = useState<string | null>(null);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('profileImg');
+    if (saved) setProfileImg(saved);
+  }, []);
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const url = URL.createObjectURL(e.target.files[0]);
+      setProfileImg(url);
+      localStorage.setItem('profileImg', url);
+    }
+  };
+
   const menuItems = [
-    { id: 'dashboard', label: 'Visão Geral do Negócio', icon: LayoutDashboard },
-    { id: 'pos', label: 'Ponto de Venda', icon: Printer },
-    { id: 'invoices', label: 'Faturas', icon: FileText },
+    { id: 'dashboard', label: 'Painel de Bordo', icon: LayoutDashboard },
+    { id: 'workplaces', label: 'Locais de Trabalho', icon: Briefcase },
+    { id: 'secretary', label: 'Secretaria Beta', icon: Paperclip },
+    { id: 'archives', label: 'Arquivos', icon: FileBox },
+    { id: 'pos', label: 'Ponto de Venda', icon: Monitor, hasChevron: true },
     { id: 'security', label: 'Segurança Gestão privada', icon: ShieldCheck },
-    { id: 'clients', label: 'Clientes', icon: Users },
-    { id: 'workplaces', label: 'Locais de Trabalho', icon: MapPin },
-    { id: 'suppliers', label: 'Fornecedores', icon: Truck },
-    { id: 'products', label: 'Produtos', icon: Package },
-    { id: 'financial', label: 'Financeiro', icon: Download },
-    { id: 'secretary', label: 'Secretária', icon: Layers },
-    { id: 'hr', label: 'Recursos Humanos', icon: Users },
-    { id: 'accounting', label: 'Contabilidade', icon: FileText },
-    { id: 'specialized', label: 'Gestão Especializada', icon: LayoutDashboard },
-    { id: 'settings', label: 'Configurações', icon: LayoutDashboard },
+    { id: 'specialized', label: 'Gestão Especializada', icon: Briefcase, hasChevron: true },
+    { id: 'invoices', label: 'Vendas', icon: FileText, hasChevron: true },
+    { id: 'suppliers', label: 'Compras', icon: ShoppingBag, hasChevron: true },
+    { id: 'products', label: 'Stocks & Inventário', icon: Package, hasChevron: true },
+    { id: 'financial', label: 'Finanças', icon: CreditCard, hasChevron: true },
+    { id: 'accounting', label: 'Contabilidade', icon: Calculator, hasChevron: true },
+    { id: 'hr', label: 'Recursos Humanos', icon: Users, hasChevron: true },
+    { id: 'reports', label: 'Relatórios', icon: FileSpreadsheet, hasChevron: true },
+    { id: 'agrobusiness', label: 'Agronegócio', icon: TrendingUp },
+    { id: 'church', label: 'Gestão de Igreja', icon: Building2 }, 
+    { id: 'settings', label: 'Definições', icon: Settings },
+    { id: 'metrics', label: 'Métricas', icon: Activity },
   ];
 
   return (
-    <div className="w-64 bg-white text-zinc-600 h-screen sticky top-0 border-r border-zinc-200 flex flex-col overflow-y-auto shadow-sm shrink-0">
-      <div className="p-6 border-b border-zinc-100 relative">
-        <button 
-          onClick={onToggle}
-          className="absolute -right-3 top-6 bg-white border border-zinc-200 rounded-full p-1 text-[#003366] hover:bg-zinc-50 shadow-md z-10"
-          title="Ocultar Barra Lateral"
-        >
-          <ChevronLeft size={16} />
-        </button>
-        <h1 className="text-[#003366] font-bold text-xl flex items-center gap-2">
-          <div className="w-8 h-8 bg-[#003366] rounded-none flex items-center justify-center text-white">
-            <FileText size={20} />
+    <div className="w-64 bg-[#0a0e1c] text-zinc-300 h-screen sticky top-0 flex flex-col overflow-y-auto shrink-0 z-20">
+      <div className="flex flex-col items-center pt-8 pb-6 border-b border-white/5">
+        <label className="relative cursor-pointer group">
+          <div className="w-20 h-20 rounded-full border-2 border-white/10 bg-[#16213e] flex items-center justify-center overflow-hidden mb-3 group-hover:border-blue-500 transition-colors">
+            {profileImg ? (
+              <img src={profileImg} alt="Profile" className="w-full h-full object-cover" />
+            ) : (
+              <UserIcon size={32} className="text-zinc-400" />
+            )}
           </div>
-          FaturaPronta
-        </h1>
-        <div className="mt-4">
-          <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block mb-1">Ano de Exercício</label>
-          <select 
-            value={fiscalYear} 
-            onChange={(e) => setFiscalYear(e.target.value)}
-            className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-2 py-1 text-xs text-zinc-700 focus:outline-none focus:border-[#003366]"
-          >
-            <option value="2024">2024</option>
-            <option value="2025">2025</option>
-            <option value="2026">2026</option>
-          </select>
-        </div>
+          <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
+        </label>
+        <h2 className="text-white font-bold text-lg leading-tight">Admin</h2>
+        <p className="text-[10px] text-zinc-500 font-bold tracking-widest uppercase">ADMIN</p>
       </div>
-      <nav className="flex-1 px-3 py-4 space-y-1 pb-8">
-        {menuItems.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => setActiveTab(item.id)}
-            className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-none transition-all mb-1 ${
-              activeTab === item.id 
-                ? 'bg-[#003366] text-white font-semibold shadow-md' 
-                : 'bg-[#003366]/90 text-white/90 hover:bg-[#003366] hover:text-white'
-            }`}
-          >
-            <item.icon size={18} className={activeTab === item.id ? 'text-white' : 'text-white/70'} />
-            <span className="text-sm">{item.label}</span>
-          </button>
-        ))}
-      </nav>
-      <div className="p-4 border-t border-zinc-100 bg-white sticky bottom-0">
-        <div className="bg-zinc-50 rounded-none p-4 border border-zinc-200">
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">Versão</p>
-          <p className="text-xs text-zinc-600 font-medium">1.1.0 Enterprise</p>
-        </div>
+      
+      <div className="flex-1 px-3 py-4 space-y-1 pb-8">
+        <h3 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-3 px-2">Menu Principal</h3>
+        <nav className="space-y-1">
+          {menuItems.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id)}
+              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-none transition-all duration-200 mb-0.5 ${
+                activeTab === item.id 
+                  ? 'bg-[#1a4da6] text-white font-semibold shadow-md border-l-4 border-white' 
+                  : 'bg-[#123375] text-zinc-300 hover:bg-[#1a4da6] hover:text-white'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <item.icon size={18} className={activeTab === item.id ? 'text-white' : 'text-zinc-400'} />
+                <span className="text-sm">{item.label}</span>
+              </div>
+              {item.hasChevron && (
+                <ChevronRight size={14} className={activeTab === item.id ? 'text-white/70' : 'text-zinc-500'} />
+              )}
+            </button>
+          ))}
+        </nav>
       </div>
     </div>
   );
@@ -6825,6 +6909,7 @@ const SpecializedManagementModule = () => {
 };
 
 const UsersSettings = () => {
+  const { user } = useAuth();
   const [users, setUsers] = useState<SystemUser[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState('');
@@ -6832,11 +6917,11 @@ const UsersSettings = () => {
   const [date, setDate] = useState('');
   const [permissionArea, setPermissionArea] = useState('');
   const [contact, setContact] = useState('');
-  const [address, setAddress] = useState('');
+  const [morada, setMorada] = useState('');
 
   const fetchUsers = async () => {
     try {
-      const res = await fetchWithAuth('/api/system-users');
+      const res = await fetchWithAuth(`/api/system-users?company_id=${user?.company_id}`);
       if (res.ok) {
         const data = await res.json();
         setUsers(data);
@@ -6847,8 +6932,10 @@ const UsersSettings = () => {
   };
 
   useEffect(() => {
-    fetchUsers();
-  }, []);
+    if (user?.company_id) {
+      fetchUsers();
+    }
+  }, [user?.company_id]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -6862,13 +6949,14 @@ const UsersSettings = () => {
           date,
           permission_area: permissionArea,
           contact,
-          address
+          morada,
+          company_id: user?.company_id
         })
       });
       if (res.ok) {
         fetchUsers();
         setShowForm(false);
-        setName(''); setProfession(''); setDate(''); setPermissionArea(''); setContact(''); setAddress('');
+        setName(''); setProfession(''); setDate(''); setPermissionArea(''); setContact(''); setMorada('');
       }
     } catch (error) {
       console.error('Error creating user:', error);
@@ -6925,7 +7013,7 @@ const UsersSettings = () => {
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Morada</label>
-                <input type="text" value={address} onChange={e => setAddress(e.target.value)} className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" />
+                <input type="text" value={morada} onChange={e => setMorada(e.target.value)} className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" />
               </div>
               <div className="md:col-span-2 flex justify-end gap-3 mt-6">
                 <button type="button" onClick={() => setShowForm(false)} className="text-zinc-500 hover:text-zinc-700 text-sm font-medium">Cancelar</button>
@@ -7665,34 +7753,222 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
   );
 };
 
-const SettingsModule = ({ 
-  fiscalYear, 
-  setFiscalYear,
-  companyName,
-  setCompanyName,
-  companyNif,
-  setCompanyNif,
-  companyAddress,
-  setCompanyAddress,
-  companyLogo,
-  setCompanyLogo,
-  companyFooter,
-  setCompanyFooter
-}: { 
-  fiscalYear: string, 
-  setFiscalYear: (y: string) => void,
-  companyName: string,
-  setCompanyName: (v: string) => void,
-  companyNif: string,
-  setCompanyNif: (v: string) => void,
-  companyAddress: string,
-  setCompanyAddress: (v: string) => void,
-  companyLogo: string,
-  setCompanyLogo: (v: string) => void,
-  companyFooter: string,
-  setCompanyFooter: (v: string) => void
-}) => {
+const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen: boolean, onClose: () => void, onSave: () => void, initialData: any }) => {
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    nome_empresa: initialData?.nome_empresa || initialData?.name || '',
+    nif: initialData?.nif || '',
+    matricula: initialData?.matricula || '',
+    alvara: initialData?.alvara || '',
+    localizacao: initialData?.localizacao || initialData?.address || '',
+    provincia: initialData?.provincia || '',
+    codigo_postal: initialData?.codigo_postal || '',
+    inss: initialData?.inss || '',
+    contacto: initialData?.contacto || initialData?.contact || '',
+    responsavel: initialData?.responsavel || '',
+    email: initialData?.email || '',
+    regime: initialData?.regime || 'Regime geral',
+    tipo_empresa: initialData?.tipo_empresa || 'Serviços',
+    coordenadas_bancarias: initialData?.coordenadas_bancarias || '',
+    logo_url: initialData?.logo_url || initialData?.logo || '',
+    watermark_url: initialData?.watermark_url || '',
+    footer_image_url: initialData?.footer_image_url || initialData?.footer || ''
+  });
+
+  useEffect(() => {
+    if (initialData) {
+      setFormData({
+        nome_empresa: initialData.nome_empresa || initialData.name || '',
+        nif: initialData.nif || '',
+        matricula: initialData.matricula || '',
+        alvara: initialData.alvara || '',
+        localizacao: initialData.localizacao || initialData.address || '',
+        provincia: initialData.provincia || '',
+        codigo_postal: initialData.codigo_postal || '',
+        inss: initialData.inss || '',
+        contacto: initialData.contacto || initialData.contact || '',
+        responsavel: initialData.responsavel || '',
+        email: initialData.email || '',
+        regime: initialData.regime || 'Regime geral',
+        tipo_empresa: initialData.tipo_empresa || 'Serviços',
+        coordenadas_bancarias: initialData.coordenadas_bancarias || '',
+        logo_url: initialData.logo_url || initialData.logo || '',
+        watermark_url: initialData.watermark_url || '',
+        footer_image_url: initialData.footer_image_url || initialData.footer || ''
+      });
+    }
+  }, [initialData]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const payload = {
+        ...formData,
+        name: formData.nome_empresa 
+      };
+      const res = await fetchWithAuth(`/api/company/${user?.company_id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        alert('Dados da empresa atualizados com sucesso!');
+        onSave();
+        onClose();
+      } else {
+        const error = await res.text();
+        alert('Erro ao atualizar: ' + error);
+      }
+    } catch (error) {
+      console.error('Error saving company:', error);
+      alert('Erro ao atualizar os dados.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-[#003366]/40 backdrop-blur-sm" onClick={onClose} />
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="relative w-full max-w-4xl bg-white shadow-2xl rounded-none flex flex-col max-h-[90vh]"
+      >
+        <div className="p-6 border-b border-zinc-200 bg-[#003366] text-white flex justify-between items-center shrink-0">
+          <h2 className="text-xl font-bold">Configuração da Empresa</h2>
+          <button onClick={onClose} className="hover:text-blue-200 transition-colors"><X size={24} /></button>
+        </div>
+        
+        <div className="p-8 overflow-y-auto flex-1 bg-zinc-50">
+          <form id="company-settings-form" onSubmit={handleSubmit} className="space-y-8">
+            
+            <div>
+              <h3 className="text-sm font-bold text-[#003366] uppercase tracking-wider mb-4 border-b border-zinc-200 pb-2">Informações Gerais</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Nome da Empresa *</label>
+                  <input required type="text" name="nome_empresa" value={formData.nome_empresa} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">NIF da Empresa *</label>
+                  <input required type="text" name="nif" value={formData.nif} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Número de Matrícula</label>
+                  <input type="text" name="matricula" value={formData.matricula} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Número de Alvará</label>
+                  <input type="text" name="alvara" value={formData.alvara} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Regime</label>
+                  <select name="regime" value={formData.regime} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
+                    <option value="Regime geral">Regime geral</option>
+                    <option value="Regime simplificado">Regime simplificado</option>
+                    <option value="Regime de exclusão">Regime de exclusão</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Tipo de Empresa</label>
+                  <select name="tipo_empresa" value={formData.tipo_empresa} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
+                    <option value="Serviços">Serviços</option>
+                    <option value="Comércio">Comércio</option>
+                    <option value="Outro">Outro</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-bold text-[#003366] uppercase tracking-wider mb-4 border-b border-zinc-200 pb-2">Contactos e Localização</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-1 md:col-span-2">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Localização (Morada)</label>
+                  <input type="text" name="localizacao" value={formData.localizacao} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Província</label>
+                  <input type="text" name="provincia" value={formData.provincia} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Código Postal</label>
+                  <input type="text" name="codigo_postal" value={formData.codigo_postal} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Contacto Telefónico</label>
+                  <input type="text" name="contacto" value={formData.contacto} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Email</label>
+                  <input type="email" name="email" value={formData.email} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-bold text-[#003366] uppercase tracking-wider mb-4 border-b border-zinc-200 pb-2">Dados Legais e Bancários</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Nº Contribuinte INSS</label>
+                  <input type="text" name="inss" value={formData.inss} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Responsável</label>
+                  <input type="text" name="responsavel" value={formData.responsavel} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                </div>
+                <div className="space-y-1 md:col-span-2">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Coordenadas Bancárias (IBAN, Swift, etc)</label>
+                  <textarea name="coordenadas_bancarias" value={formData.coordenadas_bancarias} onChange={handleChange} rows={3} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" placeholder="Ex: AO06.0040.0000.1234.5678.9 (BAI)"></textarea>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-bold text-[#003366] uppercase tracking-wider mb-4 border-b border-zinc-200 pb-2">Identidade Visual (URLs)</h3>
+              <div className="grid grid-cols-1 gap-6">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Logotipo (URL)</label>
+                  <input type="text" name="logo_url" value={formData.logo_url} onChange={handleChange} placeholder="https://exemplo.com/logo.png" className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Marca d'água (URL)</label>
+                  <input type="text" name="watermark_url" value={formData.watermark_url} onChange={handleChange} placeholder="https://exemplo.com/watermark.png" className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Rodapé (URL ou Texto)</label>
+                  <input type="text" name="footer_image_url" value={formData.footer_image_url} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                </div>
+              </div>
+            </div>
+
+          </form>
+        </div>
+
+        <div className="p-6 border-t border-zinc-200 bg-white flex justify-end gap-4 shrink-0">
+          <button onClick={onClose} type="button" className="px-6 py-2 border border-zinc-300 text-zinc-700 font-medium hover:bg-zinc-50 text-sm">Cancelar</button>
+          <button form="company-settings-form" type="submit" disabled={loading} className="px-8 py-2 bg-[#003366] text-white font-bold hover:bg-[#002244] text-sm flex items-center gap-2">
+            {loading ? 'A Guardar...' : <><RefreshCw size={16} /> Salvar Alterações</>}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+const SettingsModule = ({ companyData, onRefreshData }: { companyData: any, onRefreshData: () => void }) => {
   const [activeTab, setActiveTab] = useState('geral');
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   return (
     <div className="space-y-8">
@@ -7717,88 +7993,33 @@ const SettingsModule = ({
       </div>
 
       {activeTab === 'geral' ? (
-        <div className="bg-white border border-zinc-200 rounded-none shadow-sm divide-y divide-zinc-100">
-          <div className="p-8 space-y-6">
-            <h3 className="font-bold text-[#003366]">Geral</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Nome da Empresa</label>
-                <input 
-                  type="text" 
-                  value={companyName} 
-                  onChange={e => setCompanyName(e.target.value)}
-                  className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" 
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Ano de Exercício</label>
-                <select 
-                  value={fiscalYear} onChange={e => setFiscalYear(e.target.value)}
-                  className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]"
-                >
-                  <option value="2024">2024</option>
-                  <option value="2025">2025</option>
-                  <option value="2026">2026</option>
-                </select>
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">URL do Logotipo</label>
-                <div className="flex gap-4">
-                  <input 
-                    type="text" 
-                    value={companyLogo} 
-                    onChange={e => setCompanyLogo(e.target.value)}
-                    placeholder="https://exemplo.com/logo.png"
-                    className="flex-1 bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" 
-                  />
-                  {companyLogo && (
-                    <div className="w-10 h-10 bg-zinc-100 border border-zinc-200 flex items-center justify-center overflow-hidden">
-                      <img src={companyLogo} alt="Logo Preview" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Endereço</label>
-                <input 
-                  type="text" 
-                  value={companyAddress} 
-                  onChange={e => setCompanyAddress(e.target.value)}
-                  className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" 
-                />
-              </div>
+        <div className="bg-white border border-zinc-200 rounded-none shadow-sm p-8">
+          <div className="flex flex-col items-center justify-center p-12 text-center max-w-2xl mx-auto">
+            <div className="w-24 h-24 bg-zinc-100 rounded-full flex items-center justify-center mb-6 border border-zinc-200 overflow-hidden">
+              {companyData?.logo_url || companyData?.logo ? (
+                <img src={companyData.logo_url || companyData.logo} alt="Logo" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+              ) : (
+                <LayoutDashboard size={40} className="text-zinc-300" />
+              )}
             </div>
-          </div>
-          <div className="p-8 space-y-6">
-            <h3 className="font-bold text-[#003366]">Fiscalidade & Rodapé</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">NIF da Empresa</label>
-                <input 
-                  type="text" 
-                  value={companyNif} 
-                  onChange={e => setCompanyNif(e.target.value)}
-                  className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" 
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Texto do Rodapé</label>
-                <input 
-                  type="text" 
-                  value={companyFooter} 
-                  onChange={e => setCompanyFooter(e.target.value)}
-                  placeholder="Ex: Processado por computador • FaturaPronta Software"
-                  className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" 
-                />
-              </div>
-            </div>
-          </div>
-          <div className="p-8 flex justify-end">
-            <button className="bg-[#003366] text-white font-bold px-8 py-2.5 rounded-none text-sm shadow-sm flex items-center gap-2 hover:bg-[#002244] transition-colors">
+            <h3 className="text-2xl font-bold text-[#003366] mb-2">{companyData?.nome_empresa || companyData?.name || 'Vossa Empresa'}</h3>
+            <p className="text-sm text-zinc-500 mb-8">{companyData?.localizacao || companyData?.address || 'Sem localização configurada'}</p>
+            
+            <button 
+              onClick={() => setIsModalOpen(true)}
+              className="bg-[#003366] text-white font-bold px-8 py-3 rounded-none text-sm shadow-sm flex items-center gap-2 hover:bg-[#002244] transition-colors"
+            >
               <RefreshCw size={16} />
               Actualizar dados da empresa
             </button>
           </div>
+
+          <CompanySettingsModal 
+            isOpen={isModalOpen} 
+            onClose={() => setIsModalOpen(false)} 
+            onSave={onRefreshData}
+            initialData={companyData} 
+          />
         </div>
       ) : (
         <UsersSettings />
@@ -7808,6 +8029,7 @@ const SettingsModule = ({
 };
 
 const CashierModule = ({ issuedDocuments = [] }: { issuedDocuments?: IssuedDocument[] }) => {
+  const { user } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState('sessions');
   const [sessions, setSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -7819,7 +8041,7 @@ const CashierModule = ({ issuedDocuments = [] }: { issuedDocuments?: IssuedDocum
   const fetchSessions = async () => {
     setLoading(true);
     try {
-      const res = await fetchWithAuth('/api/cash/sessions');
+      const res = await fetchWithAuth(`/api/cash/sessions?company_id=${user?.company_id}`);
       if (res.ok) {
         const data = await res.json();
         setSessions(data);
@@ -7832,8 +8054,10 @@ const CashierModule = ({ issuedDocuments = [] }: { issuedDocuments?: IssuedDocum
   };
 
   useEffect(() => {
-    fetchSessions();
-  }, []);
+    if (user?.company_id) {
+      fetchSessions();
+    }
+  }, [user?.company_id]);
 
   const handleCreateSession = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -7841,7 +8065,11 @@ const CashierModule = ({ issuedDocuments = [] }: { issuedDocuments?: IssuedDocum
       const res = await fetchWithAuth('/api/cash/open', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ initial_balance: Number(initialBalance), pos_point_id: posPointId ? Number(posPointId) : null })
+        body: JSON.stringify({ 
+          initial_balance: Number(initialBalance), 
+          pos_point_id: posPointId ? Number(posPointId) : null,
+          company_id: user?.company_id
+        })
       });
       if (res.ok) {
         setInitialBalance(''); setPosPointId(''); setShowForm(false);
@@ -8513,7 +8741,7 @@ const AccountingModule = ({ invoices, clients }: { invoices: Invoice[], clients:
                       return (
                         <tr key={c.id} className="hover:bg-zinc-50">
                           <td className="px-6 py-4 text-sm font-medium text-zinc-900">{c.name}</td>
-                          <td className="px-6 py-4 text-sm text-zinc-500">{c.nif}</td>
+                          <td className="px-6 py-4 text-sm text-zinc-500">{c.contribuinte}</td>
                           <td className="px-6 py-4 text-sm text-right font-bold text-zinc-900">{formatCurrency(total)}</td>
                           <td className="px-6 py-4 text-sm text-right">
                             <button onClick={() => setSelectedClient(c)} className="text-[#003366] hover:underline font-bold text-xs uppercase">Conta Corrente</button>
@@ -8551,6 +8779,7 @@ const AccountingModule = ({ invoices, clients }: { invoices: Invoice[], clients:
 };
 
 const FiscalSeriesModule = () => {
+  const { user } = useAuth();
   const [series, setSeries] = useState<FiscalSeries[]>([]);
   const [systemUsers, setSystemUsers] = useState<SystemUser[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -8559,19 +8788,21 @@ const FiscalSeriesModule = () => {
   const [showActions, setShowActions] = useState<number | null>(null);
 
   const fetchSeries = async () => {
-    const data = await fetchJson('/api/fiscal-series');
+    const data = await fetchJson(`/api/fiscal-series?company_id=${user?.company_id}`);
     setSeries(data);
   };
 
   const fetchUsers = async () => {
-    const data = await fetchJson('/api/system-users');
+    const data = await fetchJson(`/api/system-users?company_id=${user?.company_id}`);
     setSystemUsers(data);
   };
 
   useEffect(() => {
-    fetchSeries();
-    fetchUsers();
-  }, []);
+    if (user?.company_id) {
+      fetchSeries();
+      fetchUsers();
+    }
+  }, [user?.company_id]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -9367,6 +9598,15 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
   const [cashBox, setCashBox] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('');
   const [expandedDimensions, setExpandedDimensions] = useState<number | null>(null);
+  
+  const [metrics, setMetrics] = useState<Metric[]>([]);
+  const [metricId, setMetricId] = useState<string>('');
+
+  useEffect(() => {
+    if (user?.company_id) {
+       fetchMetrics(user.company_id).then(setMetrics);
+    }
+  }, [user]);
 
   const addItem = () => {
     setItems([...items, { 
@@ -9416,7 +9656,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
   const finalTotal = total + vatAmount - Number(globalDiscount || 0);
 
   const handleSearchClient = () => {
-    const client = clients.find(c => c.nif === nif);
+    const client = clients.find(c => c.contribuinte === nif);
     if (client) {
       setClientId(client.id);
       setClientName(client.name);
@@ -9435,7 +9675,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
       const res = await fetchJson('/api/clients', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: clientName, nif, email: '', address: '', company_id: user?.company_id })
+        body: JSON.stringify({ name: clientName, contribuinte: nif, email: '', morada: '', company_id: user?.company_id })
       });
       if (res && res.id) {
         finalClientId = res.id;
@@ -9468,7 +9708,8 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
           cash_box: cashBox,
           payment_method: paymentMethod,
           series_id: seriesId,
-          empresa_id: user?.empresa_id
+          company_id: user?.company_id,
+          metric_id: metricId ? parseInt(metricId, 10) : null
         })
       });
 
@@ -9611,6 +9852,17 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
               />
             </div>
             <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-600">Métrica Global</label>
+              <select 
+                value={metricId} 
+                onChange={(e) => setMetricId(e.target.value)}
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+              >
+                <option value="">Nenhuma métrica</option>
+                {metrics.map(m => <option key={m.id} value={m.id}>{m.sigla} - {m.descricao}</option>)}
+              </select>
+            </div>
+            <div className="space-y-2">
               <label className="text-xs font-bold text-zinc-600">Desconto global</label>
               <input 
                 type="number" 
@@ -9681,7 +9933,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
                   const client = clients.find(c => c.id === Number(id));
                   if (client) {
                     setClientName(client.name);
-                    setNif(client.nif);
+                    setNif(client.contribuinte);
                   } else {
                     setClientName('');
                     setNif('');
@@ -9690,7 +9942,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
                 className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
               >
                 <option value="">Selecione um cliente</option>
-                {clients.map(c => <option key={c.id} value={c.id}>{c.name} ({c.nif})</option>)}
+                {clients.map(c => <option key={c.id} value={c.id}>{c.name} ({c.contribuinte})</option>)}
               </select>
             </div>
             <div className="space-y-2">
@@ -10812,7 +11064,7 @@ const ClientAccount = ({ client, documents, onBack }: {
 
   const totalDebito = (filteredMovements ?? []).reduce((acc, m) => acc + m.debito, 0);
   const totalCredito = (filteredMovements ?? []).reduce((acc, m) => acc + m.credito, 0);
-  const initialBalance = client.initial_balance || 0;
+  const initialBalance = client.saldo_inicial || 0;
   const saldoAtual = initialBalance + totalDebito - totalCredito;
 
   const handleExportXLSX = () => {
@@ -10825,6 +11077,7 @@ const ClientAccount = ({ client, documents, onBack }: {
     const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].map(e => e.join(",")).join("\n");
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
     link.setAttribute("href", encodedUri);
     link.setAttribute("download", `extrato_${client.name}.csv`);
     document.body.appendChild(link);
@@ -10864,7 +11117,7 @@ const ClientAccount = ({ client, documents, onBack }: {
               </div>
               <div>
                 <p className="font-bold text-zinc-400 uppercase">Nº Contribuinte</p>
-                <p className="text-zinc-800 font-mono">{client.nif || 'N/A'}</p>
+                <p className="text-zinc-800 font-mono">{client.contribuinte || 'N/A'}</p>
               </div>
             </div>
             <div>
@@ -10987,7 +11240,7 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [nif, setNif] = useState('');
-  const [address, setAddress] = useState('');
+  const [morada, setMorada] = useState('');
   const [localidade, setLocalidade] = useState('');
   const [codigo_postal, setCodigoPostal] = useState('');
   const [provincia, setProvincia] = useState('');
@@ -10997,12 +11250,12 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
   const [webpage, setWebpage] = useState('');
   const [tipo_cliente, setTipoCliente] = useState('normal');
   const [estado_nif, setEstadoNif] = useState('não encontrado');
-  const [initial_balance, setInitialBalance] = useState(0);
+  const [saldo_inicial, setSaldoInicial] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
 
   const filteredClients = clients.filter(c => 
     c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.nif.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    c.contribuinte.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (c.email && c.email.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
@@ -11015,8 +11268,19 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
     }
 
     const clientData = { 
-      name, email, nif, address, localidade, codigo_postal, provincia, municipio, pais, telefone, webpage, tipo_cliente, 
-      initial_balance: Number(initial_balance),
+      name: name, 
+      email, 
+      contribuinte: nif, 
+      morada: morada, 
+      localidade, 
+      codigo_postal, 
+      provincia, 
+      municipio, 
+      pais, 
+      telefone, 
+      webpage, 
+      tipo_cliente, 
+      saldo_inicial: Number(saldo_inicial),
       estado_nif,
       company_id: user?.company_id 
     };
@@ -11041,15 +11305,15 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
 
   const resetForm = () => {
     setSelectedClient(null);
-    setName(''); setEmail(''); setNif(''); setAddress(''); setLocalidade(''); setCodigoPostal(''); setProvincia(''); setMunicipio(''); setPais(''); setTelefone(''); setWebpage(''); setTipoCliente('normal'); setEstadoNif('não encontrado'); setInitialBalance(0);
+    setName(''); setEmail(''); setNif(''); setMorada(''); setLocalidade(''); setCodigoPostal(''); setProvincia(''); setMunicipio(''); setPais(''); setTelefone(''); setWebpage(''); setTipoCliente('normal'); setEstadoNif('não encontrado'); setSaldoInicial(0);
   };
 
   const handleEdit = (client: Client) => {
     setSelectedClient(client);
     setName(client.name);
     setEmail(client.email || '');
-    setNif(client.nif || '');
-    setAddress(client.address || '');
+    setNif(client.contribuinte || '');
+    setMorada(client.morada || '');
     setLocalidade(client.localidade || '');
     setCodigoPostal(client.codigo_postal || '');
     setProvincia(client.provincia || '');
@@ -11059,7 +11323,7 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
     setWebpage(client.webpage || '');
     setTipoCliente(client.tipo_cliente || 'normal');
     setEstadoNif(client.estado_nif || 'não encontrado');
-    setInitialBalance(client.initial_balance || 0);
+    setSaldoInicial(client.saldo_inicial || 0);
     setShowForm(true);
     setShowOptionsModal(null);
   };
@@ -11071,7 +11335,7 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
   const handleExportXLSX = () => {
     // Basic CSV export as XLSX placeholder
     const headers = ['NIF', 'Nome', 'Email', 'Telefone', 'Localidade', 'Tipo'];
-    const rows = filteredClients.map(c => [c.nif, c.name, c.email, c.telefone, c.localidade, c.tipo_cliente]);
+    const rows = filteredClients.map(c => [c.contribuinte, c.name, c.email, c.telefone, c.localidade, c.tipo_cliente]);
     const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].map(e => e.join(",")).join("\n");
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
@@ -11186,7 +11450,7 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Morada</label>
-                    <input type="text" value={address} onChange={e => setAddress(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" placeholder="Morada" />
+                    <input type="text" value={morada} onChange={e => setMorada(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" placeholder="Morada" />
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Localidade</label>
@@ -11247,7 +11511,7 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Saldo Inicial</label>
-                    <input type="number" step="0.01" value={initial_balance} onChange={e => setInitialBalance(Number(e.target.value))} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" placeholder="0.00" />
+                    <input type="number" step="0.01" value={saldo_inicial} onChange={e => setSaldoInicial(Number(e.target.value))} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" placeholder="0.00" />
                   </div>
                   <div className="flex justify-end md:col-span-3 gap-4 pt-4 border-t border-zinc-100 mt-4">
                     <button type="button" onClick={() => setShowForm(false)} className="px-6 py-2 text-sm font-bold text-zinc-500 hover:bg-zinc-100 transition-all">Cancelar</button>
@@ -11372,7 +11636,7 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
                     <input 
                       type="number" 
                       step="0.01" 
-                      defaultValue={showInitialBalanceModal.initial_balance || 0}
+                      defaultValue={showInitialBalanceModal.saldo_inicial || 0}
                       id="initial_balance_input"
                       className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-3 text-zinc-800 focus:outline-none focus:border-[#003366] text-lg font-bold" 
                       placeholder="0.00" 
@@ -11387,7 +11651,7 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
                           await fetchJson(`/api/clients/${showInitialBalanceModal.id}`, {
                             method: 'PUT',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ ...showInitialBalanceModal, initial_balance: Number(val) })
+                            body: JSON.stringify({ ...showInitialBalanceModal, saldo_inicial: Number(val) })
                           });
                           setShowInitialBalanceModal(null);
                           onRefresh();
@@ -11490,7 +11754,7 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
           <tbody className="divide-y divide-zinc-100">
             {filteredClients.map((client) => (
               <tr key={client.id} className="hover:bg-zinc-50 text-sm transition-colors">
-                <td className="px-6 py-4 font-mono text-xs text-zinc-400">{client.nif || 'N/A'}</td>
+                <td className="px-6 py-4 font-mono text-xs text-zinc-400">{client.contribuinte || 'N/A'}</td>
                 <td className="px-6 py-4">
                   {client.estado_nif === 'ativo' && <span className="text-emerald-600" title="Ativo">🟢</span>}
                   {client.estado_nif === 'suspenso' && <span className="text-red-600" title="Suspenso">🔴</span>}
@@ -13016,7 +13280,7 @@ const ProductList = ({ products, onRefresh, stockMovements, warehouses }: {
         type, 
         quantity, 
         description,
-        empresa_id: user?.empresa_id
+        company_id: user?.company_id
       })
     });
     if (res.ok) {
@@ -13035,7 +13299,7 @@ const ProductList = ({ products, onRefresh, stockMovements, warehouses }: {
         quantity, 
         warehouse_id: fromWh, 
         to_warehouse_id: toWh,
-        empresa_id: user?.empresa_id
+        company_id: user?.company_id
       })
     });
     if (res.ok) {
@@ -13611,7 +13875,7 @@ const ProductList = ({ products, onRefresh, stockMovements, warehouses }: {
                     stock_quantity: Number(data.stock_quantity),
                     min_stock: Number(data.min_stock),
                     warehouse_id: data.warehouse_id ? Number(data.warehouse_id) : null,
-                    empresa_id: user?.empresa_id
+                    company_id: user?.company_id
                   })
                 });
                 if (res.ok) {
@@ -13716,7 +13980,7 @@ const ReceiptModal = ({ document, caixas, onClose, onSuccess }: {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           invoice_id: document.id,
-          empresa_id: user?.empresa_id,
+          company_id: user?.company_id,
           amount,
           payment_method: paymentMethod,
           cash_box: cashBox,
@@ -13816,7 +14080,7 @@ const ConvertDocumentModal = ({ document, onClose, onSuccess }: {
           id: undefined,
           document_type: targetType,
           date: new Date().toISOString().split('T')[0],
-          empresa_id: user?.empresa_id,
+          company_id: user?.company_id,
           items: document.items || [] // Assuming items are available
         })
       });
@@ -13979,7 +14243,11 @@ export default function App() {
       setFiscalSeries(Array.isArray(fs) ? fs : []);
       if (comp) {
         setCompanyData(comp);
-        setCompanyName(comp.name);
+        setCompanyName(comp.nome_empresa || comp.name || 'FaturaPronta Lda');
+        setCompanyNif(comp.nif || '500123456');
+        setCompanyAddress(comp.localizacao || comp.address || 'Sem localização');
+        setCompanyLogo(comp.logo_url || comp.logo || '');
+        setCompanyFooter(comp.footer_image_url || comp.footer || 'Processado por computador • FaturaPronta');
       }
       setCaixas(Array.isArray(cx) ? cx : []);
       setCaixaMovements(Array.isArray(cm) ? cm : []);
@@ -13998,7 +14266,7 @@ export default function App() {
       const res = await fetchWithAuth('/api/work-sites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...site, empresa_id: user?.empresa_id })
+        body: JSON.stringify({ ...site, company_id: user?.company_id })
       });
       if (res.ok) {
         console.log('Work site added successfully');
@@ -14018,7 +14286,7 @@ export default function App() {
       const res = await fetchWithAuth(`/api/work-sites/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...site, empresa_id: user?.empresa_id })
+        body: JSON.stringify({ ...site, company_id: user?.company_id })
       });
       if (res.ok) {
         console.log('Work site updated successfully');
@@ -14200,12 +14468,9 @@ export default function App() {
 
     switch (activeTab) {
       case 'dashboard': return (
-        <BusinessOverview 
+        <EcosystemDashboard 
           stats={stats} 
-          products={products} 
-          invoices={invoices}
-          caixas={caixas}
-          companyData={companyData}
+          issuedDocuments={issuedDocuments}
         />
       );
       case 'pos': return <POSModule products={products} onRefresh={fetchData} caixas={caixas} />;
@@ -14249,17 +14514,11 @@ export default function App() {
           onBack={() => setActiveTab('clients')}
         />
       ) : (
-        <Dashboard 
-          stats={stats} 
-          products={products} 
-          invoices={invoices}
-          issuedDocuments={issuedDocuments}
-          caixaMovements={caixaMovements}
-        />
+        <EcosystemDashboard stats={stats} issuedDocuments={issuedDocuments} />
       );
       case 'cashier': return <CashierModule issuedDocuments={issuedDocuments} />;
       case 'caixa': return <CaixaModule caixas={caixas} setCaixas={setCaixas} movements={caixaMovements} setMovements={setCaixaMovements} />;
-      case 'workplaces': return <WorkplaceModule onRefresh={fetchData} />;
+      case 'workplaces': return <WorkplaceModule onRefresh={fetchData} clients={clients} />;
       case 'clients': return (
         <ClientList 
           clients={clients} 
@@ -14294,31 +14553,16 @@ export default function App() {
       case 'accounting': return <AccountingModule invoices={invoices} clients={clients} />;
       case 'specialized': return <SpecializedManagementModule />;
       case 'security': return <SecurityModule />;
+      case 'metrics': return <MetricsModule />;
       case 'settings': return (
         <SettingsModule 
-          fiscalYear={fiscalYear} 
-          setFiscalYear={setFiscalYear}
-          companyName={companyName}
-          setCompanyName={setCompanyName}
-          companyNif={companyNif}
-          setCompanyNif={setCompanyNif}
-          companyAddress={companyAddress}
-          setCompanyAddress={setCompanyAddress}
-          companyLogo={companyLogo}
-          setCompanyLogo={setCompanyLogo}
-          companyFooter={companyFooter}
-          setCompanyFooter={setCompanyFooter}
+          companyData={companyData}
+          onRefreshData={fetchData}
         />
       );
       case 'secretary': return <SecretaryModule appSelectedEmployee={appSelectedEmployee} />;
       default: return (
-        <Dashboard 
-          stats={stats} 
-          products={products} 
-          invoices={invoices}
-          issuedDocuments={issuedDocuments}
-          caixaMovements={caixaMovements}
-        />
+        <EcosystemDashboard stats={stats} issuedDocuments={issuedDocuments} />
       );
     }
   };
@@ -14326,7 +14570,7 @@ export default function App() {
   return (
     <ProtectedRoute>
       <div className="min-h-screen bg-[#f4f7f9] text-zinc-800 font-sans selection:bg-[#003366]/10 flex overflow-x-hidden">
-        {sidebarOpen ? (
+        {sidebarOpen && (
           <Sidebar 
             activeTab={activeTab} 
             setActiveTab={(t) => {
@@ -14334,59 +14578,48 @@ export default function App() {
               setViewingInvoiceId(null);
               setIsCreatingInvoice(false);
             }} 
+          />
+        )}
+        
+        <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
+          <TopHeader 
             fiscalYear={fiscalYear} 
             setFiscalYear={setFiscalYear} 
-            onToggle={() => setSidebarOpen(false)}
+            onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+            onAddTask={() => alert('Função de adicionar tarefa em desenvolvimento')}
           />
-        ) : (
-          <div className="fixed left-4 top-4 z-50">
-            <button 
-              onClick={() => setSidebarOpen(true)}
-              className="p-3 bg-white border border-zinc-200 rounded-none text-[#003366] hover:bg-zinc-50 transition-all shadow-lg flex items-center justify-center"
-              title="Mostrar Barra Lateral"
-            >
-              <ChevronRight size={20} />
-            </button>
-          </div>
-        )}
-        <main className="flex-1 min-h-screen transition-all duration-300 min-w-0">
-          <div className="p-12">
-            <div className="mb-8 flex items-center justify-between">
-              <div className="flex items-center gap-4">
+          <main className="flex-1 overflow-y-auto w-full transition-all duration-300">
+            <div className="p-6 md:p-8 max-w-[1600px] mx-auto">
+              <div className="mb-6 flex items-center justify-between border-b border-zinc-200/60 pb-4">
                 <div className="flex items-center gap-2 text-xs font-bold text-zinc-400 uppercase tracking-widest">
                   <LayoutDashboard size={14} />
                   <span>Sistema de Gestão</span>
                   <ChevronRight size={12} />
                   <span className="text-[#003366]">{activeTab}</span>
                 </div>
-              </div>
-
-              {/* User Profile & Logout */}
-              <div className="flex items-center gap-4">
-                <div className="text-right">
-                  <p className="text-[10px] font-black text-[#003366] uppercase tracking-widest">{user?.username}</p>
-                  <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-tight">Empresa ID: {user?.company_id}</p>
-                </div>
+                {/* Minimal Logout */}
                 <button 
                   onClick={logout}
-                  className="p-2 bg-white border border-zinc-200 text-red-500 hover:bg-red-50 transition-all shadow-sm flex items-center justify-center"
+                  className="p-1.5 bg-white border border-zinc-200 text-red-500 hover:bg-red-50 transition-all rounded-md"
                   title="Sair do Sistema"
                 >
-                  <LogOut size={18} />
+                  <LogOut size={16} />
                 </button>
               </div>
+              <motion.div
+                key={activeTab + viewingInvoiceId + sidebarOpen}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3 }}
+              >
+                {renderContent()}
+              </motion.div>
             </div>
-            <motion.div
-              key={activeTab + viewingInvoiceId + sidebarOpen}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              {renderContent()}
-            </motion.div>
-          </div>
-        </main>
-
+          </main>
+        </div>
+        
+        <RightSidebar />
+        
       {showActionsModal && selectedDocument && (
         <DocumentActionsModal 
           document={selectedDocument} 

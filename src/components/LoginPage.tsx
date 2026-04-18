@@ -661,34 +661,102 @@ export const LoginPage: React.FC = () => {
               <div className="flex-1 overflow-y-auto">
                 <form onSubmit={handleRegisterCompany} className="p-8 space-y-8">
                   <AnimatePresence mode="wait">
-                    {/* Registration steps */}
+                    {/* Step 1: Company & Admin Info */}
                     {regStep === 1 && (
-                      <motion.div key="step1" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <motion.div key="step1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data do Pré-Registo</label>
-                            <input type="date" readOnly value={regPreRegistrationDate} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm" />
+                            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Nome da Empresa</label>
+                            <input type="text" value={regCompanyName} onChange={e => setRegCompanyName(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-colors" placeholder="Ex: IMATEC Lda" required />
                           </div>
                           <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Código Promocional</label>
-                            <input type="text" value={regPromoCode} onChange={e => setRegPromoCode(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm" placeholder="Ex: PROMO2024" />
+                            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tipo de Negócio</label>
+                            <select value={regCompanyType} onChange={e => setRegCompanyType(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-colors">
+                              <option value="tecnologia">Tecnologia</option>
+                              <option value="comercio">Comércio Geral</option>
+                              <option value="construcao">Construção Civil</option>
+                              <option value="servicos">Prestação de Serviços</option>
+                              <option value="outro">Outro</option>
+                            </select>
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">NIF da Empresa</label>
+                            <input type="text" value={regNif} onChange={e => setRegNif(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-colors" placeholder="5000123456" />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Nome do Administrador</label>
+                            <input type="text" value={regAdminName} onChange={e => setRegAdminName(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-colors" placeholder="Nome Completo" />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Telefone</label>
+                            <input type="tel" value={regPhone} onChange={e => setRegPhone(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-colors" placeholder="+244 923 000 000" />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Email Corporativo</label>
+                            <input type="email" value={regCompanyEmail} onChange={e => setRegCompanyEmail(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-colors" placeholder="geral@empresa.ao" />
                           </div>
                         </div>
                       </motion.div>
                     )}
                     
+                    {/* Step 2: Addresses & Billing */}
                     {regStep === 2 && (
-                      <motion.div key="step2" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          <input type="text" value={regCompanyName} onChange={e => setRegCompanyName(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm" placeholder="Nome da Empresa" />
+                      <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
+                        <div className="space-y-4">
+                          <h4 className="text-xs font-black text-[#003366] uppercase tracking-widest border-b pb-2">Sede Fiscal</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <input type="text" value={regAddressStreet} onChange={e => setRegAddressStreet(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm" placeholder="Rua / Avenida" />
+                            <input type="text" value={regAddressNeighborhood} onChange={e => setRegAddressNeighborhood(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm" placeholder="Bairro" />
+                            <input type="text" value={regAddressMunicipality} onChange={e => setRegAddressMunicipality(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm" placeholder="Município" />
+                            <input type="text" value={regAddressProvince} onChange={e => setRegAddressProvince(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm" placeholder="Província" />
+                          </div>
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data do Pré-Registo</label>
+                          <input type="date" readOnly value={regPreRegistrationDate} className="w-full bg-zinc-100 border border-zinc-200 px-4 py-3 text-sm cursor-not-allowed" />
                         </div>
                       </motion.div>
                     )}
 
+                    {/* Step 3: Login Credentials */}
                     {regStep === 3 && (
-                      <motion.div key="step3" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          <input type="email" value={regEmail} onChange={e => setRegEmail(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm" placeholder="Email" />
+                      <motion.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
+                        <div className="space-y-4 max-w-md mx-auto">
+                          <div className="text-center space-y-2 mb-8">
+                            <div className="w-16 h-16 bg-[#00D17F]/10 text-[#00D17F] rounded-full flex items-center justify-center mx-auto">
+                              <Users size={32} />
+                            </div>
+                            <h4 className="text-lg font-black text-[#003366]">Credenciais de Acesso</h4>
+                            <p className="text-xs text-zinc-500 font-medium">Estes dados serão usados para aceder ao sistema.</p>
+                          </div>
+                          
+                          <div className="space-y-4">
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Email de Utilizador</label>
+                              <div className="relative">
+                                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
+                                <input type="email" value={regEmail} onChange={e => setRegEmail(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 pl-12 pr-4 py-4 text-sm focus:outline-none focus:border-[#00D17F] transition-all" placeholder="exemplo@gmail.com" required />
+                              </div>
+                            </div>
+                            
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Palavra-Passe</label>
+                              <div className="relative">
+                                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
+                                <input type="password" value={regPassword} onChange={e => setRegPassword(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 pl-12 pr-4 py-4 text-sm focus:outline-none focus:border-[#00D17F] transition-all" placeholder="No mínimo 6 caracteres" minLength={6} required />
+                              </div>
+                            </div>
+
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Confirmar Palavra-Passe</label>
+                              <div className="relative">
+                                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
+                                <input type="password" value={regConfirmPassword} onChange={e => setRegConfirmPassword(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 pl-12 pr-4 py-4 text-sm focus:outline-none focus:border-[#00D17F] transition-all" placeholder="Repita a palavra-passe" required />
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       </motion.div>
                     )}

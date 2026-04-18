@@ -16,7 +16,7 @@ const RetencaoReceberForm = ({ invoices, clients }: { invoices: Invoice[], clien
     return {
       date: new Date(i.date).toLocaleDateString('pt-PT'),
       clientName: client?.name || 'Desconhecido',
-      nif: client?.nif || 'N/A',
+      nif: client?.contribuinte || 'N/A',
       base,
       rate: '6,5%',
       value

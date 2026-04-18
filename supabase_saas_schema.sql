@@ -159,6 +159,74 @@ CREATE TABLE IF NOT EXISTS public.itens_fatura (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
+-- 13. PAYROLL (Folha de Pagamento)
+CREATE TABLE IF NOT EXISTS public.payroll (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+    employee_id UUID REFERENCES public.funcionarios(id) ON DELETE SET NULL,
+    month TEXT NOT NULL,
+    year TEXT NOT NULL,
+    base_salary NUMERIC DEFAULT 0,
+    subsidy_transport NUMERIC DEFAULT 0,
+    subsidy_food NUMERIC DEFAULT 0,
+    subsidy_residence NUMERIC DEFAULT 0,
+    other_bonus NUMERIC DEFAULT 0,
+    irt NUMERIC DEFAULT 0,
+    inss NUMERIC DEFAULT 0,
+    net_salary NUMERIC DEFAULT 0,
+    payment_status TEXT DEFAULT 'pending',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- 14. SECURITY OCCURRENCES
+CREATE TABLE IF NOT EXISTS public.security_occurrences (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    description TEXT,
+    site_id UUID REFERENCES public.locais_trabalho(id) ON DELETE SET NULL,
+    guard_id UUID REFERENCES public.funcionarios(id) ON DELETE SET NULL,
+    severity TEXT CHECK (severity IN ('Baixa', 'Média', 'Alta', 'Crítica')),
+    status TEXT DEFAULT 'aberto', -- aberto, em_investigacao, resolvido, fechado
+    date TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- 15. SECURITY ARMORY
+CREATE TABLE IF NOT EXISTS public.security_armory (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+    serial_number TEXT UNIQUE,
+    model TEXT,
+    type TEXT, -- arma_fogo, radio, colete, outro
+    status TEXT DEFAULT 'disponivel', -- disponivel, em_uso, manutencao, extraviado
+    last_inspection TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- 16. SECURITY ARMORY LOGS
+CREATE TABLE IF NOT EXISTS public.security_armory_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+    item_id UUID REFERENCES public.security_armory(id) ON DELETE CASCADE,
+    employee_id UUID REFERENCES public.funcionarios(id) ON DELETE SET NULL,
+    action TEXT NOT NULL, -- OUT, IN
+    condition TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- 17. SECURITY ROSTERING
+CREATE TABLE IF NOT EXISTS public.security_rostering (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+    site_id UUID REFERENCES public.locais_trabalho(id) ON DELETE CASCADE,
+    employee_id UUID REFERENCES public.funcionarios(id) ON DELETE CASCADE,
+    shift_start TIMESTAMP WITH TIME ZONE,
+    shift_end TIMESTAMP WITH TIME ZONE,
+    status TEXT DEFAULT 'scheduled',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
 -- ==============================================================================
 -- ADD FOREIGN KEY RELATIONSHIP THAT WAS REPORTED MISSING (TRANSACTIONS / CAIXAS)
 -- IF THEY EXIST. WE CREATE THEM TO BE SURE.
@@ -222,7 +290,8 @@ BEGIN
         SELECT unnest(ARRAY[
             'armazens', 'produtos', 'movimentos_stock', 'profissoes',
             'funcionarios', 'clientes', 'locais_trabalho',
-            'series_fiscais', 'faturas', 'transactions'
+            'series_fiscais', 'faturas', 'transactions', 'payroll',
+            'security_occurrences', 'security_armory', 'security_armory_logs', 'security_rostering'
         ])
     LOOP
         -- Safely drop existing policies to assure idempotence

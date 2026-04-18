@@ -2389,12 +2389,42 @@ app.use((req, res, next) => {
         if (company_id) {
           query = query.eq("company_id", company_id);
         }
-        const { data, error } = await query.order("date", { ascending: false });
-        if (!error) {
+        const { data, error } = await query.order("date", { ascending: false }).catch(e => ({ data: null, error: e }));
+        if (!error && data) {
           return res.json(data);
         }
-        console.error("Supabase Query/Schema Error (/api/transactions):", error);
-        // Fallback to empty list if table is missing or columns mismatch
+        
+        console.error("Supabase Query/Schema Error (/api/transactions):", JSON.stringify(error, null, 2));
+        
+        // Secondary attempt: try ordering by created_at if 'date' column is causing issues
+        const fallback = await supabase.from("transactions").select("*").eq("company_id", company_id).order("created_at", { ascending: false }).limit(500);
+        if (!fallback.error) {
+          return res.json(fallback.data);
+        }
+
+        // Final attempt index-less select
+        const lastChance = await supabase.from("transactions").select("*").eq("company_id", company_id).limit(200);
+        if (!lastChance.error) return res.json(lastChance.data);
+
+        console.error("Critical failure fetching transactions from Supabase:", lastChance.error);
+        
+        // Fallback to SQLite if Supabase failed completely
+        if (db) {
+          console.log("Falling back to local DB for transactions");
+          let queryStr = "SELECT * FROM transactions";
+          const params: any[] = [];
+          if (company_id) {
+            queryStr += " WHERE company_id = ?";
+            params.push(company_id);
+          }
+          queryStr += " ORDER BY date DESC";
+          try {
+            const result = db.prepare(queryStr).all(...params);
+            return res.json(result);
+          } catch (sqliteErr) {
+            console.error("SQLite fallback also failed:", sqliteErr);
+          }
+        }
         return res.json([]);
       }
       
@@ -2467,6 +2497,94 @@ for (const col of transactionColumnsToAdd) {
   });
 
   // Cashier Endpoints
+  // Security Endpoints
+  app.get("/api/security/occurrences", async (req, res) => {
+    const { company_id } = req.query;
+    var supabase = req.supabase || globalSupabase;
+    try {
+      if (supabaseEnabled) {
+        const { data, error } = await supabase.from("security_occurrences").select("*").eq("company_id", company_id);
+        if (!error) return res.json(data);
+      }
+      if (db) {
+        const result = db.prepare("SELECT * FROM security_occurrences WHERE company_id = ?").all(company_id);
+        return res.json(result);
+      }
+      res.json([]);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  app.post("/api/security/occurrences", async (req, res) => {
+    const { company_id, title, description, site_id, guard_id, severity, status, date } = req.body;
+    var supabase = req.supabase || globalSupabase;
+    try {
+      if (supabaseEnabled) {
+        const { data, error } = await supabase.from("security_occurrences").insert([{ company_id, title, description, site_id, guard_id, severity, status, date: date || new Date().toISOString() }]).select();
+        if (error) throw error;
+        return res.json(data[0]);
+      }
+      if (db) {
+        const id = crypto.randomUUID();
+        db.prepare("INSERT INTO security_occurrences (id, company_id, title, description, site_id, guard_id, severity, status, date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run(id, company_id, title, description, site_id, guard_id, severity, status, date || new Date().toISOString());
+        return res.json({ id });
+      }
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  app.get("/api/security/armory", async (req, res) => {
+    const { company_id } = req.query;
+    var supabase = req.supabase || globalSupabase;
+    try {
+      if (supabaseEnabled) {
+        const { data, error } = await supabase.from("security_armory").select("*").eq("company_id", company_id);
+        if (!error) return res.json(data);
+      }
+      if (db) {
+        const result = db.prepare("SELECT * FROM security_armory WHERE company_id = ?").all(company_id);
+        return res.json(result);
+      }
+      res.json([]);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  app.post("/api/security/armory-logs", async (req, res) => {
+    const { company_id, item_id, employee_id, action, condition } = req.body;
+    var supabase = req.supabase || globalSupabase;
+    try {
+      if (supabaseEnabled) {
+        const { data, error } = await supabase.from("security_armory_logs").insert([{ company_id, item_id, employee_id, action, condition }]).select();
+        if (error) throw error;
+        // Update item status
+        const newStatus = action === 'OUT' ? 'em_uso' : 'disponivel';
+        await supabase.from("security_armory").update({ status: newStatus }).eq("id", item_id);
+        return res.json(data[0]);
+      }
+      if (db) {
+        const id = crypto.randomUUID();
+        db.prepare("INSERT INTO security_armory_logs (id, company_id, item_id, employee_id, action, condition) VALUES (?, ?, ?, ?, ?, ?)").run(id, company_id, item_id, employee_id, action, condition);
+        const newStatus = action === 'OUT' ? 'em_uso' : 'disponivel';
+        db.prepare("UPDATE security_armory SET status = ? WHERE id = ?").run(newStatus, item_id);
+        return res.json({ id });
+      }
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
+  app.get("/api/security/roster", async (req, res) => {
+    const { company_id } = req.query;
+    var supabase = req.supabase || globalSupabase;
+    try {
+      if (supabaseEnabled) {
+        const { data, error } = await supabase.from("security_rostering").select("*").eq("company_id", company_id);
+        if (!error) return res.json(data);
+      }
+      if (db) {
+        const result = db.prepare("SELECT * FROM security_rostering WHERE company_id = ?").all(company_id);
+        return res.json(result);
+      }
+      res.json([]);
+    } catch (e) { res.status(500).json({ error: String(e) }); }
+  });
+
   app.get("/api/cash/sessions", async (req, res) => {
     const { company_id } = req.query;
     try {

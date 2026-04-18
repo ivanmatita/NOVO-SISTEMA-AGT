@@ -1,5 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import PrintA4 from './components/PrintA4';
+import SecurityModule from './components/SecurityModule';
+import BusinessOverview from './components/BusinessOverview';
+import FleetManagementModule from './components/FleetManagementModule';
+import ProjectManagementModule from './components/ProjectManagementModule';
+import LiteracyModule from './components/LiteracyModule';
 import { QRCodeCanvas } from 'qrcode.react';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
@@ -22,6 +27,7 @@ import {
   ChevronLeft,
   ArrowLeft,
   Printer,
+  Truck,
   ClipboardList,
   FileSignature,
   ShieldCheck,
@@ -45,7 +51,6 @@ import {
   Upload,
   X,
   Check,
-  Truck,
   Copy,
   XCircle,
   FileCode,
@@ -96,7 +101,8 @@ import {
   Monitor,
   LogOut,
   GraduationCap,
-  Bed
+  Bed,
+  FolderKanban
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import jsPDF from 'jspdf';
@@ -528,6 +534,8 @@ const Sidebar = ({ activeTab, setActiveTab }: {
   const menuItems = [
     { id: 'dashboard', label: 'Painel de Bordo', icon: LayoutDashboard },
     { id: 'workplaces', label: 'Locais de Trabalho', icon: Briefcase },
+    { id: 'fleet', label: 'Gestão de Frotas', icon: Truck },
+    { id: 'projects', label: 'Gestão de Projetos', icon: FolderKanban },
     { id: 'secretary', label: 'Secretaria Beta', icon: Paperclip },
     { id: 'archives', label: 'Arquivos', icon: FileBox },
     { id: 'pos', label: 'Ponto de Venda', icon: Monitor, hasChevron: true },
@@ -4890,12 +4898,26 @@ const ProfitLossReport = ({ fiscalYear, company_id }: { fiscalYear: string, comp
   const d = totals.inss || 0;
   const impPrevisional = Math.max(0, (a - b - c - d) * 0.25);
 
-  const chartData = (data || []).map(d => ({
-    name: typeof d.month === 'string' ? d.month.substring(0, 3) : months[d.month - 1]?.substring(0, 3) || `M${d.month}`,
-    Receita: d.facturacaoSImposto,
-    Custos: d.totaisCustos,
-    Margem: d.margem
-  }));
+  const chartData = months.map((monthName, idx) => {
+    const monthNum = idx + 1;
+    const d = data.find(item => Number(item.month) === monthNum) || {
+      facturacaoSImposto: 0,
+      totaisCustos: 0,
+      margem: 0
+    };
+    return {
+      name: monthName.substring(0, 3),
+      Receita: d.facturacaoSImposto,
+      Custos: d.totaisCustos,
+      Margem: d.margem
+    };
+  });
+
+  const getMonthValue = (idx: number, key: string) => {
+    const monthNum = idx + 1;
+    const d = data.find(item => Number(item.month) === monthNum);
+    return d ? d[key] : 0;
+  };
 
   return (
     <div className="bg-white p-8 space-y-8 overflow-x-auto">
@@ -4951,17 +4973,17 @@ const ProfitLossReport = ({ fiscalYear, company_id }: { fiscalYear: string, comp
         <tbody className="divide-y divide-zinc-100">
           <tr>
             <td className="py-2 font-medium text-zinc-700">Facturação S/ imposto (a)</td>
-            { (data || []).map(d => <td key={d.month} className="text-right py-2 px-1 text-zinc-500">{formatValue(d.facturacaoSImposto)}</td>) }
+            { months.map((_, idx) => <td key={idx} className="text-right py-2 px-1 text-zinc-500">{formatValue(getMonthValue(idx, 'facturacaoSImposto'))}</td>) }
             <td className="text-right py-2 px-1 font-bold text-zinc-700">{formatValue(totals.facturacaoSImposto)}</td>
           </tr>
           <tr>
             <td className="py-2 font-medium text-zinc-700">Imposto Recebido</td>
-            { (data || []).map(d => <td key={d.month} className="text-right py-2 px-1 text-zinc-500">{formatValue(d.impostoRecebido)}</td>) }
+            { months.map((_, idx) => <td key={idx} className="text-right py-2 px-1 text-zinc-500">{formatValue(getMonthValue(idx, 'impostoRecebido'))}</td>) }
             <td className="text-right py-2 px-1 font-bold text-zinc-700">{formatValue(totals.impostoRecebido)}</td>
           </tr>
           <tr className="bg-zinc-50/50">
             <td className="py-2 font-bold text-zinc-800">Facturação c/ imposto</td>
-            { (data || []).map(d => <td key={d.month} className="text-right py-2 px-1 text-zinc-600 font-medium">{formatValue(d.facturacaoCImposto)}</td>) }
+            { months.map((_, idx) => <td key={idx} className="text-right py-2 px-1 text-zinc-600 font-medium">{formatValue(getMonthValue(idx, 'facturacaoCImposto'))}</td>) }
             <td className="text-right py-2 px-1 font-black text-zinc-900">{formatValue(totals.facturacaoCImposto)}</td>
           </tr>
 
@@ -4973,27 +4995,27 @@ const ProfitLossReport = ({ fiscalYear, company_id }: { fiscalYear: string, comp
           </tr>
           <tr>
             <td className="py-2 font-medium text-zinc-700">Custos Aceites S/ Imposto</td>
-            { (data || []).map(d => <td key={d.month} className="text-right py-2 px-1 text-zinc-500">{formatValue(d.custosAceites)}</td>) }
+            { months.map((_, idx) => <td key={idx} className="text-right py-2 px-1 text-zinc-500">{formatValue(getMonthValue(idx, 'custosAceites'))}</td>) }
             <td className="text-right py-2 px-1 font-bold text-zinc-700">{formatValue(totals.custosAceites)}</td>
           </tr>
           <tr>
             <td className="py-2 font-medium text-zinc-700">Fornecedores S/ imposto(b)</td>
-            { (data || []).map(d => <td key={d.month} className="text-right py-2 px-1 text-zinc-500">{formatValue(d.fornecedoresSImposto)}</td>) }
+            { months.map((_, idx) => <td key={idx} className="text-right py-2 px-1 text-zinc-500">{formatValue(getMonthValue(idx, 'fornecedoresSImposto'))}</td>) }
             <td className="text-right py-2 px-1 font-bold text-zinc-700">{formatValue(totals.fornecedoresSImposto)}</td>
           </tr>
           <tr>
             <td className="py-2 font-medium text-zinc-700">Iva Suportado</td>
-            { (data || []).map(d => <td key={d.month} className="text-right py-2 px-1 text-zinc-500">{formatValue(d.ivaSuportado)}</td>) }
+            { months.map((_, idx) => <td key={idx} className="text-right py-2 px-1 text-zinc-500">{formatValue(getMonthValue(idx, 'ivaSuportado'))}</td>) }
             <td className="text-right py-2 px-1 font-bold text-zinc-700">{formatValue(totals.ivaSuportado)}</td>
           </tr>
           <tr>
             <td className="py-2 font-medium text-zinc-700 italic text-blue-800">Salarios(c)</td>
-            { (data || []).map(d => <td key={d.month} className="text-right py-2 px-1 text-blue-800 italic">{formatValue(d.salarios)}</td>) }
+            { months.map((_, idx) => <td key={idx} className="text-right py-2 px-1 text-blue-800 italic">{formatValue(getMonthValue(idx, 'salarios'))}</td>) }
             <td className="text-right py-2 px-1 font-bold text-blue-900 italic">{formatValue(totals.salarios)}</td>
           </tr>
           <tr>
             <td className="py-2 font-medium text-zinc-700 italic text-blue-800">INSS 8%(d)</td>
-            { (data || []).map(d => <td key={d.month} className="text-right py-2 px-1 text-blue-800 italic">{formatValue(d.inss)}</td>) }
+            { months.map((_, idx) => <td key={idx} className="text-right py-2 px-1 text-blue-800 italic">{formatValue(getMonthValue(idx, 'inss'))}</td>) }
             <td className="text-right py-2 px-1 font-bold text-blue-900 italic">{formatValue(totals.inss)}</td>
           </tr>
           <tr className="bg-zinc-50/50 border-t border-zinc-200">
@@ -6891,6 +6913,13 @@ const POSModule = ({ products, onRefresh, caixas }: { products: Product[], onRef
 const SpecializedManagementModule = () => {
   const [activeModule, setActiveModule] = useState<string | null>(null);
 
+  if (activeModule === 'literacy') return (
+    <div>
+      <button onClick={() => setActiveModule(null)} className="mb-4 text-[#003366] font-bold text-xs uppercase hover:underline flex items-center gap-1">← Voltar para Gestão Especializada</button>
+      <LiteracyModule />
+    </div>
+  );
+
   if (activeModule === 'school') return (
     <div>
       <button onClick={() => setActiveModule(null)} className="mb-4 text-[#003366] font-bold text-xs uppercase hover:underline flex items-center gap-1">← Voltar para Gestão Especializada</button>
@@ -6924,6 +6953,7 @@ const SpecializedManagementModule = () => {
           { id: 'school', label: 'Gestão Escolar ERP', desc: 'Matrículas, Turmas, Notas e Tesouraria Académica.', icon: GraduationCap },
           { id: 'restaurant', label: 'Restaurante / Bar', desc: 'Gestão de mesas, pedidos Cozinha/Bar e Ementa.', icon: Utensils },
           { id: 'hotel', label: 'Hotelaria / Alojamento', desc: 'Check-in, Reservas, Quartos e Housekeeping.', icon: Bed },
+          { id: 'literacy', label: 'Literacia Financeira e Fiscal', desc: 'Biblioteca de conhecimentos fiscais angolanos.', icon: BookOpen },
           { id: 'inventory', label: 'Inventário / Stock', desc: 'Controlo de stock e múltiplos armazéns.', icon: Package },
           { id: 'projects', label: 'Gestão de Projetos', desc: 'Acompanhamento de tarefas e prazos.', icon: LayoutDashboard },
           { id: 'fleet', label: 'Gestão de Frotas', desc: 'Manutenção e custos de veículos.', icon: LayoutDashboard },
@@ -9060,6 +9090,8 @@ const InvoiceList = ({
   onAction,
   onCertify,
   onViewDetail,
+  onViewBusinessOverview,
+  setActiveTab,
   caixas,
   mode = 'standard'
 }: { 
@@ -9076,6 +9108,8 @@ const InvoiceList = ({
   onAction: (action: string, doc: IssuedDocument) => void,
   onCertify: (doc: IssuedDocument) => void,
   onViewDetail?: (doc: IssuedDocument) => void,
+  onViewBusinessOverview?: () => void,
+  setActiveTab: (tab: string) => void,
   caixas: Caixa[],
   mode?: 'standard' | 'electronic'
 }) => {
@@ -9246,11 +9280,17 @@ const InvoiceList = ({
                     {mode === 'electronic' ? 'Emitir Fatura Electrónica' : 'Nova Fatura'}
                   </button>
                 )}
-                <button className="bg-white border border-zinc-200 text-zinc-600 font-bold px-6 py-2.5 rounded-none flex items-center gap-2 hover:bg-zinc-50 transition-all shadow-sm text-sm">
+                <button 
+                  onClick={() => setActiveTab('financial')}
+                  className="bg-white border border-zinc-200 text-zinc-600 font-bold px-6 py-2.5 rounded-none flex items-center gap-2 hover:bg-zinc-50 transition-all shadow-sm text-sm"
+                >
                   <History size={18} className="text-zinc-400" />
                   Relatórios
                 </button>
-                <button className="bg-[#4f46e5] hover:bg-indigo-700 text-white font-bold px-6 py-2.5 rounded-none flex items-center gap-2 transition-all shadow-sm text-sm">
+                <button 
+                  onClick={onViewBusinessOverview}
+                  className="bg-[#4f46e5] hover:bg-indigo-700 text-white font-bold px-6 py-2.5 rounded-none flex items-center gap-2 transition-all shadow-sm text-sm"
+                >
                   <BarChart3 size={18} />
                   Visão Geral do Negócio
                 </button>
@@ -14224,49 +14264,6 @@ const ConvertDocumentModal = ({ document, onClose, onSuccess }: {
   );
 };
 
-const SecurityModule = () => {
-  const [activeSubTab, setActiveSubTab] = useState('users');
-
-  const tabs = [
-    { id: 'users', label: 'Utilizadores', icon: Users, description: 'Gestão de acessos e perfis' },
-    { id: 'roles', label: 'Cargos e Permissões', icon: ShieldCheck, description: 'Definição de níveis de acesso' },
-    { id: 'audit', label: 'Auditoria', icon: FileText, description: 'Registo de atividades do sistema' },
-  ];
-
-  return (
-    <div className="space-y-8">
-      <header>
-        <Breadcrumbs paths={['Home', 'Segurança Gestão Privada']} />
-        <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Segurança Gestão Privada</h2>
-        <p className="text-zinc-500 text-sm">Controlo de acessos, permissões e auditoria do sistema.</p>
-      </header>
-
-      <div className="flex gap-8 border-b border-zinc-200 bg-white px-6">
-        {tabs.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveSubTab(tab.id)}
-            className={`flex items-center gap-2 pb-4 text-[10px] font-black uppercase tracking-widest transition-all relative ${
-              activeSubTab === tab.id 
-                ? 'text-[#003366] border-b-2 border-[#003366]' 
-                : 'text-zinc-400 hover:text-zinc-600'
-            }`}
-          >
-            <tab.icon size={14} className={activeSubTab === tab.id ? 'text-[#003366]' : 'text-zinc-300'} />
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="bg-white border border-zinc-200 p-8 text-center text-zinc-500">
-        <ShieldCheck size={48} className="mx-auto text-zinc-300 mb-4" />
-        <h3 className="text-lg font-bold text-[#003366] mb-2">Módulo em Desenvolvimento</h3>
-        <p className="text-sm">As funcionalidades de {tabs.find(t => t.id === activeSubTab)?.label} estarão disponíveis em breve.</p>
-      </div>
-    </div>
-  );
-};
-
 export default function App() {
   const { user, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -14300,6 +14297,10 @@ export default function App() {
   const [caixaMovements, setCaixaMovements] = useState<CaixaMovement[]>([]);
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [securityOccurrences, setSecurityOccurrences] = useState<any[]>([]);
+  const [securityArmory, setSecurityArmory] = useState<any[]>([]);
+  const [securityRoster, setSecurityRoster] = useState<any[]>([]);
   const [companyData, setCompanyData] = useState<any>(null);
   
   // Task/Alert modal state
@@ -14330,6 +14331,7 @@ export default function App() {
         fetchJson(`/api/stats?company_id=${companyId}`),
         fetchJson(`/api/clients?company_id=${companyId}`),
         fetchJson(`/api/products?company_id=${companyId}`),
+        fetchJson(`/api/transactions?company_id=${companyId}`),
         fetchJson(`/api/invoices?company_id=${companyId}`),
         fetchJson(`/api/issued-documents?company_id=${companyId}`),
         fetchJson(`/api/work-sites?company_id=${companyId}`),
@@ -14339,20 +14341,24 @@ export default function App() {
         fetchJson(`/api/caixa-movements?company_id=${companyId}`),
         fetchJson(`/api/stock/movements?company_id=${companyId}`),
         fetchJson(`/api/warehouses?company_id=${companyId}`),
+        fetchJson(`/api/security/occurrences?company_id=${companyId}`),
+        fetchJson(`/api/security/armory?company_id=${companyId}`),
+        fetchJson(`/api/security/roster?company_id=${companyId}`),
         fetchJson(`/api/company/${companyId}`)
       ]);
 
-      const [s, c, p, i, d, w, e, fs, cx, cm, sm, wh, comp] = results.map((res, idx) => {
+      const [s, c, p, tr, i, d, w, e, fs, cx, cm, sm, wh, occ, arm, rost, comp] = results.map((res, idx) => {
         if (res.status === 'fulfilled') return res.value;
         console.error(`Fetch failed for index ${idx}:`, res.reason);
         return null;
       });
       
-      console.log('Data fetched results:', { s, c, p, i, d, w, e, fs, comp });
+      console.log('Data fetched results:', { s, c, p, tr, i, d, w, e, fs, comp });
       
       if (s) setStats(s);
       setClients(Array.isArray(c) ? c : []);
       setProducts(Array.isArray(p) ? p : []);
+      setTransactions(Array.isArray(tr) ? tr : []);
       setInvoices(Array.isArray(i) ? i : []);
       setIssuedDocuments(Array.isArray(d) ? d : []);
       setWorkSites(Array.isArray(w) ? w : []);
@@ -14370,6 +14376,9 @@ export default function App() {
       setCaixaMovements(Array.isArray(cm) ? cm : []);
       setStockMovements(Array.isArray(sm) ? sm : []);
       setWarehouses(Array.isArray(wh) ? wh : []);
+      setSecurityOccurrences(Array.isArray(occ) ? occ : []);
+      setSecurityArmory(Array.isArray(arm) ? arm : []);
+      setSecurityRoster(Array.isArray(rost) ? rost : []);
       
       console.log('Data state updated');
     } catch (error) {
@@ -14610,6 +14619,8 @@ export default function App() {
             setShowCertifyModal(true);
           }}
           onViewDetail={(doc) => setViewingInvoiceId(doc.id)}
+          onViewBusinessOverview={() => setActiveTab('business_overview')}
+          setActiveTab={setActiveTab}
           caixas={caixas}
           mode={activeTab === 'electronic_invoices' ? 'electronic' : 'standard'}
         />
@@ -14637,6 +14648,26 @@ export default function App() {
       );
       case 'cashier': return <CashierModule issuedDocuments={issuedDocuments} />;
       case 'caixa': return <CaixaModule caixas={caixas} setCaixas={setCaixas} movements={caixaMovements} setMovements={setCaixaMovements} />;
+      case 'security': return (
+        <SecurityModule 
+          occurrences={securityOccurrences}
+          armory={securityArmory}
+          roster={securityRoster}
+          employees={employees}
+          workSites={workSites}
+          onRefresh={fetchData}
+        />
+      );
+      case 'fleet': return <FleetManagementModule />;
+      case 'projects': return <ProjectManagementModule />;
+      case 'business_overview': return (
+        <BusinessOverview 
+          invoices={issuedDocuments} 
+          products={products} 
+          clients={clients} 
+          transactions={transactions} 
+        />
+      );
       case 'workplaces': return <WorkplaceModule onRefresh={fetchData} clients={clients} />;
       case 'clients': return (
         <ClientList 
@@ -14671,7 +14702,6 @@ export default function App() {
       case 'hr': return <HRModule onRefresh={fetchData} onSetIsContractModalOpen={setIsContractModalOpen} onSetEmployee={setAppSelectedEmployee} caixas={caixas} companyName={companyName} />;
       case 'accounting': return <AccountingModule invoices={invoices} clients={clients} />;
       case 'specialized': return <SpecializedManagementModule />;
-      case 'security': return <SecurityModule />;
       case 'church': return <ChurchModule />;
       case 'agrobusiness': return <AgrobusinessModule />;
       case 'settings': return (

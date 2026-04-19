@@ -2416,43 +2416,40 @@ app.use((req, res, next) => {
         if (company_id) {
           query = query.eq("company_id", company_id);
         }
+        
+        // Execute ordered query, but safely
         let { data, error } = await query.order("date", { ascending: false });
+        
         if (!error && data) {
           return res.json(data);
         }
         
-        console.error("Supabase Query/Schema Error (/api/transactions):", JSON.stringify(error, null, 2));
+        console.error("Supabase Query/Schema Error (/api/transactions):", error);
         
-        // Secondary attempt: try ordering by created_at if 'date' column is causing issues
-        const fallback = await supabase.from("transactions").select("*").eq("company_id", company_id).order("created_at", { ascending: false }).limit(500);
-        if (!fallback.error) {
+        // Secondary attempt: try ordering by created_at 
+        const fallback = await supabase
+          .from("transactions")
+          .select("*")
+          .eq("company_id", company_id)
+          .order("created_at", { ascending: false })
+          .limit(500);
+          
+        if (!fallback.error && fallback.data) {
           return res.json(fallback.data);
         }
 
         // Final attempt index-less select
-        const lastChance = await supabase.from("transactions").select("*").eq("company_id", company_id).limit(200);
-        if (!lastChance.error) return res.json(lastChance.data);
+        const lastChance = await supabase
+          .from("transactions")
+          .select("*")
+          .eq("company_id", company_id)
+          .limit(200);
+          
+        if (!lastChance.error && lastChance.data) {
+          return res.json(lastChance.data);
+        }
 
         console.error("Critical failure fetching transactions from Supabase:", lastChance.error);
-        
-        // Fallback to SQLite if Supabase failed completely
-        if (db) {
-          console.log("Falling back to local DB for transactions");
-          let queryStr = "SELECT * FROM transactions";
-          const params: any[] = [];
-          if (company_id) {
-            queryStr += " WHERE company_id = ?";
-            params.push(company_id);
-          }
-          queryStr += " ORDER BY date DESC";
-          try {
-            const result = db.prepare(queryStr).all(...params);
-            return res.json(result);
-          } catch (sqliteErr) {
-            console.error("SQLite fallback also failed:", sqliteErr);
-          }
-        }
-        return res.json([]);
       }
       
       if (db) {

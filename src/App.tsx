@@ -135,6 +135,7 @@ import DeclaracaoAnualForm from './components/DeclaracaoAnualForm';
 import SaftExportForm from './components/SaftExportForm';
 import { TopHeader } from './components/TopHeader';
 import { RightSidebar } from './components/RightSidebar';
+import { ClientForm } from './components/ClientForm';
 import { MetricsModule, fetchMetrics, Metric } from './components/MetricsModule';
 
 // --- Helpers ---
@@ -14284,6 +14285,7 @@ export default function App() {
   const [printingInvoice, setPrintingInvoice] = useState<Invoice | null>(null);
   const [viewingInvoiceId, setViewingInvoiceId] = useState<number | null>(null);
   const [isCreatingInvoice, setIsCreatingInvoice] = useState(false);
+  const [isClientModalOpen, setIsClientModalOpen] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState<IssuedDocument | null>(null);
   const [showActionsModal, setShowActionsModal] = useState(false);
   const [showCertifyModal, setShowCertifyModal] = useState(false);
@@ -14610,7 +14612,7 @@ export default function App() {
           employees={employees}
           onNew={() => setIsCreatingInvoice(true)} 
           onView={setViewingInvoiceId}
-          onRegisterClient={() => setActiveTab('clients')}
+          onRegisterClient={() => setIsClientModalOpen(true)}
           onAddWorkSite={handleAddWorkSite}
           onUpdateWorkSite={handleUpdateWorkSite}
           onAction={handleDocumentAction}
@@ -14774,6 +14776,34 @@ export default function App() {
         </div>
         
         <RightSidebar />
+        
+        {isClientModalOpen && (
+          <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in zoom-in-95 duration-200">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl p-0 relative overflow-hidden flex flex-col max-h-[90vh]">
+              <div className="shrink-0 pt-6 px-6 pb-4 border-b border-zinc-100 flex justify-between items-center bg-zinc-50/80 backdrop-blur">
+                <div>
+                  <h2 className="text-2xl font-black text-[#003366] tracking-tight uppercase">Registar Novo Cliente</h2>
+                  <p className="text-sm text-zinc-500 mt-1">Registe e gira o perfil do cliente para utilizar no ponto de venda.</p>
+                </div>
+                <button 
+                  onClick={() => setIsClientModalOpen(false)} 
+                  className="w-8 h-8 flex items-center justify-center text-zinc-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="p-6 overflow-y-auto">
+                <ClientForm 
+                  onBack={() => setIsClientModalOpen(false)} 
+                  onSuccess={() => {
+                    setIsClientModalOpen(false);
+                    fetchData();
+                  }} 
+                />
+              </div>
+            </div>
+          </div>
+        )}
         
       {showActionsModal && selectedDocument && (
         <DocumentActionsModal 

@@ -1,7 +1,4 @@
 import React, { useState } from 'react';
-import { Truck, AlertTriangle, Calendar, Settings } from 'lucide-react';
-
-import React, { useState } from 'react';
 import { Truck, AlertTriangle, Calendar, Settings, Plus, Wrench, FileText } from 'lucide-react';
 
 const vehicles = [
@@ -102,8 +99,5 @@ const FleetManagementModule = () => {
         </div>
     );
 };
-
-export default FleetManagementModule;
-
 
 export default FleetManagementModule;

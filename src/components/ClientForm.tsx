@@ -1,13 +1,6 @@
 import React, { useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
 import { useAuth } from '../contexts/AuthContext';
-
-// Connection setup
-// @ts-ignore
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-// @ts-ignore
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+import { supabase } from '../services/supabaseClient';
 
 export function ClientForm() {
   const { user } = useAuth();

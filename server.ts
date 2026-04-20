@@ -9,7 +9,7 @@ let issuedDocuments: any[] = [];
 let workSites: any[] = [];
 let employees: any[] = [];
 let fiscalSeries: any[] = [
-  { id: 1, name: 'Série 2024', user_id: '1', type: 'normal', reference: 'S12024', counter: 1, year: 2024, is_active: true, data_inicio: '2024-01-01', destino: 'Vendas Sede' }
+  { id: 1, name: 'Série 2026', user_id: '1', type: 'normal', reference: 'S', counters: {}, year: 2026, is_active: true, data_inicio: '2026-01-01', destino: 'Vendas Sede' }
 ];
 let caixas: any[] = [];
 let caixaMovements: any[] = [];
@@ -98,20 +98,29 @@ async function startServer() {
   });
   app.post("/api/invoices", (req, res) => {
     const series = fiscalSeries.find(s => s.id === Number(req.body.series_id));
+    const docType = req.body.document_type || 'Fatura';
     
     // Auto-generate or use manual number
     let invoice_number = req.body.invoice_number;
     
     if (!invoice_number) {
-      const counter = series ? series.counter : (issuedDocuments.length + 1);
-      if (series) series.counter++;
-      invoice_number = `${req.body.document_type || 'FT'} ${new Date().getFullYear()}/${series ? series.reference + '/' : ''}${counter}`;
+      if (series) {
+        if (!series.counters) series.counters = {};
+        if (!series.counters[docType]) series.counters[docType] = 1;
+        const counter = series.counters[docType];
+        series.counters[docType]++;
+        const year = new Date().getFullYear();
+        // Matching example: "docType S2026/1"
+        invoice_number = `${docType} ${series.reference}${year}/${counter}`;
+      } else {
+        const counter = issuedDocuments.filter(d => d.document_type === docType).length + 1;
+        invoice_number = `${docType} ${new Date().getFullYear()}/${counter}`;
+      }
     }
 
     // Strict uniqueness check
     const isDuplicate = issuedDocuments.some(d => d.invoice_number === invoice_number);
     if (isDuplicate) {
-      // If auto-generated, try adding a timestamp or random suffix
       invoice_number = `${invoice_number}-${Date.now().toString().slice(-4)}`;
     }
 

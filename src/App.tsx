@@ -11206,9 +11206,14 @@ const ClientAccount = ({ client, documents, onBack }: {
         credito: isCredit ? doc.contravalor : 0
       };
     }).filter(m => {
-      const date = new Date(m.data_emissao).toISOString().split('T')[0];
-      if (startDate && date < startDate) return false;
-      if (endDate && date > endDate) return false;
+      if (!m.data_emissao) return true; // Show it anyway if date is missing, let it be at the top/bottom
+      try {
+        const date = new Date(m.data_emissao).toISOString().split('T')[0];
+        if (startDate && date < startDate) return false;
+        if (endDate && date > endDate) return false;
+      } catch (e) {
+        console.error("Invalid date:", m.data_emissao);
+      }
       return true;
     });
     setFilteredMovements(movements);
@@ -14553,7 +14558,15 @@ export default function App() {
       case 'client-account': return selectedClientForAccount ? (
         <ClientAccount 
           client={selectedClientForAccount} 
-          documents={issuedDocuments.filter(d => d.cliente_id === selectedClientForAccount.id)}
+          documents={issuedDocuments
+            .filter(d => Number(d.cliente_id) === Number(selectedClientForAccount.id))
+            .map(d => ({
+              ...d,
+              tipo_documento: d.document_type || 'Fatura',
+              data_emissao: d.date,
+              numero_documento: d.invoice_number,
+              contravalor: d.total
+            })) as any}
           onBack={() => setActiveTab('clients')}
         />
       ) : (

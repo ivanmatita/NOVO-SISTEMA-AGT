@@ -1,14 +1,23 @@
 import React from 'react';
-import { Invoice, InvoiceItem } from '../types';
+import { Invoice } from '../types';
+import { QRCodeCanvas } from 'qrcode.react';
 
 const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(value);
 };
 
-const PrintA4 = ({ invoice }: { invoice: Invoice }) => {
+const PrintA4 = ({ invoice, isDraft = false }: { invoice: Invoice, isDraft?: boolean }) => {
+  const qrValue = `${invoice.invoice_number}|${invoice.client_nif || '999999999'}|${invoice.date}|${invoice.total || 0}|${invoice.hash || ''}`;
+
   return (
-    <div className="bg-white p-[2cm] w-[210mm] min-h-[297mm] mx-auto text-zinc-900 font-sans shadow-lg print:shadow-none print:m-0">
-      <div className="flex justify-between items-start mb-12">
+    <div className="bg-white p-[2cm] w-[210mm] min-h-[297mm] mx-auto text-zinc-900 font-sans shadow-lg print:shadow-none print:m-0 relative">
+      {isDraft && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.03] rotate-[-45deg] z-0">
+          <p className="text-[120px] font-black uppercase tracking-[0.5em]">DOCUMENTO DE SUPORTE / DRAFT</p>
+        </div>
+      )}
+      
+      <div className="flex justify-between items-start mb-12 relative z-10">
         <div>
           <h1 className="text-3xl font-black text-[#003366] mb-2">FaturaPronta Lda</h1>
           <div className="text-xs space-y-1 text-zinc-600">
@@ -20,12 +29,17 @@ const PrintA4 = ({ invoice }: { invoice: Invoice }) => {
           </div>
         </div>
         <div className="text-right">
-          <h2 className="text-2xl font-bold uppercase text-[#003366] mb-1">{invoice.document_type || 'Fatura'}</h2>
+          <h2 className="text-2xl font-bold uppercase text-[#003366] mb-1">
+            {isDraft ? 'DOCUMENTO DE SUPORTE (DRAFT)' : (invoice.document_type || 'Fatura')}
+          </h2>
           <p className="text-lg font-mono font-bold text-zinc-800">{invoice.invoice_number}</p>
           <div className="mt-4 text-xs space-y-1">
             <p><span className="font-bold">Data de Emissão:</span> {new Date(invoice.date).toLocaleDateString('pt-PT')}</p>
             {invoice.due_date && <p><span className="font-bold">Data de Vencimento:</span> {new Date(invoice.due_date).toLocaleDateString('pt-PT')}</p>}
             <p><span className="font-bold">Moeda:</span> {invoice.currency || 'Kwanza'}</p>
+          </div>
+          <div className="mt-4 flex justify-end">
+            <QRCodeCanvas value={qrValue} size={80} level="H" />
           </div>
         </div>
       </div>

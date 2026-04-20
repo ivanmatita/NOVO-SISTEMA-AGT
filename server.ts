@@ -91,9 +91,149 @@ async function startServer() {
   app.post("/api/invoices/:id/clone", (req, res) => {
     const doc = issuedDocuments.find(d => d.id === Number(req.params.id));
     if (doc) {
-      const cloned = { ...doc, id: Date.now(), invoice_number: `${doc.invoice_number} (CLONE)`, created_at: new Date().toISOString() };
+      // Re-use logic for generating number
+      const series = fiscalSeries.find(s => s.id === Number(doc.series_id));
+      const docType = doc.document_type || 'Fatura';
+      let invoice_number = "";
+      
+      if (series) {
+        if (!series.counters) series.counters = {};
+        if (!series.counters[docType]) series.counters[docType] = 1;
+        const counter = series.counters[docType];
+        series.counters[docType]++;
+        const year = new Date().getFullYear();
+        invoice_number = `${docType} ${series.reference}${year}/${counter}`;
+      } else {
+        const counter = issuedDocuments.filter(d => d.document_type === docType).length + 1;
+        invoice_number = `${docType} ${new Date().getFullYear()}/${counter}`;
+      }
+
+      // Uniqueness check
+      if (issuedDocuments.some(d => d.invoice_number === invoice_number)) {
+        invoice_number = `${invoice_number}-${Date.now().toString().slice(-4)}`;
+      }
+
+      const cloned = { 
+        ...doc, 
+        id: Date.now(), 
+        invoice_number, 
+        is_certified: false, 
+        hash: undefined,
+        created_at: new Date().toISOString() 
+      };
       issuedDocuments.push(cloned);
       res.json(cloned);
+    } else res.status(404).json({ error: "Document not found" });
+  });
+
+  app.put("/api/invoices/:id", (req, res) => {
+    const index = issuedDocuments.findIndex(d => d.id === Number(req.params.id));
+    if (index !== -1) {
+      const existing = issuedDocuments[index];
+      // If certified, only allow non-fiscal updates (simulated)
+      if (existing.is_certified) {
+        // In reality, AGT rules forbid modifying fiscal data once certified.
+        // For this mock, we just update what's sent but we should ideally restrict it.
+        issuedDocuments[index] = { ...existing, ...req.body, is_certified: true };
+      } else {
+        issuedDocuments[index] = { ...existing, ...req.body };
+      }
+      res.json(issuedDocuments[index]);
+    } else {
+      res.status(404).json({ error: "Document not found" });
+    }
+  });
+
+  // Receipts
+  app.post("/api/receipts", (req, res) => {
+    const { invoice_id, amount, payment_method, date, cash_box } = req.body;
+    const invoice = issuedDocuments.find(d => d.id === Number(invoice_id));
+    
+    if (invoice) {
+      if (!invoice.paid_amount) invoice.paid_amount = 0;
+      invoice.paid_amount += Number(amount);
+      
+      const total = invoice.total || invoice.counter_value || 0;
+      
+      if (invoice.paid_amount >= total) {
+        invoice.payment_status = 'paid';
+        invoice.status = 'pago';
+        invoice.estado_documento = 'ativo'; // Still active but paid
+      } else if (invoice.paid_amount > 0) {
+        invoice.payment_status = 'partial';
+        invoice.status = 'parcial';
+      }
+
+      // Record transaction
+      const newTransaction = {
+        id: Date.now(),
+        type: 'income',
+        category: 'Vendas',
+        amount: Number(amount),
+        description: `Recebimento Ref: ${invoice.invoice_number}`,
+        date: date || new Date().toISOString(),
+        reference_id: invoice_id,
+        payment_method,
+        cash_box
+      };
+      transactions.push(newTransaction);
+      
+      res.json({ success: true, invoice });
+    } else {
+      res.status(404).json({ error: "Invoice not found" });
+    }
+  });
+
+  app.get("/api/transactions", (req, res) => res.json(transactions));
+
+  app.post("/api/invoices/:id/void", (req, res) => {
+    const doc = issuedDocuments.find(d => d.id === Number(req.params.id));
+    if (doc) {
+      const { reason } = req.body;
+      doc.status = 'anulado';
+      doc.estado_documento = 'anulado';
+      doc.void_reason = reason;
+      doc.void_at = new Date().toISOString();
+      
+      // Generate associated credit note
+      const series = fiscalSeries.find(s => s.id === Number(doc.series_id));
+      const docType = 'Nota de Crédito';
+      let nc_number = "";
+      if (series) {
+        if (!series.counters) series.counters = {};
+        if (!series.counters[docType]) series.counters[docType] = 1;
+        const counter = series.counters[docType];
+        series.counters[docType]++;
+        nc_number = `${docType} ${series.reference}${new Date().getFullYear()}/${counter}`;
+      }
+      
+      const creditNote = {
+        ...doc,
+        id: Date.now() + 1,
+        document_type: 'Nota de Crédito',
+        tipo_documento: 'Nota de Crédito',
+        invoice_number: nc_number,
+        reference_document: doc.invoice_number,
+        total: -Math.abs(doc.total || doc.counter_value || 0),
+        contravalor: -Math.abs(doc.contravalor || doc.counter_value || 0),
+        created_at: new Date().toISOString(),
+        is_certified: true,
+        status: 'ativo'
+      };
+      issuedDocuments.push(creditNote);
+
+      res.json({ success: true, creditNote });
+    } else {
+      res.status(404).json({ error: "Document not found" });
+    }
+  });
+
+  app.post("/api/invoices/:id/certify", (req, res) => {
+    const doc = issuedDocuments.find(d => d.id === Number(req.params.id));
+    if (doc) {
+      doc.is_certified = true;
+      doc.hash = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+      res.json({ success: true, doc });
     } else res.status(404).json({ error: "Document not found" });
   });
   app.post("/api/invoices", (req, res) => {

@@ -388,6 +388,13 @@ export interface IssuedDocument {
   items?: InvoiceItem[];
   is_anulado?: boolean;
   payment_status?: 'pending' | 'partial' | 'paid';
+  paid_amount?: number;
+  paid_at?: string;
+  void_reason?: string;
+  void_at?: string;
+  vat_withholding?: number;
+  service_date?: string;
+  service_location?: string;
 }
 
 export interface StockMovement {
@@ -455,6 +462,7 @@ export interface Purchase {
   id: number;
   supplier_id: number;
   supplier_name?: string;
+  document_type?: string;
   purchase_number: string;
   date: string;
   due_date?: string;

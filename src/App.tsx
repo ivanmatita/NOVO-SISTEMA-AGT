@@ -58,6 +58,7 @@ import {
   XCircle,
   FileCode,
   FileDown,
+  FileMinus2,
   Send,
   ExternalLink,
   Construction,
@@ -111,7 +112,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 import EcosystemDashboard from './components/EcosystemDashboard';
 import * as XLSX from 'xlsx';
 import { validateAngolaNIF } from './utils/nifValidation';
@@ -320,6 +321,7 @@ const PrintP89 = ({ sale, clientName }: { sale: any, clientName?: string }) => {
 const WorkplaceModule = ({ onRefresh, clients }: { onRefresh: () => void, clients: Client[] }) => {
   const { user } = useAuth();
   const [workplaces, setWorkplaces] = useState<any[]>([]);
+  const [selectedWorkplace, setSelectedWorkplace] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   
@@ -392,6 +394,17 @@ const WorkplaceModule = ({ onRefresh, clients }: { onRefresh: () => void, client
     }
   };
 
+  if (selectedWorkplace) {
+    return (
+      <WorkSiteManagement 
+        workSite={selectedWorkplace} 
+        movements={[]} 
+        invoices={[]} 
+        onBack={() => setSelectedWorkplace(null)}
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -433,6 +446,12 @@ const WorkplaceModule = ({ onRefresh, clients }: { onRefresh: () => void, client
                 <td className="px-6 py-4 text-zinc-600">{w.location || 'N/A'}</td>
                 <td className="px-6 py-4 text-zinc-500 font-bold">{w.client_name || 'N/A'}</td>
                 <td className="px-6 py-4 text-right">
+                  <button 
+                    onClick={() => setSelectedWorkplace(w)}
+                    className="bg-zinc-50 text-[#003366] px-3 py-1 text-[10px] font-black uppercase tracking-widest border border-zinc-200 hover:bg-zinc-100 transition-all mr-2"
+                  >
+                    Ver Relatório
+                  </button>
                   <button className="text-zinc-400 hover:text-[#003366]"><MoreHorizontal size={18} /></button>
                 </td>
               </tr>
@@ -1008,7 +1027,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
       
       doc.text('Solicitamos a transferência bancária correspondente ao pagamento de vencimentos.', 14, 80);
       
-      doc.save(`ordem_transferencia_${employee.name.toLowerCase().replace(/ /g, '_')}.pdf`);
+      doc.save(`ordem_transferencia_${(employee.name || 'documento').toLowerCase().replace(/ /g, '_')}.pdf`);
     };
 
     return (
@@ -1141,10 +1160,10 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
   };
 
   const filteredEmployees = Array.isArray(localEmployees) ? localEmployees.filter(emp => 
-    emp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    emp.role.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (emp.profession_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (emp.department || '').toLowerCase().includes(searchTerm.toLowerCase())
+    (emp.name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+    (emp.role || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+    (emp.profession_name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+    (emp.department || '').toLowerCase().includes((searchTerm || '').toLowerCase())
   ) : [];
   const [name, setName] = useState('');
   const [role, setRole] = useState('');
@@ -5106,8 +5125,8 @@ const OtherMovements = ({ transactions, onRefresh, caixas, user }: { transaction
   const [searchTerm, setSearchTerm] = useState('');
 
   const filteredTransactions = (transactions || []).filter(t => 
-    t.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    t.category.toLowerCase().includes(searchTerm.toLowerCase())
+    (t.description || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+    (t.category || '').toLowerCase().includes((searchTerm || '').toLowerCase())
   );
 
   const totalIncome = (transactions || []).filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
@@ -5796,162 +5815,166 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail }: {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-md bg-white p-8 rounded-none shadow-2xl"
+              className="relative w-full max-w-xl bg-white p-8 rounded-none shadow-2xl border-t-4 border-[#003366]"
             >
               <div className="flex justify-between items-center mb-6">
                 <div>
-                  <h3 className="font-bold text-[#003366] text-xl uppercase tracking-tight">Ações do Documento</h3>
-                  <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mt-1">
-                    {showActionsModal.numero_documento} • {showActionsModal.client_name}
+                  <h3 className="font-black text-[#003366] text-xl uppercase tracking-tighter">Opções do Documento</h3>
+                  <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-[0.2em] mt-1">
+                     {showActionsModal.numero_documento || showActionsModal.invoice_number} • {showActionsModal.client_name}
                   </p>
                 </div>
-                <button onClick={() => setShowActionsModal(null)} className="text-zinc-400 hover:text-zinc-600">
-                  <X size={20} />
+                <button onClick={() => setShowActionsModal(null)} className="text-zinc-400 hover:text-red-500 transition-colors">
+                  <X size={24} />
                 </button>
               </div>
               
-              <div className="grid grid-cols-1 gap-2 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
-                {/* Edit Action */}
+              <div className="grid grid-cols-2 gap-3 max-h-[70vh] overflow-y-auto pr-2 p-1 custom-scrollbar">
+                {/* 1. Editar Documento */}
                 <button 
                   onClick={() => { onAction('edit', showActionsModal); setShowActionsModal(null); }}
-                  className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-colors border border-zinc-100 group"
+                  className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-all border border-zinc-100 group shadow-sm bg-white"
                 >
-                  <div className="w-10 h-10 bg-zinc-100 text-[#003366] flex items-center justify-center group-hover:bg-[#003366] group-hover:text-white transition-colors">
+                  <div className={`w-10 h-10 flex items-center justify-center transition-colors ${showActionsModal.is_certified ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-[#003366]'} group-hover:bg-[#003366] group-hover:text-white`}>
                     <Edit size={20} />
                   </div>
                   <div className="text-left">
-                    <p className="font-bold text-zinc-900 text-sm">Editar Documento</p>
-                    <p className="text-xs text-zinc-500">
-                      {showActionsModal.is_certified ? 'Edição limitada (Doc. Certificado)' : 'Edição completa permitida'}
+                    <p className="font-bold text-zinc-900 text-xs uppercase">Editar Documento</p>
+                    <p className="text-[9px] text-zinc-500 uppercase tracking-tighter">
+                      {showActionsModal.is_certified ? 'Apenas campos não fiscais' : 'Edição completa permitida'}
                     </p>
                   </div>
                 </button>
 
-                {/* Print Actions */}
-                <div className="grid grid-cols-2 gap-2">
-                  <button 
-                    onClick={() => { onAction('print_a4', showActionsModal); setShowActionsModal(null); }}
-                    className="flex items-center gap-3 p-3 hover:bg-zinc-50 transition-colors border border-zinc-100 group"
-                  >
-                    <Printer size={16} className="text-[#003366]" />
-                    <span className="font-bold text-zinc-900 text-xs">Imprimir A4</span>
-                  </button>
-                  <button 
-                    onClick={() => { onAction('print_p80', showActionsModal); setShowActionsModal(null); }}
-                    className="flex items-center gap-3 p-3 hover:bg-zinc-50 transition-colors border border-zinc-100 group"
-                  >
-                    <Printer size={16} className="text-[#003366]" />
-                    <span className="font-bold text-zinc-900 text-xs">Imprimir P80</span>
-                  </button>
-                </div>
-
-                {/* Export PDF */}
+                {/* 2. Clonar Documento */}
                 <button 
-                  onClick={() => { onAction('export_pdf', showActionsModal); setShowActionsModal(null); }}
-                  className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-colors border border-zinc-100 group"
+                  onClick={() => { onAction('clone', showActionsModal); setShowActionsModal(null); }}
+                  className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-all border border-zinc-100 group shadow-sm bg-white"
                 >
-                  <div className="w-10 h-10 bg-zinc-100 text-[#003366] flex items-center justify-center group-hover:bg-[#003366] group-hover:text-white transition-colors">
-                    <FileDown size={20} />
+                  <div className="w-10 h-10 bg-zinc-100 text-zinc-600 flex items-center justify-center group-hover:bg-[#003366] group-hover:text-white transition-colors">
+                    <Copy size={20} />
                   </div>
                   <div className="text-left">
-                    <p className="font-bold text-zinc-900 text-sm">Exportar PDF</p>
-                    <p className="text-xs text-zinc-500">Baixar documento em formato PDF.</p>
+                    <p className="font-bold text-zinc-900 text-xs uppercase">Clonar Documento</p>
+                    <p className="text-[9px] text-zinc-500 uppercase tracking-tighter">Duplicar c/ nova numeração</p>
                   </div>
                 </button>
 
-                {/* Certify Action */}
-                {!showActionsModal.is_certified && (
-                  <button 
-                    onClick={() => { onCertify(showActionsModal); setShowActionsModal(null); }}
-                    className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-colors border border-zinc-100 group"
-                  >
-                    <div className="w-10 h-10 bg-zinc-100 text-emerald-600 flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-colors">
-                      <BadgeCheck size={20} />
-                    </div>
-                    <div className="text-left">
-                      <p className="font-bold text-zinc-900 text-sm">Certificar Documento</p>
-                      <p className="text-xs text-zinc-500">Assinar digitalmente o documento (AGT).</p>
-                    </div>
-                  </button>
-                )}
+                {/* 3. Exportar PDF */}
+                <button 
+                  onClick={() => { onAction('export_pdf', showActionsModal); setShowActionsModal(null); }}
+                  className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-all border border-zinc-100 group shadow-sm bg-white"
+                >
+                  <div className="w-10 h-10 bg-zinc-100 text-red-600 flex items-center justify-center group-hover:bg-red-600 group-hover:text-white transition-colors">
+                    <FileDown size={20} />
+                  </div>
+                  <div className="text-left">
+                    <p className="font-bold text-zinc-900 text-xs uppercase">Exportar PDF</p>
+                    <p className="text-[9px] text-zinc-500 uppercase tracking-tighter">Baixar formato A4 Profissional</p>
+                  </div>
+                </button>
 
-                {/* Receipt Action */}
-                {showActionsModal.payment_status !== 'paid' && (
+                {/* 4. Enviar Email / WhatsApp */}
+                <div className="grid grid-cols-2 gap-2">
                   <button 
-                    onClick={() => { onAction('receipt', showActionsModal); setShowActionsModal(null); }}
-                    className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-colors border border-zinc-100 group"
+                    onClick={() => { onAction('send_email', showActionsModal); setShowActionsModal(null); }}
+                    className="flex flex-col items-center justify-center gap-2 p-3 hover:bg-zinc-50 transition-all border border-zinc-100 group bg-white"
                   >
-                    <div className="w-10 h-10 bg-zinc-100 text-[#003366] flex items-center justify-center group-hover:bg-[#003366] group-hover:text-white transition-colors">
-                      <Receipt size={20} />
-                    </div>
-                    <div className="text-left">
-                      <p className="font-bold text-zinc-900 text-sm">Emitir Recibo</p>
-                      <p className="text-xs text-zinc-500">Registar pagamento e liquidar fatura.</p>
-                    </div>
+                    <Mail size={18} className="text-[#003366] group-hover:scale-110 transition-transform" />
+                    <span className="font-bold text-zinc-900 text-[9px] uppercase tracking-widest">Email</span>
                   </button>
-                )}
+                  <button 
+                    onClick={() => { onAction('share_whatsapp', showActionsModal); setShowActionsModal(null); }}
+                    className="flex flex-col items-center justify-center gap-2 p-3 hover:bg-zinc-50 transition-all border border-zinc-100 group bg-white"
+                  >
+                    <MessageCircle size={18} className="text-emerald-600 group-hover:scale-110 transition-transform" />
+                    <span className="font-bold text-zinc-900 text-[9px] uppercase tracking-widest">WhatsApp</span>
+                  </button>
+                </div>
 
-                {/* Convert Action */}
+                {/* 5. Impressões Térmicas */}
+                <div className="col-span-2 grid grid-cols-4 gap-2 bg-zinc-50 p-3 border border-zinc-100 text-center">
+                   <button onClick={() => { onAction('print_a4', showActionsModal); setShowActionsModal(null); }} className="flex flex-col items-center gap-1 p-2 hover:bg-white transition-all border border-transparent hover:border-zinc-200">
+                     <Printer size={16} className="text-zinc-400" />
+                     <span className="text-[8px] font-black uppercase">A4</span>
+                   </button>
+                   <button onClick={() => { onAction('print_p24', showActionsModal); setShowActionsModal(null); }} className="flex flex-col items-center gap-1 p-2 hover:bg-white transition-all border border-transparent hover:border-zinc-200">
+                     <Printer size={16} className="text-zinc-400" />
+                     <span className="text-[8px] font-black uppercase">P24</span>
+                   </button>
+                   <button onClick={() => { onAction('print_p24xl', showActionsModal); setShowActionsModal(null); }} className="flex flex-col items-center gap-1 p-2 hover:bg-white transition-all border border-transparent hover:border-zinc-200">
+                     <Printer size={16} className="text-zinc-400" />
+                     <span className="text-[8px] font-black uppercase">P24-XL</span>
+                   </button>
+                   <button onClick={() => { onAction('print_p80', showActionsModal); setShowActionsModal(null); }} className="flex flex-col items-center gap-1 p-2 hover:bg-white transition-all border border-transparent hover:border-zinc-200">
+                     <Printer size={16} className="text-zinc-400" />
+                     <span className="text-[8px] font-black uppercase">P80</span>
+                   </button>
+                </div>
+
+                {/* 6. Recibo (Apenas Faturas) */}
+                <button 
+                  disabled={!(showActionsModal.document_type === 'Fatura' || showActionsModal.tipo_documento === 'FT') || showActionsModal.status === 'pago'}
+                  onClick={() => { onAction('receipt', showActionsModal); setShowActionsModal(null); }}
+                  className={`w-full flex items-center gap-4 p-4 transition-all border shadow-sm ${(!(showActionsModal.document_type === 'Fatura' || showActionsModal.tipo_documento === 'FT') || showActionsModal.status === 'pago') ? 'bg-zinc-50 border-zinc-100 opacity-50 cursor-not-allowed' : 'bg-white border-zinc-100 hover:bg-zinc-50 group'}`}
+                >
+                  <div className="w-10 h-10 bg-zinc-100 text-emerald-600 flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                    <Receipt size={20} />
+                  </div>
+                  <div className="text-left">
+                    <p className="font-bold text-zinc-900 text-xs uppercase">Liquidar / Recibo</p>
+                    <p className="text-[9px] text-zinc-500 uppercase tracking-tighter">Registar pagamento parcial ou total</p>
+                  </div>
+                </button>
+
+                {/* 7. Guia de Entrega / Nota de Crédito */}
+                <div className="grid grid-cols-1 gap-2">
+                   <button 
+                     disabled={!showActionsModal.is_certified}
+                     onClick={() => { onAction('delivery_guide', showActionsModal); setShowActionsModal(null); }}
+                     className={`flex items-center gap-3 p-3 transition-all border ${!showActionsModal.is_certified ? 'bg-zinc-50 border-zinc-100 opacity-50 cursor-not-allowed' : 'bg-white border-blue-50 hover:bg-blue-50 group'}`}
+                   >
+                     <Truck size={16} className="text-blue-600" />
+                     <span className="font-bold text-zinc-900 text-[9px] uppercase tracking-widest">Guia de Entrega</span>
+                   </button>
+                   <button 
+                     disabled={!showActionsModal.is_certified}
+                     onClick={() => { onAction('credit_note', showActionsModal); setShowActionsModal(null); }}
+                     className={`flex items-center gap-3 p-3 transition-all border ${!showActionsModal.is_certified ? 'bg-zinc-50 border-zinc-100 opacity-50 cursor-not-allowed' : 'bg-white border-red-50 hover:bg-red-50 group'}`}
+                   >
+                     <FileMinus2 size={16} className="text-red-600" />
+                     <span className="font-bold text-zinc-900 text-[9px] uppercase tracking-widest">Nota de Crédito</span>
+                   </button>
+                </div>
+
+                {/* 8. Anular Documento (SENSÍVEL) */}
+                <button 
+                  disabled={!showActionsModal.is_certified || showActionsModal.status === 'anulado'}
+                  onClick={() => { onAction('void', showActionsModal); setShowActionsModal(null); }}
+                  className={`col-span-2 w-full flex items-center gap-4 p-4 transition-all border shadow-sm ${(!showActionsModal.is_certified || showActionsModal.status === 'anulado') ? 'bg-zinc-50 border-zinc-100 opacity-50 cursor-not-allowed' : 'bg-red-50 border-red-100 hover:bg-red-100 group'}`}
+                >
+                  <div className="w-10 h-10 bg-white text-red-600 flex items-center justify-center group-hover:bg-red-600 group-hover:text-white transition-colors border border-red-200">
+                    <Trash2 size={20} />
+                  </div>
+                  <div className="text-left">
+                    <p className="font-bold text-red-700 text-xs uppercase">Anular Documento</p>
+                    <p className="text-[9px] text-red-400 uppercase tracking-tighter">Operação irreversível • Gera Nota de Crédito</p>
+                  </div>
+                </button>
+
+                {/* 9. Faturar / Converter */}
                 <button 
                   onClick={() => { onAction('convert', showActionsModal); setShowActionsModal(null); }}
-                  className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-colors border border-zinc-100 group"
+                  className="col-span-2 w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-all border border-zinc-100 group shadow-sm bg-white"
                 >
                   <div className="w-10 h-10 bg-zinc-100 text-[#003366] flex items-center justify-center group-hover:bg-[#003366] group-hover:text-white transition-colors">
                     <RefreshCw size={20} />
                   </div>
                   <div className="text-left">
-                    <p className="font-bold text-zinc-900 text-sm">Faturar / Converter</p>
-                    <p className="text-xs text-zinc-500">Converter este documento noutro tipo.</p>
+                    <p className="font-bold text-zinc-900 text-xs uppercase">Faturar / Converter</p>
+                    <p className="text-[9px] text-zinc-500 uppercase tracking-tighter">Transformar em outro tipo de documento fiscal</p>
                   </div>
                 </button>
-
-                {/* Communication Actions */}
-                <div className="grid grid-cols-2 gap-2">
-                  <button 
-                    onClick={() => { onAction('email', showActionsModal); setShowActionsModal(null); }}
-                    className="flex items-center gap-3 p-3 hover:bg-zinc-50 transition-colors border border-zinc-100 group"
-                  >
-                    <Mail size={16} className="text-[#003366]" />
-                    <span className="font-bold text-zinc-900 text-xs">Enviar Email</span>
-                  </button>
-                  <button 
-                    onClick={() => { onAction('whatsapp', showActionsModal); setShowActionsModal(null); }}
-                    className="flex items-center gap-3 p-3 hover:bg-zinc-50 transition-colors border border-zinc-100 group"
-                  >
-                    <MessageCircle size={16} className="text-[#25D366]" />
-                    <span className="font-bold text-zinc-900 text-xs">WhatsApp</span>
-                  </button>
-                </div>
-
-                {/* Clone Action */}
-                <button 
-                  onClick={() => { onAction('clone', showActionsModal); setShowActionsModal(null); }}
-                  className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-colors border border-zinc-100 group"
-                >
-                  <div className="w-10 h-10 bg-zinc-100 text-[#003366] flex items-center justify-center group-hover:bg-[#003366] group-hover:text-white transition-colors">
-                    <Copy size={20} />
-                  </div>
-                  <div className="text-left">
-                    <p className="font-bold text-zinc-900 text-sm">Duplicar / Clonar</p>
-                    <p className="text-xs text-zinc-500">Criar novo documento baseado neste.</p>
-                  </div>
-                </button>
-
-                {/* Annul Action */}
-                {showActionsModal.is_certified && !showActionsModal.is_anulado && (
-                  <button 
-                    onClick={() => { onAction('cancel', showActionsModal); setShowActionsModal(null); }}
-                    className="w-full flex items-center gap-4 p-4 hover:bg-red-50 transition-colors border border-red-100 group"
-                  >
-                    <div className="w-10 h-10 bg-red-100 text-red-600 flex items-center justify-center group-hover:bg-red-600 group-hover:text-white transition-colors">
-                      <XCircle size={20} />
-                    </div>
-                    <div className="text-left">
-                      <p className="font-bold text-red-600 text-sm">Anular Documento</p>
-                      <p className="text-xs text-red-400">Cancelar e emitir nota de crédito.</p>
-                    </div>
-                  </button>
-                )}
               </div>
             </motion.div>
           </div>
@@ -7442,13 +7465,13 @@ const MapaSalarios = ({ localEmployees, selectedMonthForMap, setSelectedMonthFor
     
     const table = document.querySelector('.printable-area table');
     if (table) {
-      (doc as any).autoTable({ 
-        html: table,
+      autoTable(doc, { 
+        html: table as HTMLTableElement,
         startY: 35,
         styles: { fontSize: 7, cellPadding: 1 },
         headStyles: { fillColor: [0, 51, 102] }
       });
-      doc.save(`${title.toLowerCase().replace(/ /g, '_')}_${selectedMonthForMap}.pdf`);
+      doc.save(`${(title || '').toLowerCase().replace(/ /g, '_')}_${selectedMonthForMap}.pdf`);
     }
   };
 
@@ -9799,34 +9822,37 @@ const InvoiceList = ({
   );
 };
 
-const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onSuccess, caixas }: { 
+const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onSuccess, caixas, initialData = null }: { 
   clients: Client[], 
   products: Product[], 
   workSites: WorkSite[], 
   fiscalSeries: FiscalSeries[],
   onBack: () => void, 
   onSuccess: () => void,
-  caixas: Caixa[]
+  caixas: Caixa[],
+  initialData?: IssuedDocument | null
 }) => {
   const { user } = useAuth();
-  const [clientId, setClientId] = useState<number | ''>('');
-  const [documentType, setDocumentType] = useState('Fatura');
-  const [seriesId, setSeriesId] = useState<number | ''>('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [clientId, setClientId] = useState<number | ''>(initialData?.cliente_id || initialData?.client_id || '');
+  const [documentType, setDocumentType] = useState(initialData?.document_type || 'Fatura');
+  const [seriesId, setSeriesId] = useState<number | ''>(initialData?.series_id || '');
+  const [date, setDate] = useState(initialData?.date ? new Date(initialData.date).toISOString().split('T')[0] : (initialData?.data_emissao ? new Date(initialData.data_emissao).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]));
   const [countryCode, setCountryCode] = useState('Angola');
-  const [workSiteId, setWorkSiteId] = useState<string>('');
-  const [dueDate, setDueDate] = useState<string>('');
-  const [vatWithholding, setVatWithholding] = useState<string>('0');
-  const [exchangeRate, setExchangeRate] = useState<string>('1');
-  const [currency, setCurrency] = useState<string>('Kwanza');
+  const [workSiteId, setWorkSiteId] = useState<string>(initialData?.work_site_id?.toString() || '');
+  const [dueDate, setDueDate] = useState<string>(initialData?.due_date ? new Date(initialData.due_date).toISOString().split('T')[0] : '');
+  const [vatWithholding, setVatWithholding] = useState<string>(initialData?.vat_withholding?.toString() || '0');
+  const [exchangeRate, setExchangeRate] = useState<string>(initialData?.exchange_rate?.toString() || '1');
+  const [currency, setCurrency] = useState<string>(initialData?.currency || 'Kwanza');
   const [counterValue, setCounterValue] = useState<string>('0');
-  const [globalDiscount, setGlobalDiscount] = useState<string>('0');
-  const [serviceDate, setServiceDate] = useState(new Date().toISOString().split('T')[0]);
-  const [serviceLocation, setServiceLocation] = useState('');
-  const [items, setItems] = useState<Partial<InvoiceItem>[]>([]);
-  const [cashBox, setCashBox] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('');
-  const [paymentCondition, setPaymentCondition] = useState('Pronto Pagamento');
+  const [globalDiscount, setGlobalDiscount] = useState<string>(initialData?.global_discount?.toString() || '0');
+  const [serviceDate, setServiceDate] = useState(initialData?.service_date ? new Date(initialData.service_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
+  const [serviceLocation, setServiceLocation] = useState(initialData?.service_location || '');
+  const [items, setItems] = useState<Partial<InvoiceItem>[]>(initialData?.items || []);
+  const [cashBox, setCashBox] = useState(initialData?.cash_box || '');
+  const [paymentMethod, setPaymentMethod] = useState(initialData?.payment_method || '');
+  const [paymentCondition, setPaymentCondition] = useState(initialData?.payment_method === 'A Prazo' ? 'A Prazo' : 'Pronto Pagamento');
+  
+  const isCertified = !!initialData?.is_certified;
   const [expandedDimensions, setExpandedDimensions] = useState<number | null>(null);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [documentNumberManual, setDocumentNumberManual] = useState('');
@@ -9894,8 +9920,11 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
     const client = clients.find(c => c.id === Number(clientId));
     const isManual = selectedSeries?.type === 'manual';
 
-    const res = await fetchWithAuth('/api/invoices', {
-      method: 'POST',
+    const url = initialData ? `/api/invoices/${initialData.id}` : '/api/invoices';
+    const method = initialData ? 'PUT' : 'POST';
+
+    const res = await fetchWithAuth(url, {
+      method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         cliente_id: clientId, 
@@ -9915,7 +9944,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
         cash_box: paymentCondition === 'Pronto Pagamento' ? cashBox : '',
         payment_method: paymentCondition === 'Pronto Pagamento' ? paymentMethod : 'A Prazo',
         series_id: seriesId,
-        invoice_number: isManual ? documentNumberManual : undefined,
+        invoice_number: isManual ? documentNumberManual : (initialData?.numero_documento || initialData?.invoice_number || undefined),
         series_reference: isManual ? referenceManual : selectedSeries?.reference,
         total: finalTotal,
         company_id: user?.company_id
@@ -11411,9 +11440,9 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
   const [searchTerm, setSearchTerm] = useState('');
 
   const filteredClients = clients.filter(c => 
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.contribuinte.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (c.email && c.email.toLowerCase().includes(searchTerm.toLowerCase()))
+    (c.name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+    (c.contribuinte || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+    (c.email && c.email.toLowerCase().includes((searchTerm || '').toLowerCase()))
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -12033,16 +12062,36 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
               <label className="text-xs font-bold text-zinc-600">Série</label>
               <select 
                 value={seriesId} 
-                onChange={(e) => setSeriesId(e.target.value ? Number(e.target.value) : '')} 
+                onChange={(e) => {
+                  const id = e.target.value ? Number(e.target.value) : '';
+                  setSeriesId(id);
+                  const s = fiscalSeries.find(f => f.id === id);
+                  if (s && s.type === 'manual') {
+                    setDocumentNumber('');
+                  }
+                }} 
                 required
                 className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
               >
                 <option value="">Selecionar Série</option>
                 {fiscalSeries.filter(s => s.is_active).map(s => (
-                  <option key={s.id} value={s.id}>{s.description}</option>
+                  <option key={s.id} value={s.id}>{s.description} ({s.reference})</option>
                 ))}
               </select>
             </div>
+            {fiscalSeries.find(s => s.id === seriesId)?.type === 'manual' && (
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-zinc-600">Nº do Documento Manual <span className="text-red-500">*</span></label>
+                <input 
+                  type="text" 
+                  value={documentNumber} 
+                  onChange={(e) => setDocumentNumber(e.target.value)}
+                  placeholder="Ex: FT 2026/1"
+                  required
+                  className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-mono font-bold"
+                />
+              </div>
+            )}
             <div className="space-y-2">
               <label className="text-xs font-bold text-zinc-600">Local de trabalho</label>
               <select 
@@ -12530,6 +12579,7 @@ const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas 
 
   useEffect(() => {
     fetchPurchases();
+    console.log("Purchases loaded:", purchases);
   }, []);
 
   if (isCreating) {
@@ -12638,8 +12688,8 @@ const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas 
           <tbody className="divide-y divide-zinc-100">
             {purchases
               .filter(p => 
-                p.supplier_name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                p.purchase_number.toLowerCase().includes(searchTerm.toLowerCase())
+                (p.supplier_name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) || 
+                (p.purchase_number || '').toLowerCase().includes((searchTerm || '').toLowerCase())
               )
               .map(p => (
                 <tr key={p.id} className="hover:bg-zinc-50 transition-colors text-sm border-b border-zinc-50">
@@ -12692,9 +12742,168 @@ const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas 
   );
 };
 
+const SupplierAccount = ({ supplier, purchases, onBack }: { 
+  supplier: Supplier, 
+  purchases: Purchase[], 
+  onBack: () => void 
+}) => {
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [filteredMovements, setFilteredMovements] = useState<any[]>([]);
+
+  useEffect(() => {
+    handleSearch();
+  }, [purchases]);
+
+  const handleSearch = () => {
+    const movements = purchases.map(p => {
+      const isCredit = ['Fatura de Compra', 'Fatura Recibo de Compra', 'Nota de Débito de Fornecedor', 'FTC'].includes(p.document_type || '');
+      const isDebit = ['Pagamento', 'Recibo', 'Fatura Recibo de Compra', 'Nota de Crédito de Fornecedor', 'RCT'].includes(p.document_type || '');
+      
+      return {
+        ...p,
+        debito: isDebit ? p.total : 0,
+        credito: isCredit ? p.total : 0,
+        data_emissao: p.date,
+        numero_documento: p.purchase_number,
+        tipo_documento: p.document_type
+      };
+    }).filter(m => {
+      if (!m.data_emissao) return true;
+      try {
+        const date = new Date(m.data_emissao).toISOString().split('T')[0];
+        if (startDate && date < startDate) return false;
+        if (endDate && date > endDate) return false;
+      } catch (e) {
+        console.error("Invalid date:", m.data_emissao);
+      }
+      return true;
+    });
+    setFilteredMovements(movements);
+  };
+
+  const totalDebito = (filteredMovements ?? []).reduce((acc, m) => acc + m.debito, 0);
+  const totalCredito = (filteredMovements ?? []).reduce((acc, m) => acc + m.credito, 0);
+  const initialBalance = (supplier as any).saldo_inicial || 0;
+  const saldoAtual = initialBalance + totalCredito - totalDebito; // For suppliers, Credit (Purchase) increases debt, Debit (Payment) decreases it
+
+  return (
+    <div className="space-y-6 bg-zinc-50/50 p-6 min-h-screen">
+      <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center gap-4">
+          <button onClick={onBack} className="p-2 hover:bg-white rounded-full transition-colors text-zinc-400 shadow-sm">
+            <ChevronLeft size={24} />
+          </button>
+          <div>
+            <h2 className="text-2xl font-bold text-[#003366] tracking-tight uppercase">Conta Corrente Fornecedor</h2>
+            <p className="text-zinc-500 font-medium uppercase text-[10px] tracking-widest">{supplier.name}</p>
+          </div>
+        </div>
+        <div className="flex gap-3">
+          <button className="bg-white text-zinc-600 border border-zinc-200 px-4 py-2 text-xs font-bold flex items-center gap-2 hover:bg-zinc-50 transition-all">
+            <FileSpreadsheet size={16} /> XLSX
+          </button>
+          <button onClick={() => window.print()} className="bg-[#003366] text-white px-4 py-2 text-xs font-bold flex items-center gap-2 hover:bg-[#002244] transition-all shadow-lg">
+            <Printer size={16} /> Imprimir PDF
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-white border border-zinc-200 p-8 shadow-sm space-y-8">
+        <div className="grid grid-cols-2 gap-8 border-b border-zinc-100 pb-8">
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4 text-[10px]">
+              <div>
+                <p className="font-bold text-zinc-400 uppercase">Data de Emissão</p>
+                <p className="text-zinc-800">{new Date().toLocaleString()}</p>
+              </div>
+              <div>
+                <p className="font-bold text-zinc-400 uppercase">NIF</p>
+                <p className="text-zinc-800 font-mono">{supplier.nif || 'N/A'}</p>
+              </div>
+            </div>
+            <div>
+              <p className="text-lg font-bold text-[#003366]">Extrato Fornecedor</p>
+              <p className="text-xs text-zinc-500 font-mono">FORN-{supplier.id} {supplier.name.toUpperCase()}</p>
+            </div>
+          </div>
+          <div className="text-right space-y-2">
+            <div className="inline-block bg-zinc-100 px-6 py-3 border-r-4 border-[#003366]">
+              <h3 className="text-xl font-black text-[#003366]">{supplier.name.toUpperCase()}</h3>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-end gap-4 bg-zinc-50 p-4 border border-zinc-100 no-print">
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data Inicial</label>
+            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="bg-white border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data Final</label>
+            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="bg-white border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+          </div>
+          <button 
+            onClick={handleSearch}
+            className="bg-[#003366] text-white px-6 py-2 text-sm font-bold hover:bg-[#002244] transition-all flex items-center gap-2"
+          >
+            <Search size={16} /> Pesquisar
+          </button>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b-2 border-zinc-200 text-[10px] uppercase tracking-wider font-black text-zinc-400">
+                <th className="px-4 py-3">Data</th>
+                <th className="px-4 py-3">Doc Nº</th>
+                <th className="px-4 py-3">Tipo Documento</th>
+                <th className="px-4 py-3 text-right">Crédito (Aumento Dívida)</th>
+                <th className="px-4 py-3 text-right">Débito (Pagamento)</th>
+                <th className="px-4 py-3 text-right">Saldo</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+              <tr className="bg-zinc-50/50 font-bold text-xs">
+                <td colSpan={3} className="px-4 py-3 text-right uppercase tracking-widest text-zinc-400">Saldo Inicial</td>
+                <td className="px-4 py-3 text-right">-</td>
+                <td className="px-4 py-3 text-right">-</td>
+                <td className="px-4 py-3 text-right text-[#003366]">{formatCurrency(initialBalance)}</td>
+              </tr>
+              {filteredMovements.map((m, idx) => {
+                const runningSaldo = initialBalance + filteredMovements.slice(0, idx + 1).reduce((acc, curr) => acc + (curr.credito - curr.debito), 0);
+                return (
+                  <tr key={m.id} className="hover:bg-zinc-50 text-[11px]">
+                    <td className="px-4 py-4 text-zinc-500">{new Date(m.data_emissao).toLocaleDateString()}</td>
+                    <td className="px-4 py-4 font-bold text-zinc-800">{m.numero_documento}</td>
+                    <td className="px-4 py-4 text-zinc-600 font-bold uppercase">{m.tipo_documento}</td>
+                    <td className="px-4 py-4 text-right text-red-600 font-bold">{m.credito > 0 ? formatCurrency(m.credito) : '-'}</td>
+                    <td className="px-4 py-4 text-right text-emerald-600 font-bold">{m.debito > 0 ? formatCurrency(m.debito) : '-'}</td>
+                    <td className="px-4 py-4 text-right font-black text-[#003366]">{formatCurrency(runningSaldo)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-zinc-200 font-black text-xs">
+                <td colSpan={3} className="px-4 py-6 text-right uppercase tracking-widest text-zinc-400">Acumulados</td>
+                <td className="px-4 py-6 text-right text-red-600">{formatCurrency(totalCredito)}</td>
+                <td className="px-4 py-6 text-right text-emerald-600">{formatCurrency(totalDebito)}</td>
+                <td className="px-4 py-6 text-right text-[#003366] bg-zinc-50">{formatCurrency(saldoAtual)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const SupplierModule = ({ products, workSites, fiscalSeries, caixas }: { products: Product[], workSites: WorkSite[], fiscalSeries: FiscalSeries[], caixas: Caixa[] }) => {
   const [activeSubTab, setActiveSubTab] = useState<string | null>(null);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [purchases, setPurchases] = useState<Purchase[]>([]);
+  const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState('');
   const [nif, setNif] = useState('');
@@ -12713,6 +12922,7 @@ const SupplierModule = ({ products, workSites, fiscalSeries, caixas }: { product
 
   useEffect(() => {
     fetch('/api/suppliers').then(r => r.json()).then(setSuppliers);
+    fetch('/api/purchases').then(r => r.json()).then(setPurchases);
   }, []);
 
   const handleSearchNif = () => {
@@ -12835,6 +13045,56 @@ const SupplierModule = ({ products, workSites, fiscalSeries, caixas }: { product
         );
       case 'purchases-list':
         return <PurchasesModule suppliers={suppliers} products={products} workSites={workSites} fiscalSeries={fiscalSeries} caixas={caixas} />;
+      case 'current-accounts':
+        if (selectedSupplier) {
+          return <SupplierAccount supplier={selectedSupplier} purchases={purchases.filter(p => p.supplier_id === selectedSupplier.id)} onBack={() => setSelectedSupplier(null)} />;
+        }
+        return (
+          <div className="space-y-6">
+            <h3 className="text-xl font-bold text-[#003366] uppercase tracking-tight flex items-center gap-3">
+              <FileText size={24} /> Contas Correntes Fornecedores
+            </h3>
+            <div className="bg-white border border-zinc-200 rounded-none overflow-x-auto shadow-sm">
+              <table className="w-full text-sm text-left border-collapse">
+                <thead>
+                  <tr className="bg-[#003366] text-white text-[11px] uppercase tracking-wider font-bold">
+                    <th className="px-6 py-4">Fornecedor</th>
+                    <th className="px-6 py-4">NIF</th>
+                    <th className="px-6 py-4 text-right">Saldo Atual</th>
+                    <th className="px-6 py-4 text-right">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {suppliers.map(s => {
+                    const sPurchases = purchases.filter(p => p.supplier_id === s.id);
+                    const debt = sPurchases.reduce((acc, p) => acc + (['Fatura de Compra', 'Fatura Recibo de Compra', 'Nota de Débito de Fornecedor'].includes(p.document_type || '') ? (p.total || 0) : 0), 0);
+                    const paid = sPurchases.reduce((acc, p) => acc + (['Pagamento', 'Recibo', 'Fatura Recibo de Compra', 'Nota de Crédito de Fornecedor'].includes(p.document_type || '') ? (p.total || 0) : 0), 0);
+                    const initial = (s as any).saldo_inicial || 0;
+                    const balance = initial + debt - paid;
+                    
+                    return (
+                      <tr key={s.id} className="hover:bg-zinc-50 border-b border-zinc-50">
+                        <td className="px-6 py-4 font-bold text-zinc-900">{s.name}</td>
+                        <td className="px-6 py-4 text-zinc-700 font-mono font-bold">{s.nif}</td>
+                        <td className={`px-6 py-4 text-right font-black ${balance > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                          {formatCurrency(balance)}
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <button 
+                            onClick={() => setSelectedSupplier(s)}
+                            className="text-[#003366] font-bold text-xs uppercase hover:underline"
+                          >
+                            Ver Extrato
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
       default:
         return (
           <div className="p-12 text-center text-zinc-400 italic bg-white border border-zinc-200">
@@ -13308,8 +13568,8 @@ const ProductList = ({ products, onRefresh, stockMovements, warehouses }: {
   };
 
   const filteredProducts = products.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      (p.referente && p.referente.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    const matchesSearch = (p.name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) || 
+      (p.referente && p.referente.toLowerCase().includes((searchTerm || '').toLowerCase())) ||
       (p.barcode && p.barcode.includes(searchTerm));
     
     if (!matchesSearch) return false;
@@ -14012,14 +14272,15 @@ const ProductList = ({ products, onRefresh, stockMovements, warehouses }: {
 
 // --- Main App ---
 
-const ReceiptModal = ({ document, caixas, onClose, onSuccess }: { 
+const ReceiptModal = ({ document: doc, caixas, onClose, onSuccess }: { 
   document: IssuedDocument, 
   caixas: Caixa[], 
   onClose: () => void, 
   onSuccess: () => void 
 }) => {
   const { user } = useAuth();
-  const [amount, setAmount] = useState(document.contravalor || 0);
+  const remaining = (doc.contravalor || 0) - (doc.paid_amount || 0);
+  const [amount, setAmount] = useState(remaining > 0 ? remaining : 0);
   const [paymentMethod, setPaymentMethod] = useState('Dinheiro');
   const [cashBox, setCashBox] = useState(caixas[0]?.name || '');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -14031,7 +14292,7 @@ const ReceiptModal = ({ document, caixas, onClose, onSuccess }: {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          invoice_id: document.id,
+          invoice_id: doc.id,
           company_id: user?.company_id,
           amount,
           payment_method: paymentMethod,
@@ -14054,8 +14315,14 @@ const ReceiptModal = ({ document, caixas, onClose, onSuccess }: {
         </div>
         <div className="mb-6 p-4 bg-zinc-50 border border-zinc-100">
           <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Documento</p>
-          <p className="font-bold text-[#003366]">{document.numero_documento}</p>
-          <p className="text-xs text-zinc-500">{document.client_name}</p>
+          <p className="font-bold text-[#003366]">{doc.numero_documento}</p>
+          <div className="flex justify-between items-end mt-2">
+            <p className="text-xs text-zinc-500">{doc.client_name}</p>
+            <div className="text-right">
+              <p className="text-[9px] text-zinc-400 uppercase font-bold">Saldo em falta</p>
+              <p className="text-sm font-black text-red-600 font-mono">{formatCurrency(remaining)}</p>
+            </div>
+          </div>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1">
@@ -14197,6 +14464,7 @@ export default function App() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [fiscalSeries, setFiscalSeries] = useState<FiscalSeries[]>([]);
   const [printingInvoice, setPrintingInvoice] = useState<Invoice | null>(null);
+  const [isPrintingDraft, setIsPrintingDraft] = useState(false);
   const [viewingInvoiceId, setViewingInvoiceId] = useState<number | null>(null);
   const [isCreatingInvoice, setIsCreatingInvoice] = useState(false);
   const [isClientModalOpen, setIsClientModalOpen] = useState(false);
@@ -14343,12 +14611,11 @@ export default function App() {
 
   const handleCertifyDocument = async (id: number) => {
     try {
-      const res = await fetchWithAuth(`/api/invoices/${id}/certify`, {
-        method: 'POST'
-      });
+      const res = await fetchWithAuth(`/api/invoices/${id}/certify`, { method: 'POST' });
       if (res.ok) {
-        await fetchData();
         setShowCertifyModal(false);
+        await fetchData();
+        alert('Documento certificado com sucesso!');
       }
     } catch (error) {
       console.error('Error certifying document:', error);
@@ -14413,7 +14680,7 @@ export default function App() {
             formatCurrency(item.total)
           ]);
           
-          (pdf as any).autoTable({
+          autoTable(pdf, {
             startY: 75,
             head: [['Descrição', 'Qtd', 'Preço Unit.', 'Total']],
             body: tableData,
@@ -14431,37 +14698,74 @@ export default function App() {
         console.error('Error exporting PDF:', error);
         alert('Erro ao gerar PDF.');
       }
-    } else if (action === 'delete' || action === 'cancel' || action === 'void') {
-      const confirmMsg = action === 'delete' ? 'eliminar' : 'anular';
-      if (confirm(`Tem a certeza que deseja ${confirmMsg} o documento ${doc.numero_documento || doc.invoice_number}?`)) {
+    } else if (action === 'void') {
+      const reason = prompt(`Por favor, insira o motivo da anulação do documento ${doc.numero_documento || doc.invoice_number}:`);
+      if (reason) {
+        try {
+          const res = await fetchWithAuth(`/api/invoices/${doc.id}/void`, { 
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason })
+          });
+          if (res.ok) {
+            await fetchData();
+            alert('Documento anulado com sucesso! A Nota de Crédito foi gerada.');
+          } else {
+            const err = await res.json();
+            alert('Erro ao anular: ' + (err.error || 'Erro desconhecido'));
+          }
+        } catch (error) {
+          console.error('Error voiding document:', error);
+        }
+      }
+    } else if (action === 'draft') {
+      try {
+        const res = await fetchWithAuth(`/api/invoices/${doc.id}`);
+        if (res.ok) {
+          const invoiceData = await res.json();
+          setPrintingInvoice(invoiceData);
+          setIsPrintingDraft(true);
+          setTimeout(() => { window.print(); }, 500);
+        }
+      } catch (error) {
+        console.error('Error fetching draft:', error);
+      }
+    } else if (action === 'delete') {
+      if (confirm(`Tem a certeza que deseja eliminar o documento ${doc.numero_documento || doc.invoice_number}?`)) {
         try {
           const res = await fetchWithAuth(`/api/invoices/${doc.id}`, { method: 'DELETE' });
           if (res.ok) {
             await fetchData();
-            setSelectedDocument(null);
-            setShowActionsModal(false);
-            alert(`Documento ${action === 'delete' ? 'eliminado' : 'anulado'} com sucesso!`);
+            alert('Documento eliminado com sucesso!');
           }
         } catch (error) {
-          console.error(`Error ${action} document:`, error);
+          console.error('Error deleting document:', error);
         }
       }
     } else if (action === 'clone') {
       try {
         const res = await fetchWithAuth(`/api/invoices/${doc.id}/clone`, { method: 'POST' });
         if (res.ok) {
+          const cloned = await res.json();
           await fetchData();
-          setSelectedDocument(null);
-          alert('Documento clonado com sucesso!');
+          alert(`Documento clonado com sucesso! Novo número: ${cloned.invoice_number}`);
         }
       } catch (error) {
         console.error('Error cloning document:', error);
       }
-    } else if (action === 'whatsapp') {
-      const text = `Olá, segue o documento ${doc.numero_documento} no valor de ${formatCurrency(doc.contravalor)}.`;
+    } else if (action === 'send_email' || action === 'email') {
+      const subject = encodeURIComponent(`${doc.document_type || doc.tipo_documento} ${doc.numero_documento || doc.invoice_number} - ${companyName}`);
+      const body = encodeURIComponent(`Olá ${doc.client_name || 'Prezado Cliente'},\n\nSegue em anexo o documento solicitado.\n\nAtenciosamente,\n${companyName}`);
+      window.location.href = `mailto:?subject=${subject}&body=${body}`;
+    } else if (action === 'share_whatsapp' || action === 'whatsapp') {
+      const text = `Prezado Cliente, segue o link para visualizar o documento ${doc.numero_documento || doc.invoice_number}: [Link do Documento] No valor de ${formatCurrency(doc.total || doc.counter_value || 0)}. Obrigado!`;
       window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
-    } else if (action === 'email') {
-      alert(`Funcionalidade de envio de email para ${doc.client_name || 'cliente'} em desenvolvimento.`);
+    } else if (action === 'receipt') {
+      setSelectedDocument(doc);
+      setShowReceiptModal(true);
+    } else if (action === 'convert') {
+      setSelectedDocument(doc);
+      setShowConvertModal(true);
     } else {
       console.log(`Action ${action} for document ${doc.numero_documento}`);
     }
@@ -14497,9 +14801,14 @@ export default function App() {
           products={products} 
           workSites={workSites}
           fiscalSeries={fiscalSeries}
-          onBack={() => setIsCreatingInvoice(false)} 
+          initialData={selectedDocument}
+          onBack={() => {
+            setIsCreatingInvoice(false);
+            setSelectedDocument(null);
+          }} 
           onSuccess={() => {
             setIsCreatingInvoice(false);
+            setSelectedDocument(null);
             fetchData();
           }} 
           caixas={caixas}
@@ -14741,7 +15050,10 @@ export default function App() {
                 <Printer size={18} /> Imprimir Agora
               </button>
               <button 
-                onClick={() => setPrintingInvoice(null)}
+                onClick={() => {
+                  setPrintingInvoice(null);
+                  setIsPrintingDraft(false);
+                }}
                 className="bg-zinc-700 px-4 py-2 text-sm font-bold"
               >
                 Fechar
@@ -14749,7 +15061,7 @@ export default function App() {
             </div>
           </div>
           <div className="p-8 print:p-0">
-            <PrintA4 invoice={printingInvoice} />
+            <PrintA4 invoice={printingInvoice} isDraft={isPrintingDraft} />
           </div>
         </div>
       )}

@@ -160,6 +160,7 @@ export interface DashboardStats {
 export interface Employee {
   id: number;
   name: string;
+  nome_completo?: string;
   role: string;
   profession_id?: number;
   profession_name?: string;
@@ -275,11 +276,22 @@ export interface CashSession {
 
 export interface FiscalSeries {
   id: number;
-  description: string;
-  user_id: number;
+  name: string;
+  description?: string;
+  user_id: string | number;
   user_name?: string;
-  type: 'normal' | 'manual_recovery';
+  type: 'normal' | 'manual' | 'manual_recovery';
+  reference: string; 
+  counter: number;
+  year: number;
   is_active: boolean;
+  data_inicio: string;
+  destino: string;
+  top_config?: boolean;
+  down_config?: boolean;
+  watermark_setup?: boolean;
+  users_count?: number;
+  bancos_count?: string;
   created_at: string;
 }
 
@@ -369,6 +381,7 @@ export interface IssuedDocument {
   status?: string;
   is_certified?: boolean;
   series_id?: number;
+  series_reference?: string;
   series_name?: string;
   cash_box?: string;
   payment_method?: string;

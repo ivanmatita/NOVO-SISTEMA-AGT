@@ -5,6 +5,7 @@ import BusinessOverview from './components/BusinessOverview';
 import FleetManagementModule from './components/FleetManagementModule';
 import ProjectManagementModule from './components/ProjectManagementModule';
 import LiteracyModule from './components/LiteracyModule';
+import ArchiveModule from './components/ArchiveModule';
 import { QRCodeCanvas } from 'qrcode.react';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
@@ -13,6 +14,7 @@ import {
 import { useAuth } from './contexts/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { 
+  Archive,
   LayoutDashboard, 
   Users, 
   Package, 
@@ -25,6 +27,7 @@ import {
   Clock, 
   ChevronRight,
   ChevronLeft,
+  ChevronDown,
   ArrowLeft,
   Printer,
   Truck,
@@ -98,6 +101,8 @@ import {
   Table,
   Map,
   MapPin,
+  Droplets,
+  Image,
   Monitor,
   LogOut,
   GraduationCap,
@@ -541,6 +546,7 @@ const Sidebar = ({ activeTab, setActiveTab }: {
     { id: 'electronic_invoices', label: 'Faturação Electrónica', icon: FileCheck },
     { id: 'security', label: 'Segurança Gestão privada', icon: ShieldCheck },
     { id: 'specialized', label: 'Gestão Especializada', icon: Briefcase, hasChevron: true },
+    { id: 'archive', label: 'Arquivo', icon: Archive },
     { id: 'invoices', label: 'Vendas', icon: FileText, hasChevron: true },
     { id: 'suppliers', label: 'Compras', icon: ShoppingBag, hasChevron: true },
     { id: 'products', label: 'Stocks & Inventário', icon: Package, hasChevron: true },
@@ -551,7 +557,6 @@ const Sidebar = ({ activeTab, setActiveTab }: {
     { id: 'agrobusiness', label: 'Agronegócio', icon: TrendingUp },
     { id: 'church', label: 'Gestão de Igreja', icon: Building2 }, 
     { id: 'settings', label: 'Definições', icon: Settings },
-    { id: 'metrics', label: 'Métricas', icon: Activity },
   ];
 
   return (
@@ -784,7 +789,7 @@ const INSS_PROFESSIONS = [
   "Tesoureiro", "Topógrafo", "Traductor", "Vendedor", "Veterinário", "Vigilante", "Zelador"
 ];
 
-const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, companyName }: { onRefresh: () => void, onSetIsContractModalOpen: (open: boolean) => void, onSetEmployee: (emp: Employee | null) => void, caixas: Caixa[], companyName: string }) => {
+const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, companyName }: { onRefresh: () => void, onSetIsContractModalOpen: (b: boolean) => void, onSetEmployee: (e: Employee | null) => void, caixas: Caixa[], companyName: string }) => {
   const professionsRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [professions, setProfessions] = useState<Profession[]>([]);
@@ -4708,7 +4713,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
     </div>
   );
 };
-
+  
 const DocumentActionsModal = ({ document, onClose, onAction }: { 
   document: IssuedDocument, 
   onClose: () => void,
@@ -6940,6 +6945,20 @@ const SpecializedManagementModule = () => {
     </div>
   );
 
+  if (activeModule === 'fleet') return (
+    <div>
+      <button onClick={() => setActiveModule(null)} className="mb-4 text-[#003366] font-bold text-xs uppercase hover:underline flex items-center gap-1">← Voltar para Gestão Especializada</button>
+      <FleetManagementModule />
+    </div>
+  );
+
+  if (activeModule === 'projects') return (
+    <div>
+      <button onClick={() => setActiveModule(null)} className="mb-4 text-[#003366] font-bold text-xs uppercase hover:underline flex items-center gap-1">← Voltar para Gestão Especializada</button>
+      <ProjectManagementModule />
+    </div>
+  );
+
   return (
     <div className="space-y-8">
       <header>
@@ -6954,8 +6973,8 @@ const SpecializedManagementModule = () => {
           { id: 'hotel', label: 'Hotelaria / Alojamento', desc: 'Check-in, Reservas, Quartos e Housekeeping.', icon: Bed },
           { id: 'literacy', label: 'Literacia Financeira e Fiscal', desc: 'Biblioteca de conhecimentos fiscais angolanos.', icon: BookOpen },
           { id: 'inventory', label: 'Inventário / Stock', desc: 'Controlo de stock e múltiplos armazéns.', icon: Package },
-          { id: 'projects', label: 'Gestão de Projetos', desc: 'Acompanhamento de tarefas e prazos.', icon: LayoutDashboard },
-          { id: 'fleet', label: 'Gestão de Frotas', desc: 'Manutenção e custos de veículos.', icon: LayoutDashboard },
+          { id: 'projects', label: 'Gestão de Projetos', desc: 'Acompanhamento de tarefas e prazos.', icon: Layers },
+          { id: 'fleet', label: 'Gestão de Frotas', desc: 'Manutenção e custos de veículos.', icon: Truck },
         ].map((m) => (
           <div key={m.id} 
             onClick={() => setActiveModule(m.id)}
@@ -8642,7 +8661,14 @@ const TaxSeriesModule = () => {
   );
 };
 
-const AccountingModule = ({ invoices, clients }: { invoices: Invoice[], clients: Client[] }) => {
+const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employees, issuedDocuments }: { 
+  invoices: Invoice[], 
+  clients: Client[], 
+  fiscalSeries: FiscalSeries[], 
+  onRefresh: () => void, 
+  employees: Employee[],
+  issuedDocuments: IssuedDocument[]
+}) => {
   const [activeSubTab, setActiveSubTab] = useState<string | null>(null);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -8903,173 +8929,232 @@ const AccountingModule = ({ invoices, clients }: { invoices: Invoice[], clients:
   return renderContent();
 };
 
-const FiscalSeriesModule = () => {
+const FiscalSeriesModule = ({ series, onRefresh, users }: { series: FiscalSeries[], onRefresh: () => void, users: Employee[] }) => {
   const { user } = useAuth();
-  const [series, setSeries] = useState<FiscalSeries[]>([]);
-  const [systemUsers, setSystemUsers] = useState<SystemUser[]>([]);
   const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState({ description: '', user_id: '', type: 'normal' as const });
-  const [editingSeries, setEditingSeries] = useState<FiscalSeries | null>(null);
-  const [showActions, setShowActions] = useState<number | null>(null);
-
-  const fetchSeries = async () => {
-    const data = await fetchJson(`/api/fiscal-series?company_id=${user?.company_id}`);
-    setSeries(data);
-  };
-
-  const fetchUsers = async () => {
-    const data = await fetchJson(`/api/system-users?company_id=${user?.company_id}`);
-    setSystemUsers(data);
-  };
-
-  useEffect(() => {
-    if (user?.company_id) {
-      fetchSeries();
-      fetchUsers();
-    }
-  }, [user?.company_id]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const [showOptionsId, setShowOptionsId] = useState<number | null>(null);
+  
+  const [name, setName] = useState('');
+  const [selectedUser, setSelectedUser] = useState<string>('');
+  const [type, setType] = useState<'normal' | 'manual'>('normal');
+  const [destiny, setDestiny] = useState('');
+  
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    const method = editingSeries ? 'PUT' : 'POST';
-    const url = editingSeries ? `/api/fiscal-series/${editingSeries.id}` : '/api/fiscal-series';
+    const year = new Date().getFullYear().toString();
+    const reference = `S${series.length + 1}${year}`;
     
-    const res = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...formData,
-        user_id: parseInt(formData.user_id),
-        is_active: editingSeries ? editingSeries.is_active : true
-      })
-    });
-
-    if (res.ok) {
+    try {
+      await fetchWithAuth('/api/fiscal-series', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          description: name,
+          user_id: selectedUser,
+          type,
+          reference: type === 'normal' ? reference : '',
+          counter: 1,
+          year,
+          data_inicio: new Date().toISOString().split('T')[0],
+          destino: destiny,
+          is_active: true,
+          company_id: user?.company_id
+        })
+      });
       setShowForm(false);
-      setEditingSeries(null);
-      setFormData({ description: '', user_id: '', type: 'normal' });
-      fetchSeries();
+      onRefresh();
+      setName('');
+      setDestiny('');
+      setType('normal');
+    } catch (error) {
+      console.error('Error creating series:', error);
     }
   };
+
+  const OPTIONS = [
+    { label: 'Gestão de Utilizadores', icon: <Users size={14} /> },
+    { label: 'Configurar Logotipo', icon: <Image size={14} /> },
+    { label: 'Configurar Cabeçalho Cartas', icon: <FileText size={14} /> },
+    { label: 'Configurar Rodapé Cartas', icon: <FileText size={14} /> },
+    { label: 'Configurar Marca D\'Agua', icon: <Droplets size={14} /> },
+    { label: 'Configurar Bancos', icon: <Building2 size={14} /> },
+    { label: 'Editar Destino da Serie', icon: <Edit size={14} /> },
+  ];
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div className="space-y-1">
-          <h2 className="text-2xl font-bold text-[#003366]">Séries Fiscais</h2>
-          <p className="text-zinc-500 text-sm">Gestão de séries de faturação e numeração.</p>
+      <div className="flex justify-between items-center bg-white p-4 border border-zinc-200">
+        <div>
+          <h2 className="text-xl font-bold text-[#003366]">Séries Fiscais</h2>
+          <p className="text-xs text-zinc-500 uppercase tracking-widest font-medium">Gestão de numeração e configuração de documentos</p>
         </div>
         <button 
-          onClick={() => {
-            setEditingSeries(null);
-            setFormData({ description: '', user_id: '', type: 'normal' });
-            setShowForm(true);
-          }}
-          className="bg-[#003366] text-white px-6 py-2.5 rounded-none font-bold text-sm flex items-center gap-2 shadow-sm"
+          onClick={() => setShowForm(true)}
+          className="bg-[#003366] text-white px-6 py-2.5 text-xs font-bold uppercase tracking-widest flex items-center gap-2 hover:bg-[#002244] transition-all shadow-lg"
         >
-          <Plus size={18} />
-          Criar Série
+          <Plus size={16} /> Criar Série
         </button>
       </div>
 
-      {showForm && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm" onClick={() => setShowForm(false)} />
-          <div className="relative w-full max-w-lg bg-white p-8 rounded-none shadow-2xl">
-            <h3 className="font-bold text-[#003366] mb-6 text-xl">{editingSeries ? 'Editar Série' : 'Nova Série'}</h3>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Descrição</label>
-                <input 
-                  type="text" 
-                  value={formData.description} 
-                  onChange={e => setFormData({ ...formData, description: e.target.value })} 
-                  required 
-                  className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" 
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Utilizador Responsável</label>
-                <select 
-                  value={formData.user_id} 
-                  onChange={e => setFormData({ ...formData, user_id: e.target.value })} 
-                  required 
-                  className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+      <AnimatePresence>
+        {showForm && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowForm(false)}
+              className="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-md bg-white rounded-none shadow-2xl overflow-hidden"
+            >
+              <div className="p-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
+                <h3 className="font-bold text-[#003366] flex items-center gap-2 uppercase tracking-widest text-xs">
+                  <FileText size={16} />
+                  Criar Nova Série
+                </h3>
+                <button 
+                  onClick={() => setShowForm(false)}
+                  className="p-2 hover:bg-zinc-200 rounded-full transition-colors text-zinc-400 hover:text-zinc-600"
                 >
-                  <option value="">Selecionar Utilizador</option>
-                  {systemUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                </select>
+                  <X size={20} />
+                </button>
               </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tipo</label>
-                <select 
-                  value={formData.type} 
-                  onChange={e => setFormData({ ...formData, type: e.target.value as any })} 
-                  required 
-                  className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-                >
-                  <option value="normal">Normal</option>
-                  <option value="manual_recovery">Recuperação Manual</option>
-                </select>
-              </div>
-              <div className="flex justify-end gap-3 mt-6">
-                <button type="button" onClick={() => setShowForm(false)} className="text-zinc-500 hover:text-zinc-700 text-sm font-medium">Cancelar</button>
-                <button type="submit" className="bg-[#003366] text-white font-bold px-6 py-2 rounded-none hover:bg-[#002244] transition-all text-sm">Guardar</button>
-              </div>
-            </form>
+              <form onSubmit={handleRegister} className="p-6 space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Nome da Série</label>
+                  <input type="text" required value={name} onChange={e => setName(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Selecionar Utilizador</label>
+                  <select value={selectedUser} onChange={e => setSelectedUser(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none">
+                    <option value="">Todos</option>
+                    {users.map(u => <option key={u.id} value={u.id.toString()}>{u.nome_completo}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tipo de Série</label>
+                  <select value={type} onChange={e => setType(e.target.value as 'normal' | 'manual')} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none">
+                    <option value="normal">Normal</option>
+                    <option value="manual">Recuperação Documentos Manuais</option>
+                  </select>
+                </div>
+                <button type="submit" className="w-full bg-[#003366] text-white py-3 text-xs font-bold uppercase tracking-widest hover:bg-[#002244]">Registar Série</button>
+              </form>
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
 
-      <div className="bg-white border border-zinc-200 rounded-none shadow-sm overflow-hidden">
-        <table className="w-full text-left border-collapse">
+      <div className="bg-white border border-zinc-200 shadow-sm overflow-x-auto">
+        <table className="w-full text-left text-[11px] font-medium text-zinc-600 border-collapse">
           <thead>
-            <tr className="bg-zinc-50 border-b border-zinc-200 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-              <th className="px-6 py-4">Descrição</th>
-              <th className="px-6 py-4">Utilizador</th>
-              <th className="px-6 py-4">Tipo</th>
-              <th className="px-6 py-4">Estado</th>
-              <th className="px-6 py-4 text-right">Ações</th>
+            <tr className="bg-[#003366] text-white text-[10px] uppercase tracking-[0.1em] font-black">
+              <th rowSpan={2} className="px-4 py-4 border-r border-zinc-700/50">Data Inicio</th>
+              <th rowSpan={2} className="px-4 py-4 border-r border-zinc-700/50">Série</th>
+              <th rowSpan={2} className="px-4 py-4 border-r border-zinc-700/50">Referência</th>
+              <th rowSpan={2} className="px-4 py-4 border-r border-zinc-700/50">Destino</th>
+              <th rowSpan={2} className="px-2 py-4 border-r border-zinc-700/50 text-center">Tipo</th>
+              <th colSpan={6} className="px-4 py-2 border-b border-r border-zinc-700/50 text-center text-[9px] opacity-70">Documentos Habilitados</th>
+              <th colSpan={3} className="px-4 py-2 border-b border-r border-zinc-700/50 text-center text-[9px] opacity-70">Configuração Grafica</th>
+              <th rowSpan={2} className="px-4 py-4 border-r border-zinc-700/50 text-center uppercase">Users</th>
+              <th rowSpan={2} className="px-4 py-4 border-r border-zinc-700/50 text-center uppercase">Bancos</th>
+              <th rowSpan={2} className="px-4 py-4 text-center">Ações</th>
+            </tr>
+            <tr className="bg-[#003366]/90 text-white/70 text-[9px] uppercase font-bold">
+              <th className="px-2 py-2 border-r border-zinc-700/30 text-center">FT</th>
+              <th className="px-2 py-2 border-r border-zinc-700/30 text-center">NC</th>
+              <th className="px-2 py-2 border-r border-zinc-700/30 text-center">ND</th>
+              <th className="px-2 py-2 border-r border-zinc-700/30 text-center">RE</th>
+              <th className="px-2 py-2 border-r border-zinc-700/30 text-center">PP</th>
+              <th className="px-2 py-2 border-r border-zinc-700/50 text-center">GR</th>
+              <th className="px-2 py-2 border-r border-zinc-700/30 text-center">TOP</th>
+              <th className="px-2 py-2 border-r border-zinc-700/30 text-center">DOWN</th>
+              <th className="px-2 py-2 border-r border-zinc-700/50 text-center italic">Marca</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100">
             {series.map(s => (
-              <tr key={s.id} className="hover:bg-zinc-50 transition-colors text-sm text-zinc-600">
-                <td className="px-6 py-4 font-medium text-zinc-800">{s.description}</td>
-                <td className="px-6 py-4">{s.user_name || 'N/A'}</td>
-                <td className="px-6 py-4 capitalize">{s.type.replace('_', ' ')}</td>
-                <td className="px-6 py-4">
-                  <span className={`px-2 py-1 text-[10px] font-bold uppercase ${s.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
-                    {s.is_active ? 'Ativo' : 'Inativo'}
+              <tr key={s.id} className="hover:bg-zinc-50 border-b border-zinc-100 transition-colors">
+                <td className="px-4 py-3 border-r border-zinc-100 text-zinc-400">{s.data_inicio || '---'}</td>
+                <td className="px-4 py-3 border-r border-zinc-100 font-bold text-[#003366]">{s.name}</td>
+                <td className="px-4 py-3 border-r border-zinc-100 font-mono text-[10px] text-zinc-500">{s.reference || '---'}</td>
+                <td className="px-4 py-3 border-r border-zinc-100">{s.destino || '---'}</td>
+                <td className="px-2 py-3 border-r border-zinc-100 text-center">
+                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${s.type === 'manual' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                    {s.type === 'manual' ? 'Manual' : 'Normal'}
                   </span>
                 </td>
-                <td className="px-6 py-4 text-right relative">
+                <td className="px-2 py-3 border-r border-zinc-100 text-center font-bold text-emerald-600">✓</td>
+                <td className="px-2 py-3 border-r border-zinc-100 text-center font-bold text-emerald-600">✓</td>
+                <td className="px-2 py-3 border-r border-zinc-100 text-center font-bold text-emerald-600">✓</td>
+                <td className="px-2 py-3 border-r border-zinc-100 text-center font-bold text-emerald-600">✓</td>
+                <td className="px-2 py-3 border-r border-zinc-100 text-center font-bold text-emerald-600">✓</td>
+                <td className="px-2 py-3 border-r border-zinc-100 text-center font-bold text-emerald-600">✓</td>
+                <td className="px-2 py-3 border-r border-zinc-100 text-center text-red-600 font-black">X</td>
+                <td className="px-2 py-3 border-r border-zinc-100 text-center text-red-600 font-black">X</td>
+                <td className="px-2 py-3 border-r border-zinc-200 text-center text-blue-600 font-bold underline cursor-pointer">Setup</td>
+                <td className="px-4 py-3 border-r border-zinc-100 text-center font-bold">{s.user_id ? '1' : 'Tdos'}</td>
+                <td className="px-4 py-3 border-r border-zinc-100 text-center font-bold text-zinc-400">0 / 5</td>
+                <td className="px-4 py-3 text-center relative">
                   <button 
-                    onClick={() => setShowActions(showActions === s.id ? null : s.id)}
-                    className="p-2 hover:bg-zinc-100 rounded-full transition-colors"
+                    onClick={() => setShowOptionsId(showOptionsId === s.id ? null : s.id)}
+                    className="p-1.5 bg-blue-600 text-white rounded shadow hover:bg-blue-700 transition-all flex items-center justify-center mx-auto"
                   >
-                    <MoreHorizontal size={16} />
+                    <BarChart3 size={14} />
                   </button>
-                  {showActions === s.id && (
-                    <div className="absolute right-6 top-12 w-48 bg-white border border-zinc-200 shadow-xl z-10 py-1">
-                      <button 
-                        onClick={() => {
-                          setEditingSeries(s);
-                          setFormData({ description: s.description, user_id: s.user_id.toString(), type: s.type });
-                          setShowForm(true);
-                          setShowActions(null);
-                        }}
-                        className="w-full text-left px-4 py-2 text-xs hover:bg-zinc-50 flex items-center gap-2"
-                      >
-                        <Edit size={14} /> Editar
-                      </button>
-                    </div>
+                  
+                  {showOptionsId === s.id && (
+                    <AnimatePresence>
+                      <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
+                        <motion.div 
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          onClick={() => setShowOptionsId(null)}
+                          className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+                        />
+                        <motion.div 
+                          initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                          animate={{ opacity: 1, scale: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                          className="relative w-full max-w-xs bg-white rounded-none shadow-2xl overflow-hidden p-6 space-y-3 border border-zinc-200"
+                        >
+                          <div className="flex justify-between items-center mb-4 border-b border-zinc-100 pb-2">
+                            <p className="text-[10px] font-black text-[#003366] uppercase tracking-widest italic">Opções da Série</p>
+                            <button onClick={() => setShowOptionsId(null)} className="text-zinc-400 hover:text-red-500"><X size={16}/></button>
+                          </div>
+                          {OPTIONS.map((opt, idx) => (
+                            <button 
+                              key={idx}
+                              onClick={() => setShowOptionsId(null)}
+                              className="w-full h-10 bg-white hover:bg-zinc-50 border border-zinc-100 rounded-none px-4 flex items-center gap-3 text-zinc-800 text-[10px] font-bold uppercase tracking-tight transition-all group active:scale-95"
+                            >
+                              <div className="w-6 h-6 bg-zinc-50 text-[#003366] flex items-center justify-center group-hover:bg-[#003366] group-hover:text-white transition-all">
+                                {opt.icon}
+                              </div>
+                              {opt.label}
+                            </button>
+                          ))}
+                        </motion.div>
+                      </div>
+                    </AnimatePresence>
                   )}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+        {series.length === 0 && (
+          <div className="p-20 text-center bg-zinc-50/50">
+            <p className="text-zinc-400 text-sm font-medium italic">Nenhuma série fiscal configurada.</p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -9092,7 +9177,9 @@ const InvoiceList = ({
   onViewBusinessOverview,
   setActiveTab,
   caixas,
-  mode = 'standard'
+  mode = 'standard',
+  fiscalSeries,
+  onRefresh
 }: { 
   invoices: Invoice[], 
   issuedDocuments: IssuedDocument[],
@@ -9110,7 +9197,9 @@ const InvoiceList = ({
   onViewBusinessOverview?: () => void,
   setActiveTab: (tab: string) => void,
   caixas: Caixa[],
-  mode?: 'standard' | 'electronic'
+  mode?: 'standard' | 'electronic',
+  fiscalSeries: FiscalSeries[],
+  onRefresh: () => void
 }) => {
   const { user } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState('emitidos');
@@ -9202,8 +9291,8 @@ const InvoiceList = ({
     { id: 'recebidos', label: 'Documentos recebidos', icon: ClipboardList },
     { id: 'clientes', label: 'Clientes', icon: Users },
     { id: 'sales_report', label: 'Relatório de Vendas', icon: BarChart3 },
-    { id: 'adesao', label: 'Detalhes da adesão', icon: BadgeCheck },
-    { id: 'series', label: 'Séries de facturas', icon: FileText },
+    { id: 'adesao', label: 'Local de trabalho', icon: MapPin },
+    { id: 'series', label: 'Taxas e impostos', icon: FileText },
     { id: 'fiscal-series', label: 'Série Fiscal', icon: BadgeCheck },
   ];
 
@@ -9245,7 +9334,13 @@ const InvoiceList = ({
       </div>
 
       <div className="p-8 space-y-6">
-        {activeSubTab === 'fiscal-series' && <FiscalSeriesModule />}
+        {activeSubTab === 'fiscal-series' && (
+          <FiscalSeriesModule 
+            series={fiscalSeries} 
+            onRefresh={onRefresh} 
+            users={employees} 
+          />
+        )}
         {activeSubTab === 'sales_report' && (
           <SalesReport issuedDocuments={issuedDocuments} />
         )}
@@ -9715,36 +9810,41 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
   caixas: Caixa[]
 }) => {
   const { user } = useAuth();
-  const [clientId, setClientId] = useState<number | ''>('');
+  
+  // Section 1: Informações do documento
   const [documentType, setDocumentType] = useState('Fatura');
   const [seriesId, setSeriesId] = useState<number | ''>('');
-  const [documentNumber, setDocumentNumber] = useState('');
+  const [workSiteId, setWorkSiteId] = useState<number | ''>('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [dueDate, setDueDate] = useState('');
+  const [vatWithholding, setVatWithholding] = useState('Sem cativação');
+  const [exchangeRate, setExchangeRate] = useState(1);
+  const [currency, setCurrency] = useState('Kwanza');
+  const [counterValue, setCounterValue] = useState(0);
+  const [globalMetric, setGlobalMetric] = useState('Nenhuma métrica');
+  const [globalDiscount, setGlobalDiscount] = useState(0);
+  const [paymentCondition, setPaymentCondition] = useState('Pronto Pagamento');
+  const [paymentMethod, setPaymentMethod] = useState('');
+  const [cashBox, setCashBox] = useState('');
+
+  // Manual Series fields
+  const [documentNumberManual, setDocumentNumberManual] = useState('');
+  const [referenceManual, setReferenceManual] = useState('');
+
+  // Section 2: Informações do adquirente
   const [countryCode, setCountryCode] = useState('Angola');
-  const [nif, setNif] = useState('');
-  const [clientName, setClientName] = useState('');
-  const [workSiteId, setWorkSiteId] = useState<string>('');
-  const [dueDate, setDueDate] = useState<string>('');
-  const [vatWithholding, setVatWithholding] = useState<string>('0');
-  const [exchangeRate, setExchangeRate] = useState<string>('1');
-  const [currency, setCurrency] = useState<string>('Kwanza');
-  const [counterValue, setCounterValue] = useState<string>('0');
-  const [globalDiscount, setGlobalDiscount] = useState<string>('0');
+  const [clientId, setClientId] = useState<number | ''>('');
   const [serviceDate, setServiceDate] = useState(new Date().toISOString().split('T')[0]);
   const [serviceLocation, setServiceLocation] = useState('');
-  const [items, setItems] = useState<Partial<InvoiceItem>[]>([]);
-  const [cashBox, setCashBox] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('');
-  const [expandedDimensions, setExpandedDimensions] = useState<number | null>(null);
-  
-  const [metrics, setMetrics] = useState<Metric[]>([]);
-  const [metricId, setMetricId] = useState<string>('');
 
-  useEffect(() => {
-    if (user?.company_id) {
-       fetchMetrics(user.company_id).then(setMetrics);
-    }
-  }, [user]);
+  // Section 3: Bens e serviços
+  const [items, setItems] = useState<Partial<InvoiceItem>[]>([]);
+
+  const selectedSeries = fiscalSeries.find(s => s.id === Number(seriesId));
+
+  const total = items.reduce((sum, item) => sum + (item.total || 0), 0);
+  const vatAmount = total * 0.14;
+  const finalTotal = total + vatAmount - globalDiscount;
 
   const addItem = () => {
     setItems([...items, { 
@@ -9752,583 +9852,361 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
       quantity: 1, 
       unit_price: 0, 
       total: 0,
-      tipologia: 'Mercadoria',
-      desconto: 0,
-      tipo_artigo: 'produto',
-      comprimento: 0,
-      largura: 0,
-      altura: 0,
-      tax: ALL_TAXES[0]
+      tipo_artigo: 'produto'
     }]);
-  };
-
-  const removeItem = (index: number) => {
-    setItems(items.filter((_, i) => i !== index));
   };
 
   const updateItem = (index: number, field: keyof InvoiceItem, value: any) => {
     const newItems = [...items];
     newItems[index] = { ...newItems[index], [field]: value };
-    
-    if (field === 'quantity' || field === 'unit_price' || field === 'desconto') {
-      const q = field === 'quantity' ? value : (newItems[index].quantity || 0);
-      const p = field === 'unit_price' ? value : (newItems[index].unit_price || 0);
-      const d = field === 'desconto' ? value : (newItems[index].desconto || 0);
-      newItems[index].total = (q * p) - d;
+    if (field === 'quantity' || field === 'unit_price') {
+      const q = field === 'quantity' ? Number(value) : (newItems[index].quantity || 0);
+      const p = field === 'unit_price' ? Number(value) : (newItems[index].unit_price || 0);
+      newItems[index].total = q * p;
     }
-
     if (field === 'product_id' && value) {
       const prod = products.find(p => p.id === Number(value));
       if (prod) {
         newItems[index].description = prod.name;
         newItems[index].unit_price = prod.price;
-        newItems[index].total = ((newItems[index].quantity || 1) * prod.price) - (newItems[index].desconto || 0);
+        newItems[index].total = (newItems[index].quantity || 1) * prod.price;
       }
     }
-    
     setItems(newItems);
-  };
-
-  const total = (items ?? []).reduce((sum, item) => sum + (item.total || 0), 0);
-  const vatAmount = total * 0.14;
-  const finalTotal = total + vatAmount - Number(globalDiscount || 0);
-
-  const handleSearchClient = () => {
-    const client = clients.find(c => c.contribuinte === nif);
-    if (client) {
-      setClientId(client.id);
-      setClientName(client.name);
-    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (items.length === 0) {
-      alert('Por favor, adicione pelo menos um item ao documento.');
-      return;
-    }
+    if (items.length === 0) { alert('Adicione pelo menos um item.'); return; }
+    if (!seriesId) { alert('Selecione uma série.'); return; }
+    if (!clientId) { alert('Selecione um cliente.'); return; }
 
-    let finalClientId = clientId;
-    if (!finalClientId && clientName) {
-      const res = await fetchJson('/api/clients', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: clientName, contribuinte: nif, email: '', morada: '', company_id: user?.company_id })
-      });
-      if (res && res.id) {
-        finalClientId = res.id;
-      }
-    }
+    const client = clients.find(c => c.id === Number(clientId));
+    const isManual = selectedSeries?.type === 'manual';
+    
+    const res = await fetchWithAuth('/api/invoices', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        cliente_id: clientId || null, 
+        client_name: client?.name || '',
+        date, 
+        due_date: dueDate,
+        items,
+        document_type: documentType,
+        total: finalTotal,
+        series_id: seriesId,
+        invoice_number: isManual ? documentNumberManual : undefined,
+        series_reference: isManual ? referenceManual : selectedSeries?.reference,
+        payment_method: paymentCondition === 'Pronto Pagamento' ? paymentMethod : 'A Prazo',
+        cash_box: paymentCondition === 'Pronto Pagamento' ? cashBox : '',
+        company_id: user?.company_id
+      })
+    });
 
-    if (!finalClientId) {
-      alert('Por favor, selecione um cliente ou digite o nome de um novo cliente.');
-      return;
-    }
-
-    try {
-      const res = await fetchWithAuth('/api/invoices', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          client_id: finalClientId, 
-          date, 
-          due_date: dueDate,
-          items,
-          document_type: documentType,
-          work_site_id: workSiteId,
-          vat_withholding: parseFloat(vatWithholding),
-          exchange_rate: parseFloat(exchangeRate),
-          currency,
-          counter_value: parseFloat(counterValue),
-          global_discount: parseFloat(globalDiscount),
-          service_date: serviceDate,
-          service_location: serviceLocation,
-          cash_box: cashBox,
-          payment_method: paymentMethod,
-          series_id: seriesId,
-          company_id: user?.company_id,
-          metric_id: metricId ? parseInt(metricId, 10) : null
-        })
-      });
-
-      if (res.ok) {
-        onSuccess();
-      } else {
-        const errorData = await res.json().catch(() => ({ error: 'Erro desconhecido ao emitir documento' }));
-        console.error('Erro ao emitir documento:', errorData);
-        alert('Erro ao emitir documento: ' + (errorData.error || 'Erro desconhecido'));
-      }
-    } catch (error) {
-      console.error('Erro de rede ao emitir documento:', error);
-      alert('Erro de rede ao emitir documento. Por favor, tente novamente.');
+    if (res.ok) {
+      onSuccess();
+    } else {
+      const err = await res.json();
+      alert('Erro: ' + (err.error || 'Falha ao emitir documento'));
     }
   };
 
   return (
-    <div className="space-y-8 bg-zinc-50/30 p-4 sm:p-8 min-h-screen">
-      <div className="flex items-center gap-4 mb-8">
-        <button onClick={onBack} className="p-2 hover:bg-zinc-100 rounded-none text-zinc-400 transition-colors">
-          <ChevronLeft size={24} />
-        </button>
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-zinc-100 flex items-center justify-center text-zinc-500">
-            <FileText size={18} />
-          </div>
-          <h2 className="text-xl font-bold text-[#003366]">Informações do documento</h2>
-        </div>
+    <div className="bg-white min-h-screen">
+      {/* Header */}
+      <div className="p-6 border-b border-zinc-200">
+        <h2 className="text-xl font-bold text-[#003366] flex items-center gap-2">
+          <FileText size={20} /> Emitir Novo Documento
+        </h2>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-8">
-        {/* Section 1: Informações do documento */}
-        <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-600">Tipo de documento <span className="text-red-500">*</span></label>
-              <select 
-                value={documentType} 
-                onChange={(e) => setDocumentType(e.target.value)}
-                required
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-              >
-                <option value="Fatura">Fatura</option>
-                <option value="Fatura Recibo">Fatura Recibo</option>
-                <option value="Recibo">Recibo</option>
-                <option value="Fatura Pro-forma">Fatura Pro-forma</option>
-                <option value="Orçamento">Orçamento</option>
-                <option value="Nota de Crédito">Nota de Crédito</option>
-                <option value="Nota de Débito">Nota de Débito</option>
-                <option value="Guia de Remessa">Guia de Remessa</option>
-                <option value="Guia de Entrada">Guia de Entrada</option>
-                <option value="Fatura Global">Fatura Global</option>
-                <option value="Aviso de Cobrança">Aviso de Cobrança</option>
-              </select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-600">Série</label>
-              <select 
-                value={seriesId} 
-                onChange={(e) => setSeriesId(e.target.value ? Number(e.target.value) : '')} 
-                required
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-              >
-                <option value="">Selecionar Série</option>
-                {fiscalSeries.filter(s => s.is_active).map(s => (
-                  <option key={s.id} value={s.id}>{s.description}</option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-600">Local de trabalho</label>
-              <select 
-                value={workSiteId} 
-                onChange={(e) => setWorkSiteId(e.target.value)}
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-              >
-                <option value="">Selecione o local</option>
-                {workSites.map(ws => <option key={ws.id} value={ws.id}>{ws.title}</option>)}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-600">Data de emissão</label>
-              <input 
-                type="date" 
-                value={date} 
-                disabled
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-600">Data de vencimento</label>
-              <input 
-                type="date" 
-                value={dueDate} 
-                onChange={(e) => setDueDate(e.target.value)}
-                required
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-600">Cativação de IVA</label>
-              <select 
-                value={vatWithholding} 
-                onChange={(e) => setVatWithholding(e.target.value)}
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-              >
-                <option value="0">Sem cativação</option>
-                <option value="0.5">50%</option>
-                <option value="1">100%</option>
-              </select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-600">Câmbio</label>
-              <input 
-                type="number" 
-                value={exchangeRate} 
-                onChange={(e) => setExchangeRate(e.target.value)}
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-600">Moeda</label>
-              <select 
-                value={currency} 
-                onChange={(e) => setCurrency(e.target.value)}
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-              >
-                <option value="Kwanza">Kwanza</option>
-                <option value="USD">USD</option>
-                <option value="Euro">Euro</option>
-              </select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-600">Contravalor</label>
-              <input 
-                type="number" 
-                value={counterValue} 
-                onChange={(e) => setCounterValue(e.target.value)}
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-600">Métrica Global</label>
-              <select 
-                value={metricId} 
-                onChange={(e) => setMetricId(e.target.value)}
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-              >
-                <option value="">Nenhuma métrica</option>
-                {metrics.map(m => <option key={m.id} value={m.id}>{m.sigla} - {m.descricao}</option>)}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-600">Desconto global</label>
-              <input 
-                type="number" 
-                value={globalDiscount} 
-                onChange={(e) => setGlobalDiscount(e.target.value)}
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-              />
-            </div>
-            {(documentType === 'Fatura Recibo' || documentType === 'Recibo') && (
-              <>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-zinc-600">Selecionar caixa de recebimento</label>
-                  <select 
-                    value={cashBox} 
-                    onChange={(e) => setCashBox(e.target.value)}
-                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-                  >
-                    <option value="">Selecione a caixa</option>
-                    {caixas.map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                    <option value="Banco">Banco</option>
+      <div className="max-w-4xl mx-auto p-8 space-y-6">
+        <div className="flex items-center gap-3 text-[#003366] font-bold text-lg mb-4">
+          <button onClick={onBack} className="p-1 hover:bg-zinc-100 rounded text-zinc-500">
+            <ChevronLeft size={20} />
+          </button>
+          <FileText size={20} />
+          Informações do documento
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Section 1 */}
+          <div className="border border-zinc-200 p-6 space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-600 block">Tipo de documento <span className="text-red-500">*</span></label>
+                <div className="relative">
+                  <select value={documentType} onChange={e => setDocumentType(e.target.value)} required className="w-full border border-zinc-300 px-3 py-2 text-sm appearance-none focus:outline-none focus:border-[#003366] bg-white">
+                    <option>Fatura</option>
+                    <option>Fatura Recibo</option>
+                    <option>Fatura Proforma</option>
+                    <option>Orçamento</option>
                   </select>
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" size={16} />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-zinc-600">Selecionar forma de pagamento</label>
-                  <select 
-                    value={paymentMethod} 
-                    onChange={(e) => setPaymentMethod(e.target.value)}
-                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-                  >
-                    <option value="">Selecione o pagamento</option>
-                    <option value="Numerário">Numerário</option>
-                    <option value="Multicaixa">Multicaixa</option>
-                    <option value="Transferência">Transferência</option>
-                    <option value="Depósito">Depósito</option>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-600 block">Série</label>
+                <div className="relative">
+                  <select value={seriesId} onChange={e => setSeriesId(Number(e.target.value))} required className="w-full border border-zinc-300 px-3 py-2 text-sm appearance-none focus:outline-none focus:border-[#003366] bg-white">
+                    <option value="">Selecionar Série</option>
+                    {fiscalSeries.map(s => <option key={s.id} value={s.id}>{s.name} ({s.type === 'manual' ? 'Manual' : 'Auto'})</option>)}
                   </select>
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" size={16} />
                 </div>
-              </>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-600 block">Local de trabalho</label>
+                <div className="relative">
+                  <select value={workSiteId} onChange={e => setWorkSiteId(Number(e.target.value))} className="w-full border border-zinc-300 px-3 py-2 text-sm appearance-none focus:outline-none focus:border-[#003366] bg-white">
+                    <option value="">Selecione o local</option>
+                    {workSites.map(w => <option key={w.id} value={w.id}>{w.title}</option>)}
+                  </select>
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" size={16} />
+                </div>
+              </div>
+            </div>
+
+            {selectedSeries?.type === 'manual' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-amber-600 block">Número do Doc. Manual <span className="text-red-500">*</span></label>
+                  <input type="text" value={documentNumberManual} onChange={e => setDocumentNumberManual(e.target.value)} required className="w-full border border-amber-300 px-3 py-2 text-sm focus:outline-none focus:border-amber-600 bg-amber-50" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-amber-600 block">Ref. da Série Manual <span className="text-red-500">*</span></label>
+                  <input type="text" value={referenceManual} onChange={e => setReferenceManual(e.target.value)} required className="w-full border border-amber-300 px-3 py-2 text-sm focus:outline-none focus:border-amber-600 bg-amber-50" />
+                </div>
+              </div>
             )}
-          </div>
-        </div>
 
-        {/* Section 2: Informações do adquirente */}
-        <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-6">
-          <h3 className="text-lg font-bold text-[#003366] border-b border-zinc-100 pb-4">Informações do adquirente</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-600">Código do país <span className="text-red-500">*</span></label>
-              <select 
-                value={countryCode} 
-                onChange={(e) => setCountryCode(e.target.value)}
-                required
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-              >
-                <option value="Angola">Angola</option>
-                <option value="Portugal">Portugal</option>
-                <option value="Brasil">Brasil</option>
-              </select>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-600 block">Data de emissão</label>
+                <input type="date" value={date} onChange={e => setDate(e.target.value)} required className="w-full border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:border-[#003366] bg-white" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-600 block">Data de vencimento</label>
+                <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} placeholder="dd/mm/yyyy" className="w-full border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:border-[#003366] bg-white" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-600 block">Cativação de IVA</label>
+                <div className="relative">
+                  <select value={vatWithholding} onChange={e => setVatWithholding(e.target.value)} className="w-full border border-zinc-300 px-3 py-2 text-sm appearance-none focus:outline-none focus:border-[#003366] bg-white">
+                    <option>Sem cativação</option>
+                    <option>Com cativação</option>
+                  </select>
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" size={16} />
+                </div>
+              </div>
             </div>
-            <div className="space-y-2 md:col-span-2">
-              <label className="text-xs font-bold text-zinc-600">Selecionar cliente <span className="text-red-500">*</span></label>
-              <select 
-                value={clientId} 
-                onChange={(e) => {
-                  const id = e.target.value;
-                  setClientId(id ? Number(id) : '');
-                  const client = clients.find(c => c.id === Number(id));
-                  if (client) {
-                    setClientName(client.name);
-                    setNif(client.contribuinte);
-                  } else {
-                    setClientName('');
-                    setNif('');
-                  }
-                }}
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-              >
-                <option value="">Selecione um cliente</option>
-                {clients.map(c => <option key={c.id} value={c.id}>{c.name} ({c.contribuinte})</option>)}
-              </select>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-600 block">Câmbio</label>
+                <input type="number" value={exchangeRate} onChange={e => setExchangeRate(Number(e.target.value))} min="0" step="0.01" className="w-full border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:border-[#003366] bg-white" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-600 block">Moeda</label>
+                <div className="relative">
+                  <select value={currency} onChange={e => setCurrency(e.target.value)} className="w-full border border-zinc-300 px-3 py-2 text-sm appearance-none focus:outline-none focus:border-[#003366] bg-white">
+                    <option>Kwanza</option>
+                    <option>Dólar</option>
+                    <option>Euro</option>
+                  </select>
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" size={16} />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-600 block">Contravalor</label>
+                <input type="number" value={counterValue} readOnly className="w-full border border-zinc-300 px-3 py-2 text-sm bg-zinc-50 text-zinc-500 cursor-not-allowed focus:outline-none" />
+              </div>
             </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-600">Data prestação de bens/serviços <span className="text-red-500">*</span></label>
-              <input 
-                type="date" 
-                value={serviceDate} 
-                onChange={(e) => setServiceDate(e.target.value)}
-                required
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-              />
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-600 block">Métrica Global</label>
+                <div className="relative">
+                  <select value={globalMetric} onChange={e => setGlobalMetric(e.target.value)} className="w-full border border-zinc-300 px-3 py-2 text-sm appearance-none focus:outline-none focus:border-[#003366] bg-white">
+                    <option>Nenhuma métrica</option>
+                    <option>Métrica 1</option>
+                  </select>
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" size={16} />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-600 block">Desconto global</label>
+                <input type="number" value={globalDiscount} onChange={e => setGlobalDiscount(Number(e.target.value))} min="0" step="0.01" className="w-full border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:border-[#003366] bg-white" />
+              </div>
             </div>
-            <div className="space-y-2 md:col-span-2">
-              <label className="text-xs font-bold text-zinc-600">Local de prestação de bens/serviços <span className="text-red-500">*</span></label>
-              <input 
-                type="text" 
-                value={serviceLocation} 
-                onChange={(e) => setServiceLocation(e.target.value)}
-                placeholder="Informe o local da prestação de serviço"
-                required
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-              />
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-600 block">Condição de Pagamento</label>
+                <div className="relative">
+                  <select value={paymentCondition} onChange={e => setPaymentCondition(e.target.value)} className="w-full border border-zinc-300 px-3 py-2 text-sm appearance-none focus:outline-none focus:border-[#003366] bg-white">
+                    <option>Pronto Pagamento</option>
+                    <option>A Prazo</option>
+                  </select>
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" size={16} />
+                </div>
+              </div>
+              {paymentCondition === 'Pronto Pagamento' && (
+                <>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-zinc-600 block">Método de Pagamento <span className="text-red-500">*</span></label>
+                    <div className="relative">
+                      <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} required className="w-full border border-zinc-300 px-3 py-2 text-sm appearance-none focus:outline-none focus:border-[#003366] bg-white">
+                        <option value="">Selecione...</option>
+                        <option value="Numerário">Numerário / Dinheiro</option>
+                        <option value="Multicaixa">TPA / Multicaixa</option>
+                        <option value="Transferência">Transferência Bancária</option>
+                        <option value="Depósito">Depósito Bancário</option>
+                        <option value="Cheque">Cheque</option>
+                      </select>
+                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" size={16} />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-zinc-600 block">Caixa / Conta <span className="text-red-500">*</span></label>
+                    <div className="relative">
+                      <select value={cashBox} onChange={e => setCashBox(e.target.value)} required className="w-full border border-zinc-300 px-3 py-2 text-sm appearance-none focus:outline-none focus:border-[#003366] bg-white">
+                        <option value="">Selecione...</option>
+                        {caixas.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                      </select>
+                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" size={16} />
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
-        </div>
 
-        {/* Section 3: Bens e serviços */}
-        <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-6">
-          <div className="flex justify-between items-center border-b border-zinc-100 pb-4">
-            <h3 className="text-lg font-bold text-[#003366]">Bens e serviços</h3>
-            <button 
-              type="button"
-              onClick={addItem}
-              className="bg-[#003366] text-white px-6 py-2.5 font-bold flex items-center gap-2 hover:bg-[#002244] transition-all text-sm shadow-sm rounded-none"
-            >
-              <Plus size={18} /> Adicionar a lista
+          {/* Section 2 */}
+          <div className="border border-zinc-200 p-6 space-y-6">
+            <h3 className="text-[#003366] font-bold text-md border-b border-zinc-100 pb-2">Informações do adquirente</h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-600 block">Código de país <span className="text-red-500">*</span></label>
+                <div className="relative">
+                  <select value={countryCode} onChange={e => setCountryCode(e.target.value)} required className="w-full border border-zinc-300 px-3 py-2 text-sm appearance-none focus:outline-none focus:border-[#003366] bg-white">
+                    <option>Angola</option>
+                    <option>Portugal</option>
+                    <option>EUA</option>
+                  </select>
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" size={16} />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-600 block">Selecionar cliente <span className="text-red-500">*</span></label>
+                <div className="relative">
+                  <select value={clientId} onChange={e => setClientId(Number(e.target.value))} required className="w-full border border-zinc-300 px-3 py-2 text-sm appearance-none focus:outline-none focus:border-[#003366] bg-white">
+                    <option value="">Selecione um cliente</option>
+                    {clients.map(c => <option key={c.id} value={c.id}>{c.name} ({c.contribuinte})</option>)}
+                  </select>
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" size={16} />
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-600 block">Data prestação de bens/serviços <span className="text-red-500">*</span></label>
+                <input type="date" value={serviceDate} onChange={e => setServiceDate(e.target.value)} required className="w-full border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:border-[#003366] bg-white" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-600 block">Local de prestação de bens/serviços <span className="text-red-500">*</span></label>
+                <input type="text" value={serviceLocation} onChange={e => setServiceLocation(e.target.value)} required placeholder="Informe o local da prestação de serviço" className="w-full border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:border-[#003366] bg-white" />
+              </div>
+            </div>
+          </div>
+
+          {/* Section 3 */}
+          <div className="border border-zinc-200 p-6 space-y-6">
+            <div className="flex justify-between items-center border-b border-zinc-100 pb-2">
+              <h3 className="text-[#003366] font-bold text-md">Bens e serviços</h3>
+              <button type="button" onClick={addItem} className="bg-[#003366] text-white text-xs font-semibold px-4 py-2 rounded-sm flex items-center gap-2 hover:bg-[#002244] transition-colors">
+                <Plus size={14} /> Adicionar à lista
+              </button>
+            </div>
+
+            {items.length === 0 ? (
+              <div className="border-2 border-dashed border-zinc-200 p-12 text-center text-zinc-400 text-sm">
+                Nenhum item adicionado. Clique em &quot;Adicionar à lista&quot; para começar.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm border-collapse">
+                  <thead>
+                    <tr className="border-b border-zinc-200">
+                      <th className="py-2 text-zinc-600 font-bold">Produto/Serviço</th>
+                      <th className="py-2 text-zinc-600 font-bold">Qtd</th>
+                      <th className="py-2 text-zinc-600 font-bold">P. Unit.</th>
+                      <th className="py-2 text-zinc-600 font-bold text-right">Total</th>
+                      <th className="py-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((item, idx) => (
+                      <tr key={idx} className="border-b border-zinc-100 hover:bg-zinc-50">
+                        <td className="py-2 pr-2">
+                          <select value={item.product_id || ''} onChange={e => updateItem(idx, 'product_id', e.target.value)} className="w-full border-none bg-transparent focus:outline-none">
+                            <option value="">Manual...</option>
+                            {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                          </select>
+                          <input type="text" value={item.description} onChange={e => updateItem(idx, 'description', e.target.value)} className="w-full border-none bg-transparent text-xs text-zinc-500 focus:outline-none mt-1" placeholder="Descrição alargada..." />
+                        </td>
+                        <td className="py-2 pr-2 w-20">
+                          <input type="number" value={item.quantity} onChange={e => updateItem(idx, 'quantity', e.target.value)} className="w-full border border-zinc-200 px-2 py-1 focus:outline-none" />
+                        </td>
+                        <td className="py-2 pr-2 w-32">
+                          <input type="number" value={item.unit_price} onChange={e => updateItem(idx, 'unit_price', e.target.value)} className="w-full border border-zinc-200 px-2 py-1 focus:outline-none" />
+                        </td>
+                        <td className="py-2 text-right font-semibold text-[#003366]">
+                          {formatCurrency(item.total || 0)}
+                        </td>
+                        <td className="py-2 text-right">
+                          <button type="button" onClick={() => setItems(items.filter((_, i) => i !== idx))} className="text-zinc-400 hover:text-red-500">
+                            <X size={16} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="flex justify-end pt-4">
+              <div className="w-64 border border-zinc-200 p-4 space-y-3">
+                <div className="flex justify-between text-xs text-zinc-600 font-semibold">
+                  <span>SUBTOTAL</span>
+                  <span>{formatCurrency(total)}</span>
+                </div>
+                <div className="flex justify-between text-xs text-zinc-600 font-semibold">
+                  <span>IVA (14%)</span>
+                  <span>{formatCurrency(vatAmount)}</span>
+                </div>
+                <div className="flex justify-between text-sm text-[#003366] font-bold border-t border-zinc-200 pt-3">
+                  <span>TOTAL FINAL</span>
+                  <span className="text-lg">{formatCurrency(finalTotal)}</span>
+                </div>
+                <div className="text-[9px] text-zinc-400 text-right mt-1">* Os valores apresentados não incluem retencção</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-4 pt-4 pb-12">
+            <button type="button" onClick={onBack} className="px-6 py-2.5 border border-zinc-300 text-zinc-700 bg-white font-semibold text-sm hover:bg-zinc-50 transition-colors shadow-sm">
+              Cancelar
+            </button>
+            <button type="submit" className="px-6 py-2.5 bg-[#003366] text-white font-semibold text-sm hover:bg-[#002244] transition-colors shadow-sm">
+              Emitir Documento
             </button>
           </div>
-          
-          <div className="space-y-4">
-            {items.map((item, idx) => (
-              <div key={idx} className="bg-zinc-50 p-4 border border-zinc-100 space-y-4">
-                <div className="grid grid-cols-12 gap-4 items-end">
-                  <div className="col-span-2 space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Produto/Serviço</label>
-                    <select 
-                      value={item.product_id || ''} 
-                      onChange={(e) => updateItem(idx, 'product_id', e.target.value)}
-                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
-                    >
-                      <option value="">Manual...</option>
-                      {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
-                  </div>
-                  <div className="col-span-6 space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Descrição</label>
-                    <input 
-                      type="text" 
-                      value={item.description} 
-                      onChange={(e) => updateItem(idx, 'description', e.target.value)}
-                      placeholder="Descrição do item"
-                      required
-                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
-                    />
-                  </div>
-                  <div className="col-span-2 space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Tipologia</label>
-                    <select 
-                      value={item.tipologia || 'Mercadoria'} 
-                      onChange={(e) => updateItem(idx, 'tipologia', e.target.value)}
-                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
-                    >
-                      <option value="Mercadoria">Mercadoria</option>
-                      <option value="importação">Importação</option>
-                      <option value="serviços no estrangeiro">Serviços no estrangeiro</option>
-                      <option value="outro">Outro</option>
-                    </select>
-                  </div>
-                  <div className="col-span-2 space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Tipo Artigo</label>
-                    <select 
-                      value={item.tipo_artigo || 'produto'} 
-                      onChange={(e) => updateItem(idx, 'tipo_artigo', e.target.value)}
-                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
-                    >
-                      <option value="produto">Produto</option>
-                      <option value="serviço">Serviço</option>
-                      <option value="outro">Outro</option>
-                    </select>
-                  </div>
-                  <div className="col-span-2 space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Taxa</label>
-                    <select 
-                      value={item.tax || ALL_TAXES[0]} 
-                      onChange={(e) => updateItem(idx, 'tax', e.target.value)}
-                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
-                    >
-                      {ALL_TAXES.map((taxName, i) => (
-                        <option key={i} value={taxName}>{taxName}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="col-span-1 flex justify-end pb-1">
-                    <button 
-                      type="button" 
-                      onClick={() => removeItem(idx)}
-                      className="text-zinc-300 hover:text-red-500 transition-colors"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-12 gap-4 items-end">
-                  <div className="col-span-2 space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Qtd</label>
-                    <input 
-                      type="number" 
-                      value={item.quantity} 
-                      onChange={(e) => updateItem(idx, 'quantity', Number(e.target.value))}
-                      required
-                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
-                    />
-                  </div>
-                  <div className="col-span-3 space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Preço Un.</label>
-                    <input 
-                      type="number" 
-                      step="0.01"
-                      value={item.unit_price} 
-                      onChange={(e) => updateItem(idx, 'unit_price', Number(e.target.value))}
-                      required
-                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
-                    />
-                  </div>
-                  <div className="col-span-2 space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Desconto</label>
-                    <input 
-                      type="number" 
-                      step="0.01"
-                      value={item.desconto || 0} 
-                      onChange={(e) => updateItem(idx, 'desconto', Number(e.target.value))}
-                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
-                    />
-                  </div>
-                  <div className="col-span-2 text-right pb-2">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Total Item</label>
-                    <p className="text-zinc-800 font-bold text-sm">
-                      {formatCurrency(item.total || 0)}
-                    </p>
-                  </div>
-                  <div className="col-span-3 flex items-center gap-2 pb-1">
-                    <button 
-                      type="button"
-                      onClick={() => setExpandedDimensions(expandedDimensions === idx ? null : idx)}
-                      className="p-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 transition-colors"
-                      title="Dimensões"
-                    >
-                      <Layers size={16} />
-                    </button>
-                    <span className="text-[10px] text-zinc-400 font-medium">Dimensões</span>
-                  </div>
-                </div>
-
-                {expandedDimensions === idx && (
-                  <div className="grid grid-cols-3 gap-4 p-4 bg-white border border-zinc-200 animate-in fade-in slide-in-from-top-2">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-zinc-400 uppercase">Comprimento</label>
-                      <input 
-                        type="number" 
-                        value={item.comprimento || 0} 
-                        onChange={(e) => updateItem(idx, 'comprimento', Number(e.target.value))}
-                        className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-zinc-400 uppercase">Largura</label>
-                      <input 
-                        type="number" 
-                        value={item.largura || 0} 
-                        onChange={(e) => updateItem(idx, 'largura', Number(e.target.value))}
-                        className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-zinc-400 uppercase">Altura</label>
-                      <input 
-                        type="number" 
-                        value={item.altura || 0} 
-                        onChange={(e) => updateItem(idx, 'altura', Number(e.target.value))}
-                        className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-            {items.length === 0 && (
-              <div className="text-center py-12 text-zinc-400 border-2 border-dashed border-zinc-100 rounded-none text-sm bg-white">
-                Nenhum item adicionado. Clique em "Adicionar a lista" para começar.
-              </div>
-            )}
-          </div>
-
-          <div className="flex justify-end pt-6">
-            <div className="bg-zinc-50 p-6 space-y-4 border border-zinc-200 min-w-[320px]">
-              <div className="flex justify-between text-zinc-500 text-[10px] font-bold uppercase tracking-wider">
-                <span>Subtotal</span>
-                <span>{formatCurrency(total)}</span>
-              </div>
-              {Number(globalDiscount) > 0 && (
-                <div className="flex justify-between text-red-500 text-[10px] font-bold uppercase tracking-wider">
-                  <span>Desconto Global</span>
-                  <span>-{formatCurrency(Number(globalDiscount))}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-zinc-500 text-[10px] font-bold uppercase tracking-wider">
-                <span>IVA (14%)</span>
-                <span>{formatCurrency(total * 0.14)}</span>
-              </div>
-              <div className="pt-4 border-t border-zinc-200 flex justify-between items-center">
-                <span className="text-xs font-bold text-[#003366] uppercase tracking-widest">Total Final</span>
-                <span className="text-3xl font-black text-[#003366]">{formatCurrency(finalTotal)}</span>
-              </div>
-              <div className="text-[9px] text-zinc-400 text-right italic mt-2">
-                * Valores calculados em tempo real
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex justify-end gap-4">
-          <button 
-            type="button" 
-            onClick={onBack}
-            className="px-8 py-3 rounded-none border border-zinc-300 text-zinc-700 font-bold hover:bg-zinc-50 transition-all text-sm shadow-sm"
-          >
-            Cancelar
-          </button>
-          <button 
-            type="submit"
-            disabled={items.length === 0}
-            className="px-8 py-3 rounded-none bg-[#003366] text-white font-bold hover:bg-[#002244] disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm shadow-sm"
-          >
-            Emitir Documento
-          </button>
-        </div>
-      </form>
+        </form>
+      </div>
     </div>
   );
 };
@@ -10348,23 +10226,7 @@ const WorkSiteForm = ({ clients, onBack, onSuccess, initialData }: { clients: Cl
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!clientId) {
-      console.warn('Cannot submit WorkSiteForm: No client selected');
-      return;
-    }
-    console.log('Submitting WorkSiteForm:', {
-      client_id: Number(clientId),
-      start_date: startDate,
-      end_date: endDate,
-      title,
-      code,
-      staff_per_day: staffPerDay,
-      total_staff: totalStaff,
-      location,
-      description,
-      contact,
-      observations
-    });
+    if (!clientId) return;
     onSuccess({
       client_id: Number(clientId),
       start_date: startDate,
@@ -11549,116 +11411,11 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               className="relative w-full max-w-4xl bg-white rounded-none shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
             >
-              <div className="p-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
-                <h3 className="font-bold text-[#003366] flex items-center gap-2 uppercase tracking-widest text-xs">
-                  <Users size={16} />
-                  {selectedClient ? 'Editar Cliente' : 'Registar Novo Cliente'}
-                </h3>
-                <button 
-                  onClick={() => setShowForm(false)}
-                  className="p-2 hover:bg-zinc-200 rounded-full transition-colors text-zinc-400 hover:text-zinc-600"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-              <div className="flex-1 overflow-y-auto p-8">
-                <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Contribuinte</label>
-                    <div className="flex gap-2">
-                      <input type="text" value={nif} onChange={e => setNif(e.target.value)} className="flex-1 bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" placeholder="NIF" />
-                      <button 
-                        type="button"
-                        onClick={() => {
-                          if (nif) {
-                            window.open(`https://portaldocontribuinte.minfin.gov.ao/consultar-nif-do-contribuinte?nif=${nif}`, '_blank');
-                          } else {
-                            alert('Por favor, insira um NIF para pesquisar.');
-                          }
-                        }}
-                        className="bg-zinc-100 hover:bg-zinc-200 text-[#003366] px-3 py-2 text-[10px] font-black uppercase tracking-widest transition-all border border-zinc-200 flex items-center gap-1"
-                      >
-                        <Search size={14} /> Pesquisar
-                      </button>
-                    </div>
-                  </div>
-                  <div className="space-y-1 md:col-span-2">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Nome do Cliente</label>
-                    <input type="text" value={name} onChange={e => setName(e.target.value)} required className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" placeholder="Nome" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Morada</label>
-                    <input type="text" value={morada} onChange={e => setMorada(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" placeholder="Morada" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Localidade</label>
-                    <input type="text" value={localidade} onChange={e => setLocalidade(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" placeholder="Localidade" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Código Postal</label>
-                    <input type="text" value={codigo_postal} onChange={e => setCodigoPostal(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" placeholder="Código Postal" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Província</label>
-                    <input type="text" value={provincia} onChange={e => setProvincia(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" placeholder="Província" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Município</label>
-                    <input type="text" value={municipio} onChange={e => setMunicipio(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" placeholder="Município" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">País</label>
-                    <input type="text" value={pais} onChange={e => setPais(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" placeholder="País" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Telefone</label>
-                    <input type="text" value={telefone} onChange={e => setTelefone(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" placeholder="Telefone" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Email</label>
-                    <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" placeholder="Email" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Estado do NIF</label>
-                    <select value={estado_nif} onChange={e => setEstadoNif(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm">
-                      <option value="ativo">🟢 Ativo</option>
-                      <option value="suspenso">🔴 Suspenso</option>
-                      <option value="inválido">⚠️ Inválido</option>
-                      <option value="não encontrado">🚫 Não encontrado</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Webpage</label>
-                    <input type="text" value={webpage} onChange={e => setWebpage(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" placeholder="Webpage" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tipo de Cliente *</label>
-                    <select 
-                      value={tipo_cliente} 
-                      onChange={e => setTipoCliente(e.target.value)} 
-                      required 
-                      className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-                    >
-                      <option value="normal">Cliente Normal</option>
-                      <option value="grupo_nacional">Cliente Grupo Nacional</option>
-                      <option value="nao_grupo">Cliente Não Grupo</option>
-                      <option value="subsidiarias">Cliente Subsidiárias</option>
-                      <option value="nao_grupo_estrangeiro">Cliente Não Grupo Estrangeiro</option>
-                      <option value="associados">Cliente Associados</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Saldo Inicial</label>
-                    <input type="number" step="0.01" value={saldo_inicial} onChange={e => setSaldoInicial(Number(e.target.value))} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" placeholder="0.00" />
-                  </div>
-                  <div className="flex justify-end md:col-span-3 gap-4 pt-4 border-t border-zinc-100 mt-4">
-                    <button type="button" onClick={() => setShowForm(false)} className="px-6 py-2 text-sm font-bold text-zinc-500 hover:bg-zinc-100 transition-all">Cancelar</button>
-                    <button type="submit" className="bg-[#003366] text-white px-8 py-2 text-sm font-bold shadow-lg hover:bg-[#002244] transition-all">
-                      {selectedClient ? 'Atualizar Dados' : 'Registar Cliente'}
-                    </button>
-                  </div>
-                </form>
-              </div>
+              <ClientForm 
+                initialData={selectedClient} 
+                onSuccess={() => { setShowForm(false); onRefresh(); }} 
+                onBack={() => setShowForm(false)} 
+              />
             </motion.div>
           </div>
         )}
@@ -14625,6 +14382,8 @@ export default function App() {
           setActiveTab={setActiveTab}
           caixas={caixas}
           mode={activeTab === 'electronic_invoices' ? 'electronic' : 'standard'}
+          fiscalSeries={fiscalSeries}
+          onRefresh={fetchData}
         />
       );
       case 'tax-settings': return <TaxSeriesModule />;
@@ -14702,10 +14461,12 @@ export default function App() {
         />
       );
       case 'hr': return <HRModule onRefresh={fetchData} onSetIsContractModalOpen={setIsContractModalOpen} onSetEmployee={setAppSelectedEmployee} caixas={caixas} companyName={companyName} />;
-      case 'accounting': return <AccountingModule invoices={invoices} clients={clients} />;
-      case 'specialized': return <SpecializedManagementModule />;
+      case 'accounting': return <AccountingModule invoices={invoices} clients={clients} fiscalSeries={fiscalSeries} onRefresh={fetchData} employees={employees} issuedDocuments={issuedDocuments} />;
+      case 'specialized': return <SpecializedManagementModule activeTab={activeTab} setActiveTab={setActiveTab} />;
+      case 'archive': return <ArchiveModule />;
       case 'church': return <ChurchModule />;
       case 'agrobusiness': return <AgrobusinessModule />;
+      case 'tax-series': return <FiscalSeriesModule series={fiscalSeries} onRefresh={fetchData} users={employees} />;
       case 'settings': return (
         <div className="space-y-6">
           <SettingsModule 
@@ -14778,40 +14539,30 @@ export default function App() {
         <RightSidebar />
         
         {isClientModalOpen && (
-          <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in zoom-in-95 duration-200">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl p-0 relative overflow-hidden flex flex-col max-h-[90vh]">
-              <div className="shrink-0 pt-6 px-6 pb-4 border-b border-zinc-100 flex justify-between items-center bg-zinc-50/80 backdrop-blur">
-                <div>
-                  <h2 className="text-2xl font-black text-[#003366] tracking-tight uppercase">Registar Novo Cliente</h2>
-                  <p className="text-sm text-zinc-500 mt-1">Registe e gira o perfil do cliente para utilizar no ponto de venda.</p>
-                </div>
-                <button 
-                  onClick={() => setIsClientModalOpen(false)} 
-                  className="w-8 h-8 flex items-center justify-center text-zinc-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
-                >
-                  ×
-                </button>
-              </div>
-              <div className="p-6 overflow-y-auto">
-                <ClientForm 
-                  onBack={() => setIsClientModalOpen(false)} 
-                  onSuccess={() => {
-                    setIsClientModalOpen(false);
-                    fetchData();
-                  }} 
-                />
-              </div>
-            </div>
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="w-full max-w-4xl bg-white shadow-2xl overflow-hidden"
+            >
+              <ClientForm 
+                onBack={() => setIsClientModalOpen(false)} 
+                onSuccess={() => {
+                  setIsClientModalOpen(false);
+                  fetchData();
+                }} 
+              />
+            </motion.div>
           </div>
         )}
         
-      {showActionsModal && selectedDocument && (
+      {/* {showActionsModal && selectedDocument && (
         <DocumentActionsModal 
           document={selectedDocument} 
           onClose={() => setShowActionsModal(false)} 
           onAction={handleDocumentAction}
         />
-      )}
+      )} */}
 
       {printingInvoice && (
         <div className="fixed inset-0 z-[200] bg-white overflow-auto print:p-0">

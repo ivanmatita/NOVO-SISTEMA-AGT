@@ -76,11 +76,49 @@ async function startServer() {
   // Invoices & Issued Documents
   app.get("/api/invoices", (req, res) => res.json(issuedDocuments));
   app.get("/api/issued-documents", (req, res) => res.json(issuedDocuments));
+  app.get("/api/invoices/:id", (req, res) => {
+    const doc = issuedDocuments.find(d => d.id === Number(req.params.id));
+    if (doc) res.json(doc);
+    else res.status(404).json({ error: "Document not found" });
+  });
+  app.delete("/api/invoices/:id", (req, res) => {
+    const index = issuedDocuments.findIndex(d => d.id === Number(req.params.id));
+    if (index !== -1) {
+      issuedDocuments.splice(index, 1);
+      res.json({ success: true });
+    } else res.status(404).json({ error: "Document not found" });
+  });
+  app.post("/api/invoices/:id/clone", (req, res) => {
+    const doc = issuedDocuments.find(d => d.id === Number(req.params.id));
+    if (doc) {
+      const cloned = { ...doc, id: Date.now(), invoice_number: `${doc.invoice_number} (CLONE)`, created_at: new Date().toISOString() };
+      issuedDocuments.push(cloned);
+      res.json(cloned);
+    } else res.status(404).json({ error: "Document not found" });
+  });
   app.post("/api/invoices", (req, res) => {
+    const series = fiscalSeries.find(s => s.id === Number(req.body.series_id));
+    
+    // Auto-generate or use manual number
+    let invoice_number = req.body.invoice_number;
+    
+    if (!invoice_number) {
+      const counter = series ? series.counter : (issuedDocuments.length + 1);
+      if (series) series.counter++;
+      invoice_number = `${req.body.document_type || 'FT'} ${new Date().getFullYear()}/${series ? series.reference + '/' : ''}${counter}`;
+    }
+
+    // Strict uniqueness check
+    const isDuplicate = issuedDocuments.some(d => d.invoice_number === invoice_number);
+    if (isDuplicate) {
+      // If auto-generated, try adding a timestamp or random suffix
+      invoice_number = `${invoice_number}-${Date.now().toString().slice(-4)}`;
+    }
+
     const newDoc = { 
       ...req.body, 
       id: Date.now(), 
-      invoice_number: `${req.body.document_type || 'FT'} ${new Date().getFullYear()}/${issuedDocuments.length + 1}`,
+      invoice_number,
       created_at: new Date().toISOString() 
     };
     issuedDocuments.push(newDoc);

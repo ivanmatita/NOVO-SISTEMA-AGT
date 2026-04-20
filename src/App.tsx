@@ -177,6 +177,7 @@ const fetchJson = async (url: string, options?: RequestInit) => {
   return response.json();
 };
 
+const CATEGORIES = ['Mercadoria', 'Serviço', 'Matéria-prima', 'Consumível', 'Equipamento', 'Outro'];
 const ALL_TAXES = [
   "IVA Isento Artigo 14º Nº2 a) do CIVA",
   "IVA Isento Artigo 14º Nº2 b) do CIVA",
@@ -541,7 +542,6 @@ const Sidebar = ({ activeTab, setActiveTab }: {
     { id: 'dashboard', label: 'Painel de Bordo', icon: LayoutDashboard },
     { id: 'workplaces', label: 'Locais de Trabalho', icon: Briefcase },
     { id: 'secretary', label: 'Secretaria Beta', icon: Paperclip },
-    { id: 'archives', label: 'Arquivos', icon: FileBox },
     { id: 'pos', label: 'Ponto de Venda', icon: Monitor, hasChevron: true },
     { id: 'electronic_invoices', label: 'Faturação Electrónica', icon: FileCheck },
     { id: 'security', label: 'Segurança Gestão privada', icon: ShieldCheck },
@@ -7656,7 +7656,6 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
   const sections = [
     { id: 'docs', label: 'Documento da Empresa', icon: Building2 },
     { id: 'letters', label: 'Cartas', icon: Mail },
-    { id: 'archives', label: 'Arquivos', icon: FileBox },
     { id: 'attachments', label: 'Anexos', icon: Paperclip },
   ];
 
@@ -9810,41 +9809,32 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
   caixas: Caixa[]
 }) => {
   const { user } = useAuth();
-  
-  // Section 1: Informações do documento
+  const [clientId, setClientId] = useState<number | ''>('');
   const [documentType, setDocumentType] = useState('Fatura');
   const [seriesId, setSeriesId] = useState<number | ''>('');
-  const [workSiteId, setWorkSiteId] = useState<number | ''>('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [dueDate, setDueDate] = useState('');
-  const [vatWithholding, setVatWithholding] = useState('Sem cativação');
-  const [exchangeRate, setExchangeRate] = useState(1);
-  const [currency, setCurrency] = useState('Kwanza');
-  const [counterValue, setCounterValue] = useState(0);
-  const [globalMetric, setGlobalMetric] = useState('Nenhuma métrica');
-  const [globalDiscount, setGlobalDiscount] = useState(0);
-  const [paymentCondition, setPaymentCondition] = useState('Pronto Pagamento');
-  const [paymentMethod, setPaymentMethod] = useState('');
+  const [countryCode, setCountryCode] = useState('Angola');
+  const [workSiteId, setWorkSiteId] = useState<string>('');
+  const [dueDate, setDueDate] = useState<string>('');
+  const [vatWithholding, setVatWithholding] = useState<string>('0');
+  const [exchangeRate, setExchangeRate] = useState<string>('1');
+  const [currency, setCurrency] = useState<string>('Kwanza');
+  const [counterValue, setCounterValue] = useState<string>('0');
+  const [globalDiscount, setGlobalDiscount] = useState<string>('0');
+  const [serviceDate, setServiceDate] = useState(new Date().toISOString().split('T')[0]);
+  const [serviceLocation, setServiceLocation] = useState('');
+  const [items, setItems] = useState<Partial<InvoiceItem>[]>([]);
   const [cashBox, setCashBox] = useState('');
-
-  // Manual Series fields
+  const [paymentMethod, setPaymentMethod] = useState('');
+  const [paymentCondition, setPaymentCondition] = useState('Pronto Pagamento');
+  const [expandedDimensions, setExpandedDimensions] = useState<number | null>(null);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [documentNumberManual, setDocumentNumberManual] = useState('');
   const [referenceManual, setReferenceManual] = useState('');
 
-  // Section 2: Informações do adquirente
-  const [countryCode, setCountryCode] = useState('Angola');
-  const [clientId, setClientId] = useState<number | ''>('');
-  const [serviceDate, setServiceDate] = useState(new Date().toISOString().split('T')[0]);
-  const [serviceLocation, setServiceLocation] = useState('');
-
-  // Section 3: Bens e serviços
-  const [items, setItems] = useState<Partial<InvoiceItem>[]>([]);
-
-  const selectedSeries = fiscalSeries.find(s => s.id === Number(seriesId));
-
-  const total = items.reduce((sum, item) => sum + (item.total || 0), 0);
-  const vatAmount = total * 0.14;
-  const finalTotal = total + vatAmount - globalDiscount;
+  useEffect(() => {
+    fetchJson('/api/warehouses').then(data => setWarehouses(data || []));
+  }, []);
 
   const addItem = () => {
     setItems([...items, { 
@@ -9852,54 +9842,82 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
       quantity: 1, 
       unit_price: 0, 
       total: 0,
-      tipo_artigo: 'produto'
+      tipologia: 'Mercadoria',
+      desconto: 0,
+      tipo_artigo: 'produto',
+      comprimento: 0,
+      largura: 0,
+      altura: 0,
+      tax: ALL_TAXES[0]
     }]);
+  };
+
+  const removeItem = (index: number) => {
+    setItems(items.filter((_, i) => i !== index));
   };
 
   const updateItem = (index: number, field: keyof InvoiceItem, value: any) => {
     const newItems = [...items];
     newItems[index] = { ...newItems[index], [field]: value };
-    if (field === 'quantity' || field === 'unit_price') {
+    
+    if (field === 'quantity' || field === 'unit_price' || field === 'desconto') {
       const q = field === 'quantity' ? Number(value) : (newItems[index].quantity || 0);
       const p = field === 'unit_price' ? Number(value) : (newItems[index].unit_price || 0);
-      newItems[index].total = q * p;
+      const d = field === 'desconto' ? Number(value) : (newItems[index].desconto || 0);
+      newItems[index].total = (q * p) - d;
     }
+
     if (field === 'product_id' && value) {
       const prod = products.find(p => p.id === Number(value));
       if (prod) {
         newItems[index].description = prod.name;
         newItems[index].unit_price = prod.price;
-        newItems[index].total = (newItems[index].quantity || 1) * prod.price;
+        newItems[index].total = ((newItems[index].quantity || 1) * prod.price) - (newItems[index].desconto || 0);
       }
     }
+    
     setItems(newItems);
   };
 
+  const total = (items ?? []).reduce((sum, item) => sum + (item.total || 0), 0);
+  const vatAmount = total * 0.14;
+  const finalTotal = total + vatAmount - Number(globalDiscount || 0);
+
+  const selectedSeries = fiscalSeries.find(s => s.id === Number(seriesId));
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (items.length === 0) { alert('Adicione pelo menos um item.'); return; }
-    if (!seriesId) { alert('Selecione uma série.'); return; }
-    if (!clientId) { alert('Selecione um cliente.'); return; }
+    if (items.length === 0) return;
+    if (!seriesId) { alert('Por favor, selecione uma série.'); return; }
+    if (!clientId) { alert('Por favor, selecione um cliente.'); return; }
 
     const client = clients.find(c => c.id === Number(clientId));
     const isManual = selectedSeries?.type === 'manual';
-    
+
     const res = await fetchWithAuth('/api/invoices', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
-        cliente_id: clientId || null, 
+        cliente_id: clientId, 
         client_name: client?.name || '',
         date, 
         due_date: dueDate,
         items,
         document_type: documentType,
-        total: finalTotal,
+        work_site_id: workSiteId,
+        vat_withholding: parseFloat(vatWithholding),
+        exchange_rate: parseFloat(exchangeRate),
+        currency,
+        counter_value: parseFloat(counterValue),
+        global_discount: parseFloat(globalDiscount),
+        service_date: serviceDate,
+        service_location: serviceLocation,
+        cash_box: paymentCondition === 'Pronto Pagamento' ? cashBox : '',
+        payment_method: paymentCondition === 'Pronto Pagamento' ? paymentMethod : 'A Prazo',
         series_id: seriesId,
         invoice_number: isManual ? documentNumberManual : undefined,
         series_reference: isManual ? referenceManual : selectedSeries?.reference,
-        payment_method: paymentCondition === 'Pronto Pagamento' ? paymentMethod : 'A Prazo',
-        cash_box: paymentCondition === 'Pronto Pagamento' ? cashBox : '',
+        total: finalTotal,
         company_id: user?.company_id
       })
     });
@@ -9907,306 +9925,440 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
     if (res.ok) {
       onSuccess();
     } else {
-      const err = await res.json();
-      alert('Erro: ' + (err.error || 'Falha ao emitir documento'));
+      const errorData = await res.json().catch(() => ({ error: 'Erro desconhecido ao emitir documento' }));
+      alert('Erro ao emitir documento: ' + (errorData.error || 'Erro desconhecido'));
     }
   };
 
   return (
-    <div className="bg-white min-h-screen">
-      {/* Header */}
-      <div className="p-6 border-b border-zinc-200">
-        <h2 className="text-xl font-bold text-[#003366] flex items-center gap-2">
-          <FileText size={20} /> Emitir Novo Documento
-        </h2>
+    <div className="space-y-8 bg-zinc-50/30 p-4 sm:p-8 min-h-screen">
+      <div className="flex items-center gap-4 mb-8">
+        <button onClick={onBack} className="p-2 hover:bg-zinc-100 rounded-none text-zinc-400 transition-colors">
+          <ChevronLeft size={24} />
+        </button>
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-zinc-100 flex items-center justify-center text-zinc-500">
+            <FileText size={18} />
+          </div>
+          <h2 className="text-xl font-bold text-[#003366]">Informações do documento</h2>
+        </div>
       </div>
 
-      <div className="max-w-4xl mx-auto p-8 space-y-6">
-        <div className="flex items-center gap-3 text-[#003366] font-bold text-lg mb-4">
-          <button onClick={onBack} className="p-1 hover:bg-zinc-100 rounded text-zinc-500">
-            <ChevronLeft size={20} />
-          </button>
-          <FileText size={20} />
-          Informações do documento
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Section 1 */}
-          <div className="border border-zinc-200 p-6 space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-zinc-600 block">Tipo de documento <span className="text-red-500">*</span></label>
-                <div className="relative">
-                  <select value={documentType} onChange={e => setDocumentType(e.target.value)} required className="w-full border border-zinc-300 px-3 py-2 text-sm appearance-none focus:outline-none focus:border-[#003366] bg-white">
-                    <option>Fatura</option>
-                    <option>Fatura Recibo</option>
-                    <option>Fatura Proforma</option>
-                    <option>Orçamento</option>
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" size={16} />
-                </div>
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-zinc-600 block">Série</label>
-                <div className="relative">
-                  <select value={seriesId} onChange={e => setSeriesId(Number(e.target.value))} required className="w-full border border-zinc-300 px-3 py-2 text-sm appearance-none focus:outline-none focus:border-[#003366] bg-white">
-                    <option value="">Selecionar Série</option>
-                    {fiscalSeries.map(s => <option key={s.id} value={s.id}>{s.name} ({s.type === 'manual' ? 'Manual' : 'Auto'})</option>)}
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" size={16} />
-                </div>
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-zinc-600 block">Local de trabalho</label>
-                <div className="relative">
-                  <select value={workSiteId} onChange={e => setWorkSiteId(Number(e.target.value))} className="w-full border border-zinc-300 px-3 py-2 text-sm appearance-none focus:outline-none focus:border-[#003366] bg-white">
-                    <option value="">Selecione o local</option>
-                    {workSites.map(w => <option key={w.id} value={w.id}>{w.title}</option>)}
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" size={16} />
-                </div>
-              </div>
+      <form onSubmit={handleSubmit} className="space-y-8">
+        {/* Section 1: Informações do documento */}
+        <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-600">Tipo de documento <span className="text-red-500">*</span></label>
+              <select 
+                value={documentType} 
+                onChange={(e) => setDocumentType(e.target.value)}
+                required
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+              >
+                <option value="Fatura">Fatura</option>
+                <option value="Fatura Recibo">Fatura Recibo</option>
+                <option value="Fatura Proforma">Fatura Proforma</option>
+                <option value="Orçamento">Orçamento</option>
+                <option value="Nota de Crédito">Nota de Crédito</option>
+                <option value="Nota de Débito">Nota de Débito</option>
+                <option value="Guia de Remessa">Guia de Remessa</option>
+                <option value="Guia de Transporte">Guia de Transporte</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-600">Série</label>
+              <select 
+                value={seriesId} 
+                onChange={(e) => setSeriesId(e.target.value ? Number(e.target.value) : '')} 
+                required
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+              >
+                <option value="">Selecionar Série</option>
+                {fiscalSeries.map(s => (
+                  <option key={s.id} value={s.id}>{s.name} ({s.type === 'manual' ? 'Manual' : 'Auto'})</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-600">Local de trabalho</label>
+              <select 
+                value={workSiteId} 
+                onChange={(e) => setWorkSiteId(e.target.value)}
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+              >
+                <option value="">Selecione o local</option>
+                {workSites.map(ws => <option key={ws.id} value={ws.id.toString()}>{ws.title}</option>)}
+              </select>
             </div>
 
             {selectedSeries?.type === 'manual' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-2">
+              <div className="col-span-1 md:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6 bg-amber-50/50 p-4 border border-amber-100">
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-amber-600 block">Número do Doc. Manual <span className="text-red-500">*</span></label>
-                  <input type="text" value={documentNumberManual} onChange={e => setDocumentNumberManual(e.target.value)} required className="w-full border border-amber-300 px-3 py-2 text-sm focus:outline-none focus:border-amber-600 bg-amber-50" />
+                  <input type="text" value={documentNumberManual} onChange={e => setDocumentNumberManual(e.target.value)} required className="w-full border border-amber-300 px-3 py-2 text-sm focus:outline-none focus:border-amber-600 bg-white" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-amber-600 block">Ref. da Série Manual <span className="text-red-500">*</span></label>
-                  <input type="text" value={referenceManual} onChange={e => setReferenceManual(e.target.value)} required className="w-full border border-amber-300 px-3 py-2 text-sm focus:outline-none focus:border-amber-600 bg-amber-50" />
+                  <input type="text" value={referenceManual} onChange={e => setReferenceManual(e.target.value)} required className="w-full border border-amber-300 px-3 py-2 text-sm focus:outline-none focus:border-amber-600 bg-white" />
                 </div>
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-zinc-600 block">Data de emissão</label>
-                <input type="date" value={date} onChange={e => setDate(e.target.value)} required className="w-full border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:border-[#003366] bg-white" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-zinc-600 block">Data de vencimento</label>
-                <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} placeholder="dd/mm/yyyy" className="w-full border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:border-[#003366] bg-white" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-zinc-600 block">Cativação de IVA</label>
-                <div className="relative">
-                  <select value={vatWithholding} onChange={e => setVatWithholding(e.target.value)} className="w-full border border-zinc-300 px-3 py-2 text-sm appearance-none focus:outline-none focus:border-[#003366] bg-white">
-                    <option>Sem cativação</option>
-                    <option>Com cativação</option>
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" size={16} />
-                </div>
-              </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-600">Data de emissão</label>
+              <input 
+                type="date" 
+                value={date} 
+                onChange={(e) => setDate(e.target.value)}
+                required
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+              />
             </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-600">Data de vencimento</label>
+              <input 
+                type="date" 
+                value={dueDate} 
+                onChange={(e) => setDueDate(e.target.value)}
+                required
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-600">Cativação de IVA</label>
+              <select 
+                value={vatWithholding} 
+                onChange={(e) => setVatWithholding(e.target.value)}
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+              >
+                <option value="0">Sem cativação</option>
+                <option value="0.5">50%</option>
+                <option value="1">100%</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-600">Câmbio</label>
+              <input 
+                type="number" 
+                value={exchangeRate} 
+                onChange={(e) => setExchangeRate(e.target.value)}
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-600">Moeda</label>
+              <select 
+                value={currency} 
+                onChange={(e) => setCurrency(e.target.value)}
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+              >
+                <option value="Kwanza">Kwanza</option>
+                <option value="USD">USD</option>
+                <option value="Euro">Euro</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-600">Contravalor</label>
+              <input 
+                type="number" 
+                value={counterValue} 
+                onChange={(e) => setCounterValue(e.target.value)}
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-600">Desconto global</label>
+              <input 
+                type="number" 
+                value={globalDiscount} 
+                onChange={(e) => setGlobalDiscount(e.target.value)}
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-600">Condição de Pagamento</label>
+              <select 
+                value={paymentCondition} 
+                onChange={(e) => setPaymentCondition(e.target.value)}
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+              >
+                <option value="Pronto Pagamento">Pronto Pagamento</option>
+                <option value="A Prazo">A Prazo</option>
+              </select>
+            </div>
+            {paymentCondition === 'Pronto Pagamento' && (
+              <>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-zinc-600">Método de Pagamento <span className="text-red-500">*</span></label>
+                  <select 
+                    value={paymentMethod} 
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    required
+                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+                  >
+                    <option value="">Selecione...</option>
+                    <option value="Numerário">Numerário / Dinheiro</option>
+                    <option value="Multicaixa">TPA / Multicaixa</option>
+                    <option value="Transferência">Transferência Bancária</option>
+                    <option value="Depósito">Depósito Bancário</option>
+                    <option value="Cheque">Cheque</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-zinc-600">Caixa / Conta <span className="text-red-500">*</span></label>
+                  <select 
+                    value={cashBox} 
+                    onChange={(e) => setCashBox(e.target.value)}
+                    required
+                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+                  >
+                    <option value="">Selecione...</option>
+                    {caixas.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                  </select>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-zinc-600 block">Câmbio</label>
-                <input type="number" value={exchangeRate} onChange={e => setExchangeRate(Number(e.target.value))} min="0" step="0.01" className="w-full border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:border-[#003366] bg-white" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-zinc-600 block">Moeda</label>
-                <div className="relative">
-                  <select value={currency} onChange={e => setCurrency(e.target.value)} className="w-full border border-zinc-300 px-3 py-2 text-sm appearance-none focus:outline-none focus:border-[#003366] bg-white">
-                    <option>Kwanza</option>
-                    <option>Dólar</option>
-                    <option>Euro</option>
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" size={16} />
-                </div>
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-zinc-600 block">Contravalor</label>
-                <input type="number" value={counterValue} readOnly className="w-full border border-zinc-300 px-3 py-2 text-sm bg-zinc-50 text-zinc-500 cursor-not-allowed focus:outline-none" />
-              </div>
+        {/* Section 2: Informações do adquirente */}
+        <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-6">
+          <h3 className="text-lg font-bold text-[#003366] border-b border-zinc-100 pb-4">Informações do adquirente (Cliente)</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-600">Código do país <span className="text-red-500">*</span></label>
+              <select 
+                value={countryCode} 
+                onChange={(e) => setCountryCode(e.target.value)}
+                required
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+              >
+                <option value="Angola">Angola</option>
+                <option value="Portugal">Portugal</option>
+                <option value="Brasil">Brasil</option>
+              </select>
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-zinc-600 block">Métrica Global</label>
-                <div className="relative">
-                  <select value={globalMetric} onChange={e => setGlobalMetric(e.target.value)} className="w-full border border-zinc-300 px-3 py-2 text-sm appearance-none focus:outline-none focus:border-[#003366] bg-white">
-                    <option>Nenhuma métrica</option>
-                    <option>Métrica 1</option>
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" size={16} />
-                </div>
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-zinc-600 block">Desconto global</label>
-                <input type="number" value={globalDiscount} onChange={e => setGlobalDiscount(Number(e.target.value))} min="0" step="0.01" className="w-full border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:border-[#003366] bg-white" />
-              </div>
+            <div className="space-y-2 md:col-span-2">
+              <label className="text-xs font-bold text-zinc-600">Selecionar cliente <span className="text-red-500">*</span></label>
+              <select 
+                value={clientId} 
+                onChange={(e) => setClientId(e.target.value ? Number(e.target.value) : '')}
+                required
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+              >
+                <option value="">Selecione um cliente</option>
+                {clients.map(c => <option key={c.id} value={c.id}>{c.name} ({c.contribuinte})</option>)}
+              </select>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-zinc-600 block">Condição de Pagamento</label>
-                <div className="relative">
-                  <select value={paymentCondition} onChange={e => setPaymentCondition(e.target.value)} className="w-full border border-zinc-300 px-3 py-2 text-sm appearance-none focus:outline-none focus:border-[#003366] bg-white">
-                    <option>Pronto Pagamento</option>
-                    <option>A Prazo</option>
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" size={16} />
-                </div>
-              </div>
-              {paymentCondition === 'Pronto Pagamento' && (
-                <>
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-zinc-600 block">Método de Pagamento <span className="text-red-500">*</span></label>
-                    <div className="relative">
-                      <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} required className="w-full border border-zinc-300 px-3 py-2 text-sm appearance-none focus:outline-none focus:border-[#003366] bg-white">
-                        <option value="">Selecione...</option>
-                        <option value="Numerário">Numerário / Dinheiro</option>
-                        <option value="Multicaixa">TPA / Multicaixa</option>
-                        <option value="Transferência">Transferência Bancária</option>
-                        <option value="Depósito">Depósito Bancário</option>
-                        <option value="Cheque">Cheque</option>
-                      </select>
-                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" size={16} />
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-zinc-600 block">Caixa / Conta <span className="text-red-500">*</span></label>
-                    <div className="relative">
-                      <select value={cashBox} onChange={e => setCashBox(e.target.value)} required className="w-full border border-zinc-300 px-3 py-2 text-sm appearance-none focus:outline-none focus:border-[#003366] bg-white">
-                        <option value="">Selecione...</option>
-                        {caixas.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-                      </select>
-                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" size={16} />
-                    </div>
-                  </div>
-                </>
-              )}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-600">Data prestação de bens/serviços <span className="text-red-500">*</span></label>
+              <input 
+                type="date" 
+                value={serviceDate} 
+                onChange={(e) => setServiceDate(e.target.value)}
+                required
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+              />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <label className="text-xs font-bold text-zinc-600">Local de prestação de bens/serviços <span className="text-red-500">*</span></label>
+              <input 
+                type="text" 
+                value={serviceLocation} 
+                onChange={(e) => setServiceLocation(e.target.value)}
+                placeholder="Informe o local da prestação de serviço"
+                required
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+              />
             </div>
           </div>
+        </div>
 
-          {/* Section 2 */}
-          <div className="border border-zinc-200 p-6 space-y-6">
-            <h3 className="text-[#003366] font-bold text-md border-b border-zinc-100 pb-2">Informações do adquirente</h3>
+        {/* Section 3: Bens e serviços */}
+        <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-6">
+          <div className="flex justify-between items-center border-b border-zinc-100 pb-4">
+            <h3 className="text-lg font-bold text-[#003366]">Bens e serviços</h3>
+            <button 
+              type="button"
+              onClick={addItem}
+              className="bg-[#003366] text-white px-6 py-2.5 font-bold flex items-center gap-2 hover:bg-[#002244] transition-all text-sm shadow-sm rounded-none"
+            >
+              <Plus size={18} /> Adicionar a lista
+            </button>
+          </div>
+          
+          <div className="space-y-4">
+            {items.map((item, idx) => (
+              <div key={idx} className="bg-zinc-50 p-4 border border-zinc-100 space-y-4">
+                <div className="grid grid-cols-12 gap-4 items-end">
+                  <div className="col-span-2 space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Produto/Serviço</label>
+                    <select 
+                      value={item.product_id || ''} 
+                      onChange={(e) => updateItem(idx, 'product_id', e.target.value)}
+                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
+                    >
+                      <option value="">Manual...</option>
+                      {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="col-span-3 space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Descrição</label>
+                    <input 
+                      type="text" 
+                      value={item.description} 
+                      onChange={(e) => updateItem(idx, 'description', e.target.value)}
+                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
+                    />
+                  </div>
+                  <div className="col-span-2 space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Tipologia</label>
+                    <select 
+                      value={item.tipologia || 'S/T'}
+                      onChange={(e) => updateItem(idx, 'tipologia', e.target.value)}
+                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
+                    >
+                      <option value="Mercadoria">Mercadoria</option>
+                      {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div className="col-span-2 space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Armazém</label>
+                    <select 
+                      value={item.warehouse_id || ''}
+                      onChange={(e) => updateItem(idx, 'warehouse_id', e.target.value)}
+                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
+                    >
+                      <option value="">Geral</option>
+                      {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="col-span-1 space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Tipo</label>
+                    <select 
+                      value={item.tipo_artigo || 'produto'}
+                      onChange={(e) => updateItem(idx, 'tipo_artigo', e.target.value)}
+                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
+                    >
+                      <option value="produto">PRO</option>
+                      <option value="servico">SER</option>
+                    </select>
+                  </div>
+                  <div className="col-span-1 space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Taxa</label>
+                    <select 
+                      value={item.tax || ALL_TAXES[0]}
+                      onChange={(e) => {
+                        updateItem(idx, 'tax', e.target.value);
+                      }}
+                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
+                    >
+                      {ALL_TAXES.map((t, i) => <option key={i} value={t}>{t}</option>)}
+                    </select>
+                  </div>
+                  <div className="col-span-1">
+                    <button type="button" onClick={() => removeItem(idx)} className="w-full bg-red-50 text-red-500 p-2 border border-red-100 hover:bg-red-500 hover:text-white transition-all"><X size={16}/></button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-12 gap-4 items-end bg-white p-3 border border-zinc-100">
+                   <div className="col-span-2 space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase">Qtd</label>
+                      <input type="number" value={item.quantity} onChange={e => updateItem(idx, 'quantity', e.target.value)} className="w-full border-none focus:ring-0 text-sm font-bold text-[#003366]" />
+                   </div>
+                   <div className="col-span-3 space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase">P. Unitário</label>
+                      <input type="number" value={item.unit_price} onChange={e => updateItem(idx, 'unit_price', e.target.value)} className="w-full border-none focus:ring-0 text-sm font-bold text-[#003366]" />
+                   </div>
+                   <div className="col-span-2 space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase">Desconto</label>
+                      <input type="number" value={item.desconto || 0} onChange={e => updateItem(idx, 'desconto', e.target.value)} className="w-full border-none focus:ring-0 text-sm font-bold text-red-500" />
+                   </div>
+                   <div className="col-span-3 space-y-1 border-l pl-4">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase">Subtotal Líquido</label>
+                      <p className="text-sm font-black text-[#003366]">{formatCurrency(item.total || 0)}</p>
+                   </div>
+                   <div className="col-span-2">
+                      <button 
+                        type="button"
+                        onClick={() => setExpandedDimensions(expandedDimensions === idx ? null : idx)}
+                        className={`w-full py-1 text-[9px] font-black uppercase tracking-widest border transition-all ${expandedDimensions === idx ? 'bg-[#003366] text-white border-[#003366]' : 'bg-zinc-50 text-zinc-400 border-zinc-200'}`}
+                      >
+                         {expandedDimensions === idx ? 'Fechar Dimensões' : 'Dimensões (cm)'}
+                      </button>
+                   </div>
+                </div>
+
+                {expandedDimensions === idx && (
+                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="grid grid-cols-3 gap-4 pt-2">
+                     <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-zinc-400 uppercase">Comprimento</label>
+                        <input type="number" value={item.comprimento || 0} onChange={e => updateItem(idx, 'comprimento', e.target.value)} className="w-full bg-white border border-zinc-100 p-2 text-xs focus:border-[#003366] outline-none" />
+                     </div>
+                     <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-zinc-400 uppercase">Largura</label>
+                        <input type="number" value={item.largura || 0} onChange={e => updateItem(idx, 'largura', e.target.value)} className="w-full bg-white border border-zinc-100 p-2 text-xs focus:border-[#003366] outline-none" />
+                     </div>
+                     <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-zinc-400 uppercase">Altura</label>
+                        <input type="number" value={item.altura || 0} onChange={e => updateItem(idx, 'altura', e.target.value)} className="w-full bg-white border border-zinc-100 p-2 text-xs focus:border-[#003366] outline-none" />
+                     </div>
+                  </motion.div>
+                )}
+              </div>
+            ))}
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-zinc-600 block">Código de país <span className="text-red-500">*</span></label>
-                <div className="relative">
-                  <select value={countryCode} onChange={e => setCountryCode(e.target.value)} required className="w-full border border-zinc-300 px-3 py-2 text-sm appearance-none focus:outline-none focus:border-[#003366] bg-white">
-                    <option>Angola</option>
-                    <option>Portugal</option>
-                    <option>EUA</option>
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" size={16} />
-                </div>
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-zinc-600 block">Selecionar cliente <span className="text-red-500">*</span></label>
-                <div className="relative">
-                  <select value={clientId} onChange={e => setClientId(Number(e.target.value))} required className="w-full border border-zinc-300 px-3 py-2 text-sm appearance-none focus:outline-none focus:border-[#003366] bg-white">
-                    <option value="">Selecione um cliente</option>
-                    {clients.map(c => <option key={c.id} value={c.id}>{c.name} ({c.contribuinte})</option>)}
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" size={16} />
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-zinc-600 block">Data prestação de bens/serviços <span className="text-red-500">*</span></label>
-                <input type="date" value={serviceDate} onChange={e => setServiceDate(e.target.value)} required className="w-full border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:border-[#003366] bg-white" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-zinc-600 block">Local de prestação de bens/serviços <span className="text-red-500">*</span></label>
-                <input type="text" value={serviceLocation} onChange={e => setServiceLocation(e.target.value)} required placeholder="Informe o local da prestação de serviço" className="w-full border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:border-[#003366] bg-white" />
-              </div>
-            </div>
-          </div>
-
-          {/* Section 3 */}
-          <div className="border border-zinc-200 p-6 space-y-6">
-            <div className="flex justify-between items-center border-b border-zinc-100 pb-2">
-              <h3 className="text-[#003366] font-bold text-md">Bens e serviços</h3>
-              <button type="button" onClick={addItem} className="bg-[#003366] text-white text-xs font-semibold px-4 py-2 rounded-sm flex items-center gap-2 hover:bg-[#002244] transition-colors">
-                <Plus size={14} /> Adicionar à lista
-              </button>
-            </div>
-
-            {items.length === 0 ? (
-              <div className="border-2 border-dashed border-zinc-200 p-12 text-center text-zinc-400 text-sm">
-                Nenhum item adicionado. Clique em &quot;Adicionar à lista&quot; para começar.
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm border-collapse">
-                  <thead>
-                    <tr className="border-b border-zinc-200">
-                      <th className="py-2 text-zinc-600 font-bold">Produto/Serviço</th>
-                      <th className="py-2 text-zinc-600 font-bold">Qtd</th>
-                      <th className="py-2 text-zinc-600 font-bold">P. Unit.</th>
-                      <th className="py-2 text-zinc-600 font-bold text-right">Total</th>
-                      <th className="py-2"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.map((item, idx) => (
-                      <tr key={idx} className="border-b border-zinc-100 hover:bg-zinc-50">
-                        <td className="py-2 pr-2">
-                          <select value={item.product_id || ''} onChange={e => updateItem(idx, 'product_id', e.target.value)} className="w-full border-none bg-transparent focus:outline-none">
-                            <option value="">Manual...</option>
-                            {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                          </select>
-                          <input type="text" value={item.description} onChange={e => updateItem(idx, 'description', e.target.value)} className="w-full border-none bg-transparent text-xs text-zinc-500 focus:outline-none mt-1" placeholder="Descrição alargada..." />
-                        </td>
-                        <td className="py-2 pr-2 w-20">
-                          <input type="number" value={item.quantity} onChange={e => updateItem(idx, 'quantity', e.target.value)} className="w-full border border-zinc-200 px-2 py-1 focus:outline-none" />
-                        </td>
-                        <td className="py-2 pr-2 w-32">
-                          <input type="number" value={item.unit_price} onChange={e => updateItem(idx, 'unit_price', e.target.value)} className="w-full border border-zinc-200 px-2 py-1 focus:outline-none" />
-                        </td>
-                        <td className="py-2 text-right font-semibold text-[#003366]">
-                          {formatCurrency(item.total || 0)}
-                        </td>
-                        <td className="py-2 text-right">
-                          <button type="button" onClick={() => setItems(items.filter((_, i) => i !== idx))} className="text-zinc-400 hover:text-red-500">
-                            <X size={16} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            {items.length === 0 && (
+              <div className="py-20 text-center border-2 border-dashed border-zinc-100 text-zinc-300 font-bold uppercase tracking-widest text-sm italic">
+                Aguardando itens para furação...
               </div>
             )}
+          </div>
 
-            <div className="flex justify-end pt-4">
-              <div className="w-64 border border-zinc-200 p-4 space-y-3">
-                <div className="flex justify-between text-xs text-zinc-600 font-semibold">
-                  <span>SUBTOTAL</span>
+          <div className="flex justify-end pt-8">
+            <div className="w-full max-w-xs space-y-3 bg-zinc-50 p-6 border border-zinc-100">
+               <div className="flex justify-between text-xs font-bold text-zinc-500">
+                  <span>SUBTOTAL BRUTO</span>
                   <span>{formatCurrency(total)}</span>
-                </div>
-                <div className="flex justify-between text-xs text-zinc-600 font-semibold">
-                  <span>IVA (14%)</span>
-                  <span>{formatCurrency(vatAmount)}</span>
-                </div>
-                <div className="flex justify-between text-sm text-[#003366] font-bold border-t border-zinc-200 pt-3">
-                  <span>TOTAL FINAL</span>
-                  <span className="text-lg">{formatCurrency(finalTotal)}</span>
-                </div>
-                <div className="text-[9px] text-zinc-400 text-right mt-1">* Os valores apresentados não incluem retencção</div>
-              </div>
+               </div>
+               <div className="flex justify-between text-xs font-bold text-emerald-500">
+                  <span>IVA ESTIMADO (14%)</span>
+                  <span>+ {formatCurrency(vatAmount)}</span>
+               </div>
+               {Number(globalDiscount) > 0 && (
+                 <div className="flex justify-between text-xs font-bold text-red-500">
+                    <span>DESCONTO GLOBAL</span>
+                    <span>- {formatCurrency(Number(globalDiscount))}</span>
+                 </div>
+               )}
+               <div className="pt-4 border-t border-zinc-200 flex justify-between items-center">
+                  <span className="text-[10px] font-black text-[#003366] uppercase tracking-widest">Total Documento</span>
+                  <span className="text-xl font-black text-[#003366]">{formatCurrency(finalTotal)}</span>
+               </div>
+               <p className="text-[8px] text-zinc-400 font-bold uppercase tracking-tighter mt-1 italic leading-none">
+                 * Os valores finais podem sofrer ajustes automáticos de moeda e retenção de fonte.
+               </p>
             </div>
           </div>
+        </div>
 
-          <div className="flex justify-end gap-4 pt-4 pb-12">
-            <button type="button" onClick={onBack} className="px-6 py-2.5 border border-zinc-300 text-zinc-700 bg-white font-semibold text-sm hover:bg-zinc-50 transition-colors shadow-sm">
-              Cancelar
-            </button>
-            <button type="submit" className="px-6 py-2.5 bg-[#003366] text-white font-semibold text-sm hover:bg-[#002244] transition-colors shadow-sm">
-              Emitir Documento
-            </button>
-          </div>
-        </form>
-      </div>
+        <div className="flex justify-end gap-4 pt-6 pb-20">
+          <button 
+            type="button" 
+            onClick={onBack}
+            className="px-10 py-4 text-[10px] font-black uppercase tracking-widest text-zinc-400 hover:text-zinc-600 transition-all"
+          >
+            Cancelar Emissão
+          </button>
+          <button 
+            type="submit"
+            className="bg-[#003366] text-white px-12 py-4 rounded-none text-[10px] font-black uppercase tracking-[0.2em] shadow-2xl shadow-blue-900/30 hover:bg-[#002244] active:scale-95 transition-all"
+          >
+            Confirmar e Emitir Documento
+          </button>
+        </div>
+      </form>
     </div>
   );
 };

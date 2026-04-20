@@ -62,168 +62,172 @@ const ArchiveModule = () => {
   );
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-8 border border-zinc-200 shadow-sm gap-6 rounded-none">
+    <div className="bg-zinc-50 min-h-screen">
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center p-8 border-b-2 border-zinc-200 bg-white gap-6">
         <div>
-          <h2 className="text-3xl font-black text-[#003366] uppercase tracking-tighter italic">Arquivo Digital ERP</h2>
+          <h2 className="text-3xl font-black text-[#003366] uppercase tracking-tighter italic">Arquivo Digital</h2>
           <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-[0.3em] mt-2">Dossier Central de Documentos & Compliance Fiscal</p>
         </div>
         <div className="flex gap-3">
-          <div className="flex bg-zinc-100 p-1 rounded-xl">
-             <button onClick={() => setViewMode('list')} className={`p-2 rounded-lg ${viewMode === 'list' ? 'bg-white shadow-sm text-[#003366]' : 'text-zinc-400'}`}><List size={18}/></button>
-             <button onClick={() => setViewMode('grid')} className={`p-2 rounded-lg ${viewMode === 'grid' ? 'bg-white shadow-sm text-[#003366]' : 'text-zinc-400'}`}><Grid size={18}/></button>
+          <div className="flex bg-zinc-100 p-1 rounded-none border border-zinc-200">
+             <button onClick={() => setViewMode('list')} className={`p-2 rounded-none transition-all ${viewMode === 'list' ? 'bg-[#003366] text-white shadow-md' : 'text-zinc-400 hover:text-zinc-600'}`}><List size={18}/></button>
+             <button onClick={() => setViewMode('grid')} className={`p-2 rounded-none transition-all ${viewMode === 'grid' ? 'bg-[#003366] text-white shadow-md' : 'text-zinc-400 hover:text-zinc-600'}`}><Grid size={18}/></button>
           </div>
           <button 
             onClick={() => setShowUpload(true)}
-            className="bg-[#003366] text-white px-8 py-4 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-[#002244] transition-all shadow-xl active:scale-95"
+            className="bg-[#003366] text-white px-8 py-4 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-[#002244] transition-all shadow-xl active:scale-95 rounded-none border-b-4 border-blue-900"
           >
             <Upload size={16} /> Carregar Novo Documento
           </button>
         </div>
       </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-        <aside className="space-y-6">
-          <div className="bg-white border border-zinc-200 p-8 shadow-sm">
-            <h4 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-6 flex items-center gap-2">
-              <Folder size={14} className="text-[#003366]"/> Repositório Central
-            </h4>
-            <div className="space-y-1">
-              {[
-                { id: 'Todos', count: files.length },
-                { id: 'Contratos', count: files.filter(f=>f.category==='Contratos').length },
-                { id: 'Faturas', count: files.filter(f=>f.category==='Faturas').length },
-                { id: 'Recibos', count: files.filter(f=>f.category==='Recibos').length },
-                { id: 'RH', count: files.filter(f=>f.category==='RH').length },
-                { id: 'Legal', count: files.filter(f=>f.category==='Legal').length },
-                { id: 'Impostos', count: files.filter(f=>f.category==='Impostos').length }
-              ].map(cat => (
-                <button 
-                  key={cat.id} 
-                  onClick={() => setActiveCategory(cat.id)}
-                  className={`w-full flex justify-between items-center px-4 py-3 text-[10px] font-black uppercase tracking-widest transition-all rounded-lg ${activeCategory === cat.id ? 'bg-[#003366] text-white shadow-lg' : 'hover:bg-zinc-50 text-zinc-500'}`}
-                >
-                  <span>{cat.id}</span>
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${activeCategory === cat.id ? 'bg-white/20' : 'bg-zinc-100'}`}>{cat.count}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-          
-          <div className="bg-[#F27D26] p-8 text-white shadow-xl relative overflow-hidden">
-             <div className="absolute -right-4 -bottom-4 opacity-10"><FileText size={80}/></div>
-             <h5 className="text-[10px] font-black uppercase tracking-widest mb-2 opacity-80">Armazenamento</h5>
-             <p className="text-2xl font-black">{((files.length * 1.2)).toFixed(1)} <span className="text-sm">MB</span></p>
-             <div className="mt-4 h-1.5 w-full bg-white/20 rounded-full overflow-hidden">
-                <div className="h-full bg-white" style={{ width: '15%' }}></div>
-             </div>
-             <p className="text-[9px] mt-2 font-bold uppercase opacity-60">15% de 1GB Offline</p>
-          </div>
-        </aside>
-
-        <main className="md:col-span-3 space-y-6">
-          <div className="relative group">
-            <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-zinc-400 group-focus-within:text-[#003366] transition-colors" size={20} />
-            <input 
-              type="text" placeholder="Filtrar por nome do ficheiro, categoria ou metadados de sistema..." 
-              value={search} onChange={e => setSearch(e.target.value)}
-              className="w-full bg-white border border-zinc-200 px-14 py-4 text-xs focus:outline-none focus:ring-4 focus:ring-[#003366]/5 focus:border-[#003366] shadow-sm font-bold uppercase tracking-wide transition-all"
-            />
-          </div>
-
-          <div className="bg-white border border-zinc-200 overflow-hidden shadow-sm">
-            {viewMode === 'list' ? (
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-zinc-50 text-[10px] font-black uppercase tracking-widest text-zinc-400 border-b border-zinc-200">
-                    <th className="px-8 py-5">Identificação do Arquivo</th>
-                    <th className="px-8 py-5">Extensão</th>
-                    <th className="px-4 py-5">Tamanho</th>
-                    <th className="px-4 py-5">Data de Registo</th>
-                    <th className="px-8 py-5 text-right">Acções Operacionais</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100">
-                  {filteredFiles.map(file => (
-                    <tr key={file.id} className="hover:bg-zinc-50 transition-colors text-xs group">
-                      <td className="px-8 py-5">
-                        <div className="flex items-center gap-4">
-                           <div className="p-2 bg-zinc-50 rounded-lg text-zinc-400 group-hover:text-[#003366] transition-colors">
-                              <FileText size={20} />
-                           </div>
-                           <div>
-                              <p className="font-black text-[#003366] uppercase tracking-tighter text-sm italic">{file.name}</p>
-                              <span className="bg-zinc-100 px-2 py-0.5 font-black uppercase text-[9px] tracking-widest text-zinc-500">{file.category}</span>
-                           </div>
-                        </div>
-                      </td>
-                      <td className="px-8 py-5 font-mono text-zinc-400 font-bold">.{file.type || 'PDF'}</td>
-                      <td className="px-4 py-5 font-bold text-zinc-600">{file.size || '1.2MB'}</td>
-                      <td className="px-4 py-5 text-zinc-400 font-medium">{new Date(file.created_at).toLocaleDateString('pt-PT')}</td>
-                      <td className="px-8 py-5 text-right">
-                        <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button className="p-3 bg-white border border-zinc-200 rounded-xl text-zinc-400 hover:text-blue-600 hover:border-blue-600 shadow-sm transition-all"><Download size={16} /></button>
-                          <button onClick={() => handleDelete(file.id)} className="p-3 bg-white border border-zinc-200 rounded-xl text-zinc-400 hover:text-red-600 hover:border-red-600 shadow-sm transition-all"><Trash2 size={16} /></button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                  {filteredFiles.length === 0 && (
-                    <tr><td colSpan={5} className="p-32 text-center text-zinc-400 italic font-bold">Nenhum documento encontrado no repositório digital.</td></tr>
-                  )}
-                </tbody>
-              </table>
-            ) : (
-              <div className="p-8 grid grid-cols-2 lg:grid-cols-3 gap-6">
-                 {filteredFiles.map(file => (
-                    <div key={file.id} className="bg-zinc-50 border border-zinc-100 p-6 rounded-3xl group hover:border-[#003366] transition-all relative overflow-hidden">
-                       <FileText size={48} className="text-zinc-200 absolute -right-4 -top-4" />
-                       <div className="relative z-10">
-                          <h5 className="font-black text-[#003366] uppercase tracking-tighter text-base leading-tight mb-2 truncate" title={file.name}>{file.name}</h5>
-                          <span className="bg-white/80 border border-zinc-200 px-3 py-1 rounded-full font-black uppercase text-[9px] tracking-widest text-[#003366] block w-fit mb-6">{file.category}</span>
-                          <div className="flex justify-between items-end">
-                             <div>
-                                <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Tamanho / Data</p>
-                                <p className="text-xs font-bold text-zinc-600">{file.size} • {new Date(file.created_at).toLocaleDateString()}</p>
-                             </div>
-                             <div className="flex gap-1">
-                                <button className="p-2 bg-white rounded-lg text-zinc-400 hover:text-blue-600 shadow-sm"><Download size={14}/></button>
-                                <button onClick={() => handleDelete(file.id)} className="p-2 bg-white rounded-lg text-zinc-400 hover:text-red-600 shadow-sm"><Trash2 size={14}/></button>
-                             </div>
-                          </div>
-                       </div>
-                    </div>
-                 ))}
-                 {filteredFiles.length === 0 && (
-                   <div className="col-span-full p-20 text-center text-zinc-400 italic">Pesquisa nula.</div>
-                 )}
+      <div className="p-8">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+          <aside className="space-y-6">
+            <div className="bg-white border-2 border-zinc-200 p-8 shadow-sm rounded-none">
+              <h4 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+                <Folder size={14} className="text-[#003366]"/> Repositório Central
+              </h4>
+              <div className="space-y-2">
+                {[
+                  { id: 'Todos', count: files.length },
+                  { id: 'Contratos', count: files.filter(f=>f.category==='Contratos').length },
+                  { id: 'Faturas', count: files.filter(f=>f.category==='Faturas').length },
+                  { id: 'Recibos', count: files.filter(f=>f.category==='Recibos').length },
+                  { id: 'RH', count: files.filter(f=>f.category==='RH').length },
+                  { id: 'Legal', count: files.filter(f=>f.category==='Legal').length },
+                  { id: 'Impostos', count: files.filter(f=>f.category==='Impostos').length }
+                ].map(cat => (
+                  <button 
+                    key={cat.id} 
+                    onClick={() => setActiveCategory(cat.id)}
+                    className={`w-full flex justify-between items-center px-4 py-3 text-[10px] font-black uppercase tracking-widest transition-all rounded-none border-2 ${activeCategory === cat.id ? 'bg-[#003366] text-white border-[#003366] shadow-lg' : 'hover:bg-zinc-50 text-zinc-500 border-zinc-100'}`}
+                  >
+                    <span>{cat.id}</span>
+                    <span className={`text-[9px] px-2 py-0.5 font-black ${activeCategory === cat.id ? 'bg-white/20' : 'bg-zinc-100'}`}>{cat.count}</span>
+                  </button>
+                ))}
               </div>
-            )}
-          </div>
-        </main>
+            </div>
+            
+            <div className="bg-[#003366] p-8 text-white shadow-xl relative overflow-hidden border-b-8 border-blue-900 rounded-none">
+               <div className="absolute -right-4 -bottom-4 opacity-10"><FileText size={80}/></div>
+               <h5 className="text-[10px] font-black uppercase tracking-widest mb-2 opacity-80">Armazenamento</h5>
+               <p className="text-2xl font-black">{((files.length * 1.2)).toFixed(1)} <span className="text-sm">MB</span></p>
+               <div className="mt-4 h-2 w-full bg-white/20 rounded-none overflow-hidden border border-white/10">
+                  <div className="h-full bg-white" style={{ width: '15%' }}></div>
+               </div>
+               <p className="text-[10px] mt-2 font-black uppercase opacity-60">15% de 1GB Offline</p>
+            </div>
+          </aside>
+
+          <main className="md:col-span-3 space-y-6">
+            <div className="relative group">
+              <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-zinc-400 group-focus-within:text-[#003366] transition-colors" size={20} />
+              <input 
+                type="text" placeholder="Filtrar por nome do ficheiro, categoria ou metadados..." 
+                value={search} onChange={e => setSearch(e.target.value)}
+                className="w-full bg-white border-2 border-zinc-200 px-14 py-4 text-xs focus:outline-none focus:border-[#003366] shadow-sm font-black uppercase tracking-[0.1em] transition-all rounded-none"
+              />
+            </div>
+
+            <div className="bg-white border-2 border-zinc-200 overflow-hidden shadow-sm rounded-none">
+              {viewMode === 'list' ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-[#003366] text-[10px] font-black uppercase tracking-widest text-white">
+                        <th className="px-8 py-5">Identificação do Arquivo</th>
+                        <th className="px-8 py-5">Extensão</th>
+                        <th className="px-4 py-5">Tamanho</th>
+                        <th className="px-4 py-5">Data de Registo</th>
+                        <th className="px-8 py-5 text-right">Acções</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100">
+                      {filteredFiles.map(file => (
+                        <tr key={file.id} className="hover:bg-zinc-50 transition-colors text-xs group">
+                          <td className="px-8 py-6">
+                            <div className="flex items-center gap-4">
+                               <div className="p-2 bg-zinc-50 border border-zinc-100 text-zinc-400 group-hover:text-[#003366] group-hover:border-[#003366] transition-colors">
+                                  <FileText size={24} />
+                               </div>
+                               <div>
+                                  <p className="font-black text-[#003366] uppercase tracking-tighter text-sm italic leading-tight">{file.name}</p>
+                                  <span className="bg-zinc-100 px-2 py-0.5 font-black uppercase text-[9px] tracking-widest text-zinc-500 mt-1 inline-block border border-zinc-200">{file.category}</span>
+                               </div>
+                            </div>
+                          </td>
+                          <td className="px-8 py-6 font-black text-zinc-400">.{file.type || 'PDF'}</td>
+                          <td className="px-4 py-6 font-black text-zinc-600">{file.size || '1.2MB'}</td>
+                          <td className="px-4 py-6 text-zinc-400 font-bold">{new Date(file.created_at).toLocaleDateString('pt-PT')}</td>
+                          <td className="px-8 py-6 text-right">
+                            <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all transform group-hover:translate-x-0 translate-x-4">
+                              <button className="p-3 bg-white border-2 border-zinc-200 text-zinc-400 hover:text-blue-600 hover:border-blue-600 shadow-sm transition-all"><Download size={18} /></button>
+                              <button onClick={() => handleDelete(file.id)} className="p-3 bg-white border-2 border-zinc-200 text-zinc-400 hover:text-red-600 hover:border-red-600 shadow-sm transition-all"><Trash2 size={18} /></button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {filteredFiles.length === 0 && (
+                        <tr><td colSpan={5} className="p-32 text-center text-zinc-300 italic font-black uppercase tracking-widest text-sm">Arquivo Central Vazio</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="p-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                   {filteredFiles.map(file => (
+                      <div key={file.id} className="bg-zinc-50 border-2 border-zinc-100 p-6 group hover:border-[#003366] transition-all relative overflow-hidden rounded-none">
+                         <FileText size={64} className="text-zinc-200/50 absolute -right-4 -top-4" />
+                         <div className="relative z-10">
+                            <h5 className="font-black text-[#003366] uppercase tracking-tighter text-base leading-tight mb-2 truncate" title={file.name}>{file.name}</h5>
+                            <span className="bg-white border-2 border-zinc-200 px-3 py-1 font-black uppercase text-[9px] tracking-widest text-[#003366] block w-fit mb-6">{file.category}</span>
+                            <div className="flex justify-between items-end border-t border-dashed border-zinc-200 pt-4">
+                               <div>
+                                  <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Peso / Data</p>
+                                  <p className="text-xs font-black text-zinc-600">{file.size} • {new Date(file.created_at).toLocaleDateString()}</p>
+                                </div>
+                               <div className="flex gap-1">
+                                  <button className="p-2 bg-white border border-zinc-200 text-zinc-400 hover:text-blue-600 shadow-sm"><Download size={14}/></button>
+                                  <button onClick={() => handleDelete(file.id)} className="p-2 bg-white border border-zinc-200 text-zinc-400 hover:text-red-600 shadow-sm"><Trash2 size={14}/></button>
+                               </div>
+                            </div>
+                         </div>
+                      </div>
+                   ))}
+                   {filteredFiles.length === 0 && (
+                     <div className="col-span-full p-20 text-center text-zinc-300 font-black uppercase">Filtro Nulo</div>
+                   )}
+                </div>
+              )}
+            </div>
+          </main>
+        </div>
       </div>
 
       <AnimatePresence>
         {showUpload && (
-          <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-zinc-900/70 backdrop-blur-md">
-            <motion.div initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }} className="bg-white p-12 w-full max-w-xl shadow-2xl space-y-8 rounded-[40px] border-8 border-white">
+          <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-zinc-900/80 backdrop-blur-sm">
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="bg-white p-12 w-full max-w-xl shadow-2xl space-y-8 rounded-none border-[12px] border-[#003366]">
               <div className="flex justify-between items-start">
                  <div>
-                    <h3 className="font-black text-[#003366] uppercase tracking-tighter italic text-3xl">Novos Documentos</h3>
-                    <p className="text-[9px] font-black text-zinc-400 uppercase tracking-[0.2em] mt-2">Indexação Automática de Arquivos de Sistema</p>
+                    <h3 className="font-black text-[#003366] uppercase tracking-tighter italic text-4xl leading-none">Novos Arquivos</h3>
+                    <p className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mt-3">Repositório Seguro de Compliance Digital</p>
                  </div>
-                 <button onClick={() => setShowUpload(false)} className="w-12 h-12 bg-zinc-50 rounded-full flex items-center justify-center text-zinc-400 hover:text-red-500 transition-colors"><ChevronLeft size={24} className="rotate-180"/></button>
+                 <button onClick={() => setShowUpload(false)} className="w-12 h-12 bg-zinc-50 border border-zinc-200 flex items-center justify-center text-zinc-400 hover:text-red-500 transition-colors"><ChevronLeft size={24} className="rotate-180"/></button>
               </div>
               
               <form onSubmit={handleUpload} className="space-y-6">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest pl-2">Designação do Documento / Referência</label>
-                  <input name="name" required className="w-full bg-zinc-50 border border-zinc-200 p-4 rounded-2xl text-sm font-bold text-[#003366] focus:border-[#003366] focus:ring-4 focus:ring-[#003366]/5 outline-none transition-all" placeholder="Ex: Contrato Prestação Serviços - 2026" />
+                  <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Referência do Ficheiro</label>
+                  <input name="name" required className="w-full bg-zinc-50 border-2 border-zinc-200 p-4 rounded-none text-sm font-black text-[#003366] focus:border-[#003366] outline-none transition-all placeholder:text-zinc-300" placeholder="IDENTIFICAÇÃO DO DOCUMENTO" />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest pl-2">Classificação / Categoria</label>
-                    <select name="category" className="w-full bg-zinc-50 border border-zinc-200 p-4 rounded-2xl text-xs font-black uppercase tracking-widest outline-none focus:border-[#003366] transition-all">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Classificação Estrutural</label>
+                    <select name="category" className="w-full bg-zinc-50 border-2 border-zinc-200 p-4 rounded-none text-[10px] font-black uppercase tracking-widest outline-none focus:border-[#003366] transition-all">
                       <option>Contratos</option>
                       <option>Faturas</option>
                       <option>Recibos</option>
@@ -234,22 +238,22 @@ const ArchiveModule = () => {
                     </select>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest pl-2">Formato Nativo</label>
-                    <input name="type" defaultValue="PDF" readOnly className="w-full bg-zinc-100 border border-zinc-200 p-4 rounded-2xl text-xs font-black bg-zinc-50 font-mono tracking-widest italic" />
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Formato ERP</label>
+                    <input name="type" defaultValue="PDF" readOnly className="w-full bg-zinc-100 border-2 border-zinc-200 p-4 rounded-none text-[10px] font-black bg-zinc-100 font-mono tracking-widest italic" />
                   </div>
                 </div>
                 
-                <div className="border-4 border-dashed border-zinc-100 p-12 text-center text-zinc-400 flex flex-col items-center gap-4 hover:border-blue-400 hover:bg-blue-50/30 transition-all cursor-pointer rounded-[32px] group">
-                  <div className="p-5 bg-white rounded-3xl shadow-sm group-hover:scale-110 transition-transform"><UploadCloud size={48} className="text-[#003366]" /></div>
+                <div className="border-4 border-dashed border-zinc-200 p-12 text-center text-zinc-300 flex flex-col items-center gap-4 hover:border-[#003366] hover:bg-zinc-50 transition-all cursor-pointer rounded-none group">
+                  <div className="p-6 bg-white border-2 border-zinc-100 group-hover:border-[#003366] group-hover:scale-105 transition-all"><UploadCloud size={52} className="text-[#003366]" /></div>
                   <div className="space-y-1">
-                    <span className="text-xs font-black uppercase tracking-widest">Selecione os ficheiros para indexar</span>
-                    <p className="text-[9px] font-bold text-zinc-300">Limite de 50MB por arquivo (Protocolo de Segurança ERP)</p>
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em]">Seleccionar para Indexação</span>
+                    <p className="text-[9px] font-bold text-zinc-400">PDF, JPG, PNG (Max 50MB)</p>
                   </div>
                 </div>
 
                 <div className="flex gap-4 pt-6">
-                  <button type="button" onClick={() => setShowUpload(false)} className="flex-1 py-4 text-[10px] font-black uppercase tracking-widest text-zinc-400 hover:text-zinc-600 transition-all">Descartar</button>
-                  <button type="submit" className="flex-1 bg-[#003366] text-white py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-2xl shadow-blue-900/30 active:scale-95 transition-all">Submeter para Arquivo</button>
+                  <button type="button" onClick={() => setShowUpload(false)} className="flex-1 py-4 text-[10px] font-black uppercase tracking-widest text-zinc-400 hover:text-zinc-600 transition-colors">Anular</button>
+                  <button type="submit" className="flex-1 bg-[#003366] text-white py-4 rounded-none text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-[#002244] border-b-4 border-blue-900 transition-all active:translate-y-1">Gravar no Arquivo</button>
                 </div>
               </form>
             </motion.div>

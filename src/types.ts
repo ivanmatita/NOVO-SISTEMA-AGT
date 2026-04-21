@@ -109,6 +109,7 @@ export interface InvoiceItem {
   quantity: number;
   unit_price: number;
   total: number;
+  retencao_fonte?: number;
   tipologia?: string;
   desconto?: number;
   tipo_artigo?: string;
@@ -149,6 +150,8 @@ export interface Invoice {
   payment_method?: string;
   operator_name?: string;
   total_in_words?: string;
+  retencao_fonte_total?: number;
+  global_discount?: number;
 }
 
 export interface DashboardStats {

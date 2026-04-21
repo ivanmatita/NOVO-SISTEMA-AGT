@@ -29,6 +29,10 @@ let securityRoster: any[] = [];
 let transactions: any[] = [];
 let suppliers: any[] = [];
 let purchases: any[] = [];
+let professions: any[] = [];
+let attendance: any[] = [];
+let absences: any[] = [];
+let laborTerminations: any[] = [];
 
 async function startServer() {
   const app = express();
@@ -427,6 +431,21 @@ async function startServer() {
 
   // Generic Catch-alls
   app.get("/api/employees", (req, res) => res.json(employees));
+  app.get("/api/professions", (req, res) => res.json(professions));
+  app.get("/api/employees/attendance", (req, res) => {
+    if (req.query.date) {
+      res.json(attendance.filter(a => a.date === req.query.date));
+    } else {
+      res.json(attendance);
+    }
+  });
+  app.post("/api/employees/attendance", (req, res) => {
+    const newAtt = { ...req.body, id: Date.now() };
+    attendance.push(newAtt);
+    res.json(newAtt);
+  });
+  app.get("/api/employees/absences", (req, res) => res.json(absences));
+  app.get("/api/labor-terminations", (req, res) => res.json(laborTerminations));
   app.get("/api/warehouses", (req, res) => res.json(warehouses));
   app.get("/api/caixa-movements", (req, res) => res.json(caixaMovements));
   app.get("/api/stock/movements", (req, res) => res.json(stockMovements));

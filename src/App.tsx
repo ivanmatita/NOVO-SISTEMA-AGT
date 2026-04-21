@@ -109,7 +109,8 @@ import {
   LogOut,
   GraduationCap,
   Bed,
-  FolderKanban
+  FolderKanban,
+  Percent
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import jsPDF from 'jspdf';
@@ -5113,6 +5114,184 @@ const ProfitLossReport = ({ fiscalYear, company_id }: { fiscalYear: string, comp
   );
 };
 
+const RetencaoFonteModule = ({ issuedDocuments }: { issuedDocuments: IssuedDocument[] }) => {
+  const [activeTab, setActiveTab] = useState<'receber' | 'pagar'>('receber');
+  const [search, setSearch] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [purchases, setPurchases] = useState<Purchase[]>([]);
+
+  useEffect(() => {
+    fetchWithAuth('/api/purchases').then(r => r.json()).then(setPurchases).catch(console.error);
+  }, []);
+
+  const filterData = (data: any[], dateField: string, isPurchase: boolean) => {
+    return data.filter(doc => {
+      // 1. Filter by Retenção (must be > 0)
+      const isRetencao = isPurchase 
+        // For purchases, if they support it, assume some field or just check if it's there
+        ? (doc.retencao_fonte_total > 0 || doc.irt_retido > 0)
+        : (doc.retencao_fonte_total > 0 || (doc.items && doc.items.some((i: any) => i.retencao_fonte > 0)));
+      
+      if (!isRetencao) return false;
+
+      // 2. Filter by search
+      const term = search.toLowerCase();
+      const matchSearch = doc.numero_documento?.toLowerCase().includes(term) || 
+                          doc.invoice_number?.toLowerCase().includes(term) ||
+                          doc.client_name?.toLowerCase().includes(term) ||
+                          doc.supplier_name?.toLowerCase().includes(term) ||
+                          doc.cliente_id?.toString().includes(term);
+      if (search && !matchSearch) return false;
+
+      // 3. Filter by date
+      if (startDate && new Date(doc[dateField]) < new Date(startDate)) return false;
+      if (endDate && new Date(doc[dateField]) > new Date(endDate)) return false;
+
+      return true;
+    });
+  };
+
+  const aReceber = filterData(issuedDocuments, 'date', false);
+  const aPagar = filterData(purchases, 'date', true);
+
+  const totalReceber = aReceber.reduce((sum, doc) => sum + (doc.retencao_fonte_total || (doc.items?.reduce((s: number, i: any) => s + (i.retencao_fonte || 0), 0) || 0)), 0);
+  const totalPagar = aPagar.reduce((sum, doc) => sum + (doc.retencao_fonte_total || doc.irt_retido || 0), 0);
+
+  return (
+    <div className="space-y-6 animate-fade-in">
+      {/* Tabs */}
+      <div className="flex gap-4 border-b border-zinc-200">
+        <button
+          onClick={() => setActiveTab('receber')}
+          className={`pb-3 px-2 text-sm font-bold transition-all border-b-2 uppercase tracking-wider ${activeTab === 'receber' ? 'border-[#003366] text-[#003366]' : 'border-transparent text-zinc-400 hover:text-zinc-600'}`}
+        >
+          Retenção a Receber (Vendas)
+        </button>
+        <button
+          onClick={() => setActiveTab('pagar')}
+          className={`pb-3 px-2 text-sm font-bold transition-all border-b-2 uppercase tracking-wider ${activeTab === 'pagar' ? 'border-[#003366] text-[#003366]' : 'border-transparent text-zinc-400 hover:text-zinc-600'}`}
+        >
+          Retenção a Pagar (Compras/Despesas)
+        </button>
+      </div>
+
+      {/* Filters & Actions */}
+      <div className="flex flex-col sm:flex-row gap-4 items-end bg-white p-4 border border-zinc-200 shadow-sm">
+        <div className="flex-1">
+          <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">Pesquisar Documento / Entidade</label>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
+            <input 
+              type="text" 
+              placeholder="Ex: FT 2026/1..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-zinc-300 focus:border-[#003366] outline-none text-sm font-medium transition-colors"
+            />
+          </div>
+        </div>
+        <div className="w-full sm:w-40">
+          <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">Data Inicial</label>
+          <input 
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="w-full px-3 py-2 border border-zinc-300 focus:border-[#003366] outline-none text-sm font-medium transition-colors"
+          />
+        </div>
+        <div className="w-full sm:w-40">
+          <label className="block text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">Data Final</label>
+          <input 
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="w-full px-3 py-2 border border-zinc-300 focus:border-[#003366] outline-none text-sm font-medium transition-colors"
+          />
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => window.print()} className="bg-white px-4 py-2 text-zinc-700 text-xs font-bold hover:bg-zinc-50 transition-all border border-zinc-300 flex items-center gap-2">
+            <Printer size={16} /> Imprimir
+          </button>
+          <button className="bg-emerald-600 text-white px-4 py-2 text-xs font-bold hover:bg-emerald-700 transition-all flex items-center gap-2 shadow-sm">
+            <Download size={16} /> Excel
+          </button>
+        </div>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="bg-white p-6 border-l-4 border-blue-500 shadow-sm flex items-center gap-4">
+          <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center text-blue-500">
+            <ArrowDownRight size={24} />
+          </div>
+          <div>
+            <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">Total a Receber</p>
+            <p className="text-2xl font-black text-blue-900">{new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(totalReceber)}</p>
+          </div>
+        </div>
+        <div className="bg-white p-6 border-l-4 border-red-500 shadow-sm flex items-center gap-4">
+          <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center text-red-500">
+            <ArrowUpRight size={24} />
+          </div>
+          <div>
+            <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">Total a Pagar</p>
+            <p className="text-2xl font-black text-red-900">{new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(totalPagar)}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Data Table */}
+      <div className="bg-white border border-zinc-200 overflow-hidden shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-[#003366] text-white text-[10px] uppercase tracking-wider font-bold">
+                <th className="px-6 py-4 whitespace-nowrap">Data</th>
+                <th className="px-6 py-4 whitespace-nowrap">Documento</th>
+                <th className="px-6 py-4">Entidade</th>
+                <th className="px-6 py-4 whitespace-nowrap">{activeTab === 'receber' ? 'Base Incidência' : 'Natureza'}</th>
+                <th className="px-6 py-4 text-right whitespace-nowrap">Valor Retido (6,5%)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+              {activeTab === 'receber' ? (
+                aReceber.length > 0 ? aReceber.map((doc, idx) => {
+                  const retencao = doc.retencao_fonte_total || (doc.items?.reduce((s: number, i: any) => s + (i.retencao_fonte || 0), 0) || 0);
+                  const base = retencao / 0.065;
+                  return (
+                    <tr key={idx} className="hover:bg-zinc-50 transition-colors text-sm">
+                      <td className="px-6 py-4 text-zinc-600">{new Date(doc.date || doc.data_emissao).toLocaleDateString()}</td>
+                      <td className="px-6 py-4 font-bold text-zinc-900">{doc.invoice_number || doc.numero_documento}</td>
+                      <td className="px-6 py-4 text-zinc-800">{doc.client_name || doc.cliente_id}</td>
+                      <td className="px-6 py-4 text-zinc-600">{new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(base)}</td>
+                      <td className="px-6 py-4 text-right font-black text-blue-600">{new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(retencao)}</td>
+                    </tr>
+                  )
+                }) : (
+                  <tr><td colSpan={5} className="py-12 text-center text-zinc-400 font-medium">Nenhuma retenção a receber encontrada.</td></tr>
+                )
+              ) : (
+                aPagar.length > 0 ? aPagar.map((doc, idx) => (
+                  <tr key={idx} className="hover:bg-zinc-50 transition-colors text-sm">
+                    <td className="px-6 py-4 text-zinc-600">{new Date(doc.date).toLocaleDateString()}</td>
+                    <td className="px-6 py-4 font-bold text-zinc-900">{doc.invoice_number || doc.reference || 'N/A'}</td>
+                    <td className="px-6 py-4 text-zinc-800">{doc.supplier_name || 'Desconhecido'}</td>
+                    <td className="px-6 py-4 text-zinc-600">Serviço/Prestação</td>
+                    <td className="px-6 py-4 text-right font-black text-red-600">{new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(doc.retencao_fonte_total || doc.irt_retido || 0)}</td>
+                  </tr>
+                )) : (
+                  <tr><td colSpan={5} className="py-12 text-center text-zinc-400 font-medium">Nenhuma retenção a pagar encontrada.</td></tr>
+                )
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const OtherMovements = ({ transactions, onRefresh, caixas, user }: { transactions: any[], onRefresh: () => void, caixas: Caixa[], user: any }) => {
   const [showForm, setShowForm] = useState(false);
   const [description, setDescription] = useState('');
@@ -5447,6 +5626,7 @@ const FinancialModule = ({
     { id: 'annual-movement', label: 'Mapas Movimento Anual', icon: History, description: 'Evolução financeira ao longo do ano' },
     { id: 'supplier-maps', label: 'Mapas Fornecedores', icon: Truck, description: 'Movimentação e pendentes de fornecedores' },
     { id: 'other-movements', label: 'Outras Movimento', icon: Layers, description: 'Registos financeiros diversos' },
+    { id: 'retencao-fonte', label: 'Retenção na Fonte', icon: Percent, description: 'Mapas de retenção a pagar e a receber' },
   ];
 
   if (activeSubTab === 'menu') {
@@ -5690,6 +5870,10 @@ const FinancialModule = ({
 
       {activeSubTab === 'other-movements' && (
         <OtherMovements transactions={transactions} onRefresh={fetchTransactions} caixas={caixas} user={user} />
+      )}
+
+      {activeSubTab === 'retencao-fonte' && (
+        <RetencaoFonteModule issuedDocuments={issuedDocuments} />
       )}
     </div>
   );
@@ -9903,11 +10087,20 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
     const newItems = [...items];
     newItems[index] = { ...newItems[index], [field]: value };
     
-    if (field === 'quantity' || field === 'unit_price' || field === 'desconto') {
-      const q = field === 'quantity' ? Number(value) : (newItems[index].quantity || 0);
-      const p = field === 'unit_price' ? Number(value) : (newItems[index].unit_price || 0);
-      const d = field === 'desconto' ? Number(value) : (newItems[index].desconto || 0);
-      newItems[index].total = (q * p) - d;
+    // Always recalculate on any relevant change
+    const q = field === 'quantity' ? Number(value) : (newItems[index].quantity || 0);
+    const p = field === 'unit_price' ? Number(value) : (newItems[index].unit_price || 0);
+    const d = field === 'desconto' ? Number(value) : (newItems[index].desconto || 0);
+    const tipo = field === 'tipo_artigo' ? value : (newItems[index].tipo_artigo || 'produto');
+    const isService = tipo.toLowerCase() === 'serviço' || tipo.toLowerCase() === 'servico';
+    
+    const rowTotal = (q * p) - d;
+    newItems[index].total = rowTotal;
+    
+    if (isService && rowTotal > 20000) {
+      newItems[index].retencao_fonte = rowTotal * 0.065;
+    } else {
+      newItems[index].retencao_fonte = 0;
     }
 
     if (field === 'product_id' && value) {
@@ -9915,7 +10108,13 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
       if (prod) {
         newItems[index].description = prod.name;
         newItems[index].unit_price = prod.price;
-        newItems[index].total = ((newItems[index].quantity || 1) * prod.price) - (newItems[index].desconto || 0);
+        const pt = ((newItems[index].quantity || 1) * prod.price) - (newItems[index].desconto || 0);
+        newItems[index].total = pt;
+        if (isService && pt > 20000) {
+          newItems[index].retencao_fonte = pt * 0.065;
+        } else {
+          newItems[index].retencao_fonte = 0;
+        }
       }
     }
     
@@ -9924,7 +10123,8 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
 
   const total = (items ?? []).reduce((sum, item) => sum + (item.total || 0), 0);
   const vatAmount = total * 0.14;
-  const finalTotal = total + vatAmount - Number(globalDiscount || 0);
+  const retencaoFonteTotal = (items ?? []).reduce((sum, item) => sum + (item.retencao_fonte || 0), 0);
+  const finalTotal = total + vatAmount - Number(globalDiscount || 0) - retencaoFonteTotal;
 
   const selectedSeries = fiscalSeries.find(s => s.id === Number(seriesId));
 
@@ -9968,6 +10168,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
         invoice_number: isManual ? documentNumberManual : (initialData?.numero_documento || initialData?.invoice_number || undefined),
         series_reference: isManual ? referenceManual : selectedSeries?.reference,
         total: finalTotal,
+        retencao_fonte_total: retencaoFonteTotal,
         company_id: user?.company_id
       })
     });

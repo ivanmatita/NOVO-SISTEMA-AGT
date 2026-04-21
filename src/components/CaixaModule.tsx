@@ -267,7 +267,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
                       <tr key={caixa.id} className="hover:bg-zinc-50 transition-colors group">
                         <td className="px-2 py-2 border-r border-zinc-200 text-center text-zinc-500">{idx + 1}</td>
                         <td className="px-4 py-2 border-r border-zinc-200 font-mono text-zinc-600">{caixa.account || '45'}</td>
-                        <td className="px-2 py-2 border-r border-zinc-200 text-center text-zinc-500">{caixa.id.slice(-1)}</td>
+                        <td className="px-2 py-2 border-r border-zinc-200 text-center text-zinc-500">{String(caixa.id).slice(-1)}</td>
                         <td className="px-4 py-2 border-r border-zinc-200 font-black text-[#003366] uppercase">{caixa.name}</td>
                         <td className="px-4 py-2 border-r border-zinc-200 text-zinc-500">{caixa.responsible || '---'}</td>
                         <td className="px-4 py-2 border-r border-zinc-200 text-zinc-400 italic">{caixa.obs || '---'}</td>

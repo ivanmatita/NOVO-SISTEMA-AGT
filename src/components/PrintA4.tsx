@@ -2,8 +2,8 @@ import React from 'react';
 import { Invoice } from '../types';
 import { QRCodeCanvas } from 'qrcode.react';
 
-const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(value);
+const formatCurrency = (value: number, currency: string = 'AOA') => {
+  return new Intl.NumberFormat('pt-AO', { style: 'currency', currency: currency }).format(value);
 };
 
 const numberToWords = (n: number | undefined): string => {
@@ -53,6 +53,8 @@ interface PrintA4Props {
 const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
   if (!invoice) return null;
   const qrValue = `${invoice.invoice_number}|${invoice.client_nif || '999999999'}|${invoice.date}|${invoice.total || 0}|${invoice.hash || ''}`;
+  const displayCurrency = isDraft && invoice.currency !== 'AOA' ? (invoice.currency || 'AOA') : 'AOA';
+  const formatParams = (val: number) => formatCurrency(val, displayCurrency);
 
   return (
     <div className="bg-white p-[2cm] w-[210mm] min-h-[297mm] mx-auto text-zinc-900 font-sans shadow-lg print:shadow-none print:m-0 relative overflow-hidden">
@@ -129,8 +131,8 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
               <td className="py-4 font-medium text-zinc-800">{item.description}</td>
               <td className="py-4 text-center text-zinc-600">{item.quantity}</td>
               <td className="py-4 text-center text-zinc-600">un</td>
-              <td className="py-4 text-right text-zinc-600">{formatCurrency(item.unit_price)}</td>
-              <td className="py-4 text-right font-bold text-zinc-800">{formatCurrency(item.total)}</td>
+              <td className="py-4 text-right text-zinc-600">{formatParams(item.unit_price)}</td>
+              <td className="py-4 text-right font-bold text-zinc-800">{formatParams(item.total)}</td>
             </tr>
           ))}
         </tbody>
@@ -163,31 +165,31 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
           <div className="p-2 border border-zinc-300">
             <div className="grid grid-cols-3 gap-1 text-[9px] border-b border-zinc-300 pb-1 font-bold items-center uppercase">
               <div>Taxa</div>
-              <div className="text-right">Base Incidência ( AOA )</div>
-              <div className="text-right">Valor do IVA ( AOA )</div>
+              <div className="text-right">Base Incidência ( {displayCurrency} )</div>
+              <div className="text-right">Valor do IVA ( {displayCurrency} )</div>
             </div>
             <div className="grid grid-cols-3 gap-1 text-[9px] border-b border-zinc-100 py-1">
               <div>5%</div>
-              <div className="text-right">{formatCurrency(invoice.total || 0)}</div>
-              <div className="text-right">{formatCurrency((invoice.total || 0) * 0.05)}</div>
+              <div className="text-right">{formatParams(invoice.total || 0)}</div>
+              <div className="text-right">{formatParams((invoice.total || 0) * 0.05)}</div>
             </div>
             <div className="grid grid-cols-3 gap-1 text-[9px] pt-1 font-bold">
               <div>Totais</div>
-              <div className="text-right">{formatCurrency(invoice.total || 0)}</div>
-              <div className="text-right">{formatCurrency((invoice.total || 0) * 0.05)}</div>
+              <div className="text-right">{formatParams(invoice.total || 0)}</div>
+              <div className="text-right">{formatParams((invoice.total || 0) * 0.05)}</div>
             </div>
           </div>
 
           <div className="border border-zinc-300 p-2 text-[10px] bg-zinc-50/50">
             <p className="font-bold text-zinc-500 mb-1 uppercase text-[8px]">Valor Extenso</p>
-            <p className="font-medium">{invoice.total_in_words || (numberToWords(invoice.total || 0) + ' Kwanzas')} AOA</p>
+            <p className="font-medium">{invoice.total_in_words || numberToWords(invoice.total || 0)} {displayCurrency}</p>
           </div>
         </div>
 
         <div className="text-right space-y-1 text-[11px] flex flex-col justify-end">
           <div className="flex justify-between border-b border-zinc-200 py-1">
-            <span className="text-zinc-500">Total Ilíquido (AOA)</span>
-            <span className="font-bold">{formatCurrency(invoice.total || 0)}</span>
+            <span className="text-zinc-500">Total Ilíquido ({displayCurrency})</span>
+            <span className="font-bold">{formatParams(invoice.total || 0)}</span>
           </div>
           <div className="flex justify-between border-b border-zinc-200 py-1">
             <span className="text-zinc-500">Desconto Comercial 0%</span>
@@ -195,11 +197,11 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
           </div>
           <div className="flex justify-between border-b border-zinc-200 py-1">
             <span className="text-zinc-500">Total IVA</span>
-            <span className="font-bold">{formatCurrency((invoice.total || 0) * 0.05)}</span>
+            <span className="font-bold">{formatParams((invoice.total || 0) * 0.05)}</span>
           </div>
           <div className="flex justify-between font-black text-sm pt-2">
-            <span>Total do documento (AOA)</span>
-            <span className="text-[#003366]">{formatCurrency((invoice.total || 0) * 1.05)}</span>
+            <span>Total do documento ({displayCurrency})</span>
+            <span className="text-[#003366]">{formatParams((invoice.total || 0) * 1.05)}</span>
           </div>
           
           <div className="mt-4 pt-2 text-[9px] text-zinc-400 font-mono space-y-0.5">
@@ -210,7 +212,7 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
           <div className="mt-6 border border-zinc-300 overflow-hidden text-[10px]">
             <div className="flex justify-between p-1.5 border-b border-zinc-100">
               <span className="text-zinc-500">Valor Total do documento</span>
-              <span className="font-bold">{formatCurrency((invoice.total || 0) * 1.05)}</span>
+              <span className="font-bold">{formatParams((invoice.total || 0) * 1.05)}</span>
             </div>
             <div className="flex justify-between p-1.5 border-b border-zinc-100">
               <span className="text-zinc-600">Isento Retenção Lei 4/19, Art.71,n.3,alinea c)</span>
@@ -218,7 +220,7 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
             </div>
             <div className="flex justify-between p-1.5 bg-zinc-50 font-bold">
               <span>Valor líquido após retenção</span>
-              <span className="text-blue-900">{formatCurrency((invoice.total || 0) * 1.05)}</span>
+              <span className="text-blue-900">{formatParams((invoice.total || 0) * 1.05)}</span>
             </div>
           </div>
 

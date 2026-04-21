@@ -323,6 +323,17 @@ async function startServer() {
       });
     }
 
+    if (newDoc.cash_box && (newDoc.document_type.includes('Recibo') || newDoc.payment_method === 'Pronto Pagamento')) {
+      caixaMovements.push({
+        id: Date.now().toString(),
+        caixaId: newDoc.cash_box,
+        type: 'entrada',
+        amount: Number(newDoc.total || newDoc.counter_value || 0),
+        description: `Venda ${invoice_number}`,
+        date: new Date().toISOString()
+      });
+    }
+
     res.json(newDoc);
   });
 
@@ -380,6 +391,10 @@ async function startServer() {
     const newSite = { ...req.body, id: Date.now() };
     workSites.push(newSite);
     res.json(newSite);
+  });
+  app.get("/api/work-sites/:id/movements", (req, res) => res.json([]));
+  app.post("/api/work-sites/:id/movements", (req, res) => {
+    res.json({ ...req.body, id: Date.now() });
   });
 
   // Transactions

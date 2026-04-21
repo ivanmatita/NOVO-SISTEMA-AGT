@@ -5710,15 +5710,12 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail }: {
         <thead>
           <tr className="bg-[#003366] text-white text-[10px] uppercase tracking-widest font-black border-b border-zinc-200">
             <th className="px-6 py-4">Data Emissão</th>
-            <th className="px-6 py-4">Cert.</th>
-            <th className="px-6 py-4">Vencimento</th>
             <th className="px-6 py-4">Tipo</th>
             <th className="px-6 py-4">Número</th>
             <th className="px-6 py-4">Cliente</th>
             <th className="px-6 py-4">Local</th>
             <th className="px-6 py-4">Pagamento</th>
             <th className="px-6 py-4 text-right">Valor</th>
-            <th className="px-6 py-4 text-center">Estado</th>
             <th className="px-6 py-4 text-center">Ações</th>
           </tr>
         </thead>
@@ -5732,16 +5729,6 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail }: {
               <td className="px-6 py-4 text-zinc-900 font-bold whitespace-nowrap">
                 {new Date(doc.date || doc.data_emissao || '').toLocaleDateString()}
               </td>
-              <td className="px-6 py-4 text-center">
-                {doc.is_certified ? (
-                  <ShieldCheck size={16} className="text-emerald-500 mx-auto" />
-                ) : (
-                  <AlertTriangle size={16} className="text-zinc-300 mx-auto" />
-                )}
-              </td>
-              <td className="px-6 py-4 text-zinc-500 whitespace-nowrap font-medium font-mono text-[10px]">
-                {doc.due_date ? new Date(doc.due_date).toLocaleDateString() : (doc.data_vencimento ? new Date(doc.data_vencimento).toLocaleDateString() : '---')}
-              </td>
               <td className="px-6 py-4 font-black text-[#003366] whitespace-nowrap">
                 <div className="uppercase tracking-tighter">{doc.document_type || doc.tipo_documento}</div>
                 {doc.series_name && <div className="text-[9px] text-zinc-400 font-black uppercase tracking-widest">{doc.series_name}</div>}
@@ -5754,14 +5741,8 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail }: {
                   {doc.payment_method || 'N/A'}
                 </span>
               </td>
-              <td className="px-6 py-4 text-zinc-400 text-[9px] font-black uppercase tracking-widest">{doc.cash_box || 'N/A'}</td>
               <td className="px-6 py-4 text-right font-black text-[#003366] text-sm whitespace-nowrap">
                 {formatCurrency(doc.counter_value || doc.total || doc.contravalor || 0)}
-              </td>
-              <td className="px-6 py-4 text-center">
-                <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-widest rounded-none border ${(doc.status || doc.estado_documento) === 'ativo' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'}`}>
-                  {(doc.status || doc.estado_documento) === 'anulado' ? 'ANULADO - SEM VALIDADE' : (doc.status || doc.estado_documento || 'ativo')}
-                </span>
               </td>
               <td className="px-6 py-4">
                 <div className="flex items-center justify-center gap-3">
@@ -5984,6 +5965,22 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail }: {
                     <p className="text-[9px] text-zinc-500 uppercase tracking-tighter">Transformar em outro tipo de documento fiscal</p>
                   </div>
                 </button>
+
+                {/* 10. Extrato de moeda estrangeira */}
+                {showActionsModal.currency && showActionsModal.currency !== 'AOA' && showActionsModal.currency !== 'Kwanza' && (
+                  <button 
+                    onClick={() => { onAction('foreign_draft', showActionsModal); setShowActionsModal(null); }}
+                    className="col-span-2 w-full flex items-center gap-4 p-4 transition-all border shadow-sm bg-white border-zinc-100 hover:bg-zinc-50 group"
+                  >
+                    <div className="w-10 h-10 bg-purple-50 text-purple-600 flex items-center justify-center group-hover:bg-purple-600 group-hover:text-white transition-colors border border-purple-100">
+                      <FileSignature size={20} />
+                    </div>
+                    <div className="text-left">
+                      <p className="font-bold text-purple-700 text-xs uppercase">Documento de Suporte (Draft)</p>
+                      <p className="text-[9px] text-zinc-500 uppercase tracking-tighter">Gerar rascunho com valores em {showActionsModal.currency}</p>
+                    </div>
+                  </button>
+                )}
               </div>
             </motion.div>
           </div>
@@ -9554,6 +9551,7 @@ const InvoiceList = ({
                       <th className="px-6 py-4">Fornecedor/Cliente</th>
                       <th className="px-6 py-4">Pagamento</th>
                       <th className="px-6 py-4 text-right">Valor</th>
+                      <th className="px-6 py-4 text-center">Ações</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-100">
@@ -9572,6 +9570,15 @@ const InvoiceList = ({
                           <td className="px-6 py-4 text-zinc-900 font-bold">{doc.client_name || doc.cliente_id}</td>
                           <td className="px-6 py-4 text-zinc-900 uppercase text-[10px] font-black">{doc.payment_method || 'N/A'}</td>
                           <td className="px-6 py-4 text-right font-black text-[#003366] text-base whitespace-nowrap">{formatCurrency(doc.contravalor)}</td>
+                          <td className="px-6 py-4 text-center">
+                            <button 
+                              onClick={() => onViewDetail?.(doc)}
+                              className="p-1.5 text-zinc-400 hover:text-[#003366] hover:bg-zinc-100 transition-colors inline-block"
+                              title="Ver Relatório"
+                            >
+                              <Eye size={18} />
+                            </button>
+                          </td>
                         </tr>
                       ))}
                   </tbody>
@@ -14736,6 +14743,20 @@ export default function App() {
     if (action === 'edit') {
       setSelectedDocument(doc);
       setIsCreatingInvoice(true);
+    } else if (action === 'foreign_draft') {
+      try {
+        const res = await fetchWithAuth(`/api/invoices/${doc.id}`);
+        if (res.ok) {
+          const invoiceData = await res.json();
+          setPrintingInvoice(invoiceData);
+          setIsPrintingDraft(true);
+          setTimeout(() => {
+            window.print();
+          }, 500);
+        }
+      } catch (error) {
+        console.error('Error fetching invoice for print:', error);
+      }
     } else if (action === 'print_a4' || action === 'print_p24' || action === 'print_p24xl' || action === 'print_p80') {
       try {
         const res = await fetchWithAuth(`/api/invoices/${doc.id}`);

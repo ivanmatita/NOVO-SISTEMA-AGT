@@ -116,6 +116,7 @@ export interface InvoiceItem {
   largura?: number;
   altura?: number;
   tax?: string;
+  tax_rate?: number;
   warehouse_id?: number;
 }
 
@@ -146,6 +147,8 @@ export interface Invoice {
   work_site_id?: number;
   cash_box?: string;
   payment_method?: string;
+  operator_name?: string;
+  total_in_words?: string;
 }
 
 export interface DashboardStats {
@@ -385,6 +388,8 @@ export interface IssuedDocument {
   series_name?: string;
   cash_box?: string;
   payment_method?: string;
+  operator_name?: string;
+  total_in_words?: string;
   items?: InvoiceItem[];
   is_anulado?: boolean;
   payment_status?: 'pending' | 'partial' | 'paid';

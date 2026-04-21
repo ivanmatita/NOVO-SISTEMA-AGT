@@ -40,6 +40,32 @@ async function startServer() {
 
   app.get("/api/health", (req, res) => res.json({ status: "ok", mode: "offline" }));
 
+  // Reports
+  app.get("/api/reports/profit-loss", (req, res) => {
+    // Generate mock data for the 12 months (1-12)
+    const mockData = Array.from({ length: 12 }, (_, i) => {
+      const factS = Math.floor(Math.random() * 800000) + 200000;
+      const impRec = factS * 0.14;
+      const costs = Math.floor(Math.random() * 400000) + 100000;
+      const wages = 50000;
+      const inss = wages * 0.08;
+      const totalCosts = costs + wages + inss;
+      return {
+        month: i + 1,
+        facturacaoSImposto: factS,
+        impostoRecebido: impRec,
+        facturacaoCImposto: factS + impRec,
+        custosAceites: costs * 0.8,
+        fornecedoresSImposto: costs * 0.9,
+        ivaSuportado: costs * 0.14,
+        salarios: wages,
+        inss: inss,
+        totaisCustos: totalCosts,
+        margem: factS - totalCosts,
+      };
+    });
+    res.json(mockData);
+  });
   // Stats
   app.get("/api/stats", (req, res) => {
     res.json({
@@ -192,6 +218,8 @@ async function startServer() {
       const { reason } = req.body;
       doc.status = 'anulado';
       doc.estado_documento = 'anulado';
+      doc.description = 'ANULADO - SEM VALIDADE'; // Added
+      doc.is_valid = false; // Added
       doc.void_reason = reason;
       doc.void_at = new Date().toISOString();
       

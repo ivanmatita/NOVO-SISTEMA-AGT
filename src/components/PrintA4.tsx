@@ -6,7 +6,38 @@ const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(value);
 };
 
-const PrintA4 = ({ invoice, isDraft = false }: { invoice: Invoice, isDraft?: boolean }) => {
+const numberToWords = (n: number | undefined): string => {
+  if (n === undefined || n === 0) return 'Zero';
+  const units = ['', 'Um', 'Dois', 'Três', 'Quatro', 'Cinco', 'Seis', 'Sete', 'Oito', 'Nove'];
+  const teens = ['Dez', 'Onze', 'Doze', 'Treze', 'Quatorze', 'Quinze', 'Dezesseis', 'Dezessete', 'Dezoito', 'Dezenove'];
+  const tens = ['', '', 'Vinte', 'Trinta', 'Quarenta', 'Cinquenta', 'Sessenta', 'Setenta', 'Oitenta', 'Noventa'];
+  const hundreds = ['', 'Cento', 'Duzentos', 'Trezentos', 'Quatrocentos', 'Quinhentos', 'Seiscentos', 'Setecentos', 'Oitocentos', 'Novecentos'];
+
+  let num = Math.floor(n);
+  if (num === 100) return 'Cem';
+
+  let words = '';
+  if (num >= 100) {
+    words += hundreds[Math.floor(num / 100)];
+    num %= 100;
+    if (num > 0) words += ' e ';
+  }
+  if (num >= 20) {
+    words += tens[Math.floor(num / 10)];
+    num %= 10;
+    if (num > 0) words += ' e ';
+  } else if (num >= 10) {
+    words += teens[num - 10];
+    num = 0;
+  }
+  if (num > 0) {
+    words += units[num];
+  }
+  return words;
+};
+
+const PrintA4 = ({ invoice, isDraft = false }: { invoice: Invoice | null, isDraft?: boolean }) => {
+  if (!invoice) return null;
   const qrValue = `${invoice.invoice_number}|${invoice.client_nif || '999999999'}|${invoice.date}|${invoice.total || 0}|${invoice.hash || ''}`;
 
   return (
@@ -14,6 +45,11 @@ const PrintA4 = ({ invoice, isDraft = false }: { invoice: Invoice, isDraft?: boo
       {isDraft && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.03] rotate-[-45deg] z-0">
           <p className="text-[120px] font-black uppercase tracking-[0.5em]">DOCUMENTO DE SUPORTE / DRAFT</p>
+        </div>
+      )}
+      {invoice.status === 'anulado' && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.08] rotate-[-45deg] z-50">
+          <p className="text-[120px] font-black uppercase text-red-600 tracking-[0.1em] text-center px-20 leading-none">ANULADO - SEM VALIDADE</p>
         </div>
       )}
       
@@ -87,42 +123,136 @@ const PrintA4 = ({ invoice, isDraft = false }: { invoice: Invoice, isDraft?: boo
         </tbody>
       </table>
 
-      <div className="flex justify-end mb-12">
-        <div className="w-80 space-y-3">
-          <div className="flex justify-between text-sm">
-            <span className="text-zinc-500">Total Ilíquido</span>
-            <span className="font-medium">{formatCurrency(invoice.total)}</span>
+      <div className="grid grid-cols-2 gap-8 mb-12 relative z-10">
+        <div className="space-y-4">
+          <div className="border border-zinc-300 p-2 text-[10px] leading-tight">
+            <p className="mb-2 italic">Os produtos ou serviços foram disponibilizados para o cliente na data deste documento e entregues no local indicado na morada do cliente.</p>
+            <div className="grid grid-cols-6 gap-1 border-b border-zinc-200 pb-1 mb-1 font-bold text-zinc-500 uppercase text-[9px]">
+              <div className="col-span-1">Cod</div>
+              <div className="col-span-1">Imp</div>
+              <div className="col-span-4">Descrição da Isenção</div>
+            </div>
+            {(invoice.items || []).some(i => i.tax_rate === 0) ? (
+              <div className="grid grid-cols-6 gap-1 text-[9px]">
+                <div className="col-span-1">M10</div>
+                <div className="col-span-1">IVA</div>
+                <div className="col-span-4">Isento nos termos da alínea a) do nº 1 do artigo 14º do CIVA</div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-6 gap-1 text-[9px]">
+                <div className="col-span-1">01</div>
+                <div className="col-span-1">IVA</div>
+                <div className="col-span-4">Isento Retenção Lei 4/19, Art.71,n.3,alinea c)</div>
+              </div>
+            )}
           </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-zinc-500">Total Descontos</span>
-            <span className="font-medium">{formatCurrency(0)}</span>
+
+          <div className="p-2 border border-zinc-300">
+            <div className="grid grid-cols-3 gap-1 text-[9px] border-b border-zinc-300 pb-1 font-bold items-center uppercase">
+              <div>Taxa</div>
+              <div className="text-right">Base Incidência ( AOA )</div>
+              <div className="text-right">Valor do IVA ( AOA )</div>
+            </div>
+            <div className="grid grid-cols-3 gap-1 text-[9px] border-b border-zinc-100 py-1">
+              <div>5%</div>
+              <div className="text-right">{formatCurrency(invoice.total || 0)}</div>
+              <div className="text-right">{formatCurrency((invoice.total || 0) * 0.05)}</div>
+            </div>
+            <div className="grid grid-cols-3 gap-1 text-[9px] pt-1 font-bold">
+              <div>Totais</div>
+              <div className="text-right">{formatCurrency(invoice.total || 0)}</div>
+              <div className="text-right">{formatCurrency((invoice.total || 0) * 0.05)}</div>
+            </div>
           </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-zinc-500">Total Impostos (IVA 0%)</span>
-            <span className="font-medium">{formatCurrency(0)}</span>
+
+          <div className="border border-zinc-300 p-2 text-[10px] bg-zinc-50/50">
+            <p className="font-bold text-zinc-500 mb-1 uppercase text-[8px]">Valor Extenso</p>
+            <p className="font-medium">{invoice.total_in_words || (numberToWords(invoice.total || 0) + ' Kwanzas')} AOA</p>
           </div>
-          <div className="flex justify-between text-xl font-black pt-4 border-t-2 border-[#003366]">
-            <span className="text-zinc-800">Total a Pagar</span>
-            <span className="text-[#003366]">{formatCurrency(invoice.total)}</span>
+        </div>
+
+        <div className="text-right space-y-1 text-[11px] flex flex-col justify-end">
+          <div className="flex justify-between border-b border-zinc-200 py-1">
+            <span className="text-zinc-500">Total Ilíquido (AOA)</span>
+            <span className="font-bold">{formatCurrency(invoice.total || 0)}</span>
           </div>
+          <div className="flex justify-between border-b border-zinc-200 py-1">
+            <span className="text-zinc-500">Desconto Comercial 0%</span>
+            <span className="font-medium">0,00</span>
+          </div>
+          <div className="flex justify-between border-b border-zinc-200 py-1">
+            <span className="text-zinc-500">Total IVA</span>
+            <span className="font-bold">{formatCurrency((invoice.total || 0) * 0.05)}</span>
+          </div>
+          <div className="flex justify-between font-black text-sm pt-2">
+            <span>Total do documento (AOA)</span>
+            <span className="text-[#003366]">{formatCurrency((invoice.total || 0) * 1.05)}</span>
+          </div>
+          
+          <div className="mt-4 pt-2 text-[9px] text-zinc-400 font-mono space-y-0.5">
+            <p>{new Date().toLocaleDateString()} / {new Date().toLocaleTimeString()} Operador: {invoice.operator_name || 'YG SUNAC'}</p>
+            <p>F.Pagamento: {invoice.payment_method || 'Transferencia Bancaria'}</p>
+          </div>
+
+          <div className="mt-6 border border-zinc-300 overflow-hidden text-[10px]">
+            <div className="flex justify-between p-1.5 border-b border-zinc-100">
+              <span className="text-zinc-500">Valor Total do documento</span>
+              <span className="font-bold">{formatCurrency((invoice.total || 0) * 1.05)}</span>
+            </div>
+            <div className="flex justify-between p-1.5 border-b border-zinc-100">
+              <span className="text-zinc-600">Isento Retenção Lei 4/19, Art.71,n.3,alinea c)</span>
+              <span>0,00</span>
+            </div>
+            <div className="flex justify-between p-1.5 bg-zinc-50 font-bold">
+              <span>Valor líquido após retenção</span>
+              <span className="text-blue-900">{formatCurrency((invoice.total || 0) * 1.05)}</span>
+            </div>
+          </div>
+
+          <p className="text-[8px] text-zinc-400 italic text-center mt-2 font-bold uppercase tracking-tighter">
+            P-Produto S-Serviço E-IEC T-Impostos e Taxas O-Outros
+          </p>
         </div>
       </div>
 
-      <div className="mt-auto pt-12 border-t border-zinc-100">
-        <div className="grid grid-cols-2 gap-8 text-[9px] text-zinc-400 uppercase tracking-widest leading-relaxed">
-          <div>
-            <p className="font-bold text-zinc-500 mb-2">Observações</p>
-            <p>Os bens/serviços foram colocados à disposição do adquirente na data e local do documento.</p>
+      <div className="mt-auto pt-4 border-t border-zinc-800 text-[10px] relative z-10">
+        <div className="flex justify-between items-center mb-4">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1">
+              <div className="w-8 h-8 flex items-center justify-center p-1 border-2 border-zinc-800">
+                 <div className="w-full h-full bg-zinc-800"></div>
+              </div>
+              <div className="flex flex-col">
+                <span className="font-black text-[12px] leading-none mb-0.5 tracking-tighter">Powered By AFROGEST</span>
+                <span className="text-[10px] font-bold px-1.5 border border-zinc-800 self-start">V.1</span>
+              </div>
+            </div>
+            <div className="h-8 w-px bg-zinc-200"></div>
+            <div className="font-bold text-zinc-500 uppercase text-[9px] tracking-widest">IVA - Regime Geral</div>
           </div>
           <div className="text-right">
-            <p className="font-bold text-zinc-500 mb-2">Resumo de Impostos</p>
-            <p>IVA Isento Artigo 12º a) do CIVA</p>
+            <p className="font-bold text-zinc-700 text-[9px] mb-0.5">MdcQ - Processado por Programa Validado no 25/AGT/2019</p>
+            <p className="font-black italic text-zinc-400">Pag 1/1</p>
           </div>
         </div>
-        <div className="mt-8 text-center">
-          <div className="inline-block border border-zinc-200 p-2 text-[8px] font-mono text-zinc-400">
-            {invoice.hash?.substring(0, 4)}-Processado por computador FaturaPronta Software
-          </div>
+
+        <div className="grid grid-cols-3 gap-8 pt-4 border-t border-zinc-100">
+           <div className="flex items-center gap-3">
+             <div className="w-12 h-12 bg-white flex items-center justify-center border-2 border-zinc-800 font-black text-xl italic tracking-tighter">
+                <span className="text-zinc-800">YG</span>
+             </div>
+             <div className="flex flex-col font-black italic uppercase tracking-tighter text-blue-900 leading-none">
+                <span className="text-lg">SUNAC</span>
+             </div>
+           </div>
+           <div className="text-[9px] space-y-0.5 border-l border-zinc-200 pl-4 font-medium uppercase tracking-tight text-zinc-600">
+              <p><span className="font-black text-zinc-400">Sede :</span> LUANDA/SOSSEGO</p>
+              <p><span className="font-black text-zinc-400">NIF :</span> 5000732028</p>
+           </div>
+           <div className="text-[9px] space-y-0.5 border-l border-zinc-200 pl-4 font-medium lowercase text-zinc-600">
+              <p><span className="font-black uppercase tracking-tight text-zinc-400">T.</span> (+244) 945 822 501</p>
+              <p><span className="font-black uppercase tracking-tight text-zinc-400">E.</span> ygsunac-industria@gmail.com</p>
+           </div>
         </div>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { AnularModal } from './components/AnularModal';
 import PrintA4 from './components/PrintA4';
 import SecurityModule from './components/SecurityModule';
 import BusinessOverview from './components/BusinessOverview';
@@ -5043,14 +5044,14 @@ const ProfitLossReport = ({ fiscalYear, company_id }: { fiscalYear: string, comp
           </tr>
           <tr className="bg-zinc-50/50 border-t border-zinc-200">
             <td className="py-2 font-bold text-zinc-800">Totais</td>
-            {data.map(d => <td key={d.month} className="text-right py-2 px-1 text-zinc-600 font-medium">{formatValue(d.totaisCustos)}</td>)}
+            {months.map((_, idx) => <td key={idx} className="text-right py-2 px-1 text-zinc-600 font-medium">{formatValue(getMonthValue(idx, 'totaisCustos'))}</td>)}
             <td className="text-right py-2 px-1 font-black text-zinc-900">{formatValue(totals.totaisCustos)}</td>
           </tr>
 
           <tr><td colSpan={14} className="py-4"></td></tr>
           <tr className="bg-zinc-100 border-y border-zinc-200">
             <td className="py-3 font-black text-zinc-900 uppercase">Margem</td>
-            {data.map(d => <td key={d.month} className="text-right py-3 px-1 font-black text-zinc-900">{formatValue(d.margem)}</td>)}
+            {months.map((_, idx) => <td key={idx} className="text-right py-3 px-1 font-black text-zinc-900">{formatValue(getMonthValue(idx, 'margem'))}</td>)}
             <td className="text-right py-3 px-1 font-black text-zinc-900">{formatValue(totals.margem)}</td>
           </tr>
         </tbody>
@@ -5701,6 +5702,7 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail }: {
   onViewDetail?: (doc: IssuedDocument) => void
 }) => {
   const [showActionsModal, setShowActionsModal] = useState<IssuedDocument | null>(null);
+  const [showAnularModal, setShowAnularModal] = useState<IssuedDocument | null>(null);
 
   return (
     <div className="bg-white border border-zinc-200 rounded-none overflow-x-auto shadow-sm">
@@ -5751,7 +5753,7 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail }: {
               </td>
               <td className="px-6 py-4 text-center">
                 <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-widest rounded-none border ${(doc.status || doc.estado_documento) === 'ativo' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'}`}>
-                  {doc.status || doc.estado_documento || 'ativo'}
+                  {(doc.status || doc.estado_documento) === 'anulado' ? 'ANULADO - SEM VALIDADE' : (doc.status || doc.estado_documento || 'ativo')}
                 </span>
               </td>
               <td className="px-6 py-4">
@@ -9822,7 +9824,7 @@ const InvoiceList = ({
   );
 };
 
-const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onSuccess, caixas, initialData = null }: { 
+const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onSuccess, caixas, initialData = null, fixedDocumentType }: { 
   clients: Client[], 
   products: Product[], 
   workSites: WorkSite[], 
@@ -9830,11 +9832,12 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
   onBack: () => void, 
   onSuccess: () => void,
   caixas: Caixa[],
-  initialData?: IssuedDocument | null
+  initialData?: IssuedDocument | null,
+  fixedDocumentType?: string
 }) => {
   const { user } = useAuth();
   const [clientId, setClientId] = useState<number | ''>(initialData?.cliente_id || initialData?.client_id || '');
-  const [documentType, setDocumentType] = useState(initialData?.document_type || 'Fatura');
+  const [documentType, setDocumentType] = useState(fixedDocumentType || initialData?.document_type || 'Fatura');
   const [seriesId, setSeriesId] = useState<number | ''>(initialData?.series_id || '');
   const [date, setDate] = useState(initialData?.date ? new Date(initialData.date).toISOString().split('T')[0] : (initialData?.data_emissao ? new Date(initialData.data_emissao).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]));
   const [countryCode, setCountryCode] = useState('Angola');
@@ -9969,7 +9972,9 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
           <div className="w-8 h-8 bg-zinc-100 flex items-center justify-center text-zinc-500">
             <FileText size={18} />
           </div>
-          <h2 className="text-xl font-bold text-[#003366]">Informações do documento</h2>
+          <h2 className="text-xl font-bold text-[#003366]">
+            {fixedDocumentType ? `Emitir ${fixedDocumentType}` : 'Informações do documento'}
+          </h2>
         </div>
       </div>
 
@@ -9982,8 +9987,9 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
               <select 
                 value={documentType} 
                 onChange={(e) => setDocumentType(e.target.value)}
+                disabled={!!fixedDocumentType}
                 required
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+                className={`w-full border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm ${fixedDocumentType ? 'bg-zinc-100 text-zinc-500' : 'bg-zinc-50'}`}
               >
                 <option value="Fatura">Fatura</option>
                 <option value="Fatura Recibo">Fatura Recibo</option>
@@ -14469,6 +14475,7 @@ export default function App() {
   const [isCreatingInvoice, setIsCreatingInvoice] = useState(false);
   const [isClientModalOpen, setIsClientModalOpen] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState<IssuedDocument | null>(null);
+  const [fixedDocumentType, setFixedDocumentType] = useState<string | undefined>(undefined);
   const [showActionsModal, setShowActionsModal] = useState(false);
   const [showCertifyModal, setShowCertifyModal] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
@@ -14476,6 +14483,7 @@ export default function App() {
   const [selectedClientForAccount, setSelectedClientForAccount] = useState<Client | null>(null);
   const [appSelectedEmployee, setAppSelectedEmployee] = useState<Employee | null>(null);
   const [isContractModalOpen, setIsContractModalOpen] = useState(false);
+  const [showAnularModal, setShowAnularModal] = useState<IssuedDocument | null>(null);
   const [caixas, setCaixas] = useState<Caixa[]>([]);
   const [caixaMovements, setCaixaMovements] = useState<CaixaMovement[]>([]);
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
@@ -14699,25 +14707,7 @@ export default function App() {
         alert('Erro ao gerar PDF.');
       }
     } else if (action === 'void') {
-      const reason = prompt(`Por favor, insira o motivo da anulação do documento ${doc.numero_documento || doc.invoice_number}:`);
-      if (reason) {
-        try {
-          const res = await fetchWithAuth(`/api/invoices/${doc.id}/void`, { 
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ reason })
-          });
-          if (res.ok) {
-            await fetchData();
-            alert('Documento anulado com sucesso! A Nota de Crédito foi gerada.');
-          } else {
-            const err = await res.json();
-            alert('Erro ao anular: ' + (err.error || 'Erro desconhecido'));
-          }
-        } catch (error) {
-          console.error('Error voiding document:', error);
-        }
-      }
+      setShowAnularModal(doc);
     } else if (action === 'draft') {
       try {
         const res = await fetchWithAuth(`/api/invoices/${doc.id}`);
@@ -14730,6 +14720,10 @@ export default function App() {
       } catch (error) {
         console.error('Error fetching draft:', error);
       }
+    } else if (action === 'credit_note') {
+      setSelectedDocument(doc);
+      setFixedDocumentType('Nota de Crédito');
+      setIsCreatingInvoice(true);
     } else if (action === 'delete') {
       if (confirm(`Tem a certeza que deseja eliminar o documento ${doc.numero_documento || doc.invoice_number}?`)) {
         try {
@@ -14777,187 +14771,6 @@ export default function App() {
     }
   }, [user]);
 
-  const renderContent = () => {
-    if (viewingInvoiceId) {
-      const inv = issuedDocuments.find(i => i.id === viewingInvoiceId) || invoices.find(i => i.id === viewingInvoiceId);
-      return (
-        <InvoiceDetail 
-          id={viewingInvoiceId} 
-          onBack={() => setViewingInvoiceId(null)}
-          onPrint={(doc) => setPrintingInvoice(doc as any)}
-          companyName={companyName}
-          companyNif={companyNif}
-          companyAddress={companyAddress}
-          companyLogo={companyLogo}
-          companyFooter={companyFooter}
-        />
-      );
-    }
-
-    if (isCreatingInvoice) {
-      return (
-        <CreateInvoice 
-          clients={clients} 
-          products={products} 
-          workSites={workSites}
-          fiscalSeries={fiscalSeries}
-          initialData={selectedDocument}
-          onBack={() => {
-            setIsCreatingInvoice(false);
-            setSelectedDocument(null);
-          }} 
-          onSuccess={() => {
-            setIsCreatingInvoice(false);
-            setSelectedDocument(null);
-            fetchData();
-          }} 
-          caixas={caixas}
-        />
-      );
-    }
-
-    switch (activeTab) {
-      case 'dashboard': return (
-        <EcosystemDashboard 
-          stats={stats} 
-          issuedDocuments={issuedDocuments}
-          setActiveTab={setActiveTab}
-        />
-      );
-      case 'pos': return <POSModule products={products} onRefresh={fetchData} caixas={caixas} />;
-      case 'electronic_invoices':
-      case 'invoices': return (
-        <InvoiceList 
-          invoices={invoices} 
-          issuedDocuments={issuedDocuments}
-          clients={clients} 
-          workSites={workSites}
-          employees={employees}
-          onNew={() => setIsCreatingInvoice(true)} 
-          onView={setViewingInvoiceId}
-          onRegisterClient={() => setIsClientModalOpen(true)}
-          onAddWorkSite={handleAddWorkSite}
-          onUpdateWorkSite={handleUpdateWorkSite}
-          onAction={handleDocumentAction}
-          onCertify={(doc) => {
-            setSelectedDocument(doc);
-            setShowCertifyModal(true);
-          }}
-          onViewDetail={(doc) => setViewingInvoiceId(doc.id)}
-          onViewBusinessOverview={() => setActiveTab('business_overview')}
-          setActiveTab={setActiveTab}
-          caixas={caixas}
-          mode={activeTab === 'electronic_invoices' ? 'electronic' : 'standard'}
-          fiscalSeries={fiscalSeries}
-          onRefresh={fetchData}
-        />
-      );
-      case 'tax-settings': return <TaxSeriesModule />;
-      case 'issued-documents': return (
-        <IssuedDocumentsList 
-          documents={issuedDocuments} 
-          onAction={handleDocumentAction}
-          onCertify={(doc) => {
-            setSelectedDocument(doc);
-            setShowCertifyModal(true);
-          }}
-          onViewDetail={(doc) => setViewingInvoiceId(doc.id)}
-        />
-      );
-      case 'client-account': return selectedClientForAccount ? (
-        <ClientAccount 
-          client={selectedClientForAccount} 
-          documents={issuedDocuments
-            .filter(d => Number(d.cliente_id) === Number(selectedClientForAccount.id))
-            .map(d => ({
-              ...d,
-              tipo_documento: d.document_type || 'Fatura',
-              data_emissao: d.date,
-              numero_documento: d.invoice_number,
-              contravalor: d.total
-            })) as any}
-          onBack={() => setActiveTab('clients')}
-        />
-      ) : (
-        <EcosystemDashboard stats={stats} issuedDocuments={issuedDocuments} setActiveTab={setActiveTab} />
-      );
-      case 'cashier': return <CashierModule issuedDocuments={issuedDocuments} />;
-      case 'caixa': return <CaixaModule caixas={caixas} setCaixas={setCaixas} movements={caixaMovements} setMovements={setCaixaMovements} />;
-      case 'security': return (
-        <SecurityModule 
-          occurrences={securityOccurrences}
-          armory={securityArmory}
-          roster={securityRoster}
-          employees={employees}
-          workSites={workSites}
-          onRefresh={fetchData}
-        />
-      );
-      case 'fleet': return <FleetManagementModule />;
-      case 'projects': return <ProjectManagementModule />;
-      case 'business_overview': return (
-        <BusinessOverview 
-          invoices={issuedDocuments} 
-          products={products} 
-          clients={clients} 
-          transactions={transactions} 
-        />
-      );
-      case 'workplaces': return <WorkplaceModule onRefresh={fetchData} clients={clients} />;
-      case 'clients': return (
-        <ClientList 
-          clients={clients} 
-          issuedDocuments={issuedDocuments}
-          onRefresh={fetchData} 
-          onViewAccount={(client) => {
-            setSelectedClientForAccount(client);
-            setActiveTab('client-account');
-          }}
-        />
-      );
-      case 'suppliers': return <SupplierModule products={products} workSites={workSites} fiscalSeries={fiscalSeries} caixas={caixas} />;
-      case 'products': return (
-        <ProductList 
-          products={products} 
-          onRefresh={fetchData} 
-          stockMovements={stockMovements}
-          warehouses={warehouses}
-        />
-      );
-      case 'financial': return (
-        <FinancialModule 
-          caixas={caixas} 
-          setCaixas={setCaixas} 
-          caixaMovements={caixaMovements} 
-          setCaixaMovements={setCaixaMovements} 
-          employees={employees}
-          user={user}
-        />
-      );
-      case 'hr': return <HRModule onRefresh={fetchData} onSetIsContractModalOpen={setIsContractModalOpen} onSetEmployee={setAppSelectedEmployee} caixas={caixas} companyName={companyName} />;
-      case 'accounting': return <AccountingModule invoices={invoices} clients={clients} fiscalSeries={fiscalSeries} onRefresh={fetchData} employees={employees} issuedDocuments={issuedDocuments} />;
-      case 'specialized': return <SpecializedManagementModule activeTab={activeTab} setActiveTab={setActiveTab} />;
-      case 'archive': return <ArchiveModule />;
-      case 'church': return <ChurchModule />;
-      case 'agrobusiness': return <AgrobusinessModule />;
-      case 'tax-series': return <FiscalSeriesModule series={fiscalSeries} onRefresh={fetchData} users={employees} />;
-      case 'settings': return (
-        <div className="space-y-6">
-          <SettingsModule 
-            companyData={companyData}
-            onRefreshData={fetchData}
-            alerts={alerts}
-            setAlerts={setAlerts}
-          />
-        </div>
-      );
-      case 'secretary': return <SecretaryModule appSelectedEmployee={appSelectedEmployee} />;
-      default: return (
-        <EcosystemDashboard stats={stats} issuedDocuments={issuedDocuments} setActiveTab={setActiveTab} />
-      );
-    }
-  };
-
   return (
     <ProtectedRoute>
       <div className="min-h-screen bg-[#f4f7f9] text-zinc-800 font-sans selection:bg-[#003366]/10 flex overflow-x-hidden">
@@ -15004,7 +14817,231 @@ export default function App() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3 }}
               >
-                {renderContent()}
+                {isCreatingInvoice ? (
+                  <CreateInvoice 
+                    clients={clients} 
+                    products={products} 
+                    workSites={workSites}
+                    fiscalSeries={fiscalSeries}
+                    initialData={selectedDocument}
+                    fixedDocumentType={fixedDocumentType}
+                    onBack={() => {
+                      setIsCreatingInvoice(false);
+                      setSelectedDocument(null);
+                      setFixedDocumentType(undefined);
+                    }} 
+                    onSuccess={() => {
+                      setIsCreatingInvoice(false);
+                      setSelectedDocument(null);
+                      setFixedDocumentType(undefined);
+                      fetchData();
+                    }} 
+                    caixas={caixas}
+                  />
+                ) : viewingInvoiceId ? (
+                  <InvoiceDetail 
+                    id={viewingInvoiceId} 
+                    onBack={() => setViewingInvoiceId(null)}
+                    onPrint={(doc) => setPrintingInvoice(doc as any)}
+                    companyName={companyName}
+                    companyNif={companyNif}
+                    companyAddress={companyAddress}
+                    companyLogo={companyLogo}
+                    companyFooter={companyFooter}
+                  />
+                ) : (
+                  <>
+                    {showAnularModal && (
+                      <AnularModal 
+                        document={showAnularModal} 
+                        onClose={() => setShowAnularModal(null)} 
+                        onAnular={async (reason) => {
+                          try {
+                            const res = await fetchWithAuth(`/api/invoices/${showAnularModal.id}/void`, { 
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ reason })
+                            });
+                            if (res.ok) {
+                              await fetchData();
+                              alert('Documento anulado com sucesso!');
+                              setShowAnularModal(null);
+                            } else {
+                              alert('Erro ao anular');
+                            }
+                          } catch (error) {
+                            console.error('Error voiding document:', error);
+                          }
+                        }}
+                      />
+                    )}
+                    {(() => {
+                      switch (activeTab) {
+                        case 'dashboard':
+                          return <EcosystemDashboard stats={stats} issuedDocuments={issuedDocuments} setActiveTab={setActiveTab} />;
+                        case 'pos':
+                          return <POSModule products={products} onRefresh={fetchData} caixas={caixas} />;
+                        case 'electronic_invoices':
+                        case 'invoices':
+                        case 'vendas':
+                          return (
+                            <InvoiceList 
+                              invoices={invoices} 
+                              issuedDocuments={issuedDocuments}
+                              clients={clients} 
+                              workSites={workSites}
+                              employees={employees}
+                              onNew={() => setIsCreatingInvoice(true)} 
+                              onView={setViewingInvoiceId}
+                              onRegisterClient={() => setIsClientModalOpen(true)}
+                              onAddWorkSite={handleAddWorkSite}
+                              onUpdateWorkSite={handleUpdateWorkSite}
+                              onAction={handleDocumentAction}
+                              onCertify={(doc) => {
+                                setSelectedDocument(doc);
+                                setShowCertifyModal(true);
+                              }}
+                              onViewDetail={(doc) => setViewingInvoiceId(doc.id)}
+                              onViewBusinessOverview={() => setActiveTab('business_overview')}
+                              setActiveTab={setActiveTab}
+                              caixas={caixas}
+                              mode={activeTab === 'electronic_invoices' ? 'electronic' : 'standard'}
+                              fiscalSeries={fiscalSeries}
+                              onRefresh={fetchData}
+                            />
+                          );
+                        case 'tax-settings':
+                          return <TaxSeriesModule />;
+                        case 'issued-documents':
+                          return (
+                            <IssuedDocumentsList 
+                              documents={issuedDocuments} 
+                              onAction={handleDocumentAction}
+                              onCertify={(doc) => {
+                                setSelectedDocument(doc);
+                                setShowCertifyModal(true);
+                              }}
+                              onViewDetail={(doc) => setViewingInvoiceId(doc.id)}
+                            />
+                          );
+                        case 'client-account':
+                          return selectedClientForAccount ? (
+                            <ClientAccount 
+                              client={selectedClientForAccount} 
+                              documents={issuedDocuments
+                                .filter(d => Number(d.cliente_id) === Number(selectedClientForAccount.id))
+                                .map(d => ({
+                                  ...d,
+                                  tipo_documento: d.document_type || 'Fatura',
+                                  data_emissao: d.date,
+                                  numero_documento: d.invoice_number,
+                                  contravalor: d.total
+                                })) as any}
+                              onBack={() => setActiveTab('clients')}
+                            />
+                          ) : (
+                            <EcosystemDashboard stats={stats} issuedDocuments={issuedDocuments} setActiveTab={setActiveTab} />
+                          );
+                        case 'cashier':
+                          return <CashierModule issuedDocuments={issuedDocuments} />;
+                        case 'caixa':
+                          return <CaixaModule caixas={caixas} setCaixas={setCaixas} movements={caixaMovements} setMovements={setCaixaMovements} />;
+                        case 'security':
+                          return (
+                            <SecurityModule 
+                              occurrences={securityOccurrences}
+                              armory={securityArmory}
+                              roster={securityRoster}
+                              employees={employees}
+                              workSites={workSites}
+                              onRefresh={fetchData}
+                            />
+                          );
+                        case 'fleet':
+                          return <FleetManagementModule />;
+                        case 'projects':
+                          return <ProjectManagementModule />;
+                        case 'business_overview':
+                        case 'cost-revenue':
+                          return (
+                            <BusinessOverview 
+                              invoices={issuedDocuments} 
+                              products={products} 
+                              clients={clients} 
+                              transactions={transactions} 
+                            />
+                          );
+                        case 'workplaces':
+                          return <WorkplaceModule onRefresh={fetchData} clients={clients} />;
+                        case 'clients':
+                          return (
+                            <ClientList 
+                              clients={clients} 
+                              issuedDocuments={issuedDocuments}
+                              onRefresh={fetchData} 
+                              onViewAccount={(client) => {
+                                setSelectedClientForAccount(client);
+                                setActiveTab('client-account');
+                              }}
+                            />
+                          );
+                        case 'suppliers':
+                          return <SupplierModule products={products} workSites={workSites} fiscalSeries={fiscalSeries} caixas={caixas} />;
+                        case 'products':
+                          return (
+                            <ProductList 
+                              products={products} 
+                              onRefresh={fetchData} 
+                              stockMovements={stockMovements}
+                              warehouses={warehouses}
+                            />
+                          );
+                        case 'financial':
+                          return (
+                            <FinancialModule 
+                              caixas={caixas} 
+                              setCaixas={setCaixas} 
+                              caixaMovements={caixaMovements} 
+                              setCaixaMovements={setCaixaMovements} 
+                              employees={employees}
+                              user={user}
+                            />
+                          );
+                        case 'hr':
+                          return <HRModule onRefresh={fetchData} onSetIsContractModalOpen={setIsContractModalOpen} onSetEmployee={setAppSelectedEmployee} caixas={caixas} companyName={companyName} />;
+                        case 'accounting':
+                          return <AccountingModule invoices={invoices} clients={clients} fiscalSeries={fiscalSeries} onRefresh={fetchData} employees={employees} issuedDocuments={issuedDocuments} />;
+                        case 'specialized':
+                          return <SpecializedManagementModule activeTab={activeTab} setActiveTab={setActiveTab} />;
+                        case 'archive':
+                          return <ArchiveModule />;
+                        case 'church':
+                          return <ChurchModule />;
+                        case 'agrobusiness':
+                          return <AgrobusinessModule />;
+                        case 'tax-series':
+                          return <FiscalSeriesModule series={fiscalSeries} onRefresh={fetchData} users={employees} />;
+                        case 'profit-loss-report':
+                          return <ProfitLossReport fiscalYear={fiscalYear} company_id={user?.company_id} />;
+                        case 'settings':
+                          return (
+                            <div className="space-y-6">
+                              <SettingsModule 
+                                companyData={companyData}
+                                onRefreshData={fetchData}
+                                alerts={alerts}
+                                setAlerts={setAlerts}
+                              />
+                            </div>
+                          );
+                        case 'secretary':
+                          return <SecretaryModule appSelectedEmployee={appSelectedEmployee} />;
+                        default:
+                          return <EcosystemDashboard stats={stats} issuedDocuments={issuedDocuments} setActiveTab={setActiveTab} />;
+                      }
+                    })()}
+                  </>
+                )}
               </motion.div>
             </div>
           </main>
@@ -15030,14 +15067,6 @@ export default function App() {
           </div>
         )}
         
-      {/* {showActionsModal && selectedDocument && (
-        <DocumentActionsModal 
-          document={selectedDocument} 
-          onClose={() => setShowActionsModal(false)} 
-          onAction={handleDocumentAction}
-        />
-      )} */}
-
       {printingInvoice && (
         <div className="fixed inset-0 z-[200] bg-white overflow-auto print:p-0">
           <div className="print:hidden p-4 bg-zinc-900 text-white flex justify-between items-center sticky top-0">

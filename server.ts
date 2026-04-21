@@ -299,6 +299,30 @@ async function startServer() {
       created_at: new Date().toISOString() 
     };
     issuedDocuments.push(newDoc);
+
+    // Record stock movements if related to a work site
+    if (newDoc.work_site_id && Array.isArray(newDoc.items)) {
+      newDoc.items.forEach((item: any) => {
+        if (item.product_id) {
+          const prod = products.find(p => p.id === Number(item.product_id));
+          stockMovements.push({
+            id: Date.now() + Math.random(),
+            product_id: Number(item.product_id),
+            product_name: item.description || prod?.name || 'Produto',
+            type: 'exit',
+            quantity: Number(item.quantity || 1),
+            description: `Venda ${invoice_number} - Obra ${newDoc.work_site_id}`,
+            created_at: new Date().toISOString(),
+            work_site_id: Number(newDoc.work_site_id),
+            previous_stock: prod?.stock_quantity || 0,
+            current_stock: (prod?.stock_quantity || 0) - Number(item.quantity || 1),
+            warehouse_id: Number(item.warehouse_id || 1)
+          });
+          if (prod) prod.stock_quantity -= Number(item.quantity || 1);
+        }
+      });
+    }
+
     res.json(newDoc);
   });
 

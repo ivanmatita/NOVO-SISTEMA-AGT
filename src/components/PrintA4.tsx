@@ -36,32 +36,45 @@ const numberToWords = (n: number | undefined): string => {
   return words;
 };
 
-const PrintA4 = ({ invoice, isDraft = false }: { invoice: Invoice | null, isDraft?: boolean }) => {
+interface PrintA4Props {
+  invoice: Invoice | null;
+  isDraft?: boolean;
+  companyData?: {
+    name: string;
+    nif: string;
+    address: string;
+    phone?: string;
+    email?: string;
+    logo?: string;
+    footer?: string;
+  };
+}
+
+const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
   if (!invoice) return null;
   const qrValue = `${invoice.invoice_number}|${invoice.client_nif || '999999999'}|${invoice.date}|${invoice.total || 0}|${invoice.hash || ''}`;
 
   return (
-    <div className="bg-white p-[2cm] w-[210mm] min-h-[297mm] mx-auto text-zinc-900 font-sans shadow-lg print:shadow-none print:m-0 relative">
+    <div className="bg-white p-[2cm] w-[210mm] min-h-[297mm] mx-auto text-zinc-900 font-sans shadow-lg print:shadow-none print:m-0 relative overflow-hidden">
       {isDraft && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.03] rotate-[-45deg] z-0">
           <p className="text-[120px] font-black uppercase tracking-[0.5em]">DOCUMENTO DE SUPORTE / DRAFT</p>
         </div>
       )}
       {invoice.status === 'anulado' && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.08] rotate-[-45deg] z-50">
-          <p className="text-[120px] font-black uppercase text-red-600 tracking-[0.1em] text-center px-20 leading-none">ANULADO - SEM VALIDADE</p>
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.08] rotate-[-45deg] z-50 text-center">
+          <p className="text-[120px] font-black uppercase text-red-600 tracking-[0.1em] px-20 leading-none">ANULADO - SEM VALIDADE</p>
         </div>
       )}
       
       <div className="flex justify-between items-start mb-12 relative z-10">
         <div>
-          <h1 className="text-3xl font-black text-[#003366] mb-2">FaturaPronta Lda</h1>
+          <h1 className="text-3xl font-black text-[#003366] mb-2">{companyData?.name || 'FaturaPronta Lda'}</h1>
           <div className="text-xs space-y-1 text-zinc-600">
-            <p>Rua da Inovação, 123</p>
-            <p>Luanda, Angola</p>
-            <p>NIF: 500 000 000</p>
-            <p>Tel: +244 900 000 000</p>
-            <p>Email: info@faturapronta.ao</p>
+            <p>{companyData?.address || 'Rua da Inovação, 123'}</p>
+            <p>NIF: {companyData?.nif || '500 000 000'}</p>
+            {companyData?.phone && <p>Tel: {companyData.phone}</p>}
+            {companyData?.email && <p>Email: {companyData.email}</p>}
           </div>
         </div>
         <div className="text-right">
@@ -190,8 +203,8 @@ const PrintA4 = ({ invoice, isDraft = false }: { invoice: Invoice | null, isDraf
           </div>
           
           <div className="mt-4 pt-2 text-[9px] text-zinc-400 font-mono space-y-0.5">
-            <p>{new Date().toLocaleDateString()} / {new Date().toLocaleTimeString()} Operador: {invoice.operator_name || 'YG SUNAC'}</p>
-            <p>F.Pagamento: {invoice.payment_method || 'Transferencia Bancaria'}</p>
+            <p>{new Date().toLocaleDateString()} / {new Date().toLocaleTimeString()} Operador: {invoice.operator_name || 'Admin'}</p>
+            <p>F.Pagamento: {invoice.payment_method || '---'}</p>
           </div>
 
           <div className="mt-6 border border-zinc-300 overflow-hidden text-[10px]">
@@ -215,44 +228,30 @@ const PrintA4 = ({ invoice, isDraft = false }: { invoice: Invoice | null, isDraf
         </div>
       </div>
 
-      <div className="mt-auto pt-4 border-t border-zinc-800 text-[10px] relative z-10">
+      <div className="mt-auto pt-4 border-t border-zinc-200 text-[10px] relative z-20">
         <div className="flex justify-between items-center mb-4">
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-1">
-              <div className="w-8 h-8 flex items-center justify-center p-1 border-2 border-zinc-800">
-                 <div className="w-full h-full bg-zinc-800"></div>
-              </div>
-              <div className="flex flex-col">
-                <span className="font-black text-[12px] leading-none mb-0.5 tracking-tighter">Powered By AFROGEST</span>
-                <span className="text-[10px] font-bold px-1.5 border border-zinc-800 self-start">V.1</span>
-              </div>
-            </div>
-            <div className="h-8 w-px bg-zinc-200"></div>
             <div className="font-bold text-zinc-500 uppercase text-[9px] tracking-widest">IVA - Regime Geral</div>
+            <div className="text-[8px] text-zinc-400 font-mono">{invoice.hash ? invoice.hash.slice(0,4) + '-' + invoice.hash.slice(-4) : ''}</div>
           </div>
-          <div className="text-right">
-            <p className="font-bold text-zinc-700 text-[9px] mb-0.5">MdcQ - Processado por Programa Validado no 25/AGT/2019</p>
-            <p className="font-black italic text-zinc-400">Pag 1/1</p>
+          <div className="text-[8px] text-zinc-400 font-bold uppercase">
+             Original
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-8 pt-4 border-t border-zinc-100">
-           <div className="flex items-center gap-3">
-             <div className="w-12 h-12 bg-white flex items-center justify-center border-2 border-zinc-800 font-black text-xl italic tracking-tighter">
-                <span className="text-zinc-800">YG</span>
-             </div>
-             <div className="flex flex-col font-black italic uppercase tracking-tighter text-blue-900 leading-none">
-                <span className="text-lg">SUNAC</span>
-             </div>
-           </div>
-           <div className="text-[9px] space-y-0.5 border-l border-zinc-200 pl-4 font-medium uppercase tracking-tight text-zinc-600">
-              <p><span className="font-black text-zinc-400">Sede :</span> LUANDA/SOSSEGO</p>
-              <p><span className="font-black text-zinc-400">NIF :</span> 5000732028</p>
+        <div className="grid grid-cols-2 gap-8 pt-4 border-t border-zinc-100">
+           <div className="text-[9px] space-y-0.5 font-medium uppercase tracking-tight text-zinc-600">
+              <p><span className="font-black text-zinc-400 uppercase">Sede :</span> {companyData?.address || '---'}</p>
+              <p><span className="font-black text-zinc-400 uppercase">NIF :</span> {companyData?.nif || '---'}</p>
            </div>
            <div className="text-[9px] space-y-0.5 border-l border-zinc-200 pl-4 font-medium lowercase text-zinc-600">
-              <p><span className="font-black uppercase tracking-tight text-zinc-400">T.</span> (+244) 945 822 501</p>
-              <p><span className="font-black uppercase tracking-tight text-zinc-400">E.</span> ygsunac-industria@gmail.com</p>
+              {companyData?.phone && <p><span className="font-black uppercase tracking-tight text-zinc-400">T.</span> {companyData.phone}</p>}
+              {companyData?.email && <p><span className="font-black uppercase tracking-tight text-zinc-400">E.</span> {companyData.email}</p>}
            </div>
+        </div>
+        <div className="mt-4 pt-4 border-t border-zinc-50 flex justify-between items-end text-[8px] text-zinc-300 font-bold uppercase tracking-[0.2em]">
+           <div>{companyData?.footer || 'Processado por Programa Validado'}</div>
+           <div>Página 1 / 1</div>
         </div>
       </div>
     </div>

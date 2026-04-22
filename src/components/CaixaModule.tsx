@@ -87,6 +87,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
       targetCaixaId: transferData.to,
       type: 'transferencia',
       amount: transferData.amount,
+      moeda: activeCurrency,
       description: transferData.description || `Transferência para ${(caixas || []).find(c => c.id === transferData.to)?.name}`,
       date: new Date().toISOString(),
       company_id: user?.company_id
@@ -126,6 +127,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
       caixaId: paymentData.caixaId,
       type: 'saida',
       amount: paymentData.amount,
+      moeda: activeCurrency,
       description: paymentData.description,
       date: new Date().toISOString(),
       company_id: user?.company_id
@@ -162,6 +164,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
       caixaId: reconData.caixaId,
       type: diff > 0 ? 'entrada' : 'saida',
       amount: Math.abs(diff),
+      moeda: activeCurrency,
       description: `Conciliação: ${reconData.description}`,
       date: new Date().toISOString(),
       company_id: user?.company_id
@@ -329,7 +332,13 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
                   {(movements || [])
-                    .filter(m => !selectedCaixaId || m.caixaId === selectedCaixaId || m.targetCaixaId === selectedCaixaId)
+                    .filter(m => {
+                      const matchesCaixa = !selectedCaixaId || m.caixaId === selectedCaixaId || m.targetCaixaId === selectedCaixaId;
+                      // Handle "Kwanza" vs "AOA" normalization
+                      const movementCurrency = m.moeda === 'Kwanza' ? 'AOA' : m.moeda;
+                      const matchesCurrency = !activeCurrency || movementCurrency === activeCurrency;
+                      return matchesCaixa && matchesCurrency;
+                    })
                     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                     .map(m => (
                       <tr key={m.id} className="hover:bg-zinc-50 transition-colors">
@@ -351,7 +360,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
                           m.type === 'entrada' ? 'text-emerald-600' : 
                           m.type === 'saida' ? 'text-red-600' : 'text-blue-600'
                         }`}>
-                          {m.type === 'saida' ? '-' : '+'}{m.amount.toLocaleString('pt-PT', { style: 'currency', currency: 'AOA' })}
+                          {m.type === 'saida' ? '-' : '+'}{m.amount.toLocaleString('pt-PT', { style: 'currency', currency: (m.moeda === 'Kwanza' || !m.moeda) ? 'AOA' : m.moeda })}
                         </td>
                       </tr>
                     ))}

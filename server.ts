@@ -7,6 +7,7 @@ let clients: any[] = [];
 let products: any[] = [];
 let issuedDocuments: any[] = [];
 let workSites: any[] = [];
+let workSiteMovements: any[] = [];
 let employees: any[] = [];
 let fiscalSeries: any[] = [
   { id: 1, name: 'Série 2026', user_id: '1', type: 'normal', reference: 'S', counters: {}, year: 2026, is_active: true, data_inicio: '2026-01-01', destino: 'Vendas Sede' }
@@ -166,8 +167,10 @@ async function startServer() {
         ...doc, 
         id: Date.now(), 
         invoice_number, 
+        numero_documento: invoice_number,
         is_certified: false, 
         hash: undefined,
+        reference_document: doc.invoice_number || doc.numero_documento,
         created_at: new Date().toISOString() 
       };
       issuedDocuments.push(cloned);
@@ -219,13 +222,31 @@ async function startServer() {
         type: 'income',
         category: 'Vendas',
         amount: Number(amount),
+        moeda: invoice.moeda || 'AOA',
         description: `Recebimento Ref: ${invoice.invoice_number}`,
         date: date || new Date().toISOString(),
         reference_id: invoice_id,
         payment_method,
-        cash_box
+        cash_box,
+        work_site_id: invoice.work_site_id
       };
       transactions.push(newTransaction);
+
+      // Record Work Site Movement if applicable
+      if (invoice.work_site_id) {
+        workSiteMovements.push({
+          id: Date.now() + 1,
+          work_site_id: invoice.work_site_id,
+          date: date || new Date().toISOString(),
+          doc_no: `REC-${Date.now()}`,
+          company: invoice.client_name,
+          description: `Recebimento de Factura - Ref. ${invoice.invoice_number}`,
+          debit: 0,
+          credit: Number(amount),
+          balance: 0,
+          moeda: invoice.moeda || 'AOA'
+        });
+      }
 
       // Also create a "Recibo" document to show in the list
       const year = new Date().getFullYear();
@@ -245,6 +266,7 @@ async function startServer() {
         data_emissao: date || new Date().toISOString(),
         total: Number(amount),
         counter_value: Number(amount),
+        moeda: invoice.moeda || 'Kwanza',
         payment_method: payment_method,
         cash_box: cash_box,
         is_certified: true, // Auto-certified as it is a receipt of payment
@@ -259,6 +281,19 @@ async function startServer() {
         }]
       };
       issuedDocuments.push(reciboDoc);
+
+      // Record caixa movement if applicable
+      if (cash_box) {
+        caixaMovements.push({
+          id: Date.now().toString(),
+          caixaId: cash_box,
+          type: 'entrada',
+          amount: Number(amount),
+          moeda: invoice.moeda || 'Kwanza',
+          description: `Recebimento Ref: ${invoice.invoice_number}`,
+          date: new Date().toISOString()
+        });
+      }
       
       res.json({ success: true, invoice, recibo: reciboDoc });
     } else {
@@ -274,8 +309,8 @@ async function startServer() {
       const { reason } = req.body;
       doc.status = 'anulado';
       doc.estado_documento = 'anulado';
-      doc.description = 'ANULADO - SEM VALIDADE'; // Added
-      doc.is_valid = false; // Added
+      doc.description = `[ANULADO] ${doc.numero_documento || doc.invoice_number} - SEM VALIDADE`; 
+      doc.is_valid = false;
       doc.void_reason = reason;
       doc.void_at = new Date().toISOString();
       
@@ -289,6 +324,9 @@ async function startServer() {
         const counter = series.counters[docType];
         series.counters[docType]++;
         nc_number = `${docType} ${series.reference}${new Date().getFullYear()}/${counter}`;
+      } else {
+        const counter = issuedDocuments.filter(d => d.document_type === 'Nota de Crédito').length + 1;
+        nc_number = `Nota de Crédito ${new Date().getFullYear()}/${counter}`;
       }
       
       const creditNote = {
@@ -297,19 +335,57 @@ async function startServer() {
         document_type: 'Nota de Crédito',
         tipo_documento: 'Nota de Crédito',
         invoice_number: nc_number,
-        reference_document: doc.invoice_number,
-        total: -Math.abs(doc.total || doc.counter_value || 0),
+        numero_documento: nc_number,
+        reference_document: doc.numero_documento || doc.invoice_number,
         contravalor: -Math.abs(doc.contravalor || doc.counter_value || 0),
+        counter_value: -Math.abs(doc.contravalor || doc.counter_value || 0),
+        total: -Math.abs(doc.total || doc.counter_value || 0),
         created_at: new Date().toISOString(),
         is_certified: true,
-        status: 'ativo'
+        status: 'ativo',
+        description: `Ref. ${doc.numero_documento || doc.invoice_number}`
       };
+      
       issuedDocuments.push(creditNote);
-
       res.json({ success: true, creditNote });
     } else {
       res.status(404).json({ error: "Document not found" });
     }
+  });
+
+  app.post("/api/invoices/:id/convert", (req, res) => {
+    const doc = issuedDocuments.find(d => d.id === Number(req.params.id));
+    if (doc) {
+      const { targetType } = req.body;
+      const series = fiscalSeries.find(s => s.id === Number(doc.series_id));
+      let new_number = "";
+      if (series) {
+        if (!series.counters) series.counters = {};
+        if (!series.counters[targetType]) series.counters[targetType] = 1;
+        const counter = series.counters[targetType];
+        series.counters[targetType]++;
+        new_number = `${targetType} ${series.reference}${new Date().getFullYear()}/${counter}`;
+      } else {
+        const counter = issuedDocuments.filter(d => d.document_type === targetType).length + 1;
+        new_number = `${targetType} ${new Date().getFullYear()}/${counter}`;
+      }
+
+      const converted = {
+        ...doc,
+        id: Date.now(),
+        document_type: targetType,
+        tipo_documento: targetType,
+        invoice_number: new_number,
+        numero_documento: new_number,
+        reference_document: doc.numero_documento || doc.invoice_number,
+        is_certified: false,
+        hash: undefined,
+        created_at: new Date().toISOString(),
+        description: `Ref. ${doc.numero_documento || doc.invoice_number}`
+      };
+      issuedDocuments.push(converted);
+      res.json(converted);
+    } else res.status(404).json({ error: "Invoice not found" });
   });
 
   app.post("/api/invoices/:id/certify", (req, res) => {
@@ -349,11 +425,28 @@ async function startServer() {
         type: 'income',
         category: 'Vendas',
         amount: amount,
+        moeda: doc.moeda || doc.currency || 'AOA',
         description: `Venda ${doc.invoice_number} (Certificada)`,
         date: new Date().toISOString(),
         reference_id: doc.id.toString(),
         work_site_id: doc.work_site_id
       });
+
+      // Update Work Site Movements if applicable
+      if (doc.work_site_id) {
+        workSiteMovements.push({
+          id: Date.now(),
+          work_site_id: doc.work_site_id,
+          date: new Date().toISOString(),
+          doc_no: doc.invoice_number || doc.numero_documento,
+          company: doc.client_name || 'Cliente',
+          description: `Facturação Certificada - Ref. ${doc.invoice_number}`,
+          debit: 0,
+          credit: amount,
+          balance: 0,
+          moeda: doc.moeda || doc.currency || 'AOA'
+        });
+      }
 
       // 3. Record caixa movement if applicable
       if (doc.cash_box && (doc.document_type.includes('Recibo') || doc.payment_method === 'Pronto Pagamento')) {
@@ -362,6 +455,7 @@ async function startServer() {
           caixaId: doc.cash_box,
           type: 'entrada',
           amount: amount,
+          moeda: doc.moeda || 'Kwanza',
           description: `Venda ${doc.invoice_number} (Certificado)`,
           date: new Date().toISOString()
         });
@@ -462,9 +556,19 @@ async function startServer() {
     workSites.push(newSite);
     res.json(newSite);
   });
-  app.get("/api/work-sites/:id/movements", (req, res) => res.json([]));
+  app.get("/api/work-sites/:id/movements", (req, res) => {
+    const { id } = req.params;
+    const { company_id } = req.query;
+    const siteMovements = workSiteMovements.filter(m => 
+      m.work_site_id?.toString() === id.toString() && 
+      (!company_id || m.company_id?.toString() === company_id.toString())
+    );
+    res.json(siteMovements);
+  });
   app.post("/api/work-sites/:id/movements", (req, res) => {
-    res.json({ ...req.body, id: Date.now() });
+    const movement = { ...req.body, id: Date.now(), created_at: new Date().toISOString() };
+    workSiteMovements.push(movement);
+    res.json(movement);
   });
 
   // Transactions
@@ -486,6 +590,50 @@ async function startServer() {
   app.post("/api/purchases", (req, res) => {
     const newPurchase = { ...req.body, id: Date.now(), date: new Date().toISOString() };
     purchases.push(newPurchase);
+    
+    // Record finance movement (Accounting Cost)
+    const amount = Number(newPurchase.total || 0);
+    transactions.push({
+      id: Date.now(),
+      type: 'expense',
+      category: 'Compras',
+      amount: amount,
+      moeda: newPurchase.moeda || newPurchase.currency || 'AOA',
+      description: `Compra Ref: ${newPurchase.invoice_number || 'N/A'} - Fornecedor: ${newPurchase.supplier_name || 'N/A'}`,
+      date: new Date().toISOString(),
+      reference_id: newPurchase.id.toString(),
+      work_site_id: newPurchase.work_site_id
+    });
+
+    // Update Work Site Movements if applicable
+    if (newPurchase.work_site_id) {
+      workSiteMovements.push({
+        id: Date.now(),
+        work_site_id: newPurchase.work_site_id,
+        date: new Date().toISOString(),
+        doc_no: newPurchase.invoice_number || `COMP-${newPurchase.id}`,
+        company: newPurchase.supplier_name,
+        description: `Matérias Primas / Entregas - ${newPurchase.invoice_number}`,
+        debit: amount,
+        credit: 0,
+        balance: 0,
+        moeda: newPurchase.moeda || newPurchase.currency || 'AOA'
+      });
+    }
+
+    // Record caixa movement if applicable (Saída)
+    if (newPurchase.cash_box) {
+      caixaMovements.push({
+        id: Date.now().toString(),
+        caixaId: newPurchase.cash_box,
+        type: 'saida',
+        amount: amount,
+        moeda: newPurchase.currency || 'Kwanza',
+        description: `Pagamento Compra Ref: ${newPurchase.invoice_number || 'N/A'}`,
+        date: new Date().toISOString()
+      });
+    }
+
     res.json(newPurchase);
   });
 

@@ -53,8 +53,12 @@ interface PrintA4Props {
 const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
   if (!invoice) return null;
   const isFinal = !isDraft && invoice.is_certified;
-  const qrValue = isFinal ? `${invoice.invoice_number}|${invoice.client_nif || '999999999'}|${invoice.date}|${invoice.total || 0}|${invoice.hash || ''}` : 'DOCUMENTO NÃO CERTIFICADO';
-  const displayCurrency = (isDraft || !isFinal) && invoice.currency !== 'AOA' ? (invoice.currency || 'AOA') : 'AOA';
+  
+  // Strict check: if it's draft or not certified by AGT (hash is missing or is_certified is false), it's a PROVISIONAL document
+  const isProvisional = isDraft || !invoice.is_certified || !invoice.hash;
+  
+  const qrValue = !isProvisional ? `${invoice.invoice_number}|${invoice.client_nif || '999999999'}|${invoice.date}|${invoice.total || 0}|${invoice.hash || ''}` : 'DOCUMENTO NÃO CERTIFICADO';
+  const displayCurrency = isProvisional && invoice.currency !== 'AOA' ? (invoice.currency || 'AOA') : 'AOA';
   const formatParams = (val: number) => formatCurrency(val, displayCurrency);
 
   const subtotal = invoice.items?.reduce((sum, item) => sum + (item.total || 0), 0) || 0;
@@ -66,40 +70,43 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
 
   return (
     <div className="bg-white p-[2cm] w-[210mm] min-h-[297mm] mx-auto text-zinc-900 font-sans shadow-lg print:shadow-none print:m-0 relative overflow-hidden">
-      {(!isFinal || isDraft) && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.03] rotate-[-45deg] z-0">
-          <p className="text-[90px] font-black uppercase tracking-[0.2em] text-center">DOCUMENTO PROVISÓRIO / RASCUNHO<br/>SEM VALIDADE FISCAL</p>
+      {isProvisional && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.05] rotate-[-45deg] z-[100] text-center border-8 border-amber-500 m-20">
+          <p className="text-[70px] font-black uppercase tracking-[0.1em] text-amber-600 leading-none">
+            DOCUMENTO NÃO CERTIFICADO<br/>
+            <span className="text-[30px] font-bold">SEM VALIDADE FISCAL EXERCÍCIO {new Date().getFullYear()}</span>
+          </p>
         </div>
       )}
       {invoice.status === 'anulado' && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.08] rotate-[-45deg] z-50 text-center">
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.08] rotate-[-45deg] z-[110] text-center">
           <p className="text-[120px] font-black uppercase text-red-600 tracking-[0.1em] px-20 leading-none">ANULADO - SEM VALIDADE</p>
         </div>
       )}
       
       <div className="flex justify-between items-start mb-12 relative z-10">
         <div>
-          <h1 className="text-3xl font-black text-[#003366] mb-2">{companyData?.name || 'FaturaPronta Lda'}</h1>
-          <div className="text-xs space-y-1 text-zinc-600">
-            <p>{companyData?.address || 'Rua da Inovação, 123'}</p>
-            <p>NIF: {companyData?.nif || '500 000 000'}</p>
+          <h1 className="text-3xl font-black text-[#003366] mb-2 uppercase tracking-tighter">{companyData?.name || 'FaturaPronta Lda'}</h1>
+          <div className="text-xs space-y-1 text-zinc-600 font-medium">
+            <p className="uppercase">{companyData?.address || 'Rua da Inovação, 123'}</p>
+            <p className="font-bold">NIF: {companyData?.nif || '500 000 000'}</p>
             {companyData?.phone && <p>Tel: {companyData.phone}</p>}
-            {companyData?.email && <p>Email: {companyData.email}</p>}
+            {companyData?.email && <p className="lowercase">Email: {companyData.email}</p>}
           </div>
         </div>
         <div className="text-right">
-          <h2 className="text-2xl font-bold uppercase text-[#003366] mb-1">
-            {!isFinal || isDraft ? 'DOCUMENTO PROVISÓRIO (RASCUNHO)' : (invoice.document_type || 'Fatura')}
+          <h2 className="text-2xl font-black uppercase text-[#003366] mb-1 tracking-tighter">
+            {isProvisional ? 'DOCUMENTO PROVISÓRIO' : (invoice.document_type || 'Fatura')}
           </h2>
-          <p className="text-lg font-mono font-bold text-zinc-800">{invoice.invoice_number}</p>
-          <div className="mt-4 text-xs space-y-1">
-            <p><span className="font-bold">Data de Emissão:</span> {new Date(invoice.date).toLocaleDateString('pt-PT')}</p>
-            {invoice.due_date && <p><span className="font-bold">Data de Vencimento:</span> {new Date(invoice.due_date).toLocaleDateString('pt-PT')}</p>}
-            <p><span className="font-bold">Moeda:</span> {invoice.currency || 'Kwanza'}</p>
+          <p className="text-lg font-mono font-black text-zinc-800 tracking-widest">{invoice.invoice_number}</p>
+          <div className="mt-4 text-[10px] space-y-1 font-bold uppercase text-zinc-500">
+            <p><span className="text-zinc-400">Data de Emissão:</span> {new Date(invoice.date).toLocaleDateString('pt-PT')}</p>
+            {invoice.due_date && <p><span className="text-zinc-400">Vencimento:</span> {new Date(invoice.due_date).toLocaleDateString('pt-PT')}</p>}
+            <p><span className="text-zinc-400">Moeda:</span> {invoice.currency || 'Kwanza'}</p>
           </div>
-          {isFinal && (
+          {!isProvisional && (
             <div className="mt-4 flex justify-end">
-              <QRCodeCanvas value={qrValue} size={80} level="H" />
+              <QRCodeCanvas value={qrValue} size={90} level="H" />
             </div>
           )}
         </div>

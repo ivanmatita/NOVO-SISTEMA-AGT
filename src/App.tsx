@@ -5908,16 +5908,26 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail }: {
             <tr 
               key={doc.id} 
               onClick={() => onViewDetail?.(doc)}
-              className="hover:bg-zinc-50 text-xs border-b border-zinc-50 group transition-colors cursor-pointer"
+              className={`hover:bg-zinc-50 text-xs border-b border-zinc-50 group transition-colors cursor-pointer ${doc.status === 'anulado' ? 'bg-red-50/30' : ''}`}
             >
               <td className="px-6 py-4 text-zinc-900 font-bold whitespace-nowrap">
                 {new Date(doc.date || doc.data_emissao || '').toLocaleDateString()}
               </td>
               <td className="px-6 py-4 font-black text-[#003366] whitespace-nowrap">
-                <div className="uppercase tracking-tighter">{doc.document_type || doc.tipo_documento}</div>
+                <div className={`uppercase tracking-tighter ${doc.status === 'anulado' ? 'line-through text-red-400' : ''}`}>
+                  {doc.document_type || doc.tipo_documento}
+                </div>
                 {doc.series_name && <div className="text-[9px] text-zinc-400 font-black uppercase tracking-widest">{doc.series_name}</div>}
               </td>
-              <td className="px-6 py-4 font-mono text-[10px] text-zinc-600 font-black whitespace-nowrap bg-zinc-50/50">{doc.invoice_number || doc.numero_documento}</td>
+              <td className={`px-6 py-4 font-mono text-[10px] font-black whitespace-nowrap transition-colors ${doc.status === 'anulado' ? 'bg-red-50 text-red-600' : 'text-zinc-600 bg-zinc-50/50'}`}>
+                <div className="flex flex-col">
+                  <span>{doc.invoice_number || doc.numero_documento}</span>
+                  {doc.reference_document && (
+                    <span className="text-[8px] text-[#003366] opacity-60 font-bold">Ref: {doc.reference_document}</span>
+                  )}
+                  {doc.status === 'anulado' && <span className="mt-1 bg-red-600 text-white px-1.5 py-0.5 rounded-full text-[8px] animate-pulse w-fit">ANULADO</span>}
+                </div>
+              </td>
               <td className="px-6 py-4 text-zinc-900 font-black min-w-[150px] uppercase">{doc.client_name || doc.cliente_id || doc.client_id}</td>
               <td className="px-6 py-4 text-zinc-500 font-bold text-[10px] uppercase tracking-tight">{doc.work_site_title || doc.local_trabalho || 'N/A'}</td>
               <td className="px-6 py-4">
@@ -5933,14 +5943,10 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail }: {
                   <button 
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (doc.is_certified) {
-                        onAction('print_a4', doc);
-                      } else {
-                        onAction('preview_a4', doc);
-                      }
+                      onAction(doc.is_certified ? 'print_a4' : 'preview_a4', doc);
                     }} 
-                    title="Imprimir"
-                    className="text-zinc-300 hover:text-[#003366] transition-all p-1.5 hover:bg-zinc-100"
+                    title={doc.is_certified ? "Imprimir" : "Visualizar Provisório"}
+                    className={`transition-all p-1.5 hover:bg-zinc-100 ${doc.is_certified ? 'text-[#003366]' : 'text-zinc-300 hover:text-amber-500'}`}
                   >
                     <Printer size={14} />
                   </button>
@@ -6072,19 +6078,36 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail }: {
 
                 {/* 5. Impressões Térmicas */}
                 <div className="col-span-2 grid grid-cols-4 gap-2 bg-zinc-50 p-3 border border-zinc-100 text-center">
-                   <button onClick={() => { onAction('print_a4', showActionsModal); setShowActionsModal(null); }} className="flex flex-col items-center gap-1 p-2 hover:bg-white transition-all border border-transparent hover:border-zinc-200">
+                   <button 
+                    disabled={!showActionsModal.is_certified}
+                    onClick={() => { onAction('print_a4', showActionsModal); setShowActionsModal(null); }} 
+                    className={`flex flex-col items-center gap-1 p-2 hover:bg-white transition-all border border-transparent hover:border-zinc-200 ${!showActionsModal.is_certified ? 'opacity-30 grayscale cursor-not-allowed' : ''}`}
+                   >
                      <Printer size={16} className="text-zinc-400" />
                      <span className="text-[8px] font-black uppercase">A4</span>
+                     {!showActionsModal.is_certified && <div className="text-[6px] text-red-500 font-bold leading-none mt-1">CERTIFICAR</div>}
                    </button>
-                   <button onClick={() => { onAction('print_p24', showActionsModal); setShowActionsModal(null); }} className="flex flex-col items-center gap-1 p-2 hover:bg-white transition-all border border-transparent hover:border-zinc-200">
+                   <button 
+                    disabled={!showActionsModal.is_certified}
+                    onClick={() => { onAction('print_p24', showActionsModal); setShowActionsModal(null); }} 
+                    className={`flex flex-col items-center gap-1 p-2 hover:bg-white transition-all border border-transparent hover:border-zinc-200 ${!showActionsModal.is_certified ? 'opacity-30 grayscale cursor-not-allowed' : ''}`}
+                   >
                      <Printer size={16} className="text-zinc-400" />
                      <span className="text-[8px] font-black uppercase">P24</span>
                    </button>
-                   <button onClick={() => { onAction('print_p24xl', showActionsModal); setShowActionsModal(null); }} className="flex flex-col items-center gap-1 p-2 hover:bg-white transition-all border border-transparent hover:border-zinc-200">
+                   <button 
+                    disabled={!showActionsModal.is_certified}
+                    onClick={() => { onAction('print_p24xl', showActionsModal); setShowActionsModal(null); }} 
+                    className={`flex flex-col items-center gap-1 p-2 hover:bg-white transition-all border border-transparent hover:border-zinc-200 ${!showActionsModal.is_certified ? 'opacity-30 grayscale cursor-not-allowed' : ''}`}
+                   >
                      <Printer size={16} className="text-zinc-400" />
                      <span className="text-[8px] font-black uppercase">P24-XL</span>
                    </button>
-                   <button onClick={() => { onAction('print_p80', showActionsModal); setShowActionsModal(null); }} className="flex flex-col items-center gap-1 p-2 hover:bg-white transition-all border border-transparent hover:border-zinc-200">
+                   <button 
+                    disabled={!showActionsModal.is_certified}
+                    onClick={() => { onAction('print_p80', showActionsModal); setShowActionsModal(null); }} 
+                    className={`flex flex-col items-center gap-1 p-2 hover:bg-white transition-all border border-transparent hover:border-zinc-200 ${!showActionsModal.is_certified ? 'opacity-30 grayscale cursor-not-allowed' : ''}`}
+                   >
                      <Printer size={16} className="text-zinc-400" />
                      <span className="text-[8px] font-black uppercase">P80</span>
                    </button>
@@ -8359,25 +8382,91 @@ const SettingsModule = ({ companyData, onRefreshData, alerts, setAlerts }: { com
       </div>
 
       {activeTab === 'geral' && (
-        <div className="bg-white border border-zinc-200 rounded-none shadow-sm p-8">
-          <div className="flex flex-col items-center justify-center p-12 text-center max-w-2xl mx-auto">
-            <div className="w-24 h-24 bg-zinc-100 rounded-full flex items-center justify-center mb-6 border border-zinc-200 overflow-hidden">
-              {companyData?.logo_url || companyData?.logo ? (
-                <img src={companyData.logo_url || companyData.logo} alt="Logo" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
-              ) : (
-                <LayoutDashboard size={40} className="text-zinc-300" />
-              )}
+        <div className="space-y-6">
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <h3 className="text-xl font-bold text-[#003366] uppercase tracking-tight">Dados da Empresa</h3>
+              <p className="text-zinc-500 text-xs">Informação fiscal e de contacto da organização</p>
             </div>
-            <h3 className="text-2xl font-bold text-[#003366] mb-2">{companyData?.nome_empresa || companyData?.name || 'Vossa Empresa'}</h3>
-            <p className="text-sm text-zinc-500 mb-8">{companyData?.localizacao || companyData?.address || 'Sem localização configurada'}</p>
-            
-            <button 
-              onClick={() => setIsModalOpen(true)}
-              className="bg-[#003366] text-white font-bold px-8 py-3 rounded-none text-sm shadow-sm flex items-center gap-2 hover:bg-[#002244] transition-colors"
-            >
-              <RefreshCw size={16} />
-              Actualizar dados da empresa
-            </button>
+            <div className="no-print">
+              <button
+                onClick={() => setIsModalOpen(true)}
+                className="bg-[#003366] text-white px-6 py-2.5 text-sm font-bold shadow-lg hover:bg-[#002244] transition-all flex items-center gap-2"
+              >
+                <Plus size={18} /> Actualizar dados da empresa
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {/* Company Data Form Display */}
+            <div className="bg-white border border-zinc-200 shadow-sm p-8">
+              <div className="flex flex-col items-center justify-center mb-8 border-b border-zinc-100 pb-8">
+                <div className="w-24 h-24 bg-zinc-100 rounded-full flex items-center justify-center mb-4 border border-zinc-200 overflow-hidden group relative">
+                  {companyData?.logo_url || companyData?.logo ? (
+                    <img src={companyData.logo_url || companyData.logo} alt="Logo" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                  ) : (
+                    <LayoutDashboard size={40} className="text-zinc-300" />
+                  )}
+                </div>
+                <h3 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">{companyData?.nome_empresa || companyData?.name || 'Vossa Empresa'}</h3>
+              </div>
+
+              <div className="grid grid-cols-2 gap-x-12 gap-y-6">
+                <div className="space-y-1">
+                  <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest leading-none">Designação Social</p>
+                  <p className="font-bold text-zinc-900 border-b border-zinc-200 pb-1">{companyData?.name || companyData?.nome_empresa}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest leading-none">NIF / Contribuinte</p>
+                  <p className="font-mono font-bold text-zinc-700 border-b border-zinc-200 pb-1">{companyData?.nif}</p>
+                </div>
+                <div className="space-y-1 col-span-2">
+                  <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest leading-none">Sede / Morada Fiscal</p>
+                  <p className="font-bold text-zinc-900 border-b border-zinc-200 pb-1">{companyData?.address || companyData?.localizacao}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest leading-none">Cidade</p>
+                  <p className="font-bold text-zinc-900 border-b border-zinc-200 pb-1">{companyData?.city || 'Luanda'}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest leading-none">Telefone</p>
+                  <p className="font-bold text-zinc-900 border-b border-zinc-200 pb-1">{companyData?.phone}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* History List */}
+            <div className="bg-white border border-zinc-200 shadow-sm flex flex-col">
+              <div className="p-4 bg-zinc-50 border-b border-zinc-200">
+                <h4 className="text-[11px] font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
+                  <History size={14} /> Histórico de Actualizações
+                </h4>
+              </div>
+              <div className="flex-1 overflow-y-auto max-h-[400px]">
+                 <table className="w-full text-xs text-left border-collapse">
+                    <thead className="bg-[#003366] text-white sticky top-0">
+                       <tr className="text-[10px] uppercase tracking-wider font-bold">
+                          <th className="px-6 py-4">Data</th>
+                          <th className="px-6 py-4">Utilizador</th>
+                          <th className="px-6 py-4">Alteração</th>
+                       </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100">
+                       <tr className="hover:bg-zinc-50 transition-colors">
+                          <td className="px-6 py-4 font-bold text-zinc-500">{new Date().toLocaleDateString()}</td>
+                          <td className="px-6 py-4 font-black text-zinc-800 uppercase tracking-tighter">Administrador</td>
+                          <td className="px-6 py-4 text-zinc-500 italic text-[10px]">Configuração Inicial do Sistema</td>
+                       </tr>
+                       <tr className="hover:bg-zinc-50 transition-colors">
+                          <td className="px-6 py-4 font-bold text-zinc-50">{new Date().toLocaleDateString()}</td>
+                          <td className="px-6 py-4 font-black text-zinc-800 uppercase tracking-tighter">Sistema</td>
+                          <td className="px-6 py-4 text-zinc-500 italic text-[10px]">Validação de Integridade Fiscal</td>
+                       </tr>
+                    </tbody>
+                 </table>
+              </div>
+            </div>
           </div>
 
           <CompanySettingsModal 
@@ -10553,6 +10642,25 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
                        <label className="text-[10px] font-bold text-zinc-400 uppercase">Subtotal Líquido</label>
                        <p className="text-sm font-black text-[#003366]">{formatCurrency(item.total || 0)}</p>
                     </div>
+                    <div className="col-span-2 space-y-1 flex items-end justify-end gap-2 pr-2 pb-1">
+                      <button 
+                        type="button"
+                        onClick={() => setExpandedDimensions(expandedDimensions === idx ? null : idx)}
+                        title="Configurar Dimensões"
+                        className={`p-1.5 rounded-none transition-all flex items-center justify-center border ${expandedDimensions === idx ? 'bg-[#003366] border-[#003366] text-white shadow-lg' : 'bg-white border-zinc-200 text-zinc-400 hover:text-[#003366] hover:border-[#003366]'}`}
+                      >
+                        <Layers size={14} />
+                      </button>
+                      <button 
+                        type="button"
+                        disabled={isCertified}
+                        onClick={() => removeItem(idx)}
+                        title="Remover Item"
+                        className="p-1.5 rounded-none bg-white border border-zinc-200 text-zinc-400 hover:text-red-600 hover:border-red-600 transition-all flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                  </div>
                  {expandedDimensions === idx && (
                   <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="grid grid-cols-3 gap-4 pt-2">
@@ -11029,9 +11137,15 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack }: {
   const currentBalance = movements.length > 0 ? movements[movements.length - 1].balance : 0;
   
   const siteInvoices = invoices.filter(inv => (inv.work_site_id?.toString() === workSite.id?.toString()) && inv.is_certified);
-  const totalInvoiced = (siteInvoices ?? []).reduce((sum, inv) => sum + inv.contravalor, 0);
-  const totalPaid = (siteInvoices ?? []).filter(inv => inv.status === 'paid' || inv.estado_documento === 'ativo').reduce((sum, inv) => sum + inv.contravalor, 0);
+  const totalInvoiced = (siteInvoices ?? []).reduce((sum, inv) => sum + (inv.contravalor || inv.total || 0), 0);
+  const totalPaid = (siteInvoices ?? []).filter(inv => inv.status === 'paid' || inv.estado_documento === 'ativo').reduce((sum, inv) => sum + (inv.contravalor || inv.total || 0), 0);
   const totalPending = totalInvoiced - totalPaid;
+  
+  // Calculate specific site costs based on invoices related to the site (purchases or direct expenses)
+  const siteMovements = movements.filter(m => m.work_site_id?.toString() === workSite.id?.toString());
+  const actualDebit = siteMovements.reduce((sum, m) => sum + (m.debit || 0), 0);
+  const actualCredit = siteMovements.reduce((sum, m) => sum + (m.credit || 0), 0);
+  const actualBalance = actualCredit - actualDebit;
 
   return (
     <div className="bg-white min-h-screen p-8 sm:p-12 space-y-10 max-w-6xl mx-auto shadow-2xl border border-zinc-100">
@@ -11166,7 +11280,7 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack }: {
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100 text-xs text-zinc-800">
-                {movements.map((m) => (
+                {siteMovements.map((m) => (
                   <tr key={m.id} className="hover:bg-zinc-50 transition-colors">
                     <td className="px-6 py-4 font-medium text-zinc-500">{new Date(m.date).toLocaleDateString('pt-PT')}</td>
                     <td className="px-6 py-4 font-bold text-zinc-800">{m.doc_no}</td>
@@ -11177,7 +11291,7 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack }: {
                     <td className="px-6 py-4 text-right font-black text-[#003366] bg-zinc-50/50">{formatCurrency(m.balance)}</td>
                   </tr>
                 ))}
-                {movements.length === 0 && (
+                {siteMovements.length === 0 && (
                   <tr>
                     <td colSpan={7} className="px-6 py-20 text-center text-zinc-400 font-medium italic">
                       Nenhum registo de movimentação encontrado para este local.
@@ -12876,18 +12990,37 @@ const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas 
 
   if (isCreating) {
     return (
-      <CreatePurchase 
-        suppliers={suppliers} 
-        products={products} 
-        workSites={workSites} 
-        fiscalSeries={fiscalSeries} 
-        onBack={() => setIsCreating(false)} 
-        onSuccess={() => {
-          setIsCreating(false);
-          fetchPurchases();
-        }} 
-        caixas={caixas}
-      />
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm shadow-2xl animate-in fade-in duration-200">
+        <motion.div 
+          initial={{ scale: 0.95, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="w-full max-w-6xl bg-white shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+        >
+          <div className="p-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
+             <h3 className="font-bold text-[#003366] flex items-center gap-2">
+                <ShoppingCart size={18} />
+                Registar Nova Compra
+             </h3>
+             <button onClick={() => setIsCreating(false)} className="text-zinc-400 hover:text-zinc-600">
+                <X size={20} />
+             </button>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            <CreatePurchase 
+              suppliers={suppliers} 
+              products={products} 
+              workSites={workSites} 
+              fiscalSeries={fiscalSeries} 
+              onBack={() => setIsCreating(false)} 
+              onSuccess={() => {
+                setIsCreating(false);
+                fetchPurchases();
+              }} 
+              caixas={caixas}
+            />
+          </div>
+        </motion.div>
+      </div>
     );
   }
 
@@ -13443,134 +13576,106 @@ const SupplierModule = ({ products, workSites, fiscalSeries, caixas }: { product
       {renderContent()}
 
       {showForm && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm animate-in fade-in duration-200">
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-lg bg-white p-8 rounded-none shadow-2xl"
+            className="w-full max-w-4xl bg-white shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
           >
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="font-bold text-[#003366] text-xl uppercase tracking-tight">Registar Fornecedor</h3>
-              <button onClick={() => setShowForm(false)} className="text-zinc-400 hover:text-zinc-600">
-                <X size={20} />
-              </button>
+            <div className="p-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
+               <h3 className="font-bold text-[#003366] flex items-center gap-2">
+                  <UserPlus size={18} />
+                  Registar Fornecedor
+               </h3>
+               <button onClick={() => setShowForm(false)} className="p-2 hover:bg-zinc-200 rounded-full transition-colors text-zinc-400">
+                  <X size={20} />
+               </button>
             </div>
-            <form onSubmit={handleSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Contribuinte (NIF)</label>
-                  <div className="relative">
-                    <input type="text" placeholder="000000000" value={nif} onChange={e => setNif(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none pl-4 pr-10 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
-                    {nif && (
-                      <button type="button" onClick={handleSearchNif} className="absolute right-2 top-1/2 -translate-y-1/2 text-[#003366] hover:text-[#002244]">
-                        <Search size={16} />
-                      </button>
-                    )}
+            
+            <div className="flex-1 overflow-y-auto p-8 bg-zinc-50/10">
+              <form onSubmit={handleSubmit} className="space-y-8 max-w-2xl mx-auto">
+                <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-6">
+                  <h3 className="text-lg font-bold text-[#003366] border-b border-zinc-100 pb-4 flex items-center gap-2">
+                    <UserIcon size={20} /> Informações Principais
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-zinc-600 uppercase tracking-wider">Número de Contribuinte (NIF) <span className="text-red-500">*</span></label>
+                      <div className="relative">
+                        <input type="text" placeholder="000000000" value={nif} onChange={e => setNif(e.target.value)} required className="w-full border border-zinc-200 bg-zinc-50 rounded-none pl-4 pr-10 py-3 text-sm font-mono font-bold focus:outline-none focus:border-[#003366]" />
+                        {nif && (
+                          <button type="button" onClick={handleSearchNif} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#003366] hover:scale-110 transition-transform">
+                            <Search size={18} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-zinc-600 uppercase tracking-wider">Designação / Nome Completo <span className="text-red-500">*</span></label>
+                      <input type="text" placeholder="Designação do Fornecedor" value={name} onChange={e => setName(e.target.value)} required className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-3 text-sm font-bold focus:outline-none focus:border-[#003366]" />
+                    </div>
+                    <div className="space-y-1.5 md:col-span-2">
+                      <label className="text-xs font-bold text-zinc-600 uppercase tracking-wider">Endereço Fiscal / Morada</label>
+                      <input type="text" placeholder="Rua, Bairro, nº porta" value={address} onChange={e => setAddress(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-3 text-sm focus:outline-none focus:border-[#003366]" />
+                    </div>
                   </div>
-                  <p className="text-[9px] text-zinc-400">Insira o NIF de Angola AGT e clique na lupa para consultar</p>
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Nome do Fornecedor</label>
-                  <input type="text" placeholder="Ex: Angola Trading Lda" value={name} onChange={e => setName(e.target.value)} required className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
-                  <p className="text-[9px] text-zinc-400">Nome completo da empresa ou fornecedor</p>
-                </div>
-              </div>
 
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Morada</label>
-                <input type="text" placeholder="Rua ..., Luanda" value={address} onChange={e => setAddress(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
-                <p className="text-[9px] text-zinc-400">Endereço completo do fornecedor</p>
-              </div>
+                <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-6">
+                  <h3 className="text-lg font-bold text-[#003366] border-b border-zinc-100 pb-4 flex items-center gap-2">
+                    <MapPin size={20} /> Localização e Contactos
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-zinc-600 uppercase tracking-wider">Município</label>
+                      <select value={municipio} onChange={e => setMunicipio(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-3 text-sm focus:outline-none focus:border-[#003366]">
+                        <option value="">Selecione...</option>
+                        <option value="Luanda">Luanda</option>
+                        <option value="Belas">Belas</option>
+                        <option value="Viana">Viana</option>
+                        <option value="Cazenga">Cazenga</option>
+                        <option value="Cacuaco">Cacuaco</option>
+                        <option value="Talatona">Talatona</option>
+                        <option value="Kilamba Kiaxi">Kilamba Kiaxi</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-zinc-600 uppercase tracking-wider">Província</label>
+                      <input type="text" placeholder="Ex: Luanda" value={provincia} onChange={e => setProvincia(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-3 text-sm focus:outline-none focus:border-[#003366]" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-zinc-600 uppercase tracking-wider">Telefone</label>
+                      <input type="text" placeholder="+244 ..." value={phone} onChange={e => setPhone(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-3 text-sm focus:outline-none focus:border-[#003366]" />
+                    </div>
+                    <div className="space-y-1.5 md:col-span-2">
+                      <label className="text-xs font-bold text-zinc-600 uppercase tracking-wider">Email Electronic</label>
+                      <input type="email" placeholder="fornecedor@email.com" value={email} onChange={e => setEmail(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-3 text-sm focus:outline-none focus:border-[#003366]" />
+                    </div>
+                  </div>
+                </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Localidade</label>
-                  <input type="text" placeholder="Localidade" value={localidade} onChange={e => setLocalidade(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
-                  <p className="text-[9px] text-zinc-400">Bairro ou zona</p>
+                <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-6">
+                   <h3 className="text-lg font-bold text-[#003366] border-b border-zinc-100 pb-4 flex items-center gap-2">
+                    <Wallet size={20} /> Dados Financeiros
+                  </h3>
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-zinc-600 uppercase tracking-wider">Banco</label>
+                        <input type="text" placeholder="Ex: BFA, BAI" value={siglasBanco} onChange={e => setSiglasBanco(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-3 text-sm focus:outline-none focus:border-[#003366]" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-zinc-600 uppercase tracking-wider">IBAN</label>
+                        <input type="text" placeholder="AO06..." value={iban} onChange={e => setIban(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-3 text-sm font-mono focus:outline-none focus:border-[#003366]" />
+                      </div>
+                   </div>
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Código Postal</label>
-                  <input type="text" placeholder="Código Postal" value={codigoPostal} onChange={e => setCodigoPostal(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
-                  <p className="text-[9px] text-zinc-400">Código postal da morada</p>
-                </div>
-              </div>
 
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Província</label>
-                  <input type="text" placeholder="Província" value={provincia} onChange={e => setProvincia(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
-                  <p className="text-[9px] text-zinc-400">Província de residência</p>
+                <div className="flex justify-end gap-4 pb-8">
+                  <button type="button" onClick={() => setShowForm(false)} className="px-10 py-4 text-xs font-bold text-zinc-500 uppercase tracking-widest hover:text-zinc-700 transition-colors">Cancelar</button>
+                  <button type="submit" className="bg-[#003366] text-white px-12 py-4 text-xs font-bold uppercase tracking-widest hover:bg-[#002244] transition-all shadow-xl">Salvar Fornecedor</button>
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Município</label>
-                  <select value={municipio} onChange={e => setMunicipio(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]">
-                    <option value="">Selecione...</option>
-                    <option value="Luanda">Luanda</option>
-                    <option value="Belas">Belas</option>
-                    <option value="Viana">Viana</option>
-                    <option value="Cazenga">Cazenga</option>
-                    <option value="Cacuaco">Cacuaco</option>
-                    <option value="Talatona">Talatona</option>
-                    <option value="Kilamba Kiaxi">Kilamba Kiaxi</option>
-                  </select>
-                  <p className="text-[9px] text-zinc-400">Município de residência</p>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">País</label>
-                  <select value={pais} onChange={e => setPais(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]">
-                    <option value="Angola">Angola</option>
-                    <option value="Portugal">Portugal</option>
-                    <option value="Brasil">Brasil</option>
-                    <option value="Outro">Outro</option>
-                  </select>
-                  <p className="text-[9px] text-zinc-400">País de origem</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Telefone</label>
-                  <input type="text" placeholder="+244 ..." value={phone} onChange={e => setPhone(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
-                  <p className="text-[9px] text-zinc-400">Contacto telefónico principal</p>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Email</label>
-                  <input type="email" placeholder="contato@fornecedor.com" value={email} onChange={e => setEmail(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
-                  <p className="text-[9px] text-zinc-400">Endereço de email</p>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">WebPage</label>
-                  <input type="url" placeholder="https://www..." value={webpage} onChange={e => setWebpage(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
-                  <p className="text-[9px] text-zinc-400">Website do fornecedor</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Siglas do Banco</label>
-                  <input type="text" placeholder="Ex: BAI, BFA" value={siglasBanco} onChange={e => setSiglasBanco(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
-                  <p className="text-[9px] text-zinc-400">Sigla do banco principal</p>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">IBAN</label>
-                  <input type="text" placeholder="AO06..." value={iban} onChange={e => setIban(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
-                  <p className="text-[9px] text-zinc-400">IBAN para transferências</p>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tipo de Cliente</label>
-                  <select value={tipoCliente} onChange={e => setTipoCliente(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]">
-                    <option value="normal">Cliente Normal</option>
-                    <option value="nao_grupo">Fornecedor Não Grupo Nacionais</option>
-                    <option value="estrangeiro">Estrangeiro</option>
-                  </select>
-                  <p className="text-[9px] text-zinc-400">Classificação do fornecedor</p>
-                </div>
-              </div>
-              <div className="flex justify-end gap-4 mt-8 pt-4 border-t border-zinc-100">
-                <button type="button" onClick={() => setShowForm(false)} className="px-6 py-2.5 text-xs font-bold text-zinc-500 uppercase tracking-widest hover:text-zinc-700">Cancelar</button>
-                <button type="submit" className="bg-[#003366] text-white px-8 py-2.5 text-xs font-bold uppercase tracking-widest hover:bg-[#002244] transition-all shadow-md">Registar Fornecedor</button>
-              </div>
-            </form>
+              </form>
+            </div>
           </motion.div>
         </div>
       )}
@@ -13777,36 +13882,41 @@ const WarehouseModule = ({ onRefresh }: { onRefresh: () => void }) => {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {warehouses.map(w => (
-          <div key={w.id} className="bg-white border border-zinc-200 p-6 space-y-4 hover:border-[#003366] transition-all group">
-            <div className="flex justify-between items-start">
-              <div className="w-10 h-10 bg-zinc-50 flex items-center justify-center text-[#003366] group-hover:bg-[#003366] group-hover:text-white transition-all">
-                <Home size={20} />
-              </div>
-              <span className="text-[9px] font-black text-zinc-300 uppercase tracking-widest">ID: {w.id}</span>
-            </div>
-            <div>
-              <h4 className="font-black text-[#003366] uppercase tracking-tight text-sm">{w.name}</h4>
-              <p className="text-zinc-400 text-[10px] font-bold uppercase tracking-wider">{w.localidade || 'Sem localização'}</p>
-            </div>
-            <div className="space-y-2 pt-4 border-t border-zinc-50">
-              <div className="flex items-center gap-2 text-[10px] text-zinc-500 font-medium">
-                <UserCheck size={12} className="text-zinc-300" />
-                <span>Resp: {w.responsavel || '---'}</span>
-              </div>
-              <div className="flex items-center gap-2 text-[10px] text-zinc-500 font-medium">
-                <Mail size={12} className="text-zinc-300" />
-                <span>Cont: {w.contacto || '---'}</span>
-              </div>
-            </div>
-          </div>
-        ))}
-        {warehouses.length === 0 && !loading && (
-          <div className="md:col-span-3 p-12 text-center text-zinc-400 text-sm font-medium bg-white border border-zinc-200 border-dashed">
-            Nenhum armazém configurado.
-          </div>
-        )}
+      <div className="bg-white border border-zinc-200">
+        <div className="p-4 bg-zinc-50 border-b border-zinc-200">
+          <h4 className="text-[11px] font-black text-[#003366] uppercase tracking-widest flex items-center gap-2">
+            <History size={14} /> Lista de Armazéns Registados
+          </h4>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs text-left">
+            <thead className="bg-[#003366] text-white">
+              <tr className="uppercase text-[10px] tracking-wider">
+                <th className="px-6 py-4">ID</th>
+                <th className="px-6 py-4">Nome</th>
+                <th className="px-6 py-4">Localidade</th>
+                <th className="px-6 py-4">Responsável</th>
+                <th className="px-6 py-4">Contacto</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+              {warehouses.map(w => (
+                <tr key={w.id} className="hover:bg-zinc-50 transition-colors">
+                  <td className="px-6 py-4 font-mono font-bold text-zinc-400">#{w.id}</td>
+                  <td className="px-6 py-4 font-black text-[#003366] uppercase">{w.name}</td>
+                  <td className="px-6 py-4 text-zinc-600 font-bold">{w.localidade || '---'}</td>
+                  <td className="px-6 py-4 text-zinc-500">{w.responsavel || '---'}</td>
+                  <td className="px-6 py-4 text-zinc-500 font-mono italic">{w.contacto || '---'}</td>
+                </tr>
+              ))}
+              {warehouses.length === 0 && !loading && (
+                <tr>
+                  <td colSpan={5} className="px-6 py-12 text-center text-zinc-400 italic">Nenhum armazém encontrado.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {showForm && (
@@ -14716,21 +14826,15 @@ const ConvertDocumentModal = ({ document, onClose, onSuccess }: {
 
   const handleConvert = async () => {
     try {
-      // In a real app, this would call a backend endpoint to create a new document based on this one
-      // For now, we'll just simulate it by creating a new invoice with the same items
-      const { invoice_number, numero_documento, id, is_certified, ...rest } = document;
-      const res = await fetchWithAuth('/api/invoices', {
+      const res = await fetchWithAuth(`/api/invoices/${document.id}/convert`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...rest,
-          document_type: targetType,
-          date: new Date().toISOString().split('T')[0],
-          company_id: user?.company_id,
-          items: document.items || [] 
-        })
+        body: JSON.stringify({ targetType })
       });
-      if (res.ok) onSuccess();
+      if (res.ok) {
+        onSuccess();
+        onClose();
+      }
     } catch (error) {
       console.error('Error converting document:', error);
     }

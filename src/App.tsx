@@ -5933,7 +5933,11 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail }: {
                   <button 
                     onClick={(e) => {
                       e.stopPropagation();
-                      onAction('print_a4', doc);
+                      if (doc.is_certified) {
+                        onAction('print_a4', doc);
+                      } else {
+                        onAction('preview_a4', doc);
+                      }
                     }} 
                     title="Imprimir"
                     className="text-zinc-300 hover:text-[#003366] transition-all p-1.5 hover:bg-zinc-100"
@@ -7179,27 +7183,35 @@ const SpecializedManagementModule = () => {
         <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Gestão Especializada</h2>
         <p className="text-zinc-500 text-sm">Módulos de ERP focados para gerir fluxos de trabalho do seu setor.</p>
       </header>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
-          { id: 'school', label: 'Gestão Escolar ERP', desc: 'Matrículas, Turmas, Notas e Tesouraria Académica.', icon: GraduationCap },
-          { id: 'restaurant', label: 'Restaurante / Bar', desc: 'Gestão de mesas, pedidos Cozinha/Bar e Ementa.', icon: Utensils },
-          { id: 'hotel', label: 'Hotelaria / Alojamento', desc: 'Check-in, Reservas, Quartos e Housekeeping.', icon: Bed },
-          { id: 'literacy', label: 'Literacia Financeira e Fiscal', desc: 'Biblioteca de conhecimentos fiscais angolanos.', icon: BookOpen },
-          { id: 'inventory', label: 'Inventário / Stock', desc: 'Controlo de stock e múltiplos armazéns.', icon: Package },
-          { id: 'projects', label: 'Gestão de Projetos', desc: 'Acompanhamento de tarefas e prazos.', icon: Layers },
-          { id: 'fleet', label: 'Gestão de Frotas', desc: 'Manutenção e custos de veículos.', icon: Truck },
+          { id: 'school', label: 'Gestão Escolar ERP', desc: 'Matrículas, Turmas, Notas e Tesouraria Académica.', icon: GraduationCap, img: 'https://images.unsplash.com/photo-1523050335392-93851179ae22?auto=format&fit=crop&q=80&w=800' },
+          { id: 'restaurant', label: 'Restaurante / Bar', desc: 'Gestão de mesas, pedidos Cozinha/Bar e Ementa.', icon: Utensils, img: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&q=80&w=800' },
+          { id: 'hotel', label: 'Hotelaria / Alojamento', desc: 'Check-in, Reservas, Quartos e Housekeeping.', icon: Bed, img: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=800' },
+          { id: 'literacy', label: 'Literacia Financeira e Fiscal', desc: 'Biblioteca de conhecimentos fiscais angolanos.', icon: BookOpen, img: 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?auto=format&fit=crop&q=80&w=800' },
+          { id: 'inventory', label: 'Inventário / Stock', desc: 'Controlo de stock e múltiplos armazéns.', icon: Package, img: 'https://images.unsplash.com/photo-1493946747813-f3023c53d18e?auto=format&fit=crop&q=80&w=800' },
+          { id: 'projects', label: 'Gestão de Projetos', desc: 'Acompanhamento de tarefas e prazos.', icon: Layers, img: 'https://images.unsplash.com/photo-1542621315-24ed26ac729f?auto=format&fit=crop&q=80&w=800' },
+          { id: 'fleet', label: 'Gestão de Frotas', desc: 'Manutenção e custos de veículos.', icon: Truck, img: 'https://images.unsplash.com/photo-1510903117032-f1596c327647?auto=format&fit=crop&q=80&w=800' },
         ].map((m) => (
           <div key={m.id} 
             onClick={() => setActiveModule(m.id)}
-            className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-4 hover:border-[#003366] transition-colors cursor-pointer group"
+            className="bg-white border border-zinc-200 rounded-none shadow-sm flex flex-col hover:border-[#003366] transition-all cursor-pointer group overflow-hidden"
           >
-            <div className="w-12 h-12 bg-[#003366]/5 text-[#003366] rounded-none flex items-center justify-center transition-colors group-hover:bg-[#003366] group-hover:text-white">
-              <m.icon size={24} />
+            <div className="h-32 w-full overflow-hidden relative">
+              <img src={m.img} alt={m.label} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" referrerPolicy="no-referrer" />
+              <div className="absolute inset-0 bg-[#003366]/20 group-hover:bg-transparent transition-colors"></div>
             </div>
-            <h3 className="font-bold text-[#003366] text-lg">{m.label}</h3>
-            <p className="text-zinc-500 text-sm min-h-[40px]">{m.desc}</p>
-            <div className="pt-4 flex items-center text-xs font-bold text-[#003366] uppercase tracking-widest">
-              Entrar no Módulo <ChevronRight size={14} />
+            <div className="p-6 space-y-4 flex-1">
+              <div className="w-10 h-10 bg-[#003366]/5 text-[#003366] rounded-none flex items-center justify-center transition-colors group-hover:bg-[#003366] group-hover:text-white">
+                <m.icon size={20} />
+              </div>
+              <div>
+                <h3 className="font-bold text-[#003366] text-base">{m.label}</h3>
+                <p className="text-zinc-500 text-xs mt-1 leading-relaxed">{m.desc}</p>
+              </div>
+              <div className="pt-2 flex items-center text-[10px] font-black text-[#003366] uppercase tracking-[0.2em] opacity-0 group-hover:opacity-100 transition-opacity">
+                Aceder <ChevronRight size={14} />
+              </div>
             </div>
           </div>
         ))}
@@ -9521,7 +9533,7 @@ const InvoiceList = ({
     const matchesMax = maxValue === '' || docValue <= Number(maxValue);
 
     return matchesSearch && matchesStatus && matchesMin && matchesMax;
-  }) : [];
+  }).sort((a, b) => (b.id || 0) - (a.id || 0)) : [];
 
   return (
     <div className="space-y-0 -mt-12 -mx-12">
@@ -11011,12 +11023,12 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack }: {
   invoices?: IssuedDocument[],
   onBack: () => void 
 }) => {
-  const [activeTab, setActiveTab] = useState<'finance' | 'invoices'>('finance');
+  const [activeTab, setActiveTab] = useState<'finance' | 'invoices' | 'stock'>('finance');
   const totalDebit = (movements ?? []).reduce((sum, m) => sum + m.debit, 0);
   const totalCredit = (movements ?? []).reduce((sum, m) => sum + m.credit, 0);
   const currentBalance = movements.length > 0 ? movements[movements.length - 1].balance : 0;
   
-  const siteInvoices = invoices.filter(inv => Number(inv.work_site_id) === workSite.id);
+  const siteInvoices = invoices.filter(inv => (inv.work_site_id?.toString() === workSite.id?.toString()) && inv.is_certified);
   const totalInvoiced = (siteInvoices ?? []).reduce((sum, inv) => sum + inv.contravalor, 0);
   const totalPaid = (siteInvoices ?? []).filter(inv => inv.status === 'paid' || inv.estado_documento === 'ativo').reduce((sum, inv) => sum + inv.contravalor, 0);
   const totalPending = totalInvoiced - totalPaid;
@@ -14958,12 +14970,17 @@ export default function App() {
       } catch (error) {
         console.error('Error fetching invoice for print:', error);
       }
-    } else if (action === 'print_a4' || action === 'print_p24' || action === 'print_p24xl' || action === 'print_p80') {
+    } else if (action === 'print_a4' || action === 'print_p24' || action === 'print_p24xl' || action === 'print_p80' || action === 'preview_a4') {
       try {
         const res = await fetchWithAuth(`/api/invoices/${doc.id}`);
         if (res.ok) {
           const invoiceData = await res.json();
           setPrintingInvoice(invoiceData);
+          if (action === 'preview_a4') {
+             setIsPrintingDraft(true);
+          } else {
+             setIsPrintingDraft(false);
+          }
           // Small delay to ensure component is rendered before printing
           setTimeout(() => {
             window.print();

@@ -52,23 +52,23 @@ interface PrintA4Props {
 
 const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
   if (!invoice) return null;
-  const qrValue = `${invoice.invoice_number}|${invoice.client_nif || '999999999'}|${invoice.date}|${invoice.total || 0}|${invoice.hash || ''}`;
-  const displayCurrency = isDraft && invoice.currency !== 'AOA' ? (invoice.currency || 'AOA') : 'AOA';
+  const isFinal = !isDraft && invoice.is_certified;
+  const qrValue = isFinal ? `${invoice.invoice_number}|${invoice.client_nif || '999999999'}|${invoice.date}|${invoice.total || 0}|${invoice.hash || ''}` : 'DOCUMENTO NÃO CERTIFICADO';
+  const displayCurrency = (isDraft || !isFinal) && invoice.currency !== 'AOA' ? (invoice.currency || 'AOA') : 'AOA';
   const formatParams = (val: number) => formatCurrency(val, displayCurrency);
 
   const subtotal = invoice.items?.reduce((sum, item) => sum + (item.total || 0), 0) || 0;
   const retencaoTotal = invoice.retencao_fonte_total || invoice.items?.reduce((sum, item) => sum + (item.retencao_fonte || 0), 0) || 0;
   const discountAmount = invoice.global_discount || 0;
-  // TODO: extract actual VAT amount if available, otherwise fallback to 14% rate
   const vatTotal = invoice.items?.reduce((sum, item) => sum + ((item.total || 0) * ((item.tax_rate || 14) / 100)), 0) || (subtotal * 0.14);
   const totalDocumento = subtotal + vatTotal - discountAmount;
   const totalPagar = totalDocumento - retencaoTotal;
 
   return (
     <div className="bg-white p-[2cm] w-[210mm] min-h-[297mm] mx-auto text-zinc-900 font-sans shadow-lg print:shadow-none print:m-0 relative overflow-hidden">
-      {isDraft && (
+      {(!isFinal || isDraft) && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.03] rotate-[-45deg] z-0">
-          <p className="text-[120px] font-black uppercase tracking-[0.5em]">DOCUMENTO DE SUPORTE / DRAFT</p>
+          <p className="text-[90px] font-black uppercase tracking-[0.2em] text-center">DOCUMENTO PROVISÓRIO / RASCUNHO<br/>SEM VALIDADE FISCAL</p>
         </div>
       )}
       {invoice.status === 'anulado' && (
@@ -89,7 +89,7 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
         </div>
         <div className="text-right">
           <h2 className="text-2xl font-bold uppercase text-[#003366] mb-1">
-            {isDraft ? 'DOCUMENTO DE SUPORTE (DRAFT)' : (invoice.document_type || 'Fatura')}
+            {!isFinal || isDraft ? 'DOCUMENTO PROVISÓRIO (RASCUNHO)' : (invoice.document_type || 'Fatura')}
           </h2>
           <p className="text-lg font-mono font-bold text-zinc-800">{invoice.invoice_number}</p>
           <div className="mt-4 text-xs space-y-1">
@@ -97,9 +97,11 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
             {invoice.due_date && <p><span className="font-bold">Data de Vencimento:</span> {new Date(invoice.due_date).toLocaleDateString('pt-PT')}</p>}
             <p><span className="font-bold">Moeda:</span> {invoice.currency || 'Kwanza'}</p>
           </div>
-          <div className="mt-4 flex justify-end">
-            <QRCodeCanvas value={qrValue} size={80} level="H" />
-          </div>
+          {isFinal && (
+            <div className="mt-4 flex justify-end">
+              <QRCodeCanvas value={qrValue} size={80} level="H" />
+            </div>
+          )}
         </div>
       </div>
 
@@ -251,7 +253,7 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
         <div className="flex justify-between items-center mb-4">
           <div className="flex items-center gap-4">
             <div className="font-bold text-zinc-500 uppercase text-[9px] tracking-widest">IVA - Regime Geral</div>
-            <div className="text-[8px] text-zinc-400 font-mono">{invoice.hash ? invoice.hash.slice(0,4) + '-' + invoice.hash.slice(-4) : ''}</div>
+            {isFinal && <div className="text-[8px] text-zinc-400 font-mono">{invoice.hash ? invoice.hash.slice(0,4) + '-' + invoice.hash.slice(-4) : ''}</div>}
           </div>
           <div className="text-[8px] text-zinc-400 font-bold uppercase">
              Original

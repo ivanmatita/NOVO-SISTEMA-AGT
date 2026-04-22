@@ -6,7 +6,7 @@ const ECOSYSTEM_ITEMS = [
   { id: 'management', title: "GESTÃO EMPRESARIAL", subtitle: "CONTROLE TOTAL", imgUrl: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&q=80&w=800", icon: <Activity size={18} /> },
   { id: 'pos', title: "SOFTWARE POS", subtitle: "VENDAS ÁGEIS", imgUrl: "https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?auto=format&fit=crop&q=80&w=800", icon: <ShoppingCartIcon /> },
   { id: 'financial', title: "FINANÇAS & CAIXA", subtitle: "FLUXO SEGURO", imgUrl: "https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&q=80&w=800", icon: <DollarSignIcon /> },
-  { id: 'fleet', title: "GESTÃO DE FROTAS", subtitle: "CONTROLE VEÍCULOS", imgUrl: "https://images.unsplash.com/photo-1581092160607-ee22896c21a4?auto=format&fit=crop&q=80&w=800", icon: <Truck size={18} /> },
+  { id: 'fleet', title: "GESTÃO DE FROTAS", subtitle: "CONTROLE VEÍCULOS", imgUrl: "https://images.unsplash.com/photo-1510903117032-f1596c327647?auto=format&fit=crop&q=80&w=800", icon: <Truck size={18} /> },
   { id: 'projects', title: "GESTÃO DE PROJETOS", subtitle: "PLANEAMENTO", imgUrl: "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&q=80&w=800", icon: <FolderKanban size={18} /> },
 ];
 

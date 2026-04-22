@@ -46,21 +46,39 @@ async function startServer() {
 
   // Reports
   app.get("/api/reports/profit-loss", (req, res) => {
-    // Generate mock data for the 12 months (1-12)
-    const mockData = Array.from({ length: 12 }, (_, i) => {
-      const factS = Math.floor(Math.random() * 800000) + 200000;
+    const year = Number(req.query.year) || new Date().getFullYear();
+    
+    const monthsData = Array.from({ length: 12 }, (_, i) => {
+      const month = i + 1;
+      
+      // Calculate Revenue from certified invoices for this month
+      const monthDocs = issuedDocuments.filter(d => {
+        const dDate = new Date(d.date || d.created_at);
+        return d.is_certified && dDate.getFullYear() === year && (dDate.getMonth() + 1) === month;
+      });
+
+      const factS = monthDocs.reduce((acc, d) => acc + (Number(d.total || d.counter_value || 0) / 1.14), 0); // approx s/ imposto
       const impRec = factS * 0.14;
-      const costs = Math.floor(Math.random() * 400000) + 100000;
-      const wages = 50000;
+      
+      // Calculate Costs from transactions (type: 'expense' or similar)
+      const monthTransactions = transactions.filter(t => {
+        const tDate = new Date(t.date);
+        return tDate.getFullYear() === year && (tDate.getMonth() + 1) === month;
+      });
+
+      const costs = monthTransactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + Number(t.amount), 0);
+      const wages = monthTransactions.filter(t => t.category === 'Salários').reduce((acc, t) => acc + Number(t.amount), 0);
       const inss = wages * 0.08;
+      
       const totalCosts = costs + wages + inss;
+
       return {
-        month: i + 1,
+        month,
         facturacaoSImposto: factS,
         impostoRecebido: impRec,
         facturacaoCImposto: factS + impRec,
         custosAceites: costs * 0.8,
-        fornecedoresSImposto: costs * 0.9,
+        fornecedoresSImposto: costs * 1.0,
         ivaSuportado: costs * 0.14,
         salarios: wages,
         inss: inss,
@@ -68,7 +86,8 @@ async function startServer() {
         margem: factS - totalCosts,
       };
     });
-    res.json(mockData);
+
+    res.json(monthsData);
   });
   // Stats
   app.get("/api/stats", (req, res) => {
@@ -207,8 +226,41 @@ async function startServer() {
         cash_box
       };
       transactions.push(newTransaction);
+
+      // Also create a "Recibo" document to show in the list
+      const year = new Date().getFullYear();
+      const reciboCounter = issuedDocuments.filter(d => d.document_type === 'Recibo').length + 1;
+      const reciboNumber = `Recibo ${year}/${reciboCounter}`;
+
+      const reciboDoc = {
+        id: Date.now() + 5,
+        document_type: 'Recibo',
+        tipo_documento: 'Recibo',
+        invoice_number: reciboNumber,
+        numero_documento: reciboNumber,
+        client_name: invoice.client_name,
+        client_nif: invoice.client_nif,
+        client_address: invoice.client_address,
+        date: date || new Date().toISOString(),
+        data_emissao: date || new Date().toISOString(),
+        total: Number(amount),
+        counter_value: Number(amount),
+        payment_method: payment_method,
+        cash_box: cash_box,
+        is_certified: true, // Auto-certified as it is a receipt of payment
+        hash: Math.random().toString(36).substring(2, 15),
+        reference_document: invoice.invoice_number,
+        items: [{
+           description: `Liquidante da Fatura ${invoice.invoice_number}`,
+           quantity: 1,
+           unit_price: Number(amount),
+           total: Number(amount),
+           tax_rate: 0
+        }]
+      };
+      issuedDocuments.push(reciboDoc);
       
-      res.json({ success: true, invoice });
+      res.json({ success: true, invoice, recibo: reciboDoc });
     } else {
       res.status(404).json({ error: "Invoice not found" });
     }
@@ -261,13 +313,64 @@ async function startServer() {
   });
 
   app.post("/api/invoices/:id/certify", (req, res) => {
-    const doc = issuedDocuments.find(d => d.id === Number(req.params.id));
-    if (doc) {
+    const docIndex = issuedDocuments.findIndex(d => d.id === Number(req.params.id));
+    if (docIndex !== -1) {
+      const doc = issuedDocuments[docIndex];
       doc.is_certified = true;
       doc.hash = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+
+      // 1. Record stock movements ONLY on certification
+      if (Array.isArray(doc.items)) {
+        doc.items.forEach((item: any) => {
+          if (item.product_id) {
+            const prod = products.find(p => p.id === Number(item.product_id));
+            stockMovements.push({
+              id: Date.now() + Math.random(),
+              product_id: Number(item.product_id),
+              product_name: item.description || prod?.name || 'Produto',
+              type: 'exit',
+              quantity: Number(item.quantity || 1),
+              description: `Venda ${doc.invoice_number} (Certificado)`,
+              created_at: new Date().toISOString(),
+              work_site_id: doc.work_site_id ? Number(doc.work_site_id) : undefined,
+              previous_stock: prod?.stock_quantity || 0,
+              current_stock: (prod?.stock_quantity || 0) - Number(item.quantity || 1),
+              warehouse_id: Number(item.warehouse_id || 1)
+            });
+            if (prod) prod.stock_quantity -= Number(item.quantity || 1);
+          }
+        });
+      }
+
+      // 2. Record finance movement (Accounting)
+      const amount = Number(doc.total || doc.counter_value || 0);
+      transactions.push({
+        id: Date.now(),
+        type: 'income',
+        category: 'Vendas',
+        amount: amount,
+        description: `Venda ${doc.invoice_number} (Certificada)`,
+        date: new Date().toISOString(),
+        reference_id: doc.id.toString(),
+        work_site_id: doc.work_site_id
+      });
+
+      // 3. Record caixa movement if applicable
+      if (doc.cash_box && (doc.document_type.includes('Recibo') || doc.payment_method === 'Pronto Pagamento')) {
+        caixaMovements.push({
+          id: Date.now().toString(),
+          caixaId: doc.cash_box,
+          type: 'entrada',
+          amount: amount,
+          description: `Venda ${doc.invoice_number} (Certificado)`,
+          date: new Date().toISOString()
+        });
+      }
+
       res.json({ success: true, doc });
     } else res.status(404).json({ error: "Document not found" });
   });
+
   app.post("/api/invoices", (req, res) => {
     const series = fiscalSeries.find(s => s.id === Number(req.body.series_id));
     const docType = req.body.document_type || 'Fatura';
@@ -282,7 +385,6 @@ async function startServer() {
         const counter = series.counters[docType];
         series.counters[docType]++;
         const year = new Date().getFullYear();
-        // Matching example: "docType S2026/1"
         invoice_number = `${docType} ${series.reference}${year}/${counter}`;
       } else {
         const counter = issuedDocuments.filter(d => d.document_type === docType).length + 1;
@@ -290,7 +392,6 @@ async function startServer() {
       }
     }
 
-    // Strict uniqueness check
     const isDuplicate = issuedDocuments.some(d => d.invoice_number === invoice_number);
     if (isDuplicate) {
       invoice_number = `${invoice_number}-${Date.now().toString().slice(-4)}`;
@@ -303,41 +404,6 @@ async function startServer() {
       created_at: new Date().toISOString() 
     };
     issuedDocuments.push(newDoc);
-
-    // Record stock movements if related to a work site
-    if (newDoc.work_site_id && Array.isArray(newDoc.items)) {
-      newDoc.items.forEach((item: any) => {
-        if (item.product_id) {
-          const prod = products.find(p => p.id === Number(item.product_id));
-          stockMovements.push({
-            id: Date.now() + Math.random(),
-            product_id: Number(item.product_id),
-            product_name: item.description || prod?.name || 'Produto',
-            type: 'exit',
-            quantity: Number(item.quantity || 1),
-            description: `Venda ${invoice_number} - Obra ${newDoc.work_site_id}`,
-            created_at: new Date().toISOString(),
-            work_site_id: Number(newDoc.work_site_id),
-            previous_stock: prod?.stock_quantity || 0,
-            current_stock: (prod?.stock_quantity || 0) - Number(item.quantity || 1),
-            warehouse_id: Number(item.warehouse_id || 1)
-          });
-          if (prod) prod.stock_quantity -= Number(item.quantity || 1);
-        }
-      });
-    }
-
-    if (newDoc.cash_box && (newDoc.document_type.includes('Recibo') || newDoc.payment_method === 'Pronto Pagamento')) {
-      caixaMovements.push({
-        id: Date.now().toString(),
-        caixaId: newDoc.cash_box,
-        type: 'entrada',
-        amount: Number(newDoc.total || newDoc.counter_value || 0),
-        description: `Venda ${invoice_number}`,
-        date: new Date().toISOString()
-      });
-    }
-
     res.json(newDoc);
   });
 

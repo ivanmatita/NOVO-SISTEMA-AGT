@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Search, X, Check, AlertCircle } from 'lucide-react';
+import { Users, Search, X, Check, AlertCircle, ShoppingBag } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../services/supabaseClient';
 
@@ -7,9 +7,10 @@ interface ClientFormProps {
   initialData?: any;
   onSuccess: () => void;
   onBack: () => void;
+  isSupplier?: boolean;
 }
 
-export function ClientForm({ initialData, onSuccess, onBack }: ClientFormProps) {
+export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: ClientFormProps) {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -70,33 +71,36 @@ export function ClientForm({ initialData, onSuccess, onBack }: ClientFormProps) 
 
       const clientData = {
         ...formData,
-        company_id: user.company_id
+        company_id: user.company_id,
+        tipo_entidade: isSupplier ? 'Fornecedor' : 'Cliente'
       };
 
+      const endpoint = isSupplier ? '/api/suppliers' : '/api/clients';
+
       if (initialData?.id) {
-        const res = await fetch(`/api/clients/${initialData.id}`, {
+        const res = await fetch(`${endpoint}/${initialData.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(clientData)
         });
         if (!res.ok) throw new Error(await res.text());
-        setMessage({ type: 'success', text: 'Cliente atualizado com sucesso!' });
+        setMessage({ type: 'success', text: isSupplier ? 'Fornecedor atualizado com sucesso!' : 'Cliente atualizado com sucesso!' });
       } else {
-        const res = await fetch('/api/clients', {
+        const res = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(clientData)
         });
         if (!res.ok) throw new Error(await res.text());
-        setMessage({ type: 'success', text: 'Cliente registado com sucesso (Modo Teste)!' });
+        setMessage({ type: 'success', text: isSupplier ? 'Fornecedor registado com sucesso!' : 'Cliente registado com sucesso!' });
       }
 
       setTimeout(() => {
         onSuccess();
       }, 1500);
     } catch (err: any) {
-      console.error('Erro ao salvar cliente:', err);
-      setMessage({ type: 'error', text: err.message || 'Ocorreu um erro ao salvar o cliente.' });
+      console.error('Erro ao salvar cliente/fornecedor:', err);
+      setMessage({ type: 'error', text: err.message || 'Ocorreu um erro ao salvar.' });
     } finally {
       setLoading(false);
     }
@@ -107,13 +111,13 @@ export function ClientForm({ initialData, onSuccess, onBack }: ClientFormProps) 
       <div className="shrink-0 p-6 border-b border-zinc-100 bg-zinc-50/50 flex justify-between items-center">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-[#003366] text-white flex items-center justify-center">
-            <Users size={20} />
+            {isSupplier ? <ShoppingBag size={20} /> : <Users size={20} />}
           </div>
           <div>
             <h3 className="text-xl font-black text-[#003366] uppercase tracking-tight">
-              {initialData ? 'Editar Perfil do Cliente' : 'Registar Novo Cliente'}
+              {initialData ? (isSupplier ? 'Editar Fornecedor' : 'Editar Cliente') : (isSupplier ? 'Registar Novo Fornecedor' : 'Registar Novo Cliente')}
             </h3>
-            <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mt-0.5">Módulo de Gestão de Contas de Clientes</p>
+            <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mt-0.5">{isSupplier ? 'Módulo de Gestão de Fornecedores' : 'Módulo de Gestão de Contas de Clientes'}</p>
           </div>
         </div>
         <button type="button" onClick={onBack} className="text-zinc-400 hover:text-red-500 transition-colors">
@@ -314,7 +318,7 @@ export function ClientForm({ initialData, onSuccess, onBack }: ClientFormProps) 
           disabled={loading}
           className="bg-[#003366] text-white px-10 py-2.5 text-xs font-black uppercase tracking-[0.2em] shadow-xl hover:bg-[#002244] transition-all disabled:opacity-50 active:scale-95"
         >
-          {loading ? 'Processando Documentos...' : initialData ? 'Validar Alterações' : 'Submeter Novo Cliente'}
+          {loading ? 'Processando...' : initialData ? 'Validar Alterações' : (isSupplier ? 'Submeter Novo Fornecedor' : 'Submeter Novo Cliente')}
         </button>
       </div>
     </div>

@@ -6,6 +6,13 @@ import { motion, AnimatePresence } from 'motion/react';
 import { fetchWithAuth } from '../lib/fetchWithAuth';
 import { useAuth } from '../contexts/AuthContext';
 
+const formatDate = (date: any) => {
+  if (!date) return '---';
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return '---';
+  return d.toLocaleDateString('pt-AO');
+};
+
 const ArchiveModule = () => {
   const { user } = useAuth();
   const [files, setFiles] = useState<any[]>([]);
@@ -64,9 +71,14 @@ const ArchiveModule = () => {
   return (
     <div className="bg-zinc-50 min-h-screen">
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center p-8 border-b-2 border-zinc-200 bg-white gap-6">
-        <div>
-          <h2 className="text-3xl font-black text-[#003366] uppercase tracking-tighter italic">Arquivo Digital</h2>
-          <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-[0.3em] mt-2">Dossier Central de Documentos & Compliance Fiscal</p>
+        <div className="flex items-center gap-4">
+          <button onClick={() => window.history.back()} className="p-2 hover:bg-zinc-100 rounded-full text-zinc-400 transition-colors">
+            <ChevronLeft size={24} />
+          </button>
+          <div>
+            <h2 className="text-3xl font-black text-[#003366] uppercase tracking-tighter italic">Arquivo Digital</h2>
+            <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-[0.3em] mt-2">Dossier Central de Documentos & Compliance Fiscal</p>
+          </div>
         </div>
         <div className="flex gap-3">
           <div className="flex bg-zinc-100 p-1 rounded-none border border-zinc-200">
@@ -161,7 +173,7 @@ const ArchiveModule = () => {
                           </td>
                           <td className="px-8 py-6 font-black text-zinc-400">.{file.type || 'PDF'}</td>
                           <td className="px-4 py-6 font-black text-zinc-600">{file.size || '1.2MB'}</td>
-                          <td className="px-4 py-6 text-zinc-400 font-bold">{new Date(file.created_at).toLocaleDateString('pt-PT')}</td>
+                          <td className="px-4 py-6 text-zinc-400 font-bold">{formatDate(file.created_at)}</td>
                           <td className="px-8 py-6 text-right">
                             <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all transform group-hover:translate-x-0 translate-x-4">
                               <button className="p-3 bg-white border-2 border-zinc-200 text-zinc-400 hover:text-blue-600 hover:border-blue-600 shadow-sm transition-all"><Download size={18} /></button>
@@ -187,7 +199,7 @@ const ArchiveModule = () => {
                             <div className="flex justify-between items-end border-t border-dashed border-zinc-200 pt-4">
                                <div>
                                   <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Peso / Data</p>
-                                  <p className="text-xs font-black text-zinc-600">{file.size} • {new Date(file.created_at).toLocaleDateString()}</p>
+                                  <p className="text-xs font-black text-zinc-600">{file.size} • {formatDate(file.created_at)}</p>
                                 </div>
                                <div className="flex gap-1">
                                   <button className="p-2 bg-white border border-zinc-200 text-zinc-400 hover:text-blue-600 shadow-sm"><Download size={14}/></button>

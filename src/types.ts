@@ -56,6 +56,7 @@ export interface CaixaMovement {
   amount: number;
   description: string;
   date: string;
+  moeda?: string;
   targetCaixaId?: string; // For transfers
   company_id?: string;
 }
@@ -116,6 +117,7 @@ export interface InvoiceItem {
   comprimento?: number;
   largura?: number;
   altura?: number;
+  showDimensions?: boolean;
   tax?: string;
   tax_rate?: number;
   warehouse_id?: number;
@@ -360,6 +362,7 @@ export interface IssuedDocument {
   document_type?: string;
   numero_documento: string;
   invoice_number?: string;
+  reference_document?: string;
   data_emissao: string;
   date?: string;
   data_vencimento: string;

@@ -3,6 +3,9 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 
 // --- In-Memory Database (No Supabase, No SQL) ---
+const generateId = () => Date.now() + Math.floor(Math.random() * 1000000);
+const generateStrId = () => (Date.now() + Math.floor(Math.random() * 1000000)).toString();
+
 let clients: any[] = [];
 let products: any[] = [];
 let issuedDocuments: any[] = [];
@@ -105,7 +108,7 @@ async function startServer() {
   // Clients
   app.get("/api/clients", (req, res) => res.json(clients));
   app.post("/api/clients", (req, res) => {
-    const newClient = { ...req.body, id: Date.now(), created_at: new Date().toISOString() };
+    const newClient = { ...req.body, id: generateId(), created_at: new Date().toISOString() };
     clients.push(newClient);
     res.json(newClient);
   });
@@ -118,7 +121,7 @@ async function startServer() {
   // Products
   app.get("/api/products", (req, res) => res.json(products));
   app.post("/api/products", (req, res) => {
-    const newProd = { ...req.body, id: Date.now(), created_at: new Date().toISOString() };
+    const newProd = { ...req.body, id: generateId(), created_at: new Date().toISOString() };
     products.push(newProd);
     res.json(newProd);
   });
@@ -165,7 +168,7 @@ async function startServer() {
 
       const cloned = { 
         ...doc, 
-        id: Date.now(), 
+        id: generateId(), 
         invoice_number, 
         numero_documento: invoice_number,
         is_certified: false, 
@@ -218,7 +221,7 @@ async function startServer() {
 
       // Record transaction
       const newTransaction = {
-        id: Date.now(),
+        id: generateId(),
         type: 'income',
         category: 'Vendas',
         amount: Number(amount),
@@ -235,10 +238,10 @@ async function startServer() {
       // Record Work Site Movement if applicable
       if (invoice.work_site_id) {
         workSiteMovements.push({
-          id: Date.now() + 1,
+          id: generateId(),
           work_site_id: invoice.work_site_id,
           date: date || new Date().toISOString(),
-          doc_no: `REC-${Date.now()}`,
+          doc_no: `REC-${generateId()}`,
           company: invoice.client_name,
           description: `Recebimento de Factura - Ref. ${invoice.invoice_number}`,
           debit: 0,
@@ -254,7 +257,7 @@ async function startServer() {
       const reciboNumber = `Recibo ${year}/${reciboCounter}`;
 
       const reciboDoc = {
-        id: Date.now() + 5,
+        id: generateId(),
         document_type: 'Recibo',
         tipo_documento: 'Recibo',
         invoice_number: reciboNumber,
@@ -285,7 +288,7 @@ async function startServer() {
       // Record caixa movement if applicable
       if (cash_box) {
         caixaMovements.push({
-          id: Date.now().toString(),
+          id: generateStrId(),
           caixaId: cash_box,
           type: 'entrada',
           amount: Number(amount),
@@ -331,7 +334,7 @@ async function startServer() {
       
       const creditNote = {
         ...doc,
-        id: Date.now() + 1,
+        id: generateId(),
         document_type: 'Nota de Crédito',
         tipo_documento: 'Nota de Crédito',
         invoice_number: nc_number,
@@ -372,7 +375,7 @@ async function startServer() {
 
       const converted = {
         ...doc,
-        id: Date.now(),
+        id: generateId(),
         document_type: targetType,
         tipo_documento: targetType,
         invoice_number: new_number,
@@ -401,7 +404,7 @@ async function startServer() {
           if (item.product_id) {
             const prod = products.find(p => p.id === Number(item.product_id));
             stockMovements.push({
-              id: Date.now() + Math.random(),
+              id: generateId() + Math.random(),
               product_id: Number(item.product_id),
               product_name: item.description || prod?.name || 'Produto',
               type: 'exit',
@@ -421,7 +424,7 @@ async function startServer() {
       // 2. Record finance movement (Accounting)
       const amount = Number(doc.total || doc.counter_value || 0);
       transactions.push({
-        id: Date.now(),
+        id: generateId(),
         type: 'income',
         category: 'Vendas',
         amount: amount,
@@ -435,7 +438,7 @@ async function startServer() {
       // Update Work Site Movements if applicable
       if (doc.work_site_id) {
         workSiteMovements.push({
-          id: Date.now(),
+          id: generateId(),
           work_site_id: doc.work_site_id,
           date: new Date().toISOString(),
           doc_no: doc.invoice_number || doc.numero_documento,
@@ -451,7 +454,7 @@ async function startServer() {
       // 3. Record caixa movement if applicable
       if (doc.cash_box && (doc.document_type.includes('Recibo') || doc.payment_method === 'Pronto Pagamento')) {
         caixaMovements.push({
-          id: Date.now().toString(),
+          id: generateStrId(),
           caixaId: doc.cash_box,
           type: 'entrada',
           amount: amount,
@@ -493,7 +496,7 @@ async function startServer() {
 
     const newDoc = { 
       ...req.body, 
-      id: Date.now(), 
+      id: generateId(), 
       invoice_number,
       created_at: new Date().toISOString() 
     };
@@ -504,7 +507,7 @@ async function startServer() {
   // Fiscal Series
   app.get("/api/fiscal-series", (req, res) => res.json(fiscalSeries));
   app.post("/api/fiscal-series", (req, res) => {
-    const newSeries = { ...req.body, id: Date.now(), created_at: new Date().toISOString() };
+    const newSeries = { ...req.body, id: generateId(), created_at: new Date().toISOString() };
     fiscalSeries.push(newSeries);
     res.json(newSeries);
   });
@@ -512,7 +515,7 @@ async function startServer() {
   // System Users
   app.get("/api/system-users", (req, res) => res.json(systemUsers));
   app.post("/api/system-users", (req, res) => {
-    const newUser = { ...req.body, id: Date.now(), created_at: new Date().toISOString() };
+    const newUser = { ...req.body, id: generateId(), created_at: new Date().toISOString() };
     systemUsers.push(newUser);
     res.json(newUser);
   });
@@ -520,7 +523,7 @@ async function startServer() {
   // Archives
   app.get("/api/archives", (req, res) => res.json(archives));
   app.post("/api/archives", (req, res) => {
-    const newFile = { ...req.body, id: Date.now(), created_at: new Date().toISOString() };
+    const newFile = { ...req.body, id: generateId(), created_at: new Date().toISOString() };
     archives.push(newFile);
     res.json(newFile);
   });
@@ -528,7 +531,7 @@ async function startServer() {
   // Fleet
   app.get("/api/fleet", (req, res) => res.json(fleetVehicles));
   app.post("/api/fleet", (req, res) => {
-    const newVehicle = { ...req.body, id: Date.now() };
+    const newVehicle = { ...req.body, id: generateId() };
     fleetVehicles.push(newVehicle);
     res.json(newVehicle);
   });
@@ -536,7 +539,7 @@ async function startServer() {
   // Projects
   app.get("/api/projects/tasks", (req, res) => res.json(projectTasks));
   app.post("/api/projects/tasks", (req, res) => {
-    const newTask = { ...req.body, id: Date.now() };
+    const newTask = { ...req.body, id: generateId() };
     projectTasks.push(newTask);
     res.json(newTask);
   });
@@ -544,7 +547,7 @@ async function startServer() {
   // Caixas
   app.get("/api/caixas", (req, res) => res.json(caixas));
   app.post("/api/caixas", (req, res) => {
-    const newCaixa = { ...req.body, id: Date.now() };
+    const newCaixa = { ...req.body, id: generateId() };
     caixas.push(newCaixa);
     res.json(newCaixa);
   });
@@ -552,7 +555,7 @@ async function startServer() {
   // Work Sites
   app.get("/api/work-sites", (req, res) => res.json(workSites));
   app.post("/api/work-sites", (req, res) => {
-    const newSite = { ...req.body, id: Date.now() };
+    const newSite = { ...req.body, id: generateId() };
     workSites.push(newSite);
     res.json(newSite);
   });
@@ -566,7 +569,7 @@ async function startServer() {
     res.json(siteMovements);
   });
   app.post("/api/work-sites/:id/movements", (req, res) => {
-    const movement = { ...req.body, id: Date.now(), created_at: new Date().toISOString() };
+    const movement = { ...req.body, id: generateId(), created_at: new Date().toISOString() };
     workSiteMovements.push(movement);
     res.json(movement);
   });
@@ -574,7 +577,7 @@ async function startServer() {
   // Transactions
   app.get("/api/transactions", (req, res) => res.json(transactions));
   app.post("/api/transactions", (req, res) => {
-    const newTrans = { ...req.body, id: Date.now(), date: new Date().toISOString() };
+    const newTrans = { ...req.body, id: generateId(), date: new Date().toISOString() };
     transactions.push(newTrans);
     res.json(newTrans);
   });
@@ -582,19 +585,20 @@ async function startServer() {
   // Suppliers & Purchases
   app.get("/api/suppliers", (req, res) => res.json(suppliers));
   app.post("/api/suppliers", (req, res) => {
-    const newSupplier = { ...req.body, id: Date.now() };
+    const newSupplier = { ...req.body, id: generateId() };
     suppliers.push(newSupplier);
     res.json(newSupplier);
   });
   app.get("/api/purchases", (req, res) => res.json(purchases));
   app.post("/api/purchases", (req, res) => {
-    const newPurchase = { ...req.body, id: Date.now(), date: new Date().toISOString() };
+    const newPurchaseId = generateId();
+    const newPurchase = { ...req.body, id: newPurchaseId, date: new Date().toISOString() };
     purchases.push(newPurchase);
     
     // Record finance movement (Accounting Cost)
     const amount = Number(newPurchase.total || 0);
     transactions.push({
-      id: Date.now(),
+      id: generateId(),
       type: 'expense',
       category: 'Compras',
       amount: amount,
@@ -608,7 +612,7 @@ async function startServer() {
     // Update Work Site Movements if applicable
     if (newPurchase.work_site_id) {
       workSiteMovements.push({
-        id: Date.now(),
+        id: generateId(),
         work_site_id: newPurchase.work_site_id,
         date: new Date().toISOString(),
         doc_no: newPurchase.invoice_number || `COMP-${newPurchase.id}`,
@@ -624,7 +628,7 @@ async function startServer() {
     // Record caixa movement if applicable (Saída)
     if (newPurchase.cash_box) {
       caixaMovements.push({
-        id: Date.now().toString(),
+        id: generateStrId(),
         caixaId: newPurchase.cash_box,
         type: 'saida',
         amount: amount,
@@ -654,13 +658,18 @@ async function startServer() {
     }
   });
   app.post("/api/employees/attendance", (req, res) => {
-    const newAtt = { ...req.body, id: Date.now() };
+    const newAtt = { ...req.body, id: generateId() };
     attendance.push(newAtt);
     res.json(newAtt);
   });
   app.get("/api/employees/absences", (req, res) => res.json(absences));
   app.get("/api/labor-terminations", (req, res) => res.json(laborTerminations));
   app.get("/api/warehouses", (req, res) => res.json(warehouses));
+  app.post("/api/warehouses", (req, res) => {
+    const newWh = { ...req.body, id: generateId(), created_at: new Date().toISOString() };
+    warehouses.push(newWh);
+    res.json(newWh);
+  });
   app.get("/api/caixa-movements", (req, res) => res.json(caixaMovements));
   app.get("/api/stock/movements", (req, res) => res.json(stockMovements));
   app.get("/api/security/occurrences", (req, res) => res.json(securityOccurrences));

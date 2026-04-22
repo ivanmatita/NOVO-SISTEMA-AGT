@@ -29,8 +29,8 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
 
   const handleCreateCaixa = async (e: React.FormEvent) => {
     e.preventDefault();
-    const caixa: Caixa = {
-      id: Date.now().toString(),
+    const newCaixaObj: Caixa = {
+      id: Math.random().toString(36).substr(2, 9) + Date.now().toString(),
       name: newCaixa.name,
       bankName: newCaixa.bankName,
       account: newCaixa.account,
@@ -48,10 +48,10 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
       const res = await fetch('/api/caixas', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(caixa)
+        body: JSON.stringify(newCaixaObj)
       });
       if (res.ok) {
-        setCaixas([...caixas, caixa]);
+        setCaixas([...caixas, newCaixaObj]);
         setNewCaixa({ name: '', initialBalance: 0, obs: '', responsible: '', account: '', user: '', bankName: '' });
         setShowForm(false);
       }
@@ -80,7 +80,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
     const fromCaixa = (caixas || []).find(c => c.id === transferData.from);
     if (!fromCaixa || fromCaixa.currentBalance < transferData.amount) return alert('Saldo insuficiente');
 
-    const movementId = Date.now().toString();
+    const movementId = Math.random().toString(36).substr(2, 9) + Date.now().toString();
     const newMovement: CaixaMovement = {
       id: movementId,
       caixaId: transferData.from,
@@ -266,7 +266,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-200">
-                    {(caixas || []).map((caixa, idx) => (
+                    {(caixas || []).filter(c => !activeCurrency || (c as any).moeda === activeCurrency || (c as any).moeda === (activeCurrency === 'AOA' ? 'Kwanza' : activeCurrency) || (activeCurrency === 'AOA' && !(c as any).moeda)).map((caixa, idx) => (
                       <tr key={caixa.id} className="hover:bg-zinc-50 transition-colors group">
                         <td className="px-2 py-2 border-r border-zinc-200 text-center text-zinc-500">{idx + 1}</td>
                         <td className="px-4 py-2 border-r border-zinc-200 font-mono text-zinc-600">{caixa.account || '45'}</td>

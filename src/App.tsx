@@ -38,6 +38,7 @@ import {
   UserMinus,
   BadgeCheck,
   Layers,
+  Maximize,
   Filter,
   RefreshCw,
   UserPlus,
@@ -242,6 +243,74 @@ const ALL_TAXES = [
 const formatCurrency = (value: number | null | undefined) => {
   const val = value || 0;
   return new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(val).replace('AOA', 'Kz');
+};
+
+const formatDate = (date: any) => {
+  if (!date) return '---';
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return '---';
+  return d.toLocaleDateString('pt-AO');
+};
+
+const writeValorPorExtenso = (n: number) => {
+  if (n === 0) return 'zero Kwanzas';
+  
+  const unidades = ['', 'um', 'dois', 'três', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove'];
+  const dezena_10 = ['dez', 'onze', 'doze', 'treze', 'catorze', 'quinze', 'dezasseis', 'dezassete', 'dezoito', 'dezanove'];
+  const dezenas = ['', '', 'vinte', 'trinta', 'quarenta', 'cinquenta', 'sessenta', 'setenta', 'oitenta', 'noventa'];
+  const centenas = ['', 'cem', 'duzentos', 'trezentos', 'quatrocentos', 'quinhentos', 'seiscentos', 'setecentos', 'oitocentos', 'novecentos'];
+
+  const convertGroup = (n: number) => {
+    let res = '';
+    if (n === 100) return 'cem';
+    if (n >= 100) {
+      const c = Math.floor(n / 100);
+      res += (c === 1 && n % 100 !== 0 ? 'cento' : centenas[c]);
+      n %= 100;
+      if (n > 0) res += ' e ';
+    }
+    if (n >= 20) {
+      res += dezenas[Math.floor(n / 10)];
+      n %= 10;
+      if (n > 0) res += ' e ';
+    } else if (n >= 10) {
+      res += dezena_10[n - 10];
+      n = 0;
+    }
+    if (n > 0) res += unidades[n];
+    return res;
+  };
+
+  const integerPart = Math.floor(n);
+  const centsPart = Math.round((n - integerPart) * 100);
+  
+  let result = '';
+  
+  if (integerPart >= 1000000) {
+    const millions = Math.floor(integerPart / 1000000);
+    result += convertGroup(millions) + (millions === 1 ? ' milhão' : ' milhões');
+    if (integerPart % 1000000 > 0) result += ' e ';
+  }
+  
+  const restForThousand = integerPart % 1000000;
+  if (restForThousand >= 1000) {
+    const thousands = Math.floor(restForThousand / 1000);
+    result += (thousands === 1 ? 'mil' : convertGroup(thousands) + ' mil');
+    if (restForThousand % 1000 > 0) result += ' e ';
+  }
+  
+  const rest = restForThousand % 1000;
+  if (rest > 0 || result === '') {
+    result += convertGroup(rest);
+  }
+
+  result += (integerPart === 1 ? ' Kwanza' : ' Kwanzas');
+  
+  if (centsPart > 0) {
+    result += ' e ' + convertGroup(centsPart) + (centsPart === 1 ? ' cêntimo' : ' cêntimos');
+  }
+  
+  return result.charAt(0).toUpperCase() + result.slice(1);
 };
 
 const calculateIRT = (salary: number | null | undefined) => {
@@ -5911,7 +5980,7 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail }: {
               className={`hover:bg-zinc-50 text-xs border-b border-zinc-50 group transition-colors cursor-pointer ${doc.status === 'anulado' ? 'bg-red-50/30' : ''}`}
             >
               <td className="px-6 py-4 text-zinc-900 font-bold whitespace-nowrap">
-                {new Date(doc.date || doc.data_emissao || '').toLocaleDateString()}
+                {formatDate(doc.date || doc.data_emissao)}
               </td>
               <td className="px-6 py-4 font-black text-[#003366] whitespace-nowrap">
                 <div className={`uppercase tracking-tighter ${doc.status === 'anulado' ? 'line-through text-red-400' : ''}`}>
@@ -11173,11 +11242,11 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack }: {
         <div className="grid grid-cols-2 gap-x-12 gap-y-4 text-sm">
           <div className="space-y-1">
             <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data de Início</p>
-            <p className="font-bold text-zinc-700">{new Date(workSite.start_date).toLocaleDateString('pt-PT')}</p>
+            <p className="font-bold text-zinc-700">{formatDate(workSite.start_date)}</p>
           </div>
           <div className="space-y-1">
             <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data de Fim</p>
-            <p className="font-bold text-zinc-700">{new Date(workSite.end_date).toLocaleDateString('pt-PT')}</p>
+            <p className="font-bold text-zinc-700">{formatDate(workSite.end_date)}</p>
           </div>
           <div className="space-y-1">
             <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Cliente Responsável</p>
@@ -11592,6 +11661,10 @@ const InvoiceDetail = ({
               <div className="flex justify-between text-2xl font-black pt-4 border-t border-zinc-100">
                 <span className="text-zinc-800">Total</span>
                 <span className="text-[#003366]">{formatCurrency(invoice.total)}</span>
+              </div>
+              <div className="pt-4 text-[10px] font-black text-zinc-400 uppercase tracking-widest text-right">
+                <p>Valor por Extenso:</p>
+                <p className="text-[#003366] mt-1">{writeValorPorExtenso(invoice.total || 0)}</p>
               </div>
             </div>
           </div>
@@ -12291,6 +12364,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
   onSuccess: () => void,
   caixas: Caixa[]
 }) => {
+  const [showSupplierModal, setShowSupplierModal] = useState(false);
   const isCertified = false;
   const [supplierId, setSupplierId] = useState<number | ''>('');
   const [documentType, setDocumentType] = useState('Fatura de Compra');
@@ -12430,17 +12504,51 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
 
   return (
     <div className="space-y-8 bg-zinc-50/30 p-4 sm:p-8 min-h-screen">
-      <div className="flex items-center gap-4 mb-8">
-        <button onClick={onBack} className="p-2 hover:bg-zinc-100 rounded-none text-zinc-400 transition-colors">
-          <ChevronLeft size={24} />
-        </button>
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-zinc-100 flex items-center justify-center text-zinc-500">
-            <FileText size={18} />
+      <div className="flex justify-between items-center bg-white p-6 border border-zinc-200 mb-8 rounded-none shadow-sm">
+        <div className="flex items-center gap-4">
+          <button onClick={onBack} className="p-2 hover:bg-zinc-100 rounded-none text-zinc-400 transition-colors">
+            <ChevronLeft size={24} />
+          </button>
+          <div className="flex items-center gap-2">
+            <div className="w-10 h-10 bg-[#003366] flex items-center justify-center text-white shadow-lg">
+              <FilePlus size={20} />
+            </div>
+            <h2 className="text-xl font-bold text-[#003366] uppercase tracking-tighter italic">Registar Nova Compra</h2>
           </div>
-          <h2 className="text-xl font-bold text-[#003366]">Informações do documento</h2>
         </div>
+        <button 
+          type="button"
+          onClick={() => setShowSupplierModal(true)}
+          className="bg-[#003366] text-white px-6 py-2.5 text-[10px] font-black uppercase tracking-widest hover:bg-[#002244] transition-all shadow-xl flex items-center gap-2 border-b-4 border-blue-900 active:translate-y-1"
+        >
+          <UserPlus size={16} /> Registar Fornecedor
+        </button>
       </div>
+
+      {showSupplierModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm">
+           <motion.div 
+             initial={{ opacity: 0, scale: 0.95 }}
+             animate={{ opacity: 1, scale: 1 }}
+             className="w-full max-w-4xl bg-white shadow-2xl overflow-hidden relative"
+           >
+             <button 
+               onClick={() => setShowSupplierModal(false)}
+               className="absolute top-4 right-4 text-zinc-400 hover:text-zinc-600 z-10 p-2 hover:bg-zinc-100 rounded-full"
+             >
+               <X size={24} />
+             </button>
+             <ClientForm 
+               onBack={() => setShowSupplierModal(false)}
+               onSuccess={() => {
+                 setShowSupplierModal(false);
+                 onSuccess(); 
+               }}
+               isSupplier={true}
+             />
+           </motion.div>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-8">
         {/* Section 1: Informações do documento */}
@@ -12764,16 +12872,57 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
                       ))}
                     </select>
                   </div>
-                  <div className="col-span-1 flex justify-end pb-1">
+                  <div className="col-span-1 border-l border-zinc-200 pl-4 flex flex-col gap-2 justify-end pb-1">
                     <button 
                       type="button" 
                       onClick={() => removeItem(idx)}
-                      className="text-zinc-300 hover:text-red-500 transition-colors"
+                      title="Excluir item"
+                      className="text-zinc-300 hover:text-red-500 transition-colors p-1"
                     >
                       <Trash2 size={16} />
                     </button>
+                    <button 
+                      type="button" 
+                      onClick={() => updateItem(idx, 'showDimensions', !item.showDimensions)}
+                      title="Dimensões"
+                      className={`transition-colors p-1 ${item.showDimensions ? 'text-blue-600' : 'text-zinc-300 hover:text-blue-400'}`}
+                    >
+                      <Maximize size={16} />
+                    </button>
                   </div>
                 </div>
+
+                {item.showDimensions && (
+                  <div className="grid grid-cols-3 gap-4 p-4 bg-blue-50/50 border-t border-blue-100">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Comprimento (m)</label>
+                      <input 
+                        type="number" 
+                        value={item.comprimento || 0} 
+                        onChange={(e) => updateItem(idx, 'comprimento', Number(e.target.value))}
+                        className="w-full bg-white border border-blue-200 px-3 py-2 text-xs font-bold text-blue-900 focus:outline-none focus:border-blue-500" 
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Largura (m)</label>
+                      <input 
+                        type="number" 
+                        value={item.largura || 0} 
+                        onChange={(e) => updateItem(idx, 'largura', Number(e.target.value))}
+                        className="w-full bg-white border border-blue-200 px-3 py-2 text-xs font-bold text-blue-900 focus:outline-none focus:border-blue-500" 
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Altura (m)</label>
+                      <input 
+                        type="number" 
+                        value={item.altura || 0} 
+                        onChange={(e) => updateItem(idx, 'altura', Number(e.target.value))}
+                        className="w-full bg-white border border-blue-200 px-3 py-2 text-xs font-bold text-blue-900 focus:outline-none focus:border-blue-500" 
+                      />
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-12 gap-4 items-end">
                   <div className="col-span-2 space-y-1">
@@ -14113,6 +14262,12 @@ const ProductList = ({ products, onRefresh, stockMovements, warehouses }: {
           <div className="flex items-center gap-2 bg-white p-4 border border-zinc-200">
             <div className="flex-1 flex gap-2">
               <button 
+                onClick={() => setActiveTab('warehouse')}
+                className="px-4 py-2 text-[10px] font-black uppercase tracking-widest bg-zinc-800 text-white hover:bg-zinc-900 shadow-md flex items-center gap-2 border border-zinc-800"
+              >
+                <Home size={14} /> Armazéns
+              </button>
+              <button 
                 onClick={() => setStockFilter('all')}
                 className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest border ${stockFilter === 'all' ? 'bg-[#003366] text-white border-[#003366]' : 'bg-zinc-50 text-zinc-500 border-zinc-200'}`}
               >
@@ -14772,6 +14927,12 @@ const ReceiptModal = ({ document: doc, caixas, onClose, onSuccess }: {
               className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold"
               required 
             />
+            {amount > 0 && (
+              <div className="mt-2 p-3 bg-blue-50/30 border border-blue-100/50 rounded-none italic text-[10px] text-[#003366] font-medium leading-relaxed">
+                <span className="font-black uppercase tracking-widest text-[8px] block mb-1 opacity-50 text-zinc-400">Valor por Extenso</span>
+                {writeValorPorExtenso(amount)}
+              </div>
+            )}
           </div>
           <div className="space-y-1">
             <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Forma de Pagamento</label>

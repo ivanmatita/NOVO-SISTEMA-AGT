@@ -389,7 +389,7 @@ const PrintP89 = ({ sale, clientName }: { sale: any, clientName?: string }) => {
 
 // --- Components ---
 
-const WorkplaceModule = ({ onRefresh, clients }: { onRefresh: () => void, clients: Client[] }) => {
+const WorkplaceModule = ({ onRefresh, clients, issuedDocuments, workSiteMovements }: { onRefresh: () => void, clients: Client[], issuedDocuments: IssuedDocument[], workSiteMovements: WorkSiteMovement[] }) => {
   const { user } = useAuth();
   const [workplaces, setWorkplaces] = useState<any[]>([]);
   const [selectedWorkplace, setSelectedWorkplace] = useState<any | null>(null);
@@ -469,8 +469,8 @@ const WorkplaceModule = ({ onRefresh, clients }: { onRefresh: () => void, client
     return (
       <WorkSiteManagement 
         workSite={selectedWorkplace} 
-        movements={[]} 
-        invoices={[]} 
+        movements={workSiteMovements} 
+        invoices={issuedDocuments} 
         onBack={() => setSelectedWorkplace(null)}
       />
     );
@@ -8460,82 +8460,52 @@ const SettingsModule = ({ companyData, onRefreshData, alerts, setAlerts }: { com
             <div className="no-print">
               <button
                 onClick={() => setIsModalOpen(true)}
-                className="bg-[#003366] text-white px-6 py-2.5 text-sm font-bold shadow-lg hover:bg-[#002244] transition-all flex items-center gap-2"
+                className="bg-[#003366] text-white px-6 py-2.5 text-xs font-bold uppercase tracking-wider shadow-sm hover:bg-[#002244] transition-all flex items-center gap-2"
               >
-                <Plus size={18} /> Actualizar dados da empresa
+                <Edit size={16} /> Editar Dados
               </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {/* Company Data Form Display */}
-            <div className="bg-white border border-zinc-200 shadow-sm p-8">
-              <div className="flex flex-col items-center justify-center mb-8 border-b border-zinc-100 pb-8">
-                <div className="w-24 h-24 bg-zinc-100 rounded-full flex items-center justify-center mb-4 border border-zinc-200 overflow-hidden group relative">
-                  {companyData?.logo_url || companyData?.logo ? (
-                    <img src={companyData.logo_url || companyData.logo} alt="Logo" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
-                  ) : (
-                    <LayoutDashboard size={40} className="text-zinc-300" />
-                  )}
-                </div>
-                <h3 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">{companyData?.nome_empresa || companyData?.name || 'Vossa Empresa'}</h3>
-              </div>
-
-              <div className="grid grid-cols-2 gap-x-12 gap-y-6">
-                <div className="space-y-1">
-                  <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest leading-none">Designação Social</p>
-                  <p className="font-bold text-zinc-900 border-b border-zinc-200 pb-1">{companyData?.name || companyData?.nome_empresa}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest leading-none">NIF / Contribuinte</p>
-                  <p className="font-mono font-bold text-zinc-700 border-b border-zinc-200 pb-1">{companyData?.nif}</p>
-                </div>
-                <div className="space-y-1 col-span-2">
-                  <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest leading-none">Sede / Morada Fiscal</p>
-                  <p className="font-bold text-zinc-900 border-b border-zinc-200 pb-1">{companyData?.address || companyData?.localizacao}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest leading-none">Cidade</p>
-                  <p className="font-bold text-zinc-900 border-b border-zinc-200 pb-1">{companyData?.city || 'Luanda'}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest leading-none">Telefone</p>
-                  <p className="font-bold text-zinc-900 border-b border-zinc-200 pb-1">{companyData?.phone}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* History List */}
-            <div className="bg-white border border-zinc-200 shadow-sm flex flex-col">
-              <div className="p-4 bg-zinc-50 border-b border-zinc-200">
-                <h4 className="text-[11px] font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
-                  <History size={14} /> Histórico de Actualizações
-                </h4>
-              </div>
-              <div className="flex-1 overflow-y-auto max-h-[400px]">
-                 <table className="w-full text-xs text-left border-collapse">
-                    <thead className="bg-[#003366] text-white sticky top-0">
-                       <tr className="text-[10px] uppercase tracking-wider font-bold">
-                          <th className="px-6 py-4">Data</th>
-                          <th className="px-6 py-4">Utilizador</th>
-                          <th className="px-6 py-4">Alteração</th>
-                       </tr>
-                    </thead>
-                    <tbody className="divide-y divide-zinc-100">
-                       <tr className="hover:bg-zinc-50 transition-colors">
-                          <td className="px-6 py-4 font-bold text-zinc-500">{new Date().toLocaleDateString()}</td>
-                          <td className="px-6 py-4 font-black text-zinc-800 uppercase tracking-tighter">Administrador</td>
-                          <td className="px-6 py-4 text-zinc-500 italic text-[10px]">Configuração Inicial do Sistema</td>
-                       </tr>
-                       <tr className="hover:bg-zinc-50 transition-colors">
-                          <td className="px-6 py-4 font-bold text-zinc-50">{new Date().toLocaleDateString()}</td>
-                          <td className="px-6 py-4 font-black text-zinc-800 uppercase tracking-tighter">Sistema</td>
-                          <td className="px-6 py-4 text-zinc-500 italic text-[10px]">Validação de Integridade Fiscal</td>
-                       </tr>
-                    </tbody>
-                 </table>
-              </div>
-            </div>
+          <div className="bg-white border border-zinc-200 shadow-sm overflow-hidden">
+             <table className="w-full text-left text-sm">
+                <tbody className="divide-y divide-zinc-200">
+                   <tr className="hover:bg-zinc-50">
+                      <th className="px-6 py-4 text-zinc-500 font-medium w-1/3 bg-zinc-50/50 border-r border-zinc-100">Logótipo</th>
+                      <td className="px-6 py-4">
+                        {companyData?.logo_url || companyData?.logo ? (
+                          <img src={companyData.logo_url || companyData.logo} alt="Logo" className="h-12 object-contain" referrerPolicy="no-referrer" />
+                        ) : (
+                          <span className="text-zinc-400 italic text-xs">Sem logótipo</span>
+                        )}
+                      </td>
+                   </tr>
+                   <tr className="hover:bg-zinc-50">
+                      <th className="px-6 py-4 text-zinc-500 font-medium bg-zinc-50/50 border-r border-zinc-100">Designação Social</th>
+                      <td className="px-6 py-4 font-bold text-[#003366]">{companyData?.name || companyData?.nome_empresa}</td>
+                   </tr>
+                   <tr className="hover:bg-zinc-50">
+                      <th className="px-6 py-4 text-zinc-500 font-medium bg-zinc-50/50 border-r border-zinc-100">NIF / Contribuinte</th>
+                      <td className="px-6 py-4 text-zinc-800">{companyData?.nif || '---'}</td>
+                   </tr>
+                   <tr className="hover:bg-zinc-50">
+                      <th className="px-6 py-4 text-zinc-500 font-medium bg-zinc-50/50 border-r border-zinc-100">Sede / Morada Fiscal</th>
+                      <td className="px-6 py-4 text-zinc-800">{companyData?.address || companyData?.localizacao || '---'}</td>
+                   </tr>
+                   <tr className="hover:bg-zinc-50">
+                      <th className="px-6 py-4 text-zinc-500 font-medium bg-zinc-50/50 border-r border-zinc-100">Cidade / Província</th>
+                      <td className="px-6 py-4 text-zinc-800">{companyData?.city || 'Luanda'}</td>
+                   </tr>
+                   <tr className="hover:bg-zinc-50">
+                      <th className="px-6 py-4 text-zinc-500 font-medium bg-zinc-50/50 border-r border-zinc-100">Telefone de Contacto</th>
+                      <td className="px-6 py-4 text-zinc-800 font-mono">{companyData?.phone || '---'}</td>
+                   </tr>
+                   <tr className="hover:bg-zinc-50">
+                      <th className="px-6 py-4 text-zinc-500 font-medium bg-zinc-50/50 border-r border-zinc-100">Email Institucional</th>
+                      <td className="px-6 py-4 text-zinc-800">{companyData?.email || 'geral@empresa.com'}</td>
+                   </tr>
+                </tbody>
+             </table>
           </div>
 
           <CompanySettingsModal 
@@ -15578,7 +15548,7 @@ export default function App() {
                             />
                           );
                         case 'workplaces':
-                          return <WorkplaceModule onRefresh={fetchData} clients={clients} />;
+                          return <WorkplaceModule onRefresh={fetchData} clients={clients} issuedDocuments={issuedDocuments} workSiteMovements={workSiteMovements} />;
                         case 'clients':
                           return (
                             <ClientList 

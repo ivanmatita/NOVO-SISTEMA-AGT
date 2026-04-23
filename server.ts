@@ -296,6 +296,10 @@ async function startServer() {
           description: `Recebimento Ref: ${invoice.invoice_number}`,
           date: new Date().toISOString()
         });
+        const targetCaixa = caixas.find(c => String(c.id) === String(cash_box) || c.name === cash_box);
+        if (targetCaixa) {
+          targetCaixa.currentBalance = (targetCaixa.currentBalance || 0) + Number(amount);
+        }
       }
       
       res.json({ success: true, invoice, recibo: reciboDoc });
@@ -462,6 +466,10 @@ async function startServer() {
           description: `Venda ${doc.invoice_number} (Certificado)`,
           date: new Date().toISOString()
         });
+        const targetCaixa = caixas.find(c => String(c.id) === String(doc.cash_box) || c.name === doc.cash_box);
+        if (targetCaixa) {
+          targetCaixa.currentBalance = (targetCaixa.currentBalance || 0) + amount;
+        }
       }
 
       res.json({ success: true, doc });
@@ -636,6 +644,10 @@ async function startServer() {
         description: `Pagamento Compra Ref: ${newPurchase.invoice_number || 'N/A'}`,
         date: new Date().toISOString()
       });
+      const targetCaixa = caixas.find(c => String(c.id) === String(newPurchase.cash_box) || c.name === newPurchase.cash_box);
+      if (targetCaixa) {
+        targetCaixa.currentBalance = (targetCaixa.currentBalance || 0) - amount;
+      }
     }
 
     res.json(newPurchase);

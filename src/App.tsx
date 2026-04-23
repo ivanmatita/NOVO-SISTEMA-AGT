@@ -104,6 +104,7 @@ import {
   Table,
   Map,
   MapPin,
+  Save,
   Droplets,
   Image,
   Monitor,
@@ -6083,21 +6084,21 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail }: {
               </div>
               
               <div className="grid grid-cols-2 gap-3 max-h-[70vh] overflow-y-auto pr-2 p-1 custom-scrollbar">
-                {/* 1. Editar Documento */}
-                <button 
-                  onClick={() => { onAction('edit', showActionsModal); setShowActionsModal(null); }}
-                  className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-all border border-zinc-100 group shadow-sm bg-white"
-                >
-                  <div className={`w-10 h-10 flex items-center justify-center transition-colors ${showActionsModal.is_certified ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-[#003366]'} group-hover:bg-[#003366] group-hover:text-white`}>
-                    <Edit size={20} />
-                  </div>
-                  <div className="text-left">
-                    <p className="font-bold text-zinc-900 text-xs uppercase">Editar Documento</p>
-                    <p className="text-[9px] text-zinc-500 uppercase tracking-tighter">
-                      {showActionsModal.is_certified ? 'Apenas campos não fiscais' : 'Edição completa permitida'}
-                    </p>
-                  </div>
-                </button>
+                  {/* 1. Editar Documento (Apenas para documentos não certificados) */}
+                  {!showActionsModal.is_certified && (
+                    <button 
+                      onClick={() => { onAction('edit', showActionsModal); setShowActionsModal(null); }}
+                      className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-all border border-zinc-100 group shadow-sm bg-white"
+                    >
+                      <div className="w-10 h-10 bg-blue-100 text-[#003366] flex items-center justify-center group-hover:bg-[#003366] group-hover:text-white transition-colors">
+                        <Edit size={20} />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-bold text-zinc-900 text-xs uppercase">Editar Documento</p>
+                        <p className="text-[9px] text-zinc-500 uppercase tracking-tighter">Edição completa permitida para rascunhos</p>
+                      </div>
+                    </button>
+                  )}
 
                 {/* 2. Clonar Documento */}
                 <button 
@@ -6124,6 +6125,20 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail }: {
                   <div className="text-left">
                     <p className="font-bold text-zinc-900 text-xs uppercase">Exportar PDF</p>
                     <p className="text-[9px] text-zinc-500 uppercase tracking-tighter">Baixar formato A4 Profissional</p>
+                  </div>
+                </button>
+
+                {/* Relatórios */}
+                <button 
+                  onClick={() => { onAction('view_detail', showActionsModal); setShowActionsModal(null); }}
+                  className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-all border border-zinc-100 group shadow-sm bg-white"
+                >
+                  <div className="w-10 h-10 bg-zinc-100 text-[#003366] flex items-center justify-center group-hover:bg-[#003366] group-hover:text-white transition-colors">
+                    <BarChart size={20} />
+                  </div>
+                  <div className="text-left">
+                    <p className="font-bold text-zinc-900 text-xs uppercase">Relatórios</p>
+                    <p className="text-[9px] text-zinc-500 uppercase tracking-tighter">Visualizar análise detalhada</p>
                   </div>
                 </button>
 
@@ -6182,11 +6197,11 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail }: {
                    </button>
                 </div>
 
-                {/* 6. Recibo (Apenas Faturas) */}
+                {/* 6. Recibo (Apenas Faturas Certificadas) */}
                 <button 
-                  disabled={!(showActionsModal.document_type === 'Fatura' || showActionsModal.tipo_documento === 'FT') || showActionsModal.status === 'pago'}
+                  disabled={!(showActionsModal.document_type === 'Fatura' || showActionsModal.tipo_documento === 'FT') || showActionsModal.status === 'pago' || !showActionsModal.is_certified || (Number(showActionsModal.paid_amount || 0) >= Number(showActionsModal.total || showActionsModal.counter_value || showActionsModal.contravalor || 0))}
                   onClick={() => { onAction('receipt', showActionsModal); setShowActionsModal(null); }}
-                  className={`w-full flex items-center gap-4 p-4 transition-all border shadow-sm ${(!(showActionsModal.document_type === 'Fatura' || showActionsModal.tipo_documento === 'FT') || showActionsModal.status === 'pago') ? 'bg-zinc-50 border-zinc-100 opacity-50 cursor-not-allowed' : 'bg-white border-zinc-100 hover:bg-zinc-50 group'}`}
+                  className={`w-full flex items-center gap-4 p-4 transition-all border shadow-sm ${(!(showActionsModal.document_type === 'Fatura' || showActionsModal.tipo_documento === 'FT') || showActionsModal.status === 'pago' || !showActionsModal.is_certified || (Number(showActionsModal.paid_amount || 0) >= Number(showActionsModal.total || showActionsModal.counter_value || showActionsModal.contravalor || 0))) ? 'bg-zinc-50 border-zinc-100 opacity-50 cursor-not-allowed' : 'bg-white border-zinc-100 hover:bg-zinc-50 group'}`}
                 >
                   <div className="w-10 h-10 bg-zinc-100 text-emerald-600 flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-colors">
                     <Receipt size={20} />
@@ -9013,6 +9028,249 @@ const TaxSeriesModule = () => {
   );
 };
 
+const SaftExportForm = () => {
+  const [loading, setLoading] = useState(false);
+  const [dateRange, setDateRange] = useState({ start: '', end: '' });
+  const { user } = useAuth();
+
+  const handleExport = async () => {
+    if (!dateRange.start || !dateRange.end) {
+       alert('Por favor, selecione o período para exportação.');
+       return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetchWithAuth(`/api/accounting/saft?company_id=${user?.company_id}&start=${dateRange.start}&end=${dateRange.end}`);
+      if (res.ok) {
+        const data = await res.json();
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/xml' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `SAFT_AO_${user?.company_id}_${dateRange.start}_${dateRange.end}.xml`;
+        a.click();
+      }
+    } catch (error) {
+      console.error('Error exporting SAFT:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="bg-white border border-zinc-200 p-10 shadow-xl max-w-2xl mx-auto space-y-8">
+      <header className="flex items-center gap-6 border-b border-zinc-100 pb-6">
+        <div className="w-16 h-16 bg-[#003366] text-white flex items-center justify-center shadow-lg">
+          <FileCode size={32} />
+        </div>
+        <div>
+          <h3 className="text-xl font-black text-[#003366] uppercase tracking-tighter">Exportação SAF-T (AO)</h3>
+          <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest mt-1">Ficheiro de Auditoria Tributária para AGT</p>
+        </div>
+      </header>
+
+      <div className="space-y-6">
+        <div className="p-4 bg-amber-50 border border-amber-100 flex gap-4">
+          <AlertCircle className="text-amber-600 shrink-0" size={20} />
+          <p className="text-[11px] text-amber-900 leading-relaxed font-medium">
+            Certifique-se que todos os documentos do período selecionado foram certificados antes da exportação. O ficheiro XML gerado segue o esquema standard da AGT Angola.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-6">
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Data Inicial</label>
+            <input 
+              type="date" 
+              value={dateRange.start}
+              onChange={e => setDateRange(prev => ({ ...prev, start: e.target.value }))}
+              className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm font-bold focus:outline-none focus:border-[#003366]"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Data Final</label>
+            <input 
+              type="date" 
+              value={dateRange.end}
+              onChange={e => setDateRange(prev => ({ ...prev, end: e.target.value }))}
+              className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm font-bold focus:outline-none focus:border-[#003366]"
+            />
+          </div>
+        </div>
+
+        <button 
+          onClick={handleExport}
+          disabled={loading}
+          className={`w-full py-4 text-xs font-black uppercase tracking-[0.2em] transition-all shadow-lg flex items-center justify-center gap-3 ${
+            loading ? 'bg-zinc-100 text-zinc-400 cursor-not-allowed' : 'bg-[#003366] text-white hover:bg-[#002244]'
+          }`}
+        >
+          {loading ? (
+            <>Processando Ficheiro...</>
+          ) : (
+             <><Download size={18} /> Gerar e Baixar SAF-T.xml</>
+          )}
+        </button>
+      </div>
+
+      <footer className="pt-6 border-t border-zinc-50 text-center">
+        <p className="text-[8px] text-zinc-300 font-bold uppercase tracking-[0.4em]">Ficheiro Auditado e Validado pelo Sistema AGT</p>
+      </footer>
+    </div>
+  );
+};
+
+const WithholdingTaxModule = ({ sales, purchases }: { sales: IssuedDocument[], purchases: any[] }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  const salesWithTax = sales.filter(s => s.is_certified && (s.retencao_fonte_total || 0) > 0);
+  const purchasesWithTax = (purchases || []).filter(p => (p.retencao_fonte_total || 0) > 0);
+  
+  const allRecords = [
+    ...salesWithTax.map(s => ({
+      id: s.id,
+      date: s.date,
+      doc_no: s.numero_documento,
+      entity: s.client_name,
+      type: 'Venda (Retenção 6.5%)',
+      base: (s.total || 0) - (s.vat_amount || 0),
+      tax_value: s.retencao_fonte_total,
+      status: s.status
+    })),
+    ...purchasesWithTax.map(p => ({
+      id: p.id,
+      date: p.date || p.data_emissao,
+      doc_no: p.invoice_number || p.numero_documento,
+      entity: p.supplier_name || (p as any).fornecedor_id,
+      type: 'Compra (Retenção)',
+      base: (p.total || 0) - (p.vat_amount || 0),
+      tax_value: p.retencao_fonte_total,
+      status: 'pago'
+    }))
+  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  const filtered = allRecords.filter(r => 
+    (r.doc_no || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (r.entity || '').toString().toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const totalBase = filtered.reduce((acc, r) => acc + (r.base || 0), 0);
+  const totalTax = filtered.reduce((acc, r) => acc + (r.tax_value || 0), 0);
+
+  return (
+    <div className="space-y-6">
+      <header className="flex justify-between items-end">
+        <div>
+          <h2 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">Retenção na Fonte (IRT/IE)</h2>
+          <p className="text-zinc-500 text-sm">Listagem de documentos com retenção na fonte processada após certificação.</p>
+        </div>
+        <div className="flex gap-4">
+           <div className="bg-white border border-zinc-200 px-6 py-4 shadow-sm">
+             <p className="text-[10px] font-bold text-zinc-400 uppercase">Total Retido</p>
+             <p className="text-xl font-black text-red-600">{formatCurrency(totalTax)}</p>
+           </div>
+        </div>
+      </header>
+
+      <div className="bg-white border border-zinc-200 p-4 shadow-sm">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+           <div className="relative">
+             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
+             <input 
+               type="text" 
+               placeholder="Pesquisar por entidade ou documento..." 
+               value={searchTerm}
+               onChange={e => setSearchTerm(e.target.value)}
+               className="w-full bg-zinc-50 border border-zinc-200 p-3 pl-10 text-xs font-bold focus:outline-none focus:border-[#003366]"
+             />
+           </div>
+        </div>
+      </div>
+
+      <div className="bg-white border border-zinc-200 overflow-hidden shadow-sm">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-zinc-50 border-b border-zinc-200 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
+              <th className="px-6 py-4">Data</th>
+              <th className="px-6 py-4">Documento</th>
+              <th className="px-6 py-4">Entidade</th>
+              <th className="px-6 py-4">Tipo</th>
+              <th className="px-6 py-4 text-right">Base Incidência</th>
+              <th className="px-6 py-4 text-right text-[#003366]">Valor Retido</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-100 text-[11px]">
+            {filtered.map((r: any, idx) => (
+              <tr key={idx} className="hover:bg-zinc-50 transition-colors">
+                <td className="px-6 py-4 text-zinc-500 font-bold">{new Date(r.date).toLocaleDateString()}</td>
+                <td className="px-6 py-4 font-black uppercase text-[#003366]">{r.doc_no}</td>
+                <td className="px-6 py-4 font-bold text-zinc-800 uppercase">{r.entity}</td>
+                <td className="px-6 py-4 text-zinc-500 italic">{r.type}</td>
+                <td className="px-6 py-4 text-right font-bold">{formatCurrency(r.base)}</td>
+                <td className="px-6 py-4 text-right font-black text-red-600">{formatCurrency(r.tax_value)}</td>
+              </tr>
+            ))}
+            {filtered.length === 0 && (
+              <tr>
+                <td colSpan={6} className="px-6 py-20 text-center text-zinc-400 italic">Nenhum registo de retenção encontrado.</td>
+              </tr>
+            )}
+          </tbody>
+          {filtered.length > 0 && (
+            <tfoot className="bg-zinc-50 font-black text-xs">
+               <tr>
+                 <td colSpan={4} className="px-6 py-4 text-right uppercase tracking-widest text-zinc-400">Totais Concentrados</td>
+                 <td className="px-6 py-4 text-right">{formatCurrency(totalBase)}</td>
+                 <td className="px-6 py-4 text-right text-red-600 font-black">{formatCurrency(totalTax)}</td>
+               </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+    </div>
+  );
+};
+
+const ReportsModule = ({ sales, purchases, clients, products }: { sales: IssuedDocument[], purchases: any[], clients: any[], products: any[] }) => {
+  const [activeReport, setActiveReport] = useState<string | null>(null);
+
+  if (activeReport === 'sales') {
+     return <SalesReport issuedDocuments={sales} onBack={() => setActiveReport(null)} />;
+  }
+
+  const reportCards = [
+    { id: 'sales', label: 'Relatório de Vendas', icon: <FileText size={20} />, color: 'bg-blue-50 text-blue-600', description: 'Todos documentos emitidos (FT, FR, RE, NC) e anulados.' },
+    { id: 'purchases', label: 'Relatório de Compras', icon: <ShoppingCart size={20} />, color: 'bg-emerald-50 text-emerald-600', description: 'Resumo de compras por fornecedor e categoria.' },
+    { id: 'inventory', label: 'Resumo de Stock', icon: <Package size={20} />, color: 'bg-amber-50 text-amber-600', description: 'Valor total em stock e movimentos críticos.' },
+    { id: 'cash', label: 'Fluxo de Caixa', icon: <Wallet size={20} />, color: 'bg-purple-50 text-purple-600', description: 'Entradas e saídas financeiras por período.' },
+  ];
+
+  return (
+    <div className="space-y-8">
+      <header>
+        <h2 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">Relatórios & Análise</h2>
+        <p className="text-zinc-500 text-sm">Visualize o desempenho do seu negócio através de dados analíticos detalhados.</p>
+      </header>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {reportCards.map(report => (
+          <button 
+            key={report.id}
+            onClick={() => setActiveReport(report.id)}
+            className="bg-white border border-zinc-200 p-8 text-left hover:border-[#003366] hover:shadow-xl transition-all group"
+          >
+            <div className={`w-12 h-12 rounded-none flex items-center justify-center mb-6 transition-transform group-hover:scale-110 ${report.color}`}>
+              {report.icon}
+            </div>
+            <h3 className="text-sm font-black text-[#003366] uppercase mb-2">{report.label}</h3>
+            <p className="text-xs text-zinc-500 leading-relaxed font-medium">{report.description}</p>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employees, issuedDocuments }: { 
   invoices: Invoice[], 
   clients: Client[], 
@@ -9652,15 +9910,19 @@ const InvoiceList = ({
     const searchStr = searchTerm.toLowerCase();
     const matchesSearch = (doc.invoice_number || doc.numero_documento || '').toLowerCase().includes(searchStr) ||
                          (doc.client_name || doc.cliente_id || '').toString().toLowerCase().includes(searchStr);
+    
+    const matchesType = typeFilter === 'Todos' || 
+                       (doc.document_type || doc.tipo_documento) === typeFilter;
+
     const matchesStatus = statusFilter === 'Todos' || 
-                         (statusFilter === 'PAGO' && (doc.status === 'paid' || doc.estado_documento === 'ativo' || doc.payment_status === 'paid')) ||
+                         (statusFilter === 'PAGO' && (doc.status === 'paid' || (doc.estado_documento as string) === 'pago' || doc.payment_status === 'paid')) ||
                          (statusFilter === 'PENDENTE' && (doc.status === 'pending' || doc.estado_documento === 'anulado' || doc.payment_status === 'pending'));
     
     const docValue = doc.contravalor || doc.total || 0;
     const matchesMin = minValue === '' || docValue >= Number(minValue);
     const matchesMax = maxValue === '' || docValue <= Number(maxValue);
 
-    return matchesSearch && matchesStatus && matchesMin && matchesMax;
+    return matchesSearch && matchesType && matchesStatus && matchesMin && matchesMax;
   }).sort((a, b) => (b.id || 0) - (a.id || 0)) : [];
 
   return (
@@ -9811,7 +10073,19 @@ const InvoiceList = ({
                   onChange={(e) => setTypeFilter(e.target.value)}
                   className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
                 >
-                  <option>Todos</option>
+                  <option value="Todos">Todos os Tipos</option>
+                  <option value="Fatura">Fatura</option>
+                  <option value="Fatura Recibo">Fatura Recibo</option>
+                  <option value="Fatura Proforma">Fatura Proforma</option>
+                  <option value="Orçamento">Orçamento</option>
+                  <option value="Nota de Crédito">Nota de Crédito</option>
+                  <option value="Nota de Débito">Nota de Débito</option>
+                  <option value="Guia de Entrega">Guia de Entrega</option>
+                  <option value="Guia de Transporte">Guia de Transporte</option>
+                  <option value="Guia de Remessa">Guia de Remessa</option>
+                  <option value="Venda a Dinheiro">Venda a Dinheiro</option>
+                  <option value="Recibo">Recibo</option>
+                  <option value="Consulta de Mesa">Consulta de Mesa</option>
                 </select>
               </div>
 
@@ -10274,6 +10548,20 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
       alert('Este documento já está certificado pela AGT e não pode ser editado. Por favor, utilize as funções de clonagem ou Nota de Crédito para ajustes.');
       return;
     }
+    
+    // System cannot allow issuing documents older than 5 days
+    const selectedDateObj = new Date(date);
+    const currentDate = new Date();
+    currentDate.setHours(0, 0, 0, 0); // Normalized to day
+    // Calculate difference in milliseconds
+    const diffTime = Math.abs(currentDate.getTime() - selectedDateObj.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+    
+    if (selectedDateObj < currentDate && diffDays > 5) {
+      alert('Atenção: o sistema nunca deve permitir emitir documentos com mais de 5 dias.');
+      return;
+    }
+
     if (items.length === 0) return;
     if (!seriesId) { alert('Por favor, selecione uma série.'); return; }
     if (!clientId) { alert('Por favor, selecione um cliente.'); return; }
@@ -10544,6 +10832,16 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
                 <option value="">Selecione um cliente</option>
                 {clients.map(c => <option key={c.id} value={c.id}>{c.name} ({c.contribuinte})</option>)}
               </select>
+            </div>
+            <div className="space-y-2 md:col-span-3">
+              <label className="text-xs font-bold text-zinc-600">Local de prestação de bens/serviços</label>
+              <input 
+                type="text" 
+                value={serviceLocation} 
+                onChange={(e) => setServiceLocation(e.target.value)}
+                placeholder="Rua, Cidade, etc."
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+              />
             </div>
             <div className="space-y-2">
               <label className="text-xs font-bold text-zinc-600">Data prestação de bens/serviços <span className="text-red-500">*</span></label>
@@ -11171,19 +11469,38 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack }: {
   onBack: () => void 
 }) => {
   const [activeTab, setActiveTab] = useState<'finance' | 'invoices' | 'stock'>('finance');
-  const totalDebit = (movements ?? []).reduce((sum, m) => sum + m.debit, 0);
-  const totalCredit = (movements ?? []).reduce((sum, m) => sum + m.credit, 0);
-  const currentBalance = movements.length > 0 ? movements[movements.length - 1].balance : 0;
   
-  const siteInvoices = invoices.filter(inv => (inv.work_site_id?.toString() === workSite.id?.toString()) && inv.is_certified);
+  const siteInvoices = (invoices ?? []).filter(inv => (inv.work_site_id?.toString() === workSite.id?.toString()));
   const totalInvoiced = (siteInvoices ?? []).reduce((sum, inv) => sum + (inv.contravalor || inv.total || 0), 0);
-  const totalPaid = (siteInvoices ?? []).filter(inv => inv.status === 'paid' || inv.estado_documento === 'ativo').reduce((sum, inv) => sum + (inv.contravalor || inv.total || 0), 0);
+  const totalPaid = (siteInvoices ?? []).filter(inv => inv.status === 'paid' || (inv.estado_documento as string) === 'pago' || (inv.estado_documento as string) === 'ativo').reduce((sum, inv) => sum + (inv.contravalor || inv.total || 0), 0);
   const totalPending = totalInvoiced - totalPaid;
   
   // Calculate specific site costs based on invoices related to the site (purchases or direct expenses)
-  const siteMovements = movements.filter(m => m.work_site_id?.toString() === workSite.id?.toString());
-  const actualDebit = siteMovements.reduce((sum, m) => sum + (m.debit || 0), 0);
-  const actualCredit = siteMovements.reduce((sum, m) => sum + (m.credit || 0), 0);
+  const siteMovements = (movements ?? []).filter(m => m.work_site_id?.toString() === workSite.id?.toString());
+  
+  // Combine movements with sales (invoice certifications) for a full financial view
+  const combinedMovements = [
+    ...siteMovements.map(m => ({ ...m, source: 'expense', amount: m.debit || m.credit })),
+    ...siteInvoices.filter(inv => inv.is_certified).map(inv => ({
+      id: inv.id,
+      date: inv.date,
+      doc_no: inv.numero_documento,
+      company: inv.client_name,
+      description: `Facturação Certificada - ${inv.document_type}`,
+      debit: 0,
+      credit: inv.total || inv.counter_value || 0,
+      source: 'sale'
+    }))
+  ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  let rollingBalance = 0;
+  const processedMovements = combinedMovements.map(m => {
+    rollingBalance += (m.credit || 0) - (m.debit || 0);
+    return { ...m, balance: rollingBalance };
+  });
+
+  const actualDebit = processedMovements.reduce((sum, m) => sum + (m.debit || 0), 0);
+  const actualCredit = processedMovements.reduce((sum, m) => sum + (m.credit || 0), 0);
   const actualBalance = actualCredit - actualDebit;
 
   return (
@@ -11240,15 +11557,15 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack }: {
         </div>
         <div className="p-8">
           <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Total Débito (Custos)</p>
-          <p className="text-2xl font-black text-red-600">{formatCurrency(totalDebit)}</p>
+          <p className="text-2xl font-black text-red-600">{formatCurrency(actualDebit)}</p>
         </div>
         <div className="p-8">
           <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Total Crédito</p>
-          <p className="text-2xl font-black text-emerald-600">{formatCurrency(totalCredit)}</p>
+          <p className="text-2xl font-black text-emerald-600">{formatCurrency(actualCredit)}</p>
         </div>
         <div className="p-8 bg-[#003366] text-white">
           <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-2">Saldo de Obra</p>
-          <p className="text-2xl font-black">{formatCurrency(currentBalance)}</p>
+          <p className="text-2xl font-black">{formatCurrency(actualBalance)}</p>
           <p className="text-[10px] text-white/40 mt-1 font-bold italic">Pendente Cliente: {formatCurrency(totalPending)}</p>
         </div>
       </div>
@@ -11289,7 +11606,7 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack }: {
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest flex items-center gap-2">
               <div className="w-1 h-4 bg-[#003366]"></div>
-              Histórico de Movimentação Financeira
+              Histórico de Movimentação Financeira (Vendas e Despesas)
             </h3>
             <div className="flex gap-2 no-print">
               <button 
@@ -11319,7 +11636,7 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack }: {
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100 text-xs text-zinc-800">
-                {siteMovements.map((m) => (
+                {processedMovements.map((m: any) => (
                   <tr key={m.id} className="hover:bg-zinc-50 transition-colors">
                     <td className="px-6 py-4 font-medium text-zinc-500">{new Date(m.date).toLocaleDateString('pt-PT')}</td>
                     <td className="px-6 py-4 font-bold text-zinc-800">{m.doc_no}</td>
@@ -11330,7 +11647,7 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack }: {
                     <td className="px-6 py-4 text-right font-black text-[#003366] bg-zinc-50/50">{formatCurrency(m.balance)}</td>
                   </tr>
                 ))}
-                {siteMovements.length === 0 && (
+                {processedMovements.length === 0 && (
                   <tr>
                     <td colSpan={7} className="px-6 py-20 text-center text-zinc-400 font-medium italic">
                       Nenhum registo de movimentação encontrado para este local.
@@ -11338,13 +11655,13 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack }: {
                   </tr>
                 )}
               </tbody>
-              {movements.length > 0 && (
+              {processedMovements.length > 0 && (
                 <tfoot>
                   <tr className="bg-zinc-50 border-t-2 border-zinc-200 font-black text-xs">
                     <td colSpan={4} className="px-6 py-4 text-right uppercase tracking-widest text-zinc-400">Totais Acumulados</td>
-                    <td className="px-6 py-4 text-right text-red-600">{formatCurrency(totalDebit)}</td>
-                    <td className="px-6 py-4 text-right text-emerald-600">{formatCurrency(totalCredit)}</td>
-                    <td className="px-6 py-4 text-right text-[#003366] bg-zinc-200/50">{formatCurrency(currentBalance)}</td>
+                    <td className="px-6 py-4 text-right text-red-600">{formatCurrency(actualDebit)}</td>
+                    <td className="px-6 py-4 text-right text-emerald-600">{formatCurrency(actualCredit)}</td>
+                    <td className="px-6 py-4 text-right text-[#003366] bg-zinc-200/50">{formatCurrency(actualBalance)}</td>
                   </tr>
                 </tfoot>
               )}
@@ -11369,7 +11686,7 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack }: {
                      </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-100 text-xs text-zinc-800">
-                    {movements.filter(m => m.work_site_id === workSite.id).map((m: any) => (
+                    {movements.filter(m => m.work_site_id?.toString() === workSite.id?.toString()).map((m: any) => (
                       <tr key={m.id} className="hover:bg-zinc-50 transition-colors">
                         <td className="px-6 py-4 font-medium text-zinc-500">{new Date(m.created_at).toLocaleDateString('pt-PT')}</td>
                         <td className="px-6 py-4 font-bold text-zinc-900">{m.product_name}</td>
@@ -11386,7 +11703,7 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack }: {
                         <td className="px-6 py-4 text-zinc-500 italic font-medium">{m.description || '---'}</td>
                       </tr>
                     ))}
-                    {movements.filter(m => m.work_site_id === workSite.id).length === 0 && (
+                    {movements.filter(m => m.work_site_id?.toString() === workSite.id?.toString()).length === 0 && (
                       <tr>
                         <td colSpan={5} className="px-6 py-20 text-center text-zinc-400 font-medium italic">
                           Nenhum movimento de stock registado para este local.
@@ -11424,10 +11741,10 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack }: {
               <tbody className="divide-y divide-zinc-100 text-xs">
                 {siteInvoices.map(inv => (
                   <tr key={inv.id} className="hover:bg-zinc-50 text-sm">
-                    <td className="px-6 py-4 text-zinc-500">{new Date(inv.data_emissao).toLocaleDateString('pt-PT')}</td>
-                    <td className="px-6 py-4 font-bold text-zinc-900">{inv.numero_documento}</td>
+                    <td className="px-6 py-4 text-zinc-500">{new Date(inv.date || inv.data_emissao || new Date()).toLocaleDateString('pt-PT')}</td>
+                    <td className="px-6 py-4 font-bold text-zinc-900">{inv.numero_documento || inv.invoice_number}</td>
                     <td className="px-6 py-4 text-zinc-600">{inv.client_name}</td>
-                    <td className="px-6 py-4 text-right font-black text-[#003366]">{formatCurrency(inv.contravalor)}</td>
+                    <td className="px-6 py-4 text-right font-black text-[#003366]">{formatCurrency(inv.total || inv.contravalor)}</td>
                   </tr>
                 ))}
                 {siteInvoices.length === 0 && (
@@ -13711,87 +14028,89 @@ const SupplierModule = ({ products, workSites, fiscalSeries, caixas }: { product
                </button>
             </div>
             
-            <div className="flex-1 overflow-y-auto p-8 bg-zinc-50/10">
-              <form onSubmit={handleSubmit} className="space-y-8 max-w-2xl mx-auto">
-                <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-6">
-                  <h3 className="text-lg font-bold text-[#003366] border-b border-zinc-100 pb-4 flex items-center gap-2">
-                    <UserIcon size={20} /> Informações Principais
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-zinc-600 uppercase tracking-wider">Número de Contribuinte (NIF) <span className="text-red-500">*</span></label>
-                      <div className="relative">
-                        <input type="text" placeholder="000000000" value={nif} onChange={e => setNif(e.target.value)} required className="w-full border border-zinc-200 bg-zinc-50 rounded-none pl-4 pr-10 py-3 text-sm font-mono font-bold focus:outline-none focus:border-[#003366]" />
-                        {nif && (
-                          <button type="button" onClick={handleSearchNif} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#003366] hover:scale-110 transition-transform">
-                            <Search size={18} />
-                          </button>
-                        )}
-                      </div>
+            <div className="flex-1 overflow-y-auto p-4 md:p-8 bg-white">
+              <form onSubmit={handleSubmit} className="space-y-6 max-w-5xl mx-auto">
+                <div className="grid grid-cols-1 md:grid-cols-6 gap-6">
+                  <div className="md:col-span-2 space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest flex items-center gap-1">NIF <span className="text-red-500">*</span></label>
+                    <div className="relative">
+                      <input type="text" placeholder="000000000" value={nif} onChange={e => setNif(e.target.value)} required className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm font-mono font-bold focus:outline-none focus:border-[#003366]" />
+                      {nif && (
+                        <button type="button" onClick={handleSearchNif} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#003366] hover:scale-110 transition-transform">
+                          <Search size={16} />
+                        </button>
+                      )}
                     </div>
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-zinc-600 uppercase tracking-wider">Designação / Nome Completo <span className="text-red-500">*</span></label>
-                      <input type="text" placeholder="Designação do Fornecedor" value={name} onChange={e => setName(e.target.value)} required className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-3 text-sm font-bold focus:outline-none focus:border-[#003366]" />
-                    </div>
-                    <div className="space-y-1.5 md:col-span-2">
-                      <label className="text-xs font-bold text-zinc-600 uppercase tracking-wider">Endereço Fiscal / Morada</label>
-                      <input type="text" placeholder="Rua, Bairro, nº porta" value={address} onChange={e => setAddress(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-3 text-sm focus:outline-none focus:border-[#003366]" />
-                    </div>
+                  </div>
+                  <div className="md:col-span-4 space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Designação / Nome Completo <span className="text-red-500">*</span></label>
+                    <input type="text" placeholder="Ex: Fornecedor de Serviços Exemplo, Lda" value={name} onChange={e => setName(e.target.value)} required className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm font-bold focus:outline-none focus:border-[#003366]" />
+                  </div>
+                  <div className="md:col-span-2 space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Abreviatura / Nome Curto</label>
+                    <input type="text" placeholder="Ex: FORN-EX" className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                  </div>
+                  <div className="md:col-span-2 space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Tipo de Fornecedor</label>
+                    <select value={tipoCliente} onChange={e => setTipoCliente(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] font-bold">
+                      <option value="normal">Normal</option>
+                      <option value="servicos">Prestador de Serviços</option>
+                      <option value="mercadorias">Vendedor de Mercadorias</option>
+                      <option value="imobilizado">Activos Imobilizados</option>
+                    </select>
+                  </div>
+                  <div className="md:col-span-2 space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Webpage / Site</label>
+                    <input type="text" placeholder="www.fornecedor.com" value={webpage} onChange={e => setWebpage(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                  </div>
+                  <div className="md:col-span-6 space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Morada / Endereço Fiscal</label>
+                    <input type="text" placeholder="Rua, Bairro, nº porta, etc." value={address} onChange={e => setAddress(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                  </div>
+                  <div className="md:col-span-2 space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Província</label>
+                    <input type="text" placeholder="Ex: Luanda" value={provincia} onChange={e => setProvincia(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                  </div>
+                  <div className="md:col-span-2 space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Município</label>
+                    <input type="text" placeholder="Ex: Talatona" value={municipio} onChange={e => setMunicipio(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                  </div>
+                  <div className="md:col-span-2 space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Localidade</label>
+                    <input type="text" placeholder="Ex: Benfica" value={localidade} onChange={e => setLocalidade(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                  </div>
+                  <div className="md:col-span-2 space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Telefone</label>
+                    <input type="text" placeholder="+244 000 000 000" value={phone} onChange={e => setPhone(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] font-bold" />
+                  </div>
+                  <div className="md:col-span-4 space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Email Principal</label>
+                    <input type="email" placeholder="fornecedor@email.com" value={email} onChange={e => setEmail(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                  </div>
+                  <div className="md:col-span-2 space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Banco Principal</label>
+                    <input type="text" placeholder="Ex: BFA, BAI, BCI" value={siglasBanco} onChange={e => setSiglasBanco(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] font-bold" />
+                  </div>
+                  <div className="md:col-span-4 space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">IBAN</label>
+                    <input type="text" placeholder="AO06 0000 0000 0000 0000 0000 0" value={iban} onChange={e => setIban(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm font-mono focus:outline-none focus:border-[#003366]" />
+                  </div>
+                  <div className="md:col-span-2 space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Condições de Pagamento</label>
+                    <select className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]">
+                      <option>Pronto Pagamento</option>
+                      <option>30 Dias</option>
+                      <option>60 Dias</option>
+                      <option>90 Dias</option>
+                    </select>
                   </div>
                 </div>
 
-                <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-6">
-                  <h3 className="text-lg font-bold text-[#003366] border-b border-zinc-100 pb-4 flex items-center gap-2">
-                    <MapPin size={20} /> Localização e Contactos
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-zinc-600 uppercase tracking-wider">Município</label>
-                      <select value={municipio} onChange={e => setMunicipio(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-3 text-sm focus:outline-none focus:border-[#003366]">
-                        <option value="">Selecione...</option>
-                        <option value="Luanda">Luanda</option>
-                        <option value="Belas">Belas</option>
-                        <option value="Viana">Viana</option>
-                        <option value="Cazenga">Cazenga</option>
-                        <option value="Cacuaco">Cacuaco</option>
-                        <option value="Talatona">Talatona</option>
-                        <option value="Kilamba Kiaxi">Kilamba Kiaxi</option>
-                      </select>
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-zinc-600 uppercase tracking-wider">Província</label>
-                      <input type="text" placeholder="Ex: Luanda" value={provincia} onChange={e => setProvincia(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-3 text-sm focus:outline-none focus:border-[#003366]" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-zinc-600 uppercase tracking-wider">Telefone</label>
-                      <input type="text" placeholder="+244 ..." value={phone} onChange={e => setPhone(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-3 text-sm focus:outline-none focus:border-[#003366]" />
-                    </div>
-                    <div className="space-y-1.5 md:col-span-2">
-                      <label className="text-xs font-bold text-zinc-600 uppercase tracking-wider">Email Electronic</label>
-                      <input type="email" placeholder="fornecedor@email.com" value={email} onChange={e => setEmail(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-3 text-sm focus:outline-none focus:border-[#003366]" />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-6">
-                   <h3 className="text-lg font-bold text-[#003366] border-b border-zinc-100 pb-4 flex items-center gap-2">
-                    <Wallet size={20} /> Dados Financeiros
-                  </h3>
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-zinc-600 uppercase tracking-wider">Banco</label>
-                        <input type="text" placeholder="Ex: BFA, BAI" value={siglasBanco} onChange={e => setSiglasBanco(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-3 text-sm focus:outline-none focus:border-[#003366]" />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-zinc-600 uppercase tracking-wider">IBAN</label>
-                        <input type="text" placeholder="AO06..." value={iban} onChange={e => setIban(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-3 text-sm font-mono focus:outline-none focus:border-[#003366]" />
-                      </div>
-                   </div>
-                </div>
-
-                <div className="flex justify-end gap-4 pb-8">
-                  <button type="button" onClick={() => setShowForm(false)} className="px-10 py-4 text-xs font-bold text-zinc-500 uppercase tracking-widest hover:text-zinc-700 transition-colors">Cancelar</button>
-                  <button type="submit" className="bg-[#003366] text-white px-12 py-4 text-xs font-bold uppercase tracking-widest hover:bg-[#002244] transition-all shadow-xl">Salvar Fornecedor</button>
+                <div className="flex justify-end gap-4 pb-8 pt-6 border-t border-zinc-100">
+                  <button type="button" onClick={() => setShowForm(false)} className="px-10 py-3 text-xs font-black text-zinc-500 uppercase tracking-widest hover:text-[#003366] transition-colors border border-transparent hover:border-zinc-200">Cancelar</button>
+                  <button type="submit" className="bg-[#003366] text-white px-12 py-3 text-xs font-black uppercase tracking-widest hover:bg-[#002244] transition-all shadow-xl flex items-center gap-2">
+                    <Save size={16} /> Salvar Fornecedor
+                  </button>
                 </div>
               </form>
             </div>
@@ -13802,7 +14121,7 @@ const SupplierModule = ({ products, workSites, fiscalSeries, caixas }: { product
   );
 };
 
-const SalesReport = ({ issuedDocuments }: { issuedDocuments: IssuedDocument[] }) => {
+const SalesReport = ({ issuedDocuments, onBack }: { issuedDocuments: IssuedDocument[], onBack?: () => void }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFilter, setDateFilter] = useState({ start: '', end: '' });
 
@@ -13815,39 +14134,34 @@ const SalesReport = ({ issuedDocuments }: { issuedDocuments: IssuedDocument[] })
     return matchesSearch && matchesStart && matchesEnd;
   });
 
-  const totalSold = filteredDocs.reduce((acc, doc) => acc + (doc.counter_value || doc.total || 0), 0);
-  const totalVat = filteredDocs.reduce((acc, doc) => acc + (doc.vat_amount || 0), 0);
+  const totalSold = filteredDocs.filter(d => d.status !== 'anulado').reduce((acc, doc) => acc + (doc.counter_value || doc.total || 0), 0);
+  const totalVat = filteredDocs.filter(d => d.status !== 'anulado').reduce((acc, doc) => acc + (doc.vat_amount || 0), 0);
+  const totalAnulados = filteredDocs.filter(d => d.status === 'anulado').reduce((acc, doc) => acc + (doc.counter_value || doc.total || 0), 0);
   const totalNet = totalSold - totalVat;
 
   return (
     <div className="space-y-8">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-50 rounded-full -mr-12 -mt-12 transition-transform group-hover:scale-110" />
-          <p className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2">Total Bruto</p>
-          <p className="text-3xl font-black text-[#003366]">{formatCurrency(totalSold)}</p>
-          <div className="mt-4 flex items-center gap-2 text-emerald-600">
-            <TrendingUp size={14} />
-            <span className="text-[10px] font-black uppercase tracking-widest">Vendas Totais</span>
-          </div>
+      {onBack && (
+        <button onClick={onBack} className="flex items-center gap-2 text-[#003366] font-bold text-xs uppercase hover:underline">
+          <ArrowLeft size={14} /> Voltar aos Relatórios
+        </button>
+      )}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="bg-white border border-zinc-200 p-6 shadow-sm">
+          <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1">Faturamento Bruto</p>
+          <p className="text-2xl font-black text-[#003366]">{formatCurrency(totalSold)}</p>
         </div>
-        <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-[#003366]/5 rounded-full -mr-12 -mt-12 transition-transform group-hover:scale-110" />
-          <p className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2">Total Líquido</p>
-          <p className="text-3xl font-black text-[#003366]">{formatCurrency(totalNet)}</p>
-          <div className="mt-4 flex items-center gap-2 text-[#003366]">
-            <BarChart3 size={14} />
-            <span className="text-[10px] font-black uppercase tracking-widest">Base Tributável</span>
-          </div>
+        <div className="bg-white border border-zinc-200 p-6 shadow-sm">
+          <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1">Base Tributável</p>
+          <p className="text-2xl font-black text-[#003366]">{formatCurrency(totalNet)}</p>
         </div>
-        <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-amber-50 rounded-full -mr-12 -mt-12 transition-transform group-hover:scale-110" />
-          <p className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-2">Total Impostos</p>
-          <p className="text-3xl font-black text-amber-600">{formatCurrency(totalVat)}</p>
-          <div className="mt-4 flex items-center gap-2 text-amber-600">
-            <ShieldCheck size={14} />
-            <span className="text-[10px] font-black uppercase tracking-widest">IVA Liquidado</span>
-          </div>
+        <div className="bg-white border border-zinc-200 p-6 shadow-sm">
+          <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1">IVA Total</p>
+          <p className="text-2xl font-black text-amber-600">{formatCurrency(totalVat)}</p>
+        </div>
+        <div className="bg-white border border-zinc-200 p-6 shadow-sm">
+          <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1">Valor Anulado</p>
+          <p className="text-2xl font-black text-red-600">{formatCurrency(totalAnulados)}</p>
         </div>
       </div>
 
@@ -13905,6 +14219,7 @@ const SalesReport = ({ issuedDocuments }: { issuedDocuments: IssuedDocument[] })
                 <th className="px-6 py-4">Pagamento</th>
                 <th className="px-6 py-4 text-right">Base</th>
                 <th className="px-6 py-4 text-right">IVA</th>
+                <th className="px-6 py-4 text-center">Estado</th>
                 <th className="px-6 py-4 text-right">Total</th>
               </tr>
             </thead>
@@ -13924,6 +14239,15 @@ const SalesReport = ({ issuedDocuments }: { issuedDocuments: IssuedDocument[] })
                   </td>
                   <td className="px-6 py-4 text-right text-zinc-600 font-bold">{formatCurrency((doc.counter_value || doc.total || 0) - (doc.vat_amount || 0))}</td>
                   <td className="px-6 py-4 text-right text-amber-600 font-bold">{formatCurrency(doc.vat_amount || 0)}</td>
+                  <td className="px-6 py-4 text-center">
+                    <span className={`px-2 py-1 text-[9px] font-black uppercase ${
+                      doc.status === 'anulado' ? 'bg-red-50 text-red-600' : 
+                      doc.status === 'paid' ? 'bg-emerald-50 text-emerald-600' : 
+                      'bg-amber-50 text-amber-600'
+                    }`}>
+                      {doc.status || 'Ativo'}
+                    </span>
+                  </td>
                   <td className="px-6 py-4 text-right font-black text-[#003366]">{formatCurrency(doc.counter_value || doc.total || 0)}</td>
                 </tr>
               ))}
@@ -14841,7 +15165,8 @@ const ReceiptModal = ({ document: doc, caixas, onClose, onSuccess }: {
   onSuccess: () => void 
 }) => {
   const { user } = useAuth();
-  const remaining = (doc.contravalor || 0) - (doc.paid_amount || 0);
+  const totalDoc = doc.total || doc.counter_value || doc.contravalor || 0;
+  const remaining = totalDoc - (doc.paid_amount || 0);
   const [amount, setAmount] = useState(remaining > 0 ? remaining : 0);
   const [paymentMethod, setPaymentMethod] = useState('Dinheiro');
   const [cashBox, setCashBox] = useState(caixas[0]?.name || '');
@@ -14849,6 +15174,10 @@ const ReceiptModal = ({ document: doc, caixas, onClose, onSuccess }: {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (amount > remaining) {
+      alert(`O valor não pode ser superior ao saldo em falta (${remaining.toFixed(2)}).`);
+      return;
+    }
     try {
       const res = await fetchWithAuth('/api/receipts', {
         method: 'POST',
@@ -15045,11 +15374,13 @@ export default function App() {
   const [caixaMovements, setCaixaMovements] = useState<CaixaMovement[]>([]);
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [workSiteMovements, setWorkSiteMovements] = useState<WorkSiteMovement[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [securityOccurrences, setSecurityOccurrences] = useState<any[]>([]);
   const [securityArmory, setSecurityArmory] = useState<any[]>([]);
   const [securityRoster, setSecurityRoster] = useState<any[]>([]);
   const [companyData, setCompanyData] = useState<any>(null);
+  const [purchases, setPurchases] = useState<any[]>([]);
   
   // Task/Alert modal state
   const [alerts, setAlerts] = useState<any[]>(() => {
@@ -15088,14 +15419,16 @@ export default function App() {
         fetchJson(`/api/caixas?company_id=${companyId}`),
         fetchJson(`/api/caixa-movements?company_id=${companyId}`),
         fetchJson(`/api/stock/movements?company_id=${companyId}`),
+        fetchJson(`/api/work-sites/${companyId}/movements?company_id=${companyId}`),
         fetchJson(`/api/warehouses?company_id=${companyId}`),
         fetchJson(`/api/security/occurrences?company_id=${companyId}`),
         fetchJson(`/api/security/armory?company_id=${companyId}`),
         fetchJson(`/api/security/roster?company_id=${companyId}`),
-        fetchJson(`/api/company/${companyId}`)
+        fetchJson(`/api/company/${companyId}`),
+        fetchJson(`/api/purchases?company_id=${companyId}`)
       ]);
 
-      const [s, c, p, tr, i, d, w, e, fs, cx, cm, sm, wh, occ, arm, rost, comp] = results.map((res, idx) => {
+      const [s, c, p, tr, i, d, w, e, fs, cx, cm, sm, wsm, wh, occ, arm, rost, comp, pur] = results.map((res, idx) => {
         if (res.status === 'fulfilled') return res.value;
         console.error(`Fetch failed for index ${idx}:`, res.reason);
         return null;
@@ -15123,10 +15456,12 @@ export default function App() {
       setCaixas(Array.isArray(cx) ? cx : []);
       setCaixaMovements(Array.isArray(cm) ? cm : []);
       setStockMovements(Array.isArray(sm) ? sm : []);
+      setWorkSiteMovements(Array.isArray(wsm) ? wsm : []);
       setWarehouses(Array.isArray(wh) ? wh : []);
       setSecurityOccurrences(Array.isArray(occ) ? occ : []);
       setSecurityArmory(Array.isArray(arm) ? arm : []);
       setSecurityRoster(Array.isArray(rost) ? rost : []);
+      setPurchases(Array.isArray(pur) ? pur : []);
       
       console.log('Data state updated');
     } catch (error) {
@@ -15190,6 +15525,15 @@ export default function App() {
   const handleDocumentAction = async (action: string, doc: IssuedDocument) => {
     if (action === 'edit') {
       setSelectedDocument(doc);
+      setFixedDocumentType(undefined);
+      setIsCreatingInvoice(true);
+    } else if (action === 'credit_note') {
+      setSelectedDocument(doc);
+      setFixedDocumentType('Nota de Crédito');
+      setIsCreatingInvoice(true);
+    } else if (action === 'delivery_guide') {
+      setSelectedDocument(doc);
+      setFixedDocumentType('Guia de Entrega');
       setIsCreatingInvoice(true);
     } else if (action === 'foreign_draft') {
       try {
@@ -15198,9 +15542,6 @@ export default function App() {
           const invoiceData = await res.json();
           setPrintingInvoice(invoiceData);
           setIsPrintingDraft(true);
-          setTimeout(() => {
-            window.print();
-          }, 500);
         }
       } catch (error) {
         console.error('Error fetching invoice for print:', error);
@@ -15291,7 +15632,6 @@ export default function App() {
           const invoiceData = await res.json();
           setPrintingInvoice(invoiceData);
           setIsPrintingDraft(true);
-          setTimeout(() => { window.print(); }, 500);
         }
       } catch (error) {
         console.error('Error fetching draft:', error);
@@ -15587,6 +15927,10 @@ export default function App() {
                           return <HRModule onRefresh={fetchData} onSetIsContractModalOpen={setIsContractModalOpen} onSetEmployee={setAppSelectedEmployee} caixas={caixas} companyName={companyName} />;
                         case 'accounting':
                           return <AccountingModule invoices={invoices} clients={clients} fiscalSeries={fiscalSeries} onRefresh={fetchData} employees={employees} issuedDocuments={issuedDocuments} />;
+                        case 'withholding-tax':
+                          return <WithholdingTaxModule sales={issuedDocuments} purchases={purchases} />;
+                        case 'reports':
+                          return <ReportsModule sales={issuedDocuments} purchases={purchases} clients={clients} products={products} />;
                         case 'specialized':
                           return <SpecializedManagementModule activeTab={activeTab} setActiveTab={setActiveTab} />;
                         case 'archive':

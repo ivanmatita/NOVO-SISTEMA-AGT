@@ -235,6 +235,23 @@ async function startServer() {
       };
       transactions.push(newTransaction);
 
+      // Record Caixa movement if cash_box is provided
+      if (cash_box) {
+        caixaMovements.push({
+          id: generateStrId(),
+          caixaId: cash_box,
+          type: 'entrada',
+          amount: Number(amount),
+          moeda: invoice.moeda || 'Kwanza',
+          description: `Recebimento Ref. ${invoice.invoice_number}`,
+          date: date || new Date().toISOString()
+        });
+        const targetCaixa = caixas.find(c => String(c.id) === String(cash_box) || c.name === cash_box);
+        if (targetCaixa) {
+          targetCaixa.currentBalance = (targetCaixa.currentBalance || 0) + Number(amount);
+        }
+      }
+
       // Record Work Site Movement if applicable
       if (invoice.work_site_id) {
         workSiteMovements.push({
@@ -321,6 +338,41 @@ async function startServer() {
       doc.void_reason = reason;
       doc.void_at = new Date().toISOString();
       
+      // If it's a Receipt, free up the original Invoice
+      if (doc.document_type === 'Recibo') {
+        const originalInvoice = issuedDocuments.find(inv => inv.invoice_number === doc.reference_document || inv.id === Number(doc.invoice_id));
+        if (originalInvoice) {
+          originalInvoice.paid_amount = (originalInvoice.paid_amount || 0) - (doc.total || 0);
+          if (originalInvoice.paid_amount <= 0) {
+            originalInvoice.paid_amount = 0;
+            originalInvoice.status = 'pendente';
+            originalInvoice.payment_status = 'pending';
+          } else {
+            originalInvoice.status = 'parcial';
+            originalInvoice.payment_status = 'partial';
+          }
+          originalInvoice.estado_documento = 'ativo';
+        }
+
+        // Also reverse Caixa movement if exists
+        const reverseAmount = doc.total || 0;
+        if (doc.cash_box) {
+           caixaMovements.push({
+             id: generateStrId(),
+             caixaId: doc.cash_box,
+             type: 'saida',
+             amount: reverseAmount,
+             moeda: doc.moeda || 'Kwanza',
+             description: `[ESTORNO] Anulação Recibo ${doc.invoice_number}`,
+             date: new Date().toISOString()
+           });
+           const targetCaixa = caixas.find(c => String(c.id) === String(doc.cash_box) || c.name === doc.cash_box);
+           if (targetCaixa) {
+             targetCaixa.currentBalance = (targetCaixa.currentBalance || 0) - reverseAmount;
+           }
+        }
+      }
+
       // Generate associated credit note
       const series = fiscalSeries.find(s => s.id === Number(doc.series_id));
       const docType = 'Nota de Crédito';
@@ -358,6 +410,35 @@ async function startServer() {
     } else {
       res.status(404).json({ error: "Document not found" });
     }
+  });
+
+  // SAFT Export Logic (Mock AGT SAFT-AO format)
+  app.get("/api/accounting/saft", (req, res) => {
+    const { year, month } = req.query;
+    const certifiedDocs = issuedDocuments.filter(doc => doc.is_certified);
+    
+    // In a real app we'd build the XML here
+    // For this context, we return a structural JSON that represents SAFT
+    const saft = {
+      Header: {
+        AuditFileVersion: "1.01_01",
+        CompanyID: "500000000",
+        TaxRegistrationNumber: "500000000",
+        TaxAccountingBasis: "F",
+        CompanyName: "Empresa Exemplo",
+        FiscalYear: year || new Date().getFullYear(),
+        SoftwareCertificateNumber: "000/AGT/2026"
+      },
+      SourceDocuments: {
+        SalesInvoices: {
+          NumberOfEntries: certifiedDocs.length,
+          TotalDebit: 0,
+          TotalCredit: certifiedDocs.reduce((acc, d) => acc + (d.total || 0), 0),
+          Invoices: certifiedDocs
+        }
+      }
+    };
+    res.json(saft);
   });
 
   app.post("/api/invoices/:id/convert", (req, res) => {
@@ -657,6 +738,18 @@ async function startServer() {
   app.get("/api/company/:id", (req, res) => {
     const comp = companies.find(c => c.id === req.params.id) || companies[0];
     res.json(comp);
+  });
+  app.put("/api/company/:id", (req, res) => {
+    const id = req.params.id;
+    const index = companies.findIndex(c => c.id === id);
+    if (index !== -1) {
+      companies[index] = { ...companies[index], ...req.body };
+      res.json(companies[index]);
+    } else {
+      const newComp = { ...req.body, id };
+      companies.push(newComp);
+      res.json(newComp);
+    }
   });
 
   // Generic Catch-alls

@@ -4881,11 +4881,9 @@ const DocumentActionsModal = ({ document, onClose, onAction }: {
               <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-600 group-hover:text-[#003366] text-center">Imprimir P80</span>
             </button>
 
-            {/* Removed duplicate Anular button as it was moved to the top */}
-
-            <button onClick={() => handleAction('delivery_guide')} className="flex flex-col items-center gap-3 p-6 border border-zinc-100 hover:bg-zinc-50 transition-all group">
-              <Truck size={24} className="text-zinc-400 group-hover:text-[#003366]" />
-              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-600 group-hover:text-[#003366] text-center">Guia de Entrega</span>
+            <button onClick={() => handleAction('reports')} className="flex flex-col items-center gap-3 p-6 border border-zinc-100 hover:bg-zinc-50 transition-all group">
+              <BarChart3 size={24} className="text-zinc-400 group-hover:text-[#003366]" />
+              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-600 group-hover:text-[#003366] text-center">Relatórios</span>
             </button>
 
             <button onClick={() => handleAction('credit_note')} className="flex flex-col items-center gap-3 p-6 border border-zinc-100 hover:bg-zinc-50 transition-all group">
@@ -14030,87 +14028,66 @@ const SupplierModule = ({ products, workSites, fiscalSeries, caixas }: { product
             
             <div className="flex-1 overflow-y-auto p-4 md:p-8 bg-white">
               <form onSubmit={handleSubmit} className="space-y-6 max-w-5xl mx-auto">
-                <div className="grid grid-cols-1 md:grid-cols-6 gap-6">
-                  <div className="md:col-span-2 space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest flex items-center gap-1">NIF <span className="text-red-500">*</span></label>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest flex items-center gap-1">CONTRIBUINTE (NIF) *</label>
                     <div className="relative">
-                      <input type="text" placeholder="000000000" value={nif} onChange={e => setNif(e.target.value)} required className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm font-mono font-bold focus:outline-none focus:border-[#003366]" />
-                      {nif && (
-                        <button type="button" onClick={handleSearchNif} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#003366] hover:scale-110 transition-transform">
-                          <Search size={16} />
-                        </button>
-                      )}
+                      <input type="text" placeholder="Ex: 5000..." value={nif} onChange={e => setNif(e.target.value)} required className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm font-mono font-bold focus:outline-none focus:border-[#003366]" />
                     </div>
                   </div>
-                  <div className="md:col-span-4 space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Designação / Nome Completo <span className="text-red-500">*</span></label>
-                    <input type="text" placeholder="Ex: Fornecedor de Serviços Exemplo, Lda" value={name} onChange={e => setName(e.target.value)} required className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm font-bold focus:outline-none focus:border-[#003366]" />
+                  <div className="md:col-span-2 space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">NOME COMPLETO / DESIGNAÇÃO SOCIAL *</label>
+                    <input type="text" placeholder="Ex: Empresa de Serviços Lda" value={name} onChange={e => setName(e.target.value)} required className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm font-bold focus:outline-none focus:border-[#003366]" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">EMAIL</label>
+                    <input type="email" placeholder="cliente@exemplo.com" value={email} onChange={e => setEmail(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">TELEFONE</label>
+                    <input type="text" placeholder="+244 9... / 222..." value={phone} onChange={e => setPhone(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] font-bold" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">PAÍS</label>
+                    <input type="text" defaultValue="Angola" readOnly className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm font-bold focus:outline-none" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">PROVÍNCIA</label>
+                    <input type="text" placeholder="Luanda" value={provincia} onChange={e => setProvincia(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">MUNICÍPIO</label>
+                    <input type="text" placeholder="Belas" value={municipio} onChange={e => setMunicipio(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">LOCALIDADE</label>
+                    <input type="text" placeholder="Talatona" value={localidade} onChange={e => setLocalidade(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
                   </div>
                   <div className="md:col-span-2 space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Abreviatura / Nome Curto</label>
-                    <input type="text" placeholder="Ex: FORN-EX" className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">MORADA PRINCIPAL</label>
+                    <input type="text" placeholder="Rua, Edifício, Andar..." value={address} onChange={e => setAddress(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
                   </div>
-                  <div className="md:col-span-2 space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Tipo de Fornecedor</label>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">CÓDIGO POSTAL</label>
+                    <input type="text" placeholder="0000-000" className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm font-mono focus:outline-none focus:border-[#003366]" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">TIPO DE CLIENTE (SFT)</label>
                     <select value={tipoCliente} onChange={e => setTipoCliente(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] font-bold">
-                      <option value="normal">Normal</option>
+                      <option value="normal">CLIENTE NORMAL</option>
                       <option value="servicos">Prestador de Serviços</option>
                       <option value="mercadorias">Vendedor de Mercadorias</option>
-                      <option value="imobilizado">Activos Imobilizados</option>
                     </select>
                   </div>
-                  <div className="md:col-span-2 space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Webpage / Site</label>
-                    <input type="text" placeholder="www.fornecedor.com" value={webpage} onChange={e => setWebpage(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
-                  </div>
-                  <div className="md:col-span-6 space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Morada / Endereço Fiscal</label>
-                    <input type="text" placeholder="Rua, Bairro, nº porta, etc." value={address} onChange={e => setAddress(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
-                  </div>
-                  <div className="md:col-span-2 space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Província</label>
-                    <input type="text" placeholder="Ex: Luanda" value={provincia} onChange={e => setProvincia(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
-                  </div>
-                  <div className="md:col-span-2 space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Município</label>
-                    <input type="text" placeholder="Ex: Talatona" value={municipio} onChange={e => setMunicipio(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
-                  </div>
-                  <div className="md:col-span-2 space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Localidade</label>
-                    <input type="text" placeholder="Ex: Benfica" value={localidade} onChange={e => setLocalidade(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
-                  </div>
-                  <div className="md:col-span-2 space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Telefone</label>
-                    <input type="text" placeholder="+244 000 000 000" value={phone} onChange={e => setPhone(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] font-bold" />
-                  </div>
-                  <div className="md:col-span-4 space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Email Principal</label>
-                    <input type="email" placeholder="fornecedor@email.com" value={email} onChange={e => setEmail(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
-                  </div>
-                  <div className="md:col-span-2 space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Banco Principal</label>
-                    <input type="text" placeholder="Ex: BFA, BAI, BCI" value={siglasBanco} onChange={e => setSiglasBanco(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] font-bold" />
-                  </div>
-                  <div className="md:col-span-4 space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">IBAN</label>
-                    <input type="text" placeholder="AO06 0000 0000 0000 0000 0000 0" value={iban} onChange={e => setIban(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm font-mono focus:outline-none focus:border-[#003366]" />
-                  </div>
-                  <div className="md:col-span-2 space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Condições de Pagamento</label>
-                    <select className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]">
-                      <option>Pronto Pagamento</option>
-                      <option>30 Dias</option>
-                      <option>60 Dias</option>
-                      <option>90 Dias</option>
-                    </select>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">SALDO INICIAL DE CRÉDITO</label>
+                    <input type="number" defaultValue="0" className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm font-bold text-emerald-600 focus:outline-none" />
                   </div>
                 </div>
 
                 <div className="flex justify-end gap-4 pb-8 pt-6 border-t border-zinc-100">
-                  <button type="button" onClick={() => setShowForm(false)} className="px-10 py-3 text-xs font-black text-zinc-500 uppercase tracking-widest hover:text-[#003366] transition-colors border border-transparent hover:border-zinc-200">Cancelar</button>
-                  <button type="submit" className="bg-[#003366] text-white px-12 py-3 text-xs font-black uppercase tracking-widest hover:bg-[#002244] transition-all shadow-xl flex items-center gap-2">
-                    <Save size={16} /> Salvar Fornecedor
-                  </button>
+                  <button type="button" onClick={() => setShowForm(false)} className="px-10 py-3 text-xs font-black text-zinc-500 uppercase tracking-widest hover:text-[#003366] transition-colors">ANULAR OPERAÇÃO</button>
+                  <button type="submit" className="bg-[#003366] text-white px-12 py-3 text-xs font-black uppercase tracking-widest hover:bg-[#002244] transition-all shadow-xl flex items-center gap-2">SUBMETER NOVO CLIENTE</button>
                 </div>
               </form>
             </div>
@@ -15535,6 +15512,9 @@ export default function App() {
       setSelectedDocument(doc);
       setFixedDocumentType('Guia de Entrega');
       setIsCreatingInvoice(true);
+    } else if (action === 'reports') {
+      setSelectedDocument(doc);
+      setShowDocumentReportModal(true);
     } else if (action === 'foreign_draft') {
       try {
         const res = await fetchWithAuth(`/api/invoices/${doc.id}`);

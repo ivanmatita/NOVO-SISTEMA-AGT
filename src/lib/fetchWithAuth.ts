@@ -7,9 +7,15 @@ export const fetchWithAuth = async (url: string, options?: RequestInit) => {
     token = data?.session?.access_token;
   }
   
-  const headers = new Headers(options?.headers || {});
+  const headers: Record<string, string> = {};
+  if (options?.headers) {
+    Object.entries(options.headers).forEach(([key, value]) => {
+      headers[key] = value as string;
+    });
+  }
+  
   if (token) {
-    headers.set('Authorization', `Bearer ${token}`);
+    headers['Authorization'] = `Bearer ${token}`;
   }
 
   return fetch(url, { ...options, headers });

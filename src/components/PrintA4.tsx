@@ -65,8 +65,10 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
   const retencaoTotal = invoice.retencao_fonte_total || invoice.items?.reduce((sum, item) => sum + (item.retencao_fonte || 0), 0) || 0;
   const discountAmount = invoice.global_discount || 0;
   const vatTotal = invoice.items?.reduce((sum, item) => sum + ((item.total || 0) * ((item.tax_rate || 14) / 100)), 0) || (subtotal * 0.14);
+  const vatWithholding = invoice.vat_withholding || 0;
+  const vatWithholdingAmount = vatTotal * vatWithholding;
   const totalDocumento = subtotal + vatTotal - discountAmount;
-  const totalPagar = totalDocumento - retencaoTotal;
+  const totalPagar = totalDocumento - retencaoTotal - vatWithholdingAmount;
 
   return (
     <div className="bg-white p-[2cm] w-[210mm] min-h-[297mm] mx-auto text-zinc-900 font-sans shadow-lg print:shadow-none print:m-0 relative overflow-hidden">
@@ -232,12 +234,21 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
               <span className="font-bold">{formatParams(totalDocumento)}</span>
             </div>
             
-            {retencaoTotal > 0 ? (
+            {retencaoTotal > 0 && (
               <div className="flex justify-between p-1.5 border-b border-zinc-100 text-red-600 font-bold">
                 <span>Retenção na Fonte (6,5%)</span>
                 <span>-{formatParams(retencaoTotal)}</span>
               </div>
-            ) : (
+            )}
+            
+            {vatWithholdingAmount > 0 && (
+              <div className="flex justify-between p-1.5 border-b border-zinc-100 text-orange-600 font-bold">
+                <span>Cativação de IVA ({vatWithholding * 100}%)</span>
+                <span>-{formatParams(vatWithholdingAmount)}</span>
+              </div>
+            )}
+
+            {retencaoTotal === 0 && vatWithholdingAmount === 0 && (
               <div className="flex justify-between p-1.5 border-b border-zinc-100">
                 <span className="text-zinc-600">Isento Retenção Lei 4/19, Art.71,n.3,alinea c)</span>
                 <span>0,00</span>

@@ -12,14 +12,16 @@ const RetencaoReceberForm = ({ invoices, clients }: { invoices: Invoice[], clien
   const retentions = (invoices || []).map(i => {
     const client = (clients || []).find(c => c.id === i.client_id);
     const base = i.total;
-    const value = base * retentionRate;
+    const value = i.retencao_fonte_total || (base * retentionRate);
     return {
       date: new Date(i.date).toLocaleDateString('pt-PT'),
       clientName: client?.name || 'Desconhecido',
       nif: client?.contribuinte || 'N/A',
+      docNo: i.invoice_number,
       base,
-      rate: '6,5%',
-      value
+      rate: i.retencao_fonte_total ? 'Variável' : '6,5%',
+      value,
+      isAnulado: i.status === 'anulado'
     };
   });
 
@@ -52,6 +54,7 @@ const RetencaoReceberForm = ({ invoices, clients }: { invoices: Invoice[], clien
           <thead>
             <tr className="bg-zinc-100">
               <th className="p-2 text-left">Data</th>
+              <th className="p-2 text-left">Doc. Nº</th>
               <th className="p-2 text-left">Cliente</th>
               <th className="p-2 text-left">NIF</th>
               <th className="p-2 text-right">Base</th>
@@ -61,8 +64,9 @@ const RetencaoReceberForm = ({ invoices, clients }: { invoices: Invoice[], clien
           </thead>
           <tbody>
             {retentions.map((r, idx) => (
-              <tr key={idx} className="border-b">
+              <tr key={idx} className={`border-b ${r.isAnulado ? 'bg-red-50' : ''}`}>
                 <td className="p-2">{r.date}</td>
+                <td className="p-2 font-bold">{r.docNo}</td>
                 <td className="p-2">{r.clientName}</td>
                 <td className="p-2">{r.nif}</td>
                 <td className="p-2 text-right">{formatCurrency(r.base)}</td>

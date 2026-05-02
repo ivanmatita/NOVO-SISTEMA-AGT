@@ -121,6 +121,7 @@ export interface InvoiceItem {
   tax?: string;
   tax_rate?: number;
   warehouse_id?: number;
+  warehouse_responsible?: string;
 }
 
 export interface Invoice {
@@ -406,6 +407,7 @@ export interface IssuedDocument {
   vat_withholding?: number;
   service_date?: string;
   service_location?: string;
+  retencao_fonte_total?: number;
 }
 
 export interface StockMovement {
@@ -481,6 +483,7 @@ export interface Purchase {
   status: 'pending' | 'completed' | 'cancelled';
   total: number;
   items?: PurchaseItem[];
+  document_url?: string;
 }
 
 export interface LaborTermination {

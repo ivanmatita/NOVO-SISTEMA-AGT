@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { DocumentReportModal } from './components/DocumentReportModal';
 import { AnularModal } from './components/AnularModal';
 import PrintA4 from './components/PrintA4';
 import SecurityModule from './components/SecurityModule';
@@ -45,7 +46,9 @@ import {
   FilePlus,
   FileText,
   Cloud,
+  BarChart2,
   BarChart3,
+  FileBarChart,
   FileSpreadsheet,
   History,
   Activity,
@@ -54,6 +57,7 @@ import {
   Mail,
   Share2,
   Upload,
+  RotateCcw,
   X,
   Check,
   Copy,
@@ -115,12 +119,12 @@ import {
   Percent
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import jsPDF from 'jspdf';
+import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import EcosystemDashboard from './components/EcosystemDashboard';
 import * as XLSX from 'xlsx';
 import { validateAngolaNIF } from './utils/nifValidation';
-import { Client, Product, Invoice, DashboardStats, InvoiceItem, Employee, Profession, WorkSite, WorkSiteMovement, IssuedDocument, Warehouse, Supplier, FiscalSeries, CostCenter, POSPoint, CashSession, SystemUser, Purchase, PurchaseItem, POSArea, Caixa, CaixaMovement, LaborTermination, StockMovement } from './types';
+import { Client, Product, Invoice, DashboardStats, InvoiceItem, Employee, Profession, WorkSite, WorkSiteMovement, IssuedDocument, Warehouse, Supplier, FiscalSeries, CostCenter, POSPoint, CashSession, SystemUser, Purchase, PurchaseItem, POSArea, Caixa, CaixaMovement, LaborTermination, StockMovement, CompanyData } from './types';
 import ContractModal from './components/ContractModal';
 import ChurchModule from './components/ChurchModule';
 import AgrobusinessModule from './components/AgrobusinessModule';
@@ -157,9 +161,15 @@ const fetchWithAuth = async (url: string, options?: RequestInit) => {
   const session = await supabase?.auth?.getSession();
   const token = session?.data?.session?.access_token;
   
-  const headers = new Headers(options?.headers || {});
+  const headers: Record<string, string> = {};
+  if (options?.headers) {
+    Object.entries(options.headers).forEach(([k, v]) => {
+      headers[k] = v as string;
+    });
+  }
+  
   if (token) {
-    headers.set('Authorization', `Bearer ${token}`);
+    headers['Authorization'] = `Bearer ${token}`;
   }
 
   return fetch(url, { ...options, headers });
@@ -169,9 +179,15 @@ const fetchJson = async (url: string, options?: RequestInit) => {
   const session = await supabase?.auth?.getSession();
   const token = session?.data?.session?.access_token;
   
-  const headers = new Headers(options?.headers || {});
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (options?.headers) {
+    Object.entries(options.headers).forEach(([k, v]) => {
+      headers[k] = v as string;
+    });
+  }
+  
   if (token) {
-    headers.set('Authorization', `Bearer ${token}`);
+    headers['Authorization'] = `Bearer ${token}`;
   }
 
   const response = await fetch(url, { ...options, headers });
@@ -639,6 +655,7 @@ const Sidebar = ({ activeTab, setActiveTab }: {
     { id: 'specialized', label: 'Gestão Especializada', icon: Briefcase, hasChevron: true },
     { id: 'archive', label: 'Arquivo', icon: Archive },
     { id: 'invoices', label: 'Vendas', icon: FileText, hasChevron: true },
+    { id: 'drafts', label: 'Provisórios / Drafts', icon: FileSignature },
     { id: 'suppliers', label: 'Compras', icon: ShoppingBag, hasChevron: true },
     { id: 'products', label: 'Stocks & Inventário', icon: Package, hasChevron: true },
     { id: 'financial', label: 'Finanças', icon: CreditCard, hasChevron: true },
@@ -5182,6 +5199,116 @@ const ProfitLossReport = ({ fiscalYear, company_id }: { fiscalYear: string, comp
   );
 };
 
+const PurchasesReport = ({ purchases, suppliers, onBack }: { purchases: any[], suppliers: any[], onBack?: () => void }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [dateFilter, setDateFilter] = useState({ start: '', end: '' });
+
+  const filtered = (purchases || []).filter(p => {
+    if (p.document_type === 'Pagamento') return false; 
+    const matchesSearch = (p.supplier_name || '').toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (p.invoice_number || '').toString().toLowerCase().includes(searchTerm.toLowerCase());
+    const docDate = new Date(p.date || p.data_emissao || Date.now());
+    const matchesStart = !dateFilter.start || docDate >= new Date(dateFilter.start);
+    const matchesEnd = !dateFilter.end || docDate <= new Date(dateFilter.end);
+    return matchesSearch && matchesStart && matchesEnd;
+  });
+
+  const totalPurchases = filtered.filter(p => p.document_type !== 'Nota de Crédito').reduce((acc, p) => acc + (p.total || 0), 0);
+  const totalNC = filtered.filter(p => p.document_type === 'Nota de Crédito').reduce((acc, p) => acc + (p.total || 0), 0);
+  const totalVAT = filtered.reduce((acc, p) => acc + (p.vat_amount || 0), 0);
+
+  return (
+    <div className="space-y-8 animate-in fade-in duration-300 pb-12">
+      {onBack && (
+        <button onClick={onBack} className="flex items-center gap-2 text-[#003366] font-black text-xs uppercase hover:underline">
+          <ChevronLeft size={14} /> Voltar ao Menu
+        </button>
+      )}
+      
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="bg-white border-l-4 border-[#003366] p-6 shadow-sm">
+          <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Compras Brutas</p>
+          <p className="text-2xl font-black text-[#003366]">{formatCurrency(totalPurchases)}</p>
+        </div>
+        <div className="bg-white border-l-4 border-amber-500 p-6 shadow-sm">
+          <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">IVA Deducível</p>
+          <p className="text-2xl font-black text-amber-600">{formatCurrency(totalVAT)}</p>
+        </div>
+        <div className="bg-white border-l-4 border-red-500 p-6 shadow-sm">
+          <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Créditos / Devoluções</p>
+          <p className="text-2xl font-black text-red-600">{formatCurrency(totalNC)}</p>
+        </div>
+        <div className="bg-white border-l-4 border-emerald-500 p-6 shadow-sm">
+          <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Valor Líquido</p>
+          <p className="text-2xl font-black text-emerald-600">{formatCurrency(totalPurchases - totalNC)}</p>
+        </div>
+      </div>
+
+      <div className="bg-white border border-zinc-200 p-6 shadow-sm flex flex-wrap gap-6 items-end">
+        <div className="flex-1 min-w-[300px] space-y-2">
+          <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Pesquisar por Fornecedor ou Doc</label>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
+            <input 
+              type="text" 
+              placeholder="Ex: Fornecedor ABC..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full bg-zinc-50 border border-zinc-200 p-3 pl-10 text-xs font-bold focus:outline-none focus:border-[#003366] transition-all"
+            />
+          </div>
+        </div>
+        <div className="flex gap-4">
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Data Início</label>
+            <input type="date" value={dateFilter.start} onChange={e => setDateFilter({...dateFilter, start: e.target.value})} className="bg-zinc-50 border border-zinc-200 p-3 text-xs font-bold focus:outline-none" />
+          </div>
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Data Fim</label>
+            <input type="date" value={dateFilter.end} onChange={e => setDateFilter({...dateFilter, end: e.target.value})} className="bg-zinc-50 border border-zinc-200 p-3 text-xs font-bold focus:outline-none" />
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
+        <div className="p-4 bg-zinc-50 border-b border-zinc-200 flex justify-between items-center">
+           <h3 className="text-xs font-black text-[#003366] uppercase tracking-widest">Relatório Analítico de Compras</h3>
+           <button onClick={() => window.print()} className="text-[10px] font-black text-[#003366] border border-[#003366] px-4 py-2 hover:bg-[#003366] hover:text-white transition-all uppercase tracking-widest">Imprimir Mapa</button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse min-w-[1000px]">
+            <thead>
+              <tr className="bg-[#003366] text-white text-[10px] uppercase tracking-widest font-black">
+                <th className="px-6 py-4">Data</th>
+                <th className="px-6 py-4">Fornecedor</th>
+                <th className="px-6 py-4">Tipo Doc.</th>
+                <th className="px-6 py-4 text-right">Base</th>
+                <th className="px-6 py-4 text-right">IVA</th>
+                <th className="px-6 py-4 text-right">Total</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+              {filtered.map((p, idx) => (
+                <tr key={idx} className="hover:bg-zinc-50 text-[11px] font-bold transition-colors">
+                  <td className="px-6 py-4 text-zinc-500 font-mono">{new Date(p.date || p.data_emissao || Date.now()).toLocaleDateString()}</td>
+                  <td className="px-6 py-4 text-zinc-900 uppercase">{p.supplier_name || 'Desconhecido'}</td>
+                  <td className="px-6 py-4 text-[#003366] uppercase">{p.document_type || 'Compra'}</td>
+                  <td className="px-6 py-4 text-right text-zinc-600">{formatCurrency((p.total || 0) - (p.vat_amount || 0))}</td>
+                  <td className="px-6 py-4 text-right text-amber-600">{formatCurrency(p.vat_amount || 0)}</td>
+                  <td className="px-6 py-4 text-right font-black text-[#003366]">{formatCurrency(p.total)}</td>
+                </tr>
+              ))}
+              {filtered.length === 0 && (
+                <tr><td colSpan={6} className="p-12 text-center text-zinc-400 font-bold uppercase">Nenhum movimento de compra encontrado.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const RetencaoFonteModule = ({ issuedDocuments }: { issuedDocuments: IssuedDocument[] }) => {
   const [activeTab, setActiveTab] = useState<'receber' | 'pagar'>('receber');
   const [search, setSearch] = useState('');
@@ -5195,11 +5322,13 @@ const RetencaoFonteModule = ({ issuedDocuments }: { issuedDocuments: IssuedDocum
 
   const filterData = (data: any[], dateField: string, isPurchase: boolean) => {
     return data.filter(doc => {
+      // Robust date field selection
+      const actualDate = doc.date || doc.data_emissao || doc.createdAt;
+      
       // 1. Filter by Retenção (must be > 0)
       const isRetencao = isPurchase 
-        // For purchases, if they support it, assume some field or just check if it's there
-        ? (doc.retencao_fonte_total > 0 || doc.irt_retido > 0)
-        : (doc.retencao_fonte_total > 0 || (doc.items && doc.items.some((i: any) => i.retencao_fonte > 0)));
+        ? ((doc.retencao_fonte_total || 0) > 0 || (doc.irt_retido || 0) > 0)
+        : ((doc.retencao_fonte_total || 0) > 0 || (doc.items && doc.items.some((i: any) => (i.retencao_fonte || 0) > 0)));
       
       if (!isRetencao) return false;
 
@@ -5213,8 +5342,8 @@ const RetencaoFonteModule = ({ issuedDocuments }: { issuedDocuments: IssuedDocum
       if (search && !matchSearch) return false;
 
       // 3. Filter by date
-      if (startDate && new Date(doc[dateField]) < new Date(startDate)) return false;
-      if (endDate && new Date(doc[dateField]) > new Date(endDate)) return false;
+      if (startDate && actualDate && new Date(actualDate) < new Date(startDate)) return false;
+      if (endDate && actualDate && new Date(actualDate) > new Date(endDate)) return false;
 
       return true;
     });
@@ -6084,7 +6213,7 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail }: {
               <div className="grid grid-cols-2 gap-3 max-h-[70vh] overflow-y-auto pr-2 p-1 custom-scrollbar">
                   {/* 1. Editar Documento (Apenas para documentos não certificados) */}
                   {!showActionsModal.is_certified && (
-                    <button 
+                     <button 
                       onClick={() => { onAction('edit', showActionsModal); setShowActionsModal(null); }}
                       className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-all border border-zinc-100 group shadow-sm bg-white"
                     >
@@ -6094,6 +6223,22 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail }: {
                       <div className="text-left">
                         <p className="font-bold text-zinc-900 text-xs uppercase">Editar Documento</p>
                         <p className="text-[9px] text-zinc-500 uppercase tracking-tighter">Edição completa permitida para rascunhos</p>
+                      </div>
+                    </button>
+                  )}
+
+                  {/* 1.1 Apagar Documento (Apenas para documentos não certificados) */}
+                  {!showActionsModal.is_certified && (
+                    <button 
+                      onClick={() => { onAction('delete', showActionsModal); setShowActionsModal(null); }}
+                      className="w-full flex items-center gap-4 p-4 hover:bg-red-50 transition-all border border-red-100 group shadow-sm bg-white"
+                    >
+                      <div className="w-10 h-10 bg-red-100 text-red-600 flex items-center justify-center group-hover:bg-red-600 group-hover:text-white transition-colors">
+                        <Trash2 size={20} />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-bold text-red-700 text-xs uppercase">Apagar Documento</p>
+                        <p className="text-[9px] text-red-500 uppercase tracking-tighter">Eliminar rascunho</p>
                       </div>
                     </button>
                   )}
@@ -6126,17 +6271,45 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail }: {
                   </div>
                 </button>
 
-                {/* Relatórios */}
+                {/* Relatórios do Documento */}
                 <button 
-                  onClick={() => { onAction('view_detail', showActionsModal); setShowActionsModal(null); }}
+                  onClick={() => { onAction('reports', showActionsModal); setShowActionsModal(null); }}
                   className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-all border border-zinc-100 group shadow-sm bg-white"
                 >
                   <div className="w-10 h-10 bg-zinc-100 text-[#003366] flex items-center justify-center group-hover:bg-[#003366] group-hover:text-white transition-colors">
-                    <BarChart size={20} />
+                    <FileBarChart size={20} />
                   </div>
                   <div className="text-left">
-                    <p className="font-bold text-zinc-900 text-xs uppercase">Relatórios</p>
-                    <p className="text-[9px] text-zinc-500 uppercase tracking-tighter">Visualizar análise detalhada</p>
+                    <p className="font-bold text-zinc-900 text-xs uppercase">Relatórios do Documento</p>
+                    <p className="text-[9px] text-zinc-500 uppercase tracking-tighter">Visualizar análise detalhada e cálculos</p>
+                  </div>
+                </button>
+
+                {/* Guia de Entrega */}
+                <button 
+                  onClick={() => { onAction('delivery_guide', showActionsModal); setShowActionsModal(null); }}
+                  className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-all border border-zinc-100 group shadow-sm bg-white"
+                >
+                  <div className="w-10 h-10 bg-zinc-100 text-[#003366] flex items-center justify-center group-hover:bg-[#003366] group-hover:text-white transition-colors">
+                    <Truck size={20} />
+                  </div>
+                  <div className="text-left">
+                    <p className="font-bold text-zinc-900 text-xs uppercase">Guia de Entrega</p>
+                    <p className="text-[9px] text-zinc-500 uppercase tracking-tighter">Emitir Guia para este documento</p>
+                  </div>
+                </button>
+
+                {/* Nota de Crédito */}
+                <button 
+                  onClick={() => { onAction('credit_note', showActionsModal); setShowActionsModal(null); }}
+                  className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-all border border-zinc-100 group shadow-sm bg-white"
+                >
+                  <div className="w-10 h-10 bg-zinc-100 text-red-600 flex items-center justify-center group-hover:bg-red-600 group-hover:text-white transition-colors">
+                    <RotateCcw size={20} />
+                  </div>
+                  <div className="text-left">
+                    <p className="font-bold text-zinc-900 text-xs uppercase">Nota de Crédito</p>
+                    <p className="text-[9px] text-zinc-500 uppercase tracking-tighter">Retificar documento (Saldo a favor)</p>
                   </div>
                 </button>
 
@@ -6260,7 +6433,7 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail }: {
                 </button>
 
                 {/* 10. Extrato de moeda estrangeira */}
-                {showActionsModal.currency && showActionsModal.currency !== 'AOA' && showActionsModal.currency !== 'Kwanza' && (
+                {(showActionsModal.moeda || showActionsModal.currency) && (showActionsModal.moeda || showActionsModal.currency) !== 'AOA' && (showActionsModal.moeda || showActionsModal.currency) !== 'Kwanza' && (
                   <button 
                     onClick={() => { onAction('foreign_draft', showActionsModal); setShowActionsModal(null); }}
                     className="col-span-2 w-full flex items-center gap-4 p-4 transition-all border shadow-sm bg-white border-zinc-100 hover:bg-zinc-50 group"
@@ -6270,10 +6443,24 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail }: {
                     </div>
                     <div className="text-left">
                       <p className="font-bold text-purple-700 text-xs uppercase">Documento de Suporte (Draft)</p>
-                      <p className="text-[9px] text-zinc-500 uppercase tracking-tighter">Gerar rascunho com valores em {showActionsModal.currency}</p>
+                      <p className="text-[9px] text-zinc-500 uppercase tracking-tighter">Gerar rascunho com valores em {(showActionsModal.moeda || showActionsModal.currency)}</p>
                     </div>
                   </button>
                 )}
+
+                {/* 11. Draft (Rascunho Geral) */}
+                <button 
+                  onClick={() => { onAction('draft', showActionsModal); setShowActionsModal(null); }}
+                  className="col-span-2 w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-all border border-zinc-100 group shadow-sm bg-white"
+                >
+                  <div className="w-10 h-10 bg-zinc-100 text-zinc-600 flex items-center justify-center group-hover:bg-[#003366] group-hover:text-white transition-colors">
+                    <FileSignature size={20} />
+                  </div>
+                  <div className="text-left">
+                    <p className="font-bold text-zinc-900 text-xs uppercase">Visualizar Draft</p>
+                    <p className="text-[9px] text-zinc-500 uppercase tracking-tighter">Ver rascunho sem valor fiscal</p>
+                  </div>
+                </button>
               </div>
             </motion.div>
           </div>
@@ -9026,208 +9213,142 @@ const TaxSeriesModule = () => {
   );
 };
 
-const SaftExportForm = () => {
-  const [loading, setLoading] = useState(false);
-  const [dateRange, setDateRange] = useState({ start: '', end: '' });
-  const { user } = useAuth();
-
-  const handleExport = async () => {
-    if (!dateRange.start || !dateRange.end) {
-       alert('Por favor, selecione o período para exportação.');
-       return;
-    }
-    setLoading(true);
-    try {
-      const res = await fetchWithAuth(`/api/accounting/saft?company_id=${user?.company_id}&start=${dateRange.start}&end=${dateRange.end}`);
-      if (res.ok) {
-        const data = await res.json();
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/xml' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `SAFT_AO_${user?.company_id}_${dateRange.start}_${dateRange.end}.xml`;
-        a.click();
-      }
-    } catch (error) {
-      console.error('Error exporting SAFT:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="bg-white border border-zinc-200 p-10 shadow-xl max-w-2xl mx-auto space-y-8">
-      <header className="flex items-center gap-6 border-b border-zinc-100 pb-6">
-        <div className="w-16 h-16 bg-[#003366] text-white flex items-center justify-center shadow-lg">
-          <FileCode size={32} />
-        </div>
-        <div>
-          <h3 className="text-xl font-black text-[#003366] uppercase tracking-tighter">Exportação SAF-T (AO)</h3>
-          <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest mt-1">Ficheiro de Auditoria Tributária para AGT</p>
-        </div>
-      </header>
-
-      <div className="space-y-6">
-        <div className="p-4 bg-amber-50 border border-amber-100 flex gap-4">
-          <AlertCircle className="text-amber-600 shrink-0" size={20} />
-          <p className="text-[11px] text-amber-900 leading-relaxed font-medium">
-            Certifique-se que todos os documentos do período selecionado foram certificados antes da exportação. O ficheiro XML gerado segue o esquema standard da AGT Angola.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-6">
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Data Inicial</label>
-            <input 
-              type="date" 
-              value={dateRange.start}
-              onChange={e => setDateRange(prev => ({ ...prev, start: e.target.value }))}
-              className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm font-bold focus:outline-none focus:border-[#003366]"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Data Final</label>
-            <input 
-              type="date" 
-              value={dateRange.end}
-              onChange={e => setDateRange(prev => ({ ...prev, end: e.target.value }))}
-              className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm font-bold focus:outline-none focus:border-[#003366]"
-            />
-          </div>
-        </div>
-
-        <button 
-          onClick={handleExport}
-          disabled={loading}
-          className={`w-full py-4 text-xs font-black uppercase tracking-[0.2em] transition-all shadow-lg flex items-center justify-center gap-3 ${
-            loading ? 'bg-zinc-100 text-zinc-400 cursor-not-allowed' : 'bg-[#003366] text-white hover:bg-[#002244]'
-          }`}
-        >
-          {loading ? (
-            <>Processando Ficheiro...</>
-          ) : (
-             <><Download size={18} /> Gerar e Baixar SAF-T.xml</>
-          )}
-        </button>
-      </div>
-
-      <footer className="pt-6 border-t border-zinc-50 text-center">
-        <p className="text-[8px] text-zinc-300 font-bold uppercase tracking-[0.4em]">Ficheiro Auditado e Validado pelo Sistema AGT</p>
-      </footer>
-    </div>
-  );
-};
-
 const WithholdingTaxModule = ({ sales, purchases }: { sales: IssuedDocument[], purchases: any[] }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   
-  const salesWithTax = sales.filter(s => s.is_certified && (s.retencao_fonte_total || 0) > 0);
-  const purchasesWithTax = (purchases || []).filter(p => (p.retencao_fonte_total || 0) > 0);
+  const salesWithTax = sales.filter(s => {
+    const hasTotal = (s.retencao_fonte_total || 0) > 0;
+    const hasItemTax = s.items && s.items.some(i => (i.retencao_fonte || 0) > 0);
+    return hasTotal || hasItemTax;
+  });
+  
+  const purchasesWithTax = (purchases || []).filter(p => (p.retencao_fonte_total || 0) > 0 || (p.irt_retido || 0) > 0);
   
   const allRecords = [
     ...salesWithTax.map(s => ({
       id: s.id,
-      date: s.date,
-      doc_no: s.numero_documento,
+      date: s.date || s.data_emissao || (s as any).created_at,
+      doc_no: s.numero_documento || s.invoice_number,
       entity: s.client_name,
-      type: 'Venda (Retenção 6.5%)',
-      base: (s.total || 0) - (s.vat_amount || 0),
-      tax_value: s.retencao_fonte_total,
-      status: s.status
+      type: `Venda (${s.document_type || 'Fatura'})`,
+      base: (s.retencao_fonte_total || s.items?.reduce((acc, i) => acc + (i.retencao_fonte || 0), 0) || 0) / 0.065,
+      tax_value: s.retencao_fonte_total || s.items?.reduce((acc, i) => acc + (i.retencao_fonte || 0), 0) || 0,
+      status: s.status,
+      category: 'receber'
     })),
     ...purchasesWithTax.map(p => ({
       id: p.id,
-      date: p.date || p.data_emissao,
+      date: p.date || p.data_emissao || (p as any).created_at,
       doc_no: p.invoice_number || p.numero_documento,
-      entity: p.supplier_name || (p as any).fornecedor_id,
-      type: 'Compra (Retenção)',
-      base: (p.total || 0) - (p.vat_amount || 0),
-      tax_value: p.retencao_fonte_total,
-      status: 'pago'
+      entity: p.supplier_name || 'Fornecedor',
+      type: 'Compra / Despesa',
+      base: (p.retencao_fonte_total || p.irt_retido || 0) / 0.065,
+      tax_value: p.retencao_fonte_total || p.irt_retido || 0,
+      status: 'pago',
+      category: 'pagar'
     }))
   ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-  const filtered = allRecords.filter(r => 
-    (r.doc_no || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (r.entity || '').toString().toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filtered = allRecords.filter(r => {
+    const matchesSearch = (r.doc_no || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (r.entity || '').toString().toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesDate = (!startDate || new Date(r.date) >= new Date(startDate)) &&
+                        (!endDate || new Date(r.date) <= new Date(endDate));
+    return matchesSearch && matchesDate;
+  });
 
-  const totalBase = filtered.reduce((acc, r) => acc + (r.base || 0), 0);
-  const totalTax = filtered.reduce((acc, r) => acc + (r.tax_value || 0), 0);
+  const totalReceber = filtered.filter(r => r.category === 'receber').reduce((acc, r) => acc + (r.tax_value || 0), 0);
+  const totalPagar = filtered.filter(r => r.category === 'pagar').reduce((acc, r) => acc + (r.tax_value || 0), 0);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in">
       <header className="flex justify-between items-end">
         <div>
-          <h2 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">Retenção na Fonte (IRT/IE)</h2>
-          <p className="text-zinc-500 text-sm">Listagem de documentos com retenção na fonte processada após certificação.</p>
+          <h2 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">Retenção na Fonte (IRT / Imposto Industrial)</h2>
+          <p className="text-zinc-500 text-sm font-bold uppercase tracking-widest text-[10px]">Movimentos com Retenção Obrigatória (Ex: Serviços &gt; 20.000 Kz)</p>
         </div>
         <div className="flex gap-4">
-           <div className="bg-white border border-zinc-200 px-6 py-4 shadow-sm">
-             <p className="text-[10px] font-bold text-zinc-400 uppercase">Total Retido</p>
-             <p className="text-xl font-black text-red-600">{formatCurrency(totalTax)}</p>
+           <div className="bg-white border-l-4 border-emerald-500 px-6 py-4 shadow-sm">
+             <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Total a Receber</p>
+             <p className="text-xl font-black text-emerald-600">{formatCurrency(totalReceber)}</p>
+           </div>
+           <div className="bg-white border-l-4 border-red-500 px-6 py-4 shadow-sm">
+             <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Total a Pagar</p>
+             <p className="text-xl font-black text-red-600">{formatCurrency(totalPagar)}</p>
            </div>
         </div>
       </header>
 
-      <div className="bg-white border border-zinc-200 p-4 shadow-sm">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-           <div className="relative">
-             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
-             <input 
-               type="text" 
-               placeholder="Pesquisar por entidade ou documento..." 
-               value={searchTerm}
-               onChange={e => setSearchTerm(e.target.value)}
-               className="w-full bg-zinc-50 border border-zinc-200 p-3 pl-10 text-xs font-bold focus:outline-none focus:border-[#003366]"
-             />
-           </div>
+      <div className="bg-white border border-zinc-200 p-6 shadow-sm flex flex-wrap gap-4 items-end">
+        <div className="flex-1 min-w-[250px] space-y-1.5">
+          <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Pesquisar por Entidade ou Documento</label>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
+            <input 
+              type="text" 
+              placeholder="Ex: FT 2026/1..." 
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="w-full bg-zinc-50 border border-zinc-200 p-3 pl-10 text-xs font-bold focus:outline-none focus:border-[#003366]"
+            />
+          </div>
         </div>
+        <div className="w-full sm:w-40 space-y-1.5">
+          <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Desde</label>
+          <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 p-3 text-xs font-bold focus:outline-none" />
+        </div>
+        <div className="w-full sm:w-40 space-y-1.5">
+          <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Até</label>
+          <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 p-3 text-xs font-bold focus:outline-none" />
+        </div>
+        <button onClick={() => window.print()} className="bg-[#003366] text-white px-8 py-3.5 text-xs font-black uppercase tracking-widest hover:bg-[#002244] shadow-sm flex items-center gap-2 transition-all">
+          <Printer size={16} /> Imprimir Mapa
+        </button>
       </div>
 
       <div className="bg-white border border-zinc-200 overflow-hidden shadow-sm">
         <table className="w-full text-left border-collapse">
           <thead>
-            <tr className="bg-zinc-50 border-b border-zinc-200 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
+            <tr className="bg-[#003366] text-white text-[10px] font-black uppercase tracking-widest">
               <th className="px-6 py-4">Data</th>
               <th className="px-6 py-4">Documento</th>
               <th className="px-6 py-4">Entidade</th>
-              <th className="px-6 py-4">Tipo</th>
+              <th className="px-6 py-4">Categoria</th>
               <th className="px-6 py-4 text-right">Base Incidência</th>
-              <th className="px-6 py-4 text-right text-[#003366]">Valor Retido</th>
+              <th className="px-6 py-4 text-right text-amber-400">Valor Retido (6,5%)</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100 text-[11px]">
             {filtered.map((r: any, idx) => (
               <tr key={idx} className="hover:bg-zinc-50 transition-colors">
-                <td className="px-6 py-4 text-zinc-500 font-bold">{new Date(r.date).toLocaleDateString()}</td>
+                <td className="px-6 py-4 text-zinc-500 font-bold">{new Date(r.date || Date.now()).toLocaleDateString()}</td>
                 <td className="px-6 py-4 font-black uppercase text-[#003366]">{r.doc_no}</td>
                 <td className="px-6 py-4 font-bold text-zinc-800 uppercase">{r.entity}</td>
-                <td className="px-6 py-4 text-zinc-500 italic">{r.type}</td>
-                <td className="px-6 py-4 text-right font-bold">{formatCurrency(r.base)}</td>
-                <td className="px-6 py-4 text-right font-black text-red-600">{formatCurrency(r.tax_value)}</td>
+                <td className="px-6 py-4">
+                   <span className={`px-2 py-0.5 text-[9px] font-black uppercase border ${r.category === 'receber' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'}`}>
+                      {r.category === 'receber' ? 'Venda (Receber)' : 'Compra (Pagar)'}
+                   </span>
+                </td>
+                <td className="px-6 py-4 text-right font-bold text-zinc-600">{formatCurrency(r.base)}</td>
+                <td className={`px-6 py-4 text-right font-black ${r.category === 'receber' ? 'text-emerald-600' : 'text-red-600'}`}>
+                  {r.category === 'pagar' ? '-' : '+'}{formatCurrency(r.tax_value)}
+                </td>
               </tr>
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-6 py-20 text-center text-zinc-400 italic">Nenhum registo de retenção encontrado.</td>
+                <td colSpan={6} className="px-6 py-20 text-center text-zinc-400 font-bold uppercase tracking-widest">Nenhum registo de retenção encontrado com os critérios aplicados.</td>
               </tr>
             )}
           </tbody>
-          {filtered.length > 0 && (
-            <tfoot className="bg-zinc-50 font-black text-xs">
-               <tr>
-                 <td colSpan={4} className="px-6 py-4 text-right uppercase tracking-widest text-zinc-400">Totais Concentrados</td>
-                 <td className="px-6 py-4 text-right">{formatCurrency(totalBase)}</td>
-                 <td className="px-6 py-4 text-right text-red-600 font-black">{formatCurrency(totalTax)}</td>
-               </tr>
-            </tfoot>
-          )}
         </table>
       </div>
     </div>
   );
 };
+
 
 const ReportsModule = ({ sales, purchases, clients, products }: { sales: IssuedDocument[], purchases: any[], clients: any[], products: any[] }) => {
   const [activeReport, setActiveReport] = useState<string | null>(null);
@@ -9361,7 +9482,7 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
       case 'annual-declarations':
         return <DeclaracaoAnualForm />;
       case 'saft':
-        return <SaftExportForm />;
+        return <SaftExportForm invoices={invoices} purchases={purchases} />;
       case 'general-regime':
         if (selectedClient) {
           const clientDocs = invoices.filter(i => i.client_id === selectedClient.id).map(i => ({
@@ -10165,7 +10286,7 @@ const InvoiceList = ({
                           <td className="px-6 py-4 font-mono text-xs text-zinc-600 font-bold whitespace-nowrap">{doc.numero_documento}</td>
                           <td className="px-6 py-4 text-zinc-900 font-bold">{doc.client_name || doc.cliente_id}</td>
                           <td className="px-6 py-4 text-zinc-900 uppercase text-[10px] font-black">{doc.payment_method || 'N/A'}</td>
-                          <td className="px-6 py-4 text-right font-black text-[#003366] text-base whitespace-nowrap">{formatCurrency(doc.contravalor)}</td>
+                          <td className="px-6 py-4 text-right font-black text-[#003366] text-base whitespace-nowrap">{formatCurrency(doc.contravalor || doc.total || doc.counter_value || 0)}</td>
                           <td className="px-6 py-4 text-center">
                             <button 
                               onClick={() => onViewDetail?.(doc)}
@@ -10448,6 +10569,12 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
   const { user } = useAuth();
   const [clientId, setClientId] = useState<number | ''>(initialData?.cliente_id || initialData?.client_id || '');
   const [documentType, setDocumentType] = useState(fixedDocumentType || initialData?.document_type || 'Fatura');
+  
+  useEffect(() => {
+    if (fixedDocumentType) {
+      setDocumentType(fixedDocumentType);
+    }
+  }, [fixedDocumentType]);
   const [seriesId, setSeriesId] = useState<number | ''>(initialData?.series_id || '');
   const [date, setDate] = useState(initialData?.date ? new Date(initialData.date).toISOString().split('T')[0] : (initialData?.data_emissao ? new Date(initialData.data_emissao).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]));
   const [countryCode, setCountryCode] = useState('Angola');
@@ -10535,8 +10662,9 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
 
   const total = (items ?? []).reduce((sum, item) => sum + (item.total || 0), 0);
   const vatAmount = total * 0.14;
+  const vatWithholdingAmount = vatAmount * Number(vatWithholding || 0);
   const retencaoFonteTotal = (items ?? []).reduce((sum, item) => sum + (item.retencao_fonte || 0), 0);
-  const finalTotal = total + vatAmount - Number(globalDiscount || 0) - retencaoFonteTotal;
+  const finalTotal = total + vatAmount - vatWithholdingAmount - Number(globalDiscount || 0) - retencaoFonteTotal;
 
   const selectedSeries = fiscalSeries.find(s => s.id === Number(seriesId));
 
@@ -10584,6 +10712,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
         vat_withholding: parseFloat(vatWithholding),
         exchange_rate: parseFloat(exchangeRate),
         currency,
+        moeda: currency,
         counter_value: parseFloat(counterValue),
         global_discount: parseFloat(globalDiscount),
         service_date: serviceDate,
@@ -10636,14 +10765,20 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
                 required
                 className={`w-full border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm ${fixedDocumentType ? 'bg-zinc-100 text-zinc-500' : 'bg-zinc-50'}`}
               >
-                <option value="Fatura">Fatura</option>
-                <option value="Fatura Recibo">Fatura Recibo</option>
-                <option value="Fatura Proforma">Fatura Proforma</option>
-                <option value="Orçamento">Orçamento</option>
-                <option value="Nota de Crédito">Nota de Crédito</option>
-                <option value="Nota de Débito">Nota de Débito</option>
-                <option value="Guia de Remessa">Guia de Remessa</option>
-                <option value="Guia de Transporte">Guia de Transporte</option>
+                {fixedDocumentType ? (
+                  <option value={fixedDocumentType}>{fixedDocumentType}</option>
+                ) : (
+                  <>
+                    <option value="Fatura">Fatura</option>
+                    <option value="Fatura Recibo">Fatura Recibo</option>
+                    <option value="Fatura Proforma">Fatura Proforma</option>
+                    <option value="Orçamento">Orçamento</option>
+                    <option value="Nota de Crédito">Nota de Crédito</option>
+                    <option value="Nota de Débito">Nota de Débito</option>
+                    <option value="Guia de Remessa">Guia de Remessa</option>
+                    <option value="Guia de Transporte">Guia de Transporte</option>
+                  </>
+                )}
               </select>
             </div>
             <div className="space-y-2">
@@ -11033,6 +11168,12 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
                   <span>IVA ESTIMADO (14%)</span>
                   <span>+ {formatCurrency(vatAmount)}</span>
                </div>
+               {vatWithholdingAmount > 0 && (
+                 <div className="flex justify-between text-xs font-bold text-orange-500">
+                    <span>CATIVAÇÃO DE IVA ({Number(vatWithholding) * 100}%)</span>
+                    <span>- {formatCurrency(vatWithholdingAmount)}</span>
+                 </div>
+               )}
                {Number(globalDiscount) > 0 && (
                  <div className="flex justify-between text-xs font-bold text-red-500">
                     <span>DESCONTO GLOBAL</span>
@@ -11086,8 +11227,10 @@ const WorkSiteForm = ({ clients, onBack, onSuccess, initialData }: { clients: Cl
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!clientId) return;
+    const client = clients.find(c => c.id === Number(clientId));
     onSuccess({
       client_id: Number(clientId),
+      client_name: client?.name || '',
       start_date: startDate,
       end_date: endDate,
       title,
@@ -11470,21 +11613,31 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack }: {
   
   const siteInvoices = (invoices ?? []).filter(inv => (inv.work_site_id?.toString() === workSite.id?.toString()));
   const totalInvoiced = (siteInvoices ?? []).reduce((sum, inv) => sum + (inv.contravalor || inv.total || 0), 0);
-  const totalPaid = (siteInvoices ?? []).filter(inv => inv.status === 'paid' || (inv.estado_documento as string) === 'pago' || (inv.estado_documento as string) === 'ativo').reduce((sum, inv) => sum + (inv.contravalor || inv.total || 0), 0);
+  const totalPaid = (siteInvoices ?? []).filter(inv => inv.status === 'paid' || (inv.estado_documento as string) === 'pago' || (inv.estado_documento as string) === 'ativo' || inv.payment_status === 'paid').reduce((sum, inv) => sum + (inv.contravalor || inv.total || 0), 0);
   const totalPending = totalInvoiced - totalPaid;
+  const totalVoided = (siteInvoices ?? []).filter(inv => inv.status === 'anulado' || (inv.estado_documento as string) === 'anulado').reduce((sum, inv) => sum + (inv.contravalor || inv.total || 0), 0);
   
   // Calculate specific site costs based on invoices related to the site (purchases or direct expenses)
   const siteMovements = (movements ?? []).filter(m => m.work_site_id?.toString() === workSite.id?.toString());
   
-  // Combine movements with sales (invoice certifications) for a full financial view
+  // Combine movements with sales (all invoices related to site) for a full financial view
   const combinedMovements = [
-    ...siteMovements.map(m => ({ ...m, source: 'expense', amount: m.debit || m.credit })),
-    ...siteInvoices.filter(inv => inv.is_certified).map(inv => ({
+    ...siteMovements.map(m => ({ 
+      id: m.id, 
+      date: m.date, 
+      doc_no: m.doc_no || 'TRF', 
+      company: m.company || 'Diversos',
+      description: m.description, 
+      debit: m.debit || 0,
+      credit: m.credit || 0,
+      source: 'expense' 
+    })),
+    ...siteInvoices.filter(inv => inv.status !== 'anulado').map(inv => ({
       id: inv.id,
       date: inv.date,
       doc_no: inv.numero_documento,
       company: inv.client_name,
-      description: `Facturação Certificada - ${inv.document_type}`,
+      description: `Facturação - ${inv.document_type} ${inv.is_certified ? '(Certificada)' : '(Rascunho)'}`,
       debit: 0,
       credit: inv.total || inv.counter_value || 0,
       source: 'sale'
@@ -11545,26 +11698,31 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack }: {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-0 border border-zinc-200 divide-x divide-zinc-200">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-0 border border-zinc-200 divide-x divide-zinc-200">
         <div className="p-8 bg-zinc-50/50">
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Total Facturado</p>
-          <p className="text-2xl font-black text-[#003366]">{formatCurrency(totalInvoiced)}</p>
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Facturado</p>
+          <p className="text-xl font-black text-[#003366]">{formatCurrency(totalInvoiced)}</p>
           <div className="flex items-center gap-2 mt-2">
-            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5">PAGO: {formatCurrency(totalPaid)}</span>
+            <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5">PAGO: {formatCurrency(totalPaid)}</span>
           </div>
         </div>
-        <div className="p-8">
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Total Débito (Custos)</p>
-          <p className="text-2xl font-black text-red-600">{formatCurrency(actualDebit)}</p>
+        <div className="p-8 bg-zinc-50/50">
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Anulados</p>
+          <p className="text-xl font-black text-red-400">{formatCurrency(totalVoided)}</p>
+          <p className="text-[9px] text-zinc-400 font-bold mt-1 uppercase tracking-tighter">S/ Impacto Financeiro</p>
         </div>
         <div className="p-8">
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Total Crédito</p>
-          <p className="text-2xl font-black text-emerald-600">{formatCurrency(actualCredit)}</p>
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Débito (Custos)</p>
+          <p className="text-xl font-black text-red-600">{formatCurrency(actualDebit)}</p>
+        </div>
+        <div className="p-8">
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Crédito</p>
+          <p className="text-xl font-black text-emerald-600">{formatCurrency(actualCredit)}</p>
         </div>
         <div className="p-8 bg-[#003366] text-white">
-          <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-2">Saldo de Obra</p>
-          <p className="text-2xl font-black">{formatCurrency(actualBalance)}</p>
-          <p className="text-[10px] text-white/40 mt-1 font-bold italic">Pendente Cliente: {formatCurrency(totalPending)}</p>
+          <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-2">Saldo Obra</p>
+          <p className="text-xl font-black">{formatCurrency(actualBalance)}</p>
+          <p className="text-[9px] text-white/40 mt-1 font-bold italic uppercase tracking-tighter">Pendente: {formatCurrency(totalPending)}</p>
         </div>
       </div>
 
@@ -11785,7 +11943,8 @@ const InvoiceDetail = ({
   companyNif,
   companyAddress,
   companyLogo,
-  companyFooter
+  companyFooter,
+  companyData
 }: { 
   id: number, 
   onBack: () => void,
@@ -11794,7 +11953,8 @@ const InvoiceDetail = ({
   companyNif: string,
   companyAddress: string,
   companyLogo: string,
-  companyFooter: string
+  companyFooter: string,
+  companyData: CompanyData | null
 }) => {
   const [invoice, setInvoice] = useState<Invoice | null>(null);
 
@@ -11854,15 +12014,22 @@ const InvoiceDetail = ({
               <div className="mt-2 text-sm text-zinc-500">
                 <p>{companyAddress}</p>
                 <p>NIF: {companyNif}</p>
+                {companyData?.regime && <p className="text-[#003366] font-bold uppercase text-[10px] mt-1 border border-[#003366] w-fit px-2 py-0.5">{companyData.regime}</p>}
               </div>
             </div>
           </div>
           <div className="text-right">
-            <h3 className="text-2xl font-bold uppercase tracking-tighter text-[#003366]">Fatura</h3>
-            <p className="text-zinc-400 font-mono text-sm">{invoice.invoice_number}</p>
+            <h3 className="text-2xl font-bold uppercase tracking-tighter text-[#003366]">{invoice.document_type || invoice.tipo_documento}</h3>
+            <p className="text-zinc-400 font-mono text-sm">{invoice.invoice_number || invoice.numero_documento}</p>
             <div className="mt-4 text-sm">
-              <p><span className="font-bold text-zinc-700">Data:</span> {new Date(invoice.date).toLocaleDateString('pt-PT')}</p>
-              {invoice.due_date && <p><span className="font-bold text-zinc-700">Vencimento:</span> {new Date(invoice.due_date).toLocaleDateString('pt-PT')}</p>}
+              <p><span className="font-bold text-zinc-700">Data:</span> {new Date(invoice.date || invoice.data_emissao).toLocaleDateString('pt-PT')}</p>
+              {(invoice.due_date || invoice.data_vencimento) && <p><span className="font-bold text-zinc-700">Vencimento:</span> {new Date((invoice.due_date || invoice.data_vencimento) as string).toLocaleDateString('pt-PT')}</p>}
+              {(invoice.work_site_title || invoice.local_trabalho) && (
+                <div className="mt-2 pt-2 border-t border-zinc-100 italic text-[10px] text-zinc-400">
+                   <p className="font-bold uppercase">Local de Trabalho:</p>
+                   <p className="text-zinc-600">{invoice.work_site_title || invoice.local_trabalho}</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -11937,19 +12104,37 @@ const InvoiceDetail = ({
             <div className="w-64 space-y-2">
               <div className="flex justify-between text-sm text-zinc-500">
                 <span>Subtotal</span>
-                <span>{formatCurrency(invoice.total - (Object.values(vatSummary || {}).reduce((acc: number, v: any) => acc + v.vat, 0) as number))}</span>
+                <span>{formatCurrency((invoice.total || 0) - (invoice.vat_amount || 0) + (invoice.vat_withholding_amount || 0) + (invoice.retencao_fonte_total || 0) + (invoice.global_discount || 0))}</span>
               </div>
               <div className="flex justify-between text-sm text-zinc-500">
-                <span>Total IVA</span>
-                <span>{formatCurrency(Object.values(vatSummary || {}).reduce((acc: number, v: any) => acc + v.vat, 0) as number)}</span>
+                <span>Total IVA (14%)</span>
+                <span>{formatCurrency(invoice.vat_amount || 0)}</span>
               </div>
+              {(invoice.vat_withholding_amount || 0) > 0 && (
+                <div className="flex justify-between text-sm text-orange-600 font-bold">
+                  <span>Cativação de IVA</span>
+                  <span>- {formatCurrency(invoice.vat_withholding_amount)}</span>
+                </div>
+              )}
+              {(invoice.retencao_fonte_total || 0) > 0 && (
+                <div className="flex justify-between text-sm text-blue-600 font-bold">
+                  <span>Retenção na Fonte</span>
+                  <span>- {formatCurrency(invoice.retencao_fonte_total)}</span>
+                </div>
+              )}
+              {(invoice.global_discount || 0) > 0 && (
+                <div className="flex justify-between text-sm text-red-600 font-bold">
+                  <span>Desconto Global</span>
+                  <span>- {formatCurrency(invoice.global_discount)}</span>
+                </div>
+              )}
               <div className="flex justify-between text-2xl font-black pt-4 border-t border-zinc-100">
                 <span className="text-zinc-800">Total</span>
-                <span className="text-[#003366]">{formatCurrency(invoice.total)}</span>
+                <span className="text-[#003366]">{formatCurrency(invoice.total || invoice.contravalor)}</span>
               </div>
               <div className="pt-4 text-[10px] font-black text-zinc-400 uppercase tracking-widest text-right">
                 <p>Valor por Extenso:</p>
-                <p className="text-[#003366] mt-1">{writeValorPorExtenso(invoice.total || 0)}</p>
+                <p className="text-[#003366] mt-1">{writeValorPorExtenso(invoice.total || invoice.contravalor || 0)}</p>
               </div>
             </div>
           </div>
@@ -13025,25 +13210,35 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
             </div>
             <div className="space-y-2 md:col-span-2">
               <label className="text-xs font-bold text-zinc-600">Selecionar fornecedor <span className="text-red-500">*</span></label>
-              <select 
-                value={supplierId} 
-                onChange={(e) => {
-                  const id = e.target.value;
-                  setSupplierId(id ? Number(id) : '');
-                  const client = suppliers.find(c => c.id === Number(id));
-                  if (client) {
-                    setSupplierName(client.name);
-                    setNif(client.nif);
-                  } else {
-                    setSupplierName('');
-                    setNif('');
-                  }
-                }}
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-              >
-                <option value="">Selecione um fornecedor</option>
-                {suppliers.map(c => <option key={c.id} value={c.id}>{c.name} ({c.nif})</option>)}
-              </select>
+              <div className="flex gap-2">
+                <select 
+                  value={supplierId} 
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    setSupplierId(id ? Number(id) : '');
+                    const client = suppliers.find(c => c.id === Number(id));
+                    if (client) {
+                      setSupplierName(client.name);
+                      setNif(client.nif);
+                    } else {
+                      setSupplierName('');
+                      setNif('');
+                    }
+                  }}
+                  className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+                >
+                  <option value="">Selecione um fornecedor</option>
+                  {suppliers.map(c => <option key={c.id} value={c.id}>{c.name} ({c.nif})</option>)}
+                </select>
+                <button 
+                  type="button"
+                  onClick={() => setShowSupplierModal(true)}
+                  className="p-2.5 bg-zinc-100 text-[#003366] hover:bg-zinc-200 transition-all border border-zinc-200 flex items-center justify-center min-w-[45px]"
+                  title="Registar novo fornecedor"
+                >
+                  <UserPlus size={20} />
+                </button>
+              </div>
             </div>
             <div className="space-y-2">
               <label className="text-xs font-bold text-zinc-600">Data prestação de bens/serviços <span className="text-red-500">*</span></label>
@@ -13132,6 +13327,18 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
                       <option value="">Nenhum</option>
                       {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
                     </select>
+                    {item.warehouse_id && (
+                      <div className="mt-1">
+                        <label className="text-[9px] font-bold text-zinc-400 uppercase">Responsável</label>
+                        <input 
+                          type="text"
+                          value={item.warehouse_responsible || ''}
+                          onChange={(e) => updateItem(idx, 'warehouse_responsible', e.target.value)}
+                          placeholder="Nome do responsável"
+                          className="w-full bg-white border border-zinc-200 rounded-none px-2 py-1 text-[10px] text-zinc-800 focus:outline-none focus:border-[#003366]"
+                        />
+                      </div>
+                    )}
                   </div>
                   <div className="col-span-2 space-y-1">
                     <label className="text-[10px] font-bold text-zinc-400 uppercase">Tipo Artigo</label>
@@ -13398,6 +13605,24 @@ const PurchaseActionsModal = ({ purchase, onClose, onAction }: {
               <XCircle size={24} className="text-zinc-400 group-hover:text-red-600" />
               <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-600 group-hover:text-red-600 text-center">Anular Compra</span>
             </button>
+
+            <button onClick={() => handleAction('upload')} className="flex flex-col items-center gap-3 p-6 border border-zinc-100 hover:bg-blue-50 hover:border-blue-200 transition-all group">
+              <Upload size={24} className="text-zinc-400 group-hover:text-blue-600" />
+              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-600 group-hover:text-blue-600 text-center">Upload Documento</span>
+            </button>
+
+            {purchase.document_url && (
+              <>
+                <button onClick={() => handleAction('download_doc')} className="flex flex-col items-center gap-3 p-6 border border-zinc-100 hover:bg-emerald-50 hover:border-emerald-200 transition-all group">
+                  <Download size={24} className="text-zinc-400 group-hover:text-emerald-600" />
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-600 group-hover:text-emerald-600 text-center">Baixar Documento</span>
+                </button>
+                <button onClick={() => handleAction('delete_doc')} className="flex flex-col items-center gap-3 p-6 border border-zinc-100 hover:bg-red-50 hover:border-red-200 transition-all group">
+                  <Trash2 size={24} className="text-zinc-400 group-hover:text-red-600" />
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-600 group-hover:text-red-600 text-center">Apagar Documento</span>
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -13570,6 +13795,20 @@ const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas 
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-2">
+                      <button 
+                        onClick={() => {
+                          if (p.document_url) {
+                            window.open(p.document_url, '_blank');
+                          } else {
+                            setSelectedPurchase(p);
+                            // This will open the actions modal where they can upload
+                          }
+                        }}
+                        className={`p-2 transition-colors ${p.document_url ? 'text-emerald-600 hover:text-emerald-700' : 'text-zinc-400 hover:text-[#003366]'}`}
+                        title={p.document_url ? "Ver Documento" : "Fazer Upload de Documento"}
+                      >
+                        <FileText size={16} />
+                      </button>
                       <button className="p-2 text-zinc-400 hover:text-[#003366] transition-colors"><Printer size={16} /></button>
                       <button 
                         onClick={() => setSelectedPurchase(p)}
@@ -13593,7 +13832,48 @@ const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas 
           purchase={selectedPurchase}
           onClose={() => setSelectedPurchase(null)}
           onAction={(action) => {
-            console.log('Action:', action, 'on purchase:', selectedPurchase.purchase_number);
+            if (action === 'upload') {
+               const input = document.createElement('input');
+               input.type = 'file';
+               input.onchange = async (e) => {
+                 const file = (e.target as HTMLInputElement).files?.[0];
+                 if (file) {
+                    try {
+                      const res = await fetchWithAuth(`/api/purchases/${selectedPurchase?.id}/upload`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ fileName: file.name })
+                      });
+                      if (res.ok) {
+                        alert('Upload simulado com sucesso: ' + file.name);
+                        fetchPurchases();
+                      }
+                    } catch (err) {
+                      console.error('Upload error:', err);
+                    }
+                 }
+               };
+               input.click();
+            } else if (action === 'download_doc') {
+               if (selectedPurchase?.document_url) {
+                 window.open(selectedPurchase.document_url, '_blank');
+               } else {
+                 alert('Nenhum documento anexado a esta compra.');
+               }
+            } else if (action === 'delete_doc') {
+              if (confirm('Tem a certeza que deseja apagar o documento?')) {
+                fetchWithAuth(`/api/purchases/${selectedPurchase?.id}/upload`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ fileName: null })
+                }).then(() => {
+                  fetchPurchases();
+                  setSelectedPurchase(null);
+                });
+              }
+            } else if (action === 'pay') {
+               alert('Funcionalidade de registo de pagamento de compra em desenvolvimento.');
+            }
           }}
         />
       )}
@@ -13989,12 +14269,114 @@ const SupplierModule = ({ products, workSites, fiscalSeries, caixas }: { product
             </div>
           </div>
         );
-      default:
+      case 'payments':
         return (
-          <div className="p-12 text-center text-zinc-400 italic bg-white border border-zinc-200">
-            Módulo em desenvolvimento...
+          <div className="space-y-6 animate-in fade-in duration-300">
+            <h3 className="text-xl font-black text-[#003366] uppercase tracking-tight flex items-center gap-3">
+              <Calculator size={24} /> Pagamentos a Fornecedores
+            </h3>
+            <div className="bg-white border border-zinc-200 p-6 shadow-sm flex flex-wrap gap-6 items-end">
+               <div className="flex-1 min-w-[300px] space-y-1.5">
+                  <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Filtrar por Fornecedor</label>
+                  <select className="w-full bg-zinc-50 border border-zinc-200 p-3 text-xs font-bold focus:outline-none focus:border-[#003366]">
+                    <option value="">Todos os Fornecedores</option>
+                    {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+               </div>
+               <button className="bg-[#003366] text-white px-8 py-3.5 text-xs font-black uppercase tracking-widest hover:bg-[#002244] transition-all flex items-center gap-2 shadow-sm">
+                 <Filter size={14} /> Filtrar Pagamentos
+               </button>
+            </div>
+            <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-[#003366] text-white text-[10px] uppercase tracking-wider font-bold">
+                    <th className="px-6 py-4">Data</th>
+                    <th className="px-6 py-4">Nº Pagamento</th>
+                    <th className="px-6 py-4">Fornecedor</th>
+                    <th className="px-6 py-4">Método</th>
+                    <th className="px-6 py-4 text-right">Valor Pago</th>
+                    <th className="px-6 py-4 text-center">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {purchases.filter(p => p.document_type === 'Pagamento').length > 0 ? (
+                    purchases.filter(p => p.document_type === 'Pagamento').map(p => (
+                      <tr key={p.id} className="hover:bg-zinc-50 transition-colors text-xs font-bold">
+                        <td className="px-6 py-4 text-zinc-500 font-mono">{new Date(p.date || p.data_emissao || '').toLocaleDateString()}</td>
+                        <td className="px-6 py-4 text-[#003366]">{p.invoice_number || p.numero_documento}</td>
+                        <td className="px-6 py-4 uppercase text-zinc-900">{p.supplier_name || 'Fornecedor'}</td>
+                        <td className="px-6 py-4">
+                          <span className="px-2 py-0.5 bg-zinc-100 text-zinc-500 text-[9px] font-black uppercase tracking-widest">
+                            {p.payment_method || 'N/A'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right text-emerald-600 font-black">{formatCurrency(p.total)}</td>
+                        <td className="px-6 py-4 text-center">
+                          <button className="text-[#003366] hover:bg-[#003366] hover:text-white p-1.5 transition-all border border-zinc-100">
+                            <Printer size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={6} className="p-12 text-center text-zinc-400 italic">Nenhum pagamento registado até ao momento.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         );
+      case 'orders':
+        return (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            <h3 className="text-xl font-black text-[#003366] uppercase tracking-tight flex items-center gap-3">
+              <ShoppingBag size={24} /> Encomendas a Fornecedores
+            </h3>
+            <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-[#003366] text-white text-[10px] uppercase tracking-wider font-bold">
+                    <th className="px-6 py-4">Data</th>
+                    <th className="px-6 py-4">Nº Encomenda</th>
+                    <th className="px-6 py-4">Fornecedor</th>
+                    <th className="px-6 py-4">Previsão Entrega</th>
+                    <th className="px-6 py-4 text-right">Valor Total</th>
+                    <th className="px-6 py-4 text-center">Estado</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {purchases.filter(p => p.document_type === 'Encomenda').length > 0 ? (
+                    purchases.filter(p => p.document_type === 'Encomenda').map(p => (
+                      <tr key={p.id} className="hover:bg-zinc-50 transition-colors text-xs font-bold">
+                        <td className="px-6 py-4 text-zinc-500">{new Date(p.date || '').toLocaleDateString()}</td>
+                        <td className="px-6 py-4 text-[#003366]">{p.invoice_number}</td>
+                        <td className="px-6 py-4 uppercase text-zinc-900">{p.supplier_name}</td>
+                        <td className="px-6 py-4 text-zinc-500">{p.due_date ? new Date(p.due_date).toLocaleDateString() : 'Não definido'}</td>
+                        <td className="px-6 py-4 text-right font-black">{formatCurrency(p.total)}</td>
+                        <td className="px-6 py-4 text-center">
+                          <span className="px-3 py-1 bg-amber-50 text-amber-600 text-[9px] font-black uppercase tracking-widest border border-amber-100">
+                            Pendente
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={6} className="p-12 text-center text-zinc-400 italic">Nenhuma encomenda registada.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      case 'reports':
+        return <PurchasesReport purchases={purchases} suppliers={suppliers} onBack={() => setActiveSubTab(null)} />;
+      default:
+
     }
   };
 
@@ -14010,90 +14392,106 @@ const SupplierModule = ({ products, workSites, fiscalSeries, caixas }: { product
       {renderContent()}
 
       {showForm && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm animate-in fade-in duration-200">
           <motion.div 
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
             className="w-full max-w-4xl bg-white shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
           >
-            <div className="p-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
-               <h3 className="font-bold text-[#003366] flex items-center gap-2">
-                  <UserPlus size={18} />
-                  Registar Fornecedor
-               </h3>
-               <button onClick={() => setShowForm(false)} className="p-2 hover:bg-zinc-200 rounded-full transition-colors text-zinc-400">
-                  <X size={20} />
-               </button>
+            <div className="p-6 border-b border-zinc-100 flex items-center justify-between bg-[#003366] text-white">
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 bg-white/10 flex items-center justify-center">
+                  <Truck size={24} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg uppercase tracking-tight">Registar Novo Fornecedor</h3>
+                  <p className="text-[10px] text-white/60 font-bold uppercase tracking-widest">Informações Cadastrais e Fiscais</p>
+                </div>
+              </div>
+              <button onClick={() => setShowForm(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors text-white/70">
+                <X size={24} />
+              </button>
             </div>
             
             <div className="flex-1 overflow-y-auto p-4 md:p-8 bg-white">
-              <form onSubmit={handleSubmit} className="space-y-6 max-w-5xl mx-auto">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest flex items-center gap-1">CONTRIBUINTE (NIF) *</label>
-                    <div className="relative">
-                      <input type="text" placeholder="Ex: 5000..." value={nif} onChange={e => setNif(e.target.value)} required className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm font-mono font-bold focus:outline-none focus:border-[#003366]" />
-                    </div>
+              <form onSubmit={handleSubmit} className="space-y-4 max-w-5xl mx-auto bg-zinc-50/30 p-6 border border-zinc-100">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">NIF *</label>
+                    <input type="text" placeholder="Ex: 5000..." value={nif} onChange={e => setNif(e.target.value)} required className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs font-mono font-bold focus:border-[#003366] outline-none" />
                   </div>
-                  <div className="md:col-span-2 space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">NOME COMPLETO / DESIGNAÇÃO SOCIAL *</label>
-                    <input type="text" placeholder="Ex: Empresa de Serviços Lda" value={name} onChange={e => setName(e.target.value)} required className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm font-bold focus:outline-none focus:border-[#003366]" />
+                  <div className="md:col-span-3 space-y-1">
+                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Nome / Designação Social *</label>
+                    <input type="text" placeholder="Ex: Fornecedor ABC Lda" value={name} onChange={e => setName(e.target.value)} required className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs font-bold focus:border-[#003366] outline-none" />
                   </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">EMAIL</label>
-                    <input type="email" placeholder="cliente@exemplo.com" value={email} onChange={e => setEmail(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                  
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Email</label>
+                    <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs focus:border-[#003366] outline-none" />
                   </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">TELEFONE</label>
-                    <input type="text" placeholder="+244 9... / 222..." value={phone} onChange={e => setPhone(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] font-bold" />
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Telefone</label>
+                    <input type="text" value={phone} onChange={e => setPhone(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs focus:border-[#003366] font-bold outline-none" />
                   </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">PAÍS</label>
-                    <input type="text" defaultValue="Angola" readOnly className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm font-bold focus:outline-none" />
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">País</label>
+                    <input type="text" value={pais} onChange={e => setPais(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs font-bold focus:border-[#003366] outline-none" />
                   </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">PROVÍNCIA</label>
-                    <input type="text" placeholder="Luanda" value={provincia} onChange={e => setProvincia(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Província</label>
+                    <input type="text" value={provincia} onChange={e => setProvincia(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs focus:border-[#003366] outline-none" />
                   </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">MUNICÍPIO</label>
-                    <input type="text" placeholder="Belas" value={municipio} onChange={e => setMunicipio(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Município</label>
+                    <input type="text" value={municipio} onChange={e => setMunicipio(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs focus:border-[#003366] outline-none" />
                   </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">LOCALIDADE</label>
-                    <input type="text" placeholder="Talatona" value={localidade} onChange={e => setLocalidade(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Localidade</label>
+                    <input type="text" value={localidade} onChange={e => setLocalidade(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs focus:border-[#003366] outline-none" />
                   </div>
-                  <div className="md:col-span-2 space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">MORADA PRINCIPAL</label>
-                    <input type="text" placeholder="Rua, Edifício, Andar..." value={address} onChange={e => setAddress(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+                  <div className="md:col-span-2 space-y-1">
+                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Morada</label>
+                    <input type="text" value={address} onChange={e => setAddress(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs focus:border-[#003366] outline-none" />
                   </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">CÓDIGO POSTAL</label>
-                    <input type="text" placeholder="0000-000" className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm font-mono focus:outline-none focus:border-[#003366]" />
+
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Código Postal</label>
+                    <input type="text" value={codigoPostal} onChange={e => setCodigoPostal(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs font-mono focus:border-[#003366] outline-none" />
                   </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">TIPO DE CLIENTE (SFT)</label>
-                    <select value={tipoCliente} onChange={e => setTipoCliente(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] font-bold">
-                      <option value="normal">CLIENTE NORMAL</option>
-                      <option value="servicos">Prestador de Serviços</option>
-                      <option value="mercadorias">Vendedor de Mercadorias</option>
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">SIGLAS BANCO</label>
+                    <input type="text" placeholder="Ex: BFA, BAI..." value={siglasBanco} onChange={e => setSiglasBanco(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs font-bold focus:border-[#003366] outline-none" />
+                  </div>
+                  <div className="md:col-span-2 space-y-1">
+                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">IBAN</label>
+                    <input type="text" placeholder="AO06..." value={iban} onChange={e => setIban(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs font-mono font-black text-[#003366] focus:border-[#003366] outline-none" />
+                  </div>
+                  
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Tipo de Fornecedor</label>
+                    <select value={tipoCliente} onChange={e => setTipoCliente(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs font-bold focus:border-[#003366] outline-none">
+                      <option value="normal">Normal</option>
+                      <option value="servicos">Serviços</option>
+                      <option value="mercadorias">Mercadorias</option>
                     </select>
                   </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">SALDO INICIAL DE CRÉDITO</label>
-                    <input type="number" defaultValue="0" className="w-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm font-bold text-emerald-600 focus:outline-none" />
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Webpage</label>
+                    <input type="text" value={webpage} onChange={e => setWebpage(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs focus:border-[#003366] outline-none" />
                   </div>
                 </div>
 
-                <div className="flex justify-end gap-4 pb-8 pt-6 border-t border-zinc-100">
-                  <button type="button" onClick={() => setShowForm(false)} className="px-10 py-3 text-xs font-black text-zinc-500 uppercase tracking-widest hover:text-[#003366] transition-colors">ANULAR OPERAÇÃO</button>
-                  <button type="submit" className="bg-[#003366] text-white px-12 py-3 text-xs font-black uppercase tracking-widest hover:bg-[#002244] transition-all shadow-xl flex items-center gap-2">SUBMETER NOVO CLIENTE</button>
+                <div className="flex justify-end gap-3 pt-6">
+                  <button type="button" onClick={() => setShowForm(false)} className="px-6 py-2 text-[10px] font-black text-zinc-500 hover:text-red-600 transition-colors uppercase tracking-widest">Descartar</button>
+                  <button type="submit" className="bg-[#003366] text-white px-8 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-[#002244] transition-all shadow-lg">Confirmar Registo</button>
                 </div>
               </form>
             </div>
           </motion.div>
         </div>
       )}
+
     </div>
   );
 };
@@ -15145,12 +15543,16 @@ const ReceiptModal = ({ document: doc, caixas, onClose, onSuccess }: {
   const totalDoc = doc.total || doc.counter_value || doc.contravalor || 0;
   const remaining = totalDoc - (doc.paid_amount || 0);
   const [amount, setAmount] = useState(remaining > 0 ? remaining : 0);
-  const [paymentMethod, setPaymentMethod] = useState('Dinheiro');
-  const [cashBox, setCashBox] = useState(caixas[0]?.name || '');
+  const [paymentMethod, setPaymentMethod] = useState('');
+  const [cashBox, setCashBox] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!paymentMethod || !cashBox) {
+      alert('Por favor, selecione a forma de pagamento e o caixa/banco.');
+      return;
+    }
     if (amount > remaining) {
       alert(`O valor não pode ser superior ao saldo em falta (${remaining.toFixed(2)}).`);
       return;
@@ -15211,12 +15613,14 @@ const ReceiptModal = ({ document: doc, caixas, onClose, onSuccess }: {
             )}
           </div>
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Forma de Pagamento</label>
+            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Forma de Pagamento <span className="text-red-500">*</span></label>
             <select 
               value={paymentMethod} 
               onChange={(e) => setPaymentMethod(e.target.value)}
+              required
               className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold"
             >
+              <option value="">Selecione...</option>
               <option>Dinheiro</option>
               <option>Transferência</option>
               <option>Multicaixa</option>
@@ -15224,12 +15628,14 @@ const ReceiptModal = ({ document: doc, caixas, onClose, onSuccess }: {
             </select>
           </div>
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Caixa / Banco</label>
+            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Caixa / Banco <span className="text-red-500">*</span></label>
             <select 
               value={cashBox} 
               onChange={(e) => setCashBox(e.target.value)}
+              required
               className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold"
             >
+              <option value="">Selecione...</option>
               {caixas.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
             </select>
           </div>
@@ -15347,6 +15753,7 @@ export default function App() {
   const [appSelectedEmployee, setAppSelectedEmployee] = useState<Employee | null>(null);
   const [isContractModalOpen, setIsContractModalOpen] = useState(false);
   const [showAnularModal, setShowAnularModal] = useState<IssuedDocument | null>(null);
+  const [showDocumentReportModal, setShowDocumentReportModal] = useState<IssuedDocument | null>(null);
   const [caixas, setCaixas] = useState<Caixa[]>([]);
   const [caixaMovements, setCaixaMovements] = useState<CaixaMovement[]>([]);
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
@@ -15514,8 +15921,19 @@ export default function App() {
       setIsCreatingInvoice(true);
     } else if (action === 'reports') {
       setSelectedDocument(doc);
-      setShowDocumentReportModal(true);
+      setShowDocumentReportModal(doc);
     } else if (action === 'foreign_draft') {
+      try {
+        const res = await fetchWithAuth(`/api/invoices/${doc.id}`);
+        if (res.ok) {
+          const invoiceData = await res.json();
+          setPrintingInvoice(invoiceData);
+          setIsPrintingDraft(true);
+        }
+      } catch (error) {
+        console.error('Error fetching invoice for print:', error);
+      }
+    } else if (action === 'draft') {
       try {
         const res = await fetchWithAuth(`/api/invoices/${doc.id}`);
         if (res.ok) {
@@ -15744,6 +16162,7 @@ export default function App() {
                     companyAddress={companyAddress}
                     companyLogo={companyLogo}
                     companyFooter={companyFooter}
+                    companyData={companyData}
                   />
                 ) : (
                   <>
@@ -15758,9 +16177,18 @@ export default function App() {
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({ reason })
                             });
+                            
                             if (res.ok) {
+                              // If it's a receipt, we should inform the user that the invoice is liberated
+                              if (showAnularModal.document_type === 'Recibo' || showAnularModal.tipo_documento === 'RC') {
+                                alert('Recibo anulado com sucesso! A fatura correspondente está agora disponível para novo recebimento.');
+                              } else if (showAnularModal.document_type === 'Nota de Crédito' || showAnularModal.tipo_documento === 'NC') {
+                                alert('Nota de Crédito anulada! Lembre-se de emitir a Nota de Débito correspondente se necessário para retificação.');
+                              } else {
+                                alert('Documento anulado com sucesso!');
+                              }
+                              
                               await fetchData();
-                              alert('Documento anulado com sucesso!');
                               setShowAnularModal(null);
                             } else {
                               alert('Erro ao anular');
@@ -15769,6 +16197,14 @@ export default function App() {
                             console.error('Error voiding document:', error);
                           }
                         }}
+                      />
+                    )}
+                    {showDocumentReportModal && (
+                      <DocumentReportModal
+                        document={showDocumentReportModal}
+                        onClose={() => setShowDocumentReportModal(null)}
+                        companyName={companyName}
+                        companyNif={companyNif}
                       />
                     )}
                     {(() => {
@@ -15794,6 +16230,14 @@ export default function App() {
                               onUpdateWorkSite={handleUpdateWorkSite}
                               onAction={handleDocumentAction}
                               onCertify={(doc) => {
+                                const emissionDate = new Date(doc.data_emissao || doc.date || '');
+                                const today = new Date();
+                                const diffTime = Math.abs(today.getTime() - emissionDate.getTime());
+                                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                if (diffDays > 5) {
+                                  alert("Caro utilizador de acordo com lei deve anular este documento e emitir no com a nova data porque ultrapassou o tempo determinado por lei de 5 dias");
+                                  return;
+                                }
                                 setSelectedDocument(doc);
                                 setShowCertifyModal(true);
                               }}
@@ -15814,6 +16258,14 @@ export default function App() {
                               documents={issuedDocuments} 
                               onAction={handleDocumentAction}
                               onCertify={(doc) => {
+                                const emissionDate = new Date(doc.data_emissao || doc.date || '');
+                                const today = new Date();
+                                const diffTime = Math.abs(today.getTime() - emissionDate.getTime());
+                                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                if (diffDays > 5) {
+                                  alert("Caro utilizador de acordo com lei deve anular este documento e emitir no com a nova data porque ultrapassou o tempo determinado por lei de 5 dias");
+                                  return;
+                                }
                                 setSelectedDocument(doc);
                                 setShowCertifyModal(true);
                               }}
@@ -15911,6 +16363,24 @@ export default function App() {
                           return <WithholdingTaxModule sales={issuedDocuments} purchases={purchases} />;
                         case 'reports':
                           return <ReportsModule sales={issuedDocuments} purchases={purchases} clients={clients} products={products} />;
+                        case 'drafts':
+                          return (
+                            <div className="space-y-6">
+                              <header>
+                                <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Documentos Provisórios (Drafts)</h2>
+                                <p className="text-zinc-500 text-sm">Documentos emitidos mas ainda não certificados pela AGT.</p>
+                              </header>
+                              <IssuedDocumentsList 
+                                documents={issuedDocuments.filter(d => !d.is_certified)} 
+                                onAction={handleDocumentAction}
+                                onCertify={(doc) => {
+                                  setSelectedDocument(doc);
+                                  setShowCertifyModal(true);
+                                }}
+                                onViewDetail={(doc) => setViewingInvoiceId(doc.id)}
+                              />
+                            </div>
+                          );
                         case 'specialized':
                           return <SpecializedManagementModule activeTab={activeTab} setActiveTab={setActiveTab} />;
                         case 'archive':

@@ -31,6 +31,7 @@ let securityOccurrences: any[] = [];
 let securityArmory: any[] = [];
 let securityRoster: any[] = [];
 let transactions: any[] = [];
+let receipts: any[] = [];
 let suppliers: any[] = [];
 let purchases: any[] = [];
 let professions: any[] = [];
@@ -123,6 +124,21 @@ async function startServer() {
   app.post("/api/products", (req, res) => {
     const newProd = { ...req.body, id: generateId(), created_at: new Date().toISOString() };
     products.push(newProd);
+    
+    // Add initial stock movement if quantity > 0
+    if (Number(newProd.stock_quantity) > 0) {
+      stockMovements.push({
+        id: generateId(),
+        product_id: newProd.id,
+        product_name: newProd.name,
+        type: 'entry',
+        quantity: Number(newProd.stock_quantity),
+        description: 'Stock Inicial',
+        warehouse_id: Number(newProd.warehouse_id || 1),
+        created_at: new Date().toISOString()
+      });
+    }
+    
     res.json(newProd);
   });
 
@@ -218,6 +234,10 @@ async function startServer() {
         invoice.payment_status = 'partial';
         invoice.status = 'parcial';
       }
+
+      // Record receipt
+      const newReceipt = { id: generateId(), invoice_id: Number(invoice_id), amount: Number(amount), payment_method, date: date || new Date().toISOString(), cash_box, status: 'ativo' };
+      receipts.push(newReceipt);
 
       // Record transaction
       const newTransaction = {
@@ -373,40 +393,41 @@ async function startServer() {
         }
       }
 
-      // Generate associated credit note
+      // Generate associated correction document (Credit Note normally, Debit Note if voiding a Credit Note)
+      const isCreditNote = doc.document_type === 'Nota de Crédito' || doc.tipo_documento === 'Nota de Crédito';
+      const associatedDocType = isCreditNote ? 'Nota de Débito' : 'Nota de Crédito';
       const series = fiscalSeries.find(s => s.id === Number(doc.series_id));
-      const docType = 'Nota de Crédito';
-      let nc_number = "";
+      let assoc_number = "";
       if (series) {
         if (!series.counters) series.counters = {};
-        if (!series.counters[docType]) series.counters[docType] = 1;
-        const counter = series.counters[docType];
-        series.counters[docType]++;
-        nc_number = `${docType} ${series.reference}${new Date().getFullYear()}/${counter}`;
+        if (!series.counters[associatedDocType]) series.counters[associatedDocType] = 1;
+        const counter = series.counters[associatedDocType];
+        series.counters[associatedDocType]++;
+        assoc_number = `${associatedDocType} ${series.reference}${new Date().getFullYear()}/${counter}`;
       } else {
-        const counter = issuedDocuments.filter(d => d.document_type === 'Nota de Crédito').length + 1;
-        nc_number = `Nota de Crédito ${new Date().getFullYear()}/${counter}`;
+        const counter = issuedDocuments.filter(d => d.document_type === associatedDocType).length + 1;
+        assoc_number = `${associatedDocType} ${new Date().getFullYear()}/${counter}`;
       }
       
-      const creditNote = {
+      const correctionDoc = {
         ...doc,
         id: generateId(),
-        document_type: 'Nota de Crédito',
-        tipo_documento: 'Nota de Crédito',
-        invoice_number: nc_number,
-        numero_documento: nc_number,
+        document_type: associatedDocType,
+        tipo_documento: associatedDocType,
+        invoice_number: assoc_number,
+        numero_documento: assoc_number,
         reference_document: doc.numero_documento || doc.invoice_number,
-        contravalor: -Math.abs(doc.contravalor || doc.counter_value || 0),
-        counter_value: -Math.abs(doc.contravalor || doc.counter_value || 0),
-        total: -Math.abs(doc.total || doc.counter_value || 0),
+        contravalor: isCreditNote ? Math.abs(doc.contravalor || doc.counter_value || 0) : -Math.abs(doc.contravalor || doc.counter_value || 0),
+        counter_value: isCreditNote ? Math.abs(doc.contravalor || doc.counter_value || 0) : -Math.abs(doc.contravalor || doc.counter_value || 0),
+        total: isCreditNote ? Math.abs(doc.total || doc.counter_value || 0) : -Math.abs(doc.total || doc.counter_value || 0),
         created_at: new Date().toISOString(),
         is_certified: true,
         status: 'ativo',
         description: `Ref. ${doc.numero_documento || doc.invoice_number}`
       };
       
-      issuedDocuments.push(creditNote);
-      res.json({ success: true, creditNote });
+      issuedDocuments.push(correctionDoc);
+      res.json({ success: true, correctionDoc });
     } else {
       res.status(404).json({ error: "Document not found" });
     }
@@ -587,6 +608,8 @@ async function startServer() {
       ...req.body, 
       id: generateId(), 
       invoice_number,
+      currency: req.body.currency || req.body.moeda || 'Kwanza',
+      moeda: req.body.moeda || req.body.currency || 'Kwanza',
       created_at: new Date().toISOString() 
     };
     issuedDocuments.push(newDoc);
@@ -640,6 +663,13 @@ async function startServer() {
     caixas.push(newCaixa);
     res.json(newCaixa);
   });
+  app.put("/api/caixas/:id", (req, res) => {
+    const index = caixas.findIndex(c => c.id === req.params.id);
+    if (index !== -1) {
+      caixas[index] = { ...caixas[index], ...req.body };
+      res.json(caixas[index]);
+    } else res.status(404).json({ error: "Caixa not found" });
+  });
 
   // Work Sites
   app.get("/api/work-sites", (req, res) => res.json(workSites));
@@ -647,6 +677,16 @@ async function startServer() {
     const newSite = { ...req.body, id: generateId() };
     workSites.push(newSite);
     res.json(newSite);
+  });
+  app.put("/api/work-sites/:id", (req, res) => {
+    const id = Number(req.params.id);
+    const index = workSites.findIndex(w => w.id === id);
+    if (index !== -1) {
+      workSites[index] = { ...workSites[index], ...req.body, id };
+      res.json(workSites[index]);
+    } else {
+      res.status(404).json({ error: "Work Site not found" });
+    }
   });
   app.get("/api/work-sites/:id/movements", (req, res) => {
     const { id } = req.params;
@@ -681,7 +721,7 @@ async function startServer() {
   app.get("/api/purchases", (req, res) => res.json(purchases));
   app.post("/api/purchases", (req, res) => {
     const newPurchaseId = generateId();
-    const newPurchase = { ...req.body, id: newPurchaseId, date: new Date().toISOString() };
+    const newPurchase = { ...req.body, id: newPurchaseId, date: new Date().toISOString(), status: 'completed' };
     purchases.push(newPurchase);
     
     // Record finance movement (Accounting Cost)
@@ -729,6 +769,31 @@ async function startServer() {
       if (targetCaixa) {
         targetCaixa.currentBalance = (targetCaixa.currentBalance || 0) - amount;
       }
+    }
+
+    // Record stock movements for each item
+    if (newPurchase.items && Array.isArray(newPurchase.items)) {
+      newPurchase.items.forEach((item: any) => {
+        if (item.product_id) {
+          const product = products.find(p => p.id === Number(item.product_id));
+          if (product) {
+            // Create stock movement
+            stockMovements.push({
+              id: generateId(),
+              product_id: product.id,
+              type: 'entry',
+              quantity: item.quantity,
+              unit_price: item.unit_price,
+              warehouse_id: item.warehouse_id || product.warehouse_id,
+              description: `Compra Ref: ${newPurchase.purchase_number || newPurchase.id}`,
+              created_at: new Date().toISOString(),
+              company_id: '1' // Assuming default company
+            });
+            // Update product stock
+            product.stock_quantity = (product.stock_quantity || 0) + item.quantity;
+          }
+        }
+      });
     }
 
     res.json(newPurchase);
@@ -781,6 +846,41 @@ async function startServer() {
   app.get("/api/security/armory", (req, res) => res.json(securityArmory));
   app.get("/api/security/roster", (req, res) => res.json(securityRoster));
 
+  app.post("/api/receipts/:id/void", (req, res) => {
+    const receiptId = Number(req.params.id);
+    const receiptIdx = receipts.findIndex(r => r.id === receiptId);
+    
+    if (receiptIdx !== -1) {
+      const receipt = receipts[receiptIdx];
+      receipt.status = 'anulado';
+      
+      const invoice = issuedDocuments.find(d => d.id === receipt.invoice_id);
+      if (invoice) {
+        invoice.paid_amount = Math.max(0, (invoice.paid_amount || 0) - (receipt.amount || 0));
+        if (invoice.paid_amount < (invoice.total || invoice.counter_value || 0)) {
+          invoice.status = 'pendente';
+        }
+      }
+      res.json({ success: true });
+    } else {
+      res.status(404).json({ error: "Recibo não encontrado" });
+    }
+  });
+
+  app.post("/api/purchases/:id/upload", (req, res) => {
+    const purchaseId = Number(req.params.id);
+    const purchase = purchases.find(p => p.id === purchaseId);
+    if (purchase) {
+      const { fileName } = req.body;
+      purchase.document_url = `/uploads/${fileName}`;
+      purchase.document_path = fileName;
+      res.json({ success: true, url: purchase.document_url });
+    } else {
+      res.status(404).json({ error: "Compra não encontrada" });
+    }
+  });
+
+  app.get("/api/receipts", (req, res) => res.json(receipts));
   // Vite
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

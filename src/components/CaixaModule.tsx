@@ -19,11 +19,12 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
   const [selectedCaixaId, setSelectedCaixaId] = useState<string | null>(null);
   const [activeCurrency, setActiveCurrency] = useState('AOA');
   const [showOptionsMenu, setShowOptionsMenu] = useState<Caixa | null>(null);
+  const [editCaixa, setEditCaixa] = useState<Caixa | null>(null);
 
   // Transfer form state
   const [transferData, setTransferData] = useState({ from: '', to: '', amount: 0, description: '' });
   // Payment form state
-  const [paymentData, setPaymentData] = useState({ caixaId: '', amount: 0, description: '' });
+  const [paymentData, setPaymentData] = useState({ caixaId: '', amount: 0, description: '', type: 'outros' });
   // Reconciliation state
   const [reconData, setReconData] = useState({ caixaId: '', actualBalance: 0, description: '' });
 
@@ -37,8 +38,8 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
       responsible: newCaixa.responsible,
       user: newCaixa.user,
       users: 1,
-      initialBalance: newCaixa.initialBalance,
-      currentBalance: newCaixa.initialBalance,
+      initialBalance: Number(newCaixa.initialBalance),
+      currentBalance: Number(newCaixa.initialBalance),
       obs: newCaixa.obs,
       status: 'aberto',
       company_id: user?.company_id
@@ -58,6 +59,25 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
     } catch (error) {
       console.error('Error creating caixa:', error);
       alert('Erro ao criar caixa');
+    }
+  };
+
+  const handleUpdateCaixa = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editCaixa) return;
+    try {
+      const res = await fetch(`/api/caixas/${editCaixa.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editCaixa)
+      });
+      if (res.ok) {
+        setCaixas(caixas.map(c => c.id === editCaixa.id ? editCaixa : c));
+        setEditCaixa(null);
+        setActiveSection('list');
+      }
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -192,6 +212,8 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
     { id: 'list', label: 'Caixas', icon: Wallet },
     { id: 'movements', label: 'Movimentos', icon: History },
     { id: 'transfer', label: 'Transferência', icon: ArrowRightLeft },
+    { id: 'salary', label: 'Pagar Salário', icon: Wallet },
+    { id: 'tax', label: 'Pagar Imposto', icon: Calculator },
     { id: 'payment', label: 'Pagamento', icon: Calculator },
     { id: 'recon', label: 'Conciliação', icon: ShieldCheck },
   ];
@@ -545,6 +567,128 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
             </form>
           </div>
         )}
+
+        {(activeSection === 'salary' || activeSection === 'tax') && (
+          <div className="max-w-2xl mx-auto w-full bg-white border border-zinc-200 shadow-sm">
+            <div className={`p-4 ${activeSection === 'salary' ? 'bg-indigo-600' : 'bg-red-600'} text-white`}>
+              <h3 className="text-xs font-black uppercase tracking-widest flex items-center gap-2">
+                {activeSection === 'salary' ? <Wallet size={14} /> : <Calculator size={14} />} 
+                {activeSection === 'salary' ? 'Pagamento de Salário' : 'Pagamento de Imposto'}
+              </h3>
+            </div>
+            <form onSubmit={handlePayment} className="p-8 space-y-6">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Caixa de Origem</label>
+                <select 
+                  required
+                  className="w-full border border-zinc-200 px-4 py-3 text-xs font-bold text-[#003366] focus:outline-none focus:border-[#003366]"
+                  value={paymentData.caixaId}
+                  onChange={e => setPaymentData({...paymentData, caixaId: e.target.value})}
+                >
+                  <option value="">Selecione o caixa</option>
+                  {(caixas || []).map(c => <option key={c.id} value={c.id}>{c.name} (Saldo: {c.currentBalance.toLocaleString()})</option>)}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Valor do {activeSection === 'salary' ? 'Salário' : 'Imposto'}</label>
+                <div className="relative">
+                  <input 
+                    type="number" 
+                    required
+                    step="0.01"
+                    className={`w-full border border-zinc-200 pl-12 pr-4 py-3 text-lg font-black ${activeSection === 'salary' ? 'text-indigo-600' : 'text-red-700'} focus:outline-none focus:border-[#003366]`}
+                    placeholder="0,00"
+                    value={paymentData.amount || ''}
+                    onChange={e => setPaymentData({...paymentData, amount: parseFloat(e.target.value)})}
+                  />
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400 font-bold">AOA</div>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Descrição / Observação</label>
+                <input 
+                  type="text"
+                  required
+                  className="w-full border border-zinc-200 px-4 py-3 text-xs focus:outline-none focus:border-[#003366]"
+                  placeholder={activeSection === 'salary' ? 'Ex: Salário Ref. Mês de Maio' : 'Ex: Pagamento de IVA'}
+                  value={paymentData.description}
+                  onChange={e => setPaymentData({...paymentData, description: e.target.value})}
+                />
+              </div>
+              <button type="submit" className={`w-full ${activeSection === 'salary' ? 'bg-indigo-600' : 'bg-red-600'} text-white py-4 font-black uppercase tracking-widest text-xs transition-all shadow-xl`}>
+                Confirmar Pagamento
+              </button>
+            </form>
+          </div>
+        )}
+
+        {activeSection === 'edit' && editCaixa && (
+          <div className="max-w-2xl mx-auto w-full bg-white border border-zinc-200 shadow-sm">
+            <div className="p-4 bg-[#003366] text-white">
+              <h3 className="text-xs font-black uppercase tracking-widest flex items-center gap-2">
+                <FileText size={14} /> Editar Caixa: {editCaixa.name}
+              </h3>
+            </div>
+            <form onSubmit={handleUpdateCaixa} className="p-8 space-y-6">
+               <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Nome do caixa</label>
+                    <input 
+                      type="text" 
+                      required 
+                      className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" 
+                      value={editCaixa.name}
+                      onChange={e => setEditCaixa({...editCaixa, name: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Saldo Atual</label>
+                    <input 
+                      type="number" 
+                      required 
+                      step="0.01"
+                      className="w-full bg-zinc-100 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none text-zinc-500" 
+                      value={editCaixa.currentBalance}
+                      readOnly
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Responsável</label>
+                    <input 
+                      type="text" 
+                      required
+                      className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" 
+                      value={editCaixa.responsible || ''}
+                      onChange={e => setEditCaixa({...editCaixa, responsible: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Conta Contabilística</label>
+                    <input 
+                      type="text" 
+                      className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" 
+                      value={editCaixa.account || ''}
+                      onChange={e => setEditCaixa({...editCaixa, account: e.target.value})}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Observação</label>
+                  <textarea 
+                    className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] h-24" 
+                    value={editCaixa.obs || ''}
+                    onChange={e => setEditCaixa({...editCaixa, obs: e.target.value})}
+                  />
+                </div>
+                <div className="flex gap-4">
+                   <button type="button" onClick={() => setActiveSection('list')} className="flex-1 bg-zinc-100 text-zinc-600 py-3 text-[10px] font-black uppercase tracking-widest">Voltar</button>
+                   <button type="submit" className="flex-2 bg-[#003366] text-white py-3 px-8 text-[10px] font-black uppercase tracking-widest shadow-lg">Guardar Alterações</button>
+                </div>
+            </form>
+          </div>
+        )}
       </div>
 
       {/* Form Modal for New Caixa */}
@@ -670,7 +814,22 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
                     key={opt.id}
                     onClick={() => {
                       // Handle option click
-                      if (opt.id === 'transferencia') setActiveSection('transfer');
+                      if (opt.id === 'editar') {
+                        setEditCaixa(showOptionsMenu);
+                        setActiveSection('edit');
+                      }
+                      if (opt.id === 'pagar_salario') {
+                        setPaymentData({ caixaId: showOptionsMenu.id, amount: 0, description: 'Pagamento de Salário', type: 'salario' });
+                        setActiveSection('salary');
+                      }
+                      if (opt.id === 'pagar_imposto') {
+                        setPaymentData({ caixaId: showOptionsMenu.id, amount: 0, description: 'Pagamento de Imposto', type: 'imposto' });
+                        setActiveSection('tax');
+                      }
+                      if (opt.id === 'transferencia') {
+                        setTransferData({ ...transferData, from: showOptionsMenu.id });
+                        setActiveSection('transfer');
+                      }
                       if (opt.id === 'movimentos') {
                         setSelectedCaixaId(showOptionsMenu.id);
                         setActiveSection('movements');

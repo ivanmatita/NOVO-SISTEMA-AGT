@@ -17,9 +17,11 @@ const RetencaoPagarForm = ({ purchases, suppliers }: { purchases: Purchase[], su
       date: new Date(p.date).toLocaleDateString('pt-PT'),
       supplierName: supplier?.name || 'Desconhecido',
       nif: supplier?.nif || 'N/A',
+      docNo: p.purchase_number || `COMP-${p.id}`,
       base,
       rate: '6,5%',
-      value
+      value,
+      isAnulado: p.status === 'cancelled'
     };
   });
 
@@ -52,6 +54,7 @@ const RetencaoPagarForm = ({ purchases, suppliers }: { purchases: Purchase[], su
           <thead>
             <tr className="bg-zinc-100">
               <th className="p-2 text-left">Data</th>
+              <th className="p-2 text-left">Doc. Nº</th>
               <th className="p-2 text-left">Fornecedor</th>
               <th className="p-2 text-left">NIF</th>
               <th className="p-2 text-right">Base</th>
@@ -61,8 +64,9 @@ const RetencaoPagarForm = ({ purchases, suppliers }: { purchases: Purchase[], su
           </thead>
           <tbody>
             {retentions.map((r, idx) => (
-              <tr key={idx} className="border-b">
+              <tr key={idx} className={`border-b ${r.isAnulado ? 'bg-red-50' : ''}`}>
                 <td className="p-2">{r.date}</td>
+                <td className="p-2 font-bold">{r.docNo}</td>
                 <td className="p-2">{r.supplierName}</td>
                 <td className="p-2">{r.nif}</td>
                 <td className="p-2 text-right">{formatCurrency(r.base)}</td>

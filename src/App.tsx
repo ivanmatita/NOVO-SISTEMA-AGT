@@ -16,6 +16,7 @@ import {
 import { useAuth } from './contexts/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { 
+  FileSearch,
   Archive,
   LayoutDashboard, 
   Users, 
@@ -13047,7 +13048,8 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
         due_date: dueDate,
         items,
         document_type: documentType,
-        work_site_id: workSiteId,
+        work_site_id: workSiteId ? Number(workSiteId) : undefined,
+        work_site: workSites.find(ws => String(ws.id) === String(workSiteId))?.name,
         vat_withholding: parseFloat(vatWithholding),
         exchange_rate: parseFloat(exchangeRate),
         currency,
@@ -13377,6 +13379,20 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
                 onChange={(e) => setCounterValue(e.target.value)}
                 className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
               />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-600">Local de Trabalho <span className="text-red-500">*</span></label>
+              <select 
+                value={workSiteId} 
+                onChange={(e) => setWorkSiteId(e.target.value)}
+                required
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+              >
+                <option value="">Selecione o local</option>
+                {workSites.map(ws => (
+                  <option key={ws.id} value={ws.id}>{ws.name}</option>
+                ))}
+              </select>
             </div>
             <div className="space-y-2">
               <label className="text-xs font-bold text-zinc-600">Desconto global</label>
@@ -13795,144 +13811,119 @@ const PurchaseActionsModal = ({ purchase, onClose, onAction }: {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-zinc-900/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-2xl bg-white shadow-2xl overflow-hidden flex flex-col">
-        <div className="p-8 border-b border-zinc-100 flex justify-between items-center">
-          <div>
-            <h3 className="font-black text-[#003366] text-2xl uppercase tracking-tighter">Opções do Documento</h3>
-            <p className="text-zinc-400 text-[10px] font-black uppercase tracking-[0.2em] mt-1">
-              {purchase.document_type} {purchase.purchase_number} • {purchase.supplier_name}
-            </p>
+    <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm" onClick={onClose} />
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        className="relative w-full max-w-2xl bg-white shadow-2xl overflow-hidden flex flex-col"
+      >
+        <div className="p-6 border-b border-zinc-100 flex justify-between items-center bg-white">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-blue-100 flex items-center justify-center text-[#003366]">
+              <Search size={24} />
+            </div>
+            <div>
+              <h3 className="font-black text-[#003366] text-xl uppercase tracking-tighter">Opções do Documento</h3>
+              <p className="text-zinc-400 text-[10px] font-black uppercase tracking-widest mt-1">
+                {purchase.document_type} {purchase.purchase_number} • {purchase.supplier_name}
+              </p>
+            </div>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-zinc-100 transition-colors text-zinc-400">
-            <X size={28} />
+            <X size={24} />
           </button>
         </div>
         
-        <div className="p-8 space-y-6 bg-zinc-50/20">
-          <div className="grid grid-cols-2 gap-4">
-            <button onClick={() => handleAction('clone')} className="flex items-center gap-6 p-6 bg-white border border-zinc-100 hover:shadow-lg hover:border-[#003366]/20 transition-all group text-left">
-              <div className="w-14 h-14 bg-zinc-50 flex items-center justify-center group-hover:bg-blue-50">
-                 <Copy size={24} className="text-zinc-400 group-hover:text-[#003366]" />
-              </div>
-              <div>
-                <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">Clonar Documento</span>
-                <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-tighter">Duplicar c/ nova numeração</span>
-              </div>
-            </button>
-
-            <button onClick={() => handleAction('print')} className="flex items-center gap-6 p-6 bg-white border border-zinc-100 hover:shadow-lg hover:border-[#003366]/20 transition-all group text-left">
-              <div className="w-14 h-14 bg-red-50/50 flex items-center justify-center group-hover:bg-red-50">
-                 <FileText size={24} className="text-red-500" />
-              </div>
-              <div>
-                <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">Exportar PDF</span>
-                <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-tighter">Baixar formato a4 profissional</span>
-              </div>
-            </button>
-
-            <button onClick={() => handleAction('reports')} className="flex items-center gap-6 p-6 bg-white border border-zinc-100 hover:shadow-lg hover:border-[#003366]/20 transition-all group text-left">
-               <div className="w-14 h-14 bg-zinc-50 flex items-center justify-center group-hover:bg-blue-50">
-                  <BarChart3 size={24} className="text-zinc-400 group-hover:text-[#003366]" />
-               </div>
-               <div>
-                  <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">Relatórios do Doc</span>
-                  <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-tighter">Análise detalhada e cálculos</span>
-               </div>
-            </button>
-
-            <button onClick={() => handleAction('guia')} className="flex items-center gap-6 p-6 bg-white border border-zinc-100 hover:shadow-lg hover:border-[#003366]/20 transition-all group text-left">
-               <div className="w-14 h-14 bg-blue-50/50 flex items-center justify-center group-hover:bg-blue-100">
-                  <Truck size={24} className="text-[#003366]" />
-               </div>
-               <div>
-                  <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">Guia de Entrega</span>
-                  <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-tighter">Emitir guia para este doc</span>
-               </div>
-            </button>
-            <button onClick={() => handleAction('credit_note')} className="flex items-center gap-6 p-6 bg-white border border-zinc-100 hover:shadow-lg hover:border-red-600/20 transition-all group text-left">
-               <div className="w-14 h-14 bg-red-50/50 flex items-center justify-center group-hover:bg-red-50">
-                  <RefreshCw size={24} className="text-red-500" />
-               </div>
-               <div>
-                  <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">Nota de Crédito</span>
-                  <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-tighter">Saldo a favor do fornecedor</span>
-               </div>
-            </button>
-
-            <div className="grid grid-cols-2 gap-4">
-               <button onClick={() => handleAction('email')} className="flex flex-col items-center justify-center gap-2 p-4 bg-white border border-zinc-100 hover:bg-zinc-50 transition-all group">
-                  <Mail size={20} className="text-[#003366]" />
-                  <span className="text-[9px] font-black uppercase tracking-widest text-zinc-800">E-mail</span>
-               </button>
-               <button onClick={() => handleAction('whatsapp')} className="flex flex-col items-center justify-center gap-2 p-4 bg-white border border-zinc-100 hover:bg-emerald-50 transition-all group">
-                  <MessageCircle size={20} className="text-emerald-500" />
-                  <span className="text-[9px] font-black uppercase tracking-widest text-zinc-800">WhatsApp</span>
-               </button>
+        <div className="p-6 grid grid-cols-2 gap-3 bg-zinc-50/30 overflow-y-auto max-h-[70vh]">
+          {/* Main Actions */}
+          <button onClick={() => handleAction('clone')} className="flex items-center gap-4 p-4 bg-white border border-zinc-100 hover:shadow-md hover:border-blue-500/30 transition-all group text-left">
+            <div className="w-10 h-10 bg-blue-50 flex items-center justify-center text-blue-600">
+               <Copy size={20} />
             </div>
-          </div>
+            <div>
+              <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">Clonar Documento</span>
+              <span className="text-[9px] font-bold text-zinc-400 uppercase">Duplicar este registo</span>
+            </div>
+          </button>
 
-          <div className="bg-zinc-50 border border-zinc-200 p-6 flex items-center justify-around">
-             <div className="flex flex-col items-center gap-2 group cursor-pointer">
-                <div className="w-10 h-10 border border-zinc-200 bg-white flex items-center justify-center group-hover:border-[#003366]">
-                   <Printer size={18} className="text-zinc-400 group-hover:text-[#003366]" />
-                </div>
-                <span className="text-[10px] font-black text-zinc-500">A4</span>
-             </div>
-             <div className="flex flex-col items-center gap-2 group cursor-pointer">
-                <div className="w-10 h-10 border border-zinc-200 bg-white flex items-center justify-center group-hover:border-[#003366]">
-                   <Printer size={18} className="text-zinc-400 group-hover:text-[#003366]" />
-                </div>
-                <span className="text-[10px] font-black text-zinc-500">P24</span>
-             </div>
-             <div className="flex flex-col items-center gap-2 group cursor-pointer">
-                <div className="w-10 h-10 border border-zinc-200 bg-white flex items-center justify-center group-hover:border-[#003366]">
-                   <Printer size={18} className="text-zinc-400 group-hover:text-[#003366]" />
-                </div>
-                <span className="text-[10px] font-black text-zinc-500">P24-XL</span>
-             </div>
-             <div className="flex flex-col items-center gap-2 group cursor-pointer">
-                <div className="w-10 h-10 border border-zinc-200 bg-white flex items-center justify-center group-hover:border-[#003366]">
-                   <Printer size={18} className="text-zinc-400 group-hover:text-[#003366]" />
-                </div>
-                <span className="text-[10px] font-black text-zinc-500">P80</span>
-             </div>
-          </div>
+          <button onClick={() => handleAction('credit_note')} className="flex items-center gap-4 p-4 bg-white border border-zinc-100 hover:shadow-md hover:border-red-500/30 transition-all group text-left">
+            <div className="w-10 h-10 bg-red-50 flex items-center justify-center text-red-600">
+               <RefreshCw size={20} />
+            </div>
+            <div>
+              <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">Nota de Crédito</span>
+              <span className="text-[9px] font-bold text-zinc-400 uppercase">Anular/Retificar valor</span>
+            </div>
+          </button>
 
-          <div className="grid grid-cols-2 gap-4">
-             <button onClick={() => handleAction('receipt')} className="p-6 bg-white border border-zinc-100 flex items-center gap-6 hover:shadow-lg transition-all group text-left">
-                <div className="w-14 h-14 bg-emerald-50/50 flex items-center justify-center">
-                   <FileCheck size={28} className="text-emerald-500" />
-                </div>
-                <div>
-                   <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">Liquidar / Recibo</span>
-                   <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-tighter">Registar pagamento do doc</span>
-                </div>
-             </button>
-             <div className="space-y-3">
-                <button onClick={() => handleAction('guia')} className="w-full p-4 bg-white border border-zinc-100 flex items-center gap-4 hover:shadow-md transition-all">
-                   <Truck size={18} className="text-[#003366]" />
-                   <span className="text-[10px] font-black uppercase tracking-widest text-zinc-800">Guia de Entrega</span>
-                </button>
-                <button onClick={() => handleAction('credit_note')} className="w-full p-4 bg-white border border-zinc-100 flex items-center gap-4 hover:shadow-md transition-all">
-                   <RefreshCw size={18} className="text-red-500" />
-                   <span className="text-[10px] font-black uppercase tracking-widest text-zinc-800">Nota de Crédito</span>
-                </button>
-             </div>
-          </div>
+          <button onClick={() => handleAction('email')} className="flex items-center gap-4 p-4 bg-white border border-zinc-100 hover:shadow-md hover:border-blue-500/30 transition-all group text-left">
+            <div className="w-10 h-10 bg-zinc-50 flex items-center justify-center text-zinc-400 group-hover:text-blue-600">
+               <Mail size={20} />
+            </div>
+            <div>
+              <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">Enviar por Email</span>
+              <span className="text-[9px] font-bold text-zinc-400 uppercase">Enviar para fornecedor</span>
+            </div>
+          </button>
 
-          <button onClick={() => handleAction('delete_purchase')} className="w-full p-6 bg-red-50/30 border border-red-100 flex items-center gap-6 hover:bg-red-50 transition-all group">
-             <div className="w-14 h-14 border border-red-200 bg-white flex items-center justify-center group-hover:bg-red-600 group-hover:text-white transition-all">
-                <Trash2 size={24} className="text-red-600 group-hover:text-white" />
-             </div>
-             <div className="text-left">
-                <span className="block text-xs font-black uppercase tracking-wider text-red-700">Anular Documento</span>
-                <span className="text-[9px] font-bold text-red-400 uppercase tracking-tighter">Operação Irreversível</span>
-             </div>
+          <button onClick={() => handleAction('whatsapp')} className="flex items-center gap-4 p-4 bg-white border border-zinc-100 hover:shadow-md hover:border-emerald-500/30 transition-all group text-left">
+            <div className="w-10 h-10 bg-zinc-50 flex items-center justify-center text-zinc-400 group-hover:text-emerald-600">
+               <MessageCircle size={20} />
+            </div>
+            <div>
+              <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">Enviar por WhatsApp</span>
+              <span className="text-[9px] font-bold text-zinc-400 uppercase">Partilha instantânea</span>
+            </div>
+          </button>
+
+          <button onClick={() => handleAction('print')} className="flex items-center gap-4 p-4 bg-white border border-zinc-100 hover:shadow-md hover:border-orange-500/30 transition-all group text-left">
+            <div className="w-10 h-10 bg-orange-50 flex items-center justify-center text-orange-600">
+               <Printer size={20} />
+            </div>
+            <div>
+              <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">Imprimir (A4)</span>
+              <span className="text-[9px] font-bold text-zinc-400 uppercase">Abrir para impressão</span>
+            </div>
+          </button>
+
+          <button onClick={() => handleAction('receipt')} className="flex items-center gap-4 p-4 bg-white border border-zinc-100 hover:shadow-md hover:border-emerald-500/30 transition-all group text-left">
+            <div className="w-10 h-10 bg-emerald-50 flex items-center justify-center text-emerald-600">
+               <FileCheck size={20} />
+            </div>
+            <div>
+              <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">Liquidar / Recibo</span>
+              <span className="text-[9px] font-bold text-zinc-400 uppercase">Registar pagamento</span>
+            </div>
+          </button>
+
+          <button onClick={() => handleAction('reports')} className="flex items-center gap-4 p-4 bg-white border border-zinc-100 hover:shadow-md hover:border-blue-500/30 transition-all group text-left">
+            <div className="w-10 h-10 bg-zinc-50 flex items-center justify-center text-zinc-400 group-hover:text-blue-600">
+               <BarChart3 size={20} />
+            </div>
+            <div>
+              <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">Relatório do Doc</span>
+              <span className="text-[9px] font-bold text-zinc-400 uppercase">Análise de custos</span>
+            </div>
+          </button>
+
+          <button onClick={() => handleAction('delete_purchase')} className="flex items-center gap-4 p-4 bg-red-50/10 border border-red-50 hover:bg-red-50 hover:shadow-md transition-all group text-left">
+            <div className="w-10 h-10 bg-white border border-red-100 flex items-center justify-center text-red-600">
+               <Trash2 size={20} />
+            </div>
+            <div>
+              <span className="block text-xs font-black uppercase tracking-wider text-red-700">Apagar Documento</span>
+              <span className="text-[9px] font-bold text-red-300 uppercase">Remover do sistema</span>
+            </div>
           </button>
         </div>
-      </div>
+
+        <div className="p-6 bg-zinc-50 border-t border-zinc-100 text-center">
+            <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">
+              Software de Gestão • Versão Profissional
+            </p>
+        </div>
+      </motion.div>
     </div>
   );
 };
@@ -13948,6 +13939,7 @@ const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas 
   const [showHashModal, setShowHashModal] = useState<Purchase | null>(null);
   const [showFileModal, setShowFileModal] = useState<Purchase | null>(null);
   const [showSupplierModal, setShowSupplierModal] = useState(false);
+  const [showReportModal, setShowReportModal] = useState<Purchase | null>(null);
   const [completedReceipt, setCompletedReceipt] = useState<Purchase | null>(null);
 
   const fetchPurchases = async () => {
@@ -14103,31 +14095,34 @@ const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas 
               </thead>
               <tbody className="divide-y divide-zinc-100">
                 {purchases
+                  .filter(p => !['Pagamento', 'Recibo'].includes(p.document_type || ''))
                   .filter(p => 
                     (p.supplier_name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) || 
-                    (p.purchase_number || '').toLowerCase().includes((searchTerm || '').toLowerCase())
+                    (p.purchase_number || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+                    (p.codigo || '').toLowerCase().includes((searchTerm || '').toLowerCase())
                   )
                   .map((p, pIndex) => (
-                    <tr key={p.id || pIndex} className="hover:bg-zinc-50 transition-colors text-[11px] border-b border-zinc-50 group">
+                    <tr key={p.id || pIndex} className={`hover:bg-zinc-50 transition-colors text-[11px] border-b border-zinc-50 group ${p.status === 'cancelled' ? 'opacity-50' : ''}`}>
                       <td className="px-6 py-4">
                         <div className="font-bold text-zinc-900">{new Date(p.date).toLocaleDateString('pt-PT')}</div>
                         <div className="text-red-600 font-bold mt-1">{p.due_date ? new Date(p.due_date).toLocaleDateString('pt-PT') : '-'}</div>
                       </td>
                       <td className="px-6 py-4 border-r border-zinc-100 italic">
-                        <div className="font-black text-[#003366] uppercase whitespace-nowrap">
-                          {['Pagamento', 'Recibo'].includes(p.document_type || '') ? 'Recibo' : (p.document_type || 'NC')}
+                        <div className={`font-black uppercase whitespace-nowrap ${p.status === 'cancelled' ? 'text-red-600' : 'text-[#003366]'}`}>
+                          {p.document_type || 'Compra'}
+                          {p.status === 'cancelled' && ' (ANULADO)'}
                         </div>
                         <div className="text-zinc-500 font-bold mt-1">{p.invoice_number || '-'}</div>
                       </td>
-                      <td className="px-6 py-4 font-mono text-zinc-500">{p.codigo || '-'}</td>
-                      <td className="px-6 py-4 font-bold text-zinc-900">{p.supplier_name}</td>
+                      <td className="px-6 py-4 font-mono text-zinc-500 font-bold">{p.codigo || p.purchase_number || '-'}</td>
+                      <td className="px-6 py-4 font-bold text-zinc-900 uppercase">{p.supplier_name}</td>
                       <td className="px-6 py-4">
-                        <div className="text-zinc-600 uppercase font-bold">{p.work_site || '-'}</div>
+                        <div className="text-zinc-600 uppercase font-black">{p.work_site || p.work_site_id || '-'}</div>
                         <div className="text-zinc-400 font-mono text-[9px] uppercase mt-1">
-                          {p.cash_box ? 'CAIXA • ' + p.cash_box : (p.hash ? 'HASH • ' + p.hash.substring(0, 8) : '-')}
+                          {p.hash ? 'H • ' + p.hash.substring(0, 8) : '-'}
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-center text-zinc-600 font-medium">{p.moeda || 'AOA'}</td>
+                      <td className="px-6 py-4 text-center text-zinc-600 font-medium">{p.currency || 'AOA'}</td>
                       <td className="px-6 py-4 text-right font-black text-[#003366] text-sm">{formatCurrency(p.total)}</td>
                       <td className="px-6 py-4 text-center">
                         <button 
@@ -14138,22 +14133,20 @@ const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas 
                         </button>
                       </td>
                       <td className="px-6 py-4 text-right pr-8">
-                        <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => window.print()} className="p-2 text-zinc-400 hover:text-[#003366] transition-colors"><Printer size={16} /></button>
-                          <button 
-                            onClick={() => setSelectedPurchase(p)}
-                            className="p-2 text-zinc-400 hover:text-[#003366] transition-colors"
-                          >
-                            <MoreHorizontal size={18} />
-                          </button>
-                        </div>
+                        <button 
+                          onClick={() => setSelectedPurchase(p)}
+                          className="bg-blue-600 text-white p-2 shadow-lg hover:bg-blue-700 active:scale-95 transition-all"
+                          title="Opções do Documento"
+                        >
+                          <MoreHorizontal size={18} />
+                        </button>
                       </td>
                     </tr>
                   ))}
               </tbody>
             </table>
-            {purchases.length === 0 && (
-              <div className="p-12 text-center text-zinc-400 text-sm italic">Nenhuma compra registada.</div>
+            {purchases.filter(p => !['Pagamento', 'Recibo'].includes(p.document_type || '')).length === 0 && (
+              <div className="p-12 text-center text-zinc-400 text-sm italic uppercase font-black tracking-widest bg-zinc-50/20">Nenhuma compra registada no sistema.</div>
             )}
           </div>
         </>
@@ -14429,12 +14422,12 @@ const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas 
               {suppliers.map((supplier, idx) => {
                 const supplierPurchases = purchases.filter(p => 
                    p.supplier_name === supplier.name && 
-                   p.document_type === 'Fatura de Compra' &&
+                   (['Fatura de Compra', 'Compra'].includes(p.document_type || '')) &&
                    p.status !== 'cancelled' && 
                    p.total > 0 &&
                    !purchases.find(receipt => 
                       (['Pagamento', 'Recibo'].includes(receipt.document_type || '')) && 
-                      receipt.reference_purchase_number === p.purchase_number
+                      (receipt.reference_purchase_number === p.purchase_number || receipt.reference_document === p.purchase_number)
                    )
                 );
                 if (supplierPurchases.length === 0) return null;
@@ -14741,6 +14734,9 @@ const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas 
              } else if (action === 'change_hash') {
                 setShowHashModal(p);
                 setSelectedPurchase(null);
+             } else if (action === 'reports') {
+                setShowReportModal(p);
+                setSelectedPurchase(null);
              } else if (action === 'whatsapp') {
                 const text = `Documento de Compra ${p.purchase_number}\nFornecedor: ${p.supplier_name}\nData: ${p.date}\nTotal: ${formatCurrency(p.total)}`;
                 window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
@@ -14886,6 +14882,13 @@ const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas 
             </div>
           </motion.div>
         </div>
+      )}
+
+      {showReportModal && (
+        <DocumentReportModal 
+          document={showReportModal as any} 
+          onClose={() => setShowReportModal(null)} 
+        />
       )}
     </div>
   );

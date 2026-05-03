@@ -723,6 +723,7 @@ async function startServer() {
   app.post("/api/system-users", (req, res) => {
     const newUser = { ...req.body, id: generateId(), created_at: new Date().toISOString() };
     systemUsers.push(newUser);
+    saveData();
     res.json(newUser);
   });
 
@@ -731,6 +732,7 @@ async function startServer() {
   app.post("/api/archives", (req, res) => {
     const newFile = { ...req.body, id: generateId(), created_at: new Date().toISOString() };
     archives.push(newFile);
+    saveData();
     res.json(newFile);
   });
 
@@ -739,6 +741,7 @@ async function startServer() {
   app.post("/api/fleet", (req, res) => {
     const newVehicle = { ...req.body, id: generateId() };
     fleetVehicles.push(newVehicle);
+    saveData();
     res.json(newVehicle);
   });
 
@@ -747,6 +750,7 @@ async function startServer() {
   app.post("/api/projects/tasks", (req, res) => {
     const newTask = { ...req.body, id: generateId() };
     projectTasks.push(newTask);
+    saveData();
     res.json(newTask);
   });
 
@@ -755,12 +759,14 @@ async function startServer() {
   app.post("/api/caixas", (req, res) => {
     const newCaixa = { ...req.body, id: generateId() };
     caixas.push(newCaixa);
+    saveData();
     res.json(newCaixa);
   });
   app.put("/api/caixas/:id", (req, res) => {
-    const index = caixas.findIndex(c => c.id === req.params.id);
+    const index = caixas.findIndex(c => String(c.id) === String(req.params.id));
     if (index !== -1) {
       caixas[index] = { ...caixas[index], ...req.body };
+      saveData();
       res.json(caixas[index]);
     } else res.status(404).json({ error: "Caixa not found" });
   });
@@ -770,6 +776,7 @@ async function startServer() {
   app.post("/api/work-sites", (req, res) => {
     const newSite = { ...req.body, id: generateId() };
     workSites.push(newSite);
+    saveData();
     res.json(newSite);
   });
   app.put("/api/work-sites/:id", (req, res) => {
@@ -777,6 +784,7 @@ async function startServer() {
     const index = workSites.findIndex(w => w.id === id);
     if (index !== -1) {
       workSites[index] = { ...workSites[index], ...req.body, id };
+      saveData();
       res.json(workSites[index]);
     } else {
       res.status(404).json({ error: "Work Site not found" });
@@ -802,6 +810,7 @@ async function startServer() {
   app.post("/api/transactions", (req, res) => {
     const newTrans = { ...req.body, id: generateId(), date: new Date().toISOString() };
     transactions.push(newTrans);
+    saveData();
     res.json(newTrans);
   });
 
@@ -810,6 +819,7 @@ async function startServer() {
   app.post("/api/suppliers", (req, res) => {
     const newSupplier = { ...req.body, id: generateId() };
     suppliers.push(newSupplier);
+    saveData();
     res.json(newSupplier);
   });
   app.get("/api/purchases", (req, res) => res.json(purchases));

@@ -13038,6 +13038,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
   initialData?: Purchase | null,
   fixedDocumentType?: string
 }) => {
+  const { user } = useAuth();
   const [showSupplierModal, setShowSupplierModal] = useState(false);
   const isCertified = false;
   const [supplierId, setSupplierId] = useState<number | ''>(initialData?.supplier_id || '');
@@ -14241,7 +14242,7 @@ const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas,
                         <div className="text-zinc-500 font-bold mt-1">{p.invoice_number || '-'}</div>
                       </td>
                       <td className="px-6 py-4 font-mono text-[#003366] font-black">{p.purchase_number || p.codigo || '-'}</td>
-                      <td className="px-6 py-4 font-black text-zinc-900 uppercase">{p.supplier_name}</td>
+                      <td className="px-6 py-4 font-black text-zinc-900 uppercase">{p.supplier_name || p.client_name || '-'}</td>
                       <td className="px-6 py-4">
                         <div className="text-zinc-600 uppercase font-black">{p.work_site || p.work_site_name || '-'}</div>
                         <div className="text-zinc-400 font-mono text-[9px] uppercase mt-1">
@@ -14321,7 +14322,7 @@ const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas,
                   .filter(p => {
                     const linkedReceipt = purchases.find((pur: any) => 
                       (['Pagamento', 'Recibo', 'Recibo de Pagamento'].includes(pur.document_type || '')) && 
-                      (pur.reference_purchase_number === p.purchase_number)
+                      (pur.reference_purchase_number === p.purchase_number || pur.reference_document === p.purchase_number)
                     );
                     return !linkedReceipt;
                   })

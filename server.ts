@@ -830,7 +830,11 @@ async function startServer() {
     saveData();
     res.json(newSupplier);
   });
-  app.get("/api/purchases", (req, res) => res.json(purchases));
+  app.get("/api/purchases", (req, res) => {
+    const allPurchases = [...purchases];
+    const receiptsAsPurchases = issuedDocuments.filter((d: any) => d.document_type === 'Recibo');
+    res.json([...allPurchases, ...receiptsAsPurchases]);
+  });
   app.put("/api/purchases/:id", (req, res) => {
     const id = Number(req.params.id);
     const index = purchases.findIndex((p: any) => p.id === id);

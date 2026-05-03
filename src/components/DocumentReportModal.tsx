@@ -21,6 +21,10 @@ export const DocumentReportModal: React.FC<DocumentReportModalProps> = ({ docume
 
   const totalValue = (document.total || document.counter_value || 0) + (document.vat_amount || 0) - (document.global_discount || 0);
 
+  const displayName = document.supplier_name || document.client_name || 'N/A';
+  const displayId = document.supplier_id || document.client_id || document.cliente_id || 'N/A';
+  const displayAddress = document.supplier_address || document.client_address || 'Endereço não informado';
+
   const handlePrint = () => window.print();
   
   const handleDownloadPDF = () => {
@@ -35,7 +39,7 @@ export const DocumentReportModal: React.FC<DocumentReportModalProps> = ({ docume
     doc.text(`Documento: ${document.numero_documento || document.invoice_number}`, 10, 45);
     doc.text(`Tipo: ${document.tipo_documento || document.document_type}`, 10, 50);
     doc.text(`Data Emissão: ${new Date(document.date || document.data_emissao).toLocaleDateString()}`, 10, 55);
-    doc.text(`Cliente: ${document.client_name}`, 10, 60);
+    doc.text(`${document.supplier_name ? 'Fornecedor' : 'Cliente'}: ${displayName}`, 10, 60);
     doc.text(`Estado: ${document.status || document.estado_documento || 'Ativo'}`, 10, 65);
 
     const itemsData = (document.items || []).map(item => [
@@ -118,16 +122,16 @@ export const DocumentReportModal: React.FC<DocumentReportModalProps> = ({ docume
                   </div>
                 </div>
 
-                {/* Cliente */}
+                {/* Cliente / Fornecedor */}
                 <div className="space-y-4">
                   <div className="flex items-center gap-2 mb-1">
                     <User size={14} className="text-[#003366]" />
-                    <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Cliente / Destinatário</p>
+                    <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">{document.supplier_name ? 'Fornecedor' : 'Cliente'} / Destinatário</p>
                   </div>
                   <div>
-                    <p className="font-black text-zinc-900 uppercase text-sm leading-tight">{document.client_name}</p>
-                    <p className="text-[11px] text-zinc-500 font-bold mt-1">ID Cliente: {document.cliente_id || document.client_id}</p>
-                    <p className="text-[11px] text-zinc-500 font-bold truncate">Morada: {document.client_address || 'N/A'}</p>
+                    <p className="font-black text-zinc-900 uppercase text-sm leading-tight">{displayName}</p>
+                    <p className="text-[11px] text-zinc-500 font-bold mt-1">ID: {displayId}</p>
+                    <p className="text-[11px] text-zinc-500 font-bold truncate">Morada: {displayAddress}</p>
                   </div>
                 </div>
 

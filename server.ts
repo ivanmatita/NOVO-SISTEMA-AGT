@@ -799,9 +799,17 @@ async function startServer() {
     );
     res.json(siteMovements);
   });
+  app.get("/api/work-site-movements", (req, res) => {
+    const { company_id } = req.query;
+    const siteMovements = workSiteMovements.filter(m => 
+      !company_id || m.company_id?.toString() === company_id.toString()
+    );
+    res.json(siteMovements);
+  });
   app.post("/api/work-sites/:id/movements", (req, res) => {
     const movement = { ...req.body, id: generateId(), created_at: new Date().toISOString() };
     workSiteMovements.push(movement);
+    saveData();
     res.json(movement);
   });
 
@@ -842,14 +850,43 @@ async function startServer() {
   });
   app.post("/api/purchases", (req, res) => {
     const newPurchaseId = generateId();
-    const newPurchase = { ...req.body, id: newPurchaseId, date: new Date().toISOString(), status: 'completed' };
+    
+    // Automatic Sequential Numbering
+    const docType = req.body.document_type || 'Compra';
+    const sameTypeDocs = purchases.filter((p: any) => p.document_type === docType);
+    const year = new Date().getFullYear();
+    const nextNum = sameTypeDocs.length + 1;
+    
+    // Get prefix based on document type
+    let prefix = 'CMP';
+    if (docType === 'Fatura de Compra') prefix = 'FC';
+    else if (docType === 'Recibo' || docType === 'Pagamento' || docType === 'Recibo de Pagamento') prefix = 'RC';
+    else if (docType === 'Nota de Crédito de Fornecedor') prefix = 'NC';
+    else if (docType === 'Venda a Dinheiro') prefix = 'VD';
+    
+    const purchaseNumber = req.body.purchase_number || `${prefix}-${year}/${nextNum.toString().padStart(3, '0')}`;
+
+    // Get Work Site name if not provided
+    let workSiteName = req.body.work_site;
+    if (!workSiteName && req.body.work_site_id) {
+      const ws = workSites.find(w => Number(w.id) === Number(req.body.work_site_id));
+      if (ws) workSiteName = ws.name || ws.title;
+    }
+
+    const newPurchase: any = { 
+      ...req.body, 
+      id: newPurchaseId, 
+      purchase_number: purchaseNumber,
+      work_site: workSiteName,
+      date: req.body.date || new Date().toISOString(), 
+      status: 'completed',
+      created_at: new Date().toISOString()
+    };
     purchases.push(newPurchase);
     
-    // Record finance movement (Accounting Cost) if it's a payment or has payment info
+    // Record finance movement (Accounting Cost)
     const amount = Number(newPurchase.total || 0);
-    const isPayment = newPurchase.document_type === 'Fatura Recibo de Compra' || 
-                      newPurchase.document_type === 'Pagamento' || 
-                      newPurchase.document_type === 'Recibo';
+    const isPayment = ['Fatura Recibo de Compra', 'Pagamento', 'Recibo', 'Recibo de Pagamento', 'Venda a Dinheiro', 'Fatura Recibo'].includes(newPurchase.document_type);
     
     // Always record as a transaction for accounting
     transactions.push({
@@ -858,10 +895,11 @@ async function startServer() {
       category: 'Compras',
       amount: amount,
       moeda: newPurchase.moeda || newPurchase.currency || 'AOA',
-      description: `${newPurchase.document_type || 'Compra'} Ref: ${newPurchase.invoice_number || 'N/A'} - Fornecedor: ${newPurchase.supplier_name || 'N/A'}`,
-      date: new Date().toISOString(),
+      description: `${newPurchase.document_type || 'Compra'} Ref: ${newPurchase.purchase_number} - Fornecedor: ${newPurchase.supplier_name || 'N/A'}`,
+      date: newPurchase.date || new Date().toISOString(),
       reference_id: newPurchase.id.toString(),
-      work_site_id: newPurchase.work_site_id
+      work_site_id: newPurchase.work_site_id,
+      company_id: newPurchase.company_id || '1'
     });
 
     // If it's a cash transaction, record in Caixa
@@ -876,48 +914,55 @@ async function startServer() {
           amount: amount,
           description: `Pagamento Compra: ${newPurchase.purchase_number} (${newPurchase.supplier_name})`,
           date: new Date().toISOString(),
-          user_id: '1'
+          user_id: '1',
+          company_id: newPurchase.company_id || '1'
         };
         caixaMovements.push(movement);
         caixa.balance = (caixa.balance || 0) - amount;
       }
     }
+    
     // Update Work Site Movements if applicable 
-    if (newPurchase.work_site_id) {
-      workSiteMovements.push({
-        id: generateId(),
-        work_site_id: newPurchase.work_site_id,
-        date: new Date().toISOString(),
-        doc_no: newPurchase.invoice_number || `COMP-${newPurchase.id}`,
-        company: newPurchase.supplier_name,
-        description: `Matérias Primas / Entregas - ${newPurchase.invoice_number}`,
-        debit: amount,
-        credit: 0,
-        balance: 0,
-        moeda: newPurchase.moeda || newPurchase.currency || 'AOA'
-      });
+    if (newPurchase.work_site_id || newPurchase.work_site) {
+      const wsId = newPurchase.work_site_id || (workSites.find(ws => ws.name === newPurchase.work_site)?.id);
+      if (wsId) {
+        workSiteMovements.push({
+          id: generateId(),
+          work_site_id: String(wsId),
+          company_id: newPurchase.company_id || '1',
+          date: newPurchase.date || new Date().toISOString(),
+          created_at: new Date().toISOString(),
+          doc_no: newPurchase.purchase_number,
+          company: newPurchase.supplier_name,
+          description: `Material / Encargos - ${newPurchase.document_type}`,
+          debit: amount,
+          credit: 0,
+          balance: 0,
+          moeda: newPurchase.moeda || newPurchase.currency || 'AOA'
+        });
+      }
     }
 
     // Record stock movements for each item
     if (newPurchase.items && Array.isArray(newPurchase.items)) {
       newPurchase.items.forEach((item: any) => {
         if (item.product_id) {
-          const product = products.find(p => p.id === Number(item.product_id));
+          const product = products.find(p => Number(p.id) === Number(item.product_id));
           if (product) {
             // Create stock movement
             stockMovements.push({
               id: generateId(),
               product_id: product.id,
               type: 'entry',
-              quantity: item.quantity,
-              unit_price: item.unit_price,
+              quantity: Number(item.quantity),
+              unit_price: Number(item.unit_price),
               warehouse_id: item.warehouse_id || product.warehouse_id,
-              description: `Compra Ref: ${newPurchase.purchase_number || newPurchase.id}`,
+              description: `Compra Ref: ${newPurchase.purchase_number}`,
               created_at: new Date().toISOString(),
-              company_id: '1' // Assuming default company
+              company_id: newPurchase.company_id || '1'
             });
             // Update product stock
-            product.stock_quantity = (product.stock_quantity || 0) + item.quantity;
+            product.stock_quantity = (Number(product.stock_quantity) || 0) + Number(item.quantity);
           }
         }
       });

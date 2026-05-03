@@ -43,6 +43,7 @@ import {
   Maximize,
   Filter,
   RefreshCw,
+  Layout,
   UserPlus,
   FilePlus,
   FileText,
@@ -8568,77 +8569,6 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
               </div>
             </div>
 
-            <div>
-              <h3 className="text-sm font-bold text-[#003366] uppercase tracking-wider mb-4 border-b border-zinc-200 pb-2">Identidade Visual (Logotipo, Marca d'água e Rodapé)</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="space-y-4 border p-4 bg-white shadow-sm">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">Logotipo do Sistema</label>
-                  {formData.logo_url && (
-                    <div className="flex justify-center mb-2 bg-zinc-50 p-4 border border-dashed border-zinc-200">
-                      <img src={formData.logo_url} alt="Preview Logo" style={{ height: `${formData.logo_size}px` }} className="object-contain transition-all" />
-                    </div>
-                  )}
-                  <div className="flex flex-col gap-3">
-                    <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, 'logo_url')} className="text-xs" />
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-[10px] text-zinc-400 font-bold uppercase">
-                        <span>Ajustar Tamanho</span>
-                        <span>{formData.logo_size}px</span>
-                      </div>
-                      <input type="range" name="logo_size" min="20" max="300" value={formData.logo_size} onChange={handleChange} className="w-full" />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-4 border p-4 bg-white shadow-sm">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">Marca d'água (Documentos)</label>
-                  {formData.watermark_url && (
-                    <div className="flex justify-center mb-2 bg-zinc-50 p-4 border border-dashed border-zinc-200">
-                      <img src={formData.watermark_url} alt="Preview Watermark" style={{ height: `${formData.watermark_size}px` }} className="object-contain opacity-50" />
-                    </div>
-                  )}
-                  <div className="flex flex-col gap-3">
-                    <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, 'watermark_url')} className="text-xs" />
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-[10px] text-zinc-400 font-bold uppercase">
-                        <span>Ajustar Tamanho</span>
-                        <span>{formData.watermark_size}px</span>
-                      </div>
-                      <input type="range" name="watermark_size" min="50" max="600" value={formData.watermark_size} onChange={handleChange} className="w-full" />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-4 border p-4 bg-white shadow-sm md:col-span-2">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">Logotipo/Imagem do Rodapé</label>
-                  {formData.footer_image_url && formData.footer_image_url.startsWith('data:image') && (
-                    <div className="flex justify-center mb-2 bg-zinc-50 p-4 border border-dashed border-zinc-200">
-                      <img src={formData.footer_image_url} alt="Preview Footer" style={{ height: `${formData.footer_size}px` }} className="object-contain" />
-                    </div>
-                  )}
-                  <div className="flex flex-col gap-3">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-[9px] font-bold text-zinc-400 uppercase mb-1">Carregar Imagem para o Rodapé</p>
-                        <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, 'footer_image_url')} className="text-xs" />
-                      </div>
-                      <div>
-                        <p className="text-[9px] font-bold text-zinc-400 uppercase mb-1">Texto do Rodapé (Alternativo)</p>
-                        <input type="text" name="footer_image_url" value={formData.footer_image_url.startsWith('data:image') ? '' : formData.footer_image_url} onChange={handleChange} placeholder="Ex: Processado por computador" className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
-                      </div>
-                    </div>
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-[10px] text-zinc-400 font-bold uppercase">
-                        <span>Ajustar Tamanho da Imagem</span>
-                        <span>{formData.footer_size}px</span>
-                      </div>
-                      <input type="range" name="footer_size" min="20" max="200" value={formData.footer_size} onChange={handleChange} className="w-full" />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
           </form>
         </div>
 
@@ -8653,11 +8583,19 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
   );
 };
 
-const AlertsManagement = ({ alerts, setAlerts }: { alerts: any[], setAlerts: (a: any[]) => void }) => {
+const AlertsManagement = ({ alerts, setAlerts, onEdit, onNew }: { alerts: any[], setAlerts: (a: any[]) => void, onEdit: (alert: any) => void, onNew?: () => void }) => {
   return (
     <div className="bg-white border border-zinc-200 p-8">
       <div className="flex justify-between items-center mb-6">
         <h3 className="text-xl font-bold text-[#003366] tracking-tight">Gestão de Alertas</h3>
+        {onNew && (
+          <button 
+            onClick={onNew}
+            className="bg-[#003366] text-white px-4 py-2 text-xs font-bold uppercase tracking-widest hover:bg-[#002244] transition-all flex items-center gap-2"
+          >
+            <Plus size={14} /> Novo Alerta
+          </button>
+        )}
       </div>
       
       <table className="w-full text-left border-collapse">
@@ -8685,7 +8623,12 @@ const AlertsManagement = ({ alerts, setAlerts }: { alerts: any[], setAlerts: (a:
                 <td className="px-4 py-3 text-zinc-500">{new Date(a.endDate).toLocaleDateString()}</td>
                 <td className="px-4 py-3 text-zinc-500">{a.advanceTime}</td>
                 <td className="px-4 py-3 text-right space-x-2">
-                  <button className="text-blue-600 hover:text-blue-800 text-xs font-bold uppercase tracking-widest"><Edit size={14} className="inline mr-1"/>Editar</button>
+                  <button 
+                    onClick={() => onEdit(a)}
+                    className="text-blue-600 hover:text-blue-800 text-xs font-bold uppercase tracking-widest"
+                  >
+                    <Edit size={14} className="inline mr-1"/>Editar
+                  </button>
                   <button className="text-zinc-600 hover:text-zinc-800 text-xs font-bold uppercase tracking-widest"><LinkIcon size={14} className="inline mr-1"/>Associar</button>
                 </td>
               </tr>
@@ -8697,7 +8640,176 @@ const AlertsManagement = ({ alerts, setAlerts }: { alerts: any[], setAlerts: (a:
   );
 };
 
-const SettingsModule = ({ companyData, onRefreshData, alerts, setAlerts }: { companyData: any, onRefreshData: () => void, alerts: any[], setAlerts: (a: any[]) => void }) => {
+const VisualIdentityModule = ({ companyData, onRefreshData }: { companyData: any, onRefreshData: () => void }) => {
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    logo_url: companyData?.logo_url || companyData?.logo || '',
+    logo_size: companyData?.logo_size || 100,
+    watermark_url: companyData?.watermark_url || companyData?.marca_agua || '',
+    watermark_size: companyData?.watermark_size || 100,
+    footer_image_url: companyData?.footer_image_url || companyData?.footer || '',
+    footer_size: companyData?.footer_size || 100
+  });
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, field: string) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFormData(prev => ({ ...prev, [field]: reader.result as string }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value, type } = e.target;
+    setFormData({ ...formData, [name]: type === 'range' ? Number(value) : value });
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const res = await fetchWithAuth(`/api/company/${user?.company_id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
+      if (res.ok) {
+        alert('Identidade visual atualizada com sucesso!');
+        onRefreshData();
+      } else {
+        const error = await res.text();
+        alert('Erro ao atualizar: ' + error);
+      }
+    } catch (error) {
+      console.error('Error saving visual identity:', error);
+      alert('Erro ao guardar alterações.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h3 className="text-xl font-bold text-[#003366] uppercase tracking-tight">Identidade Visual</h3>
+          <p className="text-zinc-500 text-xs">Logotipo, Marca d'água e Rodapé para documentos oficiais</p>
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="space-y-4 border border-zinc-200 p-6 bg-white shadow-sm hover:shadow-md transition-all">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-8 h-8 bg-zinc-50 flex items-center justify-center text-[#003366]">
+                <Image size={18} />
+              </div>
+              <label className="text-sm font-bold text-[#003366] uppercase tracking-wider">Logotipo do Sistema</label>
+            </div>
+            {formData.logo_url && (
+              <div className="flex justify-center mb-4 bg-zinc-50 p-6 border border-dashed border-zinc-200 min-h-[150px] items-center">
+                <img src={formData.logo_url} alt="Preview Logo" style={{ height: `${formData.logo_size}px` }} className="object-contain transition-all" />
+              </div>
+            )}
+            <div className="space-y-4">
+              <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, 'logo_url')} className="block w-full text-xs text-zinc-500 file:mr-4 file:py-2 file:px-4 file:rounded-none file:border-0 file:text-[10px] file:font-black file:uppercase file:bg-[#003366] file:text-white hover:file:bg-[#002244]" />
+              <div className="space-y-2 bg-zinc-50 p-3 border border-zinc-100 mt-2">
+                <div className="flex justify-between text-[10px] text-zinc-400 font-bold uppercase tracking-widest">
+                  <span>Ajustar Escala</span>
+                  <span className="text-[#003366]">{formData.logo_size}px</span>
+                </div>
+                <input type="range" name="logo_size" min="20" max="300" value={formData.logo_size} onChange={handleChange} className="w-full h-1.5 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-[#003366]" />
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4 border border-zinc-200 p-6 bg-white shadow-sm hover:shadow-md transition-all">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-8 h-8 bg-zinc-50 flex items-center justify-center text-[#003366]">
+                <RefreshCw size={18} />
+              </div>
+              <label className="text-sm font-bold text-[#003366] uppercase tracking-wider">Marca d'água</label>
+            </div>
+            {formData.watermark_url && (
+              <div className="flex justify-center mb-4 bg-zinc-50 p-6 border border-dashed border-zinc-200 min-h-[150px] items-center">
+                <img src={formData.watermark_url} alt="Preview Watermark" style={{ height: `${formData.watermark_size}px` }} className="object-contain opacity-30 grayscale transition-all" />
+              </div>
+            )}
+            <div className="space-y-4">
+              <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, 'watermark_url')} className="block w-full text-xs text-zinc-500 file:mr-4 file:py-2 file:px-4 file:rounded-none file:border-0 file:text-[10px] file:font-black file:uppercase file:bg-[#003366] file:text-white hover:file:bg-[#002244]" />
+              <div className="space-y-2 bg-zinc-50 p-3 border border-zinc-100 mt-2">
+                <div className="flex justify-between text-[10px] text-zinc-400 font-bold uppercase tracking-widest">
+                  <span>Ajustar Intensidade/Escala</span>
+                  <span className="text-[#003366]">{formData.watermark_size}px</span>
+                </div>
+                <input type="range" name="watermark_size" min="50" max="600" value={formData.watermark_size} onChange={handleChange} className="w-full h-1.5 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-[#003366]" />
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4 border border-zinc-200 p-6 bg-white shadow-sm hover:shadow-md transition-all md:col-span-2">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-8 h-8 bg-zinc-50 flex items-center justify-center text-[#003366]">
+                <Layout size={18} />
+              </div>
+              <label className="text-sm font-bold text-[#003366] uppercase tracking-wider">Rodapé Personalizado</label>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="space-y-4">
+                {formData.footer_image_url && formData.footer_image_url.startsWith('data:image') ? (
+                  <div className="flex justify-center mb-2 bg-zinc-50 p-4 border border-dashed border-zinc-200 h-32 items-center">
+                    <img src={formData.footer_image_url} alt="Preview Footer" style={{ height: `${formData.footer_size}px` }} className="object-contain" />
+                  </div>
+                ) : (
+                  <div className="bg-zinc-50 p-4 border border-zinc-100 h-32 flex items-center justify-center text-zinc-400 italic text-xs">
+                    {formData.footer_image_url || 'Nenhuma imagem ou texto configurado'}
+                  </div>
+                )}
+                <div className="space-y-3">
+                   <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Upload de Imagem</p>
+                   <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, 'footer_image_url')} className="block w-full text-xs text-zinc-500 file:mr-4 file:py-2 file:px-4 file:rounded-none file:border-0 file:text-[10px] file:font-black file:uppercase file:bg-zinc-200 file:text-zinc-700 hover:file:bg-zinc-300" />
+                </div>
+              </div>
+              
+              <div className="space-y-4">
+                 <div className="space-y-2">
+                    <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Texto Alternativo do Rodapé</p>
+                    <input 
+                      type="text" 
+                      name="footer_image_url" 
+                      value={formData.footer_image_url.startsWith('data:image') ? '' : formData.footer_image_url} 
+                      onChange={handleChange} 
+                      placeholder="Ex: Processado por computador..." 
+                      className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] font-medium" 
+                    />
+                 </div>
+                 <div className="space-y-2 bg-zinc-50 p-4 border border-zinc-100">
+                    <div className="flex justify-between text-[10px] text-zinc-400 font-bold uppercase tracking-widest mb-1">
+                      <span>Ajustar Rodapé</span>
+                      <span className="text-[#003366]">{formData.footer_size}px</span>
+                    </div>
+                    <input type="range" name="footer_size" min="20" max="200" value={formData.footer_size} onChange={handleChange} className="w-full h-1.5 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-[#003366]" />
+                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end pt-6">
+           <button type="submit" disabled={loading} className="bg-[#003366] text-white px-10 py-3 font-black text-xs uppercase tracking-[0.2em] hover:bg-[#002244] transition-all flex items-center gap-3 shadow-xl shadow-blue-900/10 active:scale-95 disabled:opacity-50">
+             {loading ? 'A Guardar...' : <><Save size={18} /> Guardar Configurações Gráficas</>}
+           </button>
+        </div>
+      </form>
+    </div>
+  );
+};
+
+const SettingsModule = ({ companyData, onRefreshData, alerts, setAlerts, onEditAlert, onNewAlert }: { companyData: any, onRefreshData: () => void, alerts: any[], setAlerts: (a: any[]) => void, onEditAlert: (alert: any) => void, onNewAlert: () => void }) => {
   const [activeTab, setActiveTab] = useState('geral');
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -8714,6 +8826,12 @@ const SettingsModule = ({ companyData, onRefreshData, alerts, setAlerts }: { com
           className={`pb-2 text-sm font-bold ${activeTab === 'geral' ? 'text-[#003366] border-b-2 border-[#003366]' : 'text-zinc-500 hover:text-zinc-800'}`}
         >
           Geral
+        </button>
+        <button 
+          onClick={() => setActiveTab('graficos')}
+          className={`pb-2 text-sm font-bold ${activeTab === 'graficos' ? 'text-[#003366] border-b-2 border-[#003366]' : 'text-zinc-500 hover:text-zinc-800'}`}
+        >
+          Configurações Gráficas
         </button>
         <button 
           onClick={() => setActiveTab('alertas')}
@@ -8756,16 +8874,6 @@ const SettingsModule = ({ companyData, onRefreshData, alerts, setAlerts }: { com
              <table className="w-full text-left text-sm">
                 <tbody className="divide-y divide-zinc-200">
                    <tr className="hover:bg-zinc-50">
-                      <th className="px-6 py-4 text-zinc-500 font-medium w-1/3 bg-zinc-50/50 border-r border-zinc-100">Logótipo</th>
-                      <td className="px-6 py-4">
-                        {companyData?.logo_url || companyData?.logo ? (
-                          <img src={companyData.logo_url || companyData.logo} alt="Logo" className="h-12 object-contain" referrerPolicy="no-referrer" />
-                        ) : (
-                          <span className="text-zinc-400 italic text-xs">Sem logótipo</span>
-                        )}
-                      </td>
-                   </tr>
-                   <tr className="hover:bg-zinc-50">
                       <th className="px-6 py-4 text-zinc-500 font-medium bg-zinc-50/50 border-r border-zinc-100">Designação Social</th>
                       <td className="px-6 py-4 font-bold text-[#003366]">{companyData?.name || companyData?.nome_empresa}</td>
                    </tr>
@@ -8802,7 +8910,14 @@ const SettingsModule = ({ companyData, onRefreshData, alerts, setAlerts }: { com
         </div>
       )}
       
-      {activeTab === 'alertas' && <AlertsManagement alerts={alerts} setAlerts={setAlerts} />}
+      {activeTab === 'graficos' && (
+        <VisualIdentityModule 
+          companyData={companyData} 
+          onRefreshData={onRefreshData} 
+        />
+      )}
+      
+      {activeTab === 'alertas' && <AlertsManagement alerts={alerts} setAlerts={setAlerts} onEdit={onEditAlert} onNew={onNewAlert} />}
       {activeTab === 'metrica' && <MetricsModule />}
       {activeTab === 'utilizadores' && <UsersSettings />}
     </div>
@@ -13018,6 +13133,13 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
     e.preventDefault();
     if (items.length === 0) return;
 
+    // Validate warehouse for all product items
+    const missingWarehouse = items.find(i => i.tipo_artigo === 'produto' && !i.warehouse_id && (documentType === 'Compra' || documentType === 'Fatura de Compra'));
+    if (missingWarehouse) {
+      alert('Por favor, selecione um armazém para todos os produtos.');
+      return;
+    }
+
     let finalSupplierId = supplierId;
     if (!finalSupplierId && supplierName) {
       const res = await fetchWithAuth('/api/suppliers', {
@@ -13048,8 +13170,9 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
         due_date: dueDate,
         items,
         document_type: documentType,
-        work_site_id: workSiteId ? Number(workSiteId) : undefined,
-        work_site: workSites.find(ws => String(ws.id) === String(workSiteId))?.name,
+        work_site_id: workSiteId ? String(workSiteId) : undefined,
+        work_site: workSites.find(ws => String(ws.id) === String(workSiteId))?.title || workSites.find(ws => String(ws.id) === String(workSiteId))?.name,
+        company_id: user?.company_id,
         vat_withholding: parseFloat(vatWithholding),
         exchange_rate: parseFloat(exchangeRate),
         currency,
@@ -13847,15 +13970,17 @@ const PurchaseActionsModal = ({ purchase, onClose, onAction }: {
             </div>
           </button>
 
-          <button onClick={() => handleAction('credit_note')} className="flex items-center gap-4 p-4 bg-white border border-zinc-100 hover:shadow-md hover:border-red-500/30 transition-all group text-left">
-            <div className="w-10 h-10 bg-red-50 flex items-center justify-center text-red-600">
-               <RefreshCw size={20} />
-            </div>
-            <div>
-              <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">Nota de Crédito</span>
-              <span className="text-[9px] font-bold text-zinc-400 uppercase">Anular/Retificar valor</span>
-            </div>
-          </button>
+          {['Fatura de Compra', 'Compra'].includes(purchase.document_type || '') && (
+            <button onClick={() => handleAction('credit_note')} className="flex items-center gap-4 p-4 bg-white border border-zinc-100 hover:shadow-md hover:border-red-500/30 transition-all group text-left">
+              <div className="w-10 h-10 bg-red-50 flex items-center justify-center text-red-600">
+                 <RefreshCw size={20} />
+              </div>
+              <div>
+                <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">Nota de Crédito</span>
+                <span className="text-[9px] font-bold text-zinc-400 uppercase">Anular/Retificar valor</span>
+              </div>
+            </button>
+          )}
 
           <button onClick={() => handleAction('email')} className="flex items-center gap-4 p-4 bg-white border border-zinc-100 hover:shadow-md hover:border-blue-500/30 transition-all group text-left">
             <div className="w-10 h-10 bg-zinc-50 flex items-center justify-center text-zinc-400 group-hover:text-blue-600">
@@ -13887,15 +14012,17 @@ const PurchaseActionsModal = ({ purchase, onClose, onAction }: {
             </div>
           </button>
 
-          <button onClick={() => handleAction('receipt')} className="flex items-center gap-4 p-4 bg-white border border-zinc-100 hover:shadow-md hover:border-emerald-500/30 transition-all group text-left">
-            <div className="w-10 h-10 bg-emerald-50 flex items-center justify-center text-emerald-600">
-               <FileCheck size={20} />
-            </div>
-            <div>
-              <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">Liquidar / Recibo</span>
-              <span className="text-[9px] font-bold text-zinc-400 uppercase">Registar pagamento</span>
-            </div>
-          </button>
+          {purchase.document_type === 'Fatura de Compra' && (
+            <button onClick={() => handleAction('receipt')} className="flex items-center gap-4 p-4 bg-white border border-zinc-100 hover:shadow-md hover:border-emerald-500/30 transition-all group text-left">
+              <div className="w-10 h-10 bg-emerald-50 flex items-center justify-center text-emerald-600">
+                 <FileCheck size={20} />
+              </div>
+              <div>
+                <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">Liquidar / Recibo</span>
+                <span className="text-[9px] font-bold text-zinc-400 uppercase">Registar pagamento</span>
+              </div>
+            </button>
+          )}
 
           <button onClick={() => handleAction('reports')} className="flex items-center gap-4 p-4 bg-white border border-zinc-100 hover:shadow-md hover:border-blue-500/30 transition-all group text-left">
             <div className="w-10 h-10 bg-zinc-50 flex items-center justify-center text-zinc-400 group-hover:text-blue-600">
@@ -13928,7 +14055,7 @@ const PurchaseActionsModal = ({ purchase, onClose, onAction }: {
   );
 };
 
-const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas }: { suppliers: Supplier[], products: Product[], workSites: WorkSite[], fiscalSeries: FiscalSeries[], caixas: Caixa[] }) => {
+const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas, companyData }: { suppliers: Supplier[], products: Product[], workSites: WorkSite[], fiscalSeries: FiscalSeries[], caixas: Caixa[], companyData?: any }) => {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [createData, setCreateData] = useState<Purchase | null>(null);
@@ -14086,7 +14213,7 @@ const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas 
                   <th className="px-6 py-4 border-r border-[#004488]">Tipo /<br/>Nº Doc Fornecedor</th>
                   <th className="px-6 py-4">Nº Interno</th>
                   <th className="px-6 py-4">Fornecedor</th>
-                  <th className="px-6 py-4">Centro Custo /<br/>Controlo</th>
+                  <th className="px-6 py-4">Centro de Custo /<br/>Local Trabalho</th>
                   <th className="px-6 py-4 text-center">M</th>
                   <th className="px-6 py-4 text-right">Valor Total</th>
                   <th className="px-6 py-4 text-center">PDF</th>
@@ -14095,7 +14222,6 @@ const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas 
               </thead>
               <tbody className="divide-y divide-zinc-100">
                 {purchases
-                  .filter(p => !['Pagamento', 'Recibo'].includes(p.document_type || ''))
                   .filter(p => 
                     (p.supplier_name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) || 
                     (p.purchase_number || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
@@ -14103,7 +14229,7 @@ const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas 
                   )
                   .map((p, pIndex) => (
                     <tr key={p.id || pIndex} className={`hover:bg-zinc-50 transition-colors text-[11px] border-b border-zinc-50 group ${p.status === 'cancelled' ? 'opacity-50' : ''}`}>
-                      <td className="px-6 py-4">
+                       <td className="px-6 py-4">
                         <div className="font-bold text-zinc-900">{new Date(p.date).toLocaleDateString('pt-PT')}</div>
                         <div className="text-red-600 font-bold mt-1">{p.due_date ? new Date(p.due_date).toLocaleDateString('pt-PT') : '-'}</div>
                       </td>
@@ -14114,10 +14240,10 @@ const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas 
                         </div>
                         <div className="text-zinc-500 font-bold mt-1">{p.invoice_number || '-'}</div>
                       </td>
-                      <td className="px-6 py-4 font-mono text-zinc-500 font-bold">{p.codigo || p.purchase_number || '-'}</td>
-                      <td className="px-6 py-4 font-bold text-zinc-900 uppercase">{p.supplier_name}</td>
+                      <td className="px-6 py-4 font-mono text-[#003366] font-black">{p.purchase_number || p.codigo || '-'}</td>
+                      <td className="px-6 py-4 font-black text-zinc-900 uppercase">{p.supplier_name}</td>
                       <td className="px-6 py-4">
-                        <div className="text-zinc-600 uppercase font-black">{p.work_site || p.work_site_id || '-'}</div>
+                        <div className="text-zinc-600 uppercase font-black">{p.work_site || p.work_site_name || '-'}</div>
                         <div className="text-zinc-400 font-mono text-[9px] uppercase mt-1">
                           {p.hash ? 'H • ' + p.hash.substring(0, 8) : '-'}
                         </div>
@@ -14190,11 +14316,11 @@ const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas 
               </thead>
               <tbody className="divide-y divide-zinc-100 italic">
                 {purchases
-                  .filter(p => !['Pagamento', 'Recibo'].includes(p.document_type || ''))
-                  .filter(p => p.status !== 'cancelled')
+                  .filter(p => !['cancelled', 'anulado'].includes(p.status || ''))
+                  .filter(p => (['Fatura de Compra', 'Compra', 'Fatura'].includes(p.document_type || '')))
                   .filter(p => {
                     const linkedReceipt = purchases.find((pur: any) => 
-                      (['Pagamento', 'Recibo'].includes(pur.document_type || '')) && 
+                      (['Pagamento', 'Recibo', 'Recibo de Pagamento'].includes(pur.document_type || '')) && 
                       (pur.reference_purchase_number === p.purchase_number)
                     );
                     return !linkedReceipt;
@@ -14496,6 +14622,7 @@ const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas 
                {(() => {
                   let runningBalance = 0;
                   return purchases
+                    .filter(p => !['cancelled', 'anulado'].includes(p.status || ''))
                     .filter(p => !searchTerm || (p.supplier_name || '').toLowerCase().includes(searchTerm.toLowerCase()))
                     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
                     .map((p, pIndex) => {
@@ -14888,6 +15015,8 @@ const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas 
         <DocumentReportModal 
           document={showReportModal as any} 
           onClose={() => setShowReportModal(null)} 
+          companyName={companyData?.name || companyData?.nome_empresa}
+          companyNif={companyData?.nif}
         />
       )}
     </div>
@@ -15056,7 +15185,7 @@ const SupplierAccount = ({ supplier, purchases, onBack }: {
   );
 };
 
-const SupplierModule = ({ products, workSites, fiscalSeries, caixas }: { products: Product[], workSites: WorkSite[], fiscalSeries: FiscalSeries[], caixas: Caixa[] }) => {
+const SupplierModule = ({ products, workSites, fiscalSeries, caixas, companyData }: { products: Product[], workSites: WorkSite[], fiscalSeries: FiscalSeries[], caixas: Caixa[], companyData?: any }) => {
   const [activeSubTab, setActiveSubTab] = useState<string | null>(null);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
@@ -15231,7 +15360,7 @@ const SupplierModule = ({ products, workSites, fiscalSeries, caixas }: { product
           </div>
         );
       case 'purchases-list':
-        return <PurchasesModule suppliers={suppliers} products={products} workSites={workSites} fiscalSeries={fiscalSeries} caixas={caixas} />;
+        return <PurchasesModule suppliers={suppliers} products={products} workSites={workSites} fiscalSeries={fiscalSeries} caixas={caixas} companyData={companyData} />;
       case 'current-accounts':
         if (selectedSupplier) {
           return <SupplierAccount supplier={selectedSupplier} purchases={purchases.filter(p => p.supplier_id === selectedSupplier.id)} onBack={() => setSelectedSupplier(null)} />;
@@ -16785,16 +16914,23 @@ export default function App() {
     return saved ? JSON.parse(saved) : [];
   });
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [editingAlertId, setEditingAlertId] = useState<string | null>(null);
   const [taskFormData, setTaskFormData] = useState({
     name: '', type: 'imposto', description: '', responsible: '', startDate: '', endDate: '', advanceTime: '', obs: ''
   });
 
   const handleSaveTask = (e: React.FormEvent) => {
     e.preventDefault();
-    const newAlerts = [...alerts, { ...taskFormData, id: Date.now().toString() }];
+    let newAlerts;
+    if (editingAlertId) {
+      newAlerts = alerts.map(a => a.id === editingAlertId ? { ...taskFormData, id: a.id } : a);
+    } else {
+      newAlerts = [...alerts, { ...taskFormData, id: Date.now().toString() }];
+    }
     setAlerts(newAlerts);
     localStorage.setItem('app_alerts', JSON.stringify(newAlerts));
     setIsTaskModalOpen(false);
+    setEditingAlertId(null);
     setTaskFormData({ name: '', type: 'imposto', description: '', responsible: '', startDate: '', endDate: '', advanceTime: '', obs: '' });
   };
 
@@ -16816,7 +16952,7 @@ export default function App() {
         fetchJson(`/api/caixas?company_id=${companyId}`),
         fetchJson(`/api/caixa-movements?company_id=${companyId}`),
         fetchJson(`/api/stock/movements?company_id=${companyId}`),
-        fetchJson(`/api/work-sites/${companyId}/movements?company_id=${companyId}`),
+        fetchJson(`/api/work-site-movements?company_id=${companyId}`),
         fetchJson(`/api/warehouses?company_id=${companyId}`),
         fetchJson(`/api/security/occurrences?company_id=${companyId}`),
         fetchJson(`/api/security/armory?company_id=${companyId}`),
@@ -17117,7 +17253,11 @@ export default function App() {
             fiscalYear={fiscalYear} 
             setFiscalYear={setFiscalYear} 
             onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-            onAddTask={() => setIsTaskModalOpen(true)}
+            onAddTask={() => {
+              setEditingAlertId(null);
+              setTaskFormData({ name: '', type: 'imposto', description: '', responsible: '', startDate: '', endDate: '', advanceTime: '', obs: '' });
+              setIsTaskModalOpen(true);
+            }}
             alerts={alerts}
           />
           <main className="flex-1 overflow-y-auto w-full transition-all duration-300">
@@ -17347,7 +17487,7 @@ export default function App() {
                             />
                           );
                         case 'suppliers':
-                          return <SupplierModule products={products} workSites={workSites} fiscalSeries={fiscalSeries} caixas={caixas} />;
+                          return <SupplierModule products={products} workSites={workSites} fiscalSeries={fiscalSeries} caixas={caixas} companyData={companyData} />;
                         case 'products':
                           return (
                             <ProductList 
@@ -17414,6 +17554,25 @@ export default function App() {
                                 onRefreshData={fetchData}
                                 alerts={alerts}
                                 setAlerts={setAlerts}
+                                onEditAlert={(alert) => {
+                                  setTaskFormData({
+                                    name: alert.name,
+                                    type: alert.type,
+                                    description: alert.description,
+                                    responsible: alert.responsible,
+                                    startDate: alert.startDate,
+                                    endDate: alert.endDate,
+                                    advanceTime: alert.advanceTime,
+                                    obs: alert.obs || ''
+                                  });
+                                  setEditingAlertId(alert.id);
+                                  setIsTaskModalOpen(true);
+                                }}
+                                onNewAlert={() => {
+                                  setEditingAlertId(null);
+                                  setTaskFormData({ name: '', type: 'imposto', description: '', responsible: '', startDate: '', endDate: '', advanceTime: '', obs: '' });
+                                  setIsTaskModalOpen(true);
+                                }}
                               />
                             </div>
                           );
@@ -17586,7 +17745,7 @@ export default function App() {
             >
               <div className="px-6 py-4 border-b border-zinc-100 flex justify-between items-center bg-[#003366] text-white">
                 <h3 className="font-bold text-lg flex items-center gap-2 uppercase tracking-wide">
-                  <AlertCircle size={20} /> Registar Alerta / Tarefa
+                  <AlertCircle size={20} /> {editingAlertId ? 'Editar Alerta / Tarefa' : 'Registar Alerta / Tarefa'}
                 </h3>
                 <button onClick={() => setIsTaskModalOpen(false)} className="text-white/70 hover:text-white">
                   <X size={24} />
@@ -17635,7 +17794,7 @@ export default function App() {
                   <div className="pt-4 flex justify-end gap-3 border-t border-zinc-100 mt-6">
                     <button type="button" onClick={() => setIsTaskModalOpen(false)} className="px-6 py-2.5 text-zinc-500 font-bold uppercase tracking-widest text-xs hover:bg-zinc-100 transition-colors">Cancelar</button>
                     <button type="submit" className="bg-[#003366] text-white px-8 py-2.5 font-bold uppercase tracking-widest text-xs hover:bg-[#002244] shadow-lg flex items-center gap-2">
-                      <CheckCircle size={16} /> Registar Alerta
+                      <CheckCircle size={16} /> {editingAlertId ? 'Atualizar Alerta' : 'Registar Alerta'}
                     </button>
                   </div>
                 </form>

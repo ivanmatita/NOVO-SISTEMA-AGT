@@ -116,7 +116,9 @@ import {
   GraduationCap,
   Bed,
   FolderKanban,
-  Percent
+  Percent,
+  FileClock,
+  Hash
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
@@ -12909,37 +12911,42 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
   );
 };
 
-const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, onSuccess, caixas }: { 
+const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, onSuccess, caixas, initialData = null, fixedDocumentType }: { 
   suppliers: Supplier[], 
   products: Product[], 
   workSites: WorkSite[], 
   fiscalSeries: FiscalSeries[],
   onBack: () => void, 
-  onSuccess: () => void,
-  caixas: Caixa[]
+  onSuccess: (data?: any) => void,
+  caixas: Caixa[],
+  initialData?: Purchase | null,
+  fixedDocumentType?: string
 }) => {
   const [showSupplierModal, setShowSupplierModal] = useState(false);
   const isCertified = false;
-  const [supplierId, setSupplierId] = useState<number | ''>('');
-  const [documentType, setDocumentType] = useState('Fatura de Compra');
+  const [supplierId, setSupplierId] = useState<number | ''>(initialData?.supplier_id || '');
+  const [documentType, setDocumentType] = useState(fixedDocumentType || initialData?.document_type || 'Fatura de Compra');
   const [seriesId, setSeriesId] = useState<number | ''>('');
-  const [documentNumber, setDocumentNumber] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [invoiceNumber, setInvoiceNumber] = useState(initialData?.invoice_number || '');
+  const [documentNumber, setDocumentNumber] = useState(initialData?.purchase_number || '');
+  const [date, setDate] = useState(initialData?.date ? new Date(initialData.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
   const [countryCode, setCountryCode] = useState('Angola');
   const [nif, setNif] = useState('');
-  const [supplierName, setSupplierName] = useState('');
-  const [workSiteId, setWorkSiteId] = useState<string>('');
-  const [dueDate, setDueDate] = useState<string>('');
+  const [supplierName, setSupplierName] = useState(initialData?.supplier_name || '');
+  const [workSiteId, setWorkSiteId] = useState<string>(initialData?.work_site || '');
+  const [dueDate, setDueDate] = useState<string>(initialData?.due_date ? new Date(initialData.due_date).toISOString().split('T')[0] : '');
   const [vatWithholding, setVatWithholding] = useState<string>('0');
   const [exchangeRate, setExchangeRate] = useState<string>('1');
   const [currency, setCurrency] = useState<string>('Kwanza');
   const [counterValue, setCounterValue] = useState<string>('0');
   const [globalDiscount, setGlobalDiscount] = useState<string>('0');
   const [serviceDate, setServiceDate] = useState(new Date().toISOString().split('T')[0]);
-  const [serviceLocation, setServiceLocation] = useState('');
-  const [items, setItems] = useState<Partial<InvoiceItem>[]>([]);
-  const [cashBox, setCashBox] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('');
+  const [items, setItems] = useState<Partial<InvoiceItem>[]>(
+    initialData?.items && fixedDocumentType !== 'Pagamento' ? initialData.items.map(i => ({...i})) : []
+  );
+  const [cashBox, setCashBox] = useState(initialData?.caixa || '');
+  const [paymentMethod, setPaymentMethod] = useState(initialData?.payment_method || '');
+  const [hash, setHash] = useState(initialData?.hash || '');
   const [expandedDimensions, setExpandedDimensions] = useState<number | null>(null);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
 
@@ -12971,10 +12978,14 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
     const newItems = [...items];
     newItems[index] = { ...newItems[index], [field]: value };
     
-    if (field === 'quantity' || field === 'unit_price' || field === 'desconto') {
+    if (field === 'desconto_linha') {
+       newItems[index].desconto = value;
+    }
+
+    if (field === 'quantity' || field === 'unit_price' || field === 'desconto' || field === 'desconto_linha') {
       const q = field === 'quantity' ? value : (newItems[index].quantity || 0);
       const p = field === 'unit_price' ? value : (newItems[index].unit_price || 0);
-      const d = field === 'desconto' ? value : (newItems[index].desconto || 0);
+      const d = (field === 'desconto' || field === 'desconto_linha') ? value : (newItems[index].desconto || 0);
       newItems[index].total = (q * p) - d;
     }
 
@@ -13024,8 +13035,11 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
       return;
     }
 
-    const res = await fetchWithAuth('/api/purchases', {
-      method: 'POST',
+    const endpoint = initialData?.id ? `/api/purchases/${initialData.id}` : '/api/purchases';
+    const method = initialData?.id ? 'PUT' : 'POST';
+
+    const res = await fetchWithAuth(endpoint, {
+      method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         supplier_id: finalSupplierId, 
@@ -13040,21 +13054,186 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
         counter_value: parseFloat(counterValue),
         global_discount: parseFloat(globalDiscount),
         service_date: serviceDate,
-        service_location: serviceLocation,
         cash_box: cashBox,
         payment_method: paymentMethod,
-        series_id: seriesId
+        series_id: seriesId,
+        invoice_number: invoiceNumber,
+        reference_purchase_number: initialData?.purchase_number,
+        hash
       })
     });
 
     if (res.ok) {
-      onSuccess();
+      const savedData = await res.json();
+      onSuccess(savedData);
     } else {
       const errorData = await res.json().catch(() => ({ error: 'Erro desconhecido ao emitir documento' }));
       console.error('Erro ao emitir documento:', errorData);
       alert('Erro ao emitir documento: ' + (errorData.error || 'Erro desconhecido'));
     }
   };
+
+  if (fixedDocumentType === 'Pagamento') {
+    const amountToPay = initialData?.total || 0;
+    const [liquidarValue, setLiquidarValue] = useState(amountToPay);
+    const [receiptNumber, setReceiptNumber] = useState('');
+    const [receiptCode, setReceiptCode] = useState('');
+    const [supportDoc, setSupportDoc] = useState('');
+    const [receiptDate, setReceiptDate] = useState(new Date().toISOString().split('T')[0]);
+
+    return (
+      <div className="fixed inset-0 z-[250] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm overflow-y-auto">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.98, y: 10 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          className="bg-white w-full max-w-lg shadow-2xl border border-zinc-200"
+        >
+          <div className="p-8 border-b border-zinc-100 flex justify-between items-center">
+            <h3 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">Emitir Recibo</h3>
+            <button onClick={onBack} className="p-2 hover:bg-zinc-100 transition-colors text-zinc-400 group">
+              <X size={24} className="group-hover:rotate-90 transition-transform" />
+            </button>
+          </div>
+          
+          <form onSubmit={handleSubmit} className="p-8 space-y-6">
+            <div className="bg-zinc-50/50 p-6 border border-zinc-100 flex justify-between items-start">
+               <div>
+                  <label className="text-[10px] font-black uppercase text-zinc-400 tracking-widest mb-1 block">Documento</label>
+                  <p className="text-sm font-bold text-zinc-600">{initialData?.supplier_name}</p>
+               </div>
+               <div className="text-right">
+                  <label className="text-[10px] font-black uppercase text-zinc-400 tracking-widest mb-1 block">Saldo em falta</label>
+                  <p className="text-xl font-black text-red-600">
+                     <span className="text-sm mr-1">{liquidarValue.toLocaleString('pt-PT', { minimumFractionDigits: 2 }).split(',')[0]}</span>
+                     {liquidarValue.toLocaleString('pt-PT', { minimumFractionDigits: 2 }).split(',').length > 1 ? ',' + liquidarValue.toLocaleString('pt-PT', { minimumFractionDigits: 2 }).split(',')[1] : ''} Kz
+                  </p>
+               </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black uppercase text-zinc-500 tracking-widest">Nº Recibo</label>
+                <input 
+                  type="text" 
+                  value={receiptNumber}
+                  onChange={(e) => setReceiptNumber(e.target.value)}
+                  placeholder="REC 001/2026" 
+                  className="w-full bg-white border border-zinc-200 px-4 py-2 text-xs font-bold focus:border-[#003366] outline-none" 
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black uppercase text-zinc-500 tracking-widest">Código</label>
+                <input 
+                  type="text" 
+                  value={receiptCode}
+                  onChange={(e) => setReceiptCode(e.target.value)}
+                  placeholder="RC-123" 
+                  className="w-full bg-white border border-zinc-200 px-4 py-2 text-xs font-bold focus:border-[#003366] outline-none" 
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+               <label className="text-[10px] font-black uppercase text-zinc-500 tracking-widest">Doc de Suporte</label>
+               <input 
+                  type="text" 
+                  value={supportDoc}
+                  onChange={(e) => setSupportDoc(e.target.value)}
+                  placeholder="Ex: FT 123" 
+                  className="w-full bg-white border border-zinc-200 px-4 py-2 text-xs font-bold focus:border-[#003366] outline-none" 
+               />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black uppercase text-zinc-500 tracking-widest">Valor a Liquidar</label>
+              <input 
+                type="number" 
+                defaultValue={amountToPay}
+                step="0.01"
+                required
+                className="w-full bg-white border border-zinc-200 p-4 text-xl font-bold text-[#003366] focus:border-[#003366] outline-none transition-all placeholder:text-zinc-200"
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value) || 0;
+                  setLiquidarValue(val);
+                  setItems([{ description: 'Recibo: ' + initialData?.purchase_number, quantity: 1, unit_price: val, total: val }]);
+                }}
+              />
+            </div>
+
+            <div className="p-4 bg-blue-50/20 border border-blue-100/30">
+               <label className="text-[9px] font-black uppercase text-blue-400 tracking-widest mb-1 block italic text-center">Valor por extenso</label>
+               <p className="text-xs font-bold text-blue-900 italic text-center">
+                  {liquidarValue.toLocaleString('pt-PT', { style: 'currency', currency: 'AOA' }).replace('Kz', '')} Kwanzas...
+               </p>
+            </div>
+
+            <div className="space-y-6">
+               <div className="space-y-1.5">
+                <label className="text-[10px] font-black uppercase text-zinc-500 tracking-widest">Forma de Pagamento *</label>
+                <select 
+                  value={paymentMethod} 
+                  onChange={(e) => setPaymentMethod(e.target.value)}
+                  required
+                  className="w-full bg-white border border-zinc-200 px-4 py-3 text-sm font-bold focus:border-[#003366] outline-none transition-colors appearance-none"
+                  style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 24 24\' stroke=\'currentColor\'%3E%3Cpath stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'2\' d=\'M19 9l-7 7-7-7\' /%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 1rem center', backgroundSize: '1.2em' }}
+                >
+                  <option value="">Selecione...</option>
+                  <option value="Numerário">Numerário</option>
+                  <option value="Multicaixa">Multicaixa</option>
+                  <option value="Transferência">Transferência</option>
+                  <option value="Depósito">Depósito</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black uppercase text-zinc-500 tracking-widest">Caixa / Banco *</label>
+                <select 
+                  value={cashBox} 
+                  onChange={(e) => setCashBox(e.target.value)}
+                  required
+                  className="w-full bg-white border border-zinc-200 px-4 py-3 text-sm font-bold focus:border-[#003366] outline-none transition-colors appearance-none"
+                  style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 24 24\' stroke=\'currentColor\'%3E%3Cpath stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'2\' d=\'M19 9l-7 7-7-7\' /%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 1rem center', backgroundSize: '1.2em' }}
+                >
+                  <option value="">Selecione...</option>
+                  {caixas.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  <option value="Banco">Banco</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black uppercase text-zinc-500 tracking-widest">Data do Pagamento</label>
+                <input 
+                  type="date"
+                  value={receiptDate}
+                  onChange={(e) => setReceiptDate(e.target.value)}
+                  className="w-full bg-white border border-zinc-200 px-4 py-3 text-sm font-bold focus:border-[#003366] outline-none transition-colors"
+                />
+              </div>
+            </div>
+
+            <div className="pt-6 flex gap-3">
+              <button 
+                type="button" 
+                onClick={onBack}
+                className="flex-1 bg-white border border-zinc-200 text-zinc-400 font-black py-4 uppercase text-[11px] tracking-widest hover:border-zinc-300 hover:text-zinc-500 transition-all hover:shadow-lg"
+              >
+                Cancelar
+              </button>
+              <button 
+                type="submit"
+                className="flex-[2] bg-[#003366] text-white font-black py-4 uppercase text-[11px] tracking-widest hover:bg-[#002244] shadow-xl shadow-blue-900/10 active:scale-[0.98] transition-all"
+                onClick={() => {
+                   if (items.length === 0) {
+                     setItems([{ description: 'Recibo: ' + initialData?.purchase_number, quantity: 1, unit_price: liquidarValue, total: liquidarValue }]);
+                   }
+                }}
+              >
+                Confirmar Pagamento
+              </button>
+            </div>
+          </form>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 bg-zinc-50/30 p-4 sm:p-8 min-h-screen">
@@ -13118,7 +13297,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
               >
                 <option value="Fatura de Compra">Fatura de Compra</option>
                 <option value="Fatura Recibo de Compra">Fatura Recibo de Compra</option>
-                <option value="Pagamento">Pagamento (Recibo)</option>
+                <option value="Pagamento">Recibo</option>
                 <option value="Nota de Crédito de Fornecedor">Nota de Crédito de Fornecedor</option>
                 <option value="Nota de Débito de Fornecedor">Nota de Débito de Fornecedor</option>
                 <option value="Guia de Entrada">Guia de Entrada</option>
@@ -13126,68 +13305,36 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
               </select>
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-600">Série</label>
-              <select 
-                value={seriesId} 
-                onChange={(e) => {
-                  const id = e.target.value ? Number(e.target.value) : '';
-                  setSeriesId(id);
-                  const s = fiscalSeries.find(f => f.id === id);
-                  if (s && s.type === 'manual') {
-                    setDocumentNumber('');
-                  }
-                }} 
-                required
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-              >
-                <option value="">Selecionar Série</option>
-                {fiscalSeries.filter(s => s.is_active).map(s => (
-                  <option key={s.id} value={s.id}>{s.description} ({s.reference})</option>
-                ))}
-              </select>
+              <label className="text-xs font-bold text-zinc-600">Nº Documento Fornecedor <span className="text-red-500">*</span></label>
+              <input 
+                type="text" 
+                value={invoiceNumber} 
+                onChange={(e) => setInvoiceNumber(e.target.value)}
+                placeholder="Ex: FT 123/2026"
+                required={true}
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold"
+              />
             </div>
-            {fiscalSeries.find(s => s.id === seriesId)?.type === 'manual' && (
+            <div className="space-y-4">
               <div className="space-y-2">
-                <label className="text-xs font-bold text-zinc-600">Nº do Documento Manual <span className="text-red-500">*</span></label>
+                <label className="text-xs font-bold text-zinc-600">Data de emissão</label>
                 <input 
-                  type="text" 
-                  value={documentNumber} 
-                  onChange={(e) => setDocumentNumber(e.target.value)}
-                  placeholder="Ex: FT 2026/1"
-                  required
-                  className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-mono font-bold"
+                  type="date" 
+                  value={date} 
+                  disabled
+                  className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
                 />
               </div>
-            )}
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-600">Local de trabalho</label>
-              <select 
-                value={workSiteId} 
-                onChange={(e) => setWorkSiteId(e.target.value)}
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-              >
-                <option value="">Selecione o local</option>
-                {workSites.map(ws => <option key={ws.id} value={ws.id}>{ws.title}</option>)}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-600">Data de emissão</label>
-              <input 
-                type="date" 
-                value={date} 
-                disabled
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-600">Data de vencimento</label>
-              <input 
-                type="date" 
-                value={dueDate} 
-                onChange={(e) => setDueDate(e.target.value)}
-                required
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-              />
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-zinc-600">Data de vencimento</label>
+                <input 
+                  type="date" 
+                  value={dueDate} 
+                  onChange={(e) => setDueDate(e.target.value)}
+                  required
+                  className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+                />
+              </div>
             </div>
             <div className="space-y-2">
               <label className="text-xs font-bold text-zinc-600">Cativação de IVA</label>
@@ -13272,6 +13419,16 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
                 </div>
               </>
             )}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-600">Código Hash do Documento</label>
+              <input 
+                type="text" 
+                value={hash} 
+                onChange={(e) => setHash(e.target.value)}
+                placeholder="Ex: aB3dE..."
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-mono"
+              />
+            </div>
           </div>
         </div>
 
@@ -13334,17 +13491,6 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
                 className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
               />
             </div>
-            <div className="space-y-2 md:col-span-2">
-              <label className="text-xs font-bold text-zinc-600">Local de prestação de bens/serviços <span className="text-red-500">*</span></label>
-              <input 
-                type="text" 
-                value={serviceLocation} 
-                onChange={(e) => setServiceLocation(e.target.value)}
-                placeholder="Informe o local da prestação de serviço"
-                required
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-              />
-            </div>
           </div>
         </div>
 
@@ -13366,18 +13512,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
             {items.map((item, idx) => (
               <div key={idx} className="bg-zinc-50 p-4 border border-zinc-100 space-y-4">
                 <div className="grid grid-cols-12 gap-4 items-end">
-                  <div className="col-span-2 space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Produto/Serviço</label>
-                    <select 
-                      value={item.product_id || ''} 
-                      onChange={(e) => updateItem(idx, 'product_id', e.target.value)}
-                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
-                    >
-                      <option value="">Manual...</option>
-                      {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
-                  </div>
-                  <div className="col-span-4 space-y-1">
+                  <div className="col-span-6 space-y-1">
                     <label className="text-[10px] font-bold text-zinc-400 uppercase">Descrição</label>
                     <input 
                       type="text" 
@@ -13502,6 +13637,16 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
 
                 <div className="grid grid-cols-12 gap-4 items-end">
                   <div className="col-span-2 space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Referência</label>
+                    <input 
+                      type="text" 
+                      value={item.referencia || ''} 
+                      onChange={(e) => updateItem(idx, 'referencia', e.target.value)}
+                      placeholder="Ref..."
+                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
+                    />
+                  </div>
+                  <div className="col-span-2 space-y-1">
                     <label className="text-[10px] font-bold text-zinc-400 uppercase">Qtd</label>
                     <input 
                       type="number" 
@@ -13523,22 +13668,22 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
                     />
                   </div>
                   <div className="col-span-2 space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Desconto</label>
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Desconto Linha</label>
                     <input 
                       type="number" 
                       step="0.01"
-                      value={item.desconto || 0} 
-                      onChange={(e) => updateItem(idx, 'desconto', Number(e.target.value))}
+                      value={item.desconto_linha !== undefined ? item.desconto_linha : (item.desconto || 0)} 
+                      onChange={(e) => updateItem(idx, 'desconto_linha', Number(e.target.value))}
                       className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
                     />
                   </div>
-                  <div className="col-span-2 text-right pb-2">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Total Item</label>
+                  <div className="col-span-1 text-right pb-2">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Total</label>
                     <p className="text-zinc-800 font-bold text-sm">
                       {formatCurrency(item.total || 0)}
                     </p>
                   </div>
-                  <div className="col-span-3 flex items-center gap-2 pb-1">
+                  <div className="col-span-2 flex justify-end items-center gap-2 pb-1 pr-4">
                     <button 
                       type="button"
                       onClick={() => setExpandedDimensions(expandedDimensions === idx ? null : idx)}
@@ -13651,63 +13796,141 @@ const PurchaseActionsModal = ({ purchase, onClose, onAction }: {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-2xl bg-white rounded-none shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        <div className="p-6 border-b border-zinc-100 bg-zinc-50 flex justify-between items-center">
+      <div className="absolute inset-0 bg-zinc-900/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-2xl bg-white shadow-2xl overflow-hidden flex flex-col">
+        <div className="p-8 border-b border-zinc-100 flex justify-between items-center">
           <div>
-            <h3 className="font-bold text-[#003366] text-lg">{purchase.purchase_number}</h3>
-            <p className="text-zinc-500 text-sm font-bold">{formatCurrency(purchase.total)}</p>
+            <h3 className="font-black text-[#003366] text-2xl uppercase tracking-tighter">Opções do Documento</h3>
+            <p className="text-zinc-400 text-[10px] font-black uppercase tracking-[0.2em] mt-1">
+              {purchase.document_type} {purchase.purchase_number} • {purchase.supplier_name}
+            </p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-zinc-200 rounded-full transition-colors text-zinc-400">
-            <X size={20} />
+          <button onClick={onClose} className="p-2 hover:bg-zinc-100 transition-colors text-zinc-400">
+            <X size={28} />
           </button>
         </div>
         
-        <div className="p-8 overflow-y-auto">
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-            <button onClick={() => handleAction('print')} className="flex flex-col items-center gap-3 p-6 border border-zinc-100 hover:bg-zinc-50 transition-all group">
-              <Printer size={24} className="text-zinc-400 group-hover:text-[#003366]" />
-              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-600 group-hover:text-[#003366] text-center">Imprimir Compra</span>
+        <div className="p-8 space-y-6 bg-zinc-50/20">
+          <div className="grid grid-cols-2 gap-4">
+            <button onClick={() => handleAction('clone')} className="flex items-center gap-6 p-6 bg-white border border-zinc-100 hover:shadow-lg hover:border-[#003366]/20 transition-all group text-left">
+              <div className="w-14 h-14 bg-zinc-50 flex items-center justify-center group-hover:bg-blue-50">
+                 <Copy size={24} className="text-zinc-400 group-hover:text-[#003366]" />
+              </div>
+              <div>
+                <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">Clonar Documento</span>
+                <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-tighter">Duplicar c/ nova numeração</span>
+              </div>
             </button>
 
-            <button onClick={() => handleAction('email')} className="flex flex-col items-center gap-3 p-6 border border-zinc-100 hover:bg-zinc-50 transition-all group">
-              <Mail size={24} className="text-zinc-400 group-hover:text-[#003366]" />
-              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-600 group-hover:text-[#003366] text-center">Enviar Fornecedor</span>
+            <button onClick={() => handleAction('print')} className="flex items-center gap-6 p-6 bg-white border border-zinc-100 hover:shadow-lg hover:border-[#003366]/20 transition-all group text-left">
+              <div className="w-14 h-14 bg-red-50/50 flex items-center justify-center group-hover:bg-red-50">
+                 <FileText size={24} className="text-red-500" />
+              </div>
+              <div>
+                <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">Exportar PDF</span>
+                <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-tighter">Baixar formato a4 profissional</span>
+              </div>
             </button>
 
-            <button onClick={() => handleAction('pay')} className="flex flex-col items-center gap-3 p-6 border border-zinc-100 hover:bg-emerald-50 hover:border-emerald-200 transition-all group">
-              <Wallet size={24} className="text-zinc-400 group-hover:text-emerald-600" />
-              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-600 group-hover:text-emerald-600 text-center">Registar Pagamento</span>
+            <button onClick={() => handleAction('reports')} className="flex items-center gap-6 p-6 bg-white border border-zinc-100 hover:shadow-lg hover:border-[#003366]/20 transition-all group text-left">
+               <div className="w-14 h-14 bg-zinc-50 flex items-center justify-center group-hover:bg-blue-50">
+                  <BarChart3 size={24} className="text-zinc-400 group-hover:text-[#003366]" />
+               </div>
+               <div>
+                  <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">Relatórios do Doc</span>
+                  <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-tighter">Análise detalhada e cálculos</span>
+               </div>
             </button>
 
-            <button onClick={() => handleAction('receive')} className="flex flex-col items-center gap-3 p-6 border border-zinc-100 hover:bg-blue-50 hover:border-blue-200 transition-all group">
-              <Truck size={24} className="text-zinc-400 group-hover:text-blue-600" />
-              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-600 group-hover:text-blue-600 text-center">Receber Mercadoria</span>
+            <button onClick={() => handleAction('guia')} className="flex items-center gap-6 p-6 bg-white border border-zinc-100 hover:shadow-lg hover:border-[#003366]/20 transition-all group text-left">
+               <div className="w-14 h-14 bg-blue-50/50 flex items-center justify-center group-hover:bg-blue-100">
+                  <Truck size={24} className="text-[#003366]" />
+               </div>
+               <div>
+                  <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">Guia de Entrega</span>
+                  <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-tighter">Emitir guia para este doc</span>
+               </div>
+            </button>
+            <button onClick={() => handleAction('credit_note')} className="flex items-center gap-6 p-6 bg-white border border-zinc-100 hover:shadow-lg hover:border-red-600/20 transition-all group text-left">
+               <div className="w-14 h-14 bg-red-50/50 flex items-center justify-center group-hover:bg-red-50">
+                  <RefreshCw size={24} className="text-red-500" />
+               </div>
+               <div>
+                  <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">Nota de Crédito</span>
+                  <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-tighter">Saldo a favor do fornecedor</span>
+               </div>
             </button>
 
-            <button onClick={() => handleAction('cancel')} className="flex flex-col items-center gap-3 p-6 border border-zinc-100 hover:bg-red-50 hover:border-red-200 transition-all group">
-              <XCircle size={24} className="text-zinc-400 group-hover:text-red-600" />
-              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-600 group-hover:text-red-600 text-center">Anular Compra</span>
-            </button>
-
-            <button onClick={() => handleAction('upload')} className="flex flex-col items-center gap-3 p-6 border border-zinc-100 hover:bg-blue-50 hover:border-blue-200 transition-all group">
-              <Upload size={24} className="text-zinc-400 group-hover:text-blue-600" />
-              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-600 group-hover:text-blue-600 text-center">Upload Documento</span>
-            </button>
-
-            {purchase.document_url && (
-              <>
-                <button onClick={() => handleAction('download_doc')} className="flex flex-col items-center gap-3 p-6 border border-zinc-100 hover:bg-emerald-50 hover:border-emerald-200 transition-all group">
-                  <Download size={24} className="text-zinc-400 group-hover:text-emerald-600" />
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-600 group-hover:text-emerald-600 text-center">Baixar Documento</span>
-                </button>
-                <button onClick={() => handleAction('delete_doc')} className="flex flex-col items-center gap-3 p-6 border border-zinc-100 hover:bg-red-50 hover:border-red-200 transition-all group">
-                  <Trash2 size={24} className="text-zinc-400 group-hover:text-red-600" />
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-600 group-hover:text-red-600 text-center">Apagar Documento</span>
-                </button>
-              </>
-            )}
+            <div className="grid grid-cols-2 gap-4">
+               <button onClick={() => handleAction('email')} className="flex flex-col items-center justify-center gap-2 p-4 bg-white border border-zinc-100 hover:bg-zinc-50 transition-all group">
+                  <Mail size={20} className="text-[#003366]" />
+                  <span className="text-[9px] font-black uppercase tracking-widest text-zinc-800">E-mail</span>
+               </button>
+               <button onClick={() => handleAction('whatsapp')} className="flex flex-col items-center justify-center gap-2 p-4 bg-white border border-zinc-100 hover:bg-emerald-50 transition-all group">
+                  <MessageCircle size={20} className="text-emerald-500" />
+                  <span className="text-[9px] font-black uppercase tracking-widest text-zinc-800">WhatsApp</span>
+               </button>
+            </div>
           </div>
+
+          <div className="bg-zinc-50 border border-zinc-200 p-6 flex items-center justify-around">
+             <div className="flex flex-col items-center gap-2 group cursor-pointer">
+                <div className="w-10 h-10 border border-zinc-200 bg-white flex items-center justify-center group-hover:border-[#003366]">
+                   <Printer size={18} className="text-zinc-400 group-hover:text-[#003366]" />
+                </div>
+                <span className="text-[10px] font-black text-zinc-500">A4</span>
+             </div>
+             <div className="flex flex-col items-center gap-2 group cursor-pointer">
+                <div className="w-10 h-10 border border-zinc-200 bg-white flex items-center justify-center group-hover:border-[#003366]">
+                   <Printer size={18} className="text-zinc-400 group-hover:text-[#003366]" />
+                </div>
+                <span className="text-[10px] font-black text-zinc-500">P24</span>
+             </div>
+             <div className="flex flex-col items-center gap-2 group cursor-pointer">
+                <div className="w-10 h-10 border border-zinc-200 bg-white flex items-center justify-center group-hover:border-[#003366]">
+                   <Printer size={18} className="text-zinc-400 group-hover:text-[#003366]" />
+                </div>
+                <span className="text-[10px] font-black text-zinc-500">P24-XL</span>
+             </div>
+             <div className="flex flex-col items-center gap-2 group cursor-pointer">
+                <div className="w-10 h-10 border border-zinc-200 bg-white flex items-center justify-center group-hover:border-[#003366]">
+                   <Printer size={18} className="text-zinc-400 group-hover:text-[#003366]" />
+                </div>
+                <span className="text-[10px] font-black text-zinc-500">P80</span>
+             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+             <button onClick={() => handleAction('receipt')} className="p-6 bg-white border border-zinc-100 flex items-center gap-6 hover:shadow-lg transition-all group text-left">
+                <div className="w-14 h-14 bg-emerald-50/50 flex items-center justify-center">
+                   <FileCheck size={28} className="text-emerald-500" />
+                </div>
+                <div>
+                   <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">Liquidar / Recibo</span>
+                   <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-tighter">Registar pagamento do doc</span>
+                </div>
+             </button>
+             <div className="space-y-3">
+                <button onClick={() => handleAction('guia')} className="w-full p-4 bg-white border border-zinc-100 flex items-center gap-4 hover:shadow-md transition-all">
+                   <Truck size={18} className="text-[#003366]" />
+                   <span className="text-[10px] font-black uppercase tracking-widest text-zinc-800">Guia de Entrega</span>
+                </button>
+                <button onClick={() => handleAction('credit_note')} className="w-full p-4 bg-white border border-zinc-100 flex items-center gap-4 hover:shadow-md transition-all">
+                   <RefreshCw size={18} className="text-red-500" />
+                   <span className="text-[10px] font-black uppercase tracking-widest text-zinc-800">Nota de Crédito</span>
+                </button>
+             </div>
+          </div>
+
+          <button onClick={() => handleAction('delete_purchase')} className="w-full p-6 bg-red-50/30 border border-red-100 flex items-center gap-6 hover:bg-red-50 transition-all group">
+             <div className="w-14 h-14 border border-red-200 bg-white flex items-center justify-center group-hover:bg-red-600 group-hover:text-white transition-all">
+                <Trash2 size={24} className="text-red-600 group-hover:text-white" />
+             </div>
+             <div className="text-left">
+                <span className="block text-xs font-black uppercase tracking-wider text-red-700">Anular Documento</span>
+                <span className="text-[9px] font-bold text-red-400 uppercase tracking-tighter">Operação Irreversível</span>
+             </div>
+          </button>
         </div>
       </div>
     </div>
@@ -13717,9 +13940,15 @@ const PurchaseActionsModal = ({ purchase, onClose, onAction }: {
 const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas }: { suppliers: Supplier[], products: Product[], workSites: WorkSite[], fiscalSeries: FiscalSeries[], caixas: Caixa[] }) => {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [isCreating, setIsCreating] = useState(false);
+  const [createData, setCreateData] = useState<Purchase | null>(null);
+  const [createType, setCreateType] = useState<string | undefined>(undefined);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeSubTab, setActiveSubTab] = useState('historico');
   const [selectedPurchase, setSelectedPurchase] = useState<Purchase | null>(null);
+  const [showHashModal, setShowHashModal] = useState<Purchase | null>(null);
+  const [showFileModal, setShowFileModal] = useState<Purchase | null>(null);
+  const [showSupplierModal, setShowSupplierModal] = useState(false);
+  const [completedReceipt, setCompletedReceipt] = useState<Purchase | null>(null);
 
   const fetchPurchases = async () => {
     const data = await fetchJson('/api/purchases');
@@ -13728,8 +13957,13 @@ const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas 
 
   useEffect(() => {
     fetchPurchases();
-    console.log("Purchases loaded:", purchases);
   }, []);
+
+  const handleStartCreate = (data: Purchase | null = null, type: string | undefined = undefined) => {
+    setCreateData(data);
+    setCreateType(type);
+    setIsCreating(true);
+  };
 
   if (isCreating) {
     return (
@@ -13742,7 +13976,10 @@ const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas 
           <div className="p-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
              <h3 className="font-bold text-[#003366] flex items-center gap-2">
                 <ShoppingCart size={18} />
-                Registar Nova Compra
+                {createData && createType === undefined ? 'Editar Documento' : 
+                 createData && createType === 'Pagamento' ? 'Emitir Recibo' :
+                 createData && createType === 'Nota de Crédito de Fornecedor' ? 'Emitir Nota de Crédito' :
+                 createData ? 'Clonar Documento' : 'Registar Nova Compra'}
              </h3>
              <button onClick={() => setIsCreating(false)} className="text-zinc-400 hover:text-zinc-600">
                 <X size={20} />
@@ -13755,11 +13992,16 @@ const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas 
               workSites={workSites} 
               fiscalSeries={fiscalSeries} 
               onBack={() => setIsCreating(false)} 
-              onSuccess={() => {
+              onSuccess={(savedData) => {
                 setIsCreating(false);
                 fetchPurchases();
+                if (createType === 'Pagamento' && savedData) {
+                  setCompletedReceipt(savedData);
+                }
               }} 
               caixas={caixas}
+              initialData={createData}
+              fixedDocumentType={createType}
             />
           </div>
         </motion.div>
@@ -13768,9 +14010,12 @@ const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas 
   }
 
   const tabs = [
-    { id: 'historico', label: 'Histórico de Compras', icon: History },
+    { id: 'historico', label: 'Gestão de Compras', icon: History },
     { id: 'pendentes', label: 'Compras Pendentes', icon: Clock },
     { id: 'fornecedores', label: 'Fornecedores', icon: Users },
+    { id: 'lista_documentos', label: 'Lista de Documentos Compras', icon: FileText },
+    { id: 'antiguidades', label: 'Antiguidades de Dívidas', icon: FileClock },
+    { id: 'movimentos', label: 'Contas Correntes Fornecedores', icon: ArrowRightLeft },
   ];
 
   return (
@@ -13787,7 +14032,7 @@ const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas 
         </div>
         <div className="flex gap-3">
           <button 
-            onClick={() => setIsCreating(true)}
+            onClick={() => handleStartCreate(null, undefined)}
             className="bg-[#003366] hover:bg-[#002244] text-white font-bold px-6 py-2.5 rounded-none flex items-center gap-2 transition-all shadow-sm text-sm"
           >
             <Plus size={18} />
@@ -13819,104 +14064,693 @@ const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas 
         ))}
       </div>
 
-      <div className="bg-white border border-zinc-200 rounded-none shadow-sm flex flex-wrap gap-4 items-end p-4">
-        <div className="flex-1 min-w-[200px] space-y-1.5">
-          <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Pesquisar Compra</label>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
-            <input 
-              type="text" 
-              placeholder="Fornecedor, Nº Compra..." 
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-zinc-50 border border-zinc-200 rounded-none text-sm focus:outline-none focus:border-[#003366] transition-all"
-            />
+      {activeSubTab === 'historico' && (
+        <>
+          <div className="bg-white border border-zinc-200 rounded-none shadow-sm flex flex-wrap gap-4 items-end p-4">
+            <div className="flex-1 min-w-[200px] space-y-1.5">
+              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Pesquisar Compra</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
+                <input 
+                  type="text" 
+                  placeholder="Fornecedor, Nº Compra..." 
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 bg-zinc-50 border border-zinc-200 rounded-none text-sm focus:outline-none focus:border-[#003366] transition-all"
+                />
+              </div>
+            </div>
+            <button className="bg-zinc-100 text-zinc-600 font-bold px-4 py-2 rounded-none flex items-center gap-2 hover:bg-zinc-200 transition-all text-sm">
+              <Filter size={16} />
+              Filtrar
+            </button>
+          </div>
+
+          <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm overflow-x-auto">
+            <table className="w-full text-left border-collapse whitespace-nowrap">
+              <thead>
+                <tr className="bg-[#003366] text-white text-[11px] uppercase tracking-wider font-bold">
+                  <th className="px-6 py-4">Data Emissão /<br/>Vencimento</th>
+                  <th className="px-6 py-4 border-r border-[#004488]">Tipo /<br/>Nº Doc Fornecedor</th>
+                  <th className="px-6 py-4">Nº Interno</th>
+                  <th className="px-6 py-4">Fornecedor</th>
+                  <th className="px-6 py-4">Centro Custo /<br/>Controlo</th>
+                  <th className="px-6 py-4 text-center">M</th>
+                  <th className="px-6 py-4 text-right">Valor Total</th>
+                  <th className="px-6 py-4 text-center">PDF</th>
+                  <th className="px-6 py-4 text-right px-8">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {purchases
+                  .filter(p => 
+                    (p.supplier_name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) || 
+                    (p.purchase_number || '').toLowerCase().includes((searchTerm || '').toLowerCase())
+                  )
+                  .map((p, pIndex) => (
+                    <tr key={p.id || pIndex} className="hover:bg-zinc-50 transition-colors text-[11px] border-b border-zinc-50 group">
+                      <td className="px-6 py-4">
+                        <div className="font-bold text-zinc-900">{new Date(p.date).toLocaleDateString('pt-PT')}</div>
+                        <div className="text-red-600 font-bold mt-1">{p.due_date ? new Date(p.due_date).toLocaleDateString('pt-PT') : '-'}</div>
+                      </td>
+                      <td className="px-6 py-4 border-r border-zinc-100 italic">
+                        <div className="font-black text-[#003366] uppercase whitespace-nowrap">
+                          {['Pagamento', 'Recibo'].includes(p.document_type || '') ? 'Recibo' : (p.document_type || 'NC')}
+                        </div>
+                        <div className="text-zinc-500 font-bold mt-1">{p.invoice_number || '-'}</div>
+                      </td>
+                      <td className="px-6 py-4 font-mono text-zinc-500">{p.codigo || '-'}</td>
+                      <td className="px-6 py-4 font-bold text-zinc-900">{p.supplier_name}</td>
+                      <td className="px-6 py-4">
+                        <div className="text-zinc-600 uppercase font-bold">{p.work_site || '-'}</div>
+                        <div className="text-zinc-400 font-mono text-[9px] uppercase mt-1">
+                          {p.cash_box ? 'CAIXA • ' + p.cash_box : (p.hash ? 'HASH • ' + p.hash.substring(0, 8) : '-')}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-center text-zinc-600 font-medium">{p.moeda || 'AOA'}</td>
+                      <td className="px-6 py-4 text-right font-black text-[#003366] text-sm">{formatCurrency(p.total)}</td>
+                      <td className="px-6 py-4 text-center">
+                        <button 
+                          onClick={() => setShowFileModal(p)}
+                          className={`p-2 transition-all ${p.document_url ? 'bg-emerald-100 text-emerald-700 border border-emerald-200 shadow-sm' : 'bg-zinc-50 text-zinc-400 border border-zinc-200 hover:bg-blue-50 hover:text-blue-600'}`}
+                        >
+                          <FileText size={16} />
+                        </button>
+                      </td>
+                      <td className="px-6 py-4 text-right pr-8">
+                        <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => window.print()} className="p-2 text-zinc-400 hover:text-[#003366] transition-colors"><Printer size={16} /></button>
+                          <button 
+                            onClick={() => setSelectedPurchase(p)}
+                            className="p-2 text-zinc-400 hover:text-[#003366] transition-colors"
+                          >
+                            <MoreHorizontal size={18} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+            {purchases.length === 0 && (
+              <div className="p-12 text-center text-zinc-400 text-sm italic">Nenhuma compra registada.</div>
+            )}
+          </div>
+        </>
+      )}
+
+      {activeSubTab === 'pendentes' && (
+        <>
+          <div className="bg-white border border-zinc-200 rounded-none shadow-sm flex flex-wrap gap-4 items-end p-4">
+            <div className="flex-1 min-w-[200px] space-y-1.5">
+              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Pesquisar Compra Pendente</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
+                <input 
+                  type="text" 
+                  placeholder="Fornecedor, Nº Fatura..." 
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 bg-zinc-50 border border-zinc-200 rounded-none text-sm focus:outline-none focus:border-[#003366] transition-all"
+                />
+              </div>
+            </div>
+            <button className="bg-zinc-100 text-zinc-600 font-bold px-4 py-2 rounded-none flex items-center gap-2 hover:bg-zinc-200 transition-all text-sm">
+              <Filter size={16} />
+              Filtrar Pendentes
+            </button>
+          </div>
+
+          <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm overflow-x-auto">
+            <table className="w-full text-left border-collapse whitespace-nowrap">
+              <thead>
+                <tr className="bg-[#003366] text-white text-[11px] uppercase tracking-wider font-bold">
+                  <th className="px-6 py-4">Data Emissão /<br/>Vencimento</th>
+                  <th className="px-6 py-4 border-r border-[#004488]">Tipo /<br/>Nº Doc Fornecedor</th>
+                  <th className="px-6 py-4">Nº Interno</th>
+                  <th className="px-6 py-4">Fornecedor</th>
+                  <th className="px-6 py-4 text-center">M</th>
+                  <th className="px-6 py-4 text-right">Valor Pago</th>
+                  <th className="px-6 py-4 text-right">Valor Total</th>
+                  <th className="px-6 py-4 text-right px-8">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100 italic">
+                {purchases
+                  .filter(p => !['Pagamento', 'Recibo'].includes(p.document_type || ''))
+                  .filter(p => p.status !== 'cancelled')
+                  .filter(p => {
+                    const linkedReceipt = purchases.find((pur: any) => 
+                      (['Pagamento', 'Recibo'].includes(pur.document_type || '')) && 
+                      (pur.reference_purchase_number === p.purchase_number)
+                    );
+                    return !linkedReceipt;
+                  })
+                  .filter(p => 
+                    (p.supplier_name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) || 
+                    (p.purchase_number || '').toLowerCase().includes((searchTerm || '').toLowerCase())
+                  )
+                  .map((p, pIndex) => (
+                    <tr key={p.id || pIndex} className="hover:bg-amber-50/50 transition-colors text-[11px] border-b border-zinc-50 group">
+                      <td className="px-6 py-4">
+                        <div className="font-bold text-zinc-900">{new Date(p.date).toLocaleDateString('pt-PT')}</div>
+                        <div className="text-red-500 font-bold mt-1">{p.due_date ? new Date(p.due_date).toLocaleDateString('pt-PT') : '-'}</div>
+                      </td>
+                      <td className="px-6 py-4 border-r border-zinc-100">
+                        <div className="font-black text-[#003366] uppercase whitespace-nowrap">{p.document_type || 'Compra'}</div>
+                        <div className="text-zinc-500 font-bold mt-1">{p.invoice_number || '-'}</div>
+                      </td>
+                      <td className="px-6 py-4 font-mono text-zinc-500">{p.codigo || p.purchase_number}</td>
+                      <td className="px-6 py-4 font-bold text-zinc-900">{p.supplier_name}</td>
+                      <td className="px-6 py-4 text-center text-zinc-600 font-medium">{p.currency || 'AOA'}</td>
+                      <td className="px-6 py-4 text-right font-bold text-emerald-600">{formatCurrency(0)}</td>
+                      <td className="px-6 py-4 text-right font-black text-red-600 text-sm italic">{formatCurrency(p.total)}</td>
+                      <td className="px-6 py-4 text-right pr-8">
+                        <button 
+                          onClick={() => setSelectedPurchase(p)}
+                          className="bg-[#003366] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-[#002244] shadow-sm transition-all"
+                        >
+                          Liquidar
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+            {purchases.filter(p => p.status === 'pending').length === 0 && (
+              <div className="p-12 text-center text-zinc-400 text-sm italic">Não existem faturas pendentes.</div>
+            )}
+          </div>
+        </>
+      )}
+
+      {activeSubTab === 'fornecedores' && (
+        <div className="space-y-6">
+          <div className="flex justify-between items-center mb-6">
+            <div>
+               <h3 className="text-xl font-black text-[#003366] uppercase tracking-tighter flex items-center gap-3">
+                 <Users size={24} /> Gestão de Fornecedores
+               </h3>
+               <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mt-1">Lista completa e detalhada de todos os fornecedores registados</p>
+            </div>
+            <button 
+              onClick={() => setShowSupplierModal(true)}
+              className="bg-[#003366] text-white px-8 py-3 text-xs font-black uppercase tracking-widest hover:bg-[#002244] transition-all shadow-lg active:scale-95"
+            >
+              Novo Fornecedor
+            </button>
+          </div>
+          <div className="bg-white border border-zinc-200 overflow-hidden shadow-sm overflow-x-auto">
+            <table className="w-full text-left border-collapse whitespace-nowrap">
+              <thead>
+                <tr className="bg-zinc-100/50 text-[#003366] text-[11px] uppercase tracking-wider font-black border-b border-zinc-200">
+                  <th className="px-6 py-4">Nome do Fornecedor</th>
+                  <th className="px-6 py-4">NIF</th>
+                  <th className="px-6 py-4">Contacto</th>
+                  <th className="px-6 py-4">Localização</th>
+                  <th className="px-6 py-4 text-right">Saldo Corrente</th>
+                  <th className="px-6 py-4 text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {suppliers.map(s => {
+                   const supplierTotal = purchases
+                      .filter(p => p.supplier_name === s.name)
+                      .reduce((acc, p) => {
+                         const isPayment = ['Pagamento', 'Recibo'].includes(p.document_type || '');
+                         return isPayment ? acc - p.total : acc + p.total;
+                      }, 0);
+
+                   return (
+                    <tr key={s.id} className="hover:bg-zinc-50 transition-colors text-xs border-b border-zinc-50 group">
+                      <td className="px-6 py-4 font-black text-[#003366] uppercase">{s.name}</td>
+                      <td className="px-6 py-4 font-mono font-bold text-zinc-500">{s.nif || '999999999'}</td>
+                      <td className="px-6 py-4">
+                        <div className="font-bold text-zinc-700">{s.phone || '9xx xxx xxx'}</div>
+                        <div className="text-[10px] text-zinc-400 mt-0.5">{s.email || 'info@exemplo.com'}</div>
+                      </td>
+                      <td className="px-6 py-4 text-zinc-500 font-medium italic">{s.localidade || 'Luanda'}</td>
+                      <td className="px-6 py-4 text-right font-black text-red-600 bg-zinc-50/30">{formatCurrency(supplierTotal)}</td>
+                      <td className="px-6 py-4 text-right">
+                        <button 
+                          onClick={() => {
+                             setActiveSubTab('movimentos');
+                             setSearchTerm(s.name);
+                          }}
+                          className="bg-white border border-[#003366] text-[#003366] px-4 py-1.5 text-[10px] font-black uppercase hover:bg-[#003366] hover:text-white transition-all shadow-sm"
+                        >
+                          Ver Extrato
+                        </button>
+                      </td>
+                    </tr>
+                   );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
-        <button className="bg-zinc-100 text-zinc-600 font-bold px-4 py-2 rounded-none flex items-center gap-2 hover:bg-zinc-200 transition-all text-sm">
-          <Filter size={16} />
-          Filtrar
-        </button>
-      </div>
+      )}
 
-      <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-[#003366] text-white text-[11px] uppercase tracking-wider font-bold">
-              <th className="px-6 py-4">Data</th>
-              <th className="px-6 py-4">Vencimento</th>
-              <th className="px-6 py-4">Nº Compra</th>
-              <th className="px-6 py-4">Fornecedor</th>
-              <th className="px-6 py-4">Pagamento</th>
-              <th className="px-6 py-4 text-right">Total</th>
-              <th className="px-6 py-4 text-center">Estado</th>
-              <th className="px-6 py-4 text-right">Ações</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-zinc-100">
-            {purchases
-              .filter(p => 
-                (p.supplier_name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) || 
-                (p.purchase_number || '').toLowerCase().includes((searchTerm || '').toLowerCase())
-              )
-              .map(p => (
-                <tr key={p.id} className="hover:bg-zinc-50 transition-colors text-sm border-b border-zinc-50">
-                  <td className="px-6 py-4 text-zinc-900 font-bold">{new Date(p.date).toLocaleDateString('pt-PT')}</td>
-                  <td className="px-6 py-4 text-red-600 font-bold">
-                    {p.due_date ? new Date(p.due_date).toLocaleDateString('pt-PT') : '-'}
-                  </td>
-                  <td className="px-6 py-4 font-mono font-bold text-[#003366]">{p.purchase_number}</td>
-                  <td className="px-6 py-4 font-bold text-zinc-900">{p.supplier_name}</td>
-                  <td className="px-6 py-4 text-zinc-600 font-medium uppercase text-[10px]">{p.payment_method || 'N/A'}</td>
-                  <td className="px-6 py-4 text-right font-black text-[#003366]">{formatCurrency(p.total)}</td>
-                  <td className="px-6 py-4 text-center">
-                    <span className={`px-2 py-1 text-[10px] font-bold uppercase rounded-none ${
-                      p.status === 'completed' ? 'bg-emerald-50 text-emerald-600' : 
-                      p.status === 'cancelled' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'
-                    }`}>
-                      {p.status === 'completed' ? 'Concluída' : p.status === 'cancelled' ? 'Cancelada' : 'Pendente'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <div className="flex justify-end gap-2">
-                      <button 
-                        onClick={() => {
-                          if (p.document_url) {
-                            window.open(p.document_url, '_blank');
-                          } else {
-                            setSelectedPurchase(p);
-                            // This will open the actions modal where they can upload
-                          }
-                        }}
-                        className={`p-2 transition-colors ${p.document_url ? 'text-emerald-600 hover:text-emerald-700' : 'text-zinc-400 hover:text-[#003366]'}`}
-                        title={p.document_url ? "Ver Documento" : "Fazer Upload de Documento"}
-                      >
-                        <FileText size={16} />
-                      </button>
-                      <button className="p-2 text-zinc-400 hover:text-[#003366] transition-colors"><Printer size={16} /></button>
-                      <button 
-                        onClick={() => setSelectedPurchase(p)}
-                        className="p-2 text-zinc-400 hover:text-[#003366] transition-colors"
-                      >
-                        <MoreHorizontal size={18} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
-        {purchases.length === 0 && (
-          <div className="p-12 text-center text-zinc-400 text-sm italic">Nenhuma compra registada.</div>
-        )}
-      </div>
+      {activeSubTab === 'lista_documentos' && (
+        <div className="bg-white border border-zinc-200 p-6 shadow-sm">
+          <div className="flex justify-between items-center mb-8 border-b border-zinc-100 pb-4">
+            <div className="flex gap-4">
+              <div>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase">Data Inicial</label>
+                <input type="date" className="border border-zinc-300 px-2 py-1 text-sm block" defaultValue={new Date().toISOString().split('T')[0]}/>
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase">Data Final</label>
+                <input type="date" className="border border-zinc-300 px-2 py-1 text-sm block" defaultValue={new Date().toISOString().split('T')[0]}/>
+              </div>
+              <div className="flex items-end">
+                <button className="p-1.5 bg-zinc-100 hover:bg-zinc-200 transition-colors border border-zinc-300">
+                  <RefreshCw size={18} className="text-zinc-600" />
+                </button>
+              </div>
+              <div className="flex items-end ml-4">
+                <button className="px-4 py-1.5 bg-zinc-100 hover:bg-zinc-200 transition-colors border border-zinc-300 text-sm font-bold text-zinc-700 flex items-center gap-2">
+                  <Printer size={16} />
+                  Imprimir
+                </button>
+              </div>
+              <div className="flex items-end ml-4">
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
+                  <input 
+                    type="text" 
+                    placeholder="Pesquisar..." 
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-8 pr-3 py-1.5 bg-white border border-zinc-300 text-sm focus:outline-none focus:border-[#003366] transition-all"
+                  />
+                </div>
+              </div>
+            </div>
+            
+            <div className="text-right">
+              <h2 className="font-bold text-lg text-zinc-800 uppercase tracking-widest bg-zinc-100 px-4 py-2 border border-zinc-200 inline-block">
+                Extrato Mensal Documentos
+              </h2>
+            </div>
+          </div>
+
+          <table className="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr className="border-b-2 border-zinc-300 text-zinc-600">
+                <th className="py-2">No</th>
+                <th className="py-2">Data Valor</th>
+                <th className="py-2">Data</th>
+                <th className="py-2">Doc ID</th>
+                <th className="py-2">Doc No</th>
+                <th className="py-2">Fornecedor</th>
+                <th className="py-2 text-right">Valor</th>
+                <th className="py-2 text-right">IVA</th>
+                <th className="py-2 text-right">Total</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100 text-zinc-800">
+              {purchases.filter(p => 
+                  (p.supplier_name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) || 
+                  (p.purchase_number || '').toLowerCase().includes((searchTerm || '').toLowerCase())
+                ).length === 0 ? (
+                <tr><td colSpan={9} className="text-center py-8 text-zinc-400 italic">Sem movimentos...</td></tr>
+              ) : (
+                purchases.filter(p => 
+                  (p.supplier_name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) || 
+                  (p.purchase_number || '').toLowerCase().includes((searchTerm || '').toLowerCase())
+                ).map((p, index) => (
+                  <tr key={p.id || index} className="hover:bg-zinc-50">
+                    <td className="py-2">{index + 1}</td>
+                    <td className="py-2">{p.data_valor ? new Date(p.data_valor).toLocaleDateString('pt-PT') : '-'}</td>
+                    <td className="py-2">{new Date(p.date).toLocaleDateString('pt-PT')}</td>
+                    <td className="py-2">{p.id}</td>
+                    <td className="py-2">{p.purchase_number}</td>
+                    <td className="py-2 font-bold">{p.supplier_name}</td>
+                    <td className="py-2 text-right">{formatCurrency(p.total * 0.86)}</td>
+                    <td className="py-2 text-right">{formatCurrency(p.total * 0.14)}</td>
+                    <td className="py-2 text-right font-bold">{formatCurrency(p.total)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {activeSubTab === 'antiguidades' && (
+        <div className="bg-white border border-zinc-200 shadow-sm overflow-x-auto">
+          <div className="p-4 border-b border-zinc-200 flex justify-between items-center bg-zinc-50">
+            <h3 className="font-bold text-[#003366] uppercase text-sm">Documentos Por Liquidar a Fornecedores</h3>
+            <div className="flex items-center gap-2">
+              <button className="px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 border border-zinc-300 text-xs font-bold text-zinc-700 flex items-center gap-2">
+                <Download size={14} /> Baixar
+              </button>
+              <button className="px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 border border-zinc-300 text-xs font-bold text-zinc-700 flex items-center gap-2">
+                <Printer size={14} /> Imprimir
+              </button>
+            </div>
+          </div>
+          <table className="w-full text-left text-xs border-collapse whitespace-nowrap">
+            <thead>
+              <tr className="bg-zinc-100 text-zinc-600 border-b border-zinc-200">
+                <th className="px-4 py-3 w-10 text-center">ID</th>
+                <th className="px-4 py-3 flex-1 min-w-[200px]">Nome do Fornecedor</th>
+                <th className="px-4 py-3 text-right">Saldo Inicial</th>
+                <th className="px-4 py-3 text-right">&lt;30 dias</th>
+                <th className="px-4 py-3 text-right">&gt;30 dias</th>
+                <th className="px-4 py-3 text-right">&gt;60 dias</th>
+                <th className="px-4 py-3 text-right">&gt;90 dias</th>
+                <th className="px-4 py-3 text-right">&gt;120 dias</th>
+                <th className="px-4 py-3 text-right font-bold bg-zinc-200/50">Total</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+              {suppliers.map((supplier, idx) => {
+                const supplierPurchases = purchases.filter(p => 
+                   p.supplier_name === supplier.name && 
+                   p.document_type === 'Fatura de Compra' &&
+                   p.status !== 'cancelled' && 
+                   p.total > 0 &&
+                   !purchases.find(receipt => 
+                      (['Pagamento', 'Recibo'].includes(receipt.document_type || '')) && 
+                      receipt.reference_purchase_number === p.purchase_number
+                   )
+                );
+                if (supplierPurchases.length === 0) return null;
+                
+                let tot30 = 0, tot60 = 0, tot90 = 0, tot120 = 0, totMais120 = 0, total = 0;
+                const now = new Date();
+                
+                supplierPurchases.forEach(p => {
+                   const issueDate = new Date(p.date);
+                   const diffTime = Math.abs(now.getTime() - issueDate.getTime());
+                   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+                   
+                   if (diffDays <= 30) tot30 += p.total;
+                   else if (diffDays <= 60) tot60 += p.total;
+                   else if (diffDays <= 90) tot90 += p.total;
+                   else if (diffDays <= 120) tot120 += p.total;
+                   else totMais120 += p.total;
+                   
+                   total += p.total;
+                });
+
+                return (
+                  <tr key={supplier.id} className="hover:bg-zinc-50">
+                    <td className="px-4 py-2 border-r border-zinc-100 text-center bg-zinc-100/50 font-mono text-zinc-500">{supplier.id}</td>
+                    <td className="px-4 py-2 text-[#003366] font-bold uppercase">{supplier.name}</td>
+                    <td className="px-4 py-2 text-right">0,00</td>
+                    <td className="px-4 py-2 text-right">{tot30 ? formatCurrency(tot30) : '0,00'}</td>
+                    <td className="px-4 py-2 text-right">{tot60 ? formatCurrency(tot60) : '0,00'}</td>
+                    <td className="px-4 py-2 text-right">{tot90 ? formatCurrency(tot90) : '0,00'}</td>
+                    <td className="px-4 py-2 text-right">{tot120 ? formatCurrency(tot120) : '0,00'}</td>
+                    <td className="px-4 py-2 text-right">{totMais120 ? formatCurrency(totMais120) : '0,00'}</td>
+                    <td className="px-4 py-2 text-right font-bold bg-zinc-100">{formatCurrency(total)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {activeSubTab === 'movimentos' && (
+        <div className="bg-white border border-zinc-200 shadow-sm overflow-x-auto">
+          <div className="p-4 border-b border-zinc-200 bg-zinc-50 flex justify-between items-center text-center text-sm font-bold text-zinc-700 italic">
+            <span></span>
+            Contas Correntes Fornecedores
+            <div className="flex gap-2">
+              <button className="bg-white p-2 border border-zinc-300 hover:bg-zinc-100"><RefreshCw size={16} /></button>
+              <button className="bg-white p-2 border border-zinc-300 hover:bg-zinc-100"><Download size={16} /></button>
+              <button className="bg-white p-2 border border-zinc-300 hover:bg-zinc-100 text-red-600"><Printer size={16} /></button>
+            </div>
+          </div>
+          <table className="w-full text-left text-xs border-collapse whitespace-nowrap">
+            <thead>
+               <tr className="border-b border-zinc-200 text-zinc-900 font-bold bg-white">
+                 <th className="px-4 py-3">Data</th>
+                 <th className="px-4 py-3">Tipo Doc</th>
+                 <th className="px-4 py-3">Documento Nº</th>
+                 <th className="px-4 py-3">Fornecedor</th>
+                 <th className="px-4 py-3">Centro Custo</th>
+                 <th className="px-4 py-3 text-right">Débito (Pagos)</th>
+                 <th className="px-4 py-3 text-right">Crédito (Dívida)</th>
+                 <th className="px-4 py-3 text-right bg-zinc-100">Saldo</th>
+               </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+               {(() => {
+                  let runningBalance = 0;
+                  return purchases
+                    .filter(p => !searchTerm || (p.supplier_name || '').toLowerCase().includes(searchTerm.toLowerCase()))
+                    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                    .map((p, pIndex) => {
+                       const isPayment = ['Pagamento', 'Recibo'].includes(p.document_type || '');
+                       const debit = isPayment ? p.total : 0;
+                       const credit = isPayment ? 0 : p.total;
+                       runningBalance += (credit - debit);
+                       
+                       return (
+                         <tr key={p.id || pIndex} className="hover:bg-zinc-50">
+                           <td className="px-4 py-3">{new Date(p.date).toLocaleDateString('pt-PT')}</td>
+                           <td className="px-4 py-3 font-bold text-[#003366]">{isPayment ? 'Recibo' : (p.document_type || 'Compra')}</td>
+                           <td className="px-4 py-3 font-mono">{p.purchase_number}</td>
+                           <td className="px-4 py-3 uppercase font-bold">{p.supplier_name}</td>
+                           <td className="px-4 py-3 text-zinc-500">{p.work_site || '-'}</td>
+                           <td className="px-4 py-3 text-right text-emerald-600 font-bold">{debit > 0 ? formatCurrency(debit) : '-'}</td>
+                           <td className="px-4 py-3 text-right text-red-600 font-bold">{credit > 0 ? formatCurrency(credit) : '-'}</td>
+                           <td className="px-4 py-3 text-right font-black bg-zinc-50">{formatCurrency(runningBalance)}</td>
+                         </tr>
+                       );
+                    });
+               })()}
+               {purchases.length === 0 && (
+                 <tr>
+                   <td colSpan={8} className="text-center py-8 text-zinc-400 italic">Sem movimentos registados...</td>
+                 </tr>
+               )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {showFileModal && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-zinc-900/60 backdrop-blur-md" onClick={() => setShowFileModal(null)} />
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="relative w-full max-w-4xl bg-white shadow-2xl overflow-hidden flex flex-col h-[85vh]"
+          >
+            <div className="p-6 border-b border-zinc-100 flex justify-between items-center bg-white">
+              <div>
+                <h3 className="text-xl font-black text-[#003366] uppercase tracking-tighter">Gestão de Documento PDF</h3>
+                <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mt-1">
+                  {showFileModal.document_type} {showFileModal.purchase_number} • {showFileModal.supplier_name}
+                </p>
+              </div>
+              <button onClick={() => setShowFileModal(null)} className="p-2 hover:bg-zinc-100 transition-colors text-zinc-400">
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="flex-1 flex flex-col md:flex-row bg-zinc-50 overflow-hidden">
+               {/* Left sidebar: Actions */}
+               <div className="w-full md:w-64 bg-white border-r border-zinc-100 p-6 space-y-4">
+                  <div className="space-y-1">
+                     <label className="text-[10px] font-black uppercase text-zinc-400 tracking-widest mb-1 block">Ações Disponíveis</label>
+                     <div className="grid grid-cols-1 gap-2">
+                        <label className="flex items-center gap-3 p-3 border border-dashed border-zinc-200 hover:border-blue-500 hover:bg-blue-50 cursor-pointer transition-all text-sm font-bold text-zinc-600 group">
+                           <Upload size={18} className="text-zinc-400 group-hover:text-blue-600" />
+                           <span className="group-hover:text-blue-700">Carregar PDF</span>
+                           <input 
+                              type="file" 
+                              accept=".pdf" 
+                              className="hidden" 
+                              onChange={async (e) => {
+                                 const file = e.target.files?.[0];
+                                 if (!file) return;
+                                 const formData = new FormData();
+                                 formData.append('file', file);
+                                 try {
+                                    const res = await fetch(`/api/purchases/${showFileModal.id}/upload`, {
+                                       method: 'POST',
+                                       body: formData
+                                    });
+                                    if (res.ok) {
+                                       const updated = await res.json();
+                                       setPurchases(prev => prev.map(p => p.id === updated.id ? updated : p));
+                                       setShowFileModal(updated);
+                                    }
+                                 } catch (error) {
+                                    console.error('Error uploading file:', error);
+                                 }
+                              }}
+                           />
+                        </label>
+
+                        {showFileModal.document_url && (
+                           <>
+                              <button 
+                                onClick={() => window.open(showFileModal.document_url, '_blank')}
+                                className="flex items-center gap-3 p-3 border border-zinc-100 bg-white hover:bg-zinc-50 transition-all text-sm font-bold text-zinc-600"
+                              >
+                                 <Eye size={18} className="text-blue-500" />
+                                 <span>Visualizar</span>
+                              </button>
+                              <button 
+                                onClick={() => {
+                                   const link = document.createElement('a');
+                                   link.href = showFileModal.document_url || '';
+                                   link.download = `documento_${showFileModal.purchase_number}.pdf`;
+                                   link.click();
+                                }}
+                                className="flex items-center gap-3 p-3 border border-zinc-100 bg-white hover:bg-zinc-50 transition-all text-sm font-bold text-zinc-600"
+                              >
+                                 <Download size={18} className="text-emerald-500" />
+                                 <span>Baixar</span>
+                              </button>
+                              <button 
+                                onClick={() => {
+                                   const win = window.open(showFileModal.document_url, '_blank');
+                                   win?.print();
+                                }}
+                                className="flex items-center gap-3 p-3 border border-zinc-100 bg-white hover:bg-zinc-50 transition-all text-sm font-bold text-zinc-600"
+                              >
+                                 <Printer size={18} className="text-orange-500" />
+                                 <span>Imprimir</span>
+                              </button>
+                              <button 
+                                onClick={async () => {
+                                   if (confirm('Tem a certeza que deseja remover este documento?')) {
+                                      try {
+                                         const res = await fetch(`/api/purchases/${showFileModal.id}/file`, {
+                                            method: 'DELETE'
+                                         });
+                                         if (res.ok) {
+                                            const updated = await res.json();
+                                            setPurchases(prev => prev.map(p => p.id === updated.id ? updated : p));
+                                            setShowFileModal(updated);
+                                         }
+                                      } catch (error) {
+                                         console.error('Error deleting file:', error);
+                                      }
+                                   }
+                                }}
+                                className="flex items-center gap-3 p-3 border border-red-50 bg-red-50/10 hover:bg-red-50 transition-all text-sm font-bold text-red-600"
+                              >
+                                 <Trash2 size={18} />
+                                 <span>Remover Doc</span>
+                              </button>
+                           </>
+                        )}
+                     </div>
+                  </div>
+
+                  <div className="pt-6">
+                     <div className="bg-amber-50 border border-amber-100 p-4 rounded-none">
+                        <div className="flex gap-2 text-amber-600 mb-2">
+                           <AlertCircle size={16} />
+                           <span className="text-[10px] font-black uppercase">Instruções</span>
+                        </div>
+                        <p className="text-[10px] text-amber-700 leading-relaxed font-medium capitalize">
+                           O ficheiro deve estar no formato PDF. Ao carregar um novo ficheiro, o anterior será substituído automaticamente.
+                        </p>
+                     </div>
+                  </div>
+               </div>
+
+               {/* Right: PDF Preview */}
+               <div className="flex-1 bg-zinc-200 flex items-center justify-center p-4 overflow-hidden">
+                  {showFileModal.document_url ? (
+                     <iframe 
+                        src={showFileModal.document_url} 
+                        className="w-full h-full shadow-2xl border-none bg-white"
+                        title="Document Preview"
+                     />
+                  ) : (
+                     <div className="text-center space-y-4 max-w-xs transition-all animate-in fade-in zoom-in duration-500">
+                        <div className="w-20 h-20 bg-zinc-100 rounded-full flex items-center justify-center mx-auto border-2 border-dashed border-zinc-300">
+                           <FileText size={32} className="text-zinc-300" />
+                        </div>
+                        <div className="space-y-1">
+                           <h4 className="text-sm font-black text-zinc-500 uppercase">Sem Documento</h4>
+                           <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest leading-loose text-center px-4">
+                              Não foi encontrado nenhum PDF associado a este registo de compra.
+                           </p>
+                        </div>
+                     </div>
+                  )}
+               </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {showSupplierModal && (
+        <div className="fixed inset-0 z-[400] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm">
+           <motion.div 
+             initial={{ opacity: 0, scale: 0.95 }}
+             animate={{ opacity: 1, scale: 1 }}
+             className="w-full max-w-4xl bg-white shadow-2xl overflow-hidden relative"
+           >
+             <button 
+               onClick={() => setShowSupplierModal(false)}
+               className="absolute top-4 right-4 text-zinc-400 hover:text-zinc-600 z-10 p-2 hover:bg-zinc-100 rounded-full"
+             >
+               <X size={24} />
+             </button>
+             <ClientForm 
+               onBack={() => setShowSupplierModal(false)}
+               onSuccess={() => {
+                 setShowSupplierModal(false);
+                 // We don't have a direct refetch function for suppliers here, but we can assume they refresh elsewhere 
+                 // or just reload the page if needed, but better to just use standard global refresh if it exists.
+                 window.location.reload(); 
+               }}
+               isSupplier={true}
+             />
+           </motion.div>
+        </div>
+      )}
 
       {selectedPurchase && (
         <PurchaseActionsModal 
           purchase={selectedPurchase}
           onClose={() => setSelectedPurchase(null)}
-          onAction={(action) => {
-            if (action === 'upload') {
+          onAction={(action, p) => {
+             if (action === 'edit') {
+               handleStartCreate(p, undefined);
+             } else if (action === 'delete_purchase') {
+                if (confirm('Tem a certeza que deseja apagar o documento de compra?')) {
+                  fetchWithAuth(`/api/purchases/${p.id}`, { method: 'DELETE' }).then(() => {
+                    fetchPurchases();
+                    setSelectedPurchase(null);
+                  });
+                }
+             } else if (action === 'receipt') {
+                const draft = { ...p, id: undefined, purchase_number: '' };
+                handleStartCreate(draft, 'Pagamento');
+             } else if (action === 'credit_note') {
+                const draft = { ...p, id: undefined, purchase_number: '' };
+                handleStartCreate(draft, 'Nota de Crédito de Fornecedor');
+             } else if (action === 'clone') {
+                const cloned = { ...p, id: undefined, purchase_number: '' };
+                handleStartCreate(cloned, p.document_type);
+             } else if (action === 'change_hash') {
+                setShowHashModal(p);
+                setSelectedPurchase(null);
+             } else if (action === 'whatsapp') {
+                const text = `Documento de Compra ${p.purchase_number}\nFornecedor: ${p.supplier_name}\nData: ${p.date}\nTotal: ${formatCurrency(p.total)}`;
+                window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+             } else if (action === 'email') {
+                const subject = `Documento de Compra ${p.purchase_number}`;
+                const body = `Documento de Compra ${p.purchase_number}\nFornecedor: ${p.supplier_name}\nData: ${p.date}\nTotal: ${formatCurrency(p.total)}`;
+                window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
+             } else if (action === 'print') {
+                window.print();
+             } else if (action === 'upload') {
                const input = document.createElement('input');
                input.type = 'file';
                input.onchange = async (e) => {
@@ -13960,6 +14794,98 @@ const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas 
             }
           }}
         />
+      )}
+
+      {showHashModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm" onClick={() => setShowHashModal(null)} />
+          <div className="relative w-full max-w-sm bg-white p-6 shadow-2xl">
+            <h3 className="font-bold text-[#003366] mb-4">Alterar Hash do Documento</h3>
+            <p className="text-zinc-500 text-xs mb-4">Insira o novo código hash para o documento <b>{showHashModal.purchase_number}</b>.</p>
+            <input 
+              type="text"
+              autoFocus
+              defaultValue={showHashModal.hash || ''}
+              className="w-full bg-white border border-zinc-200 px-4 py-2 font-mono text-sm focus:outline-none focus:border-[#003366] mb-4"
+              id="hashInput"
+            />
+            <div className="flex gap-2 justify-end">
+              <button 
+                onClick={() => setShowHashModal(null)}
+                className="px-4 py-2 text-zinc-500 font-bold text-xs uppercase"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={() => {
+                  const val = (document.getElementById('hashInput') as HTMLInputElement).value;
+                  const updated = { ...showHashModal, hash: val };
+                  fetchWithAuth(`/api/purchases/${showHashModal.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(updated)
+                  }).then(() => {
+                    fetchPurchases();
+                    setShowHashModal(null);
+                  });
+                }}
+                className="px-4 py-2 bg-[#003366] text-white font-bold text-xs uppercase"
+              >
+                Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {completedReceipt && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white shadow-2xl p-8 max-w-sm w-full relative">
+            <button onClick={() => setCompletedReceipt(null)} className="absolute top-4 right-4 text-zinc-400 hover:text-zinc-600"><X size={24} /></button>
+            <div className="flex flex-col items-center text-center">
+              <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-4">
+                <CheckCircle size={32} />
+              </div>
+              <h3 className="text-xl font-black text-[#003366] mb-2">Recibo Emitido!</h3>
+              <p className="text-zinc-500 text-sm mb-6">O recibo de compras foi registado com sucesso.</p>
+
+              <div className="grid grid-cols-2 gap-3 w-full mb-4">
+                <button 
+                  onClick={() => { window.print(); }}
+                  className="bg-zinc-100 text-[#003366] p-3 font-bold text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-zinc-200 transition-colors"
+                >
+                  <Printer size={16} /> Imprimir
+                </button>
+                <button 
+                  onClick={() => {
+                    const text = `Recibo de Compra\nFornecedor: ${completedReceipt.supplier_name}\nData: ${completedReceipt.date}\nTotal: ${formatCurrency(completedReceipt.total)}`;
+                    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+                  }}
+                  className="bg-emerald-50 text-emerald-600 p-3 font-bold text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-emerald-100 transition-colors"
+                >
+                  <MessageCircle size={16} /> WhatsApp
+                </button>
+                <button 
+                  onClick={() => {
+                    const subject = `Recibo de Compra`;
+                    const body = `Recibo de Compra\nFornecedor: ${completedReceipt.supplier_name}\nData: ${completedReceipt.date}\nTotal: ${formatCurrency(completedReceipt.total)}`;
+                    window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
+                  }}
+                  className="bg-blue-50 text-blue-600 p-3 font-bold text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-blue-100 transition-colors col-span-2"
+                >
+                  <Mail size={16} /> Enviar por E-mail
+                </button>
+              </div>
+
+              <button 
+                onClick={() => setCompletedReceipt(null)}
+                className="w-full bg-[#003366] text-white p-3 font-bold text-xs uppercase tracking-widest hover:bg-[#002244] transition-colors"
+              >
+                Concluir
+              </button>
+            </div>
+          </motion.div>
+        </div>
       )}
     </div>
   );

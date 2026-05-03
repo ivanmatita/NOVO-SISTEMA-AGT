@@ -121,6 +121,8 @@ export interface InvoiceItem {
   retencao_fonte?: number;
   tipologia?: string;
   desconto?: number;
+  desconto_linha?: number;
+  referencia?: string;
   tipo_artigo?: string;
   comprimento?: number;
   largura?: number;
@@ -163,6 +165,7 @@ export interface Invoice {
   total_in_words?: string;
   retencao_fonte_total?: number;
   global_discount?: number;
+  vat_withholding?: number;
 }
 
 export interface DashboardStats {
@@ -342,6 +345,7 @@ export interface WorkSite {
   start_date: string;
   end_date: string;
   title: string;
+  name?: string; // Compatibility
   code: string;
   staff_per_day: number;
   total_staff: number;
@@ -485,6 +489,7 @@ export interface Purchase {
   supplier_name?: string;
   document_type?: string;
   purchase_number: string;
+  invoice_number?: string;
   date: string;
   due_date?: string;
   payment_method?: string;
@@ -492,6 +497,16 @@ export interface Purchase {
   total: number;
   items?: PurchaseItem[];
   document_url?: string;
+  hash?: string;
+  codigo?: string;
+  work_site?: string;
+  work_site_id?: number;
+  caixa?: string;
+  cash_box?: string;
+  data_valor?: string;
+  series_id?: number;
+  currency?: string;
+  reference_purchase_number?: string;
 }
 
 export interface LaborTermination {
@@ -514,4 +529,6 @@ export interface PurchaseItem {
   quantity: number;
   unit_price: number;
   total: number;
+  referencia?: string;
+  desconto_linha?: number;
 }

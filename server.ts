@@ -33,6 +33,10 @@ let fiscalSeries: any[] = savedData?.fiscalSeries || [
   { id: 1, name: 'Série 2026', user_id: '1', type: 'normal', reference: 'S', counters: {}, year: 2026, is_active: true, data_inicio: '2026-01-01', destino: 'Vendas Sede' }
 ];
 let caixas: any[] = savedData?.caixas || [];
+let costCenters: any[] = savedData?.costCenters || [];
+let posPoints: any[] = savedData?.posPoints || [{ id: 1, name: 'POS Principal', is_active: true }];
+let sessions: any[] = savedData?.sessions || [];
+let posSales: any[] = savedData?.posSales || [];
 let caixaMovements: any[] = savedData?.caixaMovements || [];
 let warehouses: any[] = savedData?.warehouses || [];
 let systemUsers: any[] = savedData?.systemUsers || [];
@@ -63,7 +67,8 @@ const saveData = () => {
     systemUsers, archives, fleetVehicles, projectTasks, companies,
     stockMovements, securityOccurrences, securityArmory, securityRoster,
     transactions, receipts, suppliers, purchases, professions,
-    attendance, absences, laborTerminations
+    attendance, absences, laborTerminations,
+    costCenters, posPoints, sessions, posSales
   };
   try {
     fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
@@ -665,6 +670,54 @@ async function startServer() {
     res.json(newSeries);
   });
 
+  // POS Endpoints
+  app.get("/api/cost-centers", (req, res) => res.json(costCenters));
+  app.get("/api/pos-points", (req, res) => res.json(posPoints));
+  app.get("/api/cash/sessions", (req, res) => res.json(sessions));
+  
+  app.post("/api/pos-points", (req, res) => {
+    const newPoint = { ...req.body, id: generateId(), is_active: true };
+    posPoints.push(newPoint);
+    saveData();
+    res.json(newPoint);
+  });
+
+  app.post("/api/cash/open", (req, res) => {
+    const newSession = {
+      id: generateId(),
+      opening_date: new Date().toISOString(),
+      initial_balance: Number(req.body.initial_balance || 0),
+      status: 'open',
+      pos_point_id: req.body.pos_point_id,
+      user_id: '1'
+    };
+    sessions.push(newSession);
+    saveData();
+    res.json(newSession);
+  });
+
+  app.post("/api/cash/close/:id", (req, res) => {
+    const session = sessions.find(s => s.id === Number(req.params.id));
+    if (session) {
+      session.status = 'closed';
+      session.closing_date = new Date().toISOString();
+      session.final_balance = Number(req.body.final_balance || 0);
+      saveData();
+      res.json(session);
+    } else res.status(404).json({ error: "Session not found" });
+  });
+
+  app.post("/api/pos/sales", (req, res) => {
+    const newSale = {
+      ...req.body,
+      id: generateId(),
+      created_at: new Date().toISOString()
+    };
+    posSales.push(newSale);
+    saveData();
+    res.json(newSale);
+  });
+
   // System Users
   app.get("/api/system-users", (req, res) => res.json(systemUsers));
   app.post("/api/system-users", (req, res) => {
@@ -760,26 +813,66 @@ async function startServer() {
     res.json(newSupplier);
   });
   app.get("/api/purchases", (req, res) => res.json(purchases));
+  app.put("/api/purchases/:id", (req, res) => {
+    const id = Number(req.params.id);
+    const index = purchases.findIndex((p: any) => p.id === id);
+    if (index !== -1) {
+      purchases[index] = { ...purchases[index], ...req.body, id };
+      saveData();
+      res.json(purchases[index]);
+    } else {
+      res.status(404).json({ error: "Not found" });
+    }
+  });
+  app.delete("/api/purchases/:id", (req, res) => {
+    const id = Number(req.params.id);
+    purchases = purchases.filter((p: any) => p.id !== id);
+    saveData();
+    res.json({ success: true });
+  });
   app.post("/api/purchases", (req, res) => {
     const newPurchaseId = generateId();
     const newPurchase = { ...req.body, id: newPurchaseId, date: new Date().toISOString(), status: 'completed' };
     purchases.push(newPurchase);
     
-    // Record finance movement (Accounting Cost)
+    // Record finance movement (Accounting Cost) if it's a payment or has payment info
     const amount = Number(newPurchase.total || 0);
+    const isPayment = newPurchase.document_type === 'Fatura Recibo de Compra' || 
+                      newPurchase.document_type === 'Pagamento' || 
+                      newPurchase.document_type === 'Recibo';
+    
+    // Always record as a transaction for accounting
     transactions.push({
       id: generateId(),
       type: 'expense',
       category: 'Compras',
       amount: amount,
       moeda: newPurchase.moeda || newPurchase.currency || 'AOA',
-      description: `Compra Ref: ${newPurchase.invoice_number || 'N/A'} - Fornecedor: ${newPurchase.supplier_name || 'N/A'}`,
+      description: `${newPurchase.document_type || 'Compra'} Ref: ${newPurchase.invoice_number || 'N/A'} - Fornecedor: ${newPurchase.supplier_name || 'N/A'}`,
       date: new Date().toISOString(),
       reference_id: newPurchase.id.toString(),
       work_site_id: newPurchase.work_site_id
     });
 
-    // Update Work Site Movements if applicable
+    // If it's a cash transaction, record in Caixa
+    if (isPayment && newPurchase.cash_box) {
+      const caixaId = Number(newPurchase.cash_box);
+      const caixa = caixas.find(c => c.id === caixaId);
+      if (caixa) {
+        const movement = {
+          id: generateId(),
+          caixa_id: caixaId,
+          type: 'saida',
+          amount: amount,
+          description: `Pagamento Compra: ${newPurchase.purchase_number} (${newPurchase.supplier_name})`,
+          date: new Date().toISOString(),
+          user_id: '1'
+        };
+        caixaMovements.push(movement);
+        caixa.balance = (caixa.balance || 0) - amount;
+      }
+    }
+    // Update Work Site Movements if applicable 
     if (newPurchase.work_site_id) {
       workSiteMovements.push({
         id: generateId(),
@@ -793,23 +886,6 @@ async function startServer() {
         balance: 0,
         moeda: newPurchase.moeda || newPurchase.currency || 'AOA'
       });
-    }
-
-    // Record caixa movement if applicable (Saída)
-    if (newPurchase.cash_box) {
-      caixaMovements.push({
-        id: generateStrId(),
-        caixaId: newPurchase.cash_box,
-        type: 'saida',
-        amount: amount,
-        moeda: newPurchase.currency || 'Kwanza',
-        description: `Pagamento Compra Ref: ${newPurchase.invoice_number || 'N/A'}`,
-        date: new Date().toISOString()
-      });
-      const targetCaixa = caixas.find(c => String(c.id) === String(newPurchase.cash_box) || c.name === newPurchase.cash_box);
-      if (targetCaixa) {
-        targetCaixa.currentBalance = (targetCaixa.currentBalance || 0) - amount;
-      }
     }
 
     // Record stock movements for each item
@@ -837,6 +913,7 @@ async function startServer() {
       });
     }
 
+    saveData();
     res.json(newPurchase);
   });
 

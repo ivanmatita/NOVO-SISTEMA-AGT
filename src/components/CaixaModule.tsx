@@ -830,9 +830,13 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
                         setTransferData({ ...transferData, from: showOptionsMenu.id });
                         setActiveSection('transfer');
                       }
-                      if (opt.id === 'movimentos') {
+                      if (opt.id === 'relatorios' || opt.id === 'movimentos') {
                         setSelectedCaixaId(showOptionsMenu.id);
                         setActiveSection('movements');
+                      }
+                      if (opt.id === 'associar') {
+                        setEditCaixa(showOptionsMenu);
+                        setActiveSection('edit');
                       }
                       if (opt.id === 'fechar') {
                         handleCloseCaixa(showOptionsMenu.id);

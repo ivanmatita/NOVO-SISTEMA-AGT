@@ -6,34 +6,82 @@ const formatCurrency = (value: number, currency: string = 'AOA') => {
   return new Intl.NumberFormat('pt-AO', { style: 'currency', currency: currency }).format(value);
 };
 
-const numberToWords = (n: number | undefined): string => {
-  if (n === undefined || n === 0) return 'Zero';
-  const units = ['', 'Um', 'Dois', 'Três', 'Quatro', 'Cinco', 'Seis', 'Sete', 'Oito', 'Nove'];
-  const teens = ['Dez', 'Onze', 'Doze', 'Treze', 'Quatorze', 'Quinze', 'Dezesseis', 'Dezessete', 'Dezoito', 'Dezenove'];
-  const tens = ['', '', 'Vinte', 'Trinta', 'Quarenta', 'Cinquenta', 'Sessenta', 'Setenta', 'Oitenta', 'Noventa'];
-  const hundreds = ['', 'Cento', 'Duzentos', 'Trezentos', 'Quatrocentos', 'Quinhentos', 'Seiscentos', 'Setecentos', 'Oitocentos', 'Novecentos'];
+const writeValorPorExtenso = (n: number) => {
+  if (n === 0) return 'Zero Kwanzas';
+  
+  const unidades = ['', 'um', 'dois', 'três', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove'];
+  const dezena_10 = ['dez', 'onze', 'doze', 'treze', 'catorze', 'quinze', 'dezasseis', 'dezassete', 'dezoito', 'dezanove'];
+  const dezenas = ['', '', 'vinte', 'trinta', 'quarenta', 'cinquenta', 'sessenta', 'setenta', 'oitenta', 'noventa'];
+  const centenas = ['', 'cento', 'duzentos', 'trezentos', 'quatrocentos', 'quinhentos', 'seiscentos', 'setecentos', 'oitocentos', 'novecentos'];
+  
+  const numToWords = (num: number): string => {
+    if (num === 0) return '';
+    if (num === 100) return 'cem';
+    
+    let words = '';
+    
+    if (num >= 100) {
+      words += centenas[Math.floor(num / 100)];
+      num %= 100;
+      if (num > 0) words += ' e ';
+    }
+    
+    if (num >= 20) {
+      words += dezenas[Math.floor(num / 10)];
+      num %= 10;
+      if (num > 0) words += ' e ';
+    } else if (num >= 10) {
+      words += dezena_10[num - 10];
+      num = 0;
+    }
+    
+    if (num > 0) {
+      words += unidades[num];
+    }
+    
+    return words;
+  };
 
-  let num = Math.floor(n);
-  if (num === 100) return 'Cem';
-
-  let words = '';
-  if (num >= 100) {
-    words += hundreds[Math.floor(num / 100)];
-    num %= 100;
-    if (num > 0) words += ' e ';
+  let integerPart = Math.floor(n);
+  let decimalPart = Math.round((n - integerPart) * 100);
+  
+  const chunks = [];
+  while (integerPart > 0) {
+    chunks.push(integerPart % 1000);
+    integerPart = Math.floor(integerPart / 1000);
   }
-  if (num >= 20) {
-    words += tens[Math.floor(num / 10)];
-    num %= 10;
-    if (num > 0) words += ' e ';
-  } else if (num >= 10) {
-    words += teens[num - 10];
-    num = 0;
+  
+  const suffixes = ['', 'mil', 'milhão', 'bilhão', 'trilhão', 'quadrilhão', 'quintilhão'];
+  const suffixesPlural = ['', 'mil', 'milhões', 'bilhões', 'trilhões', 'quadrilhões', 'quintilhões'];
+  
+  let result = '';
+  for (let i = chunks.length - 1; i >= 0; i--) {
+    if (chunks[i] === 0) continue;
+    
+    let chunkWords = numToWords(chunks[i]);
+    let suffix = chunks[i] === 1 ? suffixes[i] : suffixesPlural[i];
+    
+    if (i === 1 && chunks[i] === 1) chunkWords = ''; // "mil" instead of "um mil"
+    
+    if (result !== '') {
+      if (i === 0 && chunks[i] < 100) {
+        result += ' e ';
+      } else {
+        result += ', ';
+      }
+    }
+    
+    result += chunkWords + (suffix ? ' ' + suffix : '');
   }
-  if (num > 0) {
-    words += units[num];
+  
+  const kwanzaSuffix = Math.floor(n) === 1 ? ' Kwanza' : ' Kwanzas';
+  result = result.charAt(0).toUpperCase() + result.slice(1) + kwanzaSuffix;
+  
+  if (decimalPart > 0) {
+    result += ' e ' + numToWords(decimalPart) + (decimalPart === 1 ? ' cêntimo' : ' cêntimos');
   }
-  return words;
+  
+  return result;
 };
 
 interface PrintA4Props {
@@ -46,13 +94,22 @@ interface PrintA4Props {
     phone?: string;
     email?: string;
     logo?: string;
+    logo_url?: string;
+    logo_size?: number;
     footer?: string;
+    footer_image_url?: string;
+    footer_size?: number;
+    watermark_url?: string;
+    watermark_size?: number;
+    regime?: string;
   };
 }
 
 const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
   if (!invoice) return null;
   const isFinal = !isDraft && invoice.is_certified;
+  
+  const totalInWords = invoice.total_in_words || writeValorPorExtenso(invoice.total || 0);
   
   // Strict check: if it's draft or not certified by AGT (hash is missing or is_certified is false), it's a PROVISIONAL document
   const isProvisional = isDraft || !invoice.is_certified || !invoice.hash;
@@ -70,8 +127,18 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
   const totalDocumento = subtotal + vatTotal - discountAmount;
   const totalPagar = totalDocumento - retencaoTotal - vatWithholdingAmount;
 
+  const logoSrc = companyData?.logo_url || companyData?.logo;
+  const watermarkSrc = companyData?.watermark_url;
+  const footerSrc = companyData?.footer_image_url;
+
   return (
     <div className="bg-white p-[2cm] w-[210mm] min-h-[297mm] mx-auto text-zinc-900 font-sans shadow-lg print:shadow-none print:m-0 relative overflow-hidden">
+      {watermarkSrc && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.1] z-0">
+          <img src={watermarkSrc} alt="Watermark" style={{ height: `${companyData?.watermark_size || 400}px` }} className="object-contain grayscale" />
+        </div>
+      )}
+      
       {isProvisional && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.05] rotate-[-45deg] z-[100] text-center border-8 border-amber-500 m-20">
           <p className="text-[70px] font-black uppercase tracking-[0.1em] text-amber-600 leading-none">
@@ -87,13 +154,19 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
       )}
       
       <div className="flex justify-between items-start mb-12 relative z-10">
-        <div>
-          <h1 className="text-3xl font-black text-[#003366] mb-2 uppercase tracking-tighter">{companyData?.name || 'FaturaPronta Lda'}</h1>
-          <div className="text-xs space-y-1 text-zinc-600 font-medium">
-            <p className="uppercase">{companyData?.address || 'Rua da Inovação, 123'}</p>
-            <p className="font-bold">NIF: {companyData?.nif || '500 000 000'}</p>
-            {companyData?.phone && <p>Tel: {companyData.phone}</p>}
-            {companyData?.email && <p className="lowercase">Email: {companyData.email}</p>}
+        <div className="flex flex-col gap-4">
+          {logoSrc && (
+            <img src={logoSrc} alt="Logo" style={{ height: `${companyData?.logo_size || 60}px` }} className="object-contain self-start" />
+          )}
+          <div>
+            <h1 className="text-xl font-black text-[#003366] mb-1 uppercase tracking-tighter">{companyData?.name || 'FaturaPronta Lda'}</h1>
+            <div className="text-[10px] space-y-0.5 text-zinc-600 font-bold uppercase">
+              <p>{companyData?.address || 'Rua da Inovação, 123'}</p>
+              <p>NIF: {companyData?.nif || '500 000 000'}</p>
+              {companyData?.phone && <p>Tel: {companyData.phone}</p>}
+              {companyData?.email && <p className="lowercase">Email: {companyData.email}</p>}
+              {companyData?.regime && <p>Regime: {companyData.regime}</p>}
+            </div>
           </div>
         </div>
         <div className="text-right">
@@ -114,8 +187,8 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-12 mb-12">
-        <div className="p-4 border border-zinc-100 bg-zinc-50/30">
+      <div className="grid grid-cols-2 gap-12 mb-12 relative z-10">
+        <div className="p-4 border border-zinc-100 bg-white/80">
           <h3 className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-3">Dados do Cliente</h3>
           <div className="text-sm space-y-1">
             <p className="font-bold text-zinc-800 text-base">{invoice.client_name}</p>
@@ -124,7 +197,7 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
             {invoice.client_email && <p><span className="font-bold">Email:</span> {invoice.client_email}</p>}
           </div>
         </div>
-        <div className="p-4 border border-zinc-100 bg-zinc-50/30">
+        <div className="p-4 border border-zinc-100 bg-white/80">
           <h3 className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-3">Informações Adicionais</h3>
           <div className="text-sm space-y-1">
             {invoice.service_location && <p><span className="font-bold">Local de Serviço:</span> {invoice.service_location}</p>}
@@ -134,7 +207,7 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
         </div>
       </div>
 
-      <table className="w-full mb-12">
+      <table className="w-full mb-12 relative z-10">
         <thead>
           <tr className="border-b-2 border-[#003366] text-[10px] font-bold uppercase tracking-wider text-[#003366]">
             <th className="py-3 text-left">Descrição</th>
@@ -173,15 +246,15 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
                 <div className="col-span-4">Isento nos termos da alínea a) do nº 1 do artigo 14º do CIVA</div>
               </div>
             ) : (
-              <div className="grid grid-cols-6 gap-1 text-[9px]">
-                <div className="col-span-1">01</div>
+              <div className="grid grid-cols-6 gap-1 text-[10px]">
                 <div className="col-span-1">IVA</div>
-                <div className="col-span-4">Isento Retenção Lei 4/19, Art.71,n.3,alinea c)</div>
+                <div className="col-span-1">14%</div>
+                <div className="col-span-4">Incidência sobre o total do documento</div>
               </div>
             )}
           </div>
 
-          <div className="p-2 border border-zinc-300">
+          <div className="p-2 border border-zinc-300 bg-white/50">
             <div className="grid grid-cols-3 gap-1 text-[9px] border-b border-zinc-300 pb-1 font-bold items-center uppercase">
               <div>Taxa</div>
               <div className="text-right">Base Incidência ( {displayCurrency} )</div>
@@ -201,7 +274,7 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
 
           <div className="border border-zinc-300 p-2 text-[10px] bg-zinc-50/50">
             <p className="font-bold text-zinc-500 mb-1 uppercase text-[8px]">Valor Extenso</p>
-            <p className="font-medium">{invoice.total_in_words || numberToWords(invoice.total || 0)} {displayCurrency}</p>
+            <p className="font-black text-[#003366]">{totalInWords}</p>
           </div>
         </div>
 
@@ -248,13 +321,6 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
               </div>
             )}
 
-            {retencaoTotal === 0 && vatWithholdingAmount === 0 && (
-              <div className="flex justify-between p-1.5 border-b border-zinc-100">
-                <span className="text-zinc-600">Isento Retenção Lei 4/19, Art.71,n.3,alinea c)</span>
-                <span>0,00</span>
-              </div>
-            )}
-
             <div className="flex justify-between p-1.5 bg-zinc-50 font-bold">
               <span>Valor líquido a pagar</span>
               <span className="text-blue-900">{formatParams(totalPagar)}</span>
@@ -268,6 +334,12 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
       </div>
 
       <div className="mt-auto pt-4 border-t border-zinc-200 text-[10px] relative z-20">
+        <div className="flex justify-center mb-6">
+          {footerSrc && footerSrc.startsWith('data:image') && (
+            <img src={footerSrc} alt="Footer" style={{ height: `${companyData?.footer_size || 40}px` }} className="object-contain" />
+          )}
+        </div>
+
         <div className="flex justify-between items-center mb-4">
           <div className="flex items-center gap-4">
             <div className="font-bold text-zinc-500 uppercase text-[9px] tracking-widest">IVA - Regime Geral</div>
@@ -289,7 +361,7 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
            </div>
         </div>
         <div className="mt-4 pt-4 border-t border-zinc-50 flex justify-between items-end text-[8px] text-zinc-300 font-bold uppercase tracking-[0.2em]">
-           <div>{companyData?.footer || 'Processado por Programa Validado'}</div>
+           <div>{(!footerSrc || !footerSrc.startsWith('data:image')) ? (footerSrc || companyData?.footer || 'Processado por Programa Validado') : 'Processado por Programa Validado'}</div>
            <div>Página 1 / 1</div>
         </div>
       </div>

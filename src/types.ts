@@ -3,6 +3,7 @@ export interface CompanyData {
   nif: string;
   address: string;
   provincia: string;
+  city?: string;
   contact: string;
   email: string;
   responsavel: string;
@@ -12,9 +13,16 @@ export interface CompanyData {
   inss: string;
   coordenadas_bancarias: string;
   tipo_empresa: string;
-  logo: string;
-  marca_agua: string;
-  footer: string;
+  logo?: string;
+  logo_url?: string;
+  logo_size?: number;
+  marca_agua?: string;
+  watermark_url?: string;
+  watermark_size?: number;
+  footer?: string;
+  footer_image_url?: string;
+  footer_size?: number;
+  company_id?: string;
 }
 
 export interface User {

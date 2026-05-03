@@ -1,43 +1,76 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
+
+const DB_FILE = path.join(process.cwd(), "db.json");
+
+const loadData = () => {
+  if (fs.existsSync(DB_FILE)) {
+    try {
+      const content = fs.readFileSync(DB_FILE, "utf-8");
+      return JSON.parse(content);
+    } catch (e) {
+      console.error("Error loading data from db.json:", e);
+    }
+  }
+  return null;
+};
+
+const savedData = loadData();
 
 // --- In-Memory Database (No Supabase, No SQL) ---
 const generateId = () => Date.now() + Math.floor(Math.random() * 1000000);
 const generateStrId = () => (Date.now() + Math.floor(Math.random() * 1000000)).toString();
 
-let clients: any[] = [];
-let products: any[] = [];
-let issuedDocuments: any[] = [];
-let workSites: any[] = [];
-let workSiteMovements: any[] = [];
-let employees: any[] = [];
-let fiscalSeries: any[] = [
+let clients: any[] = savedData?.clients || [];
+let products: any[] = savedData?.products || [];
+let issuedDocuments: any[] = savedData?.issuedDocuments || [];
+let workSites: any[] = savedData?.workSites || [];
+let workSiteMovements: any[] = savedData?.workSiteMovements || [];
+let employees: any[] = savedData?.employees || [];
+let fiscalSeries: any[] = savedData?.fiscalSeries || [
   { id: 1, name: 'Série 2026', user_id: '1', type: 'normal', reference: 'S', counters: {}, year: 2026, is_active: true, data_inicio: '2026-01-01', destino: 'Vendas Sede' }
 ];
-let caixas: any[] = [];
-let caixaMovements: any[] = [];
-let warehouses: any[] = [];
-let systemUsers: any[] = [];
-let archives: any[] = [];
-let fleetVehicles: any[] = [];
-let projectTasks: any[] = [];
-let companies: any[] = [
+let caixas: any[] = savedData?.caixas || [];
+let caixaMovements: any[] = savedData?.caixaMovements || [];
+let warehouses: any[] = savedData?.warehouses || [];
+let systemUsers: any[] = savedData?.systemUsers || [];
+let archives: any[] = savedData?.archives || [];
+let fleetVehicles: any[] = savedData?.fleetVehicles || [];
+let projectTasks: any[] = savedData?.projectTasks || [];
+let companies: any[] = savedData?.companies || [
   { id: '11111111-1111-1111-1111-111111111111', name: 'FaturaPronta Lda', nif: '500123456', address: 'Luanda, Angola', regime: 'Geral', coordinates: '', logo: '', footer: 'Processado por computador' }
 ];
 
-let stockMovements: any[] = [];
-let securityOccurrences: any[] = [];
-let securityArmory: any[] = [];
-let securityRoster: any[] = [];
-let transactions: any[] = [];
-let receipts: any[] = [];
-let suppliers: any[] = [];
-let purchases: any[] = [];
-let professions: any[] = [];
-let attendance: any[] = [];
-let absences: any[] = [];
-let laborTerminations: any[] = [];
+let stockMovements: any[] = savedData?.stockMovements || [];
+let securityOccurrences: any[] = savedData?.securityOccurrences || [];
+let securityArmory: any[] = savedData?.securityArmory || [];
+let securityRoster: any[] = savedData?.securityRoster || [];
+let transactions: any[] = savedData?.transactions || [];
+let receipts: any[] = savedData?.receipts || [];
+let suppliers: any[] = savedData?.suppliers || [];
+let purchases: any[] = savedData?.purchases || [];
+let professions: any[] = savedData?.professions || [];
+let attendance: any[] = savedData?.attendance || [];
+let absences: any[] = savedData?.absences || [];
+let laborTerminations: any[] = savedData?.laborTerminations || [];
+
+const saveData = () => {
+  const data = {
+    clients, products, issuedDocuments, workSites, workSiteMovements,
+    employees, fiscalSeries, caixas, caixaMovements, warehouses,
+    systemUsers, archives, fleetVehicles, projectTasks, companies,
+    stockMovements, securityOccurrences, securityArmory, securityRoster,
+    transactions, receipts, suppliers, purchases, professions,
+    attendance, absences, laborTerminations
+  };
+  try {
+    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+  } catch (e) {
+    console.error("Error saving data to db.json:", e);
+  }
+};
 
 async function startServer() {
   const app = express();
@@ -116,6 +149,7 @@ async function startServer() {
   app.put("/api/clients/:id", (req, res) => {
     const id = req.params.id;
     clients = clients.map(c => String(c.id) === String(id) ? { ...c, ...req.body } : c);
+    saveData();
     res.json({ success: true });
   });
 
@@ -139,6 +173,7 @@ async function startServer() {
       });
     }
     
+    saveData();
     res.json(newProd);
   });
 
@@ -193,6 +228,7 @@ async function startServer() {
         created_at: new Date().toISOString() 
       };
       issuedDocuments.push(cloned);
+      saveData();
       res.json(cloned);
     } else res.status(404).json({ error: "Document not found" });
   });
@@ -209,6 +245,7 @@ async function startServer() {
       } else {
         issuedDocuments[index] = { ...existing, ...req.body };
       }
+      saveData();
       res.json(issuedDocuments[index]);
     } else {
       res.status(404).json({ error: "Document not found" });
@@ -339,6 +376,7 @@ async function startServer() {
         }
       }
       
+      saveData();
       res.json({ success: true, invoice, recibo: reciboDoc });
     } else {
       res.status(404).json({ error: "Invoice not found" });
@@ -427,6 +465,7 @@ async function startServer() {
       };
       
       issuedDocuments.push(correctionDoc);
+      saveData();
       res.json({ success: true, correctionDoc });
     } else {
       res.status(404).json({ error: "Document not found" });
@@ -613,6 +652,7 @@ async function startServer() {
       created_at: new Date().toISOString() 
     };
     issuedDocuments.push(newDoc);
+    saveData();
     res.json(newDoc);
   });
 
@@ -621,6 +661,7 @@ async function startServer() {
   app.post("/api/fiscal-series", (req, res) => {
     const newSeries = { ...req.body, id: generateId(), created_at: new Date().toISOString() };
     fiscalSeries.push(newSeries);
+    saveData();
     res.json(newSeries);
   });
 
@@ -809,10 +850,12 @@ async function startServer() {
     const index = companies.findIndex(c => c.id === id);
     if (index !== -1) {
       companies[index] = { ...companies[index], ...req.body };
+      saveData();
       res.json(companies[index]);
     } else {
       const newComp = { ...req.body, id };
       companies.push(newComp);
+      saveData();
       res.json(newComp);
     }
   });

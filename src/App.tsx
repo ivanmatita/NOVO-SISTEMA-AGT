@@ -270,7 +270,7 @@ const formatDate = (date: any) => {
 };
 
 const writeValorPorExtenso = (n: number) => {
-  if (n === 0) return 'zero Kwanzas';
+  if (n === 0) return 'Zero Kwanzas';
   
   const unidades = ['', 'um', 'dois', 'três', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove'];
   const dezena_10 = ['dez', 'onze', 'doze', 'treze', 'catorze', 'quinze', 'dezasseis', 'dezassete', 'dezoito', 'dezanove'];
@@ -303,22 +303,32 @@ const writeValorPorExtenso = (n: number) => {
   
   let result = '';
   
-  if (integerPart >= 1000000) {
-    const millions = Math.floor(integerPart / 1000000);
-    result += convertGroup(millions) + (millions === 1 ? ' milhão' : ' milhões');
-    if (integerPart % 1000000 > 0) result += ' e ';
+  const scales = [
+    { label: [' quintilhão', ' quintilhões'], value: 1e18 },
+    { label: [' quatrilhão', ' quatrilhões'], value: 1e15 },
+    { label: [' trilião', ' triliões'], value: 1e12 },
+    { label: [' bilião', ' biliões'], value: 1e9 },
+    { label: [' milhão', ' milhões'], value: 1e6 },
+    { label: [' mil', ' mil'], value: 1e3 }
+  ];
+
+  let remaining = integerPart;
+
+  for (const scale of scales) {
+    if (remaining >= scale.value) {
+      const count = Math.floor(remaining / scale.value);
+      if (scale.value === 1000 && count === 1) {
+        result += 'mil';
+      } else {
+        result += convertGroup(count) + (count === 1 ? scale.label[0] : scale.label[1]);
+      }
+      remaining %= scale.value;
+      if (remaining > 0) result += (remaining < 100 || remaining % 100 === 0 ? ' e ' : ', ');
+    }
   }
   
-  const restForThousand = integerPart % 1000000;
-  if (restForThousand >= 1000) {
-    const thousands = Math.floor(restForThousand / 1000);
-    result += (thousands === 1 ? 'mil' : convertGroup(thousands) + ' mil');
-    if (restForThousand % 1000 > 0) result += ' e ';
-  }
-  
-  const rest = restForThousand % 1000;
-  if (rest > 0 || result === '') {
-    result += convertGroup(rest);
+  if (remaining > 0 || result === '') {
+    result += convertGroup(remaining);
   }
 
   result += (integerPart === 1 ? ' Kwanza' : ' Kwanzas');
@@ -647,6 +657,7 @@ const Sidebar = ({ activeTab, setActiveTab }: {
 
   const menuItems = [
     { id: 'dashboard', label: 'Painel de Bordo', icon: LayoutDashboard },
+    { id: 'clients', label: 'Clientes', icon: Users },
     { id: 'workplaces', label: 'Locais de Trabalho', icon: Briefcase },
     { id: 'secretary', label: 'Secretaria Beta', icon: Paperclip },
     { id: 'pos', label: 'Ponto de Venda', icon: Monitor, hasChevron: true },
@@ -8374,8 +8385,11 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
     tipo_empresa: initialData?.tipo_empresa || 'Serviços',
     coordenadas_bancarias: initialData?.coordenadas_bancarias || '',
     logo_url: initialData?.logo_url || initialData?.logo || '',
-    watermark_url: initialData?.watermark_url || '',
-    footer_image_url: initialData?.footer_image_url || initialData?.footer || ''
+    logo_size: initialData?.logo_size || 100,
+    watermark_url: initialData?.watermark_url || initialData?.marca_agua || '',
+    watermark_size: initialData?.watermark_size || 100,
+    footer_image_url: initialData?.footer_image_url || initialData?.footer || '',
+    footer_size: initialData?.footer_size || 100
   });
 
   useEffect(() => {
@@ -8396,14 +8410,29 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
         tipo_empresa: initialData.tipo_empresa || 'Serviços',
         coordenadas_bancarias: initialData.coordenadas_bancarias || '',
         logo_url: initialData.logo_url || initialData.logo || '',
-        watermark_url: initialData.watermark_url || '',
-        footer_image_url: initialData.footer_image_url || initialData.footer || ''
+        logo_size: initialData.logo_size || 100,
+        watermark_url: initialData.watermark_url || initialData.marca_agua || '',
+        watermark_size: initialData.watermark_size || 100,
+        footer_image_url: initialData.footer_image_url || initialData.footer || '',
+        footer_size: initialData.footer_size || 100
       });
     }
   }, [initialData]);
 
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, field: string) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFormData(prev => ({ ...prev, [field]: reader.result as string }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value, type } = e.target as any;
+    setFormData({ ...formData, [name]: type === 'number' ? Number(value) : value });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -8537,19 +8566,72 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
             </div>
 
             <div>
-              <h3 className="text-sm font-bold text-[#003366] uppercase tracking-wider mb-4 border-b border-zinc-200 pb-2">Identidade Visual (URLs)</h3>
-              <div className="grid grid-cols-1 gap-6">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Logotipo (URL)</label>
-                  <input type="text" name="logo_url" value={formData.logo_url} onChange={handleChange} placeholder="https://exemplo.com/logo.png" className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+              <h3 className="text-sm font-bold text-[#003366] uppercase tracking-wider mb-4 border-b border-zinc-200 pb-2">Identidade Visual (Logotipo, Marca d'água e Rodapé)</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="space-y-4 border p-4 bg-white shadow-sm">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">Logotipo do Sistema</label>
+                  {formData.logo_url && (
+                    <div className="flex justify-center mb-2 bg-zinc-50 p-4 border border-dashed border-zinc-200">
+                      <img src={formData.logo_url} alt="Preview Logo" style={{ height: `${formData.logo_size}px` }} className="object-contain transition-all" />
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-3">
+                    <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, 'logo_url')} className="text-xs" />
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[10px] text-zinc-400 font-bold uppercase">
+                        <span>Ajustar Tamanho</span>
+                        <span>{formData.logo_size}px</span>
+                      </div>
+                      <input type="range" name="logo_size" min="20" max="300" value={formData.logo_size} onChange={handleChange} className="w-full" />
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Marca d'água (URL)</label>
-                  <input type="text" name="watermark_url" value={formData.watermark_url} onChange={handleChange} placeholder="https://exemplo.com/watermark.png" className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+
+                <div className="space-y-4 border p-4 bg-white shadow-sm">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">Marca d'água (Documentos)</label>
+                  {formData.watermark_url && (
+                    <div className="flex justify-center mb-2 bg-zinc-50 p-4 border border-dashed border-zinc-200">
+                      <img src={formData.watermark_url} alt="Preview Watermark" style={{ height: `${formData.watermark_size}px` }} className="object-contain opacity-50" />
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-3">
+                    <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, 'watermark_url')} className="text-xs" />
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[10px] text-zinc-400 font-bold uppercase">
+                        <span>Ajustar Tamanho</span>
+                        <span>{formData.watermark_size}px</span>
+                      </div>
+                      <input type="range" name="watermark_size" min="50" max="600" value={formData.watermark_size} onChange={handleChange} className="w-full" />
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Rodapé (URL ou Texto)</label>
-                  <input type="text" name="footer_image_url" value={formData.footer_image_url} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+
+                <div className="space-y-4 border p-4 bg-white shadow-sm md:col-span-2">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">Logotipo/Imagem do Rodapé</label>
+                  {formData.footer_image_url && formData.footer_image_url.startsWith('data:image') && (
+                    <div className="flex justify-center mb-2 bg-zinc-50 p-4 border border-dashed border-zinc-200">
+                      <img src={formData.footer_image_url} alt="Preview Footer" style={{ height: `${formData.footer_size}px` }} className="object-contain" />
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-[9px] font-bold text-zinc-400 uppercase mb-1">Carregar Imagem para o Rodapé</p>
+                        <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, 'footer_image_url')} className="text-xs" />
+                      </div>
+                      <div>
+                        <p className="text-[9px] font-bold text-zinc-400 uppercase mb-1">Texto do Rodapé (Alternativo)</p>
+                        <input type="text" name="footer_image_url" value={formData.footer_image_url.startsWith('data:image') ? '' : formData.footer_image_url} onChange={handleChange} placeholder="Ex: Processado por computador" className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[10px] text-zinc-400 font-bold uppercase">
+                        <span>Ajustar Tamanho da Imagem</span>
+                        <span>{formData.footer_size}px</span>
+                      </div>
+                      <input type="range" name="footer_size" min="20" max="200" value={formData.footer_size} onChange={handleChange} className="w-full" />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -9221,6 +9303,7 @@ const WithholdingTaxModule = ({ sales, purchases }: { sales: IssuedDocument[], p
   const salesWithTax = sales.filter(s => {
     const hasTotal = (s.retencao_fonte_total || 0) > 0;
     const hasItemTax = s.items && s.items.some(i => (i.retencao_fonte || 0) > 0);
+    // Include all documents from sales that have withholding
     return hasTotal || hasItemTax;
   });
   
@@ -10723,6 +10806,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
         invoice_number: isManual ? documentNumberManual : (initialData?.numero_documento || initialData?.invoice_number || undefined),
         series_reference: isManual ? referenceManual : selectedSeries?.reference,
         total: finalTotal,
+        total_in_words: writeValorPorExtenso(finalTotal),
         retencao_fonte_total: retencaoFonteTotal,
         company_id: user?.company_id
       })
@@ -16371,7 +16455,7 @@ export default function App() {
                                 <p className="text-zinc-500 text-sm">Documentos emitidos mas ainda não certificados pela AGT.</p>
                               </header>
                               <IssuedDocumentsList 
-                                documents={issuedDocuments.filter(d => !d.is_certified)} 
+                                documents={issuedDocuments.filter(d => !d.is_certified || (d.currency && d.currency !== 'AOA'))} 
                                 onAction={handleDocumentAction}
                                 onCertify={(doc) => {
                                   setSelectedDocument(doc);

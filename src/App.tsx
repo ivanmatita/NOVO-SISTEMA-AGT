@@ -9591,6 +9591,383 @@ const ReportsModule = ({ sales, purchases, clients, products }: { sales: IssuedD
   );
 };
 
+const DailyMovementsModule = ({ onBack }: { onBack: () => void }) => {
+  const { user } = useAuth();
+  const [journals, setJournals] = useState<any[]>([]);
+  const [showForm, setShowForm] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  // Form state
+  const [numDiario, setNumDiario] = useState('');
+  const [nomeDiario, setNomeDiario] = useState('');
+  const [obs, setObs] = useState('');
+
+  const fetchJournals = async () => {
+    try {
+      const data = await fetchJson('/api/accounting/journals');
+      setJournals(data);
+    } catch (error) {
+      console.error('Error fetching journals:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchJournals();
+  }, []);
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await fetchWithAuth('/api/accounting/journals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: numDiario,
+          name: nomeDiario,
+          movementsCount: 0,
+          type: 'Utilizador',
+          obs,
+          company_id: user?.company_id
+        })
+      });
+      setShowForm(false);
+      setNumDiario('');
+      setNomeDiario('');
+      setObs('');
+      fetchJournals();
+    } catch (error) {
+      console.error('Error creating journal:', error);
+    }
+  };
+
+  const filteredJournals = journals.filter(j => 
+    j.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    j.id.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center bg-white p-4 border border-zinc-200 shadow-sm">
+        <div className="flex items-center gap-4">
+          <button onClick={onBack} className="p-2 hover:bg-zinc-100 rounded-none text-zinc-400">
+            <ChevronLeft size={24} />
+          </button>
+          <div>
+            <h2 className="text-xl font-black text-[#003366] uppercase tracking-tighter">Gestão de DIARIOS</h2>
+            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Movimento Diário Contabilístico</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
+            <input 
+              type="text" 
+              placeholder="Pesquisar diários..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 pr-4 py-2 bg-zinc-50 border border-zinc-200 text-sm focus:outline-none focus:border-[#003366] w-64"
+            />
+          </div>
+          <button 
+            onClick={() => setShowForm(true)}
+            className="bg-[#003366] text-white px-6 py-2.5 text-xs font-bold uppercase tracking-widest flex items-center gap-2 hover:bg-[#002244] shadow-lg transition-all"
+          >
+            <Plus size={16} /> Criar Diário
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-white border border-zinc-200 shadow-md">
+        <table className="w-full text-left text-[11px] border-collapse">
+          <thead>
+            <tr className="bg-zinc-50 text-zinc-600 border-b border-zinc-200 font-black uppercase tracking-wider">
+              <th className="px-4 py-3 border-r border-zinc-200 w-24">Nº Diário</th>
+              <th className="px-4 py-3 border-r border-zinc-200">Descrição</th>
+              <th className="px-4 py-3 border-r border-zinc-200 text-center w-32">Movimentos</th>
+              <th className="px-4 py-3 border-r border-zinc-200">Obs</th>
+              <th className="px-4 py-3 text-center w-24">Opções</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-100">
+            {loading ? (
+              <tr>
+                <td colSpan={5} className="py-20 text-center text-zinc-400 italic">Carregando diários...</td>
+              </tr>
+            ) : filteredJournals.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="py-20 text-center text-zinc-400 italic">Nenhum diário encontrado.</td>
+              </tr>
+            ) : (
+              filteredJournals.map((journal) => (
+                <tr key={journal.id} className="hover:bg-zinc-50 transition-colors">
+                  <td className="px-4 py-3 border-r border-zinc-100 font-mono font-bold text-[#003366]">{journal.id}</td>
+                  <td className="px-4 py-3 border-r border-zinc-100 font-bold">{journal.name}</td>
+                  <td className="px-4 py-3 border-r border-zinc-100 text-center font-bold text-zinc-600">{journal.movementsCount || 0}</td>
+                  <td className="px-4 py-3 border-r border-zinc-100 text-zinc-500">{journal.type || journal.obs || '-'}</td>
+                  <td className="px-4 py-3 text-center">
+                    <button className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors">
+                      <BarChart3 size={14} />
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+        <div className="p-2 bg-zinc-50 border-t border-zinc-200 text-right">
+           <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Fim de Listagem</span>
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {showForm && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowForm(false)}
+              className="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-md bg-white shadow-2xl overflow-hidden"
+            >
+              <div className="p-6 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
+                <h3 className="font-black text-[#003366] uppercase tracking-tighter text-xl">Novo Diário</h3>
+                <button onClick={() => setShowForm(false)} className="text-zinc-400 hover:text-zinc-600"><X size={24} /></button>
+              </div>
+              <form onSubmit={handleRegister} className="p-8 space-y-6">
+                <div className="grid grid-cols-1 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Nº de Diário</label>
+                    <input 
+                      type="text" 
+                      required 
+                      value={numDiario}
+                      onChange={e => setNumDiario(e.target.value)}
+                      placeholder="Ex: 0008"
+                      className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366]" 
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Nome do Diário</label>
+                    <input 
+                      type="text" 
+                      required 
+                      value={nomeDiario}
+                      onChange={e => setNomeDiario(e.target.value)}
+                      placeholder="Ex: Caixa Geral"
+                      className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366]" 
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Observações/Obs</label>
+                    <textarea 
+                      value={obs}
+                      onChange={e => setObs(e.target.value)}
+                      rows={3}
+                      className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366]" 
+                    />
+                  </div>
+                </div>
+                <button type="submit" className="w-full bg-[#003366] text-white py-4 text-xs font-black uppercase tracking-[0.2em] hover:bg-[#002244] shadow-xl">Registar Diário</button>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+const AccountingMapsModule = ({ onBack }: { onBack: () => void }) => {
+  const { user } = useAuth();
+  const [initialMonth, setInitialMonth] = useState('0'); // Jan
+  const [finalMonth, setFinalMonth] = useState('11'); // Dec
+  const [year, setYear] = useState('2025');
+
+  const months = [
+    { value: '0', label: 'Abertura' },
+    { value: '0', label: 'Janeiro' },
+    { value: '1', label: 'Fevereiro' },
+    { value: '2', label: 'Março' },
+    { value: '3', label: 'Abril' },
+    { value: '4', label: 'Maio' },
+    { value: '5', label: 'Junho' },
+    { value: '6', label: 'Julho' },
+    { value: '7', label: 'Agosto' },
+    { value: '8', label: 'Setembro' },
+    { value: '9', label: 'Outubro' },
+    { value: '10', label: 'Novembro' },
+    { value: '11', label: 'Dezembro' },
+  ];
+
+  // Helper to format accounts hierarchically
+  const accountsData = [
+    { code: 'GR 11', desc: 'IMOBILIZAÇÕES CORPOREAS', debitoP: 118320.60, creditoP: 0, debitoS: 118320.60, creditoS: 0, level: 0 },
+    { code: 'GA 11.5', desc: 'Equipamento administrativo', debitoP: 118320.60, creditoP: 0, debitoS: 118320.60, creditoS: 0, level: 1 },
+    { code: 'GM 11.5.3', desc: 'Cadeiras', debitoP: 118320.60, creditoP: 0, debitoS: 118320.60, creditoS: 0, level: 2 },
+    { code: 'GM 11.5.3.2', desc: 'Mesa de Escritório', debitoP: 83156.16, creditoP: 0, debitoS: 83156.16, creditoS: 0, level: 3 },
+    { code: 'GR 18', desc: 'AMORTIZAÇÕES ACUMULADAS', debitoP: 0, creditoP: 4563.73, debitoS: 0, creditoS: 4563.73, level: 0 },
+    { code: 'GA 18.1', desc: 'Imobilizações Corpóreas', debitoP: 0, creditoP: 4563.73, debitoS: 0, creditoS: 4563.73, level: 1 },
+    { code: 'GR 26', desc: 'MERCADORIAS', debitoP: 337813291.77, creditoP: 0, debitoS: 337813291.77, creditoS: 0, level: 0 },
+    { code: 'GA 26.1', desc: 'Mercadorias Diversas', debitoP: 337813291.77, creditoP: 0, debitoS: 337813291.77, creditoS: 0, level: 1 },
+    { code: 'GR 31', desc: 'CLIENTES', debitoP: 418550018.16, creditoP: 540490713.36, debitoS: 0, creditoS: 121940695.20, level: 0 },
+    { code: 'GA 31.1', desc: 'Clientes-correntes', debitoP: 418550018.16, creditoP: 418550018.16, debitoS: 0, creditoS: 0, level: 1 },
+    { code: 'GR 32', desc: 'FORNECEDORES', debitoP: 128950985.87, creditoP: 283906449.03, debitoS: 0, creditoS: 154955463.15, level: 0 },
+    { code: 'GA 32.1', desc: 'Fornecedores - correntes', debitoP: 128950985.87, creditoP: 283906449.03, debitoS: 0, creditoS: 154955463.15, level: 1 },
+    { code: 'GR 34', desc: 'ESTADO', debitoP: 77367229.01, creditoP: 37499344.35, debitoS: 39867884.65, creditoS: 0, level: 0 },
+    { code: 'GR 36', desc: 'PESSOAL', debitoP: 5096379.36, creditoP: 5547423.22, debitoS: 0, creditoS: 451043.86, level: 0 },
+    { code: 'GR 45', desc: 'CAIXA', debitoP: 257577185.23, creditoP: 262583960.25, debitoS: 0, creditoS: 5006775.02, level: 0 },
+    { code: 'GR 51', desc: 'CAPITAL', debitoP: 0, creditoP: 100000.00, debitoS: 0, creditoS: 100000.00, level: 0 },
+    { code: 'GR 61', desc: 'VENDAS', debitoP: 142456148.00, creditoP: 254692990.74, debitoS: 0, creditoS: 112236842.74, level: 0 },
+    // Simplified totals for Balancete representation
+  ];
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white p-6 border border-zinc-200">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+          <div className="flex items-center gap-4">
+            <button onClick={onBack} className="p-2 hover:bg-zinc-100 rounded-none text-zinc-400">
+              <ChevronLeft size={24} />
+            </button>
+            <div>
+              <h2 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">Balancete Analítico</h2>
+              <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mt-1">Mapas Contabilísticos Oficiais</p>
+            </div>
+          </div>
+          
+          <div className="flex flex-wrap items-center gap-4 bg-zinc-50 p-4 border border-zinc-200">
+            <div className="flex flex-col gap-1">
+              <label className="text-[9px] font-bold text-zinc-400 uppercase">Período Inicial</label>
+              <select 
+                value={initialMonth} 
+                onChange={e => setInitialMonth(e.target.value)}
+                className="bg-white border border-zinc-200 px-3 py-1.5 text-xs focus:outline-none focus:border-[#003366]"
+              >
+                {months.map(m => <option key={`init-${m.label}`} value={m.value}>{m.label}</option>)}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[9px] font-bold text-zinc-400 uppercase">Período Final</label>
+              <select 
+                value={finalMonth} 
+                onChange={e => setFinalMonth(e.target.value)}
+                className="bg-white border border-zinc-200 px-3 py-1.5 text-xs focus:outline-none focus:border-[#003366]"
+              >
+                {months.map(m => <option key={`final-${m.label}`} value={m.value}>{m.label}</option>)}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1 font-bold">
+               <label className="text-[9px] font-bold text-zinc-400 uppercase">Exercício</label>
+               <input 
+                 type="text" 
+                 value={year} 
+                 onChange={e => setYear(e.target.value)}
+                 className="w-16 bg-white border border-zinc-200 px-3 py-1.5 text-xs focus:outline-none"
+               />
+            </div>
+            <button className="mt-4 bg-[#003366] text-white p-2.5 flex items-center gap-2 hover:bg-[#002244] shadow-md transition-all">
+              <Printer size={16} />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white border border-zinc-200 shadow-2xl p-12 min-h-screen">
+        <center className="space-y-4 mb-12">
+           <div className="flex justify-between items-start">
+              <div className="text-left">
+                 <div className="bg-[#003366] p-2 inline-block mb-2">
+                    <div className="w-12 h-12 bg-white flex items-center justify-center font-bold text-red-600 border-2 border-red-600">RC</div>
+                 </div>
+                 <div className="text-xs font-bold text-[#003366] uppercase">Royal Cars - Comercio e Prestação de Serviços, LDA</div>
+                 <div className="text-[10px] text-zinc-500 font-medium uppercase tracking-widest">NIF: 5000922200</div>
+              </div>
+              <div className="text-right space-y-1">
+                 <div className="text-[#003366] font-black text-xl tracking-tighter uppercase italic">Balancete Analítico</div>
+                 <div className="text-[10px] font-bold bg-[#003366] text-white px-3 py-1 inline-block uppercase tracking-widest leading-none">Exercício {year}</div>
+                 <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">Período: {months.find(m => m.value === initialMonth)?.label} a {months.find(m => m.value === finalMonth)?.label}</p>
+              </div>
+           </div>
+           
+           <div className="h-0.5 bg-zinc-100 w-full my-6"></div>
+           
+           <div className="grid grid-cols-2 text-[10px] items-center text-left text-zinc-500 font-bold uppercase tracking-widest">
+              <div>Balancete Contabilístico Emitido em AOA</div>
+              <div className="text-right">ExchangeRate : 1</div>
+           </div>
+           <div className="text-[9px] text-zinc-400 text-left uppercase font-bold mt-1 italic">Emitido em: {new Date().toLocaleDateString('pt-PT')} {new Date().toLocaleTimeString('pt-PT')}</div>
+        </center>
+
+        <table className="w-full text-left text-[11px] border-collapse">
+          <thead>
+            <tr className="border-t-2 border-b-2 border-[#003366]">
+              <th rowSpan={2} className="px-2 py-3 w-28 text-[#003366]">Conta</th>
+              <th rowSpan={2} className="px-2 py-3 text-[#003366]">Descrição</th>
+              <th colSpan={2} className="px-2 py-1 text-center border-b border-zinc-200 text-[#003366]">Movimentos do Período</th>
+              <th colSpan={2} className="px-2 py-1 text-center border-b border-zinc-200 text-[#003366]">Saldo</th>
+            </tr>
+            <tr className="border-b-2 border-zinc-100">
+              <th className="px-2 py-2 text-right text-zinc-600 w-32">Débito</th>
+              <th className="px-2 py-2 text-right text-zinc-600 w-32">Crédito</th>
+              <th className="px-2 py-2 text-right text-zinc-600 w-32">Débito</th>
+              <th className="px-2 py-2 text-right text-zinc-600 w-32">Crédito</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-50">
+            {accountsData.map((acc, i) => (
+              <tr key={acc.code + i} className={`hover:bg-zinc-50/50 ${acc.level === 0 ? 'bg-zinc-50/30' : ''}`}>
+                <td className={`px-2 py-2 whitespace-nowrap font-mono font-black ${acc.level === 0 ? 'text-[#003366]' : 'text-zinc-500'}`}>
+                  {acc.code}
+                </td>
+                <td className={`px-2 py-2 font-bold uppercase ${acc.level === 0 ? 'text-[#003366]' : 'text-zinc-600'}`} style={{ paddingLeft: `${acc.level * 1}rem` }}>
+                  {acc.desc}
+                </td>
+                <td className={`px-2 py-2 text-right font-mono ${acc.debitoP > 0 ? (acc.level === 0 ? 'font-black text-zinc-900' : 'text-zinc-600') : 'text-zinc-300'}`}>
+                  {acc.debitoP > 0 ? formatCurrency(acc.debitoP).replace('AOA', '').trim() : '0,00'}
+                </td>
+                <td className={`px-2 py-2 text-right font-mono ${acc.creditoP > 0 ? (acc.level === 0 ? 'font-black text-zinc-900' : 'text-zinc-600') : 'text-zinc-300'}`}>
+                  {acc.creditoP > 0 ? formatCurrency(acc.creditoP).replace('AOA', '').trim() : '0,00'}
+                </td>
+                <td className={`px-2 py-2 text-right font-mono ${acc.debitoS > 0 ? 'font-black text-[#003366]' : 'text-zinc-300'}`}>
+                  {acc.debitoS > 0 ? formatCurrency(acc.debitoS).replace('AOA', '').trim() : '0,00'}
+                </td>
+                <td className={`px-2 py-2 text-right font-mono ${acc.creditoS > 0 ? 'font-black text-red-600' : 'text-zinc-300'}`}>
+                  {acc.creditoS > 0 ? formatCurrency(acc.creditoS).replace('AOA', '').trim() : '0,00'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+             <tr className="border-t-2 border-zinc-200 bg-zinc-50">
+                <td colSpan={2} className="px-2 py-4 font-black uppercase text-center text-[#003366] tracking-widest text-[10px]">Saldos Totais Acumulados</td>
+                <td className="px-2 py-4 text-right font-black text-[#003366] border-l border-white">1.021.794.093,26</td>
+                <td className="px-2 py-4 text-right font-black text-[#003366] border-l border-white">1.021.794.093,26</td>
+                <td className="px-2 py-4 text-right font-black text-[#003366] border-l border-white bg-zinc-100">531.488.610,70</td>
+                <td className="px-2 py-4 text-right font-black text-red-600 border-l border-white bg-zinc-100">531.488.610,70</td>
+             </tr>
+          </tfoot>
+        </table>
+        
+        <div className="mt-12 text-center">
+           <div className="inline-block border-t border-zinc-400 px-12 py-2 mt-8">
+              <p className="text-[10px] font-bold uppercase text-zinc-400 tracking-widest mb-1">Assinatura e Carimbo</p>
+              <p className="text-[11px] font-black text-[#003366] uppercase">Contabilidade Central - ERP Digital</p>
+           </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employees, issuedDocuments }: { 
   invoices: Invoice[], 
   clients: Client[], 
@@ -9668,6 +10045,10 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
 
   const renderContent = () => {
     switch (activeSubTab) {
+      case 'daily-movements':
+        return <DailyMovementsModule onBack={() => setActiveSubTab(null)} />;
+      case 'accounting-maps':
+        return <AccountingMapsModule onBack={() => setActiveSubTab(null)} />;
       case 'simplified-regime':
         return <RegimeSimplificadoForm invoices={invoices} purchases={purchases} />;
       case 'retencao-pagar':

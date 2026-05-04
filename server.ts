@@ -53,6 +53,26 @@ let securityArmory: any[] = savedData?.securityArmory || [];
 let securityRoster: any[] = savedData?.securityRoster || [];
 let transactions: any[] = savedData?.transactions || [];
 let receipts: any[] = savedData?.receipts || [];
+let accountingJournals: any[] = savedData?.accountingJournals || [
+  { id: '0000', name: 'Abertura', movementsCount: 26, type: 'Nativo Sistema', obs: '' },
+  { id: '0001', name: 'Vendas', movementsCount: 67, type: 'Systema', obs: '' },
+  { id: '0002', name: 'Compras', movementsCount: 540, type: 'Systema', obs: '' },
+  { id: '0003', name: 'Imobilizado', movementsCount: 0, type: 'Systema', obs: '' },
+  { id: '0004', name: 'Caixa', movementsCount: 0, type: 'Systema', obs: '' },
+  { id: '0005', name: 'Bancos', movementsCount: 42, type: 'Systema', obs: '' },
+  { id: '0006', name: 'Fecho do Periodo', movementsCount: 0, type: 'Systema', obs: '' },
+  { id: '0007', name: 'Fecho de Contas', movementsCount: 0, type: 'Systema', obs: '' },
+  { id: '9993', name: 'Imobilizado', movementsCount: 0, type: 'Nativo Sistema', obs: '' },
+  { id: '9994', name: 'Impostos e Taxas', movementsCount: 24, type: 'Nativo Sistema', obs: '' },
+  { id: '9995', name: 'Apuramento IVA Mensal', movementsCount: 0, type: 'Nativo Sistema', obs: '' },
+  { id: '9996', name: 'Salários', movementsCount: 384, type: 'Nativo Sistema', obs: '' },
+  { id: '9997', name: 'Regularização do Periodo de Tributação', movementsCount: 0, type: 'Nativo Sistema', obs: '' },
+  { id: '9998', name: 'Movimentos de Ajustamento', movementsCount: 0, type: 'Nativo Sistema', obs: '' },
+  { id: '9999', name: 'Apuramento de Resultados', movementsCount: 0, type: 'Nativo Sistema', obs: '' },
+  { id: 'Impost', name: 'Impostos e Taxas', movementsCount: 0, type: 'Nativo Sistema', obs: 'Diário utilizado para registo impostos e taxa' },
+  { id: 'Sal', name: 'Salários', movementsCount: 0, type: 'Nativo Sistema', obs: 'Diário utilizado para registo do processamento de' },
+];
+let accountingMovements: any[] = savedData?.accountingMovements || [];
 let suppliers: any[] = savedData?.suppliers || [];
 let purchases: any[] = savedData?.purchases || [];
 let professions: any[] = savedData?.professions || [];
@@ -68,7 +88,8 @@ const saveData = () => {
     stockMovements, securityOccurrences, securityArmory, securityRoster,
     transactions, receipts, suppliers, purchases, professions,
     attendance, absences, laborTerminations,
-    costCenters, posPoints, sessions, posSales
+    costCenters, posPoints, sessions, posSales,
+    accountingJournals, accountingMovements
   };
   try {
     fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
@@ -832,9 +853,38 @@ async function startServer() {
   });
   app.get("/api/purchases", (req, res) => {
     const allPurchases = [...purchases];
-    const receiptsAsPurchases = issuedDocuments.filter((d: any) => d.document_type === 'Recibo');
+    const receiptsAsPurchases = issuedDocuments.filter((d: any) => d.document_type === 'Recibo').map(d => ({
+      ...d,
+      supplier_name: d.client_name, // Map client to supplier for purchases list
+      document_type: 'Recibo',
+      invoice_number: d.numero_documento
+    }));
     res.json([...allPurchases, ...receiptsAsPurchases]);
   });
+
+  // Accounting Endpoints
+  app.get("/api/accounting/journals", (req, res) => res.json(accountingJournals));
+  app.post("/api/accounting/journals", (req, res) => {
+    const newJournal = { ...req.body, created_at: new Date().toISOString() };
+    accountingJournals.push(newJournal);
+    saveData();
+    res.json(newJournal);
+  });
+  app.get("/api/accounting/movements", (req, res) => res.json(accountingMovements));
+  app.post("/api/accounting/movements", (req, res) => {
+    const newMovement = { ...req.body, id: generateId(), created_at: new Date().toISOString() };
+    accountingMovements.push(newMovement);
+    
+    // Increment movements count in journal
+    const journal = accountingJournals.find(j => j.id === req.body.journal_id);
+    if (journal) {
+      journal.movementsCount = (journal.movementsCount || 0) + 1;
+    }
+    
+    saveData();
+    res.json(newMovement);
+  });
+
   app.put("/api/purchases/:id", (req, res) => {
     const id = Number(req.params.id);
     const index = purchases.findIndex((p: any) => p.id === id);

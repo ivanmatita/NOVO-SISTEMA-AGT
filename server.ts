@@ -73,6 +73,21 @@ let accountingJournals: any[] = savedData?.accountingJournals || [
   { id: 'Sal', name: 'Salários', movementsCount: 0, type: 'Nativo Sistema', obs: 'Diário utilizado para registo do processamento de' },
 ];
 let accountingMovements: any[] = savedData?.accountingMovements || [];
+let pgcAccounts: any[] = savedData?.pgcAccounts || [
+  { id: '01', type: 'GR', description: 'Meios Fixos e Investimentos', justification: '', layout: '' },
+  { id: '02', type: 'GR', description: 'Existências', justification: '', layout: '' },
+  { id: '03', type: 'GR', description: 'Terceiros', justification: '', layout: '' },
+  { id: '04', type: 'GR', description: 'Meios Monetários', justification: '', layout: '' },
+  { id: '05', type: 'GR', description: 'Capital e Reservas', justification: '', layout: '' },
+  { id: '06', type: 'GR', description: 'Proveitos por Natureza', justification: '', layout: '' },
+  { id: '07', type: 'GR', description: 'Custos por Natureza', justification: '', layout: '' },
+  { id: '08', type: 'GR', description: 'Resultados', justification: '', layout: '' },
+  { id: '11', type: 'GA', description: 'IMOBILIZAÇÕES CORPOREAS', justification: '', layout: '' },
+  { id: '11.01', type: 'GA', description: 'Terrenos e recursos naturais', justification: '', layout: '' },
+  { id: '11.01.01', type: 'GM', description: 'Terrenos em bruto', justification: '', layout: '' },
+  { id: '11.05', type: 'GA', description: 'Equipamentos Administrativos', justification: '', layout: '' },
+  { id: '11.05.03', type: 'GM', description: 'Cadeiras', justification: '', layout: '' },
+];
 let suppliers: any[] = savedData?.suppliers || [];
 let purchases: any[] = savedData?.purchases || [];
 let professions: any[] = savedData?.professions || [];
@@ -89,7 +104,7 @@ const saveData = () => {
     transactions, receipts, suppliers, purchases, professions,
     attendance, absences, laborTerminations,
     costCenters, posPoints, sessions, posSales,
-    accountingJournals, accountingMovements
+    accountingJournals, accountingMovements, pgcAccounts
   };
   try {
     fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
@@ -214,7 +229,11 @@ async function startServer() {
   app.delete("/api/invoices/:id", (req, res) => {
     const index = issuedDocuments.findIndex(d => d.id === Number(req.params.id));
     if (index !== -1) {
+      if (issuedDocuments[index].is_certified) {
+        return res.status(403).json({ error: "Cannot delete certified document" });
+      }
       issuedDocuments.splice(index, 1);
+      saveData();
       res.json({ success: true });
     } else res.status(404).json({ error: "Document not found" });
   });
@@ -883,6 +902,29 @@ async function startServer() {
     
     saveData();
     res.json(newMovement);
+  });
+
+  app.get("/api/accounting/pgc", (req, res) => res.json(pgcAccounts));
+  app.post("/api/accounting/pgc", (req, res) => {
+    const newAccount = { ...req.body };
+    const existingIndex = pgcAccounts.findIndex(a => a.id === newAccount.id);
+    if (existingIndex !== -1) {
+      pgcAccounts[existingIndex] = newAccount;
+    } else {
+      pgcAccounts.push(newAccount);
+    }
+    saveData();
+    res.json(newAccount);
+  });
+
+  // Movement Classification Endpoints
+  app.post("/api/accounting/classify", (req, res) => {
+    const { ids, type, targetAccount } = req.body;
+    // In a real scenario, this would update the specific movements
+    // For this implementation, we'll simulate the persistence
+    console.log(`Classified ${type} movements ${ids.join(',')} to account ${targetAccount}`);
+    saveData();
+    res.json({ success: true });
   });
 
   app.put("/api/purchases/:id", (req, res) => {

@@ -118,13 +118,15 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
   const displayCurrency = isProvisional && invoice.currency !== 'AOA' ? (invoice.currency || 'AOA') : 'AOA';
   const formatParams = (val: number) => formatCurrency(val, displayCurrency);
 
-  const subtotal = invoice.items?.reduce((sum, item) => sum + (item.total || 0), 0) || 0;
+  const subtotalRaw = invoice.items?.reduce((sum, item) => sum + (Number(item.unit_price || 0) * Number(item.quantity || 0)), 0) || 0;
+  const lineDiscountTotal = invoice.items?.reduce((sum, item) => sum + Number(item.desconto || 0), 0) || 0;
+  const subtotalWithLineDiscounts = subtotalRaw - lineDiscountTotal;
   const retencaoTotal = invoice.retencao_fonte_total || invoice.items?.reduce((sum, item) => sum + (item.retencao_fonte || 0), 0) || 0;
   const discountAmount = invoice.global_discount || 0;
-  const vatTotal = invoice.items?.reduce((sum, item) => sum + ((item.total || 0) * ((item.tax_rate || 14) / 100)), 0) || (subtotal * 0.14);
+  const vatTotal = invoice.items?.reduce((sum, item) => sum + ((item.total || 0) * ((item.tax_rate || 0) / 100)), 0) || (subtotalWithLineDiscounts * 0.14);
   const vatWithholding = invoice.vat_withholding || 0;
   const vatWithholdingAmount = vatTotal * vatWithholding;
-  const totalDocumento = subtotal + vatTotal - discountAmount;
+  const totalDocumento = subtotalWithLineDiscounts + vatTotal - discountAmount;
   const totalPagar = totalDocumento - retencaoTotal - vatWithholdingAmount;
 
   const logoSrc = companyData?.logo_url || companyData?.logo;
@@ -171,7 +173,7 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
         </div>
         <div className="text-right">
           <h2 className="text-2xl font-black uppercase text-[#003366] mb-1 tracking-tighter">
-            {isProvisional ? 'DOCUMENTO PROVISÓRIO' : (invoice.document_type || 'Fatura')}
+            {isProvisional ? 'Documento de Suporte (Draft)' : (invoice.document_type || 'Fatura')}
           </h2>
           <p className="text-lg font-mono font-black text-zinc-800 tracking-widest">{invoice.invoice_number}</p>
           <div className="mt-4 text-[10px] space-y-1 font-bold uppercase text-zinc-500">
@@ -211,10 +213,11 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
         <thead>
           <tr className="border-b-2 border-[#003366] text-[10px] font-bold uppercase tracking-wider text-[#003366]">
             <th className="py-3 text-left">Descrição</th>
-            <th className="py-3 text-center w-20">Qtd</th>
-            <th className="py-3 text-center w-24">Unidade</th>
-            <th className="py-3 text-right w-32">Preço Unit.</th>
-            <th className="py-3 text-right w-32">Total</th>
+            <th className="py-3 text-center w-16">Qtd</th>
+            <th className="py-3 text-center w-16">Desc.</th>
+            <th className="py-3 text-center w-20">Unidade</th>
+            <th className="py-3 text-right w-24">Preço Unit.</th>
+            <th className="py-3 text-right w-28">Total</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-zinc-100">
@@ -222,6 +225,7 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
             <tr key={idx} className="text-sm">
               <td className="py-4 font-medium text-zinc-800">{item.description}</td>
               <td className="py-4 text-center text-zinc-600">{item.quantity}</td>
+              <td className="py-4 text-center text-red-500 font-bold">{item.desconto ? formatParams(item.desconto) : '-'}</td>
               <td className="py-4 text-center text-zinc-600">un</td>
               <td className="py-4 text-right text-zinc-600">{formatParams(item.unit_price)}</td>
               <td className="py-4 text-right font-bold text-zinc-800">{formatParams(item.total)}</td>
@@ -258,16 +262,30 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
             <div className="grid grid-cols-3 gap-1 text-[9px] border-b border-zinc-300 pb-1 font-bold items-center uppercase">
               <div>Taxa</div>
               <div className="text-right">Base Incidência ( {displayCurrency} )</div>
-              <div className="text-right">Valor do IVA ( {displayCurrency} )</div>
+              <div className="text-right">Valor do Imposto ( {displayCurrency} )</div>
             </div>
-            <div className="grid grid-cols-3 gap-1 text-[9px] border-b border-zinc-100 py-1">
-              <div>14%</div>
-              <div className="text-right">{formatParams(subtotal)}</div>
-              <div className="text-right">{formatParams(vatTotal)}</div>
-            </div>
+            {(() => {
+              const taxBreakdown: { [key: string]: { base: number, total: number } } = {};
+              (invoice.items || []).forEach(item => {
+                const label = item.tax || (item.tax_rate ? `IVA (${item.tax_rate}%)` : 'ISE (0%)');
+                if (!taxBreakdown[label]) taxBreakdown[label] = { base: 0, total: 0 };
+                const itemTotal = item.total || 0;
+                const base = itemTotal / (1 + (item.tax_rate || 0) / 100);
+                taxBreakdown[label].base += base;
+                taxBreakdown[label].total += itemTotal - base;
+              });
+              
+              return Object.entries(taxBreakdown).map(([label, data], i) => (
+                <div key={i} className="grid grid-cols-3 gap-1 text-[9px] border-b border-zinc-100 py-1">
+                  <div>{label}</div>
+                  <div className="text-right">{formatParams(data.base)}</div>
+                  <div className="text-right">{formatParams(data.total)}</div>
+                </div>
+              ));
+            })()}
             <div className="grid grid-cols-3 gap-1 text-[9px] pt-1 font-bold">
               <div>Totais</div>
-              <div className="text-right">{formatParams(subtotal)}</div>
+              <div className="text-right">{formatParams(subtotalWithLineDiscounts)}</div>
               <div className="text-right">{formatParams(vatTotal)}</div>
             </div>
           </div>
@@ -281,19 +299,54 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
         <div className="text-right space-y-1 text-[11px] flex flex-col justify-end">
           <div className="flex justify-between border-b border-zinc-200 py-1">
             <span className="text-zinc-500">Total Ilíquido ({displayCurrency})</span>
-            <span className="font-bold">{formatParams(subtotal)}</span>
+            <span className="font-bold">{formatParams(subtotalRaw)}</span>
           </div>
-          <div className="flex justify-between border-b border-zinc-200 py-1">
-            <span className="text-zinc-500">Desconto Comercial</span>
-            <span className="font-medium">{formatParams(discountAmount)}</span>
+          {lineDiscountTotal > 0 && (
+            <div className="flex justify-between border-b border-zinc-200 py-1 text-red-600 font-bold">
+              <span>Descontos de Linha ({displayCurrency})</span>
+              <span>- {formatParams(lineDiscountTotal)}</span>
+            </div>
+          )}
+          <div className="flex justify-between border-b border-zinc-100 py-1 font-bold">
+            <span className="text-zinc-500">Subtotal ({displayCurrency})</span>
+            <span>{formatParams(subtotalWithLineDiscounts)}</span>
           </div>
-          <div className="flex justify-between border-b border-zinc-200 py-1">
-            <span className="text-zinc-500">Total IVA</span>
-            <span className="font-bold">{formatParams(vatTotal)}</span>
-          </div>
-          <div className="flex justify-between font-black text-sm pt-2">
-            <span>Total do documento ({displayCurrency})</span>
-            <span className="text-[#003366]">{formatParams(totalDocumento)}</span>
+          {(() => {
+              const taxBreakdown: { [key: string]: number } = {};
+              (invoice.items || []).forEach(item => {
+                const label = item.tax || (item.tax_rate ? `IVA (${item.tax_rate}%)` : 'ISE (0%)');
+                const itemTotal = item.total || 0;
+                const base = itemTotal / (1 + (item.tax_rate || 0) / 100);
+                taxBreakdown[label] = (taxBreakdown[label] || 0) + (itemTotal - base);
+              });
+              return Object.entries(taxBreakdown).map(([label, val], i) => (
+                <div key={i} className="flex justify-between border-b border-zinc-100 py-1 text-zinc-500">
+                  <span>Total {label} ({displayCurrency})</span>
+                  <span>{formatParams(val)}</span>
+                </div>
+              ));
+          })()}
+          {vatWithholdingAmount > 0 && (
+            <div className="flex justify-between border-b border-zinc-100 py-1 text-orange-600 font-bold">
+              <span>Cativação de IVA ({displayCurrency})</span>
+              <span>- {formatParams(vatWithholdingAmount)}</span>
+            </div>
+          )}
+          {retencaoTotal > 0 && (
+            <div className="flex justify-between border-b border-zinc-100 py-1 text-blue-600 font-bold">
+              <span>Retenção na Fonte (6,5%) ({displayCurrency})</span>
+              <span>- {formatParams(retencaoTotal)}</span>
+            </div>
+          )}
+          {discountAmount > 0 && (
+            <div className="flex justify-between border-b border-zinc-100 py-1 text-red-600 font-bold">
+               <span>Desconto Global ({displayCurrency})</span>
+               <span>- {formatParams(discountAmount)}</span>
+            </div>
+          )}
+          <div className="flex justify-between pt-4 pb-2 border-t-2 border-[#003366] mt-4">
+            <span className="text-xl font-black text-zinc-500 uppercase tracking-widest">Total ({displayCurrency})</span>
+            <span className="text-3xl font-black text-[#003366]">{formatParams(totalPagar)}</span>
           </div>
           
           <div className="mt-4 pt-2 text-[9px] text-zinc-400 font-mono space-y-0.5">

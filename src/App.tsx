@@ -6422,7 +6422,7 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
                   )}
 
                   {/* 10. Documento de Suporte (Draft) - Only for foreign currencies */}
-                  {((showActionsModal.moeda || showActionsModal.currency) && !['Kwanza', 'AOA', 'Akz'].includes(showActionsModal.moeda || showActionsModal.currency)) && (
+                  {((showActionsModal.moeda || showActionsModal.currency) && !['Kwanza', 'AOA', 'Akz'].includes(showActionsModal.moeda || showActionsModal.currency)) && showActionsModal.is_certified && (
                     <button 
                       onClick={() => { 
                         onAction('foreign_draft', showActionsModal);
@@ -6430,12 +6430,12 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
                       }}
                       className="col-span-2 w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-all border border-zinc-100 group shadow-sm bg-white"
                     >
-                      <div className="w-10 h-10 bg-zinc-100 text-zinc-600 flex items-center justify-center group-hover:bg-[#003366] group-hover:text-white transition-colors">
+                      <div className="w-10 h-10 bg-purple-50 text-purple-600 flex items-center justify-center group-hover:bg-purple-600 group-hover:text-white transition-colors">
                         <FileSignature size={20} />
                       </div>
                       <div className="text-left">
-                        <p className="font-bold text-zinc-900 text-xs uppercase">Documento de Suporte (Draft)</p>
-                        <p className="text-[9px] text-zinc-500 uppercase tracking-tighter">
+                        <p className="font-bold text-purple-700 text-xs uppercase">Documento de Suporte (Draft)</p>
+                        <p className="text-[9px] text-purple-500 uppercase tracking-tighter">
                           Gerar rascunho em {showActionsModal.moeda || showActionsModal.currency}
                         </p>
                       </div>
@@ -12180,7 +12180,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
     const rowTotal = (q * p) - d;
     newItems[index].total = rowTotal;
     
-    if (useRetencao && isService && rowTotal > 20000) {
+    if (isService && rowTotal > 20000) {
       newItems[index].retencao_fonte = rowTotal * 0.065;
     } else {
       newItems[index].retencao_fonte = 0;
@@ -12190,10 +12190,11 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
       const prod = products.find(p => p.id === Number(value));
       if (prod) {
         newItems[index].description = prod.name;
+        newItems[index].referencia = prod.referente || prod.barcode || '';
         newItems[index].unit_price = prod.price;
         const pt = ((newItems[index].quantity || 1) * prod.price) - (newItems[index].desconto || 0);
         newItems[index].total = pt;
-        if (useRetencao && isService && pt > 20000) {
+        if (isService && pt > 20000) {
           newItems[index].retencao_fonte = pt * 0.065;
         } else {
           newItems[index].retencao_fonte = 0;
@@ -12402,30 +12403,6 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
               />
             </div>
             <div className="space-y-2">
-               <label className="text-xs font-bold text-zinc-600">Retenção na fonte (6,5%)</label>
-               <div className="flex items-center gap-2 px-4 py-2.5 bg-zinc-50 border border-zinc-200">
-                 <input 
-                   type="checkbox" 
-                   checked={useRetencao} 
-                   onChange={(e) => {
-                     const checked = e.target.checked;
-                     setUseRetencao(checked);
-                     const updatedItems = items.map(item => {
-                       const isService = item.tipo_artigo?.toLowerCase() === 'serviço' || item.tipo_artigo?.toLowerCase() === 'servico' || item.tipo_artigo?.toLowerCase() === 'ser';
-                       const rowTotal = item.total || 0;
-                       return {
-                         ...item,
-                         retencao_fonte: checked && isService && rowTotal > 20000 ? rowTotal * 0.065 : 0
-                       };
-                     });
-                     setItems(updatedItems);
-                   }}
-                   className="rounded-none border-zinc-300 text-[#003366] focus:ring-[#003366]"
-                 />
-                 <span className="text-xs text-zinc-500 font-bold uppercase">Aplicar Retenção</span>
-               </div>
-            </div>
-            <div className="space-y-2">
               <label className="text-xs font-bold text-zinc-600">Cativação de IVA</label>
               <select 
                 value={vatWithholding} 
@@ -12487,7 +12464,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
                 <option value="A Prazo">A Prazo</option>
               </select>
             </div>
-            {paymentCondition === 'Pronto Pagamento' && (
+            {documentType === 'Fatura Recibo' && (
               <>
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-zinc-600">Método de Pagamento <span className="text-red-500">*</span></label>
@@ -12604,13 +12581,23 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
                        {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                      </select>
                    </div>
-                   <div className="col-span-3 space-y-1">
+                   <div className="col-span-2 space-y-1">
                      <label className="text-[10px] font-bold text-zinc-400 uppercase">Descrição</label>
                      <input 
                        disabled={isCertified}
                        type="text" 
                        value={item.description} 
                        onChange={(e) => updateItem(idx, 'description', e.target.value)}
+                       className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
+                     />
+                   </div>
+                   <div className="col-span-1 space-y-1">
+                     <label className="text-[10px] font-bold text-zinc-400 uppercase">Referência</label>
+                     <input 
+                       disabled={isCertified}
+                       type="text" 
+                       value={item.referencia || ''} 
+                       onChange={(e) => updateItem(idx, 'referencia', e.target.value)}
                        className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
                      />
                    </div>
@@ -18524,88 +18511,9 @@ export default function App() {
             setFixedDocumentType('Guia de Entrega');
             setIsCreatingInvoice(true);
           } else if (action === 'export_pdf') {
-            const pdf = new jsPDF();
-            
-            // Company Header
-            pdf.setFontSize(20);
-            pdf.setTextColor(0, 51, 102);
-            pdf.text(companyName, 20, 20);
-            
-            pdf.setFontSize(10);
-            pdf.setTextColor(100);
-            pdf.text(`NIF: ${companyNif}`, 20, 30);
-            pdf.text(companyAddress, 20, 35);
-            
-            // Document Info
-            const isProvisional = !doc.is_certified;
-            pdf.setFontSize(14);
-            pdf.setTextColor(0);
-            pdf.text(isProvisional ? 'Documento de Suporte (Draft)' : `${doc.document_type || doc.tipo_documento}`, 120, 20);
-            pdf.setFontSize(10);
-            pdf.text(`${doc.numero_documento || doc.invoice_number}`, 120, 26);
-            
-            pdf.setFontSize(10);
-            pdf.text(`Data: ${new Date(doc.date || doc.data_emissao || '').toLocaleDateString()}`, 120, 32);
-            pdf.text(`Vencimento: ${doc.due_date ? new Date(doc.due_date).toLocaleDateString() : 'N/A'}`, 120, 38);
-            
-            // Client Info
-            pdf.setFontSize(12);
-            pdf.text('Cliente:', 20, 55);
-            pdf.setFontSize(10);
-            pdf.text(doc.client_name || 'N/A', 20, 62);
-            
-            // Items Table
-            const tableData = (invoiceData.items || []).map((item: any) => [
-              item.description,
-              item.quantity,
-              formatCurrency(item.unit_price),
-              formatCurrency(item.tax_rate || 0) + '%',
-              formatCurrency(item.total)
-            ]);
-            
-            autoTable(pdf, {
-              startY: 75,
-              head: [['Descrição', 'Qtd', 'Preço Unit.', 'Taxa', 'Total']],
-              body: tableData,
-              theme: 'striped',
-              headStyles: { fillColor: [0, 51, 102] }
-            });
-            
-            const lastY = (pdf as any).lastAutoTable?.finalY || 150;
-            let finalY = lastY + 10;
-            
-            const docSubtotal = (invoiceData.items || []).reduce((sum: number, item: any) => sum + (item.total || 0), 0);
-            const docTax = docSubtotal * 0.14;
-            const docDiscount = invoiceData.global_discount || 0;
-            const docTotal = docSubtotal + docTax - docDiscount;
-
-            pdf.setFontSize(10);
-            pdf.text(`Subtotal:`, 140, finalY);
-            pdf.text(`${formatCurrency(docSubtotal)}`, 180, finalY, { align: 'right' });
-            
-            finalY += 6;
-            pdf.text(`IVA (14%):`, 140, finalY);
-            pdf.text(`${formatCurrency(docTax)}`, 180, finalY, { align: 'right' });
-            
-            if (docDiscount > 0) {
-              finalY += 6;
-              pdf.text(`Desconto:`, 140, finalY);
-              pdf.text(`-${formatCurrency(docDiscount)}`, 180, finalY, { align: 'right' });
-            }
-            
-            finalY += 8;
-            pdf.setFontSize(12);
-            pdf.setTextColor(0, 51, 102);
-            pdf.text(`Total a Pagar:`, 140, finalY);
-            pdf.text(`${formatCurrency(doc.counter_value || doc.total || docTotal)}`, 180, finalY, { align: 'right' });
-            
-            if (isProvisional) {
-              pdf.setTextColor(200, 0, 0);
-              pdf.setFontSize(16);
-              pdf.text('DOCUMENTO PROVISÓRIO - SEM VALOR FISCAL', 105, finalY + 20, { align: 'center' });
-            }
-            
-            pdf.save(`${doc.numero_documento || 'documento'}.pdf`);
+            setPrintingInvoice(invoiceData);
+            setIsPrintingDraft(!doc.is_certified);
+            setTimeout(() => window.print(), 500);
           } else if (action === 'draft' || action === 'foreign_draft' || action === 'preview_a4') {
             setPrintingInvoice(invoiceData);
             setIsPrintingDraft(true);

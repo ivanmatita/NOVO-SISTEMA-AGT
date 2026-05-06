@@ -212,6 +212,7 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
       <table className="w-full mb-12 relative z-10">
         <thead>
           <tr className="border-b-2 border-[#003366] text-[10px] font-bold uppercase tracking-wider text-[#003366]">
+            <th className="py-3 text-left">Referência</th>
             <th className="py-3 text-left">Descrição</th>
             <th className="py-3 text-center w-16">Qtd</th>
             <th className="py-3 text-center w-16">Desc.</th>
@@ -223,6 +224,7 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
         <tbody className="divide-y divide-zinc-100">
           {invoice.items?.map((item, idx) => (
             <tr key={idx} className="text-sm">
+              <td className="py-4 font-medium text-zinc-600">{item.referencia || '-'}</td>
               <td className="py-4 font-medium text-zinc-800">{item.description}</td>
               <td className="py-4 text-center text-zinc-600">{item.quantity}</td>
               <td className="py-4 text-center text-red-500 font-bold">{item.desconto ? formatParams(item.desconto) : '-'}</td>

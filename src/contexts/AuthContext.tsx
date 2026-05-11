@@ -10,15 +10,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let mounted = true;
+
     const initAuth = async () => {
       try {
         const currentUser = await authService.getCurrentUser();
-        setUser(currentUser);
+        if (mounted) {
+          setUser(currentUser);
+        }
       } catch (err) {
         console.error('Erro ao inicializar autenticação:', err);
-        setUser(null);
+        if (mounted) {
+          setUser(null);
+        }
       } finally {
-        setLoading(false);
+        if (mounted) {
+          setLoading(false);
+        }
       }
     };
 
@@ -27,15 +35,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Listener global para mudanças de estado de autenticação
     const { data: { subscription } } = authService.onAuthStateChange(async (event, session) => {
       console.log('Evento Auth Detectado:', event);
+      if (!mounted) return;
+
       if (session) {
-        const currentUser = await authService.getCurrentUser();
-        setUser(currentUser);
-      } else if (event === 'SIGNED_OUT') {
+        // Debounce ou evitar fetch desnecessário se o user for o mesmo
+        const curr = await authService.getCurrentUser();
+        if (mounted) {
+          setUser(curr);
+        }
+      } else {
         setUser(null);
       }
     });
 
     return () => {
+      mounted = false;
       subscription.unsubscribe();
     };
   }, []);

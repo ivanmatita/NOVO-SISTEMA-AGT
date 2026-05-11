@@ -1,7 +1,28 @@
 import { supabase } from '../lib/supabase';
 import { User } from '../types';
 
+let sessionCache: any = null;
+let sessionLoading = false;
+
 export const authService = {
+  async getSessionSafe() {
+    if (sessionCache) return sessionCache;
+    if (sessionLoading) return null;
+
+    sessionLoading = true;
+    try {
+      const { data, error } = await supabase.auth.getSession();
+      if (error) {
+        console.error('Error getting session:', error);
+        return null;
+      }
+      sessionCache = data.session;
+      return sessionCache;
+    } finally {
+      sessionLoading = false;
+    }
+  },
+
   async registerCompany(formData: any): Promise<User> {
     try {
       // 1. Criar conta no Supabase Auth
@@ -58,6 +79,8 @@ export const authService = {
       if (authError) throw authError;
       if (!authData.user) throw new Error('Usuário não encontrado após login');
 
+      sessionCache = authData.session;
+
       // Buscar dados da empresa/perfil
       const { data: empresa, error: empresaError } = await supabase
         .from('empresas')
@@ -94,6 +117,7 @@ export const authService = {
   async logout() {
     try {
       await supabase.auth.signOut();
+      sessionCache = null;
     } catch (err) {
       console.error('Erro ao sair:', err);
     }
@@ -101,7 +125,7 @@ export const authService = {
 
   async getCurrentUser(): Promise<User | null> {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const session = await this.getSessionSafe();
       if (!session) return null;
 
       const { data: empresa, error } = await supabase
@@ -136,10 +160,24 @@ export const authService = {
   },
 
   async forgotPassword(email: string) {
+    const lastSent = localStorage.getItem(`last_forgot_email_${email}`);
+    const now = Date.now();
+    if (lastSent && now - Number(lastSent) < 60000) { // 1 minute limit
+      throw new Error('Por favor, aguarde um minuto antes de solicitar novamente.');
+    }
+
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/reset-password`
     });
-    if (error) throw error;
+    
+    if (error) {
+      if (error.message.includes('rate limit')) {
+        throw new Error('Limite de envio de emails atingido. Por favor, tente mais tarde.');
+      }
+      throw error;
+    }
+
+    localStorage.setItem(`last_forgot_email_${email}`, now.toString());
   },
 
   async updatePassword(newPassword: string) {
@@ -150,6 +188,9 @@ export const authService = {
   },
 
   onAuthStateChange(callback: (event: string, session: any) => void) {
-    return supabase.auth.onAuthStateChange(callback);
+    return supabase.auth.onAuthStateChange((event, session) => {
+      sessionCache = session;
+      callback(event, session);
+    });
   }
 };

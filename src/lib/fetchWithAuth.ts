@@ -1,11 +1,8 @@
-import { supabase } from './supabase';
+import { authService } from '../services/authService';
 
 export const fetchWithAuth = async (url: string, options?: RequestInit) => {
-  let token = null;
-  if (supabase) {
-    const { data } = await supabase.auth.getSession();
-    token = data?.session?.access_token;
-  }
+  const session = await authService.getSessionSafe();
+  const token = session?.access_token;
   
   const headers: Record<string, string> = {};
   if (options?.headers) {

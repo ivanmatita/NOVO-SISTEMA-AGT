@@ -166,9 +166,12 @@ import { MetricsModule, fetchMetrics, Metric } from './components/MetricsModule'
 import { supabase } from './lib/supabase';
 
 
+import { authService } from './services/authService';
+import { throttle } from './utils/throttle';
+
 const fetchWithAuth = async (url: string, options?: RequestInit) => {
-  const session = await supabase?.auth?.getSession();
-  const token = session?.data?.session?.access_token;
+  const session = await authService.getSessionSafe();
+  const token = session?.access_token;
   
   const headers: Record<string, string> = {};
   if (options?.headers) {
@@ -185,8 +188,8 @@ const fetchWithAuth = async (url: string, options?: RequestInit) => {
 };
 
 const fetchJson = async (url: string, options?: RequestInit) => {
-  const session = await supabase?.auth?.getSession();
-  const token = session?.data?.session?.access_token;
+  const session = await authService.getSessionSafe();
+  const token = session?.access_token;
   
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (options?.headers) {
@@ -6632,7 +6635,7 @@ const POSManagementView = ({
   );
 };
 
-const POSModule = ({ products, onRefresh, caixas }: { products: Product[], onRefresh: () => void, caixas: Caixa[] }) => {
+const POSModule = ({ products, onRefresh, caixas, onSaveDocument }: { products: Product[], onRefresh: () => void, caixas: Caixa[], onSaveDocument: (doc: any) => Promise<void> }) => {
   const [activeArea, setActiveArea] = useState<POSArea | 'dashboard'>('dashboard');
   const [cart, setCart] = useState<{product: Product, qty: number, discount: number}[]>([]);
   const [search, setSearch] = useState('');
@@ -6724,6 +6727,10 @@ const POSModule = ({ products, onRefresh, caixas }: { products: Product[], onRef
       });
 
       if (invRes.ok) {
+        const invoiceData = await invRes.json();
+        // Persistir no Supabase
+        await onSaveDocument(invoiceData);
+
         setLastSale({
           id: posData.id,
           date: new Date().toLocaleString(),
@@ -8269,7 +8276,7 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
       if (path) {
         await supabase.storage.from('documentos').remove([path]);
       }
-      const { error } = await supabase.from('secretaria_digital').delete().eq('id', id);
+      const { error } = await supabase.from('secretaria_digital').delete().eq('id', id).eq('company_id', user.id);
       if (error) throw error;
       loadData();
     } catch (error: any) {
@@ -12278,7 +12285,7 @@ const InvoiceList = ({
   );
 };
 
-const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onSuccess, caixas, initialData = null, fixedDocumentType }: { 
+const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onSuccess, caixas, onSaveDocument, initialData = null, fixedDocumentType }: { 
   clients: Client[], 
   products: Product[], 
   workSites: WorkSite[], 
@@ -12286,6 +12293,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
   onBack: () => void, 
   onSuccess: () => void,
   caixas: Caixa[],
+  onSaveDocument?: (doc: any) => Promise<void>,
   initialData?: IssuedDocument | null,
   fixedDocumentType?: string
 }) => {
@@ -12482,6 +12490,10 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
     });
 
     if (res.ok) {
+      const savedDoc = await res.json().catch(() => null);
+      if (savedDoc && onSaveDocument) {
+        await onSaveDocument(savedDoc);
+      }
       onSuccess();
     } else {
       const errorData = await res.json().catch(() => ({ error: 'Erro desconhecido ao emitir documento' }));
@@ -18718,18 +18730,19 @@ export default function App() {
     setTaskFormData({ name: '', type: 'imposto', description: '', responsible: '', startDate: '', endDate: '', advanceTime: '', obs: '' });
   };
 
-  const loadClientes = async () => {
+  const loadClientes = throttle(async () => {
     if (syncLockRef.current) return;
     syncLockRef.current = true;
 
     try {
-      const { data: { user: authUser }, error: userError } = await supabase.auth.getUser();
-      if (userError || !authUser) {
+      const session = await authService.getSessionSafe();
+      if (!session) {
         console.error('Usuário não autenticado no loadClientes');
         return;
       }
 
       console.log('Carregando clientes do Supabase (Sync Blindada)...');
+      const authUser = session.user;
       const companyId = authUser.id;
 
       const { data, error } = await supabase
@@ -18785,20 +18798,21 @@ export default function App() {
     } finally {
       syncLockRef.current = false;
     }
-  };
+  }, 3000);
 
-  const loadLocaisTrabalho = async () => {
+  const loadLocaisTrabalho = throttle(async () => {
     if (syncLockRef.current) return;
     syncLockRef.current = true;
 
     try {
-      const { data: { user: authUser }, error: userError } = await supabase.auth.getUser();
-      if (userError || !authUser) {
+      const session = await authService.getSessionSafe();
+      if (!session) {
         console.error('Usuário não autenticado no loadLocaisTrabalho');
         return;
       }
 
       console.log('Carregando locais de trabalho do Supabase (Sync Blindada)...');
+      const authUser = session.user;
       const companyId = authUser.id;
 
       const { data, error } = await supabase
@@ -18848,22 +18862,80 @@ export default function App() {
     } finally {
       syncLockRef.current = false;
     }
-  };
+  }, 3000);
+
+  async function saveDocumentoEmitido(doc: any) {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.error('Usuário não autenticado no saveDocumentoEmitido');
+        return;
+      }
+
+      console.log('Persistindo documento no Supabase:', doc.invoice_number || doc.numero_documento);
+
+      const { error } = await supabase
+        .from('documentos_emitidos')
+        .insert({
+          company_id: user.id,
+          tipo_documento: doc.document_type || doc.tipo_documento || 'Fatura',
+          numero_documento: doc.invoice_number || doc.numero_documento,
+          cliente_nome: doc.client_name || 'Desconhecido',
+          cliente_email: doc.client_email || null,
+          total: Number(doc.total || 0),
+          imposto: Number(doc.vat_amount || 0),
+          estado: doc.status || doc.estado_documento || 'ativo',
+          data_emissao: doc.date || doc.data_emissao || new Date().toISOString(),
+          detalhes: doc
+        });
+
+      if (error) {
+        console.error('Erro ao salvar no Supabase (documentos_emitidos):', error);
+        // Não lançamos erro aqui para não quebrar o fluxo principal do usuário, 
+        // mas logamos para depuração.
+      } else {
+        console.log('Documento persistido com sucesso no Supabase');
+      }
+    } catch (err) {
+      console.error('Erro crítico no saveDocumentoEmitido:', err);
+    }
+  }
+
+  async function loadDocumentosEmitidos() {
+    try {
+      const session = await authService.getSessionSafe();
+      if (!session) return;
+      const user = session.user;
+
+      const { data, error } = await supabase
+        .from('documentos_emitidos')
+        .select('*')
+        .eq('company_id', user.id)
+        .order('data_emissao', { ascending: false });
+
+      if (error) throw error;
+      setIssuedDocuments(data || []);
+    } catch (err) {
+      console.error('Erro ao carregar documentos emitidos do Supabase:', err);
+    }
+  }
 
   const fetchData = async () => {
     try {
-      const { data: { user: authUser }, error: userError } = await supabase.auth.getUser();
-      if (userError || !authUser) {
+      const session = await authService.getSessionSafe();
+      if (!session) {
         console.warn('Sync bloqueado: Usuário não autenticado no fetchData');
         return;
       }
       
+      const authUser = session.user;
       const companyId = authUser.id;
       console.log('Fetching data for company:', companyId);
       
       // Fontes de Verdade Principais (Supabase)
       await loadClientes();
       await loadLocaisTrabalho();
+      await loadDocumentosEmitidos();
 
       // Carregar dados da empresa diretamente do Supabase para Blindagem Total
       const { data: compSupabase, error: compErr } = await supabase
@@ -18886,7 +18958,6 @@ export default function App() {
         fetchJson(`/api/products?company_id=${companyId}`),
         fetchJson(`/api/transactions?company_id=${companyId}`),
         fetchJson(`/api/invoices?company_id=${companyId}`),
-        fetchJson(`/api/issued-documents?company_id=${companyId}`),
         fetchJson(`/api/employees?company_id=${companyId}`),
         fetchJson('/api/fiscal-series'),
         fetchJson('/api/cost-centers'),
@@ -18904,7 +18975,7 @@ export default function App() {
         fetchJson(`/api/purchases?company_id=${companyId}`)
       ]);
 
-      const [s, p, tr, i, d, e, fs, cc, pp, sess, cx, cm, sm, wsm, wh, occ, arm, rost, comp, pur] = results.map((res, idx) => {
+      const [s, p, tr, i, e, fs, cc, pp, sess, cx, cm, sm, wsm, wh, occ, arm, rost, comp, pur] = results.map((res, idx) => {
         if (res.status === 'fulfilled') return res.value;
         console.error(`Fetch failed for index ${idx}:`, res.status === 'rejected' ? res.reason : 'unknown');
         return null;
@@ -18914,7 +18985,6 @@ export default function App() {
       setProducts(Array.isArray(p) ? p : []);
       setTransactions(Array.isArray(tr) ? tr : []);
       setInvoices(Array.isArray(i) ? i : []);
-      setIssuedDocuments(Array.isArray(d) ? d : []);
       setEmployees(Array.isArray(e) ? e : []);
       
       setFiscalSeries(Array.isArray(fs) ? fs : []);
@@ -19189,6 +19259,7 @@ export default function App() {
         const res = await fetchWithAuth(`/api/invoices/${doc.id}/clone`, { method: 'POST' });
         if (res.ok) {
           const cloned = await res.json();
+          await saveDocumentoEmitido(cloned);
           await fetchData();
           alert(`Documento clonado com sucesso! Novo número: ${cloned.invoice_number}`);
         }
@@ -19213,9 +19284,11 @@ export default function App() {
     }
   };
 
+  const throttledFetchData = throttle(fetchData, 2000);
+
   useEffect(() => {
     if (authReady && user) {
-      fetchData();
+      throttledFetchData();
     }
   }, [authReady, user?.id]);
 
@@ -19395,7 +19468,7 @@ export default function App() {
                         case 'dashboard':
                           return <EcosystemDashboard stats={stats} issuedDocuments={issuedDocuments} setActiveTab={setActiveTab} />;
                         case 'pos':
-                          return <POSModule products={products} onRefresh={fetchData} caixas={caixas} />;
+                          return <POSModule products={products} onRefresh={fetchData} caixas={caixas} onSaveDocument={saveDocumentoEmitido} />;
                         case 'electronic_invoices':
                         case 'invoices':
                         case 'vendas':
@@ -19795,6 +19868,7 @@ export default function App() {
                     workSites={workSites}
                     fiscalSeries={fiscalSeries}
                     onBack={() => setIsCreatingInvoice(false)} 
+                    onSaveDocument={saveDocumentoEmitido}
                     onSuccess={async () => {
                       setIsCreatingInvoice(false);
                       // Add a small delay to ensure backend has processed the transaction

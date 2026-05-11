@@ -9496,14 +9496,33 @@ const CashierModule = ({ issuedDocuments = [] }: { issuedDocuments?: IssuedDocum
 };
 
 const TaxSeriesModule = () => {
-  const [taxes, setTaxes] = useState([
-    { id: 1, date: '01-01-2019', layout: 'IVA - Regime Transitório', type: 'IVA', region: 'N/A', code: 'ISE', description: 'NA', rate: '0,00%', fixed: '0,00', cod: 'M00', motive: 'Regime Transitorio' },
-    { id: 2, date: '01-01-2019', layout: 'IVA Normal 14%', type: 'IVA', region: 'N/A', code: 'NOR', description: 'NA', rate: '14,00%', fixed: '0,00', cod: '', motive: '' },
-  ]);
+  const [taxes, setTaxes] = useState<any[]>([]);
   const [showImportModal, setShowImportModal] = useState(false);
 
-  const removeTax = (id: number) => {
-    setTaxes(taxes.filter(t => t.id !== id));
+  useEffect(() => {
+    loadTaxes();
+  }, []);
+
+  const loadTaxes = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data } = await supabase.from('tabela_impostos').select('*').eq('company_id', user.id);
+    if (data) setTaxes(data.map(d => ({
+      id: d.id,
+      date: new Date(d.created_at).toLocaleDateString(),
+      layout: d.nome,
+      type: 'IVA',
+      code: d.codigo_imposto || 'NOR',
+      rate: `${d.taxa}%`,
+      motive: d.descricao || ''
+    })));
+  };
+
+  const removeTax = async (id: number) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    await supabase.from('tabela_impostos').delete().eq('id', id).eq('company_id', user.id);
+    loadTaxes();
   };
 
   return (
@@ -9553,26 +9572,29 @@ const TaxSeriesModule = () => {
               {ALL_TAXES.map((taxName, idx) => (
                 <button 
                   key={idx}
-                  onClick={() => { 
+                  onClick={async () => { 
                     const isIva = taxName.includes('IVA');
                     const isIsento = taxName.includes('Isento') || taxName.includes('Não Sujeita');
                     const rateMatch = taxName.match(/(\d+)%/);
-                    const rate = rateMatch ? `${rateMatch[1]},00%` : (isIsento ? '0,00%' : '14,00%');
+                    const rateNum = rateMatch ? parseFloat(rateMatch[1]) : (isIsento ? 0 : 14);
                     
-                    setTaxes([...taxes, { 
-                      id: Date.now(), 
-                      date: new Date().toLocaleDateString('pt-PT'), 
-                      layout: taxName, 
-                      type: isIva ? 'IVA' : 'IS', 
-                      region: 'N/A', 
-                      code: isIsento ? 'ISE' : 'NOR', 
-                      description: 'NA', 
-                      rate: rate, 
-                      fixed: '0,00', 
-                      cod: isIsento ? 'M00' : '', 
-                      motive: isIsento ? 'Isenção' : '' 
-                    }]); 
-                    setShowImportModal(false); 
+                    const { data: { user } } = await supabase.auth.getUser();
+                    if (!user) return;
+                    
+                    const { error } = await supabase.from('tabela_impostos').insert([{
+                      company_id: user.id,
+                      nome: taxName,
+                      taxa: rateNum,
+                      codigo_imposto: isIsento ? 'ISE' : 'NOR',
+                      descricao: isIsento ? 'Isenção' : ''
+                    }]);
+                    
+                    if (!error) {
+                      loadTaxes();
+                      setShowImportModal(false); 
+                    } else {
+                      alert('Erro ao importar taxa: ' + error.message);
+                    }
                   }} 
                   className="w-full text-left p-3 hover:bg-zinc-50 border border-transparent hover:border-zinc-200 transition-all text-sm text-zinc-700 flex items-center justify-between group"
                 >
@@ -11356,28 +11378,30 @@ const FiscalSeriesModule = ({ series, onRefresh, users }: { series: FiscalSeries
     const reference = `S${series.length + 1}${year}`;
     
     try {
-      await fetchWithAuth('/api/fiscal-series', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name,
-          description: name,
-          user_id: selectedUser,
-          type,
-          reference: type === 'normal' ? reference : '',
-          counter: 1,
-          year,
-          data_inicio: new Date().toISOString().split('T')[0],
-          destino: destiny,
-          is_active: true,
-          company_id: user?.company_id
-        })
-      });
-      setShowForm(false);
-      onRefresh();
-      setName('');
-      setDestiny('');
-      setType('normal');
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) return;
+      const { error } = await supabase
+        .from('series_fiscais')
+        .insert([{
+          company_id: authUser.id,
+          serie: reference,
+          descricao: name,
+          tipo: type,
+          proximo_numero: 1,
+          ativo: true,
+          created_at: new Date().toISOString()
+        }]);
+
+      if (!error) {
+        setShowForm(false);
+        onRefresh();
+        setName('');
+        setDestiny('');
+        setType('normal');
+        alert('Série criada!');
+      } else {
+        alert('Erro ao criar série: ' + error.message);
+      }
     } catch (error) {
       console.error('Error creating series:', error);
     }
@@ -18548,17 +18572,28 @@ const ConvertDocumentModal = ({ document, onClose, onSuccess }: {
 
   const handleConvert = async () => {
     try {
-      const res = await fetchWithAuth(`/api/invoices/${document.id}/convert`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetType })
-      });
-      if (res.ok) {
-        onSuccess();
-        onClose();
-      }
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) return;
+
+      const { id, numero_documento, invoice_number, created_at, updated_at, data_emissao, hash, signature, ...docData } = document;
+      
+      const convertedDoc = {
+        ...docData,
+        document_type: targetType,
+        tipo_documento: targetType,
+        estado: 'RASCUNHO',
+        status: 'RASCUNHO',
+        numero_documento: `CONV-${Date.now()}`,
+        data_emissao: new Date().toISOString()
+      };
+
+      await saveDocumentoEmitido(convertedDoc);
+      alert('Documento convertido com sucesso!');
+      onSuccess();
+      onClose();
     } catch (error) {
       console.error('Error converting document:', error);
+      alert('Erro ao converter documento.');
     }
   };
 
@@ -18953,13 +18988,18 @@ export default function App() {
         setCompanyFooter(compSupabase.footer_image_url || compSupabase.footer || 'Processado por computador');
       }
       
+      const { data: sfData } = await supabase.from('series_fiscais').select('*').eq('company_id', companyId);
+      const fsDataFormatted = (sfData || []).map(s => ({
+        id: s.id, reference: s.serie, description: s.descricao, type: s.tipo, is_active: s.ativo
+      }));
+
       const results = await Promise.allSettled([
         fetchJson(`/api/stats?company_id=${companyId}`),
         fetchJson(`/api/products?company_id=${companyId}`),
         fetchJson(`/api/transactions?company_id=${companyId}`),
         fetchJson(`/api/invoices?company_id=${companyId}`),
         fetchJson(`/api/employees?company_id=${companyId}`),
-        fetchJson('/api/fiscal-series'),
+        Promise.resolve(fsDataFormatted), // Replaced API with Supabase series
         fetchJson('/api/cost-centers'),
         fetchJson('/api/pos-points'),
         fetchJson('/api/cash/sessions'),
@@ -19151,11 +19191,20 @@ export default function App() {
 
   const handleCertifyDocument = async (id: number) => {
     try {
-      const res = await fetchWithAuth(`/api/invoices/${id}/certify`, { method: 'POST' });
-      if (res.ok) {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) return;
+      const { error } = await supabase
+        .from('documentos_emitidos')
+        .update({ status: 'CERTIFICADO', is_certified: true, certificado_em: new Date().toISOString() })
+        .eq('id', id)
+        .eq('company_id', authUser.id);
+        
+      if (!error) {
         setShowCertifyModal(false);
         await fetchData();
         alert('Documento certificado com sucesso!');
+      } else {
+        alert('Erro ao certificar');
       }
     } catch (error) {
       console.error('Error certifying document:', error);
@@ -19256,13 +19305,17 @@ export default function App() {
       setIsCreatingInvoice(true);
     } else if (action === 'clone') {
       try {
-        const res = await fetchWithAuth(`/api/invoices/${doc.id}/clone`, { method: 'POST' });
-        if (res.ok) {
-          const cloned = await res.json();
-          await saveDocumentoEmitido(cloned);
-          await fetchData();
-          alert(`Documento clonado com sucesso! Novo número: ${cloned.invoice_number}`);
-        }
+        const { id, numero_documento, invoice_number, created_at, updated_at, data_emissao, hash, signature, ...clonedData } = doc;
+        const newDoc = { 
+          ...clonedData, 
+          status: 'RASCUNHO', 
+          estado_documento: 'RASCUNHO',
+          numero_documento: `CLONE-${Date.now()}`,
+          data_emissao: new Date().toISOString()
+        };
+        await saveDocumentoEmitido(newDoc);
+        await fetchData();
+        alert('Documento clonado com sucesso como rascunho!');
       } catch (error) {
         console.error('Error cloning document:', error);
       }
@@ -19441,14 +19494,21 @@ export default function App() {
                             <button
                               onClick={async () => {
                                 try {
-                                  const res = await fetchWithAuth(`/api/invoices/${showDeleteModal.id}`, { method: 'DELETE' });
-                                  if (res.ok) {
+                                  const { data: { user: authUser } } = await supabase.auth.getUser();
+                                  if (!authUser) throw new Error('Utilizador não autenticado');
+                                  
+                                  const { error } = await supabase
+                                    .from('documentos_emitidos')
+                                    .delete()
+                                    .eq('id', showDeleteModal.id)
+                                    .eq('company_id', authUser.id);
+                                    
+                                  if (!error) {
                                     alert('Documento eliminado com sucesso!');
                                     await fetchData();
                                     setShowDeleteModal(null);
                                   } else {
-                                    const err = await res.json();
-                                    alert(`Erro ao eliminar: ${err.error || 'Não foi possível eliminar o documento.'}`);
+                                    alert(`Erro ao eliminar: ${error.message || 'Não foi possível eliminar o documento.'}`);
                                   }
                                 } catch (error) {
                                   console.error('Error deleting document:', error);

@@ -133,6 +133,15 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
   const watermarkSrc = companyData?.watermark_url;
   const footerSrc = companyData?.footer_image_url;
 
+  const displayName = invoice.client_name || (invoice as any).supplier_name || 'N/A';
+  const displayNif = invoice.client_nif || (invoice as any).supplier_nif || (invoice as any).nif_cliente || (invoice as any).nif_fornecedor || 'Consumidor Final';
+  const displayAddress = invoice.client_address || (invoice as any).supplier_address || 'Endereço não disponível';
+  const displayEmail = invoice.client_email || (invoice as any).supplier_email;
+  
+  const isPurchase = invoice.document_type?.toLowerCase().includes('compra') || 
+                   !!(invoice as any).supplier_name || 
+                   invoice.document_type?.toLowerCase().includes('pagamento');
+
   return (
     <div className="bg-white p-[2cm] w-[210mm] min-h-[297mm] mx-auto text-zinc-900 font-sans shadow-lg print:shadow-none print:m-0 relative overflow-hidden">
       {watermarkSrc && (
@@ -162,12 +171,12 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
           )}
           <div>
             <h1 className="text-xl font-black text-[#003366] mb-1 uppercase tracking-tighter">{companyData?.name || 'FaturaPronta Lda'}</h1>
-            <div className="text-[10px] space-y-0.5 text-zinc-600 font-bold uppercase">
+            <div className="text-[10px] space-y-0.5 text-zinc-600 font-bold uppercase break-words max-w-[250px]">
               <p>{companyData?.address || 'Rua da Inovação, 123'}</p>
               <p>NIF: {companyData?.nif || '500 000 000'}</p>
               {companyData?.phone && <p>Tel: {companyData.phone}</p>}
-              {companyData?.email && <p className="lowercase">Email: {companyData.email}</p>}
-              {companyData?.regime && <p>Regime: {companyData.regime}</p>}
+              {companyData?.email && <p className="lowercase break-all">Email: {companyData.email}</p>}
+              {companyData?.regime && <p>{companyData.regime}</p>}
             </div>
           </div>
         </div>
@@ -191,12 +200,14 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
 
       <div className="grid grid-cols-2 gap-12 mb-12 relative z-10">
         <div className="p-4 border border-zinc-100 bg-white/80">
-          <h3 className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-3">Dados do Cliente</h3>
-          <div className="text-sm space-y-1">
-            <p className="font-bold text-zinc-800 text-base">{invoice.client_name}</p>
-            <p>{invoice.client_address || 'Endereço não disponível'}</p>
-            <p><span className="font-bold">NIF:</span> {invoice.client_nif || 'Consumidor Final'}</p>
-            {invoice.client_email && <p><span className="font-bold">Email:</span> {invoice.client_email}</p>}
+          <h3 className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-3">
+            {isPurchase ? 'Dados do Fornecedor' : 'Dados do Cliente'}
+          </h3>
+          <div className="text-sm space-y-1 break-words">
+            <p className="font-bold text-zinc-800 text-base break-words text-uppercase">{displayName}</p>
+            <p className="break-words max-w-[300px]">{displayAddress}</p>
+            <p><span className="font-bold">NIF:</span> {displayNif}</p>
+            {displayEmail && <p className="break-all"><span className="font-bold">Email:</span> {displayEmail}</p>}
           </div>
         </div>
         <div className="p-4 border border-zinc-100 bg-white/80">
@@ -225,7 +236,9 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
           {invoice.items?.map((item, idx) => (
             <tr key={idx} className="text-sm">
               <td className="py-4 font-medium text-zinc-600">{item.referencia || '-'}</td>
-              <td className="py-4 font-medium text-zinc-800">{item.description}</td>
+              <td className="py-4 font-medium text-zinc-900 italic break-words whitespace-pre-wrap max-w-[300px] leading-snug">
+                <span className="text-zinc-600">{item.description}</span>
+              </td>
               <td className="py-4 text-center text-zinc-600">{item.quantity}</td>
               <td className="py-4 text-center text-red-500 font-bold">{item.desconto ? formatParams(item.desconto) : '-'}</td>
               <td className="py-4 text-center text-zinc-600">un</td>
@@ -415,9 +428,13 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
               {companyData?.email && <p><span className="font-black uppercase tracking-tight text-zinc-400">E.</span> {companyData.email}</p>}
            </div>
         </div>
-        <div className="mt-4 pt-4 border-t border-zinc-50 flex justify-between items-end text-[8px] text-zinc-300 font-bold uppercase tracking-[0.2em]">
-           <div>{(!footerSrc || !footerSrc.startsWith('data:image')) ? (footerSrc || companyData?.footer || 'Processado por Programa Validado') : 'Processado por Programa Validado'}</div>
-           <div>Página 1 / 1</div>
+
+        <div className="mt-8 pt-4 border-t border-zinc-100 flex justify-between items-center text-[9px]">
+           <div className="italic text-zinc-400">
+             Software: <span className="text-zinc-900 font-bold">imatec</span> <span className="text-zinc-400">v1.0</span> | 
+             {(!footerSrc || !footerSrc.startsWith('data:image')) ? (footerSrc || companyData?.footer || ' Processado por programa validado') : ' Processado por programa validado'}
+           </div>
+           <div className="text-zinc-400 font-bold uppercase tracking-widest">Página 1 / 1</div>
         </div>
       </div>
     </div>

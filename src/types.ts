@@ -37,8 +37,11 @@ export interface User {
 export interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (identifier: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
+  register: (formData: any) => Promise<void>;
   logout: () => Promise<void>;
+  forgotPassword: (email: string) => Promise<void>;
+  updatePassword: (password: string) => Promise<void>;
   error: string | null;
 }
 
@@ -339,7 +342,7 @@ export interface Workplace {
 
 export interface WorkSite {
   id: number;
-  client_id: number;
+  client_id: number | string;
   company_id?: string;
   client_name?: string;
   start_date: string;
@@ -381,7 +384,7 @@ export interface IssuedDocument {
   data_vencimento: string;
   due_date?: string;
   cliente_id: number;
-  client_id?: number;
+  client_id?: number | string;
   client_name?: string;
   local_trabalho: string;
   work_site_id?: string;

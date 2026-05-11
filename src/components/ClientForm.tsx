@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Search, X, Check, AlertCircle, ShoppingBag } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../services/supabaseClient';
+import { supabase } from '../lib/supabase';
 
 interface ClientFormProps {
   initialData?: any;
@@ -11,7 +11,7 @@ interface ClientFormProps {
 }
 
 export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: ClientFormProps) {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -34,10 +34,10 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
   useEffect(() => {
     if (initialData) {
       setFormData({
-        name: initialData.name || '',
+        name: initialData.name || initialData.nome || '',
         email: initialData.email || '',
         contribuinte: initialData.contribuinte || '',
-        morada: initialData.morada || '',
+        morada: initialData.morada || initialData.endereco || '',
         localidade: initialData.localidade || '',
         codigo_postal: initialData.codigo_postal || '',
         provincia: initialData.provincia || '',
@@ -65,42 +65,137 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
     setMessage(null);
 
     try {
-      if (!user?.company_id) {
+      if (!user?.id) {
         throw new Error("Sessão expirada. Por favor, faça login novamente.");
       }
 
-      const clientData = {
-        ...formData,
-        company_id: user.company_id,
-        tipo_entidade: isSupplier ? 'Fornecedor' : 'Cliente'
+      const userId = user.id;
+
+      // START DUPLICATE CHECK
+      let duplicateQuery = supabase
+        .from('clientes')
+        .select('id')
+        .eq('company_id', userId);
+
+      const filterConditions = [];
+      if (formData.telefone) filterConditions.push(`telefone.eq.${formData.telefone}`);
+      if (formData.email) filterConditions.push(`email.eq.${formData.email}`);
+      if (formData.contribuinte) filterConditions.push(`contribuinte.eq.${formData.contribuinte}`);
+      if (formData.name) filterConditions.push(`nome.ilike.${formData.name}`);
+
+      if (filterConditions.length > 0) {
+        duplicateQuery = duplicateQuery.or(filterConditions.join(','));
+        const { data: existingCliente } = await duplicateQuery;
+
+        if (existingCliente && existingCliente.length > 0) {
+          // If we are editing, ignore if it's the exact same record
+          const isUpdatingSelf = initialData?.id && existingCliente.some(c => String(c.id) === String(initialData.id));
+          if (!isUpdatingSelf) {
+            setMessage({ type: 'error', text: 'Já existe um cliente cadastrado com este nome, email ou telefone.' });
+            setLoading(false);
+            return;
+          }
+        }
+      }
+      // END DUPLICATE CHECK
+
+      const clientData: any = {
+        nome: formData.name,
+        email: formData.email,
+        telefone: formData.telefone,
+        endereco: formData.morada,
+        address: formData.morada,
+        company_id: userId,
+        contribuinte: formData.contribuinte,
+        nif: formData.contribuinte,
+        localidade: formData.localidade,
+        codigo_postal: formData.codigo_postal,
+        provincia: formData.provincia,
+        municipio: formData.municipio,
+        pais: formData.pais,
+        webpage: formData.webpage,
+        tipo_cliente: formData.tipo_cliente,
+        saldo_inicial: formData.saldo_inicial,
+        initial_balance: formData.saldo_inicial,
+        tipo_entidade: isSupplier ? 'Fornecedor' : 'Cliente',
+        updated_at: new Date().toISOString()
       };
 
-      const endpoint = isSupplier ? '/api/suppliers' : '/api/clients';
+      let finalId = initialData?.id;
+      const tableName = 'clientes';
 
       if (initialData?.id) {
-        const res = await fetch(`${endpoint}/${initialData.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(clientData)
-        });
-        if (!res.ok) throw new Error(await res.text());
-        setMessage({ type: 'success', text: isSupplier ? 'Fornecedor atualizado com sucesso!' : 'Cliente atualizado com sucesso!' });
+        let { error } = await supabase
+          .from(tableName)
+          .update(clientData)
+          .eq('id', initialData.id)
+          .or(`company_id.eq.${userId},company_id.eq.${user.company_id}`);
+
+        if (error?.code === 'PGRST125') {
+          const { error: altError } = await supabase
+            .from('clients')
+            .update(clientData)
+            .eq('id', initialData.id)
+            .or(`company_id.eq.${userId},company_id.eq.${user.company_id}`);
+          error = altError;
+        }
+
+        if (error) throw error;
       } else {
-        const res = await fetch(endpoint, {
-          method: 'POST',
+        // Para novos registros, deixamos o Supabase gerar o UUID se possível
+        // Mas se o sistema local precisar de ID numérico, tentamos lidar com isso no retorno
+        const insertPayload = { ...clientData, created_at: new Date().toISOString() };
+        
+        let { data, error } = await supabase
+          .from(tableName)
+          .insert([insertPayload])
+          .select()
+          .single();
+
+        if (error) {
+          if (error.code === 'PGRST125') {
+            const { data: altData, error: altError } = await supabase
+              .from('clients')
+              .insert([insertPayload])
+              .select()
+              .single();
+            if (altError) throw altError;
+            finalId = altData?.id;
+          } else {
+            throw error;
+          }
+        } else {
+          finalId = data?.id;
+        }
+      }
+
+      // Sincronizar com o backend local para manter compatibilidade
+      let localSuccess = false;
+      try {
+        const localData = {
+          ...formData,
+          id: finalId, // Usa o mesmo ID do Supabase
+          company_id: user.id || user.company_id,
+          tipo_entidade: isSupplier ? 'Fornecedor' : 'Cliente'
+        };
+        const endpoint = isSupplier ? '/api/suppliers' : '/api/clients';
+        const localRes = await fetch(initialData?.id ? `${endpoint}/${initialData.id}` : endpoint, {
+          method: initialData?.id ? 'PUT' : 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(clientData)
+          body: JSON.stringify(localData)
         });
-        if (!res.ok) throw new Error(await res.text());
-        setMessage({ type: 'success', text: isSupplier ? 'Fornecedor registado com sucesso!' : 'Cliente registado com sucesso!' });
+        if (localRes.ok) localSuccess = true;
+      } catch (localErr) {
+        console.warn('Erro ao sincronizar com backend local:', localErr);
       }
 
       setTimeout(() => {
         onSuccess();
       }, 1500);
     } catch (err: any) {
-      console.error('Erro ao salvar cliente/fornecedor:', err);
-      setMessage({ type: 'error', text: err.message || 'Ocorreu um erro ao salvar.' });
+      console.error('Erro ao salvar no Supabase:', err);
+      // Se pelo menos um salvou, avisar mas permitir sucess
+      setMessage({ type: 'error', text: err.message || 'Ocorreu um erro ao salvar no Supabase.' });
     } finally {
       setLoading(false);
     }
@@ -144,9 +239,12 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
                 name="contribuinte"
                 value={formData.contribuinte} 
                 onChange={handleChange} 
-                className="flex-1 bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold" 
+                className={`flex-1 bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold ${
+                  initialData && formData.contribuinte !== '999999999' ? 'opacity-70 cursor-not-allowed bg-zinc-100' : ''
+                }`}
                 placeholder="Ex: 5000..." 
                 required
+                readOnly={initialData && formData.contribuinte !== '999999999'}
               />
               <button 
                 type="button"
@@ -203,14 +301,30 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
 
           <div className="space-y-1">
             <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">País</label>
-            <input 
-              type="text" 
+            <select 
               name="pais"
               value={formData.pais} 
               onChange={handleChange} 
-              className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold" 
-              placeholder="Angola" 
-            />
+              className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold"
+            >
+              <option value="Angola">Angola</option>
+              <option value="Portugal">Portugal</option>
+              <option value="Brasil">Brasil</option>
+              <option value="Moçambique">Moçambique</option>
+              <option value="Cabo Verde">Cabo Verde</option>
+              <option value="Guiné-Bissau">Guiné-Bissau</option>
+              <option value="São Tomé e Príncipe">São Tomé e Príncipe</option>
+              <option value="África do Sul">África do Sul</option>
+              <option value="Namíbia">Namíbia</option>
+              <option value="Zâmbia">Zâmbia</option>
+              <option value="RDC">República Democrática do Congo</option>
+              <option value="China">China</option>
+              <option value="EUA">Estados Unidos</option>
+              <option value="França">França</option>
+              <option value="Reino Unido">Reino Unido</option>
+              <option value="Alemanha">Alemanha</option>
+              <option value="Espanha">Espanha</option>
+            </select>
           </div>
 
           <div className="space-y-1">
@@ -274,6 +388,18 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
           </div>
 
           <div className="space-y-1">
+            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Página Web (URL)</label>
+            <input 
+              type="url" 
+              name="webpage"
+              value={formData.webpage} 
+              onChange={handleChange} 
+              className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" 
+              placeholder="https://www.exemplo.com" 
+            />
+          </div>
+
+          <div className="space-y-1">
             <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tipo de Cliente (SFT)</label>
             <select 
               name="tipo_cliente"
@@ -288,20 +414,6 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
               <option value="associados">Cliente Associados</option>
             </select>
           </div>
-
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Saldo Inicial de Crédito</label>
-            <input 
-              type="number" 
-              step="0.01" 
-              name="saldo_inicial"
-              value={formData.saldo_inicial} 
-              onChange={handleChange} 
-              className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-emerald-700 outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 font-black text-sm" 
-              placeholder="0.00" 
-              disabled={!!initialData}
-            />
-          </div>
         </form>
       </div>
 
@@ -315,10 +427,10 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
         </button>
         <button 
           onClick={handleSubmit}
-          disabled={loading}
+          disabled={loading || authLoading}
           className="bg-[#003366] text-white px-10 py-2.5 text-xs font-black uppercase tracking-[0.2em] shadow-xl hover:bg-[#002244] transition-all disabled:opacity-50 active:scale-95"
         >
-          {loading ? 'Processando...' : initialData ? 'Validar Alterações' : (isSupplier ? 'Submeter Novo Fornecedor' : 'Submeter Novo Cliente')}
+          {loading ? 'Processando...' : authLoading ? 'Verificando...' : initialData ? 'Validar Alterações' : (isSupplier ? 'Submeter Novo Fornecedor' : 'Submeter Novo Cliente')}
         </button>
       </div>
     </div>

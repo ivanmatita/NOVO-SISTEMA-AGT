@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import html2pdf from 'html2pdf.js';
 import { DocumentReportModal } from './components/DocumentReportModal';
 import { AnularModal } from './components/AnularModal';
 import PrintA4 from './components/PrintA4';
@@ -162,7 +163,7 @@ import { MetricsModule, fetchMetrics, Metric } from './components/MetricsModule'
 
 // --- Helpers ---
 
-import { supabase } from './services/supabaseClient';
+import { supabase } from './lib/supabase';
 
 
 const fetchWithAuth = async (url: string, options?: RequestInit) => {
@@ -424,11 +425,27 @@ const PrintP89 = ({ sale, clientName }: { sale: any, clientName?: string }) => {
 
 // --- Components ---
 
-const WorkplaceModule = ({ onRefresh, clients, issuedDocuments, workSiteMovements }: { onRefresh: () => void, clients: Client[], issuedDocuments: IssuedDocument[], workSiteMovements: WorkSiteMovement[] }) => {
+const WorkplaceModule = ({ 
+  workplaces, 
+  onRefresh, 
+  onAddWorkSite, 
+  onUpdateWorkSite, 
+  onDeleteWorkSite,
+  clients, 
+  issuedDocuments, 
+  workSiteMovements 
+}: { 
+  workplaces: WorkSite[], 
+  onRefresh: () => void, 
+  onAddWorkSite: (site: Omit<WorkSite, 'id'>) => void,
+  onUpdateWorkSite: (id: number, site: Omit<WorkSite, 'id'>) => void,
+  onDeleteWorkSite: (id: number) => void,
+  clients: Client[], 
+  issuedDocuments: IssuedDocument[], 
+  workSiteMovements: WorkSiteMovement[] 
+}) => {
   const { user } = useAuth();
-  const [workplaces, setWorkplaces] = useState<any[]>([]);
-  const [selectedWorkplace, setSelectedWorkplace] = useState<any | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [selectedWorkplace, setSelectedWorkplace] = useState<WorkSite | null>(null);
   const [showForm, setShowForm] = useState(false);
   
   const [clientId, setClientId] = useState('');
@@ -443,61 +460,40 @@ const WorkplaceModule = ({ onRefresh, clients, issuedDocuments, workSiteMovement
   const [contact, setContact] = useState('');
   const [observations, setObservations] = useState('');
 
-  const fetchWorkplaces = async () => {
-    try {
-      const data = await fetchJson(`/api/work-sites?company_id=${user?.company_id}`);
-      setWorkplaces(data);
-    } catch (err) {
-      console.error('Error fetching workplaces:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchWorkplaces();
-  }, [user?.company_id]);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      await fetchJson('/api/work-sites', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          client_id: clientId,
-          title: name,
-          start_date: startDate,
-          end_date: endDate,
-          staff_per_day: staffPerDay,
-          total_staff: totalStaff,
-          description,
-          contact,
-          observations,
-          location, 
-          code, 
-          company_id: user?.company_id 
-        })
-      });
-      setShowForm(false);
-      fetchWorkplaces();
-      onRefresh();
-      
-      // reset
-      setClientId('');
-      setName('');
-      setLocation('');
-      setCode('');
-      setStartDate('');
-      setEndDate('');
-      setStaffPerDay(0);
-      setTotalStaff(0);
-      setDescription('');
-      setContact('');
-      setObservations('');
-    } catch (err) {
-      console.error('Error creating workplace:', err);
-    }
+    if (!user) return;
+    
+    const client = clients?.find(c => String(c.id) === String(clientId));
+    
+    onAddWorkSite({
+      client_id: clientId,
+      client_name: client?.name || '',
+      title: name,
+      location,
+      contact,
+      description,
+      observations,
+      code,
+      start_date: startDate,
+      end_date: endDate,
+      staff_per_day: staffPerDay,
+      total_staff: totalStaff
+    });
+    
+    setShowForm(false);
+    // Reset
+    setClientId('');
+    setName('');
+    setLocation('');
+    setCode('');
+    setStartDate('');
+    setEndDate('');
+    setStaffPerDay(0);
+    setTotalStaff(0);
+    setDescription('');
+    setContact('');
+    setObservations('');
   };
 
   if (selectedWorkplace) {
@@ -541,9 +537,7 @@ const WorkplaceModule = ({ onRefresh, clients, issuedDocuments, workSiteMovement
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100">
-            {loading ? (
-              <tr><td colSpan={5} className="p-12 text-center text-zinc-400 italic">Carregando...</td></tr>
-            ) : workplaces.length === 0 ? (
+            {workplaces.length === 0 ? (
               <tr><td colSpan={5} className="p-12 text-center text-zinc-400 italic">Nenhum local de trabalho registado.</td></tr>
             ) : workplaces.map((w) => (
               <tr key={w.id} className="hover:bg-zinc-50 transition-colors text-sm">
@@ -557,6 +551,12 @@ const WorkplaceModule = ({ onRefresh, clients, issuedDocuments, workSiteMovement
                     className="bg-zinc-50 text-[#003366] px-3 py-1 text-[10px] font-black uppercase tracking-widest border border-zinc-200 hover:bg-zinc-100 transition-all mr-2"
                   >
                     Ver Relatório
+                  </button>
+                  <button 
+                    onClick={() => onDeleteWorkSite(w.id)}
+                    className="bg-red-50 text-red-600 px-3 py-1 text-[10px] font-black uppercase tracking-widest border border-red-100 hover:bg-red-100 transition-all mr-2"
+                  >
+                    Eliminar
                   </button>
                   <button className="text-zinc-400 hover:text-[#003366]"><MoreHorizontal size={18} /></button>
                 </td>
@@ -674,6 +674,7 @@ const Sidebar = ({ activeTab, setActiveTab }: {
     { id: 'specialized', label: 'Gestão Especializada', icon: Briefcase, hasChevron: true },
     { id: 'archive', label: 'Arquivo', icon: Archive },
     { id: 'invoices', label: 'Vendas', icon: FileText, hasChevron: true },
+    { id: 'drafts', label: 'Rascunhos (Drafts)', icon: FileSignature },
     { id: 'suppliers', label: 'Compras', icon: ShoppingBag, hasChevron: true },
     { id: 'products', label: 'Stocks & Inventário', icon: Package, hasChevron: true },
     { id: 'financial', label: 'Finanças', icon: CreditCard, hasChevron: true },
@@ -814,7 +815,7 @@ const Dashboard = ({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div className="bg-white border border-zinc-200 p-6 rounded-none shadow-sm">
           <h3 className="font-bold text-[#003366] mb-6">Faturação por Período</h3>
-          <div className="h-64">
+          <div className="h-64 min-h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={salesData}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -829,7 +830,7 @@ const Dashboard = ({
 
         <div className="bg-white border border-zinc-200 p-6 rounded-none shadow-sm">
           <h3 className="font-bold text-[#003366] mb-6">Faturação vs Despesas</h3>
-          <div className="h-64">
+          <div className="h-64 min-h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={profitVsExpenses}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -846,7 +847,7 @@ const Dashboard = ({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="bg-white border border-zinc-200 p-6 rounded-none shadow-sm lg:col-span-1">
           <h3 className="font-bold text-[#003366] mb-6">Tipos de Documentos</h3>
-          <div className="h-64">
+          <div className="h-64 min-h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie data={docTypeData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
@@ -5171,7 +5172,7 @@ const ProfitLossReport = ({ fiscalYear, company_id }: { fiscalYear: string, comp
           </p>
           <div className="pt-8">
             <h4 className="text-[10px] font-black text-zinc-800 uppercase tracking-widest mb-4">GRAFICO COMPARATIVO DE RECEITAS E CUSTOS</h4>
-            <div className="h-64 w-full">
+            <div className="h-64 min-h-[300px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData}>
                   <defs>
@@ -6120,7 +6121,7 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
           </tr>
         </thead>
         <tbody className="divide-y divide-zinc-100">
-          {documents.map((doc) => (
+          {documents?.map((doc) => (
             <tr 
               key={doc.id} 
               onClick={() => onViewDetail?.(doc)}
@@ -6176,7 +6177,7 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
                       onAction('export_pdf', doc);
                     }} 
                     title="Baixar PDF"
-                    className="text-zinc-300 hover:text-red-500 transition-all p-1.5 hover:bg-red-50"
+                    className="text-[#003366] hover:text-red-600 transition-all p-1.5 hover:bg-red-50 border border-transparent hover:border-red-100 rounded-sm"
                   >
                     <FileDown size={14} />
                   </button>
@@ -6658,29 +6659,6 @@ const POSModule = ({ products, onRefresh, caixas }: { products: Product[], onRef
   const safeProducts = Array.isArray(products) ? products : [];
   const activeSession = Array.isArray(sessions) ? sessions.find(s => s.status === 'open') : null;
 
-  const fetchData = async () => {
-    try {
-      const [s, cc, pp, sess] = await Promise.all([
-        fetchJson('/api/fiscal-series'),
-        fetchJson('/api/cost-centers'),
-        fetchJson('/api/pos-points'),
-        fetchJson('/api/cash/sessions')
-      ]);
-      setSeries(Array.isArray(s) ? s : []);
-      setCostCenters(Array.isArray(cc) ? cc : []);
-      setPosPoints(Array.isArray(pp) ? pp : []);
-      setSessions(Array.isArray(sess) ? sess : []);
-      if (Array.isArray(pp) && pp.length > 0 && !selectedPOS) setSelectedPOS(pp[0].id.toString());
-      if (Array.isArray(s) && s.length > 0 && !selectedSeries) setSelectedSeries(s[0].id.toString());
-    } catch (err) {
-      console.error('Error fetching POS data:', err);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-  }, []);
-
   const addToCart = (product: Product) => {
     const existing = cart.find(item => item.product.id === product.id);
     if (existing) {
@@ -6778,7 +6756,7 @@ const POSModule = ({ products, onRefresh, caixas }: { products: Product[], onRef
     });
     if (res.ok) {
       setShowSessionModal(false);
-      fetchData();
+      onRefresh();
     }
   };
 
@@ -6790,7 +6768,7 @@ const POSModule = ({ products, onRefresh, caixas }: { products: Product[], onRef
       body: JSON.stringify({ final_balance: total }) // Simplified
     });
     if (res.ok) {
-      fetchData();
+      onRefresh();
       alert('Caixa fechado com sucesso!');
     }
   };
@@ -6803,7 +6781,7 @@ const POSModule = ({ products, onRefresh, caixas }: { products: Product[], onRef
     });
     if (res.ok) {
       setShowPOSModal(false);
-      fetchData();
+      onRefresh();
     }
   };
 
@@ -8159,18 +8137,152 @@ const OrdemTransferencia = ({ employee }: { employee: Employee | null }) => {
 };
 
 const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employee | null }) => {
+  const { user } = useAuth();
   const [activeSection, setActiveSection] = useState('docs');
-  const [activeTab, setActiveTab] = useState('dashboard');
   const [showForm, setShowForm] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  
+  const [loading, setLoading] = useState(false);
+  const [records, setRecords] = useState<any[]>([]);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [formData, setTaskFormData] = useState({
+    titulo: '',
+    descricao: '',
+    data_inicio: new Date().toISOString().split('T')[0],
+    observacoes: '',
+    prioridade: 'normal',
+    status: 'trabalhando',
+    categoria: 'docs'
+  });
+
   const sections = [
     { id: 'docs', label: 'Documento da Empresa', icon: Building2 },
     { id: 'letters', label: 'Cartas', icon: Mail },
     { id: 'attachments', label: 'Anexos', icon: Paperclip },
   ];
 
+  const loadData = async () => {
+    if (!user) return;
+    setLoading(true);
+    try {
+      const companyId = user.company_id || user.id;
+      const { data, error } = await supabase
+        .from('secretaria_digital')
+        .select('*')
+        .eq('company_id', companyId)
+        .eq('categoria', activeSection)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setRecords(data || []);
+    } catch (error) {
+      console.error('Error loading secretaria data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, [user, activeSection]);
+
+  const uploadFile = async (file: File, userId: string) => {
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${userId}/${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('documentos')
+        .upload(fileName, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage
+        .from('documentos')
+        .getPublicUrl(fileName);
+
+      return {
+        path: fileName,
+        url: data.publicUrl,
+        name: file.name
+      };
+    } catch (error) {
+      console.error('Upload error:', error);
+      return null;
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    setLoading(true);
+
+    try {
+      let anexoData = null;
+      if (selectedFile) {
+        anexoData = await uploadFile(selectedFile, user.id);
+      }
+
+      const payload = {
+        company_id: user.id,
+        titulo: formData.titulo,
+        descricao: formData.descricao,
+        categoria: activeSection,
+        prioridade: formData.prioridade,
+        status: formData.status,
+        data_inicio: formData.data_inicio,
+        observacoes: formData.observacoes,
+        anexo_nome: anexoData?.name || '',
+        anexo_url: anexoData?.url || '',
+        anexo_path: anexoData?.path || ''
+      };
+
+      const { error } = await supabase
+        .from('secretaria_digital')
+        .insert([payload]);
+
+      if (error) throw error;
+
+      setShowForm(false);
+      setTaskFormData({
+        titulo: '',
+        descricao: '',
+        data_inicio: new Date().toISOString().split('T')[0],
+        observacoes: '',
+        prioridade: 'normal',
+        status: 'trabalhando',
+        categoria: 'docs'
+      });
+      setSelectedFile(null);
+      loadData();
+      alert('Registro guardado com sucesso!');
+    } catch (error: any) {
+      alert('Erro ao guardar: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async (id: number, path?: string) => {
+    if (!confirm('Deseja eliminar este registro?')) return;
+    
+    try {
+      if (path) {
+        await supabase.storage.from('documentos').remove([path]);
+      }
+      const { error } = await supabase.from('secretaria_digital').delete().eq('id', id);
+      if (error) throw error;
+      loadData();
+    } catch (error: any) {
+      alert('Erro ao eliminar: ' + error.message);
+    }
+  };
+
   const renderSectionContent = () => {
+    const filteredRecords = records.filter(r => 
+      r.titulo?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      r.descricao?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
     return (
       <div className="space-y-6">
         <div className="flex justify-between items-center">
@@ -8209,26 +8321,38 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
                 <table className="w-full text-left">
                   <thead>
                     <tr className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest border-b border-zinc-100">
-                      <th className="px-6 py-4">Referência</th>
+                      <th className="px-6 py-4">Título</th>
                       <th className="px-6 py-4">Data</th>
                       <th className="px-6 py-4">Descrição</th>
-                      <th className="px-6 py-4">Estado</th>
+                      <th className="px-6 py-4">Anexo</th>
                       <th className="px-6 py-4 text-right">Ações</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-50">
-                    {[1, 2, 3, 4, 5].map(i => (
-                      <tr key={i} className="text-sm hover:bg-zinc-50 transition-colors group">
-                        <td className="px-6 py-4 font-bold text-[#003366]">REF-2026-00{i}</td>
-                        <td className="px-6 py-4 text-zinc-500">{new Date().toLocaleDateString('pt-PT')}</td>
-                        <td className="px-6 py-4 text-zinc-600">Registro de exemplo para {activeSection}</td>
+                    {loading ? (
+                      <tr><td colSpan={5} className="px-6 py-8 text-center text-zinc-400 animate-pulse">Carregando dados...</td></tr>
+                    ) : filteredRecords.length === 0 ? (
+                      <tr><td colSpan={5} className="px-6 py-8 text-center text-zinc-400 italic">Nenhum registro encontrado.</td></tr>
+                    ) : filteredRecords.map(record => (
+                      <tr key={record.id} className="text-sm hover:bg-zinc-50 transition-colors group">
+                        <td className="px-6 py-4 font-bold text-[#003366]">{record.titulo}</td>
+                        <td className="px-6 py-4 text-zinc-500">{new Date(record.data_inicio).toLocaleDateString('pt-PT')}</td>
+                        <td className="px-6 py-4 text-zinc-600 truncate max-w-xs">{record.descricao}</td>
                         <td className="px-6 py-4">
-                          <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 text-[10px] font-bold uppercase rounded-full">Ativo</span>
+                          {record.anexo_url ? (
+                            <a href={record.anexo_url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-blue-600 hover:underline">
+                              <Paperclip size={14} /> <span className="text-xs truncate max-w-[100px]">{record.anexo_nome}</span>
+                            </a>
+                          ) : (
+                            <span className="text-zinc-300 text-xs">-</span>
+                          )}
                         </td>
                         <td className="px-6 py-4 text-right">
                           <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button className="p-1 text-zinc-400 hover:text-[#003366]"><Eye size={16} /></button>
-                            <button className="p-1 text-zinc-400 hover:text-red-500"><Trash2 size={16} /></button>
+                            {record.anexo_url && (
+                              <button onClick={() => window.open(record.anexo_url)} className="p-1 text-zinc-400 hover:text-blue-500"><Download size={16} /></button>
+                            )}
+                            <button onClick={() => handleDelete(record.id, record.anexo_path)} className="p-1 text-zinc-400 hover:text-red-500"><Trash2 size={16} /></button>
                           </div>
                         </td>
                       </tr>
@@ -8237,7 +8361,7 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
                 </table>
               </div>
               <div className="p-4 border-t border-zinc-100 bg-zinc-50 flex justify-between items-center">
-                <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">Total: 5 registros</span>
+                <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">Total: {filteredRecords.length} registros</span>
                 <div className="flex gap-2">
                   <button className="p-1 border border-zinc-200 bg-white text-zinc-400 disabled:opacity-50" disabled><ChevronLeft size={16} /></button>
                   <button className="p-1 border border-zinc-200 bg-white text-zinc-400 disabled:opacity-50" disabled><ChevronRight size={16} /></button>
@@ -8280,7 +8404,7 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="bg-white border border-zinc-200 p-8 shadow-2xl relative overflow-hidden max-w-lg w-full"
+                className="bg-white border border-zinc-200 p-8 shadow-2xl relative overflow-hidden max-w-lg w-full max-h-[90vh] overflow-y-auto"
               >
                 <button 
                   onClick={() => setShowForm(false)}
@@ -8292,22 +8416,95 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
                 <h4 className="font-bold text-[#003366] mb-6 flex items-center gap-2 uppercase tracking-tight">
                   <PlusCircle size={18} /> Novo Registro: {sections.find(s => s.id === activeSection)?.label}
                 </h4>
-                <form className="space-y-5" onSubmit={e => { e.preventDefault(); setShowForm(false); }}>
+                <form className="space-y-5" onSubmit={handleSubmit}>
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Título do Documento</label>
-                    <input type="text" required className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all" placeholder="Ex: Contrato de Arrendamento" />
+                    <input 
+                      type="text" 
+                      required 
+                      value={formData.titulo}
+                      onChange={e => setTaskFormData({...formData, titulo: e.target.value})}
+                      className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all" 
+                      placeholder="Ex: Contrato de Arrendamento" 
+                    />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data de Emissão</label>
-                    <input type="date" required className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all" />
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Descrição</label>
+                    <input 
+                      type="text" 
+                      value={formData.descricao}
+                      onChange={e => setTaskFormData({...formData, descricao: e.target.value})}
+                      className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all" 
+                      placeholder="Breve descrição..." 
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data de Emissão</label>
+                      <input 
+                        type="date" 
+                        required 
+                        value={formData.data_inicio}
+                        onChange={e => setTaskFormData({...formData, data_inicio: e.target.value})}
+                        className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all" 
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Prioridade</label>
+                      <select 
+                        value={formData.prioridade}
+                        onChange={e => setTaskFormData({...formData, prioridade: e.target.value})}
+                        className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all"
+                      >
+                        <option value="baixa">Baixa</option>
+                        <option value="normal">Normal</option>
+                        <option value="alta">Alta</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Anexo (Opcional)</label>
+                    <div className="flex items-center gap-3">
+                      <label className="flex-1 flex items-center justify-center gap-2 border-2 border-dashed border-zinc-200 p-4 cursor-pointer hover:border-[#003366] transition-all">
+                        <Upload size={16} className="text-zinc-400" />
+                        <span className="text-xs text-zinc-500 font-bold uppercase truncate max-w-[200px]">
+                          {selectedFile ? selectedFile.name : 'Carregar Ficheiro'}
+                        </span>
+                        <input type="file" className="hidden" onChange={e => setSelectedFile(e.target.files?.[0] || null)} />
+                      </label>
+                      {selectedFile && (
+                        <button type="button" onClick={() => setSelectedFile(null)} className="p-2 text-zinc-400 hover:text-red-500">
+                          <X size={16} />
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Observações / Notas</label>
-                    <textarea className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] h-32 transition-all" placeholder="Descreva os detalhes importantes..."></textarea>
+                    <textarea 
+                      value={formData.observacoes}
+                      onChange={e => setTaskFormData({...formData, observacoes: e.target.value})}
+                      className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] h-24 transition-all" 
+                      placeholder="Descreva os detalhes importantes..."
+                    ></textarea>
                   </div>
                   <div className="pt-4 flex gap-3">
-                    <button type="button" onClick={() => setShowForm(false)} className="flex-1 bg-zinc-100 text-zinc-600 py-3 text-xs font-bold uppercase tracking-widest hover:bg-zinc-200 transition-all">Cancelar</button>
-                    <button type="submit" className="flex-2 bg-[#003366] text-white py-3 px-8 text-xs font-bold uppercase tracking-widest shadow-lg hover:bg-[#002244] transition-all">Guardar Registro</button>
+                    <button 
+                      type="button" 
+                      onClick={() => setShowForm(false)} 
+                      disabled={loading}
+                      className="flex-1 bg-zinc-100 text-zinc-600 py-3 text-xs font-bold uppercase tracking-widest hover:bg-zinc-200 transition-all disabled:opacity-50"
+                    >
+                      Cancelar
+                    </button>
+                    <button 
+                      type="submit" 
+                      disabled={loading}
+                      className="flex-2 bg-[#003366] text-white py-3 px-8 text-xs font-bold uppercase tracking-widest shadow-lg hover:bg-[#002244] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {loading ? <RefreshCw size={14} className="animate-spin" /> : null}
+                      Guardar Registro
+                    </button>
                   </div>
                 </form>
               </motion.div>
@@ -10294,26 +10491,7 @@ const AccountingMapsModule = ({ onBack }: { onBack: () => void }) => {
   ];
 
   // Helper to format accounts hierarchically
-  const accountsData = [
-    { code: 'GR 11', desc: 'IMOBILIZAÇÕES CORPOREAS', debitoP: 118320.60, creditoP: 0, debitoS: 118320.60, creditoS: 0, level: 0 },
-    { code: 'GA 11.5', desc: 'Equipamento administrativo', debitoP: 118320.60, creditoP: 0, debitoS: 118320.60, creditoS: 0, level: 1 },
-    { code: 'GM 11.5.3', desc: 'Cadeiras', debitoP: 118320.60, creditoP: 0, debitoS: 118320.60, creditoS: 0, level: 2 },
-    { code: 'GM 11.5.3.2', desc: 'Mesa de Escritório', debitoP: 83156.16, creditoP: 0, debitoS: 83156.16, creditoS: 0, level: 3 },
-    { code: 'GR 18', desc: 'AMORTIZAÇÕES ACUMULADAS', debitoP: 0, creditoP: 4563.73, debitoS: 0, creditoS: 4563.73, level: 0 },
-    { code: 'GA 18.1', desc: 'Imobilizações Corpóreas', debitoP: 0, creditoP: 4563.73, debitoS: 0, creditoS: 4563.73, level: 1 },
-    { code: 'GR 26', desc: 'MERCADORIAS', debitoP: 337813291.77, creditoP: 0, debitoS: 337813291.77, creditoS: 0, level: 0 },
-    { code: 'GA 26.1', desc: 'Mercadorias Diversas', debitoP: 337813291.77, creditoP: 0, debitoS: 337813291.77, creditoS: 0, level: 1 },
-    { code: 'GR 31', desc: 'CLIENTES', debitoP: 418550018.16, creditoP: 540490713.36, debitoS: 0, creditoS: 121940695.20, level: 0 },
-    { code: 'GA 31.1', desc: 'Clientes-correntes', debitoP: 418550018.16, creditoP: 418550018.16, debitoS: 0, creditoS: 0, level: 1 },
-    { code: 'GR 32', desc: 'FORNECEDORES', debitoP: 128950985.87, creditoP: 283906449.03, debitoS: 0, creditoS: 154955463.15, level: 0 },
-    { code: 'GA 32.1', desc: 'Fornecedores - correntes', debitoP: 128950985.87, creditoP: 283906449.03, debitoS: 0, creditoS: 154955463.15, level: 1 },
-    { code: 'GR 34', desc: 'ESTADO', debitoP: 77367229.01, creditoP: 37499344.35, debitoS: 39867884.65, creditoS: 0, level: 0 },
-    { code: 'GR 36', desc: 'PESSOAL', debitoP: 5096379.36, creditoP: 5547423.22, debitoS: 0, creditoS: 451043.86, level: 0 },
-    { code: 'GR 45', desc: 'CAIXA', debitoP: 257577185.23, creditoP: 262583960.25, debitoS: 0, creditoS: 5006775.02, level: 0 },
-    { code: 'GR 51', desc: 'CAPITAL', debitoP: 0, creditoP: 100000.00, debitoS: 0, creditoS: 100000.00, level: 0 },
-    { code: 'GR 61', desc: 'VENDAS', debitoP: 142456148.00, creditoP: 254692990.74, debitoS: 0, creditoS: 112236842.74, level: 0 },
-    // Simplified totals for Balancete representation
-  ];
+  const accountsData: any[] = [];
 
   return (
     <div className="space-y-6">
@@ -11405,6 +11583,7 @@ const InvoiceList = ({
   caixas,
   mode = 'standard',
   fiscalSeries,
+  onDeleteWorkSite,
   onRefresh
 }: { 
   invoices: Invoice[], 
@@ -11425,6 +11604,7 @@ const InvoiceList = ({
   caixas: Caixa[],
   mode?: 'standard' | 'electronic',
   fiscalSeries: FiscalSeries[],
+  onDeleteWorkSite: (id: number) => void,
   onRefresh: () => void
 }) => {
   const { user } = useAuth();
@@ -11476,13 +11656,18 @@ const InvoiceList = ({
     setShowMovementForm(true);
   };
 
+  const handleDeleteWorkSiteLocal = async (id: number) => {
+    await onDeleteWorkSite(id);
+    setShowActionMenu(false);
+  };
+
   const handleAddMovement = async (movement: any) => {
     if (!selectedWorkSite) return;
     try {
       const response = await fetchWithAuth(`/api/work-sites/${selectedWorkSite.id}/movements`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...movement, company_id: user?.company_id })
+        body: JSON.stringify({ ...movement, company_id: user?.company_id || user?.id })
       });
       if (response.ok) {
         await fetchMovements(selectedWorkSite.id);
@@ -11870,7 +12055,7 @@ const InvoiceList = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
-                  {workSites.map((site) => (
+                  {workSites?.map((site) => (
                     <tr key={site.id} className="hover:bg-zinc-50 transition-colors group text-xs text-zinc-600">
                       <td className="px-6 py-4">
                         <div className="font-bold text-[#003366]">{site.code}</div>
@@ -11972,6 +12157,15 @@ const InvoiceList = ({
                           <History size={16} />
                         </div>
                         <span>Associar movimento</span>
+                      </button>
+                      <button 
+                        onClick={() => selectedWorkSite && handleDeleteWorkSiteLocal(selectedWorkSite.id)}
+                        className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition-colors text-left"
+                      >
+                        <div className="w-8 h-8 rounded-none bg-red-50 flex items-center justify-center text-red-600">
+                          <Trash2 size={16} />
+                        </div>
+                        <span>Eliminar local de trabalho</span>
                       </button>
                     </div>
                   </motion.div>
@@ -12581,7 +12775,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
                        {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                      </select>
                    </div>
-                   <div className="col-span-2 space-y-1">
+                   <div className="col-span-4 space-y-1">
                      <label className="text-[10px] font-bold text-zinc-400 uppercase">Descrição</label>
                      <input 
                        disabled={isCertified}
@@ -12611,18 +12805,6 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
                      >
                        <option value="Mercadoria">Mercadoria</option>
                        {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                     </select>
-                   </div>
-                   <div className="col-span-2 space-y-1">
-                     <label className="text-[10px] font-bold text-zinc-400 uppercase">Armazém</label>
-                     <select 
-                       disabled={isCertified}
-                       value={item.warehouse_id || ''}
-                       onChange={(e) => updateItem(idx, 'warehouse_id', e.target.value)}
-                       className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
-                     >
-                       <option value="">Geral</option>
-                       {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
                      </select>
                    </div>
                    <div className="col-span-1 space-y-1">
@@ -12804,7 +12986,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
 };
 
 const WorkSiteForm = ({ clients, onBack, onSuccess, initialData }: { clients: Client[], onBack: () => void, onSuccess: (site: Omit<WorkSite, 'id'>) => void, initialData?: WorkSite | null }) => {
-  const [clientId, setClientId] = useState<number | ''>(initialData?.client_id || '');
+  const [clientId, setClientId] = useState<string | ''>(initialData?.client_id?.toString() || '');
   const [startDate, setStartDate] = useState(initialData?.start_date || '');
   const [endDate, setEndDate] = useState(initialData?.end_date || '');
   const [title, setTitle] = useState(initialData?.title || '');
@@ -12819,9 +13001,9 @@ const WorkSiteForm = ({ clients, onBack, onSuccess, initialData }: { clients: Cl
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!clientId) return;
-    const client = clients.find(c => c.id === Number(clientId));
+    const client = clients.find(c => String(c.id) === String(clientId));
     onSuccess({
-      client_id: Number(clientId),
+      client_id: clientId.toString(),
       client_name: client?.name || '',
       start_date: startDate,
       end_date: endDate,
@@ -12841,7 +13023,7 @@ const WorkSiteForm = ({ clients, onBack, onSuccess, initialData }: { clients: Cl
       <div className="space-y-1">
         <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Seleccione um Cliente</label>
         <select 
-          value={clientId} onChange={e => setClientId(Number(e.target.value))} required
+          value={clientId} onChange={e => setClientId(e.target.value)} required
           className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
         >
           <option value="">Selecionar Cliente...</option>
@@ -14032,6 +14214,56 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
     };
     
     try {
+      if (!user?.company_id) throw new Error("Sessão expirada.");
+
+      // Sync with Supabase
+      const supabaseSync = async () => {
+        try {
+          const { data: { user: authUser } } = await supabase.auth.getUser();
+          if (!authUser) return;
+          
+          const companyId = authUser.id;
+          const syncData = {
+            nome: clientData.name,
+            email: clientData.email,
+            telefone: clientData.telefone,
+            endereco: clientData.morada,
+            contribuinte: clientData.contribuinte,
+            nif: clientData.contribuinte,
+            address: clientData.morada,
+            localidade: clientData.localidade,
+            codigo_postal: clientData.codigo_postal,
+            provincia: clientData.provincia,
+            municipio: clientData.municipio,
+            pais: clientData.pais,
+            webpage: clientData.webpage,
+            tipo_cliente: clientData.tipo_cliente as any,
+            saldo_inicial: Number(clientData.saldo_inicial),
+            initial_balance: Number(clientData.saldo_inicial),
+            estado_nif: clientData.estado_nif,
+            updated_at: new Date().toISOString()
+          };
+
+          if (selectedClient?.id) {
+            let { error: updateError } = await supabase.from('clientes').update(syncData).eq('id', selectedClient.id).eq('company_id', companyId);
+            if (updateError?.code === 'PGRST125') {
+              await supabase.from('clients').update(syncData).eq('id', selectedClient.id).eq('company_id', companyId);
+            }
+          } else {
+            const newId = Date.now().toString();
+            const insertData = { ...syncData, id: newId, company_id: companyId, tipo_entidade: 'Cliente', created_at: new Date().toISOString() };
+            let { error: insertError } = await supabase.from('clientes').insert([insertData]);
+            if (insertError?.code === 'PGRST125') {
+              await supabase.from('clients').insert([insertData]);
+            }
+          }
+        } catch (e) {
+          console.error('Erro na sincronização Supabase para Clientes:', e);
+        }
+      };
+
+      await supabaseSync();
+
       const url = selectedClient ? `/api/clients/${selectedClient.id}` : '/api/clients';
       const method = selectedClient ? 'PUT' : 'POST';
       
@@ -14289,6 +14521,33 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
                       onClick={async () => {
                         const val = (document.getElementById('initial_balance_input') as HTMLInputElement).value;
                         try {
+                          // Sincronizar com Supabase
+                          if (user?.company_id) {
+                            let { error: supabaseError } = await supabase
+                              .from('clientes')
+                              .update({ 
+                                saldo_inicial: Number(val),
+                                updated_at: new Date().toISOString()
+                              })
+                              .eq('id', showInitialBalanceModal.id)
+                              .eq('company_id', user.company_id);
+                            
+                            // Fallback para 'clients'
+                            if (supabaseError?.code === 'PGRST125') {
+                              const { error: altError } = await supabase
+                                .from('clients')
+                                .update({ 
+                                  saldo_inicial: Number(val),
+                                  updated_at: new Date().toISOString()
+                                })
+                                .eq('id', showInitialBalanceModal.id)
+                                .eq('company_id', user.company_id);
+                              supabaseError = altError;
+                            }
+
+                            if (supabaseError) throw supabaseError;
+                          }
+
                           await fetchJson(`/api/clients/${showInitialBalanceModal.id}`, {
                             method: 'PUT',
                             headers: { 'Content-Type': 'application/json' },
@@ -14298,6 +14557,7 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
                           onRefresh();
                         } catch (error) {
                           console.error('Error updating initial balance:', error);
+                          alert('Erro ao atualizar saldo no Supabase.');
                         }
                       }}
                       className="bg-emerald-600 text-white px-8 py-2 text-sm font-bold shadow-lg hover:bg-emerald-700 transition-all"
@@ -16993,7 +17253,17 @@ const SupplierModule = ({ products, workSites, fiscalSeries, caixas, companyData
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div className="space-y-1">
                     <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">NIF *</label>
-                    <input type="text" placeholder="Ex: 5000..." value={nif} onChange={e => setNif(e.target.value)} required className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs font-mono font-bold focus:border-[#003366] outline-none" />
+                    <input 
+                      type="text" 
+                      placeholder="Ex: 5000..." 
+                      value={nif} 
+                      onChange={e => setNif(e.target.value)} 
+                      required 
+                      className={`w-full border border-zinc-200 bg-white px-3 py-2 text-xs font-mono font-bold focus:border-[#003366] outline-none ${
+                        selectedSupplier && nif !== '999999999' ? 'opacity-70 cursor-not-allowed bg-zinc-100' : ''
+                      }`}
+                      readOnly={selectedSupplier && nif !== '999999999'}
+                    />
                   </div>
                   <div className="md:col-span-3 space-y-1">
                     <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Nome / Designação Social *</label>
@@ -17010,7 +17280,29 @@ const SupplierModule = ({ products, workSites, fiscalSeries, caixas, companyData
                   </div>
                   <div className="space-y-1">
                     <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">País</label>
-                    <input type="text" value={pais} onChange={e => setPais(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs font-bold focus:border-[#003366] outline-none" />
+                    <select 
+                      value={pais} 
+                      onChange={e => setPais(e.target.value)} 
+                      className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs font-bold focus:border-[#003366] outline-none"
+                    >
+                      <option value="Angola">Angola</option>
+                      <option value="Portugal">Portugal</option>
+                      <option value="Brasil">Brasil</option>
+                      <option value="Moçambique">Moçambique</option>
+                      <option value="Cabo Verde">Cabo Verde</option>
+                      <option value="Guiné-Bissau">Guiné-Bissau</option>
+                      <option value="São Tomé e Príncipe">São Tomé e Príncipe</option>
+                      <option value="África do Sul">África do Sul</option>
+                      <option value="Namíbia">Namíbia</option>
+                      <option value="Zâmbia">Zâmbia</option>
+                      <option value="RDC">República Democrática do Congo</option>
+                      <option value="China">China</option>
+                      <option value="EUA">Estados Unidos</option>
+                      <option value="França">França</option>
+                      <option value="Reino Unido">Reino Unido</option>
+                      <option value="Alemanha">Alemanha</option>
+                      <option value="Espanha">Espanha</option>
+                    </select>
                   </div>
                   <div className="space-y-1">
                     <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Província</label>
@@ -18313,13 +18605,70 @@ export default function App() {
   const [workSites, setWorkSites] = useState<WorkSite[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [fiscalSeries, setFiscalSeries] = useState<FiscalSeries[]>([]);
+  const [costCenters, setCostCenters] = useState<any[]>([]);
+  const [posPoints, setPosPoints] = useState<any[]>([]);
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [selectedPOS, setSelectedPOS] = useState<string | null>(null);
+  const [selectedSeries, setSelectedSeries] = useState<string | null>(null);
   const [printingInvoice, setPrintingInvoice] = useState<Invoice | null>(null);
   const [isPrintingDraft, setIsPrintingDraft] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isPdfProcessing, setIsPdfProcessing] = useState(false);
   const [viewingInvoiceId, setViewingInvoiceId] = useState<number | null>(null);
   const [isCreatingInvoice, setIsCreatingInvoice] = useState(false);
   const [isClientModalOpen, setIsClientModalOpen] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState<IssuedDocument | null>(null);
   const [fixedDocumentType, setFixedDocumentType] = useState<string | undefined>(undefined);
+  const [authReady, setAuthReady] = useState(false);
+  const syncLockRef = useRef(false);
+
+  useEffect(() => {
+    // Com o AuthContext sincronizado, apenas precisamos garantir que o App saiba quando pode começar
+    if (user !== undefined) {
+      setAuthReady(true);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (isExportingPdf && printingInvoice) {
+      setIsPdfProcessing(true);
+      setTimeout(() => {
+        const element = document.getElementById('pdf-export-container');
+        if (element) {
+          const opt = {
+            margin: [2, 2, 2, 2] as [number, number, number, number],
+            filename: `${printingInvoice.numero_documento || printingInvoice.invoice_number || 'documento'}.pdf`,
+            image: { type: 'jpeg' as const, quality: 0.95 },
+            html2canvas: { 
+              scale: 2, 
+              useCORS: true, 
+              logging: false, 
+              letterRendering: true,
+              allowTaint: true,
+              backgroundColor: '#ffffff'
+            },
+            jsPDF: { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const, compress: true }
+          };
+          
+          html2pdf().from(element).set(opt).save()
+            .then(() => {
+              setIsExportingPdf(false);
+              setPrintingInvoice(null);
+              setIsPdfProcessing(false);
+            })
+            .catch((err: any) => {
+              console.error('PDF Export Error:', err);
+              setIsExportingPdf(false);
+              setIsPdfProcessing(false);
+              alert('Erro ao gerar PDF. Por favor, tente novamente.');
+            });
+        } else {
+          setIsExportingPdf(false);
+          setIsPdfProcessing(false);
+        }
+      }, 800);
+    }
+  }, [isExportingPdf, printingInvoice]);
   const [showActionsModal, setShowActionsModal] = useState(false);
   const [showCertifyModal, setShowCertifyModal] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
@@ -18369,21 +18718,180 @@ export default function App() {
     setTaskFormData({ name: '', type: 'imposto', description: '', responsible: '', startDate: '', endDate: '', advanceTime: '', obs: '' });
   };
 
-  const fetchData = async () => {
-    if (!user) return;
+  const loadClientes = async () => {
+    if (syncLockRef.current) return;
+    syncLockRef.current = true;
+
     try {
-      console.log('Fetching data for company:', user.company_id);
-      const companyId = user.company_id;
+      const { data: { user: authUser }, error: userError } = await supabase.auth.getUser();
+      if (userError || !authUser) {
+        console.error('Usuário não autenticado no loadClientes');
+        return;
+      }
+
+      console.log('Carregando clientes do Supabase (Sync Blindada)...');
+      const companyId = authUser.id;
+
+      const { data, error } = await supabase
+        .from('clientes')
+        .select('*')
+        .eq('company_id', companyId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Erro ao carregar clientes do Supabase:', error);
+        return;
+      }
+
+      if (!Array.isArray(data)) {
+        console.error('Resposta inválida para clientes:', data);
+        return;
+      }
+
+      console.log(`Clientes carregados: ${data.length}`);
+
+      setClients(prev => {
+        // BLOQUEIO CRÍTICO ANTI-PERDA
+        if (data.length === 0 && prev.length > 0) {
+          console.warn('BLOQUEIO ANTI-OVERWRITE: Tentativa de zerar lista de clientes ignorada para preservar persistência visual.');
+          return prev;
+        }
+
+        return data.map((cl: any) => ({
+          ...cl,
+          id: cl.id,
+          name: cl.nome || cl.name || '',
+          email: cl.email || '',
+          contribuinte: cl.contribuinte || cl.nif || '',
+          morada: cl.endereco || cl.morada || '',
+          localidade: cl.localidade || '',
+          codigo_postal: cl.codigo_postal || '',
+          provincia: cl.provincia || '',
+          municipio: cl.municipio || '',
+          pais: cl.pais || 'Angola',
+          telefone: cl.telefone || cl.contact || '',
+          webpage: cl.webpage || '',
+          tipo_cliente: cl.tipo_cliente || 'normal',
+          saldo_inicial: Number(cl.saldo_inicial || 0),
+          estado_nif: cl.estado_nif || 'não encontrado',
+          company_id: cl.company_id
+        }));
+      });
+
+      localStorage.setItem('clientes_backup', JSON.stringify(data));
+
+    } catch (err) {
+      console.error('Erro crítico no processo loadClientes:', err);
+    } finally {
+      syncLockRef.current = false;
+    }
+  };
+
+  const loadLocaisTrabalho = async () => {
+    if (syncLockRef.current) return;
+    syncLockRef.current = true;
+
+    try {
+      const { data: { user: authUser }, error: userError } = await supabase.auth.getUser();
+      if (userError || !authUser) {
+        console.error('Usuário não autenticado no loadLocaisTrabalho');
+        return;
+      }
+
+      console.log('Carregando locais de trabalho do Supabase (Sync Blindada)...');
+      const companyId = authUser.id;
+
+      const { data, error } = await supabase
+        .from('locais_trabalho')
+        .select('*')
+        .eq('company_id', companyId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Erro ao carregar locais de trabalho do Supabase:', error);
+        return;
+      }
+
+      if (!Array.isArray(data)) return;
+
+      console.log(`Locais de trabalho carregados: ${data.length}`);
+
+      setWorkSites(prev => {
+        // BLOQUEIO CRÍTICO ANTI-PERDA
+        if (data.length === 0 && prev.length > 0) {
+          console.warn('BLOQUEIO ANTI-OVERWRITE: Bloqueado reset de locais de trabalho para preservar dados atuais.');
+          return prev;
+        }
+
+        return (data || []).map((ws: any) => ({
+          ...ws,
+          id: ws.id,
+          title: ws.nome || ws.title || '',
+          location: ws.endereco || ws.location || '',
+          contact: ws.telefone || ws.contact || '',
+          description: ws.descricao || ws.description || '',
+          observations: ws.observacoes || ws.observations || '',
+          client_id: ws.client_id,
+          client_name: ws.client_name,
+          code: ws.code,
+          start_date: ws.start_date,
+          end_date: ws.end_date,
+          staff_per_day: Number(ws.staff_per_day || 0),
+          total_staff: Number(ws.total_staff || 0)
+        }));
+      });
+
+      localStorage.setItem('locais_backup', JSON.stringify(data || []));
+
+    } catch (err) {
+      console.error('Erro crítico no processo loadLocaisTrabalho:', err);
+    } finally {
+      syncLockRef.current = false;
+    }
+  };
+
+  const fetchData = async () => {
+    try {
+      const { data: { user: authUser }, error: userError } = await supabase.auth.getUser();
+      if (userError || !authUser) {
+        console.warn('Sync bloqueado: Usuário não autenticado no fetchData');
+        return;
+      }
+      
+      const companyId = authUser.id;
+      console.log('Fetching data for company:', companyId);
+      
+      // Fontes de Verdade Principais (Supabase)
+      await loadClientes();
+      await loadLocaisTrabalho();
+
+      // Carregar dados da empresa diretamente do Supabase para Blindagem Total
+      const { data: compSupabase, error: compErr } = await supabase
+        .from('empresas')
+        .select('*')
+        .eq('id', companyId)
+        .single();
+
+      if (compSupabase) {
+        setCompanyData(compSupabase);
+        setCompanyName(compSupabase.nome_empresa || compSupabase.name || 'Empresa');
+        setCompanyNif(compSupabase.nif || '500123456');
+        setCompanyAddress(compSupabase.localizacao || compSupabase.address || 'Endereço da Empresa');
+        setCompanyLogo(compSupabase.logo_url || compSupabase.logo || '');
+        setCompanyFooter(compSupabase.footer_image_url || compSupabase.footer || 'Processado por computador');
+      }
+      
       const results = await Promise.allSettled([
         fetchJson(`/api/stats?company_id=${companyId}`),
-        fetchJson(`/api/clients?company_id=${companyId}`),
         fetchJson(`/api/products?company_id=${companyId}`),
         fetchJson(`/api/transactions?company_id=${companyId}`),
         fetchJson(`/api/invoices?company_id=${companyId}`),
         fetchJson(`/api/issued-documents?company_id=${companyId}`),
-        fetchJson(`/api/work-sites?company_id=${companyId}`),
         fetchJson(`/api/employees?company_id=${companyId}`),
-        fetchJson(`/api/fiscal-series?company_id=${companyId}`),
+        fetchJson('/api/fiscal-series'),
+        fetchJson('/api/cost-centers'),
+        fetchJson('/api/pos-points'),
+        fetchJson('/api/cash/sessions'),
         fetchJson(`/api/caixas?company_id=${companyId}`),
         fetchJson(`/api/caixa-movements?company_id=${companyId}`),
         fetchJson(`/api/stock/movements?company_id=${companyId}`),
@@ -18392,35 +18900,31 @@ export default function App() {
         fetchJson(`/api/security/occurrences?company_id=${companyId}`),
         fetchJson(`/api/security/armory?company_id=${companyId}`),
         fetchJson(`/api/security/roster?company_id=${companyId}`),
-        fetchJson(`/api/company/${companyId}`),
+        !compSupabase ? fetchJson(`/api/company/${companyId}`) : Promise.resolve(null),
         fetchJson(`/api/purchases?company_id=${companyId}`)
       ]);
 
-      const [s, c, p, tr, i, d, w, e, fs, cx, cm, sm, wsm, wh, occ, arm, rost, comp, pur] = results.map((res, idx) => {
+      const [s, p, tr, i, d, e, fs, cc, pp, sess, cx, cm, sm, wsm, wh, occ, arm, rost, comp, pur] = results.map((res, idx) => {
         if (res.status === 'fulfilled') return res.value;
-        console.error(`Fetch failed for index ${idx}:`, res.reason);
+        console.error(`Fetch failed for index ${idx}:`, res.status === 'rejected' ? res.reason : 'unknown');
         return null;
       });
-      
-      console.log('Data fetched results:', { s, c, p, tr, i, d, w, e, fs, comp });
-      
-      if (s) setStats(s);
-      setClients(Array.isArray(c) ? c : []);
+
+      setStats(s || null);
       setProducts(Array.isArray(p) ? p : []);
       setTransactions(Array.isArray(tr) ? tr : []);
       setInvoices(Array.isArray(i) ? i : []);
       setIssuedDocuments(Array.isArray(d) ? d : []);
-      setWorkSites(Array.isArray(w) ? w : []);
       setEmployees(Array.isArray(e) ? e : []);
+      
       setFiscalSeries(Array.isArray(fs) ? fs : []);
-      if (comp) {
-        setCompanyData(comp);
-        setCompanyName(comp.nome_empresa || comp.name || 'FaturaPronta Lda');
-        setCompanyNif(comp.nif || '500123456');
-        setCompanyAddress(comp.localizacao || comp.address || 'Sem localização');
-        setCompanyLogo(comp.logo_url || comp.logo || '');
-        setCompanyFooter(comp.footer_image_url || comp.footer || 'Processado por computador • FaturaPronta');
-      }
+      setCostCenters(Array.isArray(cc) ? cc : []);
+      setPosPoints(Array.isArray(pp) ? pp : []);
+      setSessions(Array.isArray(sess) ? sess : []);
+      
+      if (Array.isArray(pp) && pp.length > 0 && !selectedPOS) setSelectedPOS(pp[0].id.toString());
+      if (Array.isArray(fs) && fs.length > 0 && !selectedSeries) setSelectedSeries(fs[0].id.toString());
+
       setCaixas(Array.isArray(cx) ? cx : []);
       setCaixaMovements(Array.isArray(cm) ? cm : []);
       setStockMovements(Array.isArray(sm) ? sm : []);
@@ -18431,49 +18935,147 @@ export default function App() {
       setSecurityRoster(Array.isArray(rost) ? rost : []);
       setPurchases(Array.isArray(pur) ? pur : []);
       
-      console.log('Data state updated');
-    } catch (error) {
-      console.error('Critical error in fetchData:', error);
+      if (!compSupabase && comp) {
+        setCompanyData(comp);
+        setCompanyName(comp.nome_empresa || comp.name || 'Empresa');
+        setCompanyNif(comp.nif || '500123456');
+        setCompanyAddress(comp.localizacao || comp.address || 'Endereço da Empresa');
+        setCompanyLogo(comp.logo_url || comp.logo || '');
+        setCompanyFooter(comp.footer_image_url || comp.footer || 'Processado por computador');
+      }
+
+      console.log('Data state updated (Supabase sync complete)');
+    } catch (err) {
+      console.error('Critical error in fetchData:', err);
     }
   };
 
   const handleAddWorkSite = async (site: Omit<WorkSite, 'id'>) => {
-    console.log('Adding work site:', site);
     try {
-      const res = await fetchWithAuth('/api/work-sites', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...site, company_id: user?.company_id })
-      });
-      if (res.ok) {
-        console.log('Work site added successfully');
-        await fetchData();
-      } else {
-        const err = await res.text();
-        console.error('Failed to add work site:', err);
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) {
+        console.error('Sem auth no handleAddWorkSite');
+        alert('Sessão expirada. Por favor, faça login novamente.');
+        return;
       }
-    } catch (error) {
-      console.error('Error adding work site:', error);
+
+      const companyId = authUser.id;
+      console.log('Tentando adicionar Local de Trabalho:', { site, companyId });
+
+      // Validar client_id: Forçar string para evitar problemas de tipo (TEXT no Supabase)
+      const clientId = site.client_id && String(site.client_id) !== '0' ? String(site.client_id) : '';
+      
+      const payload = {
+        company_id: companyId,
+        nome: site.title || site.name || '',
+        endereco: site.location || '',
+        telefone: site.contact || '',
+        descricao: site.description || '',
+        observacoes: site.observations || '',
+        client_id: clientId,
+        client_name: site.client_name || '',
+        start_date: site.start_date || null,
+        end_date: site.end_date || null,
+        code: site.code || '',
+        staff_per_day: Number(site.staff_per_day || 0),
+        total_staff: Number(site.total_staff || 0),
+        cidade: '',
+        provincia: '',
+        email: '',
+        responsavel: ''
+      };
+
+      // BLOQUEIO DE DUPLICAÇÃO
+      if (payload.code) {
+        const { data: existing } = await supabase
+          .from('locais_trabalho')
+          .select('id')
+          .eq('company_id', companyId)
+          .eq('code', payload.code)
+          .maybeSingle();
+
+        if (existing) {
+          console.warn('Local duplicado bloqueado pelo código:', payload.code);
+          alert('Já existe um local de trabalho com este código.');
+          return;
+        }
+      }
+
+      console.log('Payload Final para Supabase (insert):', payload);
+
+      const { data, error } = await supabase
+        .from('locais_trabalho')
+        .insert([payload])
+        .select();
+
+      if (error) {
+        console.error('ERRO SUPABASE (INSERT):', error);
+        alert('Erro ao guardar (Supabase): ' + error.message);
+        return;
+      }
+
+      console.log('Local salvo com sucesso no Supabase:', data);
+      await loadLocaisTrabalho();
+      alert('Local de trabalho guardado com sucesso!');
+
+    } catch (err) {
+      console.error('Erro crítico no handleAddWorkSite:', err);
+      alert('Erro crítico ao adicionar Local: ' + (err instanceof Error ? err.message : String(err)));
     }
   };
 
   const handleUpdateWorkSite = async (id: number, site: Omit<WorkSite, 'id'>) => {
-    console.log('Updating work site:', id, site);
     try {
-      const res = await fetchWithAuth(`/api/work-sites/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...site, company_id: user?.company_id })
-      });
-      if (res.ok) {
-        console.log('Work site updated successfully');
-        await fetchData();
-      } else {
-        const err = await res.text();
-        console.error('Failed to update work site:', err);
+      const { data: { user: authUser }, error: userError } = await supabase.auth.getUser();
+      if (userError || !authUser) {
+        console.error('Usuário não autenticado no handleUpdateWorkSite');
+        return;
       }
-    } catch (error) {
-      console.error('Error updating work site:', error);
+      const companyId = authUser.id;
+      console.log('Tentando atualizar Local de Trabalho ID:', id, { site, companyId });
+
+      const clientId = site.client_id && String(site.client_id) !== '0' ? String(site.client_id) : '';
+
+      const updatedData = {
+        nome: site.title || site.name || '',
+        endereco: site.location || '',
+        telefone: site.contact || '',
+        descricao: site.description || '',
+        observacoes: site.observations || '',
+        client_id: clientId,
+        client_name: site.client_name || '',
+        start_date: site.start_date || null,
+        end_date: site.end_date || null,
+        code: site.code || '',
+        staff_per_day: Number(site.staff_per_day || 0),
+        total_staff: Number(site.total_staff || 0),
+        cidade: '',
+        provincia: '',
+        email: '',
+        responsavel: '',
+        updated_at: new Date().toISOString()
+      };
+
+      console.log('Payload Final para Supabase (update):', updatedData);
+
+      const { error } = await supabase
+        .from('locais_trabalho')
+        .update(updatedData)
+        .eq('id', id)
+        .eq('company_id', companyId);
+
+      if (error) {
+        console.error('ERRO SUPABASE (UPDATE):', error);
+        alert('Erro ao atualizar: ' + error.message);
+        return;
+      }
+
+      console.log('Local atualizado com sucesso no Supabase');
+      await loadLocaisTrabalho();
+      alert('Alterações guardadas com sucesso!');
+    } catch (err) {
+      console.error('Erro crítico no handleUpdateWorkSite:', err);
+      alert('Erro crítico ao atualizar Local: ' + (err instanceof Error ? err.message : String(err)));
     }
   };
 
@@ -18490,9 +19092,40 @@ export default function App() {
     }
   };
 
+  const handleDeleteWorkSite = async (id: number) => {
+    if (!confirm('Tem a certeza que deseja eliminar este local de trabalho?')) return;
+    
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) return;
+      const companyId = authUser.id;
+
+      const { error } = await supabase
+        .from('locais_trabalho')
+        .delete()
+        .eq('id', id)
+        .eq('company_id', companyId);
+
+      if (error) {
+        console.error('Erro ao eliminar local de trabalho:', error);
+        alert('Erro ao eliminar: ' + error.message);
+        return;
+      }
+
+      await loadLocaisTrabalho();
+      alert('Local de trabalho eliminado com sucesso.');
+
+    } catch (err) {
+      console.error('Erro crítico ao eliminar local:', err);
+    }
+  };
+
   const handleDocumentAction = async (action: string, doc: IssuedDocument) => {
     // These actions require full document data (e.g., items)
     if (['edit', 'credit_note', 'delivery_guide', 'export_pdf', 'draft', 'foreign_draft', 'print_a4', 'preview_a4'].includes(action)) {
+      if (['export_pdf', 'print_a4', 'preview_a4', 'draft', 'foreign_draft'].includes(action)) {
+        setIsPdfProcessing(true);
+      }
       try {
         const res = await fetchWithAuth(`/api/invoices/${doc.id}`);
         if (res.ok) {
@@ -18513,21 +19146,32 @@ export default function App() {
           } else if (action === 'export_pdf') {
             setPrintingInvoice(invoiceData);
             setIsPrintingDraft(!doc.is_certified);
-            setTimeout(() => window.print(), 500);
+            setIsExportingPdf(true);
           } else if (action === 'draft' || action === 'foreign_draft' || action === 'preview_a4') {
             setPrintingInvoice(invoiceData);
             setIsPrintingDraft(true);
             if (action !== 'preview_a4') {
-               setTimeout(() => window.print(), 500);
+               setTimeout(() => {
+                 setIsPdfProcessing(false);
+                 window.print();
+               }, 500);
+            } else {
+              setIsPdfProcessing(false);
             }
           } else if (action === 'print_a4') {
             setPrintingInvoice(invoiceData);
             setIsPrintingDraft(false);
-            setTimeout(() => window.print(), 500);
+            setTimeout(() => {
+              setIsPdfProcessing(false);
+              window.print();
+            }, 500);
           }
+        } else {
+          setIsPdfProcessing(false);
         }
       } catch (error) {
         console.error(`Error processing action ${action}:`, error);
+        setIsPdfProcessing(false);
       }
     } else if (action === 'reports') {
       setSelectedDocument(doc);
@@ -18570,10 +19214,10 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (user) {
+    if (authReady && user) {
       fetchData();
     }
-  }, [user]);
+  }, [authReady, user?.id]);
 
   return (
     <ProtectedRoute>
@@ -18762,11 +19406,12 @@ export default function App() {
                               clients={clients} 
                               workSites={workSites}
                               employees={employees}
-                              onNew={() => setIsCreatingInvoice(true)} 
+                              onNew={() => { setSelectedDocument(null); setFixedDocumentType(undefined); setIsCreatingInvoice(true); }} 
                               onView={setViewingInvoiceId}
                               onRegisterClient={() => setIsClientModalOpen(true)}
                               onAddWorkSite={handleAddWorkSite}
                               onUpdateWorkSite={handleUpdateWorkSite}
+                              onDeleteWorkSite={handleDeleteWorkSite}
                               onAction={handleDocumentAction}
                               onCertify={(doc) => {
                                 const emissionDate = new Date(doc.data_emissao || doc.date || '');
@@ -18859,7 +19504,18 @@ export default function App() {
                             />
                           );
                         case 'workplaces':
-                          return <WorkplaceModule onRefresh={fetchData} clients={clients} issuedDocuments={issuedDocuments} workSiteMovements={workSiteMovements} />;
+                          return (
+                            <WorkplaceModule 
+                              workplaces={workSites}
+                              onRefresh={fetchData} 
+                              onAddWorkSite={handleAddWorkSite}
+                              onUpdateWorkSite={handleUpdateWorkSite}
+                              onDeleteWorkSite={handleDeleteWorkSite}
+                              clients={clients} 
+                              issuedDocuments={issuedDocuments} 
+                              workSiteMovements={workSiteMovements} 
+                            />
+                          );
                         case 'clients':
                           return (
                             <ClientList 
@@ -19022,29 +19678,42 @@ export default function App() {
           </div>
         )}
         
+       {isPdfProcessing && (
+         <div className="fixed inset-0 z-[300] bg-zinc-900/40 backdrop-blur-sm flex items-center justify-center">
+           <div className="bg-white p-6 rounded-lg shadow-2xl flex flex-col items-center gap-4">
+             <div className="w-10 h-10 border-4 border-[#003366] border-t-transparent rounded-full animate-spin"></div>
+             <p className="font-black text-[#003366] uppercase tracking-tighter">Gerando Documento PDF...</p>
+             <p className="text-xs text-zinc-400 font-bold uppercase tracking-widest">A aguardar processamento</p>
+           </div>
+         </div>
+       )}
+
       {printingInvoice && (
-        <div className="fixed inset-0 z-[200] bg-white overflow-auto print:p-0">
-          <div className="print:hidden p-4 bg-zinc-900 text-white flex justify-between items-center sticky top-0">
-            <span className="font-bold">Visualização de Impressão A4</span>
-            <div className="flex gap-4">
-              <button 
-                onClick={() => window.print()}
-                className="bg-[#003366] px-4 py-2 text-sm font-bold flex items-center gap-2"
-              >
-                <Printer size={18} /> Imprimir Agora
-              </button>
-              <button 
-                onClick={() => {
-                  setPrintingInvoice(null);
-                  setIsPrintingDraft(false);
-                }}
-                className="bg-zinc-700 px-4 py-2 text-sm font-bold"
-              >
-                Fechar
-              </button>
+        <div className={`fixed inset-0 z-[200] overflow-auto print:p-0 ${isExportingPdf ? 'opacity-0 pointer-events-none' : 'bg-white'}`}>
+          {!isExportingPdf && (
+            <div className="print:hidden p-4 bg-zinc-900 text-white flex justify-between items-center sticky top-0">
+              <span className="font-bold">Visualização de Impressão A4</span>
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => window.print()}
+                  className="bg-[#003366] px-4 py-2 text-sm font-bold flex items-center gap-2"
+                >
+                  <Printer size={18} /> Imprimir Agora
+                </button>
+                <button 
+                  onClick={() => {
+                    setPrintingInvoice(null);
+                    setIsPrintingDraft(false);
+                    setIsExportingPdf(false);
+                  }}
+                  className="bg-zinc-700 px-4 py-2 text-sm font-bold"
+                >
+                  Fechar
+                </button>
+              </div>
             </div>
-          </div>
-          <div className="p-8 print:p-0">
+          )}
+          <div className="p-8 print:p-0" id="pdf-export-container">
             <PrintA4 
               invoice={printingInvoice} 
               isDraft={isPrintingDraft} 

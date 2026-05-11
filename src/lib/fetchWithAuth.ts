@@ -1,4 +1,4 @@
-import { supabase } from '../services/supabaseClient';
+import { supabase } from './supabase';
 
 export const fetchWithAuth = async (url: string, options?: RequestInit) => {
   let token = null;

@@ -9,41 +9,59 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Demo user para bypass de desenvolvimento
-  const demoUser: User = {
-    id: '00000000-0000-0000-0000-000000000000',
-    username: 'Administrador Demo',
-    email: 'demo@empresa.com',
-    company_id: '11111111-1111-1111-1111-111111111111',
-    role: 'admin',
-    created_at: new Date().toISOString()
-  };
-
   useEffect(() => {
     const initAuth = async () => {
       try {
         const currentUser = await authService.getCurrentUser();
-        // Se não houver user do Supabase, usamos o demo para permitir ver o sistema
-        setUser(currentUser || demoUser);
+        setUser(currentUser);
       } catch (err) {
         console.error('Erro ao inicializar autenticação:', err);
-        setUser(demoUser);
+        setUser(null);
       } finally {
         setLoading(false);
       }
     };
 
     initAuth();
+
+    // Listener global para mudanças de estado de autenticação
+    const { data: { subscription } } = authService.onAuthStateChange(async (event, session) => {
+      console.log('Evento Auth Detectado:', event);
+      if (session) {
+        const currentUser = await authService.getCurrentUser();
+        setUser(currentUser);
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
-  const login = async (identifier: string, password: string) => {
+  const login = async (email: string, password: string) => {
     setLoading(true);
     setError(null);
     try {
-      const loggedUser = await authService.login(identifier, password);
+      const loggedUser = await authService.login(email, password);
       setUser(loggedUser);
     } catch (err: any) {
       setError(err.message || 'Erro ao entrar');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const register = async (formData: any) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const newUser = await authService.registerCompany(formData);
+      setUser(newUser);
+    } catch (err: any) {
+      setError(err.message || 'Erro ao registrar');
       throw err;
     } finally {
       setLoading(false);
@@ -62,8 +80,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const forgotPassword = async (email: string) => {
+    setError(null);
+    try {
+      await authService.forgotPassword(email);
+    } catch (err: any) {
+      setError(err.message || 'Erro ao solicitar recuperação');
+      throw err;
+    }
+  };
+
+  const updatePassword = async (password: string) => {
+    setError(null);
+    try {
+      await authService.updatePassword(password);
+    } catch (err: any) {
+      setError(err.message || 'Erro ao atualizar senha');
+      throw err;
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, error }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, forgotPassword, updatePassword, error }}>
       {children}
     </AuthContext.Provider>
   );

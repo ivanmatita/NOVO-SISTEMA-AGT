@@ -1,88 +1,155 @@
-import { supabase } from './supabaseClient';
+import { supabase } from '../lib/supabase';
 import { User } from '../types';
 
 export const authService = {
-  async login(identifier: string, password: string): Promise<User> {
-    const localLogin = async () => {
-      console.warn('⚠️ Usando base de dados local para login.');
-      const res = await fetch('/api/login-local', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier, password })
-      });
-      
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || 'Erro no login local');
-      }
-      
-      return await res.json();
-    };
-
-    // Fallback local imediato se o Supabase não estiver configurado
-    if (!supabase) {
-      return localLogin();
-    }
-
-    let email = identifier;
-
+  async registerCompany(formData: any): Promise<User> {
     try {
-      // Autenticar com Supabase Auth usando o email
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: identifier,
-        password: password,
+      // 1. Criar conta no Supabase Auth
+      const { data, error } = await supabase.auth.signUp({
+        email: formData.email,
+        password: formData.password
       });
 
-      if (authError) {
-        if (authError.message === 'Invalid login credentials' || authError.message === 'Email not confirmed') {
-          console.warn('Erro no Supabase Auth, tentando fallback local:', authError.message);
-          return localLogin();
-        }
-        throw new Error(authError.message);
-      }
+      if (error) throw error;
+      const authUser = data.user;
+      if (!authUser) throw new Error('Falha ao criar usuário de autenticação');
 
-      // Buscar os dados completos do utilizador (incluindo company_id)
-      const { data: profileData, error: profileError } = await supabase
-        .from('users')
+      // 2. Criar empresa na tabela empresas
+      const { error: companyError } = await supabase
+        .from('empresas')
+        .insert([
+          {
+            id: authUser.id,
+            nome_empresa: formData.nome_empresa || formData.name,
+            nif: formData.nif,
+            email: formData.email,
+            telefone: formData.telefone,
+            endereco: formData.endereco,
+            provincia: formData.provincia,
+            municipio: formData.municipio,
+            pais: formData.pais || 'Angola'
+          }
+        ]);
+
+      if (companyError) throw companyError;
+
+      // Retornar objeto User formatado
+      return {
+        id: authUser.id,
+        username: formData.nome_empresa || formData.name,
+        email: formData.email,
+        company_id: authUser.id, // Em sistemas owner-based, o user.id é o company_id
+        role: 'admin',
+        created_at: new Date().toISOString()
+      };
+    } catch (err: any) {
+      console.error('Erro no registro da empresa:', err);
+      throw err;
+    }
+  },
+
+  async login(email: string, password: string): Promise<User> {
+    try {
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (authError) throw authError;
+      if (!authData.user) throw new Error('Usuário não encontrado após login');
+
+      // Buscar dados da empresa/perfil
+      const { data: empresa, error: empresaError } = await supabase
+        .from('empresas')
         .select('*')
         .eq('id', authData.user.id)
         .single();
 
-      if (profileError || !profileData) {
-        console.warn('Perfil não encontrado no Supabase, tentando local');
-        return localLogin();
+      if (empresaError || !empresa) {
+        // Se a empresa não existir na tabela, mas o auth sim, retornamos um user básico
+        return {
+          id: authData.user.id,
+          username: authData.user.email?.split('@')[0] || 'Usuário',
+          email: authData.user.email || '',
+          company_id: authData.user.id,
+          role: 'admin',
+          created_at: authData.user.created_at
+        };
       }
 
-      return profileData as User;
+      return {
+        id: authData.user.id,
+        username: empresa.nome_empresa,
+        email: empresa.email || authData.user.email,
+        company_id: authData.user.id,
+        role: 'admin',
+        created_at: empresa.created_at
+      };
     } catch (err: any) {
-      // Se for erro de rede (ENOTFOUND, fetch failed), tenta local automaticamente
-      if (err.message === 'fetch failed' || err.code === 'ENOTFOUND' || err.message.includes('ENOTFOUND')) {
-        console.error('Erro de conexão com Supabase, tentando fallback local:', err);
-        return localLogin();
-      }
+      console.error('Erro no login Supabase:', err);
       throw err;
     }
   },
 
   async logout() {
-    if (!supabase) return;
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error('Erro ao sair:', err);
+    }
   },
 
   async getCurrentUser(): Promise<User | null> {
-    if (!supabase) return null;
-    
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return null;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return null;
 
-    const { data: profileData, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', session.user.id)
-      .single();
+      const { data: empresa, error } = await supabase
+        .from('empresas')
+        .select('*')
+        .eq('id', session.user.id)
+        .single();
 
-    if (error || !profileData) return null;
+      if (error || !empresa) {
+        return {
+          id: session.user.id,
+          username: session.user.email?.split('@')[0] || 'Usuário',
+          email: session.user.email || '',
+          company_id: session.user.id,
+          role: 'admin',
+          created_at: session.user.created_at
+        };
+      }
 
-    return profileData as User;
+      return {
+        id: session.user.id,
+        username: empresa.nome_empresa,
+        email: empresa.email || session.user.email,
+        company_id: session.user.id,
+        role: 'admin',
+        created_at: empresa.created_at
+      };
+    } catch (err) {
+      console.error('Erro ao buscar usuário atual:', err);
+      return null;
+    }
+  },
+
+  async forgotPassword(email: string) {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`
+    });
+    if (error) throw error;
+  },
+
+  async updatePassword(newPassword: string) {
+    const { error } = await supabase.auth.updateUser({
+      password: newPassword
+    });
+    if (error) throw error;
+  },
+
+  onAuthStateChange(callback: (event: string, session: any) => void) {
+    return supabase.auth.onAuthStateChange(callback);
   }
 };

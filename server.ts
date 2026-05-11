@@ -123,6 +123,20 @@ async function startServer() {
 
   app.get("/api/health", (req, res) => res.json({ status: "ok", mode: "offline" }));
 
+  app.post("/api/login-local", (req, res) => {
+    const { identifier, password } = req.body;
+    // Simples bypass local: se for 'admin' ou tiver um email, permitimos com o demoUser
+    const demoUser = {
+      id: '00000000-0000-0000-0000-000000000000',
+      username: identifier === 'admin' ? 'Administrador Demo' : identifier.split('@')[0],
+      email: identifier.includes('@') ? identifier : 'demo@empresa.com',
+      company_id: '11111111-1111-1111-1111-111111111111',
+      role: 'admin',
+      created_at: new Date().toISOString()
+    };
+    res.json(demoUser);
+  });
+
   // Reports
   app.get("/api/reports/profit-loss", (req, res) => {
     const year = Number(req.query.year) || new Date().getFullYear();

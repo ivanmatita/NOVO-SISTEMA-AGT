@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Settings, Plus, X, Edit, Trash2, CheckCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../services/supabaseClient';
+import { supabase } from '../lib/supabase';
 
 export interface Metric {
   id: number;
@@ -13,20 +13,27 @@ export interface Metric {
   created_at: string;
 }
 
-export const fetchMetrics = async (companyId: string) => {
-  // If no normal API, use supabase directly as fallback or `/api/metrics`
+export const fetchMetrics = async () => {
   try {
-    const res = await fetch(`/api/metrics?company_id=${companyId}`);
-    if (res.ok) {
-      return await res.json();
-    }
-  } catch (e) {}
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (!authUser) return [];
+    
+    const companyId = authUser.id;
+    
+    // If no normal API, use supabase directly as fallback or `/api/metrics`
+    try {
+      const res = await fetch(`/api/metrics?company_id=${companyId}`);
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e) {}
 
-  // Fallback direct to supabase logic
-  try {
+    // Fallback direct to supabase logic
     const { data } = await supabase.from('metrics').select('*').eq('company_id', companyId);
     if (data) return data;
-  } catch (e) {}
+  } catch (e) {
+    console.error('Erro ao buscar métricas:', e);
+  }
 
   return [];
 };
@@ -44,10 +51,8 @@ export const MetricsModule = () => {
 
   const loadMetrics = async () => {
     setLoading(true);
-    if (user?.company_id) {
-      const data = await fetchMetrics(user.company_id);
-      setMetrics(data || []);
-    }
+    const data = await fetchMetrics();
+    setMetrics(data || []);
     setLoading(false);
   };
 

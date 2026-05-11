@@ -34,35 +34,21 @@ export const LoginPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
-  const { login, loading, error: authError } = useAuth();
+  const { login, register, forgotPassword, loading, error: authError } = useAuth();
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotStatus, setForgotStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
   // Registration state
   const [regStep, setRegStep] = useState(1);
   const [regCompanyName, setRegCompanyName] = useState('');
-  const [regCompanyType, setRegCompanyType] = useState('tecnologia');
   const [regNif, setRegNif] = useState('');
-  const [regAddressStreet, setRegAddressStreet] = useState('');
-  const [regAddressNeighborhood, setRegAddressNeighborhood] = useState('');
-  const [regAddressMunicipality, setRegAddressMunicipality] = useState('');
-  const [regAddressProvince, setRegAddressProvince] = useState('');
-  const [regAddressPostalCode, setRegAddressPostalCode] = useState('');
-  const [regAddressCountry, setRegAddressCountry] = useState('Angola');
+  const [regProvince, setRegProvince] = useState('');
+  const [regMunicipality, setRegMunicipality] = useState('');
   const [regPhone, setRegPhone] = useState('');
-  const [regCompanyEmail, setRegCompanyEmail] = useState('');
-  const [regAdminName, setRegAdminName] = useState('');
-  const [regBillingName, setRegBillingName] = useState('');
-  const [regBillingNif, setRegBillingNif] = useState('');
-  const [regBillingStreet, setRegBillingStreet] = useState('');
-  const [regBillingNeighborhood, setRegBillingNeighborhood] = useState('');
-  const [regBillingMunicipality, setRegBillingMunicipality] = useState('');
-  const [regBillingProvince, setRegBillingProvince] = useState('');
-  const [regBillingPostalCode, setRegBillingPostalCode] = useState('');
-  const [regBillingCountry, setRegBillingCountry] = useState('AO');
-  const [regBillingPhone, setRegBillingPhone] = useState('');
-  const [regBillingEmail, setRegBillingEmail] = useState('');
-  const [regPromoCode, setRegPromoCode] = useState('');
-  const [regPreRegistrationDate] = useState(new Date().toISOString().split('T')[0]);
-
+  const [regAddress, setRegAddress] = useState('');
+  
   const [regEmail, setRegEmail] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regConfirmPassword, setRegConfirmPassword] = useState('');
@@ -80,7 +66,7 @@ export const LoginPage: React.FC = () => {
     try {
       await login(email, password);
     } catch (err: any) {
-      // Erro tratado no contexto
+      // Erro já mapeado no context
     }
   };
 
@@ -98,51 +84,38 @@ export const LoginPage: React.FC = () => {
 
     setRegLoading(true);
     try {
-      const res = await fetch('/api/register-company', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          companyName: regCompanyName,
-          companyType: regCompanyType,
-          email: regEmail,
-          password: regPassword,
-          nif: regNif,
-          address_street: regAddressStreet,
-          address_neighborhood: regAddressNeighborhood,
-          address_municipality: regAddressMunicipality,
-          address_province: regAddressProvince,
-          address_postal_code: regAddressPostalCode,
-          address_country: regAddressCountry,
-          phone: regPhone,
-          company_email: regCompanyEmail,
-          admin_name: regAdminName,
-          billing_name: regBillingName,
-          billing_nif: regBillingNif,
-          billing_street: regBillingStreet,
-          billing_neighborhood: regBillingNeighborhood,
-          billing_municipality: regBillingMunicipality,
-          billing_province: regBillingProvince,
-          billing_postal_code: regBillingPostalCode,
-          billing_country: regBillingCountry,
-          billing_phone: regBillingPhone,
-          billing_email: regBillingEmail,
-          promo_code: regPromoCode,
-          pre_registration_date: regPreRegistrationDate
-        })
+      await register({
+        nome_empresa: regCompanyName,
+        email: regEmail,
+        password: regPassword,
+        nif: regNif,
+        telefone: regPhone,
+        endereco: regAddress,
+        provincia: regProvince,
+        municipio: regMunicipality,
+        pais: 'Angola'
       });
       
-      const data = await res.json();
-      if (res.ok) {
-        alert(data.message || 'Empresa e utilizador registados com sucesso! Verifique o seu email para confirmar a conta.');
-        setShowRegisterModal(false);
-        setRegStep(1);
-      } else {
-        alert(data.error || 'Erro ao registar empresa.');
-      }
-    } catch (err) {
-      alert('Erro de conexão ao servidor.');
+      alert('Empresa registada com sucesso! A entrar no sistema...');
+      setShowRegisterModal(false);
+    } catch (err: any) {
+      alert(err.message || 'Erro ao registar empresa.');
     } finally {
       setRegLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotLoading(true);
+    setForgotStatus('idle');
+    try {
+      await forgotPassword(forgotEmail);
+      setForgotStatus('success');
+    } catch (err) {
+      setForgotStatus('error');
+    } finally {
+      setForgotLoading(false);
     }
   };
 
@@ -373,7 +346,13 @@ export const LoginPage: React.FC = () => {
                         <input type="checkbox" className="w-4 h-4 rounded-none border-zinc-300 text-[#003366] focus:ring-[#003366]" />
                         <span className="text-xs font-bold text-zinc-500 group-hover:text-zinc-700 transition-colors">Lembrar-me</span>
                       </label>
-                      <button type="button" className="text-xs font-black text-[#003366] uppercase tracking-widest hover:underline">Esqueceu a senha?</button>
+                      <button 
+                        type="button" 
+                        onClick={() => setShowForgotModal(true)}
+                        className="text-xs font-black text-[#003366] uppercase tracking-widest hover:underline"
+                      >
+                        Esqueceu a senha?
+                      </button>
                     </div>
 
                     <button 
@@ -670,32 +649,16 @@ export const LoginPage: React.FC = () => {
                             <input type="text" value={regCompanyName} onChange={e => setRegCompanyName(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-colors" placeholder="Ex: IMATEC Lda" required />
                           </div>
                           <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tipo de Negócio</label>
-                            <select value={regCompanyType} onChange={e => setRegCompanyType(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-colors">
-                              <option value="tecnologia">Tecnologia</option>
-                              <option value="comercio">Comércio Geral</option>
-                              <option value="construcao">Construção Civil</option>
-                              <option value="servicos">Prestação de Serviços</option>
-                              <option value="outro">Outro</option>
-                            </select>
-                          </div>
-                          <div className="space-y-1.5">
                             <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">NIF da Empresa</label>
                             <input type="text" value={regNif} onChange={e => setRegNif(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-colors" placeholder="5000123456" />
                           </div>
-                          <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Nome do Administrador</label>
-                            <input type="text" value={regAdminName} onChange={e => setRegAdminName(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-colors" placeholder="Nome Completo" />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="space-y-1.5">
                             <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Telefone</label>
                             <input type="tel" value={regPhone} onChange={e => setRegPhone(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-colors" placeholder="+244 923 000 000" />
                           </div>
                           <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Email Corporativo</label>
-                            <input type="email" value={regCompanyEmail} onChange={e => setRegCompanyEmail(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-colors" placeholder="geral@empresa.ao" />
+                            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Endereço</label>
+                            <input type="text" value={regAddress} onChange={e => setRegAddress(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-colors" placeholder="Rua / Bairro" />
                           </div>
                         </div>
                       </motion.div>
@@ -705,17 +668,15 @@ export const LoginPage: React.FC = () => {
                     {regStep === 2 && (
                       <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
                         <div className="space-y-4">
-                          <h4 className="text-xs font-black text-[#003366] uppercase tracking-widest border-b pb-2">Sede Fiscal</h4>
+                          <h4 className="text-xs font-black text-[#003366] uppercase tracking-widest border-b pb-2">Localização</h4>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <input type="text" value={regAddressStreet} onChange={e => setRegAddressStreet(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm" placeholder="Rua / Avenida" />
-                            <input type="text" value={regAddressNeighborhood} onChange={e => setRegAddressNeighborhood(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm" placeholder="Bairro" />
-                            <input type="text" value={regAddressMunicipality} onChange={e => setRegAddressMunicipality(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm" placeholder="Município" />
-                            <input type="text" value={regAddressProvince} onChange={e => setRegAddressProvince(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm" placeholder="Província" />
+                            <input type="text" value={regMunicipality} onChange={e => setRegMunicipality(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm" placeholder="Município" />
+                            <input type="text" value={regProvince} onChange={e => setRegProvince(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm" placeholder="Província" />
                           </div>
                         </div>
                         <div className="space-y-1.5">
-                          <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data do Pré-Registo</label>
-                          <input type="date" readOnly value={regPreRegistrationDate} className="w-full bg-zinc-100 border border-zinc-200 px-4 py-3 text-sm cursor-not-allowed" />
+                          <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data do Registo</label>
+                          <input type="date" readOnly value={new Date().toISOString().split('T')[0]} className="w-full bg-zinc-100 border border-zinc-200 px-4 py-3 text-sm cursor-not-allowed" />
                         </div>
                       </motion.div>
                     )}
@@ -782,6 +743,77 @@ export const LoginPage: React.FC = () => {
                     </button>
                   </div>
                 </form>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {showForgotModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowForgotModal(false)}
+              className="absolute inset-0 bg-zinc-900/80 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-md bg-white rounded-none shadow-2xl overflow-hidden"
+            >
+              <div className="bg-[#003366] p-6 text-white flex justify-between items-center">
+                <h3 className="text-xl font-black uppercase tracking-tight">Recuperar Senha</h3>
+                <button onClick={() => setShowForgotModal(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="p-8 space-y-6">
+                {forgotStatus === 'success' ? (
+                  <div className="text-center space-y-4 py-4">
+                    <div className="w-16 h-16 bg-green-50 text-green-500 rounded-full flex items-center justify-center mx-auto">
+                      <Check size={32} />
+                    </div>
+                    <p className="text-sm font-bold text-zinc-600 uppercase tracking-tight">
+                      Email enviado com sucesso! Verifique a sua caixa de entrada.
+                    </p>
+                    <button 
+                      onClick={() => setShowForgotModal(false)}
+                      className="text-xs font-black text-[#003366] uppercase tracking-widest hover:underline"
+                    >
+                      Fechar
+                    </button>
+                  </div>
+                ) : (
+                  <form onSubmit={handleForgotPassword} className="space-y-4">
+                    <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">
+                      Introduza o seu email para receber instruções de recuperação.
+                    </p>
+                    <div className="relative group">
+                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
+                      <input 
+                        type="email" 
+                        required
+                        value={forgotEmail}
+                        onChange={e => setForgotEmail(e.target.value)}
+                        className="w-full bg-zinc-50 border border-zinc-200 pl-12 pr-4 py-4 text-sm focus:outline-none focus:border-[#003366] transition-all font-medium rounded-none"
+                        placeholder="exemplo@imatec.ao"
+                      />
+                    </div>
+                    {forgotStatus === 'error' && (
+                        <p className="text-[10px] font-bold text-red-500 uppercase tracking-widest">Erro ao enviar email. Tente novamente.</p>
+                    )}
+                    <button 
+                      type="submit" 
+                      disabled={forgotLoading}
+                      className="w-full bg-[#001A33] text-white py-4 font-black uppercase tracking-widest text-xs hover:bg-black transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {forgotLoading ? <Loader2 className="animate-spin" size={18} /> : 'Enviar Instruções'}
+                    </button>
+                  </form>
+                )}
               </div>
             </motion.div>
           </div>

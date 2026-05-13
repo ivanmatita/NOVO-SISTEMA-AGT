@@ -25,17 +25,23 @@ import {
   Instagram,
   Linkedin,
   ChevronRight,
-  Star
+  Star,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPass, setShowPass] = useState(false);
+  const [showRegPass, setShowRegPass] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [regError, setRegError] = useState<string | null>(null);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const { login, register, forgotPassword, loading, error: authError } = useAuth();
   const [showForgotModal, setShowForgotModal] = useState(false);
+  const [registrationSuccess, setRegistrationSuccess] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotStatus, setForgotStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -48,6 +54,11 @@ export const LoginPage: React.FC = () => {
   const [regMunicipality, setRegMunicipality] = useState('');
   const [regPhone, setRegPhone] = useState('');
   const [regAddress, setRegAddress] = useState('');
+  const [regTipoEmpresa, setRegTipoEmpresa] = useState('');
+  const [regNomeAdmin, setRegNomeAdmin] = useState('');
+  const [regEmailAdmin, setRegEmailAdmin] = useState('');
+  const [regSelectedPlan, setRegSelectedPlan] = useState('mensal');
+  const [regAcceptTerms, setRegAcceptTerms] = useState(false);
   
   const [regEmail, setRegEmail] = useState('');
   const [regPassword, setRegPassword] = useState('');
@@ -72,38 +83,118 @@ export const LoginPage: React.FC = () => {
 
   const handleRegisterCompany = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (regStep < 3) {
-      setRegStep(prev => prev + 1);
+    if (regLoading) return; // BLOQUEIO DE DUPLO SUBMIT
+    
+    if (regStep === 1) {
+      if (!regCompanyName || !regNif || !regTipoEmpresa || !regNomeAdmin) {
+        alert('Por favor, preencha os dados obrigatórios da empresa e administrador.');
+        return;
+      }
+      setRegStep(2);
       return;
     }
 
-    if (regPassword !== regConfirmPassword) {
-      alert('As senhas não coincidem.');
+    if (regStep === 2) {
+      setRegStep(3);
       return;
     }
 
-    setRegLoading(true);
-    try {
-      await register({
-        nome_empresa: regCompanyName,
-        email: regEmail,
-        password: regPassword,
-        nif: regNif,
-        telefone: regPhone,
-        endereco: regAddress,
-        provincia: regProvince,
-        municipio: regMunicipality,
-        pais: 'Angola'
-      });
-      
-      alert('Empresa registada com sucesso! A entrar no sistema...');
-      setShowRegisterModal(false);
-    } catch (err: any) {
-      alert(err.message || 'Erro ao registar empresa.');
-    } finally {
-      setRegLoading(false);
+    if (regStep === 3) {
+      setRegError(null);
+      if (!regEmail || !regPassword) {
+        setRegError('Por favor, defina as suas credenciais.');
+        return;
+      }
+      if (regPassword !== regConfirmPassword) {
+        setRegError('As senhas não coincidem.');
+        return;
+      }
+      if (!regAcceptTerms) {
+        setRegError('Deve aceitar os termos e condições para continuar.');
+        return;
+      }
+
+      setRegLoading(true);
+      try {
+        // RATE LIMIT LOCAL (FRONTEND)
+        const last = localStorage.getItem("empresa_last_create");
+        if (last && Date.now() - Number(last) < 3600000) {
+          throw new Error("Limite atingido. Aguarde cerca de 1 hora antes de registar uma nova empresa.");
+        }
+
+        const selectedPlanObj = licensingPlans.find(p => p.id === regSelectedPlan);
+        
+        await register({
+          nome_empresa: regCompanyName.trim(),
+          tipo_empresa: regTipoEmpresa,
+          nome_administrador: regNomeAdmin.trim(),
+          email_admin: (regEmailAdmin || regEmail).trim(),
+          email: regEmail.trim().toLowerCase(),
+          password: regPassword,
+          nif: regNif.trim(),
+          telefone: regPhone,
+          endereco: regAddress,
+          provincia: regProvince,
+          municipio: regMunicipality,
+          plano: regSelectedPlan,
+          pacote_licenca: selectedPlanObj?.name || regSelectedPlan,
+          valor_licenca: selectedPlanObj?.price || '0',
+          pais: 'Angola'
+        });
+        
+        localStorage.setItem("empresa_last_create", Date.now().toString());
+
+        setRegistrationSuccess(true);
+        setTimeout(() => {
+          setShowRegisterModal(false);
+          setRegistrationSuccess(false);
+          setRegStep(1);
+        }, 3000);
+      } catch (err: any) {
+        setRegError(err.message || 'Erro ao registar empresa.');
+      } finally {
+        setRegLoading(false);
+      }
     }
   };
+
+  const licensingPlans = [
+    { 
+      id: 'mensal', 
+      name: 'Pacote Mensal', 
+      price: '25.000', 
+      period: '/mês', 
+      desc: 'Ideal para pequenas empresas que estão a começar.',
+      features: ['Até 5 utilizadores', 'Faturação Ilimitada', 'Suporte por Email'] 
+    },
+    { 
+      id: 'trimestral', 
+      name: 'Pacote Trimestral', 
+      price: '70.000', 
+      period: '/3 meses', 
+      desc: 'Mais estabilidade para o seu negócio com desconto.',
+      features: ['Até 10 utilizadores', 'Gestão de Stocks', 'Suporte Prioritário'] 
+    },
+    { 
+      id: 'anual', 
+      name: 'Pacote Anual', 
+      price: '250.000', 
+      period: '/ano', 
+      desc: 'A solução definitiva com o melhor custo-benefício.',
+      features: ['Utilizadores Ilimitados', 'Todas as Funcionalidades', 'Consultoria Grátis'] 
+    }
+  ];
+
+  const businessTypes = [
+    'Prestação de Serviços',
+    'Comercial',
+    'Restaurante',
+    'Loja',
+    'Boutique',
+    'Agronegócio',
+    'Escola',
+    'Outros'
+  ];
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -330,13 +421,21 @@ export const LoginPage: React.FC = () => {
                             <Lock size={18} />
                           </div>
                           <input 
-                            type="password" 
+                            type={showPass ? "text" : "password"} 
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
-                            className="w-full bg-zinc-50 border border-zinc-200 pl-12 pr-4 py-4 text-sm focus:outline-none focus:border-[#003366] focus:bg-white transition-all font-medium rounded-none"
+                            className="w-full bg-zinc-50 border border-zinc-200 pl-12 pr-12 py-4 text-sm focus:outline-none focus:border-[#003366] focus:bg-white transition-all font-medium rounded-none"
                             placeholder="••••••••"
                             disabled={loading}
                           />
+                          <button 
+                            type="button"
+                            onClick={() => setShowPass(!showPass)}
+                            className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-[#003366]"
+                          >
+                            <Eye size={18} className={showPass ? "hidden" : "block"} />
+                            <EyeOff size={18} className={showPass ? "block" : "hidden"} />
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -638,45 +737,156 @@ export const LoginPage: React.FC = () => {
               </div>
 
               <div className="flex-1 overflow-y-auto">
-                <form onSubmit={handleRegisterCompany} className="p-8 space-y-8">
+                {registrationSuccess ? (
+                  <div className="p-20 text-center space-y-6">
+                    <motion.div 
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      className="w-24 h-24 bg-[#00D17F]/10 text-[#00D17F] rounded-full flex items-center justify-center mx-auto"
+                    >
+                      <Check size={48} />
+                    </motion.div>
+                    <div className="space-y-2">
+                      <h3 className="text-2xl font-black text-[#003366] uppercase tracking-tight">Registo Concluído!</h3>
+                      <p className="text-zinc-500 font-medium">A sua empresa foi registada com sucesso. Estamos a preparar o seu acesso...</p>
+                    </div>
+                  </div>
+                ) : (
+                  <form onSubmit={handleRegisterCompany} className="p-8 space-y-8">
+                  {regError && (
+                    <div className="bg-red-50 border-l-4 border-red-500 p-4 flex items-center gap-3">
+                      <AlertCircle className="text-red-500 shrink-0" size={18} />
+                      <p className="text-xs font-bold text-red-700 uppercase tracking-tight">{regError}</p>
+                    </div>
+                  )}
                   <AnimatePresence mode="wait">
                     {/* Step 1: Company & Admin Info */}
                     {regStep === 1 && (
-                      <motion.div key="step1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Nome da Empresa</label>
-                            <input type="text" value={regCompanyName} onChange={e => setRegCompanyName(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-colors" placeholder="Ex: IMATEC Lda" required />
+                        <motion.div key="step1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div className="space-y-4">
+                            <h4 className="text-xs font-black text-[#003366] uppercase tracking-widest border-b pb-2 flex items-center gap-2">
+                              <Building2 size={14} className="text-[#00D17F]" />
+                              Dados da Empresa
+                            </h4>
+                            <div className="space-y-3">
+                              <div className="space-y-1.5">
+                                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Nome da Empresa *</label>
+                                <input type="text" value={regCompanyName} onChange={e => setRegCompanyName(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-colors" placeholder="Ex: IMATEC Lda" required />
+                              </div>
+                              <div className="space-y-1.5">
+                                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">NIF da Empresa *</label>
+                                <input type="text" value={regNif} onChange={e => setRegNif(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-colors" placeholder="5000123456" required />
+                              </div>
+                              <div className="space-y-1.5">
+                                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tipo de Empresa *</label>
+                                <select 
+                                  value={regTipoEmpresa} 
+                                  onChange={e => setRegTipoEmpresa(e.target.value)}
+                                  className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-colors"
+                                  required
+                                >
+                                  <option value="">Selecione o tipo...</option>
+                                  {businessTypes.map(type => (
+                                    <option key={type} value={type}>{type}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1.5">
+                                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Província</label>
+                                  <input type="text" value={regProvince} onChange={e => setRegProvince(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366]" placeholder="Luanda" />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Município</label>
+                                  <input type="text" value={regMunicipality} onChange={e => setRegMunicipality(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366]" placeholder="Viana" />
+                                </div>
+                              </div>
+                            </div>
                           </div>
-                          <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">NIF da Empresa</label>
-                            <input type="text" value={regNif} onChange={e => setRegNif(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-colors" placeholder="5000123456" />
-                          </div>
-                          <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Telefone</label>
-                            <input type="tel" value={regPhone} onChange={e => setRegPhone(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-colors" placeholder="+244 923 000 000" />
-                          </div>
-                          <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Endereço</label>
-                            <input type="text" value={regAddress} onChange={e => setRegAddress(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-colors" placeholder="Rua / Bairro" />
+
+                          <div className="space-y-4">
+                            <h4 className="text-xs font-black text-[#003366] uppercase tracking-widest border-b pb-2 flex items-center gap-2">
+                              <UserCheck size={14} className="text-[#00D17F]" />
+                              Dados do Administrador
+                            </h4>
+                            <div className="space-y-3">
+                              <div className="space-y-1.5">
+                                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Nome Completo *</label>
+                                <input type="text" value={regNomeAdmin} onChange={e => setRegNomeAdmin(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-colors" placeholder="Nome do Admin" required />
+                              </div>
+                              <div className="space-y-1.5">
+                                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Email do Administrador *</label>
+                                <input type="email" value={regEmailAdmin} onChange={e => setRegEmailAdmin(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-colors" placeholder="admin@empresa.ao" required />
+                              </div>
+                              <div className="space-y-1.5">
+                                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Telefone Comercial</label>
+                                <input type="tel" value={regPhone} onChange={e => setRegPhone(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-colors" placeholder="+244 923 000 000" />
+                              </div>
+                              <div className="space-y-1.5">
+                                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Endereço Fiscal</label>
+                                <textarea 
+                                  value={regAddress} 
+                                  onChange={e => setRegAddress(e.target.value)} 
+                                  className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-colors h-24 resize-none" 
+                                  placeholder="Rua / Bairro / Nº Casa"
+                                />
+                              </div>
+                            </div>
                           </div>
                         </div>
                       </motion.div>
                     )}
                     
-                    {/* Step 2: Addresses & Billing */}
+                    {/* Step 2: Licensing Plans */}
                     {regStep === 2 && (
-                      <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
-                        <div className="space-y-4">
-                          <h4 className="text-xs font-black text-[#003366] uppercase tracking-widest border-b pb-2">Localização</h4>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <input type="text" value={regMunicipality} onChange={e => setRegMunicipality(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm" placeholder="Município" />
-                            <input type="text" value={regProvince} onChange={e => setRegProvince(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm" placeholder="Província" />
-                          </div>
+                      <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-8">
+                        <div className="text-center space-y-2 mb-4">
+                          <h4 className="text-xl font-black text-[#003366]">Escolha o seu plano de subscrição</h4>
+                          <p className="text-sm text-zinc-500 font-medium">Todos os planos incluem 14 dias de teste gratuito.</p>
                         </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data do Registo</label>
-                          <input type="date" readOnly value={new Date().toISOString().split('T')[0]} className="w-full bg-zinc-100 border border-zinc-200 px-4 py-3 text-sm cursor-not-allowed" />
+
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                          {licensingPlans.map((plan) => (
+                            <div 
+                              key={plan.id}
+                              onClick={() => setRegSelectedPlan(plan.id)}
+                              className={`relative p-6 border-2 transition-all cursor-pointer flex flex-col ${
+                                regSelectedPlan === plan.id 
+                                ? 'border-[#00D17F] bg-[#00D17F]/5 shadow-lg' 
+                                : 'border-zinc-100 hover:border-zinc-300 bg-white'
+                              }`}
+                            >
+                              {regSelectedPlan === plan.id && (
+                                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#00D17F] text-white text-[8px] font-black uppercase tracking-widest px-3 py-1 rounded-full">
+                                  Selecionado
+                                </div>
+                              )}
+                              <div className="mb-4">
+                                <h5 className="text-xs font-black text-[#003366] uppercase tracking-widest mb-1">{plan.name}</h5>
+                                <div className="flex items-baseline gap-1">
+                                  <span className="text-2xl font-black text-[#003366]">{plan.price}</span>
+                                  <span className="text-zinc-400 text-xs font-bold uppercase tracking-tighter">Kz{plan.period}</span>
+                                </div>
+                              </div>
+                              <p className="text-[10px] text-zinc-500 font-medium leading-relaxed mb-6">{plan.desc}</p>
+                              <ul className="space-y-3 mb-8 flex-grow">
+                                {plan.features.map(feat => (
+                                  <li key={feat} className="flex items-center gap-2 text-[10px] font-bold text-zinc-600">
+                                    <Check size={12} className="text-[#00D17F]" />
+                                    {feat}
+                                  </li>
+                                ))}
+                              </ul>
+                              <div className={`w-full py-2.5 text-[10px] font-black uppercase tracking-widest text-center transition-all ${
+                                regSelectedPlan === plan.id 
+                                ? 'bg-[#00D17F] text-white' 
+                                : 'bg-zinc-100 text-zinc-400'
+                              }`}>
+                                {regSelectedPlan === plan.id ? 'Selecionado' : 'Selecionar'}
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </motion.div>
                     )}
@@ -684,39 +894,74 @@ export const LoginPage: React.FC = () => {
                     {/* Step 3: Login Credentials */}
                     {regStep === 3 && (
                       <motion.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
-                        <div className="space-y-4 max-w-md mx-auto">
+                        <div className="max-w-md mx-auto space-y-8">
                           <div className="text-center space-y-2 mb-8">
-                            <div className="w-16 h-16 bg-[#00D17F]/10 text-[#00D17F] rounded-full flex items-center justify-center mx-auto">
-                              <Users size={32} />
+                            <div className="w-16 h-16 bg-[#00D17F]/10 text-[#00D17F] rounded-full flex items-center justify-center mx-auto mb-4">
+                              <ShieldCheck size={32} />
                             </div>
-                            <h4 className="text-lg font-black text-[#003366]">Credenciais de Acesso</h4>
-                            <p className="text-xs text-zinc-500 font-medium">Estes dados serão usados para aceder ao sistema.</p>
+                            <h4 className="text-lg font-black text-[#003366]">Configuração de Acesso</h4>
+                            <p className="text-xs text-zinc-500 font-medium">Estes dados serão usados para autenticação no IMATEC ERP.</p>
                           </div>
                           
                           <div className="space-y-4">
                             <div className="space-y-1.5">
-                              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Email de Utilizador</label>
+                              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider ml-1">Email de Administrador *</label>
                               <div className="relative">
                                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
-                                <input type="email" value={regEmail} onChange={e => setRegEmail(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 pl-12 pr-4 py-4 text-sm focus:outline-none focus:border-[#00D17F] transition-all" placeholder="exemplo@gmail.com" required />
+                                <input type="email" value={regEmail} onChange={e => setRegEmail(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 pl-12 pr-4 py-4 text-sm focus:outline-none focus:border-[#003366] transition-all font-medium" placeholder="admin@empresa.ao" required />
                               </div>
                             </div>
                             
-                            <div className="space-y-1.5">
-                              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Palavra-Passe</label>
-                              <div className="relative">
-                                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
-                                <input type="password" value={regPassword} onChange={e => setRegPassword(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 pl-12 pr-4 py-4 text-sm focus:outline-none focus:border-[#00D17F] transition-all" placeholder="No mínimo 6 caracteres" minLength={6} required />
-                              </div>
-                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div className="space-y-1.5">
+                                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider ml-1">Palavra-Passe *</label>
+                                  <div className="relative">
+                                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
+                                    <input 
+                                      type={showRegPass ? "text" : "password"} 
+                                      value={regPassword} 
+                                      onChange={e => setRegPassword(e.target.value)} 
+                                      className="w-full bg-zinc-50 border border-zinc-200 pl-12 pr-12 py-4 text-sm focus:outline-none focus:border-[#003366] transition-all font-medium" 
+                                      placeholder="••••••" 
+                                      minLength={6} 
+                                      required 
+                                    />
+                                    <button 
+                                      type="button"
+                                      onClick={() => setShowRegPass(!showRegPass)}
+                                      className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-[#003366]"
+                                    >
+                                      <Eye size={18} className={showRegPass ? "hidden" : "block"} />
+                                      <EyeOff size={18} className={showRegPass ? "block" : "hidden"} />
+                                    </button>
+                                  </div>
+                                </div>
 
-                            <div className="space-y-1.5">
-                              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Confirmar Palavra-Passe</label>
-                              <div className="relative">
-                                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
-                                <input type="password" value={regConfirmPassword} onChange={e => setRegConfirmPassword(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 pl-12 pr-4 py-4 text-sm focus:outline-none focus:border-[#00D17F] transition-all" placeholder="Repita a palavra-passe" required />
+                              <div className="space-y-1.5">
+                                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider ml-1">Confirmar *</label>
+                                <div className="relative">
+                                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
+                                  <input type="password" value={regConfirmPassword} onChange={e => setRegConfirmPassword(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 pl-12 pr-4 py-4 text-sm focus:outline-none focus:border-[#003366] transition-all font-medium" placeholder="••••••" required />
+                                </div>
                               </div>
                             </div>
+                          </div>
+
+                          <div className="pt-6 border-t border-zinc-100">
+                            <label className="flex items-start gap-3 cursor-pointer group">
+                              <div className="pt-1">
+                                <input 
+                                  type="checkbox" 
+                                  checked={regAcceptTerms}
+                                  onChange={e => setRegAcceptTerms(e.target.checked)}
+                                  className="w-4 h-4 rounded-none border-zinc-300 text-[#003366] focus:ring-[#003366]" 
+                                  required 
+                                />
+                              </div>
+                              <span className="text-[10px] font-bold text-zinc-500 group-hover:text-[#003366] leading-relaxed uppercase tracking-tight">
+                                Aceito os <button type="button" className="text-[#00D17F] hover:underline">Termos e Condições</button> e a <button type="button" className="text-[#00D17F] hover:underline">Política de Privacidade</button> da IMATEC SOFTWARE.
+                              </span>
+                            </label>
                           </div>
                         </div>
                       </motion.div>
@@ -743,7 +988,8 @@ export const LoginPage: React.FC = () => {
                     </button>
                   </div>
                 </form>
-              </div>
+              )}
+            </div>
             </motion.div>
           </div>
         )}

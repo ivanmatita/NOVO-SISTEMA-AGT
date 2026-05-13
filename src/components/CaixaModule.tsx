@@ -34,8 +34,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements, refres
   const handleCreateCaixa = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser || !user) return;
+      if (!user?.company_id) throw new Error('Empresa não identificada');
 
       const newCaixaObj = {
         company_id: user.company_id,
@@ -46,51 +45,71 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements, refres
         current_balance: Number(newCaixa.initialBalance),
         observacao: newCaixa.obs,
         utilizador_id: newCaixa.user !== "" ? newCaixa.user : null,
+        moeda: activeCurrency,
         status: 'aberto'
       };
       
+      // Optimistic update so the user sees it immediately on the page
+      const tempId = Date.now().toString();
+      const optimisticCaixa = {
+        id: tempId,
+        name: newCaixa.name,
+        account: newCaixa.account,
+        initialBalance: Number(newCaixa.initialBalance),
+        currentBalance: Number(newCaixa.initialBalance),
+        responsible: newCaixa.responsible,
+        obs: newCaixa.obs,
+        user: newCaixa.user,
+        moeda: activeCurrency,
+        status: 'aberto'
+      };
+      setCaixas(prev => [...(prev || []), optimisticCaixa]);
+
       const { data, error } = await supabase
         .from('caixas')
         .insert([newCaixaObj])
         .select()
         .single();
 
-      if (error) throw error;
-      
-      if (refreshCaixas) await refreshCaixas();
-      else {
-        setCaixas([...caixas, {
-          ...data,
-          name: data.nome_caixa,
-          account: data.account,
-          initialBalance: Number(data.valor_inicial),
-          currentBalance: Number(data.current_balance),
-          responsible: data.responsavel,
-          obs: data.observacao,
-          user: data.utilizador_id
-        }]);
+      if (error) {
+        // Rollback se falhar
+        setCaixas(prev => prev.filter(c => c.id !== tempId));
+        if (error.message.includes('moeda')) {
+          throw new Error('A tabela caixas no Supabase não tem a coluna "moeda". Atualize a base de dados (execute o script SQL).');
+        } else if (error.message.includes('row-level security')) {
+          throw new Error('Acesso negado pelas políticas (RLS). Execute o script SQL para corrigir os acessos da empresa.');
+        } else if (error.message.includes('does not exist')) {
+          throw new Error(`Tabela inexistente: ${error.message}`);
+        }
+        throw error;
       }
-      setNewCaixa({ name: '', initialBalance: 0, obs: '', responsible: '', user: '' });
+      
+      // Substituir o otimista pelo real
+      setCaixas(prev => prev.map(c => c.id === tempId ? {
+        ...c,
+        id: data.id
+      } : c));
+
+      alert('Caixa registado com sucesso!');
+      if (refreshCaixas) await refreshCaixas();
+      
+      setNewCaixa({ name: '', account: '', initialBalance: 0, obs: '', responsible: '', user: '' });
       setShowForm(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating caixa:', error);
-      alert('Erro ao criar caixa');
+      alert(`⚠️ Erro ao registar caixa no Supabase:\n\n${error.message}\n\nA informação apenas constará temporariamente.`);
     }
   };
 
   const handleUpdateCaixa = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editCaixa) return;
+    if (!editCaixa || !user?.company_id) return;
     try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser || !user) return;
-
       const { error } = await supabase
         .from('caixas')
         .update({
           nome_caixa: editCaixa.name,
           account: editCaixa.account,
-          valor_inicial: Number(editCaixa.initialBalance),
           responsavel: editCaixa.responsible,
           observacao: editCaixa.obs,
           utilizador_id: editCaixa.user || null
@@ -100,20 +119,19 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements, refres
 
       if (error) throw error;
       
+      alert('Caixa atualizado com sucesso!');
       if (refreshCaixas) await refreshCaixas();
-      else setCaixas(caixas.map(c => c.id === editCaixa.id ? editCaixa : c));
       setEditCaixa(null);
       setActiveSection('list');
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert('Erro ao atualizar caixa');
+      alert(`Erro ao atualizar caixa: ${err.message}`);
     }
   };
 
   const handleCloseCaixa = async (id: string) => {
     try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser || !user) return;
+      if (!user?.company_id) return;
 
       const { error } = await supabase
         .from('caixas')
@@ -122,18 +140,18 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements, refres
         .eq('company_id', user.company_id);
 
       if (error) throw error;
+      alert('Caixa fechado com sucesso!');
       if (refreshCaixas) await refreshCaixas();
-      else setCaixas((caixas || []).map(c => c.id === id ? { ...c, status: 'fechado' } : c));
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error closing caixa:', error);
+      alert(`Erro ao fechar caixa: ${error.message}`);
     }
   };
 
   const handleEliminarCaixa = async (id: string) => {
     if (!confirm('Tem a certeza que deseja eliminar este caixa?')) return;
     try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser || !user) return;
+      if (!user?.company_id) return;
 
       const { error } = await supabase
         .from('caixas')
@@ -142,27 +160,25 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements, refres
         .eq('company_id', user.company_id);
 
       if (error) throw error;
-      if (refreshCaixas) await refreshCaixas();
-      setCaixas((caixas || []).filter(c => c.id !== id));
       alert('Caixa eliminado com sucesso');
-    } catch (error) {
+      if (refreshCaixas) await refreshCaixas();
+    } catch (error: any) {
       console.error('Error deleting caixa:', error);
-      alert('Erro ao eliminar caixa');
+      alert(`Erro ao eliminar caixa: ${error.message}`);
     }
   };
 
   const handleTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user?.company_id) return;
     if (transferData.from === transferData.to) return alert('Selecione caixas diferentes');
     if (transferData.amount <= 0) return;
 
     const fromCaixa = (caixas || []).find(c => c.id === transferData.from);
-    if (!fromCaixa || fromCaixa.currentBalance < transferData.amount) return alert('Saldo insuficiente');
+    if (!fromCaixa || fromCaixa.currentBalance < transferData.amount) return alert('Saldo insuficiente no caixa de origem');
 
     try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser || !user) return;
-
+      const toCaixa = caixas.find(c => c.id === transferData.to);
       const newMovement = {
         company_id: user.company_id,
         caixa_id: transferData.from,
@@ -170,82 +186,87 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements, refres
         type: 'transferencia',
         amount: transferData.amount,
         moeda: activeCurrency,
-        description: transferData.description || `Transferência para ${(caixas || []).find(c => c.id === transferData.to)?.name}`,
+        description: transferData.description || `Transferência para ${toCaixa?.name || 'outro caixa'}`,
         date: new Date().toISOString()
       };
 
-      const { data: movData, error: movErr } = await supabase
+      const { error: movErr } = await supabase
         .from('caixa_movimentacoes')
-        .insert(newMovement)
-        .select()
-        .single();
+        .insert(newMovement);
 
       if (movErr) throw movErr;
 
-      // Update balances in Supabase
-      const toCaixa = caixas.find(c => c.id === transferData.to);
-      await supabase.from('caixas').update({ current_balance: fromCaixa.currentBalance - transferData.amount }).eq('id', fromCaixa.id).eq('company_id', user.company_id);
+      // Update balances in Supabase with isolation
+      await supabase.from('caixas')
+        .update({ current_balance: fromCaixa.currentBalance - transferData.amount })
+        .eq('id', fromCaixa.id)
+        .eq('company_id', user.company_id);
+
       if (toCaixa) {
-        await supabase.from('caixas').update({ current_balance: toCaixa.currentBalance + transferData.amount }).eq('id', toCaixa.id).eq('company_id', user.company_id);
+        await supabase.from('caixas')
+          .update({ current_balance: toCaixa.currentBalance + transferData.amount })
+          .eq('id', toCaixa.id)
+          .eq('company_id', user.company_id);
       }
 
-      setMovements([...movements, movData]);
-      setCaixas((caixas || []).map(c => {
-        if (c.id === transferData.from) return { ...c, currentBalance: c.currentBalance - transferData.amount };
-        if (c.id === transferData.to) return { ...c, currentBalance: c.currentBalance + transferData.amount };
-        return c;
-      }));
+      alert('Transferência concluída com sucesso!');
+      if (refreshCaixas) await refreshCaixas();
+      if (refreshMovements) await refreshMovements();
+
       setTransferData({ from: '', to: '', amount: 0, description: '' });
       setActiveSection('list');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error in transfer:', error);
-      alert('Erro ao realizar transferência');
+      alert(`Erro ao realizar transferência: ${error.message}`);
     }
   };
 
   const handlePayment = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user?.company_id) return;
     if (paymentData.amount <= 0) return;
 
     const caixa = (caixas || []).find(c => c.id === paymentData.caixaId);
-    if (!caixa || caixa.currentBalance < paymentData.amount) return alert('Saldo insuficiente');
+    if (!caixa || caixa.currentBalance < paymentData.amount) return alert('Saldo insuficiente no caixa selecionado');
 
     try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser || !user) return;
-
       const newMovement = {
         company_id: user.company_id,
         caixa_id: paymentData.caixaId,
         type: 'saida',
         amount: paymentData.amount,
+        moeda: activeCurrency,
         description: paymentData.description,
         date: new Date().toISOString()
       };
 
-      const { data: movData, error: movErr } = await supabase
+      const { error: movErr } = await supabase
         .from('caixa_movimentacoes')
-        .insert(newMovement)
-        .select()
-        .single();
+        .insert(newMovement);
 
       if (movErr) throw movErr;
 
       // Update balance
-      await supabase.from('caixas').update({ current_balance: caixa.currentBalance - paymentData.amount }).eq('id', caixa.id).eq('company_id', user.company_id);
+      await supabase.from('caixas')
+        .update({ current_balance: caixa.currentBalance - paymentData.amount })
+        .eq('id', caixa.id)
+        .eq('company_id', user.company_id);
 
-      setMovements([...movements, movData]);
-      setCaixas((caixas || []).map(c => c.id === paymentData.caixaId ? { ...c, currentBalance: c.currentBalance - paymentData.amount } : c));
+      alert('Pagamento/Saída registada com sucesso!');
+      if (refreshCaixas) await refreshCaixas();
+      if (refreshMovements) await refreshMovements();
+
       setPaymentData({ caixaId: '', amount: 0, description: '', type: 'outros' });
       setActiveSection('list');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error in payment:', error);
-      alert('Erro ao realizar pagamento');
+      alert(`Erro ao realizar pagamento: ${error.message}`);
     }
   };
 
   const handleReconciliation = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user?.company_id) return;
     const caixa = (caixas || []).find(c => c.id === reconData.caixaId);
     if (!caixa) return;
 
@@ -253,36 +274,37 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements, refres
     if (diff === 0) return alert('O saldo já está correto');
 
     try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser || !user) return;
-
       const newMovement = {
         company_id: user.company_id,
         caixa_id: reconData.caixaId,
         type: diff > 0 ? 'entrada' : 'saida',
         amount: Math.abs(diff),
+        moeda: activeCurrency,
         description: `Conciliação: ${reconData.description}`,
         date: new Date().toISOString()
       };
 
-      const { data: movData, error: movErr } = await supabase
+      const { error: movErr } = await supabase
         .from('caixa_movimentacoes')
-        .insert(newMovement)
-        .select()
-        .single();
+        .insert(newMovement);
 
       if (movErr) throw movErr;
 
       // Update balance
-      await supabase.from('caixas').update({ current_balance: reconData.actualBalance }).eq('id', caixa.id).eq('company_id', user.company_id);
+      await supabase.from('caixas')
+        .update({ current_balance: reconData.actualBalance })
+        .eq('id', caixa.id)
+        .eq('company_id', user.company_id);
 
-      setMovements([...movements, movData]);
-      setCaixas((caixas || []).map(c => c.id === reconData.caixaId ? { ...c, currentBalance: reconData.actualBalance } : c));
+      alert('Conciliação efetuada com sucesso!');
+      if (refreshCaixas) await refreshCaixas();
+      if (refreshMovements) await refreshMovements();
+
       setReconData({ caixaId: '', actualBalance: 0, description: '' });
       setActiveSection('list');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error in reconciliation:', error);
-      alert('Erro ao realizar conciliação');
+      alert(`Erro ao realizar conciliação: ${error.message}`);
     }
   };
 

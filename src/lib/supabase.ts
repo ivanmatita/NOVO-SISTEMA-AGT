@@ -15,7 +15,14 @@ if (supabaseUrl) {
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn('⚠️ Supabase credentials are missing. Make sure SUPABASE_URL and SUPABASE_ANON_KEY are set in your environment.');
+  console.warn('⚠️ Supabase credentials are missing. Check your project environment variables.');
+} else {
+  try {
+    const urlObj = new URL(supabaseUrl);
+    console.log(`[Supabase] Client initialized for host: ${urlObj.host}`);
+  } catch (e) {
+    console.error(`[Supabase] Invalid URL detected: "${supabaseUrl}"`);
+  }
 }
 
 export const supabase =

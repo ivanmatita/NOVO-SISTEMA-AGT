@@ -64,9 +64,12 @@ import {
   RotateCcw,
   X,
   Check,
+  AlertCircle,
   Copy,
+  LogOut,
   XCircle,
   FileCode,
+  Globe,
   FileDown,
   FileMinus2,
   Send,
@@ -8624,10 +8627,9 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
 
       // Upload para o Supabase
       try {
-        const { data: { user: authUser } } = await supabase.auth.getUser();
-        if (!authUser) return;
+        if (!user?.company_id) return;
 
-        const fileName = `${authUser.id}-${field}-${Date.now()}`;
+        const fileName = `${user.company_id}-${field}-${Date.now()}`;
         const { error } = await supabase.storage
           .from('logos')
           .upload(fileName, file);
@@ -8659,11 +8661,10 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
     e.preventDefault();
     setLoading(true);
     try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) throw new Error("Não autenticado");
+      if (!user?.company_id) throw new Error("Sessão expirada");
 
       const payload = {
-        id: authUser.id,
+        id: user.company_id,
         nome_empresa: formData.nome_empresa,
         nif: formData.nif,
         matricula: formData.matricula,
@@ -8954,12 +8955,10 @@ const VisualIdentityModule = ({ companyData, onRefreshData }: { companyData: any
     e.preventDefault();
     setLoading(true);
     try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) throw new Error("Não autenticado");
+      if (!user?.company_id) throw new Error("Sessão expirada. Inicie sessão novamente.");
 
       // Merge with the existing companyData to not overwrite other fields
       const payload = {
-        id: authUser.id,
         logo_url: formData.logo_url,
         logo_size: formData.logo_size,
         watermark_url: formData.watermark_url,
@@ -8972,7 +8971,7 @@ const VisualIdentityModule = ({ companyData, onRefreshData }: { companyData: any
       const { error } = await supabase
         .from('empresas')
         .update(payload)
-        .eq('id', authUser.id);
+        .eq('id', user.company_id);
         
       if (!error) {
         alert('Identidade visual atualizada com sucesso!');
@@ -11528,12 +11527,14 @@ const FiscalSeriesModule = ({ series, onRefresh, users }: { series: FiscalSeries
     const reference = `S${series.length + 1}${year}`;
     
     try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) return;
+      if (!user?.company_id) {
+        alert('Sessão expirada ou sem empresa associada.');
+        return;
+      }
       const { error } = await supabase
         .from('series_fiscais')
         .insert([{
-          company_id: authUser.id,
+          company_id: user.company_id,
           serie: reference,
           descricao: name,
           tipo: type,
@@ -14408,7 +14409,7 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
           const { data: { user: authUser } } = await supabase.auth.getUser();
           if (!authUser) return;
           
-          const companyId = authUser.id;
+          const companyId = user?.company_id || authUser.id;
           const syncData = {
             nome: clientData.name,
             company_id: companyId,
@@ -14908,6 +14909,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
   const [hash, setHash] = useState(initialData?.hash || '');
   const [expandedDimensions, setExpandedDimensions] = useState<number | null>(null);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     fetchJson('/api/warehouses').then(data => setWarehouses(data || []));
@@ -14974,6 +14976,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
     if (items.length === 0) return;
 
     // Validate warehouse for all product items
@@ -14983,16 +14986,21 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
       return;
     }
 
+    setLoading(true);
+
     let finalSupplierId = supplierId;
     if (!finalSupplierId && supplierName) {
       try {
-        const { data: { user: authUser } } = await supabase.auth.getUser();
-        if (!authUser) return;
+        if (!user?.company_id) {
+          alert('Sessão expirada ou sem empresa associada.');
+          setLoading(false);
+          return;
+        }
 
         const { data: newSup, error: supErr } = await supabase
           .from('fornecedores')
           .insert({
-            company_id: authUser.id,
+            company_id: user.company_id,
             nome: supplierName,
             nif: nif,
             email: '',
@@ -15005,22 +15013,27 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
         finalSupplierId = newSup.id;
       } catch (err) {
         console.error('Error creating supplier:', err);
+        setLoading(false);
         return;
       }
     }
 
     if (!finalSupplierId) {
       alert('Por favor, selecione um fornecedor ou digite o nome de um novo fornecedor.');
+      setLoading(false);
       return;
     }
 
     try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) return;
+      if (!user?.company_id) {
+        alert('Sessão expirada ou sem empresa associada.');
+        setLoading(false);
+        return;
+      }
 
       // Objeto limpo apenas com campos que existem na tabela 'compras'
       const purchaseDataFields: any = {
-        company_id: authUser.id,
+        company_id: user.company_id,
         supplier_id: finalSupplierId,
         data: date,
         data_vencimento: dueDate || null,
@@ -15065,6 +15078,8 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
     } catch (err: any) {
       console.error('Erro ao emitir documento:', err);
       alert('Erro ao emitir documento: ' + (err.message || 'Erro desconhecido'));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -15782,10 +15797,10 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
           </button>
           <button 
             type="submit"
-            disabled={items.length === 0}
+            disabled={items.length === 0 || loading}
             className="px-8 py-3 rounded-none bg-[#003366] text-white font-bold hover:bg-[#002244] disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm shadow-sm"
           >
-            Registar Compra
+            {loading ? 'A registar...' : 'Registar Compra'}
           </button>
         </div>
       </form>
@@ -17174,11 +17189,13 @@ const SupplierModule = ({ products, workSites, fiscalSeries, caixas, companyData
     }
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user?.company_id) {
+        alert('Sessão expirada. Por favor, faça login novamente.');
+        return;
+      }
 
       const supplierData: any = {
-        company_id: user.id,
+        company_id: user.company_id,
         nome: name,
         nif: nif,
         email: email,
@@ -18864,6 +18881,11 @@ const ConvertDocumentModal = ({ document, onClose, onSuccess }: {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) return;
 
+      if (!user?.company_id) {
+        alert('Sessão expirada. Inicie sessão novamente.');
+        return;
+      }
+
       const { id, numero_documento, invoice_number, ...baseDocData } = document;
       // We safely extract properties that might exist in runtime but lack TS definitions
       const docData: any = { ...baseDocData };
@@ -18874,7 +18896,7 @@ const ConvertDocumentModal = ({ document, onClose, onSuccess }: {
       delete docData.signature;
       
       const convertedDoc = {
-        company_id: authUser.id,
+        company_id: user.company_id,
         tipo_documento: targetType,
         numero_documento: `CONV-${Date.now()}`,
         cliente_nome: docData.client_name || docData.nome_cliente || 'Desconhecido',
@@ -19038,6 +19060,7 @@ export default function App() {
   const [companyData, setCompanyData] = useState<any>(null);
   const [purchases, setPurchases] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [connectionError, setConnectionError] = useState<boolean>(false);
   
   // Task/Alert modal state
   const [alerts, setAlerts] = useState<any[]>(() => {
@@ -19077,8 +19100,7 @@ export default function App() {
       }
 
       console.log('Carregando clientes do Supabase (Sync Blindada)...');
-      const authUser = session.user;
-      const companyId = authUser.id;
+      const companyId = user?.company_id || session.user.id;
 
       const { data, error } = await supabase
         .from('clientes')
@@ -19147,8 +19169,7 @@ export default function App() {
       }
 
       console.log('Carregando locais de trabalho do Supabase (Sync Blindada)...');
-      const authUser = session.user;
-      const companyId = authUser.id;
+      const companyId = user?.company_id || session.user.id;
 
       const { data, error } = await supabase
         .from('locais_trabalho')
@@ -19358,18 +19379,32 @@ export default function App() {
         return;
       }
       
-      const authUser = session.user;
-      const companyId = authUser.id;
-      console.log('Fetching data for company:', companyId);
+      const companyId = user?.company_id;
+      if (!companyId) {
+        console.warn('Sync adiado: company_id ainda não disponível.');
+        return;
+      }
+      
+      console.log('Fetching isolated data for company:', companyId);
+      setConnectionError(false);
       
       // Fontes de Verdade Principais (Supabase)
-      await loadClientes();
-      await loadLocaisTrabalho();
-      await loadDocumentosEmitidos();
-      await loadCaixas();
-      await loadCaixaMovements();
-      await loadFornecedores();
-      await loadCompras();
+      try {
+        await Promise.all([
+          loadClientes(),
+          loadLocaisTrabalho(),
+          loadDocumentosEmitidos(),
+          loadCaixas(),
+          loadCaixaMovements(),
+          loadFornecedores(),
+          loadCompras()
+        ]);
+      } catch (err: any) {
+        if (err.message?.includes('fetch') || err.name === 'TypeError') {
+          setConnectionError(true);
+        }
+        throw err;
+      }
 
       // Carregar dados da empresa diretamente do Supabase para Blindagem Total
       console.log('Tentando carregar dados da empresa para:', companyId);
@@ -19766,10 +19801,10 @@ export default function App() {
   const throttledFetchData = throttle(fetchData, 2000);
 
   useEffect(() => {
-    if (authReady && user) {
+    if (authReady && user?.company_id) {
       throttledFetchData();
     }
-  }, [authReady, user?.id]);
+  }, [authReady, user?.company_id]);
 
   return (
     <ProtectedRoute>
@@ -19799,6 +19834,23 @@ export default function App() {
           />
           <main className="flex-1 overflow-y-auto w-full transition-all duration-300">
             <div className="p-6 md:p-8 max-w-[1600px] mx-auto">
+              {connectionError && (
+                <div className="mb-6 bg-red-50 border border-red-200 p-4 rounded-lg flex items-center gap-3 text-red-700 animate-pulse">
+                  <div className="bg-red-100 p-2 rounded-full">
+                    <Globe size={20} />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-black uppercase tracking-tight">Erro de Ligação ao Supabase</p>
+                    <p className="text-xs font-medium">Não foi possível ligar ao servidor de dados. Verifique a sua ligação à internet ou configurações de API.</p>
+                  </div>
+                  <button 
+                    onClick={() => fetchData()}
+                    className="bg-red-600 text-white text-[10px] font-black px-4 py-2 uppercase tracking-widest rounded-md hover:bg-red-700 transition-all"
+                  >
+                    Tentar Novamente
+                  </button>
+                </div>
+              )}
               <div className="mb-6 flex items-center justify-between border-b border-zinc-200/60 pb-4">
                 <div className="flex items-center gap-2 text-xs font-bold text-zinc-400 uppercase tracking-widest">
                   <LayoutDashboard size={14} />

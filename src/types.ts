@@ -30,8 +30,9 @@ export interface User {
   username: string;
   email: string;
   company_id: string;
-  role: 'admin' | 'operador';
-  created_at: string;
+  role: string;
+  created_at?: string;
+  company?: any;
 }
 
 export interface AuthContextType {

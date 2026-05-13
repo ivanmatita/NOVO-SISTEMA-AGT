@@ -13,23 +13,23 @@ export interface Metric {
   created_at: string;
 }
 
-export const fetchMetrics = async () => {
+export const fetchMetrics = async (companyId?: string) => {
   try {
     const { data: { user: authUser } } = await supabase.auth.getUser();
     if (!authUser) return [];
     
-    const companyId = authUser.id;
+    const targetCompanyId = companyId || authUser.id;
     
     // If no normal API, use supabase directly as fallback or `/api/metrics`
     try {
-      const res = await fetch(`/api/metrics?company_id=${companyId}`);
+      const res = await fetch(`/api/metrics?company_id=${targetCompanyId}`);
       if (res.ok) {
         return await res.json();
       }
     } catch (e) {}
 
     // Fallback direct to supabase logic
-    const { data } = await supabase.from('metrics').select('*').eq('company_id', companyId);
+    const { data } = await supabase.from('metrics').select('*').eq('company_id', targetCompanyId);
     if (data) return data;
   } catch (e) {
     console.error('Erro ao buscar métricas:', e);
@@ -50,8 +50,9 @@ export const MetricsModule = () => {
   const [observacoes, setObservacoes] = useState('');
 
   const loadMetrics = async () => {
+    if (!user) return;
     setLoading(true);
-    const data = await fetchMetrics();
+    const data = await fetchMetrics(user.company_id);
     setMetrics(data || []);
     setLoading(false);
   };

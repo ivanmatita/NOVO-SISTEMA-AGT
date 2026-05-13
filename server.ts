@@ -3,16 +3,18 @@ import path from "path";
 import fs from "fs";
 import { createServer as createViteServer } from "vite";
 
+import compression from "compression";
+
 const DB_FILE = path.join(process.cwd(), "db.json");
 
 const loadData = () => {
-  if (fs.existsSync(DB_FILE)) {
-    try {
+  try {
+    if (fs.existsSync(DB_FILE)) {
       const content = fs.readFileSync(DB_FILE, "utf-8");
       return JSON.parse(content);
-    } catch (e) {
-      console.error("Error loading data from db.json:", e);
     }
+  } catch (e) {
+    console.warn("Aviso Vercel: db.json não persistirá entre sessões serverless. Use Supabase para produção.", e);
   }
   return null;
 };
@@ -113,11 +115,33 @@ const saveData = () => {
   }
 };
 
-async function startServer() {
+  async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  app.use(compression());
   app.use(express.json({ limit: '50mb' }));
+
+  // --- Content Security Policy (CSP) ---
+  app.use((req, res, next) => {
+    const csp = [
+      "default-src 'self' https: data: blob:",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: data: cdn.jsdelivr.net https://*.supabase.co",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' https://fonts.gstatic.com data:",
+      "img-src 'self' data: blob: https:",
+      "connect-src 'self' https://*.supabase.co wss://*.supabase.co wss: https: blob:",
+      "worker-src 'self' blob: data:",
+      "frame-src 'self' https:",
+      "object-src 'none'",
+      "base-uri 'self'"
+    ].join("; ");
+    res.setHeader("Content-Security-Policy", csp);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    next();
+  });
 
   // --- API Routes (Robust Mock) ---
 
@@ -236,12 +260,15 @@ async function startServer() {
   app.get("/api/invoices", (req, res) => res.json(issuedDocuments));
   app.get("/api/issued-documents", (req, res) => res.json(issuedDocuments));
   app.get("/api/invoices/:id", (req, res) => {
-    const doc = issuedDocuments.find(d => d.id === Number(req.params.id));
+    const docId = req.params.id;
+    // Tenta encontrar por ID (número ou string UUID)
+    const doc = issuedDocuments.find(d => String(d.id) === String(docId));
     if (doc) res.json(doc);
     else res.status(404).json({ error: "Document not found" });
   });
   app.delete("/api/invoices/:id", (req, res) => {
-    const index = issuedDocuments.findIndex(d => d.id === Number(req.params.id));
+    const docId = req.params.id;
+    const index = issuedDocuments.findIndex(d => String(d.id) === String(docId));
     if (index !== -1) {
       if (issuedDocuments[index].is_certified) {
         return res.status(403).json({ error: "Cannot delete certified document" });
@@ -252,7 +279,8 @@ async function startServer() {
     } else res.status(404).json({ error: "Document not found" });
   });
   app.post("/api/invoices/:id/clone", (req, res) => {
-    const doc = issuedDocuments.find(d => d.id === Number(req.params.id));
+    const docId = req.params.id;
+    const doc = issuedDocuments.find(d => String(d.id) === String(docId));
     if (doc) {
       // Re-use logic for generating number
       const series = fiscalSeries.find(s => s.id === Number(doc.series_id));
@@ -293,7 +321,8 @@ async function startServer() {
   });
 
   app.put("/api/invoices/:id", (req, res) => {
-    const index = issuedDocuments.findIndex(d => d.id === Number(req.params.id));
+    const docId = req.params.id;
+    const index = issuedDocuments.findIndex(d => String(d.id) === String(docId));
     if (index !== -1) {
       const existing = issuedDocuments[index];
       // If certified, only allow non-fiscal updates (simulated)
@@ -445,7 +474,8 @@ async function startServer() {
   app.get("/api/transactions", (req, res) => res.json(transactions));
 
   app.post("/api/invoices/:id/void", (req, res) => {
-    const doc = issuedDocuments.find(d => d.id === Number(req.params.id));
+    const docId = req.params.id;
+    const doc = issuedDocuments.find(d => String(d.id) === String(docId));
     if (doc) {
       const { reason } = req.body;
       doc.status = 'anulado';
@@ -561,7 +591,8 @@ async function startServer() {
   });
 
   app.post("/api/invoices/:id/convert", (req, res) => {
-    const doc = issuedDocuments.find(d => d.id === Number(req.params.id));
+    const docId = req.params.id;
+    const doc = issuedDocuments.find(d => String(d.id) === String(docId));
     if (doc) {
       const { targetType } = req.body;
       const series = fiscalSeries.find(s => s.id === Number(doc.series_id));
@@ -596,7 +627,8 @@ async function startServer() {
   });
 
   app.post("/api/invoices/:id/certify", (req, res) => {
-    const docIndex = issuedDocuments.findIndex(d => d.id === Number(req.params.id));
+    const docId = req.params.id;
+    const docIndex = issuedDocuments.findIndex(d => String(d.id) === String(docId));
     if (docIndex !== -1) {
       const doc = issuedDocuments[docIndex];
       doc.is_certified = true;

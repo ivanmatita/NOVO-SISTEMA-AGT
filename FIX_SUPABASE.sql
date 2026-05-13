@@ -63,3 +63,37 @@ CREATE POLICY "full_access_company" ON locais_trabalho FOR ALL USING (auth.uid()
 ALTER TABLE documentos_emitidos ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "full_access_company" ON documentos_emitidos;
 CREATE POLICY "full_access_company" ON documentos_emitidos FOR ALL USING (auth.uid() = company_id) WITH CHECK (auth.uid() = company_id);
+
+-- EMPRESAS (TABELA PRINCIPAL)
+CREATE TABLE IF NOT EXISTS empresas (
+    id UUID PRIMARY KEY,
+    nome_empresa TEXT,
+    nif TEXT,
+    email TEXT,
+    telefone TEXT,
+    endereco TEXT,
+    provincia TEXT,
+    municipio TEXT,
+    pais TEXT,
+    logo_url TEXT,
+    matricula TEXT,
+    alvara TEXT,
+    localizacao TEXT,
+    codigo_postal TEXT,
+    inss TEXT,
+    contacto TEXT,
+    responsavel TEXT,
+    regime TEXT,
+    tipo_empresa TEXT,
+    coordenadas_bancarias TEXT,
+    logo_size NUMERIC,
+    watermark_url TEXT,
+    watermark_size NUMERIC,
+    footer_image_url TEXT,
+    footer_size NUMERIC,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE empresas ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "empresa_isolada" ON empresas;
+CREATE POLICY "empresa_isolada" ON empresas FOR ALL USING (auth.uid() = id) WITH CHECK (auth.uid() = id);

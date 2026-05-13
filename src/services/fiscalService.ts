@@ -28,13 +28,16 @@ export const signDocument = (content: string) => {
   }
 };
 
-export const getPreviousHash = async (supabase: any) => {
+export const getPreviousHash = async (supabase: any, companyId: string) => {
+  if (!companyId) return '0';
+  
   const { data, error } = await supabase
     .from('hash_chain')
     .select('current_hash')
+    .eq('company_id', companyId)
     .order('created_at', { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
 
   if (error || !data) return '0'; // Primeiro documento
   return data.current_hash;

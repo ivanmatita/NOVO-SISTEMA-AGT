@@ -1,0 +1,452 @@
+src/App.tsx:590:                    value={clientId} onChange={e => setClientId(e.target.value)} required
+src/App.tsx:594:                    {clients?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+src/App.tsx:599:                  <input type="text" value={code} onChange={e => setCode(e.target.value)} className="w-full border border-zinc-200 bg-white rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" placeholder="Ex: OBRA-001" />
+src/App.tsx:603:                  <input type="text" required value={name} onChange={e => setName(e.target.value)} className="w-full border border-zinc-200 bg-white rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" placeholder="Ex: Edifício Kilamba" />
+src/App.tsx:607:                  <input type="text" value={location} onChange={e => setLocation(e.target.value)} className="w-full border border-zinc-200 bg-white rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" placeholder="Ex: Luanda, Talatona" />
+src/App.tsx:611:                  <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required className="w-full border border-zinc-200 bg-white rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:615:                  <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} required className="w-full border border-zinc-200 bg-white rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:619:                  <input type="number" value={totalStaff} onChange={e => setTotalStaff(Number(e.target.value))} className="w-full border border-zinc-200 bg-white rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:623:                  <input type="number" value={staffPerDay} onChange={e => setStaffPerDay(Number(e.target.value))} className="w-full border border-zinc-200 bg-white rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:627:                  <input type="text" value={contact} onChange={e => setContact(e.target.value)} className="w-full border border-zinc-200 bg-white rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:631:                  <input type="text" value={description} onChange={e => setDescription(e.target.value)} className="w-full border border-zinc-200 bg-white rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:635:                  <textarea value={observations} onChange={e => setObservations(e.target.value)} className="w-full border border-zinc-200 bg-white rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] min-h-[80px]" />
+src/App.tsx:1053:                      value={dismissData.date}
+src/App.tsx:1063:                      value={dismissData.orderedBy}
+src/App.tsx:1072:                    value={dismissData.reason}
+src/App.tsx:1089:                    value={dismissData.observations}
+src/App.tsx:1723:                        <input value={name} onChange={e => setName(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" required />
+src/App.tsx:1728:                          <input type="date" value={birthDate} onChange={e => setBirthDate(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:1732:                          <select value={gender} onChange={e => setGender(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
+src/App.tsx:1741:                          <input value={nif} onChange={e => setNif(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:1745:                          <input value={bi} onChange={e => setBi(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:1751:                          <select value={maritalStatus} onChange={e => setMaritalStatus(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
+src/App.tsx:1760:                          <input type="number" value={dependents} onChange={e => setDependents(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:1771:                          value={professionId} 
+src/App.tsx:1785:                          {professions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+src/App.tsx:1791:                          <input value={department} onChange={e => setDepartment(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:1795:                          <select value={contractType} onChange={e => setContractType(e.target.value as any)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
+src/App.tsx:1804:                        <input type="number" value={salary} onChange={e => setSalary(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" required />
+src/App.tsx:1818:                        <select value={academicLevel} onChange={e => setAcademicLevel(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
+src/App.tsx:1829:                        <input type="date" value={hiredAt} onChange={e => setHiredAt(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:1838:                        <input value={phone} onChange={e => setPhone(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:1842:                        <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:1846:                        <input value={bankName} onChange={e => setBankName(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:1851:                          <input value={bankAccount} onChange={e => setBankAccount(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:1855:                          <input value={inssNumber} onChange={e => setInssNumber(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:1860:                        <input value={iban} onChange={e => setIban(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:2528:                    value={searchTerm}
+src/App.tsx:2586:                      value={searchTerm}
+src/App.tsx:2704:                  value={selectedMonth}
+src/App.tsx:2711:                  ].map(m => <option key={m} value={m}>{m}</option>)}
+src/App.tsx:2838:                                value={status}
+src/App.tsx:2948:                    value={selectedPaymentCaixa}
+src/App.tsx:2954:                      <option key={c.id} value={c.id}>{c.name}</option>
+src/App.tsx:3162:                              value={inputs.diasTrabalho}
+src/App.tsx:3170:                              value={inputs.diasFolga}
+src/App.tsx:3178:                              value={inputs.faltasJustificadas}
+src/App.tsx:3186:                              value={inputs.faltasInjustificadas}
+src/App.tsx:3194:                              value={inputs.ferias}
+src/App.tsx:3202:                              value={inputs.horasExtras}
+src/App.tsx:3210:                              value={inputs.horasPerdidas}
+src/App.tsx:3218:                              value={inputs.premios}
+src/App.tsx:3226:                              value={inputs.gratificacoes}
+src/App.tsx:3234:                              value={inputs.abonos}
+src/App.tsx:3242:                              value={inputs.subsidioNatal}
+src/App.tsx:3250:                              value={inputs.alojamento}
+src/App.tsx:3258:                              value={inputs.subsidioTransporte}
+src/App.tsx:3266:                              value={inputs.subsidioAlimentacao}
+src/App.tsx:3274:                              value={inputs.outrosSubsidios}
+src/App.tsx:3282:                              value={inputs.adiantamentos}
+src/App.tsx:3290:                              value={inputs.acertos}
+src/App.tsx:3495:                                value={inssSearch}
+src/App.tsx:3526:                      value={companyProfession}
+src/App.tsx:3537:                      value={baseSalary}
+src/App.tsx:3632:                value={attendanceDate}
+src/App.tsx:3716:                      {localEmployees.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
+src/App.tsx:4561:                            value={draftReceipt.inputs[item.field]}
+src/App.tsx:4612:                          value={draftReceipt.inputs.horasExtras}
+src/App.tsx:4674:                          value={draftReceipt.inputs.faltasInjustificadas}
+src/App.tsx:4722:                          value={draftReceipt.inputs.horasPerdidas}
+src/App.tsx:4772:                          value={draftReceipt.inputs.adiantamentos}
+src/App.tsx:5277:              value={searchTerm}
+src/App.tsx:5286:            <input type="date" value={dateFilter.start} onChange={e => setDateFilter({...dateFilter, start: e.target.value})} className="bg-zinc-50 border border-zinc-200 p-3 text-xs font-bold focus:outline-none" />
+src/App.tsx:5290:            <input type="date" value={dateFilter.end} onChange={e => setDateFilter({...dateFilter, end: e.target.value})} className="bg-zinc-50 border border-zinc-200 p-3 text-xs font-bold focus:outline-none" />
+src/App.tsx:5407:              value={search}
+src/App.tsx:5417:            value={startDate}
+src/App.tsx:5426:            value={endDate}
+src/App.tsx:5604:            value={searchTerm}
+src/App.tsx:5678:                    value={date}
+src/App.tsx:5686:                    value={type}
+src/App.tsx:5700:                  value={description}
+src/App.tsx:5711:                    value={category}
+src/App.tsx:5715:                    {categories.map(c => <option key={c} value={c}>{c}</option>)}
+src/App.tsx:5723:                    value={amount}
+src/App.tsx:5735:                    value={paymentMethod}
+src/App.tsx:5740:                    {caixas.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+src/App.tsx:5748:                    value={reference}
+src/App.tsx:5759:                  value={observation}
+src/App.tsx:6562:              value={searchQuery}
+src/App.tsx:6913:                    <select value={selectedPOS} onChange={e => setSelectedPOS(e.target.value)} className="w-full bg-zinc-50 border-2 border-zinc-100 p-4 font-bold focus:border-[#003366] outline-none transition-all">
+src/App.tsx:6914:                      {posPoints.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+src/App.tsx:6919:                    <input type="number" value={initialBalance} onChange={e => setInitialBalance(e.target.value)} className="w-full bg-zinc-50 border-2 border-zinc-100 p-4 font-bold focus:border-[#003366] outline-none transition-all" placeholder="0.00" />
+src/App.tsx:6980:                value={selectedSeries} 
+src/App.tsx:6984:                {series.map(s => <option key={s.id} value={s.id} className="text-zinc-800">{s.description}</option>)}
+src/App.tsx:6991:                value={selectedCostCenter} 
+src/App.tsx:6996:                {costCenters.map(cc => <option key={cc.id} value={cc.id} className="text-zinc-800">{cc.name}</option>)}
+src/App.tsx:7041:                value={search} onChange={e => setSearch(e.target.value)}
+src/App.tsx:7170:                    value={globalDiscount}
+src/App.tsx:7186:                  value={paymentMethod}
+src/App.tsx:7192:                    <option key={c.id} value={c.id}>{c.name}</option>
+src/App.tsx:7205:                    value={amountPaid}
+src/App.tsx:7251:                  value={initialBalance}
+src/App.tsx:7578:                <input type="text" value={name} onChange={e => setName(e.target.value)} required className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" />
+src/App.tsx:7582:                <input type="text" value={profession} onChange={e => setProfession(e.target.value)} className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" />
+src/App.tsx:7586:                <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" />
+src/App.tsx:7590:                <select value={permissionArea} onChange={e => setPermissionArea(e.target.value)} className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm">
+src/App.tsx:7600:                <input type="text" value={contact} onChange={e => setContact(e.target.value)} className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" />
+src/App.tsx:7604:                <input type="text" value={morada} onChange={e => setMorada(e.target.value)} className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" />
+src/App.tsx:7980:            value={selectedMonthForMap}
+src/App.tsx:8327:                    value={searchQuery}
+src/App.tsx:8438:                      value={formData.titulo}
+src/App.tsx:8448:                      value={formData.descricao}
+src/App.tsx:8460:                        value={formData.data_inicio}
+src/App.tsx:8468:                        value={formData.prioridade}
+src/App.tsx:8498:                      value={formData.observacoes}
+src/App.tsx:8733:                  <input required type="text" name="nome_empresa" value={formData.nome_empresa} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:8737:                  <input required type="text" name="nif" value={formData.nif} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:8741:                  <input type="text" name="matricula" value={formData.matricula} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:8745:                  <input type="text" name="alvara" value={formData.alvara} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:8749:                  <select name="regime" value={formData.regime} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
+src/App.tsx:8757:                  <select name="tipo_empresa" value={formData.tipo_empresa} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
+src/App.tsx:8771:                  <input type="text" name="localizacao" value={formData.localizacao} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:8775:                  <input type="text" name="provincia" value={formData.provincia} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:8779:                  <input type="text" name="codigo_postal" value={formData.codigo_postal} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:8783:                  <input type="text" name="contacto" value={formData.contacto} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:8787:                  <input type="email" name="email" value={formData.email} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:8797:                  <input type="text" name="inss" value={formData.inss} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:8801:                  <input type="text" name="responsavel" value={formData.responsavel} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:8805:                  <textarea name="coordenadas_bancarias" value={formData.coordenadas_bancarias} onChange={handleChange} rows={3} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" placeholder="Ex: AO06.0040.0000.1234.5678.9 (BAI)"></textarea>
+src/App.tsx:9021:                <input type="range" name="logo_size" min="20" max="300" value={formData.logo_size} onChange={handleChange} className="w-full h-1.5 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-[#003366]" />
+src/App.tsx:9045:                <input type="range" name="watermark_size" min="50" max="600" value={formData.watermark_size} onChange={handleChange} className="w-full h-1.5 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-[#003366]" />
+src/App.tsx:9080:                      value={formData.footer_image_url.startsWith('data:image') ? '' : formData.footer_image_url} 
+src/App.tsx:9091:                    <input type="range" name="footer_size" min="20" max="200" value={formData.footer_size} onChange={handleChange} className="w-full h-1.5 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-[#003366]" />
+src/App.tsx:9325:                  <input type="number" step="0.01" value={initialBalance} onChange={e => setInitialBalance(e.target.value)} required className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" />
+src/App.tsx:9811:              value={searchTerm}
+src/App.tsx:9819:          <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 p-3 text-xs font-bold focus:outline-none" />
+src/App.tsx:9823:          <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 p-3 text-xs font-bold focus:outline-none" />
+src/App.tsx:9987:              value={searchTerm}
+src/App.tsx:10082:                      value={numDiario}
+src/App.tsx:10093:                      value={nomeDiario}
+src/App.tsx:10102:                      value={obs}
+src/App.tsx:10165:                    value={targetRubrica}
+src/App.tsx:10186:                    <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="bg-transparent text-[10px] font-black focus:outline-none uppercase tracking-widest text-[#003366]">
+src/App.tsx:10188:                        <option key={i} value={i.toString().padStart(2, '0')}>
+src/App.tsx:10342:           <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="bg-zinc-50 border border-zinc-200 p-2 text-xs font-black uppercase">
+src/App.tsx:10344:                <option key={i} value={i.toString().padStart(2, '0')}>MÊS DE {new Date(2025, i-1).toLocaleString('pt-PT', { month: 'long' }).toUpperCase()}</option>
+src/App.tsx:10483:           <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="bg-zinc-50 border border-zinc-200 p-2 text-xs font-black uppercase">
+src/App.tsx:10485:                <option key={i} value={i.toString().padStart(2, '0')}>MÊS DE {new Date(2025, i-1).toLocaleString('pt-PT', { month: 'long' }).toUpperCase()}</option>
+src/App.tsx:10656:                value={initialMonth} 
+src/App.tsx:10660:                {months.map(m => <option key={`init-${m.label}`} value={m.value}>{m.label}</option>)}
+src/App.tsx:10666:                value={finalMonth} 
+src/App.tsx:10670:                {months.map(m => <option key={`final-${m.label}`} value={m.value}>{m.label}</option>)}
+src/App.tsx:10677:                 value={year} 
+src/App.tsx:11034:                      value={formData.type}
+src/App.tsx:11053:                         value={formData.id}
+src/App.tsx:11065:                         value={formData.parent_id}
+src/App.tsx:11069:                          {accounts.filter(a => a.type === 'GR').map(a => <option key={a.id} value={a.id}>{a.id} - {a.description}</option>)}
+src/App.tsx:11076:                            value={formData.id}
+src/App.tsx:11089:                         value={formData.parent_id}
+src/App.tsx:11093:                          {accounts.filter(a => a.type === 'GR').map(a => <option key={a.id} value={a.id}>{a.id} - {a.description}</option>)}
+src/App.tsx:11100:                            value={formData.id}
+src/App.tsx:11114:                          value={formData.id}
+src/App.tsx:11127:                          value={formData.id}
+src/App.tsx:11140:                          value={formData.id}
+src/App.tsx:11153:                         value={formData.id}
+src/App.tsx:11165:                      value={formData.description}
+src/App.tsx:11175:                      value={formData.justification}
+src/App.tsx:11185:                      value={formData.layout}
+src/App.tsx:11617:                  <input type="text" required value={name} onChange={e => setName(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none" />
+src/App.tsx:11621:                  <select value={selectedUser} onChange={e => setSelectedUser(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none">
+src/App.tsx:11623:                    {users.map(u => <option key={u.id} value={u.id.toString()}>{u.nome_completo}</option>)}
+src/App.tsx:11628:                  <select value={type} onChange={e => setType(e.target.value as 'normal' | 'manual')} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none">
+src/App.tsx:12028:                    value={searchTerm}
+src/App.tsx:12038:                  value={serieFilter}
+src/App.tsx:12049:                  value={statusFilter}
+src/App.tsx:12062:                  value={typeFilter}
+src/App.tsx:12094:                    value={currencyFilter}
+src/App.tsx:12111:                  value={minValue}
+src/App.tsx:12122:                  value={maxValue}
+src/App.tsx:12702:                value={documentType} 
+src/App.tsx:12709:                  <option value={fixedDocumentType}>{fixedDocumentType}</option>
+src/App.tsx:12730:                value={seriesId} 
+src/App.tsx:12737:                  <option key={s.id} value={s.id}>{s.name} ({s.type === 'manual' ? 'Manual' : 'Auto'})</option>
+src/App.tsx:12744:                value={workSiteId} 
+src/App.tsx:12749:                {workSites.map(ws => <option key={ws.id} value={ws.id.toString()}>{ws.title}</option>)}
+src/App.tsx:12757:                  <input type="text" value={documentNumberManual} onChange={e => setDocumentNumberManual(e.target.value)} required className="w-full border border-amber-300 px-3 py-2 text-sm focus:outline-none focus:border-amber-600 bg-white" />
+src/App.tsx:12761:                  <input type="text" value={referenceManual} onChange={e => setReferenceManual(e.target.value)} required className="w-full border border-amber-300 px-3 py-2 text-sm focus:outline-none focus:border-amber-600 bg-white" />
+src/App.tsx:12770:                value={date} 
+src/App.tsx:12780:                value={dueDate} 
+src/App.tsx:12789:                value={vatWithholding} 
+src/App.tsx:12802:                value={exchangeRate} 
+src/App.tsx:12810:                value={currency} 
+src/App.tsx:12823:                value={counterValue} 
+src/App.tsx:12832:                value={globalDiscount} 
+src/App.tsx:12840:                value={paymentCondition} 
+src/App.tsx:12853:                    value={paymentMethod} 
+src/App.tsx:12869:                    value={cashBox} 
+src/App.tsx:12875:                    {caixas.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+src/App.tsx:12890:                value={countryCode} 
+src/App.tsx:12903:                value={clientId} 
+src/App.tsx:12909:                {clients.map(c => <option key={c.id} value={c.id}>{c.name} ({c.contribuinte})</option>)}
+src/App.tsx:12916:                value={serviceLocation} 
+src/App.tsx:12926:                value={serviceDate} 
+src/App.tsx:12957:                       value={item.product_id || ''} 
+src/App.tsx:12962:                       {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+src/App.tsx:12970:                       value={item.description} 
+src/App.tsx:12980:                       value={item.referencia || ''} 
+src/App.tsx:12989:                       value={item.tipologia || 'S/T'}
+src/App.tsx:12994:                       {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+src/App.tsx:13001:                       value={item.tipo_artigo || 'produto'}
+src/App.tsx:13013:                        value={item.tax || ALL_TAXES[0]}
+src/App.tsx:13017:                        {ALL_TAXES.map((t, i) => <option key={i} value={t}>{t}</option>)}
+src/App.tsx:13027:                         value={item.quantity} 
+src/App.tsx:13037:                         value={item.desconto || 0} 
+src/App.tsx:13047:                         value={item.unit_price} 
+src/App.tsx:13080:                        <input type="number" value={item.comprimento || 0} onChange={e => updateItem(idx, 'comprimento', e.target.value)} className="w-full bg-white border border-zinc-100 p-2 text-xs focus:border-[#003366] outline-none" />
+src/App.tsx:13084:                        <input type="number" value={item.largura || 0} onChange={e => updateItem(idx, 'largura', e.target.value)} className="w-full bg-white border border-zinc-100 p-2 text-xs focus:border-[#003366] outline-none" />
+src/App.tsx:13088:                        <input type="number" value={item.altura || 0} onChange={e => updateItem(idx, 'altura', e.target.value)} className="w-full bg-white border border-zinc-100 p-2 text-xs focus:border-[#003366] outline-none" />
+src/App.tsx:13213:          value={clientId} onChange={e => setClientId(e.target.value)} required
+src/App.tsx:13217:          {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+src/App.tsx:13223:          type="text" value={title} onChange={e => setTitle(e.target.value)} required
+src/App.tsx:13231:          type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required
+src/App.tsx:13238:          type="date" value={endDate} onChange={e => setEndDate(e.target.value)} required
+src/App.tsx:13245:          type="text" value={code} onChange={e => setCode(e.target.value)} required
+src/App.tsx:13253:          type="number" value={staffPerDay} onChange={e => setStaffPerDay(Number(e.target.value))} required
+src/App.tsx:13261:          type="number" value={totalStaff} onChange={e => setTotalStaff(Number(e.target.value))} required
+src/App.tsx:13269:          type="text" value={location} onChange={e => setLocation(e.target.value)} required
+src/App.tsx:13277:          type="text" value={contact} onChange={e => setContact(e.target.value)} required
+src/App.tsx:13285:          value={description} onChange={e => setDescription(e.target.value)} required
+src/App.tsx:13293:          value={observations} onChange={e => setObservations(e.target.value)}
+src/App.tsx:13327:            <input type="date" value={date} onChange={e => setDate(e.target.value)} required className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm" />
+src/App.tsx:13331:            <input type="text" value={docNo} onChange={e => setDocNo(e.target.value)} placeholder="Ex: FT-2026/001" className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm" />
+src/App.tsx:13336:          <input type="text" value={company} onChange={e => setCompany(e.target.value)} placeholder="Nome da empresa" className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm" />
+src/App.tsx:13340:          <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Descrição do movimento" className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm min-h-[60px]" />
+src/App.tsx:13345:            <input type="number" value={debit} onChange={e => setDebit(Number(e.target.value))} className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm" />
+src/App.tsx:13349:            <input type="number" value={credit} onChange={e => setCredit(Number(e.target.value))} className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm" />
+src/App.tsx:14017:              value={`Invoice:${invoice.invoice_number || invoice.numero_documento}|Total:${invoice.total || invoice.contravalor}|Date:${invoice.date || invoice.data_emissao}`} 
+src/App.tsx:14261:            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="bg-white border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:14265:            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="bg-white border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:14516:              value={searchTerm}
+src/App.tsx:15114:                  value={receiptNumber}
+src/App.tsx:15124:                  value={receiptCode}
+src/App.tsx:15136:                  value={supportDoc}
+src/App.tsx:15170:                  value={paymentMethod} 
+src/App.tsx:15186:                  value={cashBox} 
+src/App.tsx:15193:                  {caixas.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+src/App.tsx:15201:                  value={receiptDate}
+src/App.tsx:15289:                value={documentType} 
+src/App.tsx:15307:                value={invoiceNumber} 
+src/App.tsx:15319:                  value={date} 
+src/App.tsx:15328:                  value={dueDate} 
+src/App.tsx:15338:                value={vatWithholding} 
+src/App.tsx:15351:                value={exchangeRate} 
+src/App.tsx:15359:                value={currency} 
+src/App.tsx:15372:                value={counterValue} 
+src/App.tsx:15380:                value={workSiteId} 
+src/App.tsx:15387:                  <option key={ws.id} value={ws.id}>{ws.name}</option>
+src/App.tsx:15395:                value={globalDiscount} 
+src/App.tsx:15405:                    value={cashBox} 
+src/App.tsx:15411:                      <option key={c.id} value={c.id}>{c.name}</option>
+src/App.tsx:15419:                    value={paymentMethod} 
+src/App.tsx:15436:                value={hash} 
+src/App.tsx:15452:                value={countryCode} 
+src/App.tsx:15466:                  value={supplierId} 
+src/App.tsx:15482:                  {suppliers.map(c => <option key={c.id} value={c.id}>{c.name} ({c.nif})</option>)}
+src/App.tsx:15498:                value={serviceDate} 
+src/App.tsx:15529:                      value={item.description} 
+src/App.tsx:15539:                      value={item.tipologia || 'Mercadoria'} 
+src/App.tsx:15552:                      value={item.warehouse_id || ''} 
+src/App.tsx:15557:                      {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+src/App.tsx:15564:                          value={item.warehouse_responsible || ''}
+src/App.tsx:15575:                      value={item.tipo_artigo || 'produto'} 
+src/App.tsx:15587:                      value={item.tax || ALL_TAXES[0]} 
+src/App.tsx:15592:                        <option key={i} value={taxName}>{taxName}</option>
+src/App.tsx:15622:                        value={item.comprimento || 0} 
+src/App.tsx:15631:                        value={item.largura || 0} 
+src/App.tsx:15640:                        value={item.altura || 0} 
+src/App.tsx:15653:                      value={item.referencia || ''} 
+src/App.tsx:15663:                      value={item.quantity} 
+src/App.tsx:15674:                      value={item.unit_price} 
+src/App.tsx:15685:                      value={item.desconto_linha !== undefined ? item.desconto_linha : (item.desconto || 0)} 
+src/App.tsx:15715:                        value={item.comprimento || 0} 
+src/App.tsx:15724:                        value={item.largura || 0} 
+src/App.tsx:15733:                        value={item.altura || 0} 
+src/App.tsx:16097:                  value={searchTerm}
+src/App.tsx:16192:                  value={searchTerm}
+src/App.tsx:16363:                    value={searchTerm}
+src/App.tsx:17031:            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="bg-white border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:17035:            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="bg-white border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:17445:                    {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+src/App.tsx:17586:                      value={nif} 
+src/App.tsx:17597:                    <input type="text" placeholder="Ex: Fornecedor ABC Lda" value={name} onChange={e => setName(e.target.value)} required className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs font-bold focus:border-[#003366] outline-none" />
+src/App.tsx:17602:                    <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs focus:border-[#003366] outline-none" />
+src/App.tsx:17606:                    <input type="text" value={phone} onChange={e => setPhone(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs focus:border-[#003366] font-bold outline-none" />
+src/App.tsx:17611:                      value={pais} 
+src/App.tsx:17636:                    <input type="text" value={provincia} onChange={e => setProvincia(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs focus:border-[#003366] outline-none" />
+src/App.tsx:17641:                    <input type="text" value={municipio} onChange={e => setMunicipio(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs focus:border-[#003366] outline-none" />
+src/App.tsx:17645:                    <input type="text" value={localidade} onChange={e => setLocalidade(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs focus:border-[#003366] outline-none" />
+src/App.tsx:17649:                    <input type="text" value={address} onChange={e => setAddress(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs focus:border-[#003366] outline-none" />
+src/App.tsx:17654:                    <input type="text" value={codigoPostal} onChange={e => setCodigoPostal(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs font-mono focus:border-[#003366] outline-none" />
+src/App.tsx:17658:                    <input type="text" placeholder="Ex: BFA, BAI..." value={siglasBanco} onChange={e => setSiglasBanco(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs font-bold focus:border-[#003366] outline-none" />
+src/App.tsx:17662:                    <input type="text" placeholder="AO06..." value={iban} onChange={e => setIban(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs font-mono font-black text-[#003366] focus:border-[#003366] outline-none" />
+src/App.tsx:17667:                    <select value={tipoCliente} onChange={e => setTipoCliente(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs font-bold focus:border-[#003366] outline-none">
+src/App.tsx:17675:                    <input type="text" value={webpage} onChange={e => setWebpage(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs focus:border-[#003366] outline-none" />
+src/App.tsx:17745:              value={searchTerm}
+src/App.tsx:17756:              value={dateFilter.start}
+src/App.tsx:17763:              value={dateFilter.end}
+src/App.tsx:18093:              value={searchTerm}
+src/App.tsx:18161:                value={warehouseFilter}
+src/App.tsx:18167:                  <option key={w.id} value={w.id}>{w.name}</option>
+src/App.tsx:18551:                  {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+src/App.tsx:18557:                  {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+src/App.tsx:18714:                  {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+src/App.tsx:18797:              value={amount} 
+src/App.tsx:18812:              value={paymentMethod} 
+src/App.tsx:18827:              value={cashBox} 
+src/App.tsx:18833:              {caixas.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+src/App.tsx:18840:              value={date} 
+src/App.tsx:18918:              value={targetType} 
+src/App.tsx:20435:                      <input required type="text" value={taskFormData.name} onChange={e => setTaskFormData({...taskFormData, name: e.target.value})} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:20439:                      <select required value={taskFormData.type} onChange={e => setTaskFormData({...taskFormData, type: e.target.value})} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
+src/App.tsx:20447:                      <input required type="text" value={taskFormData.description} onChange={e => setTaskFormData({...taskFormData, description: e.target.value})} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:20451:                      <input required type="text" value={taskFormData.responsible} onChange={e => setTaskFormData({...taskFormData, responsible: e.target.value})} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:20455:                      <input required type="number" min="0" value={taskFormData.advanceTime} onChange={e => setTaskFormData({...taskFormData, advanceTime: e.target.value})} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:20459:                      <input required type="date" value={taskFormData.startDate} onChange={e => setTaskFormData({...taskFormData, startDate: e.target.value})} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:20463:                      <input required type="date" value={taskFormData.endDate} onChange={e => setTaskFormData({...taskFormData, endDate: e.target.value})} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+src/App.tsx:20467:                      <textarea value={taskFormData.obs} onChange={e => setTaskFormData({...taskFormData, obs: e.target.value})} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366] min-h-[60px]" />
+src/components/LoginPage.tsx:317:                            value={email}
+src/components/LoginPage.tsx:334:                            value={password}
+src/components/LoginPage.tsx:649:                            <input type="text" value={regCompanyName} onChange={e => setRegCompanyName(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-colors" placeholder="Ex: IMATEC Lda" required />
+src/components/LoginPage.tsx:653:                            <input type="text" value={regNif} onChange={e => setRegNif(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-colors" placeholder="5000123456" />
+src/components/LoginPage.tsx:657:                            <input type="tel" value={regPhone} onChange={e => setRegPhone(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-colors" placeholder="+244 923 000 000" />
+src/components/LoginPage.tsx:661:                            <input type="text" value={regAddress} onChange={e => setRegAddress(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-colors" placeholder="Rua / Bairro" />
+src/components/LoginPage.tsx:673:                            <input type="text" value={regMunicipality} onChange={e => setRegMunicipality(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm" placeholder="Município" />
+src/components/LoginPage.tsx:674:                            <input type="text" value={regProvince} onChange={e => setRegProvince(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm" placeholder="Província" />
+src/components/LoginPage.tsx:679:                          <input type="date" readOnly value={new Date().toISOString().split('T')[0]} className="w-full bg-zinc-100 border border-zinc-200 px-4 py-3 text-sm cursor-not-allowed" />
+src/components/LoginPage.tsx:701:                                <input type="email" value={regEmail} onChange={e => setRegEmail(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 pl-12 pr-4 py-4 text-sm focus:outline-none focus:border-[#00D17F] transition-all" placeholder="exemplo@gmail.com" required />
+src/components/LoginPage.tsx:709:                                <input type="password" value={regPassword} onChange={e => setRegPassword(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 pl-12 pr-4 py-4 text-sm focus:outline-none focus:border-[#00D17F] transition-all" placeholder="No mínimo 6 caracteres" minLength={6} required />
+src/components/LoginPage.tsx:717:                                <input type="password" value={regConfirmPassword} onChange={e => setRegConfirmPassword(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 pl-12 pr-4 py-4 text-sm focus:outline-none focus:border-[#00D17F] transition-all" placeholder="Repita a palavra-passe" required />
+src/components/LoginPage.tsx:799:                        value={forgotEmail}
+src/components/ArchiveModule.tsx:135:              value={search} onChange={e => setSearch(e.target.value)}
+src/components/SaftExportForm.tsx:40:          <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="border border-zinc-200 p-2 w-full text-xs font-bold text-zinc-600 focus:outline-none focus:border-[#003366]" />
+src/components/SaftExportForm.tsx:44:          <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="border border-zinc-200 p-2 w-full text-xs font-bold text-zinc-600 focus:outline-none focus:border-[#003366]" />
+src/components/SaftExportForm.tsx:48:          <select value={saftType} onChange={e => setSaftType(e.target.value)} className="border border-zinc-200 p-2 w-full text-xs font-bold text-zinc-600 focus:outline-none focus:border-[#003366]">
+src/components/AnularModal.tsx:17:          value={reason} 
+src/components/DocumentReportModal.tsx:161:                    value={searchTerm}
+src/components/ChurchModule.tsx:364:                <div><label className="text-xs font-bold text-zinc-500 uppercase">Nome Completo</label><input required value={memberForm.name} onChange={e=>setMemberForm({...memberForm, name: e.target.value})} className="w-full bg-zinc-50 border border-zinc-300 p-2 mt-1" /></div>
+src/components/ChurchModule.tsx:368:                    <select required value={memberForm.role} onChange={e=>setMemberForm({...memberForm, role: e.target.value})} className="w-full bg-zinc-50 border border-zinc-300 p-2 mt-1">
+src/components/ChurchModule.tsx:372:                  <div><label className="text-xs font-bold text-zinc-500 uppercase">Departamento</label><input value={memberForm.department} onChange={e=>setMemberForm({...memberForm, department: e.target.value})} className="w-full bg-zinc-50 border border-zinc-300 p-2 mt-1" /></div>
+src/components/ChurchModule.tsx:373:                  <div><label className="text-xs font-bold text-zinc-500 uppercase">Telefone</label><input required value={memberForm.phone} onChange={e=>setMemberForm({...memberForm, phone: e.target.value})} className="w-full bg-zinc-50 border border-zinc-300 p-2 mt-1" /></div>
+src/components/ChurchModule.tsx:374:                  <div><label className="text-xs font-bold text-zinc-500 uppercase">Data Nasc.</label><input required type="date" value={memberForm.dataNasc} onChange={e=>setMemberForm({...memberForm, dataNasc: e.target.value})} className="w-full bg-zinc-50 border border-zinc-300 p-2 mt-1" /></div>
+src/components/ChurchModule.tsx:396:                    <select required value={contribForm.type} onChange={e=>setContribForm({...contribForm, type: e.target.value})} className="w-full bg-zinc-50 border border-zinc-300 p-2 mt-1">
+src/components/ChurchModule.tsx:400:                  <div><label className="text-xs font-bold text-zinc-500 uppercase">Valor (AOA)</label><input required type="number" value={contribForm.amount} onChange={e=>setContribForm({...contribForm, amount: e.target.value})} className="w-full bg-zinc-50 border border-zinc-300 p-2 mt-1" /></div>
+src/components/ChurchModule.tsx:401:                  <div><label className="text-xs font-bold text-zinc-500 uppercase">Data</label><input required type="date" value={contribForm.date} onChange={e=>setContribForm({...contribForm, date: e.target.value})} className="w-full bg-zinc-50 border border-zinc-300 p-2 mt-1" /></div>
+src/components/ChurchModule.tsx:402:                  <div className="col-span-2"><label className="text-xs font-bold text-zinc-500 uppercase">Nome do Contribuinte (Deixe vazio p/ Anónimo)</label><input value={contribForm.donor} onChange={e=>setContribForm({...contribForm, donor: e.target.value})} placeholder="Opcional" className="w-full bg-zinc-50 border border-zinc-300 p-2 mt-1" /></div>
+src/components/ColaboradoresDemitidos.tsx:45:            value={searchTerm}
+src/components/BusinessOverview.tsx:116:          value={searchQuery}
+src/components/POSPage.tsx:239:                    value={initialBalance}
+src/components/POSPage.tsx:380:                value={selectedSeries} 
+src/components/POSPage.tsx:384:                {(series || []).map(s => <option key={s.id} value={s.id} className="text-zinc-800">{s.description}</option>)}
+src/components/POSPage.tsx:392:                  value={selectedPOS} 
+src/components/POSPage.tsx:396:                  {(posPoints || []).map(p => <option key={p.id} value={p.id} className="text-zinc-800">{p.name}</option>)}
+src/components/DeclaracaoAnualForm.tsx:21:        <input type="number" className="w-full text-right" value={data[key]?.n2026 || 0} onChange={(e) => handleInputChange(key, 'n2026', e.target.value)} />
+src/components/DeclaracaoAnualForm.tsx:24:        <input type="number" className="w-full text-right" value={data[key]?.n2025 || 0} onChange={(e) => handleInputChange(key, 'n2025', e.target.value)} />
+src/components/TopHeader.tsx:72:              value={searchTerm}
+src/components/TopHeader.tsx:94:              value={fiscalYear} 
+src/components/MetricsModule.tsx:179:                    value={sigla} 
+src/components/MetricsModule.tsx:190:                    value={descricao} 
+src/components/MetricsModule.tsx:199:                    value={observacoes} 
+src/components/CaixaModule.tsx:415:                value={selectedCaixaId || ''}
+src/components/CaixaModule.tsx:419:                {(caixas || []).map(c => <option key={c.id} value={c.id} className="text-zinc-800">{c.name}</option>)}
+src/components/CaixaModule.tsx:492:                    value={transferData.from}
+src/components/CaixaModule.tsx:496:                    {(caixas || []).map(c => <option key={c.id} value={c.id}>{c.name} (Saldo: {c.currentBalance.toLocaleString()})</option>)}
+src/components/CaixaModule.tsx:504:                    value={transferData.to}
+src/components/CaixaModule.tsx:508:                    {(caixas || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+src/components/CaixaModule.tsx:521:                    value={transferData.amount || ''}
+src/components/CaixaModule.tsx:533:                  value={transferData.description}
+src/components/CaixaModule.tsx:557:                  value={paymentData.caixaId}
+src/components/CaixaModule.tsx:561:                  {(caixas || []).map(c => <option key={c.id} value={c.id}>{c.name} (Saldo: {c.currentBalance.toLocaleString()})</option>)}
+src/components/CaixaModule.tsx:573:                    value={paymentData.amount || ''}
+src/components/CaixaModule.tsx:586:                  value={paymentData.description}
+src/components/CaixaModule.tsx:610:                  value={reconData.caixaId}
+src/components/CaixaModule.tsx:614:                  {(caixas || []).map(c => <option key={c.id} value={c.id}>{c.name} (Saldo Sistema: {c.currentBalance.toLocaleString()})</option>)}
+src/components/CaixaModule.tsx:626:                    value={reconData.actualBalance || ''}
+src/components/CaixaModule.tsx:638:                  value={reconData.description}
+src/components/CaixaModule.tsx:663:                  value={paymentData.caixaId}
+src/components/CaixaModule.tsx:667:                  {(caixas || []).map(c => <option key={c.id} value={c.id}>{c.name} (Saldo: {c.currentBalance.toLocaleString()})</option>)}
+src/components/CaixaModule.tsx:679:                    value={paymentData.amount || ''}
+src/components/CaixaModule.tsx:692:                  value={paymentData.description}
+src/components/CaixaModule.tsx:718:                      value={editCaixa.name}
+src/components/CaixaModule.tsx:727:                      value={editCaixa.account || ''}
+src/components/CaixaModule.tsx:739:                      value={editCaixa.responsible || ''}
+src/components/CaixaModule.tsx:748:                    value={editCaixa.obs || ''}
+src/components/CaixaModule.tsx:783:                    value={newCaixa.name}
+src/components/CaixaModule.tsx:793:                    value={newCaixa.account}
+src/components/CaixaModule.tsx:806:                      value={newCaixa.initialBalance || ''}
+src/components/CaixaModule.tsx:819:                      value={newCaixa.responsible}
+src/components/CaixaModule.tsx:828:                      value={newCaixa.user}
+src/components/CaixaModule.tsx:843:                    value={newCaixa.obs}
+src/components/PrintA4.tsx:195:              <QRCodeCanvas value={qrValue} size={90} level="H" />
+src/components/AgrobusinessModule.tsx:104:            value={searchTerm}
+src/components/AgrobusinessModule.tsx:489:                      <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Variedade / Cultura</label><input required value={formCultura.nome} onChange={e=>setFormCultura({...formCultura, nome: e.target.value})} className="w-full bg-zinc-50 border border-zinc-300 p-2 text-sm focus:border-emerald-600 outline-none" /></div>
+src/components/AgrobusinessModule.tsx:490:                      <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Fazenda/Lote</label><input required value={formCultura.fazenda} onChange={e=>setFormCultura({...formCultura, fazenda: e.target.value})} className="w-full bg-zinc-50 border border-zinc-300 p-2 text-sm focus:border-emerald-600 outline-none" /></div>
+src/components/AgrobusinessModule.tsx:491:                      <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Hectares (ha)</label><input required type="number" value={formCultura.area} onChange={e=>setFormCultura({...formCultura, area: e.target.value})} className="w-full bg-zinc-50 border border-zinc-300 p-2 text-sm focus:border-emerald-600 outline-none" /></div>
+src/components/AgrobusinessModule.tsx:492:                      <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Est. Rendimento (Ton)</label><input type="number" value={formCultura.estRendimento} onChange={e=>setFormCultura({...formCultura, estRendimento: e.target.value})} className="w-full bg-zinc-50 border border-zinc-300 p-2 text-sm focus:border-emerald-600 outline-none" /></div>
+src/components/AgrobusinessModule.tsx:493:                      <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Data Plantação</label><input required type="date" value={formCultura.plantio} onChange={e=>setFormCultura({...formCultura, plantio: e.target.value})} className="w-full bg-zinc-50 border border-zinc-300 p-2 text-sm focus:border-emerald-600 outline-none" /></div>
+src/components/AgrobusinessModule.tsx:494:                      <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Previsão Colheita</label><input required type="date" value={formCultura.colheitaPrev} onChange={e=>setFormCultura({...formCultura, colheitaPrev: e.target.value})} className="w-full bg-zinc-50 border border-zinc-300 p-2 text-sm focus:border-emerald-600 outline-none" /></div>
+src/components/AgrobusinessModule.tsx:503:                      <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Tipo/Raça</label><input required value={formAnimal.tipo} onChange={e=>setFormAnimal({...formAnimal, tipo: e.target.value})} className="w-full bg-zinc-50 border border-zinc-300 p-2 text-sm focus:border-amber-600 outline-none" /></div>
+src/components/AgrobusinessModule.tsx:504:                      <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Quantidade (Cabeças)</label><input required type="number" value={formAnimal.quantidade} onChange={e=>setFormAnimal({...formAnimal, quantidade: e.target.value})} className="w-full bg-zinc-50 border border-zinc-300 p-2 text-sm focus:border-amber-600 outline-none" /></div>
+src/components/AgrobusinessModule.tsx:507:                        <select required value={formAnimal.proposito} onChange={e=>setFormAnimal({...formAnimal, proposito: e.target.value})} className="w-full bg-zinc-50 border border-zinc-300 p-2 text-sm focus:border-amber-600 outline-none">
+src/components/AgrobusinessModule.tsx:511:                      <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Fazenda / Local</label><input required value={formAnimal.local} onChange={e=>setFormAnimal({...formAnimal, local: e.target.value})} className="w-full bg-zinc-50 border border-zinc-300 p-2 text-sm focus:border-amber-600 outline-none" /></div>
+src/components/AgrobusinessModule.tsx:512:                      <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Última Vacinação</label><input type="date" value={formAnimal.vacinacao} onChange={e=>setFormAnimal({...formAnimal, vacinacao: e.target.value})} className="w-full bg-zinc-50 border border-zinc-300 p-2 text-sm focus:border-amber-600 outline-none" /></div>
+src/components/AgrobusinessModule.tsx:515:                        <select value={formAnimal.status} onChange={e=>setFormAnimal({...formAnimal, status: e.target.value})} className="w-full bg-zinc-50 border border-zinc-300 p-2 text-sm focus:border-amber-600 outline-none">
+src/components/AgrobusinessModule.tsx:527:                      <div className="col-span-2"><label className="text-[10px] font-bold text-zinc-500 uppercase">Nome do Insumo</label><input required value={formInsumo.nome} onChange={e=>setFormInsumo({...formInsumo, nome: e.target.value})} className="w-full bg-zinc-50 border border-zinc-300 p-2 text-sm focus:border-blue-600 outline-none" /></div>
+src/components/AgrobusinessModule.tsx:530:                        <select required value={formInsumo.categoria} onChange={e=>setFormInsumo({...formInsumo, categoria: e.target.value})} className="w-full bg-zinc-50 border border-zinc-300 p-2 text-sm focus:border-blue-600 outline-none">
+src/components/AgrobusinessModule.tsx:534:                      <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Localização (Armazém)</label><input required value={formInsumo.local} onChange={e=>setFormInsumo({...formInsumo, local: e.target.value})} className="w-full bg-zinc-50 border border-zinc-300 p-2 text-sm focus:border-blue-600 outline-none" /></div>
+src/components/AgrobusinessModule.tsx:536:                        <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Qtd Atual</label><input required type="number" value={formInsumo.qtd} onChange={e=>setFormInsumo({...formInsumo, qtd: e.target.value})} className="w-full bg-zinc-50 border border-zinc-300 p-2 text-sm focus:border-blue-600 outline-none" /></div>
+src/components/AgrobusinessModule.tsx:537:                        <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Unidade</label><input required value={formInsumo.unid} onChange={e=>setFormInsumo({...formInsumo, unid: e.target.value})} placeholder="kg, L, cx" className="w-full bg-zinc-50 border border-zinc-300 p-2 text-sm focus:border-blue-600 outline-none" /></div>
+src/components/AgrobusinessModule.tsx:539:                      <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Stock Mínimo (Alerta)</label><input required type="number" value={formInsumo.min} onChange={e=>setFormInsumo({...formInsumo, min: e.target.value})} className="w-full bg-zinc-50 border border-zinc-300 p-2 text-sm focus:border-blue-600 outline-none" /></div>
+src/components/AgrobusinessModule.tsx:548:                      <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Produto / Cultura Ofertada</label><input required value={formVenda.produto} onChange={e=>setFormVenda({...formVenda, produto: e.target.value})} className="w-full bg-zinc-50 border border-zinc-300 p-2 text-sm focus:border-[#003366] outline-none" /></div>
+src/components/AgrobusinessModule.tsx:549:                      <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Comprador / Empresa</label><input required value={formVenda.cliente} onChange={e=>setFormVenda({...formVenda, cliente: e.target.value})} className="w-full bg-zinc-50 border border-zinc-300 p-2 text-sm focus:border-[#003366] outline-none" /></div>
+src/components/AgrobusinessModule.tsx:552:                        <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Qtd Vendida</label><input required type="number" value={formVenda.qtd} onChange={e=>setFormVenda({...formVenda, qtd: e.target.value})} className="w-full bg-zinc-50 border border-zinc-300 p-2 text-sm focus:border-[#003366] outline-none" /></div>
+src/components/AgrobusinessModule.tsx:553:                        <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Unidade</label><input required value={formVenda.unid} onChange={e=>setFormVenda({...formVenda, unid: e.target.value})} placeholder="Ton, Saco" className="w-full bg-zinc-50 border border-zinc-300 p-2 text-sm focus:border-[#003366] outline-none" /></div>
+src/components/AgrobusinessModule.tsx:556:                      <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Valor Total (AOA)</label><input required type="number" value={formVenda.valor} onChange={e=>setFormVenda({...formVenda, valor: e.target.value})} className="w-full bg-zinc-50 border border-zinc-300 p-2 text-sm focus:border-[#003366] outline-none" /></div>
+src/components/AgrobusinessModule.tsx:557:                      <div><label className="text-[10px] font-bold text-zinc-500 uppercase">Data da Venda</label><input required type="date" value={formVenda.data} onChange={e=>setFormVenda({...formVenda, data: e.target.value})} className="w-full bg-zinc-50 border border-zinc-300 p-2 text-sm focus:border-[#003366] outline-none" /></div>
+src/components/AgrobusinessModule.tsx:560:                        <select required value={formVenda.status} onChange={e=>setFormVenda({...formVenda, status: e.target.value})} className="w-full bg-zinc-50 border border-zinc-300 p-2 text-sm focus:border-[#003366] outline-none">
+src/components/SecurityModule.tsx:230:              value={formData.title}
+src/components/SecurityModule.tsx:240:                value={formData.site_id}
+src/components/SecurityModule.tsx:244:                {workSites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+src/components/SecurityModule.tsx:252:                value={formData.guard_id}
+src/components/SecurityModule.tsx:256:                {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+src/components/SecurityModule.tsx:266:              value={formData.description}
+src/components/SecurityModule.tsx:441:                {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+src/components/RegimeSimplificadoForm.tsx:25:              <select value={mes} onChange={e => setMes(e.target.value)} className="bg-transparent text-xs font-bold focus:outline-none">
+src/components/ClientForm.tsx:240:                value={formData.contribuinte} 
+src/components/ClientForm.tsx:270:              value={formData.name} 
+src/components/ClientForm.tsx:283:              value={formData.email} 
+src/components/ClientForm.tsx:295:              value={formData.telefone} 
+src/components/ClientForm.tsx:306:              value={formData.pais} 
+src/components/ClientForm.tsx:335:              value={formData.provincia} 
+src/components/ClientForm.tsx:347:              value={formData.municipio} 
+src/components/ClientForm.tsx:359:              value={formData.localidade} 
+src/components/ClientForm.tsx:371:              value={formData.morada} 
+src/components/ClientForm.tsx:383:              value={formData.codigo_postal} 
+src/components/ClientForm.tsx:395:              value={formData.webpage} 
+src/components/ClientForm.tsx:406:              value={formData.tipo_cliente} 
+src/components/LiteracyModule.tsx:109:            value={searchQuery}
+src/components/FleetManagementModule.tsx:272:                <StatCard title="Frota Total" value={metrics.total} sub="Veículos Registados" icon={Truck} color="bg-blue-600" />
+src/components/FleetManagementModule.tsx:273:                <StatCard title="Em Manutenção" value={metrics.maintenance} sub="Aguardando Intervenção" icon={Wrench} color="bg-orange-500" />
+src/components/FleetManagementModule.tsx:274:                <StatCard title="Gastos Manutenção" value={`${metrics.totalCostMaint.toLocaleString()} Kz`} sub="Mês de Abril" icon={ClipboardList} color="bg-red-500" />
+src/components/FleetManagementModule.tsx:275:                <StatCard title="Gastos Combustível" value={`${metrics.totalCostFuel.toLocaleString()} Kz`} sub="Últimos 30 dias" icon={Fuel} color="bg-emerald-500" />
+src/components/FleetManagementModule.tsx:345:                        value={searchTerm}
+src/contexts/AuthContext.tsx:123:    <AuthContext.Provider value={{ user, loading, login, register, logout, forgotPassword, updatePassword, error }}>

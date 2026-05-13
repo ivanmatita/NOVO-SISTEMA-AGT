@@ -27,7 +27,13 @@ export const supabase =
       auth: {
         persistSession: true,
         autoRefreshToken: true,
-        detectSessionInUrl: true
+        detectSessionInUrl: true,
+        flowType: 'pkce'
+      },
+      global: {
+        headers: {
+          'x-client-info': 'erp-imatec-v3'
+        }
       }
     }
   );

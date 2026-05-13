@@ -818,8 +818,8 @@ const Dashboard = ({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div className="bg-white border border-zinc-200 p-6 rounded-none shadow-sm">
           <h3 className="font-bold text-[#003366] mb-6">Faturação por Período</h3>
-          <div className="h-64 min-h-[300px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-[400px] w-full">
+            <ResponsiveContainer width="100%" height="100%" minHeight={400}>
               <LineChart data={salesData}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="date" />
@@ -833,8 +833,8 @@ const Dashboard = ({
 
         <div className="bg-white border border-zinc-200 p-6 rounded-none shadow-sm">
           <h3 className="font-bold text-[#003366] mb-6">Faturação vs Despesas</h3>
-          <div className="h-64 min-h-[300px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-[400px] w-full">
+            <ResponsiveContainer width="100%" height="100%" minHeight={400}>
               <BarChart data={profitVsExpenses}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="name" />
@@ -850,8 +850,8 @@ const Dashboard = ({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="bg-white border border-zinc-200 p-6 rounded-none shadow-sm lg:col-span-1">
           <h3 className="font-bold text-[#003366] mb-6">Tipos de Documentos</h3>
-          <div className="h-64 min-h-[300px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-[400px] w-full">
+            <ResponsiveContainer width="100%" height="100%" minHeight={400}>
               <PieChart>
                 <Pie data={docTypeData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
                   {docTypeData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
@@ -5781,14 +5781,18 @@ const FinancialModule = ({
   caixaMovements, 
   setCaixaMovements, 
   employees,
-  user
+  user,
+  refreshCaixas,
+  refreshMovements
 }: { 
   caixas: Caixa[], 
   setCaixas: React.Dispatch<React.SetStateAction<Caixa[]>>,
   caixaMovements: CaixaMovement[],
   setCaixaMovements: React.Dispatch<React.SetStateAction<CaixaMovement[]>>,
   employees: Employee[],
-  user: any
+  user: any,
+  refreshCaixas?: () => Promise<void>,
+  refreshMovements?: () => Promise<void>
 }) => {
   const [activeSubTab, setActiveSubTab] = useState('menu');
   const [issuedDocuments, setIssuedDocuments] = useState<IssuedDocument[]>([]);
@@ -5899,6 +5903,8 @@ const FinancialModule = ({
           setCaixas={setCaixas} 
           movements={caixaMovements} 
           setMovements={setCaixaMovements} 
+          refreshCaixas={refreshCaixas}
+          refreshMovements={refreshMovements}
         />
       )}
 
@@ -8226,11 +8232,11 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
     try {
       let anexoData = null;
       if (selectedFile) {
-        anexoData = await uploadFile(selectedFile, user.id);
+        anexoData = await uploadFile(selectedFile, user.company_id);
       }
 
       const payload = {
-        company_id: user.id,
+        company_id: user.company_id,
         titulo: formData.titulo,
         descricao: formData.descricao,
         categoria: activeSection,
@@ -8276,7 +8282,7 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
       if (path) {
         await supabase.storage.from('documentos').remove([path]);
       }
-      const { error } = await supabase.from('secretaria_digital').delete().eq('id', id).eq('company_id', user.id);
+      const { error } = await supabase.from('secretaria_digital').delete().eq('id', id).eq('company_id', user.company_id);
       if (error) throw error;
       loadData();
     } catch (error: any) {
@@ -8606,14 +8612,41 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
     }
   }, [initialData]);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, field: string) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: string) => {
     const file = e.target.files?.[0];
     if (file) {
+      // Preview local primeiro
       const reader = new FileReader();
       reader.onloadend = () => {
         setFormData(prev => ({ ...prev, [field]: reader.result as string }));
       };
       reader.readAsDataURL(file);
+
+      // Upload para o Supabase
+      try {
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (!authUser) return;
+
+        const fileName = `${authUser.id}-${field}-${Date.now()}`;
+        const { error } = await supabase.storage
+          .from('logos')
+          .upload(fileName, file);
+
+        if (error) {
+          console.error(error);
+          return;
+        }
+
+        const { data: urlData } = supabase.storage
+          .from('logos')
+          .getPublicUrl(fileName);
+
+        if (urlData) {
+          setFormData(prev => ({ ...prev, [field]: urlData.publicUrl }));
+        }
+      } catch (err) {
+        console.error('Erro ao fazer upload:', err);
+      }
     }
   };
 
@@ -8626,22 +8659,44 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
     e.preventDefault();
     setLoading(true);
     try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) throw new Error("Não autenticado");
+
       const payload = {
-        ...formData,
-        name: formData.nome_empresa 
+        id: authUser.id,
+        nome_empresa: formData.nome_empresa,
+        nif: formData.nif,
+        matricula: formData.matricula,
+        alvara: formData.alvara,
+        localizacao: formData.localizacao,
+        provincia: formData.provincia,
+        codigo_postal: formData.codigo_postal,
+        inss: formData.inss,
+        contacto: formData.contacto,
+        responsavel: formData.responsavel,
+        email: formData.email,
+        regime: formData.regime,
+        tipo_empresa: formData.tipo_empresa,
+        coordenadas_bancarias: formData.coordenadas_bancarias,
+        logo_url: formData.logo_url,
+        logo_size: formData.logo_size,
+        watermark_url: formData.watermark_url,
+        watermark_size: formData.watermark_size,
+        footer_image_url: formData.footer_image_url,
+        footer_size: formData.footer_size,
+        updated_at: new Date().toISOString()
       };
-      const res = await fetchWithAuth(`/api/company/${user?.company_id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (res.ok) {
+
+      const { error } = await supabase
+        .from('empresas')
+        .upsert(payload, { onConflict: 'id' });
+
+      if (!error) {
         alert('Dados da empresa atualizados com sucesso!');
         onSave();
         onClose();
       } else {
-        const error = await res.text();
-        alert('Erro ao atualizar: ' + error);
+        alert('Erro ao atualizar: ' + error.message);
       }
     } catch (error) {
       console.error('Error saving company:', error);
@@ -8835,14 +8890,58 @@ const VisualIdentityModule = ({ companyData, onRefreshData }: { companyData: any
     footer_size: companyData?.footer_size || 100
   });
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, field: string) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: string) => {
     const file = e.target.files?.[0];
     if (file) {
+      // Preview local imediato
       const reader = new FileReader();
       reader.onloadend = () => {
         setFormData(prev => ({ ...prev, [field]: reader.result as string }));
       };
       reader.readAsDataURL(file);
+
+      try {
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (!authUser || !user) return;
+
+        const companyId = user.company_id;
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${companyId}-${field}-${Date.now()}.${fileExt}`;
+        
+        console.log(`Fazendo upload de ${field} para bucket 'logos'...`);
+        
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('logos')
+          .upload(fileName, file, {
+            cacheControl: '3600',
+            upsert: false
+          });
+
+        if (uploadError) {
+          console.error('Erro no upload de imagem:', uploadError);
+          // Se o erro for bucket not found, informamos mas não paramos o fluxo local
+          if (uploadError.message.includes('Bucket not found')) {
+            alert('Aviso: Bucket "logos" não encontrado no Supabase Storage. Crie o bucket para persistir a imagem.');
+          } else {
+            alert('Erro ao carregar imagem para o servidor: ' + uploadError.message);
+          }
+          return;
+        }
+
+        const { data: urlData } = supabase.storage
+          .from('logos')
+          .getPublicUrl(fileName);
+
+        if (urlData?.publicUrl) {
+          console.log('Upload concluído. URL pública:', urlData.publicUrl);
+          setFormData(prev => ({ ...prev, [field]: urlData.publicUrl }));
+          
+          // Atualização imediata na tabela empresas para persistência garantida
+          await supabase.from('empresas').update({ [field]: urlData.publicUrl }).eq('id', companyId);
+        }
+      } catch (err) {
+        console.error('Erro crítico no upload:', err);
+      }
     }
   };
 
@@ -8855,17 +8954,31 @@ const VisualIdentityModule = ({ companyData, onRefreshData }: { companyData: any
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetchWithAuth(`/api/company/${user?.company_id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
-      });
-      if (res.ok) {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) throw new Error("Não autenticado");
+
+      // Merge with the existing companyData to not overwrite other fields
+      const payload = {
+        id: authUser.id,
+        logo_url: formData.logo_url,
+        logo_size: formData.logo_size,
+        watermark_url: formData.watermark_url,
+        watermark_size: formData.watermark_size,
+        footer_image_url: formData.footer_image_url,
+        footer_size: formData.footer_size,
+        updated_at: new Date().toISOString()
+      };
+
+      const { error } = await supabase
+        .from('empresas')
+        .update(payload)
+        .eq('id', authUser.id);
+        
+      if (!error) {
         alert('Identidade visual atualizada com sucesso!');
         onRefreshData();
       } else {
-        const error = await res.text();
-        alert('Erro ao atualizar: ' + error);
+        alert('Erro ao atualizar: ' + error.message);
       }
     } catch (error) {
       console.error('Error saving visual identity:', error);
@@ -9496,6 +9609,7 @@ const CashierModule = ({ issuedDocuments = [] }: { issuedDocuments?: IssuedDocum
 };
 
 const TaxSeriesModule = () => {
+  const { user } = useAuth();
   const [taxes, setTaxes] = useState<any[]>([]);
   const [showImportModal, setShowImportModal] = useState(false);
 
@@ -9504,9 +9618,8 @@ const TaxSeriesModule = () => {
   }, []);
 
   const loadTaxes = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    const { data } = await supabase.from('tabela_impostos').select('*').eq('company_id', user.id);
+    const { data } = await supabase.from('tabela_impostos').select('*').eq('company_id', user.company_id);
     if (data) setTaxes(data.map(d => ({
       id: d.id,
       date: new Date(d.created_at).toLocaleDateString(),
@@ -9519,9 +9632,8 @@ const TaxSeriesModule = () => {
   };
 
   const removeTax = async (id: number) => {
-    const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    await supabase.from('tabela_impostos').delete().eq('id', id).eq('company_id', user.id);
+    await supabase.from('tabela_impostos').delete().eq('id', id).eq('company_id', user.company_id);
     loadTaxes();
   };
 
@@ -9578,11 +9690,11 @@ const TaxSeriesModule = () => {
                     const rateMatch = taxName.match(/(\d+)%/);
                     const rateNum = rateMatch ? parseFloat(rateMatch[1]) : (isIsento ? 0 : 14);
                     
-                    const { data: { user } } = await supabase.auth.getUser();
-                    if (!user) return;
+                    const { data: { user: authUser } } = await supabase.auth.getUser();
+                    if (!authUser || !user) return;
                     
                     const { error } = await supabase.from('tabela_impostos').insert([{
-                      company_id: user.id,
+                      company_id: user.company_id,
                       nome: taxName,
                       taxa: rateNum,
                       codigo_imposto: isIsento ? 'ISE' : 'NOR',
@@ -11092,6 +11204,7 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
   employees: Employee[],
   issuedDocuments: IssuedDocument[]
 }) => {
+  const { user } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState<string | null>(null);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -11100,8 +11213,45 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
 
   useEffect(() => {
-    fetch('/api/purchases').then(r => r.json()).then(setPurchases);
-    fetch('/api/suppliers').then(r => r.json()).then(setSuppliers);
+    const loadAccountingData = async () => {
+      try {
+        if (!user?.company_id) return;
+
+        // Load Purchases
+        const { data: purData } = await supabase
+          .from('compras')
+          .select('*')
+          .eq('company_id', user.company_id)
+          .order('created_at', { ascending: false });
+        
+        if (purData) {
+          setPurchases(purData.map((p: any) => ({
+            ...p,
+            purchase_number: p.numero_compra || p.purchase_number,
+            total: Number(p.total || 0),
+            date: p.data || p.date
+          })));
+        }
+
+        // Load Suppliers
+        const { data: supData } = await supabase
+          .from('fornecedores')
+          .select('*')
+          .eq('company_id', user.company_id)
+          .order('nome', { ascending: true });
+        
+        if (supData) {
+          setSuppliers(supData.map((s: any) => ({
+            ...s,
+            name: s.nome || s.name
+          })));
+        }
+      } catch (err) {
+        console.error('Error loading accounting data:', err);
+      }
+    };
+
+    loadAccountingData();
   }, []);
 
   const totalSales = (invoices || []).reduce((sum, inv) => sum + inv.total, 0);
@@ -14261,22 +14411,7 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
           const companyId = authUser.id;
           const syncData = {
             nome: clientData.name,
-            email: clientData.email,
-            telefone: clientData.telefone,
-            endereco: clientData.morada,
-            contribuinte: clientData.contribuinte,
-            nif: clientData.contribuinte,
-            address: clientData.morada,
-            localidade: clientData.localidade,
-            codigo_postal: clientData.codigo_postal,
-            provincia: clientData.provincia,
-            municipio: clientData.municipio,
-            pais: clientData.pais,
-            webpage: clientData.webpage,
-            tipo_cliente: clientData.tipo_cliente as any,
-            saldo_inicial: Number(clientData.saldo_inicial),
-            initial_balance: Number(clientData.saldo_inicial),
-            estado_nif: clientData.estado_nif,
+            company_id: companyId,
             updated_at: new Date().toISOString()
           };
 
@@ -14287,9 +14422,9 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
             }
           } else {
             const newId = Date.now().toString();
-            const insertData = { ...syncData, id: newId, company_id: companyId, tipo_entidade: 'Cliente', created_at: new Date().toISOString() };
+            const insertData = { ...syncData, id: newId, company_id: user?.company_id, tipo_entidade: 'Cliente', created_at: new Date().toISOString() };
             let { error: insertError } = await supabase.from('clientes').insert([insertData]);
-            if (insertError?.code === 'PGRST125') {
+            if (insertError) {
               await supabase.from('clients').insert([insertData]);
             }
           }
@@ -14850,14 +14985,27 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
 
     let finalSupplierId = supplierId;
     if (!finalSupplierId && supplierName) {
-      const res = await fetchWithAuth('/api/suppliers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: supplierName, nif, email: '', address: '' })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        finalSupplierId = data.id;
+      try {
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (!authUser) return;
+
+        const { data: newSup, error: supErr } = await supabase
+          .from('fornecedores')
+          .insert({
+            company_id: authUser.id,
+            nome: supplierName,
+            nif: nif,
+            email: '',
+            morada: ''
+          })
+          .select()
+          .single();
+        
+        if (supErr) throw supErr;
+        finalSupplierId = newSup.id;
+      } catch (err) {
+        console.error('Error creating supplier:', err);
+        return;
       }
     }
 
@@ -14866,43 +15014,57 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
       return;
     }
 
-    const endpoint = initialData?.id ? `/api/purchases/${initialData.id}` : '/api/purchases';
-    const method = initialData?.id ? 'PUT' : 'POST';
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) return;
 
-    const res = await fetchWithAuth(endpoint, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        supplier_id: finalSupplierId, 
-        date, 
-        due_date: dueDate,
-        items,
+      // Objeto limpo apenas com campos que existem na tabela 'compras'
+      const purchaseDataFields: any = {
+        company_id: authUser.id,
+        supplier_id: finalSupplierId,
+        data: date,
+        data_vencimento: dueDate || null,
         document_type: documentType,
-        work_site_id: workSiteId ? String(workSiteId) : undefined,
-        work_site: workSites.find(ws => String(ws.id) === String(workSiteId))?.title || workSites.find(ws => String(ws.id) === String(workSiteId))?.name,
-        company_id: user?.company_id,
-        vat_withholding: parseFloat(vatWithholding),
-        exchange_rate: parseFloat(exchangeRate),
-        currency,
-        counter_value: parseFloat(counterValue),
-        global_discount: parseFloat(globalDiscount),
-        service_date: serviceDate,
-        cash_box: cashBox,
-        payment_method: paymentMethod,
-        series_id: seriesId,
+        numero_compra: documentNumber,
         invoice_number: invoiceNumber,
-        reference_purchase_number: initialData?.purchase_number,
-        hash
-      })
-    });
+        work_site_id: workSiteId || null,
+        supplier_name: supplierName,
+        country_code: countryCode,
+        vat_withholding: Number(vatWithholding || 0),
+        exchange_rate: Number(exchangeRate || 1),
+        currency: currency,
+        counter_value: Number(counterValue || 0),
+        global_discount: Number(globalDiscount || 0),
+        service_date: serviceDate || date,
+        caixa_id: cashBox || null,
+        payment_method: paymentMethod,
+        items: items,
+        total: finalTotal,
+        hash: hash,
+        status: 'completed'
+      };
 
-    if (res.ok) {
-      const savedData = await res.json();
-      onSuccess(savedData);
-    } else {
-      const errorData = await res.json().catch(() => ({ error: 'Erro desconhecido ao emitir documento' }));
-      console.error('Erro ao emitir documento:', errorData);
-      alert('Erro ao emitir documento: ' + (errorData.error || 'Erro desconhecido'));
+      let result;
+      if (initialData?.id) {
+        result = await supabase
+          .from('compras')
+          .update(purchaseDataFields)
+          .eq('id', initialData.id)
+          .select()
+          .single();
+      } else {
+        result = await supabase
+          .from('compras')
+          .insert([purchaseDataFields])
+          .select()
+          .single();
+      }
+
+      if (result.error) throw result.error;
+      onSuccess(result.data);
+    } catch (err: any) {
+      console.error('Erro ao emitir documento:', err);
+      alert('Erro ao emitir documento: ' + (err.message || 'Erro desconhecido'));
     }
   };
 
@@ -15764,6 +15926,7 @@ const PurchaseActionsModal = ({ purchase, onClose, onAction }: {
 };
 
 const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas, companyData }: { suppliers: Supplier[], products: Product[], workSites: WorkSite[], fiscalSeries: FiscalSeries[], caixas: Caixa[], companyData?: any }) => {
+  const { user } = useAuth();
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [createData, setCreateData] = useState<Purchase | null>(null);
@@ -15778,8 +15941,20 @@ const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas,
   const [completedReceipt, setCompletedReceipt] = useState<Purchase | null>(null);
 
   const fetchPurchases = async () => {
-    const data = await fetchJson('/api/purchases');
-    setPurchases(data);
+    try {
+      if (!user?.company_id) return;
+
+      const { data, error } = await supabase
+        .from('compras')
+        .select('*')
+        .eq('company_id', user.company_id)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      setPurchases(data || []);
+    } catch (err) {
+      console.error('Error fetching purchases:', err);
+    }
   };
 
   useEffect(() => {
@@ -16915,6 +17090,7 @@ const SupplierAccount = ({ supplier, purchases, onBack }: {
 };
 
 const SupplierModule = ({ products, workSites, fiscalSeries, caixas, companyData }: { products: Product[], workSites: WorkSite[], fiscalSeries: FiscalSeries[], caixas: Caixa[], companyData?: any }) => {
+  const { user } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState<string | null>(null);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
@@ -16936,9 +17112,52 @@ const SupplierModule = ({ products, workSites, fiscalSeries, caixas, companyData
   const [tipoCliente, setTipoCliente] = useState('normal');
 
   useEffect(() => {
-    fetch('/api/suppliers').then(r => r.json()).then(setSuppliers);
-    fetch('/api/purchases').then(r => r.json()).then(setPurchases);
+    const loadData = async () => {
+      try {
+        if (!user?.company_id) return;
+
+        const { data: supData } = await supabase
+          .from('fornecedores')
+          .select('*')
+          .eq('company_id', user.company_id);
+        
+        if (supData) setSuppliers(supData.map((s: any) => ({ ...s, name: s.nome || s.name })));
+
+        const { data: purData } = await supabase
+          .from('compras')
+          .select('*')
+          .eq('company_id', user.company_id);
+        
+        if (purData) setPurchases(purData);
+      } catch (err) {
+        console.error('Error loading supplier data:', err);
+      }
+    };
+    loadData();
   }, []);
+
+  useEffect(() => {
+    if (selectedSupplier) {
+      setName(selectedSupplier.name || '');
+      setNif(selectedSupplier.nif || '');
+      setEmail(selectedSupplier.email || '');
+      setPhone(selectedSupplier.phone || '');
+      setAddress(selectedSupplier.address || '');
+      setLocalidade(selectedSupplier.localidade || '');
+      setCodigoPostal(selectedSupplier.codigo_postal || '');
+      setProvincia(selectedSupplier.provincia || '');
+      setMunicipio(selectedSupplier.municipio || '');
+      setPais(selectedSupplier.pais || 'Angola');
+      setWebpage(selectedSupplier.webpage || '');
+      setSiglasBanco(selectedSupplier.siglas_banco || '');
+      setIban(selectedSupplier.iban || '');
+      setTipoCliente(selectedSupplier.tipo_cliente || 'normal');
+    } else {
+      setName(''); setNif(''); setEmail(''); setPhone(''); setAddress('');
+      setLocalidade(''); setCodigoPostal(''); setProvincia(''); setMunicipio('');
+      setPais('Angola'); setWebpage(''); setSiglasBanco(''); setIban(''); setTipoCliente('normal');
+    }
+  }, [selectedSupplier]);
 
   const handleSearchNif = () => {
     if (nif) {
@@ -16954,21 +17173,85 @@ const SupplierModule = ({ products, workSites, fiscalSeries, caixas, companyData
       return;
     }
 
-    const res = await fetchWithAuth('/api/suppliers', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        name, nif, email, phone, address, 
-        localidade, codigo_postal: codigoPostal, provincia, municipio, 
-        pais, webpage, siglas_banco: siglasBanco, iban, tipo_cliente: tipoCliente 
-      })
-    });
-    if (res.ok) {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const supplierData: any = {
+        company_id: user.id,
+        nome: name,
+        nif: nif,
+        email: email,
+        telefone: phone,
+        morada: address,
+        localidade: localidade,
+        codigo_postal: codigoPostal,
+        provincia: provincia,
+        municipio: municipio,
+        pais: pais,
+        webpage: webpage,
+        sigla_banco: siglasBanco,
+        iban: iban,
+        tipo_fornecedor: tipoCliente
+      };
+
+      let result;
+      if (selectedSupplier) {
+        result = await supabase
+          .from('fornecedores')
+          .update(supplierData)
+          .eq('id', selectedSupplier.id)
+          .eq('company_id', user.company_id);
+      } else {
+        result = await supabase
+          .from('fornecedores')
+          .insert([supplierData]);
+      }
+
+      if (result.error) throw result.error;
+
       setName(''); setNif(''); setEmail(''); setPhone(''); setAddress('');
       setLocalidade(''); setCodigoPostal(''); setProvincia(''); setMunicipio('');
       setPais('Angola'); setWebpage(''); setSiglasBanco(''); setIban(''); setTipoCliente('normal');
       setShowForm(false);
-      fetch('/api/suppliers').then(r => r.json()).then(setSuppliers);
+      setSelectedSupplier(null);
+      
+      const { data: supData } = await supabase
+        .from('fornecedores')
+        .select('*')
+        .eq('company_id', user.company_id)
+        .order('created_at', { ascending: false });
+
+      if (supData) {
+        setSuppliers(supData.map((s: any) => ({ 
+          ...s, 
+          name: s.nome || s.name,
+          siglas_banco: s.sigla_banco,
+          tipo_cliente: s.tipo_fornecedor
+        })));
+      }
+    } catch (err) {
+      console.error('Error saving supplier:', err);
+      alert('Erro ao salvar fornecedor no Supabase.');
+    }
+  };
+
+  const handleDeleteSupplier = async (id: string) => {
+    if (!confirm('Tem a certeza que deseja apagar este fornecedor?')) return;
+    try {
+      if (!user?.company_id) return;
+
+      const { error } = await supabase
+        .from('fornecedores')
+        .delete()
+        .eq('id', id)
+        .eq('company_id', user.company_id);
+
+      if (error) throw error;
+      setSuppliers(suppliers.filter(s => s.id !== id));
+    } catch (err) {
+      console.error('Error deleting supplier:', err);
+      alert('Erro ao apagar fornecedor.');
     }
   };
 
@@ -17075,6 +17358,12 @@ const SupplierModule = ({ products, workSites, fiscalSeries, caixas, companyData
                             setShowForm(true);
                           }} className="text-zinc-400 hover:text-[#003366] p-1.5 hover:bg-zinc-100 transition-all">
                             <Edit size={18} />
+                          </button>
+                          <button 
+                            onClick={() => handleDeleteSupplier(s.id)}
+                            className="text-zinc-400 hover:text-red-600 p-1.5 hover:bg-zinc-100 transition-all"
+                          >
+                            <Trash2 size={18} />
                           </button>
                         </div>
                       </td>
@@ -18575,19 +18864,29 @@ const ConvertDocumentModal = ({ document, onClose, onSuccess }: {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) return;
 
-      const { id, numero_documento, invoice_number, created_at, updated_at, data_emissao, hash, signature, ...docData } = document;
+      const { id, numero_documento, invoice_number, ...baseDocData } = document;
+      // We safely extract properties that might exist in runtime but lack TS definitions
+      const docData: any = { ...baseDocData };
+      delete docData.created_at;
+      delete docData.updated_at;
+      delete docData.data_emissao;
+      delete docData.hash;
+      delete docData.signature;
       
       const convertedDoc = {
-        ...docData,
-        document_type: targetType,
+        company_id: authUser.id,
         tipo_documento: targetType,
-        estado: 'RASCUNHO',
-        status: 'RASCUNHO',
         numero_documento: `CONV-${Date.now()}`,
+        cliente_nome: docData.client_name || docData.nome_cliente || 'Desconhecido',
+        total: Number(docData.total || 0),
         data_emissao: new Date().toISOString()
       };
 
-      await saveDocumentoEmitido(convertedDoc);
+      const { error } = await supabase.from('documentos_emitidos').insert([convertedDoc]);
+      if (error) {
+        throw error;
+      }
+
       alert('Documento convertido com sucesso!');
       onSuccess();
       onClose();
@@ -18738,6 +19037,7 @@ export default function App() {
   const [securityRoster, setSecurityRoster] = useState<any[]>([]);
   const [companyData, setCompanyData] = useState<any>(null);
   const [purchases, setPurchases] = useState<any[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   
   // Task/Alert modal state
   const [alerts, setAlerts] = useState<any[]>(() => {
@@ -18901,9 +19201,8 @@ export default function App() {
 
   async function saveDocumentoEmitido(doc: any) {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        console.error('Usuário não autenticado no saveDocumentoEmitido');
+      if (!user?.company_id) {
+        console.error('Usuário não autenticado ou sem empresa no saveDocumentoEmitido');
         return;
       }
 
@@ -18912,24 +19211,19 @@ export default function App() {
       const { error } = await supabase
         .from('documentos_emitidos')
         .insert({
-          company_id: user.id,
+          company_id: user.company_id,
           tipo_documento: doc.document_type || doc.tipo_documento || 'Fatura',
           numero_documento: doc.invoice_number || doc.numero_documento,
-          cliente_nome: doc.client_name || 'Desconhecido',
-          cliente_email: doc.client_email || null,
+          cliente_nome: doc.client_name || doc.cliente_nome || 'Desconhecido',
           total: Number(doc.total || 0),
-          imposto: Number(doc.vat_amount || 0),
-          estado: doc.status || doc.estado_documento || 'ativo',
-          data_emissao: doc.date || doc.data_emissao || new Date().toISOString(),
-          detalhes: doc
+          data_emissao: doc.date || doc.data_emissao || new Date().toISOString()
         });
 
       if (error) {
         console.error('Erro ao salvar no Supabase (documentos_emitidos):', error);
-        // Não lançamos erro aqui para não quebrar o fluxo principal do usuário, 
-        // mas logamos para depuração.
       } else {
         console.log('Documento persistido com sucesso no Supabase');
+        await fetchData();
       }
     } catch (err) {
       console.error('Erro crítico no saveDocumentoEmitido:', err);
@@ -18938,20 +19232,121 @@ export default function App() {
 
   async function loadDocumentosEmitidos() {
     try {
-      const session = await authService.getSessionSafe();
-      if (!session) return;
-      const user = session.user;
+      if (!user?.company_id) return;
 
+      console.log('Carregando documentos emitidos do Supabase para empresa:', user.company_id);
       const { data, error } = await supabase
         .from('documentos_emitidos')
         .select('*')
-        .eq('company_id', user.id)
-        .order('data_emissao', { ascending: false });
+        .eq('company_id', user.company_id)
+        .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Erro ao carregar documentos emitidos:', error);
+        throw error;
+      }
+      
+      console.log(`Documentos carregados: ${data?.length || 0}`);
       setIssuedDocuments(data || []);
     } catch (err) {
       console.error('Erro ao carregar documentos emitidos do Supabase:', err);
+    }
+  }
+
+  async function loadCaixas() {
+    try {
+      if (!user?.company_id) return;
+
+      const { data, error } = await supabase
+        .from('caixas')
+        .select('*')
+        .eq('company_id', user.company_id);
+
+      if (error) throw error;
+      setCaixas(data?.map(c => ({
+        ...c,
+        id: c.id,
+        name: c.nome_caixa,
+        account: c.account,
+        currentBalance: Number(c.current_balance || 0),
+        initialBalance: Number(c.valor_inicial || 0),
+        responsible: c.responsavel,
+        obs: c.observacao,
+        user: c.utilizador_id,
+        status: c.status || 'aberto'
+      })) || []);
+    } catch (err) {
+      console.error('Erro ao carregar caixas:', err);
+    }
+  }
+
+  async function loadCaixaMovements() {
+    try {
+      if (!user?.company_id) return;
+
+      const { data, error } = await supabase
+        .from('caixa_movimentacoes')
+        .select('*')
+        .eq('company_id', user.company_id)
+        .order('date', { ascending: false });
+
+      if (error) throw error;
+      setCaixaMovements(data?.map(m => ({
+        ...m,
+        id: m.id,
+        caixaId: m.caixa_id,
+        targetCaixaId: m.target_caixa_id,
+        amount: Number(m.amount || 0),
+        date: m.date
+      })) || []);
+    } catch (err) {
+      console.error('Erro ao carregar movimentos de caixa:', err);
+    }
+  }
+
+  async function loadFornecedores() {
+    try {
+      if (!user?.company_id) return;
+
+      const { data, error } = await supabase
+        .from('fornecedores')
+        .select('*')
+        .eq('company_id', user.company_id);
+
+      if (error) throw error;
+      setSuppliers(data?.map(s => ({
+        ...s,
+        id: s.id,
+        name: s.nome || s.name,
+        nif: s.nif,
+        siglas_banco: s.sigla_banco,
+        tipo_cliente: s.tipo_fornecedor
+      })) || []);
+    } catch (err) {
+      console.error('Erro ao carregar fornecedores:', err);
+    }
+  }
+
+  async function loadCompras() {
+    try {
+      if (!user?.company_id) return;
+
+      const { data, error } = await supabase
+        .from('compras')
+        .select('*')
+        .eq('company_id', user.company_id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setPurchases(data?.map(p => ({
+        ...p,
+        id: p.id,
+        purchase_number: p.numero_compra || p.purchase_number,
+        total: Number(p.total || 0),
+        date: p.data || p.date
+      })) || []);
+    } catch (err) {
+      console.error('Erro ao carregar compras:', err);
     }
   }
 
@@ -18971,15 +19366,25 @@ export default function App() {
       await loadClientes();
       await loadLocaisTrabalho();
       await loadDocumentosEmitidos();
+      await loadCaixas();
+      await loadCaixaMovements();
+      await loadFornecedores();
+      await loadCompras();
 
       // Carregar dados da empresa diretamente do Supabase para Blindagem Total
+      console.log('Tentando carregar dados da empresa para:', companyId);
       const { data: compSupabase, error: compErr } = await supabase
         .from('empresas')
         .select('*')
         .eq('id', companyId)
-        .single();
+        .maybeSingle();
+
+      if (compErr) {
+        console.error('Erro 400/406 ao carregar empresa:', compErr);
+      }
 
       if (compSupabase) {
+        console.log('Dados da empresa carregados:', compSupabase);
         setCompanyData(compSupabase);
         setCompanyName(compSupabase.nome_empresa || compSupabase.name || 'Empresa');
         setCompanyNif(compSupabase.nif || '500123456');
@@ -19003,8 +19408,8 @@ export default function App() {
         fetchJson('/api/cost-centers'),
         fetchJson('/api/pos-points'),
         fetchJson('/api/cash/sessions'),
-        fetchJson(`/api/caixas?company_id=${companyId}`),
-        fetchJson(`/api/caixa-movements?company_id=${companyId}`),
+        Promise.resolve(null), // Replaced /api/caixas with Supabase loadCaixas call
+        Promise.resolve(null), // Replaced /api/caixa-movements with Supabase loadCaixaMovements call
         fetchJson(`/api/stock/movements?company_id=${companyId}`),
         fetchJson(`/api/work-site-movements?company_id=${companyId}`),
         fetchJson(`/api/warehouses?company_id=${companyId}`),
@@ -19012,7 +19417,7 @@ export default function App() {
         fetchJson(`/api/security/armory?company_id=${companyId}`),
         fetchJson(`/api/security/roster?company_id=${companyId}`),
         !compSupabase ? fetchJson(`/api/company/${companyId}`) : Promise.resolve(null),
-        fetchJson(`/api/purchases?company_id=${companyId}`)
+        Promise.resolve(null) // Replaced /api/purchases with Supabase loadCompras call above
       ]);
 
       const [s, p, tr, i, e, fs, cc, pp, sess, cx, cm, sm, wsm, wh, occ, arm, rost, comp, pur] = results.map((res, idx) => {
@@ -19062,14 +19467,13 @@ export default function App() {
 
   const handleAddWorkSite = async (site: Omit<WorkSite, 'id'>) => {
     try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) {
+      if (!user) {
         console.error('Sem auth no handleAddWorkSite');
         alert('Sessão expirada. Por favor, faça login novamente.');
         return;
       }
 
-      const companyId = authUser.id;
+      const companyId = user.company_id;
       console.log('Tentando adicionar Local de Trabalho:', { site, companyId });
 
       // Validar client_id: Forçar string para evitar problemas de tipo (TEXT no Supabase)
@@ -19136,12 +19540,11 @@ export default function App() {
 
   const handleUpdateWorkSite = async (id: number, site: Omit<WorkSite, 'id'>) => {
     try {
-      const { data: { user: authUser }, error: userError } = await supabase.auth.getUser();
-      if (userError || !authUser) {
+      if (!user) {
         console.error('Usuário não autenticado no handleUpdateWorkSite');
         return;
       }
-      const companyId = authUser.id;
+      const companyId = user.company_id;
       console.log('Tentando atualizar Local de Trabalho ID:', id, { site, companyId });
 
       const clientId = site.client_id && String(site.client_id) !== '0' ? String(site.client_id) : '';
@@ -19191,23 +19594,33 @@ export default function App() {
 
   const handleCertifyDocument = async (id: number) => {
     try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) return;
+      if (!user) return;
+      
+      console.log('Certificando documento:', id);
+      
       const { error } = await supabase
         .from('documentos_emitidos')
-        .update({ status: 'CERTIFICADO', is_certified: true, certificado_em: new Date().toISOString() })
+        .update({ 
+          status: 'certificado', 
+          is_certified: true, 
+          certificado_por: user.id,
+          certificado_em: new Date().toISOString() 
+        })
         .eq('id', id)
-        .eq('company_id', authUser.id);
+        .eq('company_id', user.company_id);
         
       if (!error) {
+        console.log('Documento certificado com sucesso!');
         setShowCertifyModal(false);
         await fetchData();
         alert('Documento certificado com sucesso!');
       } else {
-        alert('Erro ao certificar');
+        console.error('Erro Supabase ao certificar:', error);
+        alert('Erro ao certificar: ' + error.message);
       }
     } catch (error) {
-      console.error('Error certifying document:', error);
+      console.error('Erro crítico ao certificar documento:', error);
+      alert('Erro inesperado ao certificar documento.');
     }
   };
 
@@ -19215,9 +19628,8 @@ export default function App() {
     if (!confirm('Tem a certeza que deseja eliminar este local de trabalho?')) return;
     
     try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) return;
-      const companyId = authUser.id;
+      if (!user) return;
+      const companyId = user.company_id;
 
       const { error } = await supabase
         .from('locais_trabalho')
@@ -19246,9 +19658,15 @@ export default function App() {
         setIsPdfProcessing(true);
       }
       try {
-        const res = await fetchWithAuth(`/api/invoices/${doc.id}`);
-        if (res.ok) {
-          const invoiceData = await res.json();
+        // Fetch invoice details directly from Supabase instead of failing backend API
+        const { data, error } = await supabase
+          .from('documentos_emitidos')
+          .select('*')
+          .eq('id', doc.id)
+          .single();
+
+        if (data) {
+          const invoiceData = data;
           
           if (action === 'edit') {
             setSelectedDocument(invoiceData);
@@ -19286,6 +19704,7 @@ export default function App() {
             }, 500);
           }
         } else {
+          console.error(`Error fetching document ${doc.id} from Supabase:`, error);
           setIsPdfProcessing(false);
         }
       } catch (error) {
@@ -19305,7 +19724,14 @@ export default function App() {
       setIsCreatingInvoice(true);
     } else if (action === 'clone') {
       try {
-        const { id, numero_documento, invoice_number, created_at, updated_at, data_emissao, hash, signature, ...clonedData } = doc;
+        const { id, numero_documento, invoice_number, ...baseData } = doc;
+        const clonedData: any = { ...baseData };
+        delete clonedData.created_at;
+        delete clonedData.updated_at;
+        delete clonedData.data_emissao;
+        delete clonedData.hash;
+        delete clonedData.signature;
+        
         const newDoc = { 
           ...clonedData, 
           status: 'RASCUNHO', 
@@ -19438,13 +19864,20 @@ export default function App() {
                         onClose={() => setShowAnularModal(null)} 
                         onAnular={async (reason) => {
                           try {
-                            const res = await fetchWithAuth(`/api/invoices/${showAnularModal.id}/void`, { 
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ reason })
-                            });
+                            if (!user) return;
+
+                            const { error } = await supabase
+                              .from('documentos_emitidos')
+                              .update({ 
+                                status: 'ANULADO', 
+                                estado: 'ANULADO', 
+                                anulação_motivo: reason,
+                                is_active: false 
+                              })
+                              .eq('id', showAnularModal.id)
+                              .eq('company_id', user.company_id);
                             
-                            if (res.ok) {
+                            if (!error) {
                               // If it's a receipt, we should inform the user that the invoice is liberated
                               if (showAnularModal.document_type === 'Recibo' || showAnularModal.tipo_documento === 'RC') {
                                 alert('Recibo anulado com sucesso! A fatura correspondente está agora disponível para novo recebimento.');
@@ -19457,7 +19890,7 @@ export default function App() {
                               await fetchData();
                               setShowAnularModal(null);
                             } else {
-                              alert('Erro ao anular');
+                              alert('Erro ao anular: ' + error.message);
                             }
                           } catch (error) {
                             console.error('Error voiding document:', error);
@@ -19494,14 +19927,13 @@ export default function App() {
                             <button
                               onClick={async () => {
                                 try {
-                                  const { data: { user: authUser } } = await supabase.auth.getUser();
-                                  if (!authUser) throw new Error('Utilizador não autenticado');
+                                  if (!user) throw new Error('Utilizador não autenticado');
                                   
                                   const { error } = await supabase
                                     .from('documentos_emitidos')
                                     .delete()
                                     .eq('id', showDeleteModal.id)
-                                    .eq('company_id', authUser.id);
+                                    .eq('company_id', user.company_id);
                                     
                                   if (!error) {
                                     alert('Documento eliminado com sucesso!');
@@ -19610,7 +20042,14 @@ export default function App() {
                         case 'cashier':
                           return <CashierModule issuedDocuments={issuedDocuments} />;
                         case 'caixa':
-                          return <CaixaModule caixas={caixas} setCaixas={setCaixas} movements={caixaMovements} setMovements={setCaixaMovements} />;
+                          return <CaixaModule 
+                            caixas={caixas} 
+                            setCaixas={setCaixas} 
+                            movements={caixaMovements} 
+                            setMovements={setCaixaMovements}
+                            refreshCaixas={loadCaixas}
+                            refreshMovements={loadCaixaMovements}
+                          />;
                         case 'security':
                           return (
                             <SecurityModule 
@@ -19681,6 +20120,8 @@ export default function App() {
                               setCaixaMovements={setCaixaMovements} 
                               employees={employees}
                               user={user}
+                              refreshCaixas={loadCaixas}
+                              refreshMovements={loadCaixaMovements}
                             />
                           );
                         case 'hr':

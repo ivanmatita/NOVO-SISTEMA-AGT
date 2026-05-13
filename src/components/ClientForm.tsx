@@ -65,17 +65,17 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
     setMessage(null);
 
     try {
-      if (!user?.id) {
-        throw new Error("Sessão expirada. Por favor, faça login novamente.");
+      if (!user?.company_id) {
+        throw new Error("Sessão inválida ou empresa não associada. Por favor, faça login novamente.");
       }
 
-      const userId = user.id;
+      const companyId = user.company_id;
 
       // START DUPLICATE CHECK
       let duplicateQuery = supabase
         .from('clientes')
         .select('id')
-        .eq('company_id', userId);
+        .eq('company_id', companyId);
 
       const filterConditions = [];
       if (formData.telefone) filterConditions.push(`telefone.eq.${formData.telefone}`);
@@ -105,7 +105,7 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
         telefone: formData.telefone,
         endereco: formData.morada,
         address: formData.morada,
-        company_id: userId,
+        company_id: companyId,
         contribuinte: formData.contribuinte,
         nif: formData.contribuinte,
         localidade: formData.localidade,
@@ -129,14 +129,14 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
           .from(tableName)
           .update(clientData)
           .eq('id', initialData.id)
-          .or(`company_id.eq.${userId},company_id.eq.${user.company_id}`);
+          .eq('company_id', companyId);
 
         if (error?.code === 'PGRST125') {
           const { error: altError } = await supabase
             .from('clients')
             .update(clientData)
             .eq('id', initialData.id)
-            .or(`company_id.eq.${userId},company_id.eq.${user.company_id}`);
+            .eq('company_id', companyId);
           error = altError;
         }
 
@@ -175,7 +175,7 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
         const localData = {
           ...formData,
           id: finalId, // Usa o mesmo ID do Supabase
-          company_id: user.id || user.company_id,
+          company_id: companyId,
           tipo_entidade: isSupplier ? 'Fornecedor' : 'Cliente'
         };
         const endpoint = isSupplier ? '/api/suppliers' : '/api/clients';

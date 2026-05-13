@@ -3,18 +3,21 @@ import { Plus, Wallet, ArrowRightLeft, ShieldCheck, Calculator, Search, Eye, Tra
 import { motion, AnimatePresence } from 'motion/react';
 import { Caixa, CaixaMovement } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 
 interface CaixaModuleProps {
   caixas: Caixa[];
   setCaixas: React.Dispatch<React.SetStateAction<Caixa[]>>;
   movements: CaixaMovement[];
   setMovements: React.Dispatch<React.SetStateAction<CaixaMovement[]>>;
+  refreshCaixas?: () => Promise<void>;
+  refreshMovements?: () => Promise<void>;
 }
 
-export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: CaixaModuleProps) => {
+export const CaixaModule = ({ caixas, setCaixas, movements, setMovements, refreshCaixas, refreshMovements }: CaixaModuleProps) => {
   const { user } = useAuth();
   const [showForm, setShowForm] = useState(false);
-  const [newCaixa, setNewCaixa] = useState({ name: '', initialBalance: 0, obs: '', responsible: '', account: '', user: '', bankName: '' });
+  const [newCaixa, setNewCaixa] = useState({ name: '', account: '', initialBalance: 0, obs: '', responsible: '', user: '' });
   const [activeSection, setActiveSection] = useState('list');
   const [selectedCaixaId, setSelectedCaixaId] = useState<string | null>(null);
   const [activeCurrency, setActiveCurrency] = useState('AOA');
@@ -30,32 +33,45 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
 
   const handleCreateCaixa = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newCaixaObj: Caixa = {
-      id: Math.random().toString(36).substr(2, 9) + Date.now().toString(),
-      name: newCaixa.name,
-      bankName: newCaixa.bankName,
-      account: newCaixa.account,
-      responsible: newCaixa.responsible,
-      user: newCaixa.user,
-      users: 1,
-      initialBalance: Number(newCaixa.initialBalance),
-      currentBalance: Number(newCaixa.initialBalance),
-      obs: newCaixa.obs,
-      status: 'aberto',
-      company_id: user?.company_id
-    };
-    
     try {
-      const res = await fetch('/api/caixas', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newCaixaObj)
-      });
-      if (res.ok) {
-        setCaixas([...caixas, newCaixaObj]);
-        setNewCaixa({ name: '', initialBalance: 0, obs: '', responsible: '', account: '', user: '', bankName: '' });
-        setShowForm(false);
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser || !user) return;
+
+      const newCaixaObj = {
+        company_id: user.company_id,
+        nome_caixa: newCaixa.name,
+        account: newCaixa.account,
+        responsavel: newCaixa.responsible,
+        valor_inicial: Number(newCaixa.initialBalance),
+        current_balance: Number(newCaixa.initialBalance),
+        observacao: newCaixa.obs,
+        utilizador_id: newCaixa.user !== "" ? newCaixa.user : null,
+        status: 'aberto'
+      };
+      
+      const { data, error } = await supabase
+        .from('caixas')
+        .insert([newCaixaObj])
+        .select()
+        .single();
+
+      if (error) throw error;
+      
+      if (refreshCaixas) await refreshCaixas();
+      else {
+        setCaixas([...caixas, {
+          ...data,
+          name: data.nome_caixa,
+          account: data.account,
+          initialBalance: Number(data.valor_inicial),
+          currentBalance: Number(data.current_balance),
+          responsible: data.responsavel,
+          obs: data.observacao,
+          user: data.utilizador_id
+        }]);
       }
+      setNewCaixa({ name: '', initialBalance: 0, obs: '', responsible: '', user: '' });
+      setShowForm(false);
     } catch (error) {
       console.error('Error creating caixa:', error);
       alert('Erro ao criar caixa');
@@ -66,29 +82,72 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
     e.preventDefault();
     if (!editCaixa) return;
     try {
-      const res = await fetch(`/api/caixas/${editCaixa.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editCaixa)
-      });
-      if (res.ok) {
-        setCaixas(caixas.map(c => c.id === editCaixa.id ? editCaixa : c));
-        setEditCaixa(null);
-        setActiveSection('list');
-      }
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser || !user) return;
+
+      const { error } = await supabase
+        .from('caixas')
+        .update({
+          nome_caixa: editCaixa.name,
+          account: editCaixa.account,
+          valor_inicial: Number(editCaixa.initialBalance),
+          responsavel: editCaixa.responsible,
+          observacao: editCaixa.obs,
+          utilizador_id: editCaixa.user || null
+        })
+        .eq('id', editCaixa.id)
+        .eq('company_id', user.company_id);
+
+      if (error) throw error;
+      
+      if (refreshCaixas) await refreshCaixas();
+      else setCaixas(caixas.map(c => c.id === editCaixa.id ? editCaixa : c));
+      setEditCaixa(null);
+      setActiveSection('list');
     } catch (err) {
       console.error(err);
+      alert('Erro ao atualizar caixa');
     }
   };
 
   const handleCloseCaixa = async (id: string) => {
     try {
-      const res = await fetch(`/api/caixas/${id}/close`, { method: 'POST' });
-      if (res.ok) {
-        setCaixas((caixas || []).map(c => c.id === id ? { ...c, status: 'fechado' } : c));
-      }
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser || !user) return;
+
+      const { error } = await supabase
+        .from('caixas')
+        .update({ status: 'fechado' })
+        .eq('id', id)
+        .eq('company_id', user.company_id);
+
+      if (error) throw error;
+      if (refreshCaixas) await refreshCaixas();
+      else setCaixas((caixas || []).map(c => c.id === id ? { ...c, status: 'fechado' } : c));
     } catch (error) {
       console.error('Error closing caixa:', error);
+    }
+  };
+
+  const handleEliminarCaixa = async (id: string) => {
+    if (!confirm('Tem a certeza que deseja eliminar este caixa?')) return;
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser || !user) return;
+
+      const { error } = await supabase
+        .from('caixas')
+        .delete()
+        .eq('id', id)
+        .eq('company_id', user.company_id);
+
+      if (error) throw error;
+      if (refreshCaixas) await refreshCaixas();
+      setCaixas((caixas || []).filter(c => c.id !== id));
+      alert('Caixa eliminado com sucesso');
+    } catch (error) {
+      console.error('Error deleting caixa:', error);
+      alert('Erro ao eliminar caixa');
     }
   };
 
@@ -100,35 +159,44 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
     const fromCaixa = (caixas || []).find(c => c.id === transferData.from);
     if (!fromCaixa || fromCaixa.currentBalance < transferData.amount) return alert('Saldo insuficiente');
 
-    const movementId = Math.random().toString(36).substr(2, 9) + Date.now().toString();
-    const newMovement: CaixaMovement = {
-      id: movementId,
-      caixaId: transferData.from,
-      targetCaixaId: transferData.to,
-      type: 'transferencia',
-      amount: transferData.amount,
-      moeda: activeCurrency,
-      description: transferData.description || `Transferência para ${(caixas || []).find(c => c.id === transferData.to)?.name}`,
-      date: new Date().toISOString(),
-      company_id: user?.company_id
-    };
-
     try {
-      const res = await fetch('/api/caixa-movements', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newMovement)
-      });
-      if (res.ok) {
-        setMovements([...movements, newMovement]);
-        setCaixas((caixas || []).map(c => {
-          if (c.id === transferData.from) return { ...c, currentBalance: c.currentBalance - transferData.amount };
-          if (c.id === transferData.to) return { ...c, currentBalance: c.currentBalance + transferData.amount };
-          return c;
-        }));
-        setTransferData({ from: '', to: '', amount: 0, description: '' });
-        setActiveSection('list');
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser || !user) return;
+
+      const newMovement = {
+        company_id: user.company_id,
+        caixa_id: transferData.from,
+        target_caixa_id: transferData.to,
+        type: 'transferencia',
+        amount: transferData.amount,
+        moeda: activeCurrency,
+        description: transferData.description || `Transferência para ${(caixas || []).find(c => c.id === transferData.to)?.name}`,
+        date: new Date().toISOString()
+      };
+
+      const { data: movData, error: movErr } = await supabase
+        .from('caixa_movimentacoes')
+        .insert(newMovement)
+        .select()
+        .single();
+
+      if (movErr) throw movErr;
+
+      // Update balances in Supabase
+      const toCaixa = caixas.find(c => c.id === transferData.to);
+      await supabase.from('caixas').update({ current_balance: fromCaixa.currentBalance - transferData.amount }).eq('id', fromCaixa.id).eq('company_id', user.company_id);
+      if (toCaixa) {
+        await supabase.from('caixas').update({ current_balance: toCaixa.currentBalance + transferData.amount }).eq('id', toCaixa.id).eq('company_id', user.company_id);
       }
+
+      setMovements([...movements, movData]);
+      setCaixas((caixas || []).map(c => {
+        if (c.id === transferData.from) return { ...c, currentBalance: c.currentBalance - transferData.amount };
+        if (c.id === transferData.to) return { ...c, currentBalance: c.currentBalance + transferData.amount };
+        return c;
+      }));
+      setTransferData({ from: '', to: '', amount: 0, description: '' });
+      setActiveSection('list');
     } catch (error) {
       console.error('Error in transfer:', error);
       alert('Erro ao realizar transferência');
@@ -142,29 +210,34 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
     const caixa = (caixas || []).find(c => c.id === paymentData.caixaId);
     if (!caixa || caixa.currentBalance < paymentData.amount) return alert('Saldo insuficiente');
 
-    const newMovement: CaixaMovement = {
-      id: Date.now().toString(),
-      caixaId: paymentData.caixaId,
-      type: 'saida',
-      amount: paymentData.amount,
-      moeda: activeCurrency,
-      description: paymentData.description,
-      date: new Date().toISOString(),
-      company_id: user?.company_id
-    };
-
     try {
-      const res = await fetch('/api/caixa-movements', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newMovement)
-      });
-      if (res.ok) {
-        setMovements([...movements, newMovement]);
-        setCaixas((caixas || []).map(c => c.id === paymentData.caixaId ? { ...c, currentBalance: c.currentBalance - paymentData.amount } : c));
-        setPaymentData({ caixaId: '', amount: 0, description: '' });
-        setActiveSection('list');
-      }
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser || !user) return;
+
+      const newMovement = {
+        company_id: user.company_id,
+        caixa_id: paymentData.caixaId,
+        type: 'saida',
+        amount: paymentData.amount,
+        description: paymentData.description,
+        date: new Date().toISOString()
+      };
+
+      const { data: movData, error: movErr } = await supabase
+        .from('caixa_movimentacoes')
+        .insert(newMovement)
+        .select()
+        .single();
+
+      if (movErr) throw movErr;
+
+      // Update balance
+      await supabase.from('caixas').update({ current_balance: caixa.currentBalance - paymentData.amount }).eq('id', caixa.id).eq('company_id', user.company_id);
+
+      setMovements([...movements, movData]);
+      setCaixas((caixas || []).map(c => c.id === paymentData.caixaId ? { ...c, currentBalance: c.currentBalance - paymentData.amount } : c));
+      setPaymentData({ caixaId: '', amount: 0, description: '', type: 'outros' });
+      setActiveSection('list');
     } catch (error) {
       console.error('Error in payment:', error);
       alert('Erro ao realizar pagamento');
@@ -179,29 +252,34 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
     const diff = reconData.actualBalance - caixa.currentBalance;
     if (diff === 0) return alert('O saldo já está correto');
 
-    const newMovement: CaixaMovement = {
-      id: Date.now().toString(),
-      caixaId: reconData.caixaId,
-      type: diff > 0 ? 'entrada' : 'saida',
-      amount: Math.abs(diff),
-      moeda: activeCurrency,
-      description: `Conciliação: ${reconData.description}`,
-      date: new Date().toISOString(),
-      company_id: user?.company_id
-    };
-
     try {
-      const res = await fetch('/api/caixa-movements', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newMovement)
-      });
-      if (res.ok) {
-        setMovements([...movements, newMovement]);
-        setCaixas((caixas || []).map(c => c.id === reconData.caixaId ? { ...c, currentBalance: reconData.actualBalance } : c));
-        setReconData({ caixaId: '', actualBalance: 0, description: '' });
-        setActiveSection('list');
-      }
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser || !user) return;
+
+      const newMovement = {
+        company_id: user.company_id,
+        caixa_id: reconData.caixaId,
+        type: diff > 0 ? 'entrada' : 'saida',
+        amount: Math.abs(diff),
+        description: `Conciliação: ${reconData.description}`,
+        date: new Date().toISOString()
+      };
+
+      const { data: movData, error: movErr } = await supabase
+        .from('caixa_movimentacoes')
+        .insert(newMovement)
+        .select()
+        .single();
+
+      if (movErr) throw movErr;
+
+      // Update balance
+      await supabase.from('caixas').update({ current_balance: reconData.actualBalance }).eq('id', caixa.id).eq('company_id', user.company_id);
+
+      setMovements([...movements, movData]);
+      setCaixas((caixas || []).map(c => c.id === reconData.caixaId ? { ...c, currentBalance: reconData.actualBalance } : c));
+      setReconData({ caixaId: '', actualBalance: 0, description: '' });
+      setActiveSection('list');
     } catch (error) {
       console.error('Error in reconciliation:', error);
       alert('Erro ao realizar conciliação');
@@ -277,9 +355,9 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
                   <thead>
                     <tr className="bg-zinc-100 text-zinc-600 font-black uppercase border-b border-zinc-200">
                       <th className="px-2 py-2 border-r border-zinc-200 text-center w-10">Ln</th>
-                      <th className="px-4 py-2 border-r border-zinc-200">Account</th>
                       <th className="px-2 py-2 border-r border-zinc-200 text-center w-10">ID</th>
                       <th className="px-4 py-2 border-r border-zinc-200 min-w-[200px]">Caixa</th>
+                      <th className="px-4 py-2 border-r border-zinc-200 min-w-[150px]">Nº Conta / IBAN</th>
                       <th className="px-4 py-2 border-r border-zinc-200 min-w-[200px]">Responsavel</th>
                       <th className="px-4 py-2 border-r border-zinc-200 min-w-[200px]">Obs</th>
                       <th className="px-4 py-2 border-r border-zinc-200 text-right">Saldo Caixa</th>
@@ -291,9 +369,9 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
                     {(caixas || []).filter(c => !activeCurrency || (c as any).moeda === activeCurrency || (c as any).moeda === (activeCurrency === 'AOA' ? 'Kwanza' : activeCurrency) || (activeCurrency === 'AOA' && !(c as any).moeda)).map((caixa, idx) => (
                       <tr key={caixa.id} className="hover:bg-zinc-50 transition-colors group">
                         <td className="px-2 py-2 border-r border-zinc-200 text-center text-zinc-500">{idx + 1}</td>
-                        <td className="px-4 py-2 border-r border-zinc-200 font-mono text-zinc-600">{caixa.account || '45'}</td>
                         <td className="px-2 py-2 border-r border-zinc-200 text-center text-zinc-500">{String(caixa.id).slice(-1)}</td>
                         <td className="px-4 py-2 border-r border-zinc-200 font-black text-[#003366] uppercase">{caixa.name}</td>
+                        <td className="px-4 py-2 border-r border-zinc-200 text-zinc-500 font-mono text-[9px]">{caixa.account || '---'}</td>
                         <td className="px-4 py-2 border-r border-zinc-200 text-zinc-500">{caixa.responsible || '---'}</td>
                         <td className="px-4 py-2 border-r border-zinc-200 text-zinc-400 italic">{caixa.obs || '---'}</td>
                         <td className="px-4 py-2 border-r border-zinc-200 text-right font-black text-zinc-900">
@@ -630,7 +708,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
               </h3>
             </div>
             <form onSubmit={handleUpdateCaixa} className="p-8 space-y-6">
-               <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Nome do caixa</label>
                     <input 
@@ -642,14 +720,12 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Saldo Atual</label>
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Número de Conta / IBAN</label>
                     <input 
-                      type="number" 
-                      required 
-                      step="0.01"
-                      className="w-full bg-zinc-100 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none text-zinc-500" 
-                      value={editCaixa.currentBalance}
-                      readOnly
+                      type="text" 
+                      className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" 
+                      value={editCaixa.account || ''}
+                      onChange={e => setEditCaixa({...editCaixa, account: e.target.value})}
                     />
                   </div>
                 </div>
@@ -662,15 +738,6 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
                       className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" 
                       value={editCaixa.responsible || ''}
                       onChange={e => setEditCaixa({...editCaixa, responsible: e.target.value})}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Conta Contabilística</label>
-                    <input 
-                      type="text" 
-                      className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" 
-                      value={editCaixa.account || ''}
-                      onChange={e => setEditCaixa({...editCaixa, account: e.target.value})}
                     />
                   </div>
                 </div>
@@ -706,18 +773,28 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
                 <Plus size={18} /> Registar Novo Caixa
               </h3>
               <form onSubmit={handleCreateCaixa} className="space-y-5">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Nome do caixa / Banco</label>
+                  <input 
+                    type="text" 
+                    required 
+                    className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all" 
+                    placeholder="Ex: Caixa Principal, Banco BFA..." 
+                    value={newCaixa.name}
+                    onChange={e => setNewCaixa({...newCaixa, name: e.target.value})}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Número de Conta / IBAN (Se aplicável)</label>
+                  <input 
+                    type="text" 
+                    className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all" 
+                    placeholder="Ex: AO06.0000.0000.0000.0000.0" 
+                    value={newCaixa.account}
+                    onChange={e => setNewCaixa({...newCaixa, account: e.target.value})}
+                  />
+                </div>
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Nome do caixa</label>
-                    <input 
-                      type="text" 
-                      required 
-                      className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all" 
-                      placeholder="Ex: Caixa Principal, Banco BFA..." 
-                      value={newCaixa.name}
-                      onChange={e => setNewCaixa({...newCaixa, name: e.target.value})}
-                    />
-                  </div>
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Valor inicial</label>
                     <input 
@@ -808,7 +885,8 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
                   { id: 'transferencia', label: 'Transferência', icon: ArrowRightLeft, color: 'bg-amber-50 text-amber-600' },
                   { id: 'relatorios', label: 'Relatórios', icon: FileText, color: 'bg-zinc-50 text-zinc-600' },
                   { id: 'movimentos', label: 'Movimentos', icon: History, color: 'bg-purple-50 text-purple-600' },
-                  { id: 'fechar', label: 'Fechar Caixa', icon: X, color: 'bg-red-50 text-red-600' },
+                  { id: 'fechar', label: 'Fechar', icon: X, color: 'bg-zinc-50 text-zinc-600' },
+                  { id: 'eliminar', label: 'Eliminar', icon: Trash2, color: 'bg-red-50 text-red-600' },
                 ].map((opt) => (
                   <button
                     key={opt.id}
@@ -840,6 +918,9 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements }: Caix
                       }
                       if (opt.id === 'fechar') {
                         handleCloseCaixa(showOptionsMenu.id);
+                      }
+                      if (opt.id === 'eliminar') {
+                        handleEliminarCaixa(showOptionsMenu.id);
                       }
                       setShowOptionsMenu(null);
                     }}

@@ -48,7 +48,6 @@ export interface AuthContextType {
 export interface Caixa {
   id: string;
   name: string;
-  bankName?: string;
   account?: string;
   responsible?: string;
   user?: string;

@@ -35,12 +35,11 @@ export const authService = {
       const authUser = data.user;
       if (!authUser) throw new Error('Falha ao criar usuário de autenticação');
 
-      // 2. Criar empresa na tabela empresas
-      const { error: companyError } = await supabase
+      // 2. Criar empresa na tabela empresas (UUID novo para a empresa)
+      const { data: companyData, error: companyError } = await supabase
         .from('empresas')
         .insert([
           {
-            id: authUser.id,
             nome_empresa: formData.nome_empresa || formData.name,
             nif: formData.nif,
             email: formData.email,
@@ -50,16 +49,38 @@ export const authService = {
             municipio: formData.municipio,
             pais: formData.pais || 'Angola'
           }
+        ])
+        .select()
+        .single();
+
+      if (companyError) {
+        console.error('Erro ao criar empresa:', companyError);
+        throw companyError;
+      }
+
+      // 3. Criar perfil associando o usuário à empresa recém-criada
+      const { error: profileError } = await supabase
+        .from('perfis')
+        .insert([
+          {
+            id: authUser.id,
+            empresa_id: companyData.id,
+            nome: formData.nome_empresa || formData.name,
+            role: 'admin'
+          }
         ]);
 
-      if (companyError) throw companyError;
+      if (profileError) {
+        console.error('Erro ao criar perfil:', profileError);
+        throw profileError;
+      }
 
       // Retornar objeto User formatado
       return {
         id: authUser.id,
         username: formData.nome_empresa || formData.name,
         email: formData.email,
-        company_id: authUser.id, // Em sistemas owner-based, o user.id é o company_id
+        company_id: companyData.id,
         role: 'admin',
         created_at: new Date().toISOString()
       };
@@ -81,32 +102,48 @@ export const authService = {
 
       sessionCache = authData.session;
 
-      // Buscar dados da empresa/perfil
-      const { data: empresa, error: empresaError } = await supabase
-        .from('empresas')
-        .select('*')
+      // Buscar dados do perfil e empresa associada
+      const { data: perfil, error: perfilError } = await supabase
+        .from('perfis')
+        .select(`
+          empresa_id,
+          role,
+          empresas (
+            nome_empresa,
+            email,
+            created_at
+          )
+        `)
         .eq('id', authData.user.id)
-        .single();
+        .maybeSingle();
 
-      if (empresaError || !empresa) {
-        // Se a empresa não existir na tabela, mas o auth sim, retornamos um user básico
+      if (perfilError || !perfil) {
+        // Fallback para empresas que ainda usam o modelo legado (ID do user = ID da empresa)
+        const { data: legacyEmpresa } = await supabase
+          .from('empresas')
+          .select('*')
+          .eq('id', authData.user.id)
+          .maybeSingle();
+
         return {
           id: authData.user.id,
-          username: authData.user.email?.split('@')[0] || 'Usuário',
+          username: legacyEmpresa?.nome_empresa || authData.user.email?.split('@')[0] || 'Usuário',
           email: authData.user.email || '',
-          company_id: authData.user.id,
+          company_id: legacyEmpresa?.id || authData.user.id,
           role: 'admin',
           created_at: authData.user.created_at
         };
       }
 
+      const empresa = perfil.empresas as any;
+
       return {
         id: authData.user.id,
-        username: empresa.nome_empresa,
-        email: empresa.email || authData.user.email,
-        company_id: authData.user.id,
-        role: 'admin',
-        created_at: empresa.created_at
+        username: empresa?.nome_empresa || 'Usuário',
+        email: empresa?.email || authData.user.email || '',
+        company_id: perfil.empresa_id,
+        role: perfil.role || 'admin',
+        created_at: empresa?.created_at || authData.user.created_at
       };
     } catch (err: any) {
       console.error('Erro no login Supabase:', err);
@@ -128,30 +165,48 @@ export const authService = {
       const session = await this.getSessionSafe();
       if (!session) return null;
 
-      const { data: empresa, error } = await supabase
-        .from('empresas')
-        .select('*')
+      // Busca perfil com a empresa associada
+      const { data: perfil, error } = await supabase
+        .from('perfis')
+        .select(`
+          empresa_id,
+          role,
+          empresas (
+            nome_empresa,
+            email,
+            created_at
+          )
+        `)
         .eq('id', session.user.id)
-        .single();
+        .maybeSingle();
 
-      if (error || !empresa) {
+      if (error || !perfil) {
+        // Fallback legado
+        const { data: legacyEmpresa } = await supabase
+          .from('empresas')
+          .select('*')
+          .eq('id', session.user.id)
+          .maybeSingle();
+
         return {
           id: session.user.id,
-          username: session.user.email?.split('@')[0] || 'Usuário',
+          username: legacyEmpresa?.nome_empresa || session.user.email?.split('@')[0] || 'Usuário',
           email: session.user.email || '',
-          company_id: session.user.id,
+          company_id: legacyEmpresa?.id || session.user.id,
           role: 'admin',
           created_at: session.user.created_at
         };
       }
 
+      const empresa = perfil.empresas as any;
+
       return {
         id: session.user.id,
-        username: empresa.nome_empresa,
-        email: empresa.email || session.user.email,
-        company_id: session.user.id,
-        role: 'admin',
-        created_at: empresa.created_at
+        username: empresa?.nome_empresa || 'Usuário',
+        email: empresa?.email || session.user.email || '',
+        company_id: perfil.empresa_id,
+        role: perfil.role || 'admin',
+        created_at: empresa?.created_at || session.user.created_at
       };
     } catch (err) {
       console.error('Erro ao buscar usuário atual:', err);

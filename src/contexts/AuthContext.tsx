@@ -33,12 +33,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initAuth();
 
     // Listener global para mudanças de estado de autenticação
+    let lastHandledSessionId: string | null = null;
+
     const { data: { subscription } } = authService.onAuthStateChange(async (event, session) => {
       console.log('Evento Auth Detectado:', event);
       if (!mounted) return;
 
+      const sessionId = session?.access_token || null;
+      if (sessionId === lastHandledSessionId) return;
+      lastHandledSessionId = sessionId;
+
       if (session) {
-        // Debounce ou evitar fetch desnecessário se o user for o mesmo
         const curr = await authService.getCurrentUser();
         if (mounted) {
           setUser(curr);

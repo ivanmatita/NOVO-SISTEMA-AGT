@@ -1,0 +1,38 @@
+8176:        .from('secretaria_digital')
+8201:        .from('documentos')
+8207:        .from('documentos')
+8247:        .from('secretaria_digital')
+8277:        await supabase.storage.from('documentos').remove([path]);
+8279:      const { error } = await supabase.from('secretaria_digital').delete().eq('id', id).eq('company_id', user.id);
+8626:          .from('logos')
+8635:          .from('logos')
+8685:        .from('empresas')
+8908:          .from('logos')
+8926:          .from('logos')
+8934:          await supabase.from('empresas').update({ [field]: urlData.publicUrl }).eq('id', companyId);
+8967:        .from('empresas')
+9616:    const { data } = await supabase.from('tabela_impostos').select('*').eq('company_id', user.id);
+9631:    await supabase.from('tabela_impostos').delete().eq('id', id).eq('company_id', user.id);
+9691:                    const { error } = await supabase.from('tabela_impostos').insert([{
+11491:        .from('series_fiscais')
+14391:            let { error: updateError } = await supabase.from('clientes').update(syncData).eq('id', selectedClient.id).eq('company_id', companyId);
+14393:              await supabase.from('clients').update(syncData).eq('id', selectedClient.id).eq('company_id', companyId);
+14398:            let { error: insertError } = await supabase.from('clientes').insert([insertData]);
+14400:              await supabase.from('clients').insert([insertData]);
+14670:                              .from('clientes')
+14681:                                .from('clients')
+18705:      const { error } = await supabase.from('documentos_emitidos').insert([convertedDoc]);
+18903:        .from('clientes')
+18973:        .from('locais_trabalho')
+19032:        .from('documentos_emitidos')
+19065:        .from('documentos_emitidos')
+19102:        .from('empresas')
+19121:      const { data: sfData } = await supabase.from('series_fiscais').select('*').eq('company_id', companyId);
+19231:          .from('locais_trabalho')
+19247:        .from('locais_trabalho')
+19302:        .from('locais_trabalho')
+19330:        .from('documentos_emitidos')
+19364:        .from('locais_trabalho')
+19392:          .from('documentos_emitidos')
+19600:                              .from('documentos_emitidos')
+19664:                                    .from('documentos_emitidos')

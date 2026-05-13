@@ -115,10 +115,10 @@ const saveData = () => {
   }
 };
 
-  async function startServer() {
   const app = express();
   const PORT = 3000;
 
+async function startServer() {
   app.use(compression());
   app.use(express.json({ limit: '50mb' }));
 
@@ -1211,9 +1211,12 @@ const saveData = () => {
     app.get('*', (req, res) => res.sendFile(path.join(distPath, 'index.html')));
   }
 
+if (process.env.NODE_ENV !== "production") {
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`ERP Server (Offline Mode) running on port ${PORT}`);
   });
 }
-
+}
 startServer();
+
+export default app;

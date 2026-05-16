@@ -328,32 +328,44 @@ async function startServer() {
   });
   // Stats
   app.get("/api/stats", (req, res) => {
+    const { empresa_id } = req.query;
+    if (!empresa_id) return res.status(400).json({ error: "empresa_id required" });
+
+    const companyDocs = issuedDocuments.filter(d => String(d.empresa_id) === String(empresa_id));
+    const companyClients = clients.filter(c => String(c.empresa_id) === String(empresa_id));
+    const companyCaixas = caixas.filter(c => String(c.empresa_id) === String(empresa_id));
+
     res.json({
-      totalInvoiced: issuedDocuments.reduce((acc, doc) => acc + (doc.total || 0), 0),
-      pendingCount: issuedDocuments.filter(d => d.payment_status === 'pending').length,
-      clientCount: clients.length,
+      totalInvoiced: companyDocs.reduce((acc, doc) => acc + (Number(doc.total) || 0), 0),
+      pendingCount: companyDocs.filter(d => d.payment_status === 'pending').length,
+      clientCount: companyClients.length,
       totalExpenses: 0,
-      cashBalance: caixas.reduce((acc, c) => acc + (c.currentBalance || 0), 0),
-      recentInvoices: issuedDocuments.slice(-5)
+      cashBalance: companyCaixas.reduce((acc, c) => acc + (Number(c.currentBalance) || 0), 0),
+      recentInvoices: companyDocs.slice(-5)
     });
   });
 
-  // Clients
-  app.get("/api/clients", (req, res) => res.json(clients));
+  // Clients are now exclusively handled by Supabase via ClienteService.
+  // The endpoints remain as stubs to prevent existing frontend code from crashing if legacy calls exist,
+  // but they will not store or leak data in memory.
+  app.get("/api/clients", (req, res) => {
+    res.json([]);
+  });
   app.post("/api/clients", (req, res) => {
-    const newClient = { ...req.body, id: generateId(), created_at: new Date().toISOString() };
-    clients.push(newClient);
-    res.json(newClient);
+    res.status(400).json({ error: "Deprecated endpoint. Use Supabase directly." });
   });
   app.put("/api/clients/:id", (req, res) => {
-    const id = req.params.id;
-    clients = clients.map(c => String(c.id) === String(id) ? { ...c, ...req.body } : c);
-    saveData();
-    res.json({ success: true });
+    res.status(400).json({ error: "Deprecated endpoint. Use Supabase directly." });
   });
 
   // Products
-  app.get("/api/products", (req, res) => res.json(products));
+  app.get("/api/products", (req, res) => {
+    const { empresa_id } = req.query;
+    if (empresa_id) {
+      return res.json(products.filter(p => String(p.empresa_id) === String(empresa_id)));
+    }
+    res.json([]);
+  });
   app.post("/api/products", (req, res) => {
     const newProd = { ...req.body, id: generateId(), created_at: new Date().toISOString() };
     products.push(newProd);
@@ -377,8 +389,20 @@ async function startServer() {
   });
 
   // Invoices & Issued Documents
-  app.get("/api/invoices", (req, res) => res.json(issuedDocuments));
-  app.get("/api/issued-documents", (req, res) => res.json(issuedDocuments));
+  app.get("/api/invoices", (req, res) => {
+    const { empresa_id } = req.query;
+    if (empresa_id) {
+      return res.json(issuedDocuments.filter(d => String(d.empresa_id) === String(empresa_id)));
+    }
+    res.json([]);
+  });
+  app.get("/api/issued-documents", (req, res) => {
+    const { empresa_id } = req.query;
+    if (empresa_id) {
+      return res.json(issuedDocuments.filter(d => String(d.empresa_id) === String(empresa_id)));
+    }
+    res.json([]);
+  });
   app.get("/api/invoices/:id", (req, res) => {
     const docId = req.params.id;
     // Tenta encontrar por ID (número ou string UUID)
@@ -868,7 +892,11 @@ async function startServer() {
   });
 
   // Fiscal Series
-  app.get("/api/fiscal-series", (req, res) => res.json(fiscalSeries));
+  app.get("/api/fiscal-series", (req, res) => {
+    const { empresa_id } = req.query;
+    if (empresa_id) return res.json(fiscalSeries.filter(s => String(s.empresa_id) === String(empresa_id)));
+    res.json([]);
+  });
   app.post("/api/fiscal-series", (req, res) => {
     const newSeries = { ...req.body, id: generateId(), created_at: new Date().toISOString() };
     fiscalSeries.push(newSeries);
@@ -877,9 +905,21 @@ async function startServer() {
   });
 
   // POS Endpoints
-  app.get("/api/cost-centers", (req, res) => res.json(costCenters));
-  app.get("/api/pos-points", (req, res) => res.json(posPoints));
-  app.get("/api/cash/sessions", (req, res) => res.json(sessions));
+  app.get("/api/cost-centers", (req, res) => {
+    const { empresa_id } = req.query;
+    if (empresa_id) return res.json(costCenters.filter(c => String(c.empresa_id) === String(empresa_id)));
+    res.json([]);
+  });
+  app.get("/api/pos-points", (req, res) => {
+    const { empresa_id } = req.query;
+    if (empresa_id) return res.json(posPoints.filter(p => String(p.empresa_id) === String(empresa_id)));
+    res.json([]);
+  });
+  app.get("/api/cash/sessions", (req, res) => {
+    const { empresa_id } = req.query;
+    if (empresa_id) return res.json(sessions.filter(s => String(s.empresa_id) === String(empresa_id)));
+    res.json([]);
+  });
   
   app.post("/api/pos-points", (req, res) => {
     const newPoint = { ...req.body, id: generateId(), is_active: true };
@@ -925,7 +965,11 @@ async function startServer() {
   });
 
   // System Users
-  app.get("/api/system-users", (req, res) => res.json(systemUsers));
+  app.get("/api/system-users", (req, res) => {
+    const { empresa_id } = req.query;
+    if (empresa_id) return res.json(systemUsers.filter(u => String(u.empresa_id) === String(empresa_id)));
+    res.json([]);
+  });
   app.post("/api/system-users", (req, res) => {
     const newUser = { ...req.body, id: generateId(), created_at: new Date().toISOString() };
     systemUsers.push(newUser);
@@ -934,7 +978,11 @@ async function startServer() {
   });
 
   // Archives
-  app.get("/api/archives", (req, res) => res.json(archives));
+  app.get("/api/archives", (req, res) => {
+    const { empresa_id } = req.query;
+    if (empresa_id) return res.json(archives.filter(a => String(a.empresa_id) === String(empresa_id)));
+    res.json([]);
+  });
   app.post("/api/archives", (req, res) => {
     const newFile = { ...req.body, id: generateId(), created_at: new Date().toISOString() };
     archives.push(newFile);
@@ -943,7 +991,11 @@ async function startServer() {
   });
 
   // Fleet
-  app.get("/api/fleet", (req, res) => res.json(fleetVehicles));
+  app.get("/api/fleet", (req, res) => {
+    const { empresa_id } = req.query;
+    if (empresa_id) return res.json(fleetVehicles.filter(v => String(v.empresa_id) === String(empresa_id)));
+    res.json([]);
+  });
   app.post("/api/fleet", (req, res) => {
     const newVehicle = { ...req.body, id: generateId() };
     fleetVehicles.push(newVehicle);
@@ -952,7 +1004,11 @@ async function startServer() {
   });
 
   // Projects
-  app.get("/api/projects/tasks", (req, res) => res.json(projectTasks));
+  app.get("/api/projects/tasks", (req, res) => {
+    const { empresa_id } = req.query;
+    if (empresa_id) return res.json(projectTasks.filter(t => String(t.empresa_id) === String(empresa_id)));
+    res.json([]);
+  });
   app.post("/api/projects/tasks", (req, res) => {
     const newTask = { ...req.body, id: generateId() };
     projectTasks.push(newTask);
@@ -961,7 +1017,11 @@ async function startServer() {
   });
 
   // Caixas
-  app.get("/api/caixas", (req, res) => res.json(caixas));
+  app.get("/api/caixas", (req, res) => {
+    const { empresa_id } = req.query;
+    if (empresa_id) return res.json(caixas.filter(c => String(c.empresa_id) === String(empresa_id)));
+    res.json([]);
+  });
   app.post("/api/caixas", (req, res) => {
     const newCaixa = { ...req.body, id: generateId() };
     caixas.push(newCaixa);
@@ -978,7 +1038,11 @@ async function startServer() {
   });
 
   // Work Sites
-  app.get("/api/work-sites", (req, res) => res.json(workSites));
+  app.get("/api/work-sites", (req, res) => {
+    const { empresa_id } = req.query;
+    if (empresa_id) return res.json(workSites.filter(w => String(w.empresa_id) === String(empresa_id)));
+    res.json([]);
+  });
   app.post("/api/work-sites", (req, res) => {
     const newSite = { ...req.body, id: generateId() };
     workSites.push(newSite);
@@ -1020,7 +1084,11 @@ async function startServer() {
   });
 
   // Transactions
-  app.get("/api/transactions", (req, res) => res.json(transactions));
+  app.get("/api/transactions", (req, res) => {
+    const { empresa_id } = req.query;
+    if (empresa_id) return res.json(transactions.filter(t => String(t.empresa_id) === String(empresa_id)));
+    res.json([]);
+  });
   app.post("/api/transactions", (req, res) => {
     const newTrans = { ...req.body, id: generateId(), date: new Date().toISOString() };
     transactions.push(newTrans);
@@ -1029,7 +1097,11 @@ async function startServer() {
   });
 
   // Suppliers & Purchases
-  app.get("/api/suppliers", (req, res) => res.json(suppliers));
+  app.get("/api/suppliers", (req, res) => {
+    const { empresa_id } = req.query;
+    if (empresa_id) return res.json(suppliers.filter(s => String(s.empresa_id) === String(empresa_id)));
+    res.json([]);
+  });
   app.post("/api/suppliers", (req, res) => {
     const newSupplier = { ...req.body, id: generateId() };
     suppliers.push(newSupplier);
@@ -1037,6 +1109,7 @@ async function startServer() {
     res.json(newSupplier);
   });
   app.get("/api/purchases", (req, res) => {
+    const { empresa_id } = req.query;
     const allPurchases = [...purchases];
     const receiptsAsPurchases = issuedDocuments.filter((d: any) => d.document_type === 'Recibo').map(d => ({
       ...d,
@@ -1044,18 +1117,31 @@ async function startServer() {
       document_type: 'Recibo',
       invoice_number: d.numero_documento
     }));
-    res.json([...allPurchases, ...receiptsAsPurchases]);
+    
+    const combined = [...allPurchases, ...receiptsAsPurchases];
+    if (empresa_id) {
+      return res.json(combined.filter(p => String(p.empresa_id) === String(empresa_id)));
+    }
+    res.json([]);
   });
 
   // Accounting Endpoints
-  app.get("/api/accounting/journals", (req, res) => res.json(accountingJournals));
+  app.get("/api/accounting/journals", (req, res) => {
+    const { empresa_id } = req.query;
+    if (empresa_id) return res.json(accountingJournals.filter(j => String(j.empresa_id) === String(empresa_id)));
+    res.json([]);
+  });
   app.post("/api/accounting/journals", (req, res) => {
     const newJournal = { ...req.body, created_at: new Date().toISOString() };
     accountingJournals.push(newJournal);
     saveData();
     res.json(newJournal);
   });
-  app.get("/api/accounting/movements", (req, res) => res.json(accountingMovements));
+  app.get("/api/accounting/movements", (req, res) => {
+    const { empresa_id } = req.query;
+    if (empresa_id) return res.json(accountingMovements.filter(m => String(m.empresa_id) === String(empresa_id)));
+    res.json([]);
+  });
   app.post("/api/accounting/movements", (req, res) => {
     const newMovement = { ...req.body, id: generateId(), created_at: new Date().toISOString() };
     accountingMovements.push(newMovement);
@@ -1070,7 +1156,11 @@ async function startServer() {
     res.json(newMovement);
   });
 
-  app.get("/api/accounting/pgc", (req, res) => res.json(pgcAccounts));
+  app.get("/api/accounting/pgc", (req, res) => {
+    const { empresa_id } = req.query;
+    if (empresa_id) return res.json(pgcAccounts.filter(a => String(a.empresa_id) === String(empresa_id)));
+    res.json([]);
+  });
   app.post("/api/accounting/pgc", (req, res) => {
     const newAccount = { ...req.body };
     const existingIndex = pgcAccounts.findIndex(a => a.id === newAccount.id);
@@ -1254,34 +1344,94 @@ async function startServer() {
     }
   });
 
-  // Generic Catch-alls
-  app.get("/api/employees", (req, res) => res.json(employees));
-  app.get("/api/professions", (req, res) => res.json(professions));
-  app.get("/api/employees/attendance", (req, res) => {
-    if (req.query.date) {
-      res.json(attendance.filter(a => a.date === req.query.date));
-    } else {
-      res.json(attendance);
+  // Metrics
+  app.get("/api/metrics", (req, res) => {
+    const { empresa_id } = req.query;
+    if (empresa_id) {
+      const records = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8')).metrics || [];
+      return res.json(records.filter((m: any) => String(m.empresa_id) === String(empresa_id)));
     }
+    res.json([]);
+  });
+  app.post("/api/metrics", (req, res) => {
+    const data = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
+    if (!data.metrics) data.metrics = [];
+    const newMetric = { ...req.body, id: generateId(), created_at: new Date().toISOString() };
+    data.metrics.push(newMetric);
+    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+    res.json(newMetric);
+  });
+  app.get("/api/employees", (req, res) => {
+    const { empresa_id } = req.query;
+    if (empresa_id) return res.json(employees.filter(e => String(e.empresa_id) === String(empresa_id)));
+    res.json([]);
+  });
+  app.get("/api/professions", (req, res) => {
+    const { empresa_id } = req.query;
+    if (empresa_id) return res.json(professions.filter(p => String(p.empresa_id) === String(empresa_id)));
+    res.json([]);
+  });
+  app.get("/api/employees/attendance", (req, res) => {
+    const { empresa_id, date } = req.query;
+    let filtered = attendance;
+    if (empresa_id) filtered = filtered.filter(a => String(a.empresa_id) === String(empresa_id));
+    else return res.json([]);
+
+    if (date) {
+      filtered = filtered.filter(a => a.date === date);
+    }
+    res.json(filtered);
   });
   app.post("/api/employees/attendance", (req, res) => {
     const newAtt = { ...req.body, id: generateId() };
     attendance.push(newAtt);
     res.json(newAtt);
   });
-  app.get("/api/employees/absences", (req, res) => res.json(absences));
-  app.get("/api/labor-terminations", (req, res) => res.json(laborTerminations));
-  app.get("/api/warehouses", (req, res) => res.json(warehouses));
+  app.get("/api/employees/absences", (req, res) => {
+    const { empresa_id } = req.query;
+    if (empresa_id) return res.json(absences.filter(a => String(a.empresa_id) === String(empresa_id)));
+    res.json([]);
+  });
+  app.get("/api/labor-terminations", (req, res) => {
+    const { empresa_id } = req.query;
+    if (empresa_id) return res.json(laborTerminations.filter(l => String(l.empresa_id) === String(empresa_id)));
+    res.json([]);
+  });
+  app.get("/api/warehouses", (req, res) => {
+    const { empresa_id } = req.query;
+    if (empresa_id) return res.json(warehouses.filter(w => String(w.empresa_id) === String(empresa_id)));
+    res.json([]);
+  });
   app.post("/api/warehouses", (req, res) => {
     const newWh = { ...req.body, id: generateId(), created_at: new Date().toISOString() };
     warehouses.push(newWh);
     res.json(newWh);
   });
-  app.get("/api/caixa-movements", (req, res) => res.json(caixaMovements));
-  app.get("/api/stock/movements", (req, res) => res.json(stockMovements));
-  app.get("/api/security/occurrences", (req, res) => res.json(securityOccurrences));
-  app.get("/api/security/armory", (req, res) => res.json(securityArmory));
-  app.get("/api/security/roster", (req, res) => res.json(securityRoster));
+  app.get("/api/caixa-movements", (req, res) => {
+    const { empresa_id } = req.query;
+    if (empresa_id) return res.json(caixaMovements.filter(m => String(m.empresa_id) === String(empresa_id)));
+    res.json([]);
+  });
+  app.get("/api/stock/movements", (req, res) => {
+    const { empresa_id } = req.query;
+    if (empresa_id) return res.json(stockMovements.filter(m => String(m.empresa_id) === String(empresa_id)));
+    res.json([]);
+  });
+  app.get("/api/security/occurrences", (req, res) => {
+    const { empresa_id } = req.query;
+    if (empresa_id) return res.json(securityOccurrences.filter(o => String(o.empresa_id) === String(empresa_id)));
+    res.json([]);
+  });
+  app.get("/api/security/armory", (req, res) => {
+    const { empresa_id } = req.query;
+    if (empresa_id) return res.json(securityArmory.filter(a => String(a.empresa_id) === String(empresa_id)));
+    res.json([]);
+  });
+  app.get("/api/security/roster", (req, res) => {
+    const { empresa_id } = req.query;
+    if (empresa_id) return res.json(securityRoster.filter(r => String(r.empresa_id) === String(empresa_id)));
+    res.json([]);
+  });
 
   app.post("/api/receipts/:id/void", (req, res) => {
     const receiptId = Number(req.params.id);

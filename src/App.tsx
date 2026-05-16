@@ -921,6 +921,7 @@ const INSS_PROFESSIONS = [
 ];
 
 const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, companyName }: { onRefresh: () => void, onSetIsContractModalOpen: (b: boolean) => void, onSetEmployee: (e: Employee | null) => void, caixas: Caixa[], companyName: string }) => {
+  const { user } = useAuth();
   const professionsRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [professions, setProfessions] = useState<Profession[]>([]);
@@ -1408,11 +1409,11 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
   const fetchHRData = async () => {
     try {
       const [p, e, att, abs, lt] = await Promise.all([
-        fetchJson('/api/professions'),
-        fetchJson('/api/employees'),
-        fetchJson(`/api/employees/attendance?date=${attendanceDate}`),
-        fetchJson('/api/employees/absences'),
-        fetchJson('/api/labor-terminations')
+        fetchJson(`/api/professions?empresa_id=${user?.empresa_id}`),
+        fetchJson(`/api/employees?empresa_id=${user?.empresa_id}`),
+        fetchJson(`/api/employees/attendance?date=${attendanceDate}&empresa_id=${user?.empresa_id}`),
+        fetchJson(`/api/employees/absences?empresa_id=${user?.empresa_id}`),
+        fetchJson(`/api/labor-terminations?empresa_id=${user?.empresa_id}`)
       ]);
       setProfessions(Array.isArray(p) ? p : []);
       setLocalEmployees(Array.isArray(e) ? e : []);
@@ -9919,7 +9920,7 @@ const DailyMovementsModule = ({ onBack }: { onBack: () => void }) => {
 
   const fetchJournals = async () => {
     try {
-      const data = await fetchJson('/api/accounting/journals');
+      const data = await fetchJson(`/api/accounting/journals?empresa_id=${user?.empresa_id}`);
       setJournals(data);
     } catch (error) {
       console.error('Error fetching journals:', error);
@@ -10113,6 +10114,7 @@ const DailyMovementsModule = ({ onBack }: { onBack: () => void }) => {
 };
 
 const ClassifyMovementsModule = ({ invoices, purchases, onBack }: { invoices: Invoice[], purchases: Purchase[], onBack: () => void }) => {
+  const { user } = useAuth();
   const [activeSubView, setActiveSubView] = useState<'vendas' | 'compras' | null>(null);
   const [selectedMonth, setSelectedMonth] = useState('05');
   const [searchTerm, setSearchTerm] = useState('');
@@ -10122,7 +10124,7 @@ const ClassifyMovementsModule = ({ invoices, purchases, onBack }: { invoices: In
   const [showPgcList, setShowPgcList] = useState(false);
 
   useEffect(() => {
-    fetchJson('/api/accounting/pgc').then(setPgcAccounts);
+    fetchJson(`/api/accounting/pgc?empresa_id=${user?.empresa_id}`).then(setPgcAccounts);
   }, []);
 
   const handleClassify = () => {
@@ -10899,6 +10901,7 @@ const AccountMovementsPage = ({ account, onBack }: { account: any, onBack: () =>
 };
 
 const PGCModule = ({ onBack }: { onBack: () => void }) => {
+  const { user } = useAuth();
   const [accounts, setAccounts] = useState<any[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -10917,7 +10920,7 @@ const PGCModule = ({ onBack }: { onBack: () => void }) => {
 
   const fetchAccounts = async () => {
     try {
-      const data = await fetchJson('/api/accounting/pgc');
+      const data = await fetchJson(`/api/accounting/pgc?empresa_id=${user?.empresa_id}`);
       setAccounts(data);
     } catch (error) {
       console.error('Error fetching PGC accounts:', error);
@@ -12504,8 +12507,10 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
   const [referenceManual, setReferenceManual] = useState('');
 
   useEffect(() => {
-    supabase.from('armazens').select('*').then(({data}) => setWarehouses(data || []));
-  }, []);
+    if (user?.empresa_id) {
+      supabase.from('armazens').select('*').eq('empresa_id', user.empresa_id).then(({data}) => setWarehouses(data || []));
+    }
+  }, [user?.empresa_id]);
 
   const addItem = () => {
     setItems([...items, { 
@@ -14690,43 +14695,18 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
                       onClick={async () => {
                         const val = (document.getElementById('initial_balance_input') as HTMLInputElement).value;
                         try {
-                          // Sincronizar com Supabase
-                          if (user?.empresa_id) {
-                            let { error: supabaseError } = await supabase
-                              .from('clientes')
-                              .update({ 
-                                saldo_inicial: Number(val),
-                                updated_at: new Date().toISOString()
-                              })
-                              .eq('id', showInitialBalanceModal.id)
-                              .eq('empresa_id', user.empresa_id);
-                            
-                            // Fallback para 'clients'
-                            if (supabaseError?.code === 'PGRST125') {
-                              const { error: altError } = await supabase
-                                .from('clients')
-                                .update({ 
-                                  saldo_inicial: Number(val),
-                                  updated_at: new Date().toISOString()
-                                })
-                                .eq('id', showInitialBalanceModal.id)
-                                .eq('empresa_id', user.empresa_id);
-                              supabaseError = altError;
-                            }
-
-                            if (supabaseError) throw supabaseError;
-                          }
-
-                          await fetchJson(`/api/clients/${showInitialBalanceModal.id}`, {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ ...showInitialBalanceModal, saldo_inicial: Number(val) })
+                          if (!user?.empresa_id) throw new Error("Usuário sem empresa");
+                          
+                          await clienteService.updateCliente(showInitialBalanceModal.id!, {
+                            saldo_inicial: Number(val),
+                            empresa_id: user.empresa_id
                           });
+                          
                           setShowInitialBalanceModal(null);
                           onRefresh();
-                        } catch (error) {
-                          console.error('Error updating initial balance:', error);
-                          alert('Erro ao atualizar saldo no Supabase.');
+                        } catch (err) {
+                          console.error("Erro ao definir saldo:", err);
+                          alert("Falha ao definir saldo inicial.");
                         }
                       }}
                       className="bg-emerald-600 text-white px-8 py-2 text-sm font-bold shadow-lg hover:bg-emerald-700 transition-all"
@@ -14909,8 +14889,10 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    supabase.from('armazens').select('*').then(({data}) => setWarehouses(data || []));
-  }, []);
+    if (user?.empresa_id) {
+      supabase.from('armazens').select('*').eq('empresa_id', user.empresa_id).then(({data}) => setWarehouses(data || []));
+    }
+  }, [user?.empresa_id]);
 
   const addItem = () => {
     setItems([...items, { 
@@ -19575,14 +19557,14 @@ export default function App() {
         fetchJson(`/api/invoices?empresa_id=${targetCompanyId}`),
         fetchJson(`/api/employees?empresa_id=${targetCompanyId}`),
         Promise.resolve(fsDataFormatted), // Replaced API with Supabase series
-        fetchJson('/api/cost-centers'),
-        fetchJson('/api/pos-points'),
-        fetchJson('/api/cash/sessions'),
+        fetchJson(`/api/cost-centers?empresa_id=${targetCompanyId}`),
+        fetchJson(`/api/pos-points?empresa_id=${targetCompanyId}`),
+        fetchJson(`/api/cash/sessions?empresa_id=${targetCompanyId}`),
         Promise.resolve(null), // Replaced /api/caixas with Supabase loadCaixas call
         Promise.resolve(null), // Replaced /api/caixa-movements with Supabase loadCaixaMovements call
         fetchJson(`/api/stock/movements?empresa_id=${targetCompanyId}`),
         fetchJson(`/api/work-site-movements?empresa_id=${targetCompanyId}`),
-        supabase.from('armazens').select('*').then(res => res.data),
+        supabase.from('armazens').select('*').eq('empresa_id', targetCompanyId).then(res => res.data),
         fetchJson(`/api/security/occurrences?empresa_id=${targetCompanyId}`),
         fetchJson(`/api/security/armory?empresa_id=${targetCompanyId}`),
         fetchJson(`/api/security/roster?empresa_id=${targetCompanyId}`),

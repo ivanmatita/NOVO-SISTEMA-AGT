@@ -112,23 +112,26 @@ export const authService = {
       if (!perfil) {
         console.warn('[AuthService] Perfil não encontrado. Iniciando auto-reparação...');
         
-        // Verificamos se existe uma empresa cujo auth_user_id seja este utilizador
+        // Verificamos se existe uma empresa cujo auth_user_id seja este utilizador (Dono da Empresa)
+        // Ou se existe um convite/ligação prévia (embora aqui foquemos no registo inicial)
         const { data: company, error: companyErr } = await supabase
           .from('empresas')
           .select('id, nome_empresa')
           .eq('auth_user_id', authData.user.id)
+          .limit(1)
           .maybeSingle();
 
         if (companyErr) console.error('[AuthService] Erro ao buscar empresa para reparação:', companyErr);
 
         let targetCompany;
         if (!company) {
-          console.warn('[AuthService] Conta Órfã detetada. Iniciando ONBOARDING AUTOMÁTICO...');
+          console.warn('[AuthService] Conta Órfã detetada. Criando Empresa Padrão...');
           
-          // Criar empresa padrão se não existir (O DB gera o ID)
+          const newCompanyId = crypto.randomUUID();
           const { data: newCompany, error: createError } = await supabase
             .from('empresas')
             .insert([{
+              id: newCompanyId,
               auth_user_id: authData.user.id,
               nome_empresa: `Empresa de ${authData.user.email?.split('@')[0]}`,
               email: authData.user.email,
@@ -138,7 +141,7 @@ export const authService = {
             .single();
 
           if (createError) {
-            console.error('[AuthService] Falha no Onboarding Automático:', createError);
+            console.error('[AuthService] Falha ao criar empresa base:', createError);
             throw new Error(`Erro de Onboarding: Autenticação ativa, mas não foi possível criar a sua empresa base. Detalhe: ${createError.message}`);
           }
           
@@ -147,22 +150,40 @@ export const authService = {
           targetCompany = company;
         }
 
-        console.log('[AuthService] Empresa pronta. Criando perfil de vinculação...');
-        // Criar o perfil em falta "on the fly"
-        const { error: insertError } = await supabase.from('perfis').insert({
-          id: authData.user.id,
-          empresa_id: targetCompany.id,
-          email: authData.user.email,
-          role: 'admin',
-          nome: targetCompany.nome_empresa || authData.user.email?.split('@')[0]
-        });
+        console.log('[AuthService] Empresa pronta. Criando/Vinculando perfil...', targetCompany.id);
+
+        // IMPORTANTE: O UPSERT aqui deve funcionar porque a política 'id = auth.uid()' permite ao user gerir o seu próprio perfil.
+        const { error: insertError } = await supabase
+          .from('perfis')
+          .upsert({
+            id: authData.user.id,
+            empresa_id: targetCompany.id,
+            email: authData.user.email,
+            role: 'admin',
+            nome: authData.user.user_metadata?.full_name || targetCompany.nome_empresa || authData.user.email?.split('@')[0]
+          }, { 
+            onConflict: 'id' 
+          });
 
         if (insertError) {
-           console.error('[AuthService] Falha ao vincular perfil:', insertError);
-           throw new Error('Erro de Sincronização: Empresa criada/encontrada, mas houve um erro ao criar o seu acesso.');
+           console.error('[AuthService] Falha crítica ao vincular perfil:', insertError);
+           // Se falhou aqui, tentamos uma última vez sem o upsert (apenas insert) caso o RLS seja restritivo
+           const { error: retryError } = await supabase
+             .from('perfis')
+             .insert([{
+               id: authData.user.id,
+               empresa_id: targetCompany.id,
+               email: authData.user.email,
+               role: 'admin',
+               nome: authData.user.user_metadata?.full_name || targetCompany.nome_empresa || authData.user.email?.split('@')[0]
+             }]);
+           
+           if (retryError) {
+             throw new Error(`Erro de Sincronização: Não foi possível criar o seu perfil de acesso. Detalhe: ${retryError.message}`);
+           }
         }
         
-        console.log('[AuthService] Acesso reparado com sucesso.');
+        console.log('[AuthService] Acesso reparado e sincronizado com sucesso.');
         return await this.getCurrentUser() as User;
       }
 

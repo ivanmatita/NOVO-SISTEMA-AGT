@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Search, X, Check, AlertCircle, ShoppingBag } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
+import { clienteService, Cliente } from '../services/clienteService';
 
 interface ClientFormProps {
   initialData?: any;
@@ -36,7 +36,7 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
       setFormData({
         name: initialData.name || initialData.nome || '',
         email: initialData.email || '',
-        contribuinte: initialData.contribuinte || '',
+        contribuinte: initialData.contribuinte || initialData.nif || '',
         morada: initialData.morada || initialData.endereco || '',
         localidade: initialData.localidade || '',
         codigo_postal: initialData.codigo_postal || '',
@@ -65,47 +65,16 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
     setMessage(null);
 
     try {
-      if (!user?.company_id) {
+      if (!user?.empresa_id) {
         throw new Error("Sessão inválida ou empresa não associada. Por favor, faça login novamente.");
       }
 
-      const companyId = user.company_id;
-
-      // START DUPLICATE CHECK
-      let duplicateQuery = supabase
-        .from('clientes')
-        .select('id')
-        .eq('company_id', companyId);
-
-      const filterConditions = [];
-      if (formData.telefone) filterConditions.push(`telefone.eq.${formData.telefone}`);
-      if (formData.email) filterConditions.push(`email.eq.${formData.email}`);
-      if (formData.contribuinte) filterConditions.push(`contribuinte.eq.${formData.contribuinte}`);
-      if (formData.name) filterConditions.push(`nome.ilike.${formData.name}`);
-
-      if (filterConditions.length > 0) {
-        duplicateQuery = duplicateQuery.or(filterConditions.join(','));
-        const { data: existingCliente } = await duplicateQuery;
-
-        if (existingCliente && existingCliente.length > 0) {
-          // If we are editing, ignore if it's the exact same record
-          const isUpdatingSelf = initialData?.id && existingCliente.some(c => String(c.id) === String(initialData.id));
-          if (!isUpdatingSelf) {
-            setMessage({ type: 'error', text: 'Já existe um cliente cadastrado com este nome, email ou telefone.' });
-            setLoading(false);
-            return;
-          }
-        }
-      }
-      // END DUPLICATE CHECK
-
-      const clientData: any = {
+      const clientData: Cliente = {
         nome: formData.name,
         email: formData.email,
         telefone: formData.telefone,
         endereco: formData.morada,
-        address: formData.morada,
-        company_id: companyId,
+        empresa_id: user.empresa_id,
         contribuinte: formData.contribuinte,
         nif: formData.contribuinte,
         localidade: formData.localidade,
@@ -116,86 +85,23 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
         webpage: formData.webpage,
         tipo_cliente: formData.tipo_cliente,
         saldo_inicial: formData.saldo_inicial,
-        initial_balance: formData.saldo_inicial,
-        tipo_entidade: isSupplier ? 'Fornecedor' : 'Cliente',
-        updated_at: new Date().toISOString()
+        tipo_entidade: isSupplier ? 'Fornecedor' : 'Cliente'
       };
 
-      let finalId = initialData?.id;
-      const tableName = 'clientes';
-
       if (initialData?.id) {
-        let { error } = await supabase
-          .from(tableName)
-          .update(clientData)
-          .eq('id', initialData.id)
-          .eq('company_id', companyId);
-
-        if (error?.code === 'PGRST125') {
-          const { error: altError } = await supabase
-            .from('clients')
-            .update(clientData)
-            .eq('id', initialData.id)
-            .eq('company_id', companyId);
-          error = altError;
-        }
-
-        if (error) throw error;
+        await clienteService.updateCliente(initialData.id, clientData);
       } else {
-        // Para novos registros, deixamos o Supabase gerar o UUID se possível
-        // Mas se o sistema local precisar de ID numérico, tentamos lidar com isso no retorno
-        const insertPayload = { ...clientData, created_at: new Date().toISOString() };
-        
-        let { data, error } = await supabase
-          .from(tableName)
-          .insert([insertPayload])
-          .select()
-          .single();
-
-        if (error) {
-          if (error.code === 'PGRST125') {
-            const { data: altData, error: altError } = await supabase
-              .from('clients')
-              .insert([insertPayload])
-              .select()
-              .single();
-            if (altError) throw altError;
-            finalId = altData?.id;
-          } else {
-            throw error;
-          }
-        } else {
-          finalId = data?.id;
-        }
+        await clienteService.createCliente(clientData);
       }
 
-      // Sincronizar com o backend local para manter compatibilidade
-      let localSuccess = false;
-      try {
-        const localData = {
-          ...formData,
-          id: finalId, // Usa o mesmo ID do Supabase
-          company_id: companyId,
-          tipo_entidade: isSupplier ? 'Fornecedor' : 'Cliente'
-        };
-        const endpoint = isSupplier ? '/api/suppliers' : '/api/clients';
-        const localRes = await fetch(initialData?.id ? `${endpoint}/${initialData.id}` : endpoint, {
-          method: initialData?.id ? 'PUT' : 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(localData)
-        });
-        if (localRes.ok) localSuccess = true;
-      } catch (localErr) {
-        console.warn('Erro ao sincronizar com backend local:', localErr);
-      }
-
+      setMessage({ type: 'success', text: isSupplier ? 'Fornecedor guardado com sucesso!' : 'Cliente guardado com sucesso!' });
+      
       setTimeout(() => {
         onSuccess();
       }, 1500);
     } catch (err: any) {
-      console.error('Erro ao salvar no Supabase:', err);
-      // Se pelo menos um salvou, avisar mas permitir sucess
-      setMessage({ type: 'error', text: err.message || 'Ocorreu um erro ao salvar no Supabase.' });
+      console.error('[ClientForm] Erro ao salvar:', err);
+      setMessage({ type: 'error', text: err.message || 'Ocorreu um erro ao salvar.' });
     } finally {
       setLoading(false);
     }

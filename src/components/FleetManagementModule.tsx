@@ -91,7 +91,7 @@ const FleetManagementModule = () => {
 
     const fetchData = async () => {
         try {
-            const vRes = await fetchWithAuth(`/api/fleet?company_id=${user?.company_id}`);
+            const vRes = await fetchWithAuth(`/api/fleet?empresa_id=${user?.empresa_id}`);
             if (vRes.ok) setVehicles(await vRes.json());
             
             // For now maintenance and fuel are part of overall fleet logic or separate endpoints
@@ -105,7 +105,7 @@ const FleetManagementModule = () => {
 
     useEffect(() => {
         fetchData();
-    }, [user?.company_id]);
+    }, [user?.empresa_id]);
 
     const handleAddVehicle = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -122,7 +122,7 @@ const FleetManagementModule = () => {
                     fuelType: target.fuelType.value,
                     status: 'Ativo',
                     odometer: 0,
-                    company_id: user?.company_id,
+                    empresa_id: user?.empresa_id,
                     vin: `VIN-${Math.random().toString(36).substring(7).toUpperCase()}`
                 })
             });

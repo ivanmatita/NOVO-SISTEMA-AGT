@@ -83,7 +83,7 @@ const ProjectManagementModule = () => {
 
     const fetchData = async () => {
         try {
-            const res = await fetchWithAuth(`/api/projects/tasks?company_id=${user?.company_id}`);
+            const res = await fetchWithAuth(`/api/projects/tasks?empresa_id=${user?.empresa_id}`);
             if (res.ok) setTasks(await res.json());
         } catch (err) {
             console.error('Error fetching project tasks:', err);
@@ -93,7 +93,7 @@ const ProjectManagementModule = () => {
     useEffect(() => {
         fetchData();
         setTasks(initialTasks);
-    }, [user?.company_id]);
+    }, [user?.empresa_id]);
 
     const handleAddTask = async (projectId: number, name: string) => {
         try {
@@ -108,7 +108,7 @@ const ProjectManagementModule = () => {
                     priority: 'Média',
                     estimatedHours: 8,
                     dueDate: new Date(Date.now() + 7*24*60*60*1000).toISOString().split('T')[0],
-                    company_id: user?.company_id
+                    empresa_id: user?.empresa_id
                 })
             });
             if (res.ok) fetchData();

@@ -5,11 +5,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 
 export interface Metric {
-  id: number;
+  id: string;
   sigla: string;
   descricao: string;
   observacoes: string;
-  company_id: string;
+  empresa_id: string;
   created_at: string;
 }
 
@@ -22,14 +22,14 @@ export const fetchMetrics = async (companyId?: string) => {
     
     // If no normal API, use supabase directly as fallback or `/api/metrics`
     try {
-      const res = await fetch(`/api/metrics?company_id=${targetCompanyId}`);
+      const res = await fetch(`/api/metrics?empresa_id=${targetCompanyId}`);
       if (res.ok) {
         return await res.json();
       }
     } catch (e) {}
 
     // Fallback direct to supabase logic
-    const { data } = await supabase.from('metrics').select('*').eq('company_id', targetCompanyId);
+    const { data } = await supabase.from('metrics').select('*').eq('empresa_id', targetCompanyId);
     if (data) return data;
   } catch (e) {
     console.error('Erro ao buscar métricas:', e);
@@ -43,7 +43,7 @@ export const MetricsModule = () => {
   const [metrics, setMetrics] = useState<Metric[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   
   const [sigla, setSigla] = useState('');
   const [descricao, setDescricao] = useState('');
@@ -52,7 +52,7 @@ export const MetricsModule = () => {
   const loadMetrics = async () => {
     if (!user) return;
     setLoading(true);
-    const data = await fetchMetrics(user.company_id);
+    const data = await fetchMetrics(user.empresa_id);
     setMetrics(data || []);
     setLoading(false);
   };
@@ -78,26 +78,29 @@ export const MetricsModule = () => {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) return;
+    
     try {
-      const payload = { sigla, descricao, observacoes, company_id: user?.company_id };
-      let url = '/api/metrics';
-      let method = 'POST';
+      const payload = { sigla, descricao, observacoes, empresa_id: user.empresa_id };
 
       if (editingId) {
-        url = `/api/metrics/${editingId}`;
-        method = 'PUT';
+        const { error } = await supabase
+          .from('metrics')
+          .update(payload)
+          .eq('id', editingId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('metrics')
+          .insert([payload]);
+        if (error) throw error;
       }
-
-      await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
       
       setIsModalOpen(false);
       loadMetrics();
     } catch (err) {
       console.error('Error saving metric:', err);
+      alert('Erro ao guardar métrica.');
     }
   };
 

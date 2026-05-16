@@ -105,7 +105,6 @@ import {
   Building2,
   FileBox,
   Paperclip,
-  AlertCircle,
   Eye,
   ArrowUpRight,
   ArrowDownRight,
@@ -119,7 +118,6 @@ import {
   Droplets,
   Image,
   Monitor,
-  LogOut,
   GraduationCap,
   Bed,
   FolderKanban,
@@ -167,9 +165,9 @@ import { MetricsModule, fetchMetrics, Metric } from './components/MetricsModule'
 // --- Helpers ---
 
 import { supabase } from './lib/supabase';
-
-
 import { authService } from './services/authService';
+import { clienteService, Cliente as DbCliente } from './services/clienteService';
+import { localTrabalhoService, LocalTrabalho as DbLocalTrabalho } from './services/localTrabalhoService';
 import { throttle } from './utils/throttle';
 
 const fetchWithAuth = async (url: string, options?: RequestInit) => {
@@ -4995,16 +4993,16 @@ const CertifyModal = ({ document, onConfirm, onClose }: {
 
 
 
-const ProfitLossReport = ({ fiscalYear, company_id }: { fiscalYear: string, company_id?: string }) => {
+const ProfitLossReport = ({ fiscalYear, empresa_id }: { fiscalYear: string, empresa_id?: string }) => {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchJson(`/api/reports/profit-loss?year=${fiscalYear}${company_id ? `&company_id=${company_id}` : ''}`)
+    fetchJson(`/api/reports/profit-loss?year=${fiscalYear}${empresa_id ? `&empresa_id=${empresa_id}` : ''}`)
       .then(setData)
       .catch(err => console.error('Error fetching profit-loss report:', err))
       .finally(() => setLoading(false));
-  }, [fiscalYear, company_id]);
+  }, [fiscalYear, empresa_id]);
 
   const months = [
     'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -5549,7 +5547,7 @@ const OtherMovements = ({ transactions, onRefresh, caixas, user }: { transaction
         reference,
         observation,
         date,
-        company_id: user?.company_id
+        empresa_id: user?.empresa_id
       })
     });
     if (res.ok) {
@@ -5810,7 +5808,7 @@ const FinancialModule = ({
 
   const fetchIssuedDocuments = () => {
     setLoading(true);
-    fetchJson(`/api/issued-documents?company_id=${user?.company_id}`)
+    fetchJson(`/api/issued-documents?empresa_id=${user?.empresa_id}`)
       .then(setIssuedDocuments)
       .catch(err => console.error('Error fetching issued documents:', err))
       .finally(() => setLoading(false));
@@ -5818,7 +5816,7 @@ const FinancialModule = ({
 
   const fetchTransactions = () => {
     setLoading(true);
-    fetchJson(`/api/transactions?company_id=${user?.company_id}`)
+    fetchJson(`/api/transactions?empresa_id=${user?.empresa_id}`)
       .then(setTransactions)
       .catch(err => console.error('Error fetching transactions:', err))
       .finally(() => setLoading(false));
@@ -5837,7 +5835,7 @@ const FinancialModule = ({
     await fetchWithAuth('/api/transactions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ description, amount: Number(amount), type, category: 'manual', company_id: user?.company_id })
+      body: JSON.stringify({ description, amount: Number(amount), type, category: 'manual', empresa_id: user?.empresa_id })
     });
     setDescription(''); setAmount(''); setShowForm(false);
     fetchTransactions();
@@ -5924,7 +5922,7 @@ const FinancialModule = ({
       )}
 
       {activeSubTab === 'profit-loss-report' && (
-        <ProfitLossReport fiscalYear={new Date().getFullYear().toString()} company_id={user?.company_id} />
+        <ProfitLossReport fiscalYear={new Date().getFullYear().toString()} empresa_id={user?.empresa_id} />
       )}
 
       {activeSubTab === 'sales-reports' && (
@@ -7512,7 +7510,7 @@ const UsersSettings = () => {
 
   const fetchUsers = async () => {
     try {
-      const res = await fetchWithAuth(`/api/system-users?company_id=${user?.company_id}`);
+      const res = await fetchWithAuth(`/api/system-users?empresa_id=${user?.empresa_id}`);
       if (res.ok) {
         const data = await res.json();
         setUsers(data);
@@ -7523,10 +7521,10 @@ const UsersSettings = () => {
   };
 
   useEffect(() => {
-    if (user?.company_id) {
+    if (user?.empresa_id) {
       fetchUsers();
     }
-  }, [user?.company_id]);
+  }, [user?.empresa_id]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -7541,7 +7539,7 @@ const UsersSettings = () => {
           permission_area: permissionArea,
           contact,
           morada,
-          company_id: user?.company_id
+          empresa_id: user?.empresa_id
         })
       });
       if (res.ok) {
@@ -8180,11 +8178,11 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
     if (!user) return;
     setLoading(true);
     try {
-      const companyId = user.company_id || user.id;
+      const companyId = user.empresa_id || user.id;
       const { data, error } = await supabase
         .from('secretaria_digital')
         .select('*')
-        .eq('company_id', companyId)
+        .eq('empresa_id', companyId)
         .eq('categoria', activeSection)
         .order('created_at', { ascending: false });
 
@@ -8235,11 +8233,11 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
     try {
       let anexoData = null;
       if (selectedFile) {
-        anexoData = await uploadFile(selectedFile, user.company_id);
+        anexoData = await uploadFile(selectedFile, user.empresa_id);
       }
 
       const payload = {
-        company_id: user.company_id,
+        empresa_id: user.empresa_id,
         titulo: formData.titulo,
         descricao: formData.descricao,
         categoria: activeSection,
@@ -8285,7 +8283,7 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
       if (path) {
         await supabase.storage.from('documentos').remove([path]);
       }
-      const { error } = await supabase.from('secretaria_digital').delete().eq('id', id).eq('company_id', user.company_id);
+      const { error } = await supabase.from('secretaria_digital').delete().eq('id', id).eq('empresa_id', user.empresa_id);
       if (error) throw error;
       loadData();
     } catch (error: any) {
@@ -8627,9 +8625,9 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
 
       // Upload para o Supabase
       try {
-        if (!user?.company_id) return;
+        if (!user?.empresa_id) return;
 
-        const fileName = `${user.company_id}-${field}-${Date.now()}`;
+        const fileName = `${user.empresa_id}-${field}-${Date.now()}`;
         const { error } = await supabase.storage
           .from('logos')
           .upload(fileName, file);
@@ -8661,10 +8659,10 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
     e.preventDefault();
     setLoading(true);
     try {
-      if (!user?.company_id) throw new Error("Sessão expirada");
+      if (!user?.empresa_id) throw new Error("Sessão expirada");
 
       const payload = {
-        id: user.company_id,
+        id: user.empresa_id,
         nome_empresa: formData.nome_empresa,
         nif: formData.nif,
         matricula: formData.matricula,
@@ -8905,7 +8903,7 @@ const VisualIdentityModule = ({ companyData, onRefreshData }: { companyData: any
         const { data: { user: authUser } } = await supabase.auth.getUser();
         if (!authUser || !user) return;
 
-        const companyId = user.company_id;
+        const companyId = user.empresa_id;
         const fileExt = file.name.split('.').pop();
         const fileName = `${companyId}-${field}-${Date.now()}.${fileExt}`;
         
@@ -8955,7 +8953,7 @@ const VisualIdentityModule = ({ companyData, onRefreshData }: { companyData: any
     e.preventDefault();
     setLoading(true);
     try {
-      if (!user?.company_id) throw new Error("Sessão expirada. Inicie sessão novamente.");
+      if (!user?.empresa_id) throw new Error("Sessão expirada. Inicie sessão novamente.");
 
       // Merge with the existing companyData to not overwrite other fields
       const payload = {
@@ -8971,7 +8969,7 @@ const VisualIdentityModule = ({ companyData, onRefreshData }: { companyData: any
       const { error } = await supabase
         .from('empresas')
         .update(payload)
-        .eq('id', user.company_id);
+        .eq('id', user.empresa_id);
         
       if (!error) {
         alert('Identidade visual atualizada com sucesso!');
@@ -9232,7 +9230,7 @@ const CashierModule = ({ issuedDocuments = [] }: { issuedDocuments?: IssuedDocum
   const fetchSessions = async () => {
     setLoading(true);
     try {
-      const res = await fetchWithAuth(`/api/cash/sessions?company_id=${user?.company_id}`);
+      const res = await fetchWithAuth(`/api/cash/sessions?empresa_id=${user?.empresa_id}`);
       if (res.ok) {
         const data = await res.json();
         setSessions(data);
@@ -9245,10 +9243,10 @@ const CashierModule = ({ issuedDocuments = [] }: { issuedDocuments?: IssuedDocum
   };
 
   useEffect(() => {
-    if (user?.company_id) {
+    if (user?.empresa_id) {
       fetchSessions();
     }
-  }, [user?.company_id]);
+  }, [user?.empresa_id]);
 
   const handleCreateSession = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -9259,7 +9257,7 @@ const CashierModule = ({ issuedDocuments = [] }: { issuedDocuments?: IssuedDocum
         body: JSON.stringify({ 
           initial_balance: Number(initialBalance), 
           pos_point_id: posPointId ? Number(posPointId) : null,
-          company_id: user?.company_id
+          empresa_id: user?.empresa_id
         })
       });
       if (res.ok) {
@@ -9618,7 +9616,7 @@ const TaxSeriesModule = () => {
 
   const loadTaxes = async () => {
     if (!user) return;
-    const { data } = await supabase.from('tabela_impostos').select('*').eq('company_id', user.company_id);
+    const { data } = await supabase.from('tabela_impostos').select('*').eq('empresa_id', user.empresa_id);
     if (data) setTaxes(data.map(d => ({
       id: d.id,
       date: new Date(d.created_at).toLocaleDateString(),
@@ -9632,7 +9630,7 @@ const TaxSeriesModule = () => {
 
   const removeTax = async (id: number) => {
     if (!user) return;
-    await supabase.from('tabela_impostos').delete().eq('id', id).eq('company_id', user.company_id);
+    await supabase.from('tabela_impostos').delete().eq('id', id).eq('empresa_id', user.empresa_id);
     loadTaxes();
   };
 
@@ -9693,7 +9691,7 @@ const TaxSeriesModule = () => {
                     if (!authUser || !user) return;
                     
                     const { error } = await supabase.from('tabela_impostos').insert([{
-                      company_id: user.company_id,
+                      empresa_id: user.empresa_id,
                       nome: taxName,
                       taxa: rateNum,
                       codigo_imposto: isIsento ? 'ISE' : 'NOR',
@@ -9946,7 +9944,7 @@ const DailyMovementsModule = ({ onBack }: { onBack: () => void }) => {
           movementsCount: 0,
           type: 'Utilizador',
           obs,
-          company_id: user?.company_id
+          empresa_id: user?.empresa_id
         })
       });
       setShowForm(false);
@@ -11214,13 +11212,13 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
   useEffect(() => {
     const loadAccountingData = async () => {
       try {
-        if (!user?.company_id) return;
+        if (!user?.empresa_id) return;
 
         // Load Purchases
         const { data: purData } = await supabase
           .from('compras')
           .select('*')
-          .eq('company_id', user.company_id)
+          .eq('empresa_id', user.empresa_id)
           .order('created_at', { ascending: false });
         
         if (purData) {
@@ -11236,7 +11234,7 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
         const { data: supData } = await supabase
           .from('fornecedores')
           .select('*')
-          .eq('company_id', user.company_id)
+          .eq('empresa_id', user.empresa_id)
           .order('nome', { ascending: true });
         
         if (supData) {
@@ -11527,14 +11525,14 @@ const FiscalSeriesModule = ({ series, onRefresh, users }: { series: FiscalSeries
     const reference = `S${series.length + 1}${year}`;
     
     try {
-      if (!user?.company_id) {
+      if (!user?.empresa_id) {
         alert('Sessão expirada ou sem empresa associada.');
         return;
       }
       const { error } = await supabase
         .from('series_fiscais')
         .insert([{
-          company_id: user.company_id,
+          empresa_id: user.empresa_id,
           serie: reference,
           descricao: name,
           tipo: type,
@@ -11810,7 +11808,7 @@ const InvoiceList = ({
 
   const fetchMovements = async (workSiteId: number) => {
     try {
-      const response = await fetchWithAuth(`/api/work-sites/${workSiteId}/movements?company_id=${user?.company_id}`);
+      const response = await fetchWithAuth(`/api/work-sites/${workSiteId}/movements?empresa_id=${user?.empresa_id}`);
       if (response.ok) {
         const data = await response.json();
         setMovements(data);
@@ -11849,7 +11847,7 @@ const InvoiceList = ({
       const response = await fetchWithAuth(`/api/work-sites/${selectedWorkSite.id}/movements`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...movement, company_id: user?.company_id || user?.id })
+        body: JSON.stringify({ ...movement, empresa_id: user?.empresa_id || user?.id })
       });
       if (response.ok) {
         await fetchMovements(selectedWorkSite.id);
@@ -12506,7 +12504,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
   const [referenceManual, setReferenceManual] = useState('');
 
   useEffect(() => {
-    fetchJson('/api/warehouses').then(data => setWarehouses(data || []));
+    supabase.from('armazens').select('*').then(({data}) => setWarehouses(data || []));
   }, []);
 
   const addItem = () => {
@@ -12660,7 +12658,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
         total: finalTotal,
         total_in_words: writeValorPorExtenso(finalTotal),
         retencao_fonte_total: retencaoFonteTotal,
-        company_id: user?.company_id
+        empresa_id: user?.empresa_id
       })
     });
 
@@ -14382,11 +14380,17 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
       return;
     }
 
-    const clientData = { 
-      name: name, 
+    if (!user?.empresa_id) {
+       alert('Sessão expirada. Por favor, faça login novamente.');
+       return;
+    }
+
+    const clientPayload: DbCliente = { 
+      nome: name, 
       email, 
       contribuinte: nif, 
-      morada: morada, 
+      nif: nif,
+      endereco: morada, 
       localidade, 
       codigo_postal, 
       provincia, 
@@ -14397,59 +14401,37 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
       tipo_cliente, 
       saldo_inicial: Number(saldo_inicial),
       estado_nif,
-      company_id: user?.company_id 
+      empresa_id: user.empresa_id,
+      tipo_entidade: 'Cliente'
     };
     
     try {
-      if (!user?.company_id) throw new Error("Sessão expirada.");
-
-      // Sync with Supabase
-      const supabaseSync = async () => {
-        try {
-          const { data: { user: authUser } } = await supabase.auth.getUser();
-          if (!authUser) return;
-          
-          const companyId = user?.company_id || authUser.id;
-          const syncData = {
-            nome: clientData.name,
-            company_id: companyId,
-            updated_at: new Date().toISOString()
-          };
-
-          if (selectedClient?.id) {
-            let { error: updateError } = await supabase.from('clientes').update(syncData).eq('id', selectedClient.id).eq('company_id', companyId);
-            if (updateError?.code === 'PGRST125') {
-              await supabase.from('clients').update(syncData).eq('id', selectedClient.id).eq('company_id', companyId);
-            }
-          } else {
-            const newId = Date.now().toString();
-            const insertData = { ...syncData, id: newId, company_id: user?.company_id, tipo_entidade: 'Cliente', created_at: new Date().toISOString() };
-            let { error: insertError } = await supabase.from('clientes').insert([insertData]);
-            if (insertError) {
-              await supabase.from('clients').insert([insertData]);
-            }
-          }
-        } catch (e) {
-          console.error('Erro na sincronização Supabase para Clientes:', e);
-        }
-      };
-
-      await supabaseSync();
-
-      const url = selectedClient ? `/api/clients/${selectedClient.id}` : '/api/clients';
-      const method = selectedClient ? 'PUT' : 'POST';
-      
-      await fetchJson(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(clientData)
-      });
+      if (selectedClient?.id) {
+        await clienteService.updateCliente(selectedClient.id, clientPayload);
+      } else {
+        await clienteService.createCliente(clientPayload);
+      }
       
       resetForm();
       setShowForm(false);
       onRefresh();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving client:', error);
+      alert('Erro ao guardar cliente. Verifique a consola para mais detalhes.');
+    }
+  };
+
+  const handleDelete = async (id: number | string) => {
+    if (!confirm('Tem a certeza que deseja eliminar este cliente? Esta ação é irreversível.')) return;
+    try {
+      if (!user?.empresa_id) return;
+      await clienteService.deleteCliente(id, user.empresa_id);
+      onRefresh();
+      setShowOptionsModal(null);
+      alert('Cliente eliminado com sucesso.');
+    } catch (err: any) {
+      console.error('Error deleting client:', err);
+      alert('Erro ao eliminar cliente: ' + (err.message || 'Erro desconhecido'));
     }
   };
 
@@ -14641,6 +14623,21 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
                     <p className="text-[10px] text-zinc-400 uppercase tracking-wider">Ver faturas e recibos pagos</p>
                   </div>
                 </button>
+
+                <button 
+                  onClick={() => {
+                    handleDelete(showOptionsModal.id);
+                  }}
+                  className="w-full flex items-center gap-4 p-4 hover:bg-red-50 transition-all border border-red-100 group"
+                >
+                  <div className="w-10 h-10 bg-red-50 text-red-600 flex items-center justify-center group-hover:bg-red-600 group-hover:text-white transition-all">
+                    <Trash2 size={20} />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-sm font-bold text-red-600">Eliminar Cliente</p>
+                    <p className="text-[10px] text-red-400 uppercase tracking-wider">Remover permanentemente</p>
+                  </div>
+                </button>
               </div>
             </motion.div>
           </div>
@@ -14694,7 +14691,7 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
                         const val = (document.getElementById('initial_balance_input') as HTMLInputElement).value;
                         try {
                           // Sincronizar com Supabase
-                          if (user?.company_id) {
+                          if (user?.empresa_id) {
                             let { error: supabaseError } = await supabase
                               .from('clientes')
                               .update({ 
@@ -14702,7 +14699,7 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
                                 updated_at: new Date().toISOString()
                               })
                               .eq('id', showInitialBalanceModal.id)
-                              .eq('company_id', user.company_id);
+                              .eq('empresa_id', user.empresa_id);
                             
                             // Fallback para 'clients'
                             if (supabaseError?.code === 'PGRST125') {
@@ -14713,7 +14710,7 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
                                   updated_at: new Date().toISOString()
                                 })
                                 .eq('id', showInitialBalanceModal.id)
-                                .eq('company_id', user.company_id);
+                                .eq('empresa_id', user.empresa_id);
                               supabaseError = altError;
                             }
 
@@ -14912,7 +14909,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    fetchJson('/api/warehouses').then(data => setWarehouses(data || []));
+    supabase.from('armazens').select('*').then(({data}) => setWarehouses(data || []));
   }, []);
 
   const addItem = () => {
@@ -14991,7 +14988,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
     let finalSupplierId = supplierId;
     if (!finalSupplierId && supplierName) {
       try {
-        if (!user?.company_id) {
+        if (!user?.empresa_id) {
           alert('Sessão expirada ou sem empresa associada.');
           setLoading(false);
           return;
@@ -15000,7 +14997,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
         const { data: newSup, error: supErr } = await supabase
           .from('fornecedores')
           .insert({
-            company_id: user.company_id,
+            empresa_id: user.empresa_id,
             nome: supplierName,
             nif: nif,
             email: '',
@@ -15025,7 +15022,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
     }
 
     try {
-      if (!user?.company_id) {
+      if (!user?.empresa_id) {
         alert('Sessão expirada ou sem empresa associada.');
         setLoading(false);
         return;
@@ -15033,7 +15030,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
 
       // Objeto limpo apenas com campos que existem na tabela 'compras'
       const purchaseDataFields: any = {
-        company_id: user.company_id,
+        empresa_id: user.empresa_id,
         supplier_id: finalSupplierId,
         data: date,
         data_vencimento: dueDate || null,
@@ -15957,12 +15954,12 @@ const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas,
 
   const fetchPurchases = async () => {
     try {
-      if (!user?.company_id) return;
+      if (!user?.empresa_id) return;
 
       const { data, error } = await supabase
         .from('compras')
         .select('*')
-        .eq('company_id', user.company_id)
+        .eq('empresa_id', user.empresa_id)
         .order('created_at', { ascending: false });
       
       if (error) throw error;
@@ -17129,19 +17126,19 @@ const SupplierModule = ({ products, workSites, fiscalSeries, caixas, companyData
   useEffect(() => {
     const loadData = async () => {
       try {
-        if (!user?.company_id) return;
+        if (!user?.empresa_id) return;
 
         const { data: supData } = await supabase
           .from('fornecedores')
           .select('*')
-          .eq('company_id', user.company_id);
+          .eq('empresa_id', user.empresa_id);
         
         if (supData) setSuppliers(supData.map((s: any) => ({ ...s, name: s.nome || s.name })));
 
         const { data: purData } = await supabase
           .from('compras')
           .select('*')
-          .eq('company_id', user.company_id);
+          .eq('empresa_id', user.empresa_id);
         
         if (purData) setPurchases(purData);
       } catch (err) {
@@ -17189,13 +17186,13 @@ const SupplierModule = ({ products, workSites, fiscalSeries, caixas, companyData
     }
 
     try {
-      if (!user?.company_id) {
+      if (!user?.empresa_id) {
         alert('Sessão expirada. Por favor, faça login novamente.');
         return;
       }
 
       const supplierData: any = {
-        company_id: user.company_id,
+        empresa_id: user.empresa_id,
         nome: name,
         nif: nif,
         email: email,
@@ -17218,7 +17215,7 @@ const SupplierModule = ({ products, workSites, fiscalSeries, caixas, companyData
           .from('fornecedores')
           .update(supplierData)
           .eq('id', selectedSupplier.id)
-          .eq('company_id', user.company_id);
+          .eq('empresa_id', user.empresa_id);
       } else {
         result = await supabase
           .from('fornecedores')
@@ -17236,7 +17233,7 @@ const SupplierModule = ({ products, workSites, fiscalSeries, caixas, companyData
       const { data: supData } = await supabase
         .from('fornecedores')
         .select('*')
-        .eq('company_id', user.company_id)
+        .eq('empresa_id', user.empresa_id)
         .order('created_at', { ascending: false });
 
       if (supData) {
@@ -17256,13 +17253,13 @@ const SupplierModule = ({ products, workSites, fiscalSeries, caixas, companyData
   const handleDeleteSupplier = async (id: string) => {
     if (!confirm('Tem a certeza que deseja apagar este fornecedor?')) return;
     try {
-      if (!user?.company_id) return;
+      if (!user?.empresa_id) return;
 
       const { error } = await supabase
         .from('fornecedores')
         .delete()
         .eq('id', id)
-        .eq('company_id', user.company_id);
+        .eq('empresa_id', user.empresa_id);
 
       if (error) throw error;
       setSuppliers(suppliers.filter(s => s.id !== id));
@@ -17852,15 +17849,21 @@ const SalesReport = ({ issuedDocuments, onBack }: { issuedDocuments: IssuedDocum
 };
 
 const WarehouseModule = ({ onRefresh }: { onRefresh: () => void }) => {
+  const { user } = useAuth();
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const fetchWarehouses = async () => {
     try {
-      const res = await fetchWithAuth('/api/warehouses');
-      if (res.ok) {
-        const data = await res.json();
+      if (!user?.empresa_id) return;
+      const { data, error } = await supabase
+        .from('armazens')
+        .select('*')
+        .eq('empresa_id', user.empresa_id)
+        .order('id', { ascending: true });
+
+      if (!error && data) {
         setWarehouses(data);
       }
     } catch (error) {
@@ -17871,24 +17874,39 @@ const WarehouseModule = ({ onRefresh }: { onRefresh: () => void }) => {
   };
 
   useEffect(() => {
-    fetchWarehouses();
-  }, []);
+    if (user?.empresa_id) {
+      fetchWarehouses();
+    }
+  }, [user?.empresa_id]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!user?.empresa_id) return;
+
     const formData = new FormData(e.currentTarget);
     const data = Object.fromEntries(formData.entries());
     
-    const res = await fetchWithAuth('/api/warehouses', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    });
+    try {
+      const { error } = await supabase
+        .from('armazens')
+        .insert([{
+          empresa_id: user.empresa_id,
+          name: data.name,
+          localidade: data.localidade,
+          provincia: data.provincia,
+          responsavel: data.responsavel
+        }]);
 
-    if (res.ok) {
-      fetchWarehouses();
-      onRefresh();
-      setShowForm(false);
+      if (!error) {
+        fetchWarehouses();
+        onRefresh();
+        setShowForm(false);
+      } else {
+        console.error('Error creating warehouse:', error);
+        alert('Erro ao criar armazém: ' + error.message);
+      }
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -18056,7 +18074,7 @@ const ProductList = ({ products, onRefresh, stockMovements, warehouses }: {
         type, 
         quantity, 
         description,
-        company_id: user?.company_id
+        empresa_id: user?.empresa_id
       })
     });
     if (res.ok) {
@@ -18075,7 +18093,7 @@ const ProductList = ({ products, onRefresh, stockMovements, warehouses }: {
         quantity, 
         warehouse_id: fromWh, 
         to_warehouse_id: toWh,
-        company_id: user?.company_id
+        empresa_id: user?.empresa_id
       })
     });
     if (res.ok) {
@@ -18657,7 +18675,7 @@ const ProductList = ({ products, onRefresh, stockMovements, warehouses }: {
                     stock_quantity: Number(data.stock_quantity),
                     min_stock: Number(data.min_stock),
                     warehouse_id: data.warehouse_id ? Number(data.warehouse_id) : null,
-                    company_id: user?.company_id
+                    empresa_id: user?.empresa_id
                   })
                 });
                 if (res.ok) {
@@ -18772,7 +18790,7 @@ const ReceiptModal = ({ document: doc, caixas, onClose, onSuccess }: {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           invoice_id: doc.id,
-          company_id: user?.company_id,
+          empresa_id: user?.empresa_id,
           amount,
           payment_method: paymentMethod,
           cash_box: cashBox,
@@ -18881,7 +18899,7 @@ const ConvertDocumentModal = ({ document, onClose, onSuccess }: {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) return;
 
-      if (!user?.company_id) {
+      if (!user?.empresa_id) {
         alert('Sessão expirada. Inicie sessão novamente.');
         return;
       }
@@ -18896,7 +18914,7 @@ const ConvertDocumentModal = ({ document, onClose, onSuccess }: {
       delete docData.signature;
       
       const convertedDoc = {
-        company_id: user.company_id,
+        empresa_id: user.empresa_id,
         tipo_documento: targetType,
         numero_documento: `CONV-${Date.now()}`,
         cliente_nome: docData.client_name || docData.nome_cliente || 'Desconhecido',
@@ -19063,166 +19081,177 @@ export default function App() {
   const [connectionError, setConnectionError] = useState<boolean>(false);
   
   // Task/Alert modal state
-  const [alerts, setAlerts] = useState<any[]>(() => {
-    const saved = localStorage.getItem('app_alerts');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [alerts, setAlerts] = useState<any[]>([]);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [editingAlertId, setEditingAlertId] = useState<string | null>(null);
   const [taskFormData, setTaskFormData] = useState({
     name: '', type: 'imposto', description: '', responsible: '', startDate: '', endDate: '', advanceTime: '', obs: ''
   });
 
-  const handleSaveTask = (e: React.FormEvent) => {
-    e.preventDefault();
-    let newAlerts;
-    if (editingAlertId) {
-      newAlerts = alerts.map(a => a.id === editingAlertId ? { ...taskFormData, id: a.id } : a);
-    } else {
-      newAlerts = [...alerts, { ...taskFormData, id: Date.now().toString() }];
+  const doLoadAlerts = async (explicitId?: string) => {
+    try {
+      const companyId = explicitId || user?.empresa_id;
+      if (!companyId) return;
+      const { data, error } = await supabase
+        .from('alertas_tarefas')
+        .select('*')
+        .eq('empresa_id', companyId)
+        .order('start_date', { ascending: false });
+
+      if (data && !error) {
+        setAlerts(data.map(a => ({
+          ...a,
+          id: a.id,
+          name: a.name,
+          type: a.type,
+          description: a.description,
+          responsible: a.responsible,
+          startDate: a.start_date,
+          endDate: a.end_date,
+          advanceTime: a.advance_time,
+          obs: a.obs
+        })));
+      }
+    } catch (e) {
+      console.error('[App] Erro ao carregar alertas:', e);
     }
-    setAlerts(newAlerts);
-    localStorage.setItem('app_alerts', JSON.stringify(newAlerts));
-    setIsTaskModalOpen(false);
-    setEditingAlertId(null);
-    setTaskFormData({ name: '', type: 'imposto', description: '', responsible: '', startDate: '', endDate: '', advanceTime: '', obs: '' });
   };
 
-  const loadClientes = throttle(async () => {
+  const loadAlerts = throttle(async (explicitId?: string) => {
     if (syncLockRef.current) return;
     syncLockRef.current = true;
-
-    try {
-      const session = await authService.getSessionSafe();
-      if (!session) {
-        console.error('Usuário não autenticado no loadClientes');
-        return;
-      }
-
-      console.log('Carregando clientes do Supabase (Sync Blindada)...');
-      const companyId = user?.company_id || session.user.id;
-
-      const { data, error } = await supabase
-        .from('clientes')
-        .select('*')
-        .eq('company_id', companyId)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Erro ao carregar clientes do Supabase:', error);
-        return;
-      }
-
-      if (!Array.isArray(data)) {
-        console.error('Resposta inválida para clientes:', data);
-        return;
-      }
-
-      console.log(`Clientes carregados: ${data.length}`);
-
-      setClients(prev => {
-        // BLOQUEIO CRÍTICO ANTI-PERDA
-        if (data.length === 0 && prev.length > 0) {
-          console.warn('BLOQUEIO ANTI-OVERWRITE: Tentativa de zerar lista de clientes ignorada para preservar persistência visual.');
-          return prev;
-        }
-
-        return data.map((cl: any) => ({
-          ...cl,
-          id: cl.id,
-          name: cl.nome || cl.name || '',
-          email: cl.email || '',
-          contribuinte: cl.contribuinte || cl.nif || '',
-          morada: cl.endereco || cl.morada || '',
-          localidade: cl.localidade || '',
-          codigo_postal: cl.codigo_postal || '',
-          provincia: cl.provincia || '',
-          municipio: cl.municipio || '',
-          pais: cl.pais || 'Angola',
-          telefone: cl.telefone || cl.contact || '',
-          webpage: cl.webpage || '',
-          tipo_cliente: cl.tipo_cliente || 'normal',
-          saldo_inicial: Number(cl.saldo_inicial || 0),
-          estado_nif: cl.estado_nif || 'não encontrado',
-          company_id: cl.company_id
-        }));
-      });
-
-      localStorage.setItem('clientes_backup', JSON.stringify(data));
-
-    } catch (err) {
-      console.error('Erro crítico no processo loadClientes:', err);
-    } finally {
-      syncLockRef.current = false;
-    }
+    await doLoadAlerts(explicitId);
+    syncLockRef.current = false;
   }, 3000);
 
-  const loadLocaisTrabalho = throttle(async () => {
+  const handleSaveTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (!user?.empresa_id) {
+        alert('Utilizador não autenticado.');
+        return;
+      }
+      
+      const payload = {
+        empresa_id: user.empresa_id,
+        name: taskFormData.name,
+        type: taskFormData.type,
+        description: taskFormData.description,
+        responsible: taskFormData.responsible,
+        start_date: taskFormData.startDate,
+        end_date: taskFormData.endDate,
+        advance_time: taskFormData.advanceTime,
+        obs: taskFormData.obs
+      };
+
+      if (editingAlertId && String(editingAlertId).length > 20) {
+        // It's likely a UUID
+        const { error } = await supabase
+          .from('alertas_tarefas')
+          .update(payload)
+          .eq('id', editingAlertId)
+          .eq('empresa_id', user.empresa_id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('alertas_tarefas')
+          .insert([payload]);
+        if (error) throw error;
+      }
+      
+      await loadAlerts();
+      setIsTaskModalOpen(false);
+      setEditingAlertId(null);
+      setTaskFormData({ name: '', type: 'imposto', description: '', responsible: '', startDate: '', endDate: '', advanceTime: '', obs: '' });
+    } catch (err: any) {
+      console.error('[App] Erro ao guardar tarefa:', err);
+      alert('Erro ao guardar: ' + (err.message || 'Erro desconhecido'));
+    }
+  };
+
+  // --- Core Loading Functions (No Throttle) ---
+  const doLoadClientes = async (explicitId?: string) => {
+    try {
+      const companyId = explicitId || user?.empresa_id;
+      if (!companyId) return;
+
+      console.log(`[App] Buscando Clientes para ${companyId}...`);
+      const data = await clienteService.getClientes(companyId);
+
+      setClients(data.map((cl: any) => ({
+        ...cl,
+        id: cl.id,
+        name: cl.nome || '',
+        email: cl.email || '',
+        contribuinte: cl.contribuinte || cl.nif || '',
+        morada: cl.endereco || '',
+        localidade: cl.localidade || '',
+        codigo_postal: cl.codigo_postal || '',
+        provincia: cl.provincia || '',
+        municipio: cl.municipio || '',
+        pais: cl.pais || 'Angola',
+        telefone: cl.telefone || '',
+        webpage: cl.webpage || '',
+        tipo_cliente: cl.tipo_cliente || 'normal',
+        saldo_inicial: Number(cl.saldo_inicial || 0),
+        estado_nif: cl.estado_nif || 'não encontrado',
+        empresa_id: cl.empresa_id
+      })));
+
+      localStorage.setItem('clientes_backup', JSON.stringify(data));
+    } catch (err) {
+      console.error('[App] Erro ao carregar clientes:', err);
+    }
+  };
+
+  const doLoadLocaisTrabalho = async (explicitId?: string) => {
+    try {
+      const companyId = explicitId || user?.empresa_id;
+      if (!companyId) return;
+
+      console.log(`[App] Buscando Locais para ${companyId}...`);
+      const data = await localTrabalhoService.getLocaisTrabalho(companyId);
+
+      setWorkSites(data.map((ws: any) => ({
+        ...ws,
+        id: ws.id,
+        title: ws.nome || '',
+        location: ws.endereco || '',
+        contact: ws.telefone || '',
+        description: ws.descricao || '',
+        observations: ws.observacoes || '',
+        client_id: ws.client_id,
+        client_name: ws.client_name,
+        code: ws.code,
+        start_date: ws.start_date,
+        end_date: ws.end_date,
+        staff_per_day: Number(ws.staff_per_day || 0),
+        total_staff: Number(ws.total_staff || 0)
+      })));
+
+      localStorage.setItem('locais_backup', JSON.stringify(data));
+    } catch (err) {
+      console.error('[App] Erro ao carregar locais:', err);
+    }
+  };
+
+  const loadClientes = throttle(async (explicitId?: string) => {
     if (syncLockRef.current) return;
     syncLockRef.current = true;
+    await doLoadClientes(explicitId);
+    syncLockRef.current = false;
+  }, 3000);
 
-    try {
-      const session = await authService.getSessionSafe();
-      if (!session) {
-        console.error('Usuário não autenticado no loadLocaisTrabalho');
-        return;
-      }
-
-      console.log('Carregando locais de trabalho do Supabase (Sync Blindada)...');
-      const companyId = user?.company_id || session.user.id;
-
-      const { data, error } = await supabase
-        .from('locais_trabalho')
-        .select('*')
-        .eq('company_id', companyId)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Erro ao carregar locais de trabalho do Supabase:', error);
-        return;
-      }
-
-      if (!Array.isArray(data)) return;
-
-      console.log(`Locais de trabalho carregados: ${data.length}`);
-
-      setWorkSites(prev => {
-        // BLOQUEIO CRÍTICO ANTI-PERDA
-        if (data.length === 0 && prev.length > 0) {
-          console.warn('BLOQUEIO ANTI-OVERWRITE: Bloqueado reset de locais de trabalho para preservar dados atuais.');
-          return prev;
-        }
-
-        return (data || []).map((ws: any) => ({
-          ...ws,
-          id: ws.id,
-          title: ws.nome || ws.title || '',
-          location: ws.endereco || ws.location || '',
-          contact: ws.telefone || ws.contact || '',
-          description: ws.descricao || ws.description || '',
-          observations: ws.observacoes || ws.observations || '',
-          client_id: ws.client_id,
-          client_name: ws.client_name,
-          code: ws.code,
-          start_date: ws.start_date,
-          end_date: ws.end_date,
-          staff_per_day: Number(ws.staff_per_day || 0),
-          total_staff: Number(ws.total_staff || 0)
-        }));
-      });
-
-      localStorage.setItem('locais_backup', JSON.stringify(data || []));
-
-    } catch (err) {
-      console.error('Erro crítico no processo loadLocaisTrabalho:', err);
-    } finally {
-      syncLockRef.current = false;
-    }
+  const loadLocaisTrabalho = throttle(async (explicitId?: string) => {
+    if (syncLockRef.current) return;
+    syncLockRef.current = true;
+    await doLoadLocaisTrabalho(explicitId);
+    syncLockRef.current = false;
   }, 3000);
 
   async function saveDocumentoEmitido(doc: any) {
     try {
-      if (!user?.company_id) {
+      if (!user?.empresa_id) {
         console.error('Usuário não autenticado ou sem empresa no saveDocumentoEmitido');
         return;
       }
@@ -19232,7 +19261,7 @@ export default function App() {
       const { error } = await supabase
         .from('documentos_emitidos')
         .insert({
-          company_id: user.company_id,
+          empresa_id: user.empresa_id,
           tipo_documento: doc.document_type || doc.tipo_documento || 'Fatura',
           numero_documento: doc.invoice_number || doc.numero_documento,
           cliente_nome: doc.client_name || doc.cliente_nome || 'Desconhecido',
@@ -19251,15 +19280,16 @@ export default function App() {
     }
   }
 
-  async function loadDocumentosEmitidos() {
+  const doLoadDocumentosEmitidos = async (explicitId?: string) => {
     try {
-      if (!user?.company_id) return;
+      const companyId = explicitId || user?.empresa_id;
+      if (!companyId) return;
 
-      console.log('Carregando documentos emitidos do Supabase para empresa:', user.company_id);
+      console.log('[App] Carregando documentos do Supabase para:', companyId);
       const { data, error } = await supabase
         .from('documentos_emitidos')
         .select('*')
-        .eq('company_id', user.company_id)
+        .eq('empresa_id', companyId)
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -19272,16 +19302,17 @@ export default function App() {
     } catch (err) {
       console.error('Erro ao carregar documentos emitidos do Supabase:', err);
     }
-  }
+  };
 
-  async function loadCaixas() {
+  const doLoadCaixas = async (explicitId?: string) => {
     try {
-      if (!user?.company_id) return;
+      const companyId = explicitId || user?.empresa_id;
+      if (!companyId) return;
 
       const { data, error } = await supabase
         .from('caixas')
         .select('*')
-        .eq('company_id', user.company_id);
+        .eq('empresa_id', companyId);
 
       if (error) throw error;
       setCaixas(data?.map(c => ({
@@ -19299,16 +19330,17 @@ export default function App() {
     } catch (err) {
       console.error('Erro ao carregar caixas:', err);
     }
-  }
+  };
 
-  async function loadCaixaMovements() {
+  const doLoadCaixaMovements = async (explicitId?: string) => {
     try {
-      if (!user?.company_id) return;
+      const companyId = explicitId || user?.empresa_id;
+      if (!companyId) return;
 
       const { data, error } = await supabase
         .from('caixa_movimentacoes')
         .select('*')
-        .eq('company_id', user.company_id)
+        .eq('empresa_id', companyId)
         .order('date', { ascending: false });
 
       if (error) throw error;
@@ -19323,16 +19355,38 @@ export default function App() {
     } catch (err) {
       console.error('Erro ao carregar movimentos de caixa:', err);
     }
-  }
+  };
 
-  async function loadFornecedores() {
+  const loadDocumentosEmitidos = throttle(async (explicitId?: string) => {
+    if (syncLockRef.current) return;
+    syncLockRef.current = true;
+    await doLoadDocumentosEmitidos(explicitId);
+    syncLockRef.current = false;
+  }, 3000);
+
+  const loadCaixas = throttle(async (explicitId?: string) => {
+    if (syncLockRef.current) return;
+    syncLockRef.current = true;
+    await doLoadCaixas(explicitId);
+    syncLockRef.current = false;
+  }, 3000);
+
+  const loadCaixaMovements = throttle(async (explicitId?: string) => {
+    if (syncLockRef.current) return;
+    syncLockRef.current = true;
+    await doLoadCaixaMovements(explicitId);
+    syncLockRef.current = false;
+  }, 3000);
+
+  const doLoadFornecedores = async (explicitId?: string) => {
     try {
-      if (!user?.company_id) return;
+      const companyId = explicitId || user?.empresa_id;
+      if (!companyId) return;
 
       const { data, error } = await supabase
         .from('fornecedores')
         .select('*')
-        .eq('company_id', user.company_id);
+        .eq('empresa_id', companyId);
 
       if (error) throw error;
       setSuppliers(data?.map(s => ({
@@ -19346,16 +19400,17 @@ export default function App() {
     } catch (err) {
       console.error('Erro ao carregar fornecedores:', err);
     }
-  }
+  };
 
-  async function loadCompras() {
+  const doLoadCompras = async (explicitId?: string) => {
     try {
-      if (!user?.company_id) return;
+      const companyId = explicitId || user?.empresa_id;
+      if (!companyId) return;
 
       const { data, error } = await supabase
         .from('compras')
         .select('*')
-        .eq('company_id', user.company_id)
+        .eq('empresa_id', companyId)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -19369,89 +19424,169 @@ export default function App() {
     } catch (err) {
       console.error('Erro ao carregar compras:', err);
     }
-  }
+  };
+
+  const loadFornecedores = throttle(async (explicitId?: string) => {
+    if (syncLockRef.current) return;
+    syncLockRef.current = true;
+    await doLoadFornecedores(explicitId);
+    syncLockRef.current = false;
+  }, 3000);
+
+  const loadCompras = throttle(async (explicitId?: string) => {
+    if (syncLockRef.current) return;
+    syncLockRef.current = true;
+    await doLoadCompras(explicitId);
+    syncLockRef.current = false;
+  }, 3000);
+
+  // Real-time synchronization (Full Table Monitoring)
+  useEffect(() => {
+    const companyId = user?.empresa_id;
+    if (!companyId) return;
+
+    console.log('[REALTIME] Monitoramento ativado para empresa:', companyId);
+
+    const tables = [
+      'clientes', 
+      'locais_trabalho', 
+      'documentos_emitidos', 
+      'caixas', 
+      'caixa_movimentacoes', 
+      'fornecedores', 
+      'compras',
+      'alertas_tarefas'
+    ];
+
+    const channels = tables.map(table => {
+      return supabase
+        .channel(`public:${table}`)
+        .on('postgres_changes', { 
+          event: '*', 
+          schema: 'public', 
+          table: table, 
+          filter: `empresa_id=eq.${companyId}` 
+        }, (payload) => {
+          console.log(`[REALTIME-UPDATE] Mudança em ${table}:`, payload.eventType);
+          // Recarregamento inteligente baseado na tabela
+          if (table === 'clientes') loadClientes();
+          else if (table === 'locais_trabalho') loadLocaisTrabalho();
+          else if (table === 'documentos_emitidos') loadDocumentosEmitidos();
+          else if (table === 'caixas') loadCaixas();
+          else if (table === 'caixa_movimentacoes') loadCaixaMovements();
+          else if (table === 'fornecedores') loadFornecedores();
+          else if (table === 'compras') loadCompras();
+          else if (table === 'alertas_tarefas') loadAlerts();
+        })
+        .subscribe();
+    });
+
+    return () => {
+      channels.forEach(channel => supabase.removeChannel(channel));
+    };
+  }, [user?.empresa_id]);
 
   const fetchData = async () => {
     try {
+      console.log('[DEBUG-SYNC] Iniciando fetchData...');
       const session = await authService.getSessionSafe();
       if (!session) {
-        console.warn('Sync bloqueado: Usuário não autenticado no fetchData');
+        console.warn('[DEBUG-SYNC] Sync bloqueado: Nenhuma sessão ativa encontrada.');
         return;
       }
-      
-      const companyId = user?.company_id;
-      if (!companyId) {
-        console.warn('Sync adiado: company_id ainda não disponível.');
+
+      // 1. Recuperar Tenant ID (Prioridade: Contexto -> Perfil DB -> Fresh API)
+      let targetCompanyId = user?.empresa_id;
+
+      if (!targetCompanyId) {
+        console.log('[DEBUG-SYNC] empresa_id ausente no estado. Buscando no DB...');
+        const { data: profileCheck } = await supabase
+          .from('perfis')
+          .select('empresa_id')
+          .eq('id', session.user.id)
+          .maybeSingle();
+        
+        targetCompanyId = profileCheck?.empresa_id;
+      }
+
+      if (!targetCompanyId) {
+        console.log('[DEBUG-SYNC] Ainda sem empresa_id. Tentativa final via authService...');
+        const freshUser = await authService.getCurrentUser();
+        targetCompanyId = freshUser?.empresa_id;
+      }
+
+      if (!targetCompanyId) {
+        console.error('[DEBUG-SYNC] ERRO CRÍTICO: Não foi possível determinar o Tenant ID do utilizador.');
         return;
       }
-      
-      console.log('Fetching isolated data for company:', companyId);
+
+      console.log('[DEBUG-SYNC] Sincronizando dados para o Tenant:', targetCompanyId);
       setConnectionError(false);
       
-      // Fontes de Verdade Principais (Supabase)
+      // Fontes de Verdade Principais (Supabase com RLS)
       try {
+        console.time('[TIMER-SYNC] Supabase Queries');
         await Promise.all([
-          loadClientes(),
-          loadLocaisTrabalho(),
-          loadDocumentosEmitidos(),
-          loadCaixas(),
-          loadCaixaMovements(),
-          loadFornecedores(),
-          loadCompras()
+          doLoadClientes(targetCompanyId),
+          doLoadLocaisTrabalho(targetCompanyId),
+          doLoadDocumentosEmitidos(targetCompanyId),
+          doLoadCaixas(targetCompanyId),
+          doLoadCaixaMovements(targetCompanyId),
+          doLoadFornecedores(targetCompanyId),
+          doLoadCompras(targetCompanyId)
         ]);
+        console.timeEnd('[TIMER-SYNC] Supabase Queries');
       } catch (err: any) {
+        console.error('[DEBUG-SYNC] Erro nas queries Supabase:', err);
         if (err.message?.includes('fetch') || err.name === 'TypeError') {
           setConnectionError(true);
         }
         throw err;
       }
 
-      // Carregar dados da empresa diretamente do Supabase para Blindagem Total
-      console.log('Tentando carregar dados da empresa para:', companyId);
-      const { data: compSupabase, error: compErr } = await supabase
+      // Dados da Empresa (Blinda o UI com dados reais do Tenant)
+      const { data: compSupabase } = await supabase
         .from('empresas')
         .select('*')
-        .eq('id', companyId)
+        .eq('id', targetCompanyId)
         .maybeSingle();
 
-      if (compErr) {
-        console.error('Erro 400/406 ao carregar empresa:', compErr);
-      }
-
       if (compSupabase) {
-        console.log('Dados da empresa carregados:', compSupabase);
         setCompanyData(compSupabase);
-        setCompanyName(compSupabase.nome_empresa || compSupabase.name || 'Empresa');
-        setCompanyNif(compSupabase.nif || '500123456');
-        setCompanyAddress(compSupabase.localizacao || compSupabase.address || 'Endereço da Empresa');
-        setCompanyLogo(compSupabase.logo_url || compSupabase.logo || '');
-        setCompanyFooter(compSupabase.footer_image_url || compSupabase.footer || 'Processado por computador');
+        setCompanyName(compSupabase.nome_empresa || 'Minha Empresa');
+        setCompanyNif(compSupabase.nif || '');
+        setCompanyAddress(compSupabase.endereco || compSupabase.localizacao || '');
+        setCompanyLogo(compSupabase.logo_url || '');
+        setCompanyFooter(compSupabase.footer_image_url || 'Processado por computador');
       }
       
-      const { data: sfData } = await supabase.from('series_fiscais').select('*').eq('company_id', companyId);
+      await doLoadAlerts(targetCompanyId);
+
+      
+      const { data: sfData } = await supabase.from('series_fiscais').select('*').eq('empresa_id', targetCompanyId);
       const fsDataFormatted = (sfData || []).map(s => ({
         id: s.id, reference: s.serie, description: s.descricao, type: s.tipo, is_active: s.ativo
       }));
 
       const results = await Promise.allSettled([
-        fetchJson(`/api/stats?company_id=${companyId}`),
-        fetchJson(`/api/products?company_id=${companyId}`),
-        fetchJson(`/api/transactions?company_id=${companyId}`),
-        fetchJson(`/api/invoices?company_id=${companyId}`),
-        fetchJson(`/api/employees?company_id=${companyId}`),
+        fetchJson(`/api/stats?empresa_id=${targetCompanyId}`),
+        fetchJson(`/api/products?empresa_id=${targetCompanyId}`),
+        fetchJson(`/api/transactions?empresa_id=${targetCompanyId}`),
+        fetchJson(`/api/invoices?empresa_id=${targetCompanyId}`),
+        fetchJson(`/api/employees?empresa_id=${targetCompanyId}`),
         Promise.resolve(fsDataFormatted), // Replaced API with Supabase series
         fetchJson('/api/cost-centers'),
         fetchJson('/api/pos-points'),
         fetchJson('/api/cash/sessions'),
         Promise.resolve(null), // Replaced /api/caixas with Supabase loadCaixas call
         Promise.resolve(null), // Replaced /api/caixa-movements with Supabase loadCaixaMovements call
-        fetchJson(`/api/stock/movements?company_id=${companyId}`),
-        fetchJson(`/api/work-site-movements?company_id=${companyId}`),
-        fetchJson(`/api/warehouses?company_id=${companyId}`),
-        fetchJson(`/api/security/occurrences?company_id=${companyId}`),
-        fetchJson(`/api/security/armory?company_id=${companyId}`),
-        fetchJson(`/api/security/roster?company_id=${companyId}`),
-        !compSupabase ? fetchJson(`/api/company/${companyId}`) : Promise.resolve(null),
+        fetchJson(`/api/stock/movements?empresa_id=${targetCompanyId}`),
+        fetchJson(`/api/work-site-movements?empresa_id=${targetCompanyId}`),
+        supabase.from('armazens').select('*').then(res => res.data),
+        fetchJson(`/api/security/occurrences?empresa_id=${targetCompanyId}`),
+        fetchJson(`/api/security/armory?empresa_id=${targetCompanyId}`),
+        fetchJson(`/api/security/roster?empresa_id=${targetCompanyId}`),
+        !compSupabase ? fetchJson(`/api/company/${targetCompanyId}`) : Promise.resolve(null),
         Promise.resolve(null) // Replaced /api/purchases with Supabase loadCompras call above
       ]);
 
@@ -19467,7 +19602,7 @@ export default function App() {
       setInvoices(Array.isArray(i) ? i : []);
       setEmployees(Array.isArray(e) ? e : []);
       
-      setFiscalSeries(Array.isArray(fs) ? fs : []);
+      // setFiscalSeries(Array.isArray(fs) ? fs : []); // Already handled by SF check
       setCostCenters(Array.isArray(cc) ? cc : []);
       setPosPoints(Array.isArray(pp) ? pp : []);
       setSessions(Array.isArray(sess) ? sess : []);
@@ -19475,15 +19610,15 @@ export default function App() {
       if (Array.isArray(pp) && pp.length > 0 && !selectedPOS) setSelectedPOS(pp[0].id.toString());
       if (Array.isArray(fs) && fs.length > 0 && !selectedSeries) setSelectedSeries(fs[0].id.toString());
 
-      setCaixas(Array.isArray(cx) ? cx : []);
-      setCaixaMovements(Array.isArray(cm) ? cm : []);
+      // setCaixas(Array.isArray(cx) ? cx : []); // DO NOT OVERWRITE SUPABASE DATA
+      // setCaixaMovements(Array.isArray(cm) ? cm : []); // DO NOT OVERWRITE SUPABASE DATA
       setStockMovements(Array.isArray(sm) ? sm : []);
       setWorkSiteMovements(Array.isArray(wsm) ? wsm : []);
       setWarehouses(Array.isArray(wh) ? wh : []);
       setSecurityOccurrences(Array.isArray(occ) ? occ : []);
       setSecurityArmory(Array.isArray(arm) ? arm : []);
       setSecurityRoster(Array.isArray(rost) ? rost : []);
-      setPurchases(Array.isArray(pur) ? pur : []);
+      // setPurchases(Array.isArray(pur) ? pur : []); // DO NOT OVERWRITE SUPABASE DATA
       
       if (!compSupabase && comp) {
         setCompanyData(comp);
@@ -19502,187 +19637,103 @@ export default function App() {
 
   const handleAddWorkSite = async (site: Omit<WorkSite, 'id'>) => {
     try {
-      if (!user) {
-        console.error('Sem auth no handleAddWorkSite');
+      if (!user?.empresa_id) {
         alert('Sessão expirada. Por favor, faça login novamente.');
         return;
       }
 
-      const companyId = user.company_id;
-      console.log('Tentando adicionar Local de Trabalho:', { site, companyId });
-
-      // Validar client_id: Forçar string para evitar problemas de tipo (TEXT no Supabase)
-      const clientId = site.client_id && String(site.client_id) !== '0' ? String(site.client_id) : '';
-      
-      const payload = {
-        company_id: companyId,
+      const payload: Omit<DbLocalTrabalho, 'id'> = {
+        empresa_id: user.empresa_id,
         nome: site.title || site.name || '',
         endereco: site.location || '',
         telefone: site.contact || '',
         descricao: site.description || '',
         observacoes: site.observations || '',
-        client_id: clientId,
+        client_id: site.client_id ? String(site.client_id) : '',
         client_name: site.client_name || '',
-        start_date: site.start_date || null,
-        end_date: site.end_date || null,
+        start_date: site.start_date || undefined,
+        end_date: site.end_date || undefined,
         code: site.code || '',
         staff_per_day: Number(site.staff_per_day || 0),
         total_staff: Number(site.total_staff || 0),
-        cidade: '',
-        provincia: '',
-        email: '',
-        responsavel: ''
       };
 
-      // BLOQUEIO DE DUPLICAÇÃO
-      if (payload.code) {
-        const { data: existing } = await supabase
-          .from('locais_trabalho')
-          .select('id')
-          .eq('company_id', companyId)
-          .eq('code', payload.code)
-          .maybeSingle();
-
-        if (existing) {
-          console.warn('Local duplicado bloqueado pelo código:', payload.code);
-          alert('Já existe um local de trabalho com este código.');
-          return;
-        }
-      }
-
-      console.log('Payload Final para Supabase (insert):', payload);
-
-      const { data, error } = await supabase
-        .from('locais_trabalho')
-        .insert([payload])
-        .select();
-
-      if (error) {
-        console.error('ERRO SUPABASE (INSERT):', error);
-        alert('Erro ao guardar (Supabase): ' + error.message);
-        return;
-      }
-
-      console.log('Local salvo com sucesso no Supabase:', data);
+      await localTrabalhoService.createLocalTrabalho(payload);
+      
       await loadLocaisTrabalho();
       alert('Local de trabalho guardado com sucesso!');
-
-    } catch (err) {
-      console.error('Erro crítico no handleAddWorkSite:', err);
-      alert('Erro crítico ao adicionar Local: ' + (err instanceof Error ? err.message : String(err)));
+    } catch (err: any) {
+      console.error('[App] Erro ao adicionar Local:', err);
+      alert('Erro ao guardar: ' + (err.message || 'Erro desconhecido'));
     }
   };
 
-  const handleUpdateWorkSite = async (id: number, site: Omit<WorkSite, 'id'>) => {
+  const handleUpdateWorkSite = async (id: number | string, site: Omit<WorkSite, 'id'>) => {
     try {
-      if (!user) {
-        console.error('Usuário não autenticado no handleUpdateWorkSite');
-        return;
-      }
-      const companyId = user.company_id;
-      console.log('Tentando atualizar Local de Trabalho ID:', id, { site, companyId });
+      if (!user?.empresa_id) return;
 
-      const clientId = site.client_id && String(site.client_id) !== '0' ? String(site.client_id) : '';
-
-      const updatedData = {
+      const payload: Partial<DbLocalTrabalho> = {
+        empresa_id: user.empresa_id,
         nome: site.title || site.name || '',
         endereco: site.location || '',
         telefone: site.contact || '',
         descricao: site.description || '',
         observacoes: site.observations || '',
-        client_id: clientId,
+        client_id: site.client_id ? String(site.client_id) : '',
         client_name: site.client_name || '',
-        start_date: site.start_date || null,
-        end_date: site.end_date || null,
+        start_date: site.start_date || undefined,
+        end_date: site.end_date || undefined,
         code: site.code || '',
         staff_per_day: Number(site.staff_per_day || 0),
         total_staff: Number(site.total_staff || 0),
-        cidade: '',
-        provincia: '',
-        email: '',
-        responsavel: '',
-        updated_at: new Date().toISOString()
       };
 
-      console.log('Payload Final para Supabase (update):', updatedData);
-
-      const { error } = await supabase
-        .from('locais_trabalho')
-        .update(updatedData)
-        .eq('id', id)
-        .eq('company_id', companyId);
-
-      if (error) {
-        console.error('ERRO SUPABASE (UPDATE):', error);
-        alert('Erro ao atualizar: ' + error.message);
-        return;
-      }
-
-      console.log('Local atualizado com sucesso no Supabase');
+      await localTrabalhoService.updateLocalTrabalho(id, payload);
+      
       await loadLocaisTrabalho();
       alert('Alterações guardadas com sucesso!');
-    } catch (err) {
-      console.error('Erro crítico no handleUpdateWorkSite:', err);
-      alert('Erro crítico ao atualizar Local: ' + (err instanceof Error ? err.message : String(err)));
+    } catch (err: any) {
+      console.error('[App] Erro ao atualizar Local:', err);
+      alert('Erro ao guardar: ' + (err.message || 'Erro desconhecido'));
     }
   };
 
-  const handleCertifyDocument = async (id: number) => {
+  const handleDeleteWorkSite = async (id: number | string) => {
+    if (!confirm('Tem a certeza que deseja eliminar este local de trabalho?')) return;
     try {
-      if (!user) return;
-      
-      console.log('Certificando documento:', id);
+      if (!user?.empresa_id) return;
+      await localTrabalhoService.deleteLocalTrabalho(id, user.empresa_id);
+      await loadLocaisTrabalho();
+      alert('Local de trabalho eliminado com sucesso.');
+    } catch (err: any) {
+      console.error('[App] Erro ao eliminar local:', err);
+      alert('Erro ao eliminar: ' + (err.message || 'Erro desconhecido'));
+    }
+  };
+
+  const handleCertifyDocument = async (id: number | string) => {
+    try {
+      if (!user?.empresa_id) return;
       
       const { error } = await supabase
         .from('documentos_emitidos')
         .update({ 
-          status: 'certificado', 
           is_certified: true, 
-          certificado_por: user.id,
-          certificado_em: new Date().toISOString() 
+          certified_at: new Date().toISOString(),
+          status: 'CERTIFICADO',
+          estado: 'CERTIFICADO'
         })
         .eq('id', id)
-        .eq('company_id', user.company_id);
-        
-      if (!error) {
-        console.log('Documento certificado com sucesso!');
-        setShowCertifyModal(false);
-        await fetchData();
-        alert('Documento certificado com sucesso!');
-      } else {
-        console.error('Erro Supabase ao certificar:', error);
-        alert('Erro ao certificar: ' + error.message);
-      }
-    } catch (error) {
-      console.error('Erro crítico ao certificar documento:', error);
-      alert('Erro inesperado ao certificar documento.');
-    }
-  };
+        .eq('empresa_id', user.empresa_id);
 
-  const handleDeleteWorkSite = async (id: number) => {
-    if (!confirm('Tem a certeza que deseja eliminar este local de trabalho?')) return;
-    
-    try {
-      if (!user) return;
-      const companyId = user.company_id;
-
-      const { error } = await supabase
-        .from('locais_trabalho')
-        .delete()
-        .eq('id', id)
-        .eq('company_id', companyId);
-
-      if (error) {
-        console.error('Erro ao eliminar local de trabalho:', error);
-        alert('Erro ao eliminar: ' + error.message);
-        return;
-      }
-
-      await loadLocaisTrabalho();
-      alert('Local de trabalho eliminado com sucesso.');
-
-    } catch (err) {
-      console.error('Erro crítico ao eliminar local:', err);
+      if (error) throw error;
+      
+      alert('Documento certificado com sucesso!');
+      setShowCertifyModal(false);
+      await fetchData();
+    } catch (err: any) {
+      console.error('Erro ao certificar documento:', err);
+      alert('Erro ao certificar: ' + (err.message || 'Erro desconhecido'));
     }
   };
 
@@ -19801,10 +19852,10 @@ export default function App() {
   const throttledFetchData = throttle(fetchData, 2000);
 
   useEffect(() => {
-    if (authReady && user?.company_id) {
+    if (authReady) {
       throttledFetchData();
     }
-  }, [authReady, user?.company_id]);
+  }, [authReady]);
 
   return (
     <ProtectedRoute>
@@ -19927,7 +19978,7 @@ export default function App() {
                                 is_active: false 
                               })
                               .eq('id', showAnularModal.id)
-                              .eq('company_id', user.company_id);
+                              .eq('empresa_id', user.empresa_id);
                             
                             if (!error) {
                               // If it's a receipt, we should inform the user that the invoice is liberated
@@ -19985,7 +20036,7 @@ export default function App() {
                                     .from('documentos_emitidos')
                                     .delete()
                                     .eq('id', showDeleteModal.id)
-                                    .eq('company_id', user.company_id);
+                                    .eq('empresa_id', user.empresa_id);
                                     
                                   if (!error) {
                                     alert('Documento eliminado com sucesso!');
@@ -20240,7 +20291,7 @@ export default function App() {
                         case 'tax-series':
                           return <FiscalSeriesModule series={fiscalSeries} onRefresh={fetchData} users={employees} />;
                         case 'profit-loss-report':
-                          return <ProfitLossReport fiscalYear={fiscalYear} company_id={user?.company_id} />;
+                          return <ProfitLossReport fiscalYear={fiscalYear} empresa_id={user?.empresa_id} />;
                         case 'settings':
                           return (
                             <div className="space-y-6">

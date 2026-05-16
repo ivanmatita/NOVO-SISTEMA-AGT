@@ -67,6 +67,7 @@ export const LoginPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
     setLocalError(null);
 
     if (!email || !password) {
@@ -115,11 +116,12 @@ export const LoginPage: React.FC = () => {
       }
 
       setRegLoading(true);
+      setRegError(null);
       try {
-        // RATE LIMIT LOCAL (FRONTEND)
+        // RATE LIMIT LOCAL (FRONTEND) - Reduzido para permitir nova tentativa em caso de falha técnica
         const last = localStorage.getItem("empresa_last_create");
-        if (last && Date.now() - Number(last) < 3600000) {
-          throw new Error("Limite atingido. Aguarde cerca de 1 hora antes de registar uma nova empresa.");
+        if (last && Date.now() - Number(last) < 30000) { // 30 seconds local cooldown
+          throw new Error(`Por favor, aguarde alguns segundos antes de tentar novamente.`);
         }
 
         const selectedPlanObj = licensingPlans.find(p => p.id === regSelectedPlan);
@@ -149,9 +151,22 @@ export const LoginPage: React.FC = () => {
           setShowRegisterModal(false);
           setRegistrationSuccess(false);
           setRegStep(1);
+          // Limpar campos
+          setRegCompanyName('');
+          setRegNif('');
+          setRegNomeAdmin('');
+          setRegEmail('');
+          setRegPassword('');
+          setRegConfirmPassword('');
         }, 3000);
       } catch (err: any) {
-        setRegError(err.message || 'Erro ao registar empresa.');
+        console.error('[LoginPage] Erro no registo:', err);
+        // Se for erro de rate limit, sugerimos que o user tente fazer login
+        if (err.message.includes('Limite de 3 registos') || err.message.includes('429')) {
+          setRegError(err.message + " Se já criou a sua conta anteriormente, por favor clique em 'Cancelar' e use o formulário de Login.");
+        } else {
+          setRegError(err.message || 'Ocorreu um erro ao registar a empresa. Por favor, tente novamente.');
+        }
       } finally {
         setRegLoading(false);
       }
@@ -390,9 +405,30 @@ export const LoginPage: React.FC = () => {
 
                   <form onSubmit={handleSubmit} className="space-y-6">
                     {displayError && (
-                      <div className="bg-red-50 border-l-4 border-red-500 p-4 flex items-center gap-3">
-                        <AlertCircle className="text-red-500 shrink-0" size={18} />
-                        <p className="text-xs font-bold text-red-700 uppercase tracking-tight">{displayError}</p>
+                      <div className="bg-red-50 border-l-4 border-red-500 p-4 space-y-3">
+                        <div className="flex items-center gap-3">
+                          <AlertCircle className="text-red-500 shrink-0" size={18} />
+                          <p className="text-xs font-bold text-red-700 uppercase tracking-tight">{displayError}</p>
+                        </div>
+                        {displayError.includes('Conta Órfã') && (
+                          <div className="pt-2">
+                             <button 
+                               type="button"
+                               onClick={() => {
+                                 setShowRegisterModal(true);
+                                 setRegStep(1);
+                                 setRegEmail(email);
+                                 setLocalError(null);
+                               }}
+                               className="w-full bg-red-600 text-white py-2 text-[10px] font-black uppercase tracking-widest hover:bg-red-700 transition-colors"
+                             >
+                               Completar Registo de Empresa
+                             </button>
+                             <p className="text-[10px] text-red-400 mt-2 font-bold uppercase text-center px-4">
+                               Detetamos o seu e-mail mas falta criar a ficha da sua empresa.
+                             </p>
+                          </div>
+                        )}
                       </div>
                     )}
 

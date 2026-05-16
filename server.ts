@@ -4,6 +4,36 @@ import fs from "fs";
 import { createServer as createViteServer } from "vite";
 
 import compression from "compression";
+import { createClient } from "@supabase/supabase-js";
+import dotenv from "dotenv";
+import crypto from "crypto";
+
+// Carregar variáveis de ambiente do ficheiro .env
+dotenv.config();
+
+// --- Supabase Admin (Bypasses Rate Limits) ---
+const rawSupabaseUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "").trim();
+const supabaseUrl = rawSupabaseUrl
+  .replace(/\/rest\/v1\/?$/, "")
+  .replace(/\/auth\/v1\/?$/, "")
+  .replace(/\/$/, "");
+const supabaseServiceRole = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+
+// Verificação de segurança para o Supabase Admin
+const isServiceKeyValid = supabaseServiceRole && supabaseServiceRole.length > 50;
+
+const supabaseAdmin = (supabaseUrl && isServiceKeyValid) 
+  ? createClient(supabaseUrl, supabaseServiceRole, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    })
+  : null;
+
+if (!supabaseAdmin) {
+  console.warn("⚠️ SUPABASE_SERVICE_ROLE_KEY não detetada ou inválida. O bypass de Rate Limit do Registo não funcionará.");
+}
 
 const DB_FILE = path.join(process.cwd(), "db.json");
 
@@ -146,6 +176,96 @@ async function startServer() {
   // --- API Routes (Robust Mock) ---
 
   app.get("/api/health", (req, res) => res.json({ status: "ok", mode: "offline" }));
+
+  // --- SaaS Registration (Bypassing Rate Limits) ---
+  app.post("/api/auth/register-saas", async (req, res) => {
+    if (!supabaseAdmin) {
+      console.error("[SERVER-AUTH] Tentativa de registo sem SUPABASE_SERVICE_ROLE_KEY configurada.");
+      return res.status(500).json({ 
+        error: "Configuração Incompleta: A chave 'SUPABASE_SERVICE_ROLE_KEY' (Service Role) não foi configurada nas definições do servidor. Por favor, adicione-a no menu Definições para permitir registos sem limites de segurança." 
+      });
+    }
+
+    const { email, password, formData } = req.body;
+
+    try {
+      console.log(`[SERVER-AUTH] Iniciando registo via Admin para: ${email}`);
+
+      // 1. Criar Utilizador Auth (Admin Bypass)
+      const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: {
+          full_name: formData.nome_administrador || formData.nome_empresa
+        }
+      });
+
+      if (authError) {
+        console.error("[SERVER-AUTH] Erro Auth Admin:", authError);
+        
+        // Se o erro for "Invalid API key" ou similar, avisamos especificamente
+        if (authError.message.toLowerCase().includes('api key') || authError.status === 401 || authError.status === 403) {
+          return res.status(401).json({ 
+            error: "Erro de Autenticação Supabase: A 'SUPABASE_SERVICE_ROLE_KEY' fornecida é inválida. Certifique-se de que está a usar a 'service_role' (secreta) e não a 'anon' (pública) no servidor." 
+          });
+        }
+        
+        return res.status(authError.status || 400).json({ error: authError.message });
+      }
+
+      const userId = authUser.user.id;
+
+      // 2. Criar Empresa (O Banco de Dados gera o ID automaticamente agora que aplicamos o SQL)
+      const { data: company, error: companyError } = await supabaseAdmin
+        .from('empresas')
+        .insert([{
+          auth_user_id: userId,
+          nome_empresa: formData.nome_empresa,
+          nif: formData.nif,
+          email: email,
+          telefone: formData.telefone,
+          endereco: formData.endereco,
+          provincia: formData.provincia,
+          municipio: formData.municipio,
+          pais: formData.pais || 'Angola',
+          tipo_empresa: formData.tipo_empresa,
+          nome_administrador: formData.nome_administrador,
+          plano: 'trial'
+        }])
+        .select('id')
+        .single();
+
+      if (companyError) {
+        console.error("[SERVER-AUTH] Erro ao criar empresa admin:", companyError);
+        // Tenta limpar o user criado se a empresa falhar (cleanup)
+        await supabaseAdmin.auth.admin.deleteUser(userId);
+        return res.status(400).json({ error: `Erro na Tabela Empresas: ${companyError.message}` });
+      }
+
+      // 3. Criar Perfil
+      const { error: profileError } = await supabaseAdmin
+        .from('perfis')
+        .upsert({
+          id: userId,
+          empresa_id: company.id,
+          email: email,
+          nome: formData.nome_administrador || formData.nome_empresa,
+          role: 'admin'
+        });
+
+      if (profileError) {
+        console.error("[SERVER-AUTH] Erro ao criar perfil admin:", profileError);
+        return res.status(400).json({ error: `Erro na Tabela Perfis: ${profileError.message}` });
+      }
+
+      console.log(`[SERVER-AUTH] Registo SaaS concluído com sucesso para ${email}`);
+      res.json({ success: true, userId });
+    } catch (err: any) {
+      console.error("[SERVER-AUTH] Falha crítica no endpoint:", err);
+      res.status(500).json({ error: "Erro interno no servidor de autenticação." });
+    }
+  });
 
   app.post("/api/login-local", (req, res) => {
     const { identifier, password } = req.body;

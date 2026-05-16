@@ -25,219 +25,152 @@ export const authService = {
 
   async registerCompany(formData: any): Promise<User> {
     try {
-      const emailToRegister = formData.email?.trim() || '';
+      console.log('[AuthService] Iniciando fluxo SaaS via Servidor (Anti-Rate-Limit)...');
       
-      // 1. Criar conta no Supabase Auth
-      let { data, error } = await supabase.auth.signUp({
+      const emailToRegister = formData.email?.trim()?.toLowerCase() || '';
+
+      // 🟡 PASSO 1: Chamada ao Servidor para criação Bypass
+      const response = await fetch('/api/auth/register-saas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: emailToRegister,
+          password: formData.password,
+          formData: formData
+        })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        const errorMsg = (result.error || '').toLowerCase();
+        if (
+          errorMsg.includes('already registered') || 
+          errorMsg.includes('already exists') ||
+          errorMsg.includes('email_exists')
+        ) {
+          console.log('[AuthService] Utilizador já existe no sistema. Procedendo para Login de sessão...');
+        } else {
+          throw new Error(result.error || 'Falha no registo via servidor.');
+        }
+      }
+
+      // 🟢 PASSO 2: Autenticar no Cliente
+      console.log('[AuthService] Obtendo sessão local...');
+      const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
         email: emailToRegister,
         password: formData.password
       });
 
-      if (error) {
-        if (error.message.includes('User already registered') || error.message.includes('already exists')) {
-          // Utilizador já existe, tentar fazer login para continuar o processo
-          const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
-            email: emailToRegister,
-            password: formData.password
-          });
-          if (loginError) {
-             throw new Error('A conta já existe, mas a password está incorreta. Se esqueceu a password, por favor reinicie-a. Caso contrário use o e-mail correto.');
-          }
-          data = loginData; // Use the login data
-        } else if (error.message.includes('rate limit')) {
-          throw new Error('Limite de registos excedido no Supabase (segurança anti-spam). O Supabase limita a 3 registos por hora por IP. Por favor, aguarde cerca de 1 hora ou adicione a sua empresa usando outra rede de internet.');
-        } else if (error.message.includes('invalid')) {
-          throw new Error(`O endereço de e-mail fornecido ("${emailToRegister}") aparenta ser inválido.`);
-        } else {
-          throw error;
-        }
+      if (loginError) {
+        throw new Error(`Utilizador criado, mas falha no login: ${loginError.message}`);
       }
 
-      // Garantir login se não houver sessão ativa
-      if (!data.session) {
-        const { error: loginError } = await supabase.auth.signInWithPassword({
-          email: emailToRegister,
-          password: formData.password
-        });
-        if (loginError) {
-          throw new Error('Erro ao iniciar sessão após registo. A sua conta requer verificação de e-mail? Conta parcialmente criada.');
-        }
-      }
-
-      // Verificar explicitamente se o usuário está autenticado
-      const currentUser = await supabase.auth.getUser();
-      if (!currentUser?.data?.user?.id) {
-        throw new Error("Utilizador não autenticado após o registo. Tente fazer login manualmente.");
-      }
-
-      const authUser = currentUser.data.user;
-
-      // Check if company already exists to avoid recreating
-      const { data: existingCompany } = await supabase
-        .from('empresas')
-        .select('id')
-        .eq('auth_user_id', authUser.id)
-        .maybeSingle();
-
-      let companyId;
-
-      if (existingCompany) {
-        companyId = existingCompany.id;
-      } else {
-        const { data: companyData, error: companyError } = await supabase
-          .from('empresas')
-          .insert([
-            {
-              nome_empresa: formData.nome_empresa,
-              nif: formData.nif,
-              email: emailToRegister,
-              telefone: formData.telefone,
-              endereco: formData.endereco,
-              provincia: formData.provincia,
-              municipio: formData.municipio,
-              pais: formData.pais || 'Angola',
-              tipo_empresa: formData.tipo_empresa,
-              nome_administrador: formData.nome_administrador,
-              email_admin: formData.email_admin,
-              pacote_licenca: formData.pacote_licenca,
-              valor_licenca: formData.valor_licenca,
-              auth_user_id: authUser.id,
-              plano: formData.plano || 'trial',
-              plano_status: 'trial',
-              plano_expira_em: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString() // 14 days trial by default
-            }
-          ])
-          .select()
-          .single();
-
-        if (companyError) {
-          console.error('Erro ao criar empresa:', companyError);
-          throw companyError;
-        }
-        companyId = companyData.id;
-      }
-
-      // 3. Criar perfil associando o usuário à empresa recém-criada
-      const { data: existingProfile } = await supabase
-         .from('perfis')
-         .select('id')
-         .eq('id', authUser.id)
-         .maybeSingle();
-         
-      if (!existingProfile) {
-        const { error: profileError } = await supabase
-          .from('perfis')
-          .insert([
-            {
-              id: authUser.id,
-              empresa_id: companyId,
-              nome: formData.nome_administrador || formData.nome_empresa,
-              role: 'admin'
-            }
-          ]);
-
-        if (profileError) {
-          console.error('Erro ao criar perfil:', profileError);
-          throw profileError;
-        }
-      }
-
-      // Retornar objeto User formatado
-      return {
-        id: authUser.id,
-        username: formData.nome_administrador || formData.nome_empresa,
-        email: formData.email,
-        company_id: companyId,
-        role: 'admin',
-        created_at: new Date().toISOString()
-      };
+      console.log('[AuthService] Fluxo SaaS concluído via API Servidor!');
+      sessionCache = null;
+      return await this.getCurrentUser() as User;
     } catch (err: any) {
-      console.error('Erro no registro da empresa:', err);
+      console.error('[AuthService] Falha Crítica no Fluxo SaaS:', err.message);
       throw err;
     }
   },
 
   async login(email: string, password: string): Promise<User> {
     try {
-      const emailToLogin = email?.trim() || '';
+      const emailToLogin = email?.trim()?.toLowerCase() || '';
+      console.log('[AuthService] Tentativa de login:', emailToLogin);
+      
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: emailToLogin,
         password
       });
 
       if (authError) {
-        // Tratamento específico de erros comuns do Supabase
-        if (authError.message === 'Invalid login credentials') {
-          throw new Error('E-mail ou palavra-passe incorretos. Por favor, verifique os seus dados ou registe uma nova conta.');
+        if (authError.message === 'Invalid login credentials' || authError.status === 400) {
+          throw new Error('E-mail ou palavra-passe incorretos. Verifique os dados ou registe uma nova conta.');
         }
         if (authError.message.includes('Email not confirmed')) {
-          throw new Error('O seu e-mail ainda não foi confirmado. Por favor, verifique a sua caixa de entrada.');
+          throw new Error('O seu e-mail ainda não foi confirmado. Verifique a sua caixa de entrada.');
         }
         throw authError;
       }
       
-      if (!authData.user) throw new Error('Usuário não encontrado após login');
+      if (!authData.user) throw new Error('Falha interna: Sessão não encontrada.');
 
       sessionCache = authData.session;
 
-      // Buscar dados do perfil e empresa associada
+      // 1. Tentar buscar Perfil
       const { data: perfil, error: perfilError } = await supabase
         .from('perfis')
-        .select(`
-          empresa_id,
-          role,
-          empresas (
-            id,
-            nome_empresa,
-            email,
-            created_at
-          )
-        `)
+        .select('empresa_id, role')
         .eq('id', authData.user.id)
         .maybeSingle();
 
-      if (perfilError) {
-        console.error('Erro ao buscar perfil:', perfilError);
-      }
+      if (perfilError) console.error('[AuthService] Erro de rede ao buscar perfil:', perfilError);
 
+      // 2. Se não houver perfil, tentar buscar Empresa (Auto-reparação)
       if (!perfil) {
-        console.warn('Utilizador sem perfil associado. Tentando carregamento legado...');
-        // Fallback para empresas que ainda usam o modelo legado (ID do user = ID da empresa)
-        const { data: legacyEmpresa } = await supabase
+        console.warn('[AuthService] Perfil não encontrado. Iniciando auto-reparação...');
+        
+        // Verificamos se existe uma empresa cujo auth_user_id seja este utilizador
+        const { data: company, error: companyErr } = await supabase
           .from('empresas')
-          .select('*')
-          .or(`id.eq.${authData.user.id},auth_user_id.eq.${authData.user.id}`)
+          .select('id, nome_empresa')
+          .eq('auth_user_id', authData.user.id)
           .maybeSingle();
 
-        if (!legacyEmpresa) {
-          throw new Error('Não foi encontrada uma empresa associada a esta conta. Contacte o suporte.');
+        if (companyErr) console.error('[AuthService] Erro ao buscar empresa para reparação:', companyErr);
+
+        let targetCompany;
+        if (!company) {
+          console.warn('[AuthService] Conta Órfã detetada. Iniciando ONBOARDING AUTOMÁTICO...');
+          
+          // Criar empresa padrão se não existir (O DB gera o ID)
+          const { data: newCompany, error: createError } = await supabase
+            .from('empresas')
+            .insert([{
+              auth_user_id: authData.user.id,
+              nome_empresa: `Empresa de ${authData.user.email?.split('@')[0]}`,
+              email: authData.user.email,
+              plano: 'trial'
+            }])
+            .select('id, nome_empresa')
+            .single();
+
+          if (createError) {
+            console.error('[AuthService] Falha no Onboarding Automático:', createError);
+            throw new Error(`Erro de Onboarding: Autenticação ativa, mas não foi possível criar a sua empresa base. Detalhe: ${createError.message}`);
+          }
+          
+          targetCompany = newCompany;
+        } else {
+          targetCompany = company;
         }
 
-        return {
+        console.log('[AuthService] Empresa pronta. Criando perfil de vinculação...');
+        // Criar o perfil em falta "on the fly"
+        const { error: insertError } = await supabase.from('perfis').insert({
           id: authData.user.id,
-          username: legacyEmpresa.nome_empresa || authData.user.email?.split('@')[0] || 'Usuário',
-          email: authData.user.email || '',
-          company_id: legacyEmpresa.id,
+          empresa_id: targetCompany.id,
+          email: authData.user.email,
           role: 'admin',
-          created_at: authData.user.created_at,
-          company: legacyEmpresa
-        };
+          nome: targetCompany.nome_empresa || authData.user.email?.split('@')[0]
+        });
+
+        if (insertError) {
+           console.error('[AuthService] Falha ao vincular perfil:', insertError);
+           throw new Error('Erro de Sincronização: Empresa criada/encontrada, mas houve um erro ao criar o seu acesso.');
+        }
+        
+        console.log('[AuthService] Acesso reparado com sucesso.');
+        return await this.getCurrentUser() as User;
       }
 
-      const empresa = perfil.empresas as any;
-
-      return {
-        id: authData.user.id,
-        username: empresa?.nome_empresa || 'Usuário',
-        email: authData.user.email || '',
-        company_id: perfil.empresa_id,
-        role: perfil.role || 'admin',
-        created_at: empresa?.created_at || authData.user.created_at,
-        company: empresa
-      };
+      // (Opcional) Verificações de acesso podem ser feitas aqui
+      
+      return await this.getCurrentUser() as User;
     } catch (err: any) {
-      // Log limpo para o desenvolvedor, erro amigável para o usuário
-      console.error('[AuthService] Erro no login:', err.message);
+      console.error('[AuthService] Falha no login:', err.message);
       throw err;
     }
   },
@@ -263,6 +196,7 @@ export const authService = {
           empresa_id,
           role,
           empresas (
+            id,
             nome_empresa,
             email,
             created_at
@@ -271,8 +205,14 @@ export const authService = {
         .eq('id', session.user.id)
         .maybeSingle();
 
-      if (error || !perfil) {
-        // Fallback legado
+      if (error) {
+        console.error('[AuthService] Erro ao recuperar perfil:', error);
+      }
+
+      const empresa = perfil?.empresas as any;
+
+      if (!perfil || !empresa) {
+        console.warn('[AuthService] Perfil ou empresa não encontrados para utilizador logado.');
         const { data: legacyEmpresa } = await supabase
           .from('empresas')
           .select('*')
@@ -283,25 +223,24 @@ export const authService = {
           id: session.user.id,
           username: legacyEmpresa?.nome_empresa || session.user.email?.split('@')[0] || 'Usuário',
           email: session.user.email || '',
-          company_id: legacyEmpresa?.id || session.user.id,
+          empresa_id: legacyEmpresa?.id || session.user.id,
           role: 'admin',
-          created_at: session.user.created_at
+          created_at: legacyEmpresa?.created_at || session.user.created_at,
+          company: legacyEmpresa
         };
       }
 
-      const empresa = perfil.empresas as any;
-
       return {
         id: session.user.id,
-        username: empresa?.nome_empresa || 'Usuário',
+        username: empresa.nome_empresa || session.user.email?.split('@')[0] || 'Usuário',
         email: session.user.email || '',
-        company_id: perfil.empresa_id,
+        empresa_id: perfil.empresa_id,
         role: perfil.role || 'admin',
-        created_at: empresa?.created_at || session.user.created_at,
+        created_at: empresa.created_at || session.user.created_at,
         company: empresa
       };
     } catch (err) {
-      console.error('Erro ao buscar usuário atual:', err);
+      console.error('[AuthService] Falha crítica em getCurrentUser:', err);
       return null;
     }
   },

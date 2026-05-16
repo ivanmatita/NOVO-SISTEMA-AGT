@@ -205,7 +205,7 @@ const OccurrenceForm = ({ employees, workSites, onClose, onSuccess }: { employee
       const res = await fetch('/api/security/occurrences', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...formData, company_id: workSites[0]?.company_id })
+        body: JSON.stringify({ ...formData, empresa_id: workSites[0]?.empresa_id })
       });
       if (res.ok) {
         onSuccess();
@@ -380,7 +380,7 @@ const ArmorySection = ({ armory, employees, onRefresh }: { armory: any[], employ
           employee_id: employeeId,
           action,
           condition: 'Bom',
-          company_id: armory[0]?.company_id
+          empresa_id: armory[0]?.empresa_id
         })
       });
       if (res.ok) {

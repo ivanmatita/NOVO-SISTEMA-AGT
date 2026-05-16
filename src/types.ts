@@ -22,14 +22,14 @@ export interface CompanyData {
   footer?: string;
   footer_image_url?: string;
   footer_size?: number;
-  company_id?: string;
+  empresa_id?: string;
 }
 
 export interface User {
   id: string;
   username: string;
   email: string;
-  company_id: string;
+  empresa_id: string;
   role: string;
   created_at?: string;
   company?: any;
@@ -57,7 +57,7 @@ export interface Caixa {
   currentBalance: number;
   obs: string;
   status: 'aberto' | 'fechado';
-  company_id?: string;
+  empresa_id?: string;
 }
 
 export interface CaixaMovement {
@@ -69,7 +69,7 @@ export interface CaixaMovement {
   date: string;
   moeda?: string;
   targetCaixaId?: string; // For transfers
-  company_id?: string;
+  empresa_id?: string;
 }
 
 export interface Client {
@@ -88,7 +88,7 @@ export interface Client {
   tipo_cliente?: 'normal' | 'grupo_nacional' | 'nao_grupo' | 'subsidiarias' | 'nao_grupo_estrangeiro' | 'associados';
   estado_nif?: 'ativo' | 'suspenso' | 'inválido' | 'não encontrado';
   saldo_inicial?: number;
-  company_id: string;
+  empresa_id: string;
   created_at: string;
 }
 
@@ -334,7 +334,7 @@ export interface POSPoint {
 export interface Workplace {
   id: number;
   name: string;
-  company_id: string;
+  empresa_id: string;
   location?: string;
   code?: string;
   created_at: string;
@@ -343,7 +343,7 @@ export interface Workplace {
 export interface WorkSite {
   id: number;
   client_id: number | string;
-  company_id?: string;
+  empresa_id?: string;
   client_name?: string;
   start_date: string;
   end_date: string;
@@ -361,7 +361,7 @@ export interface WorkSite {
 export interface WorkSiteMovement {
   id: number;
   work_site_id: number;
-  company_id?: string;
+  empresa_id?: string;
   date: string;
   doc_no: string;
   company: string;
@@ -429,7 +429,7 @@ export interface StockMovement {
   id: number;
   product_id: number;
   product_name?: string;
-  company_id?: string;
+  empresa_id?: string;
   type: 'entry' | 'exit' | 'transfer' | 'adjustment' | 'adjustment_plus' | 'adjustment_minus';
   quantity: number;
   unit_price: number;
@@ -482,7 +482,7 @@ export interface SystemUser {
   permission_area: string;
   contact: string;
   morada: string;
-  company_id: string;
+  empresa_id: string;
   created_at: string;
 }
 

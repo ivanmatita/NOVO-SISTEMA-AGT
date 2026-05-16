@@ -34,10 +34,10 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements, refres
   const handleCreateCaixa = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      if (!user?.company_id) throw new Error('Empresa não identificada');
+      if (!user?.empresa_id) throw new Error('Empresa não identificada');
 
       const newCaixaObj = {
-        company_id: user.company_id,
+        empresa_id: user.empresa_id,
         nome_caixa: newCaixa.name,
         account: newCaixa.account,
         responsavel: newCaixa.responsible,
@@ -103,7 +103,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements, refres
 
   const handleUpdateCaixa = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editCaixa || !user?.company_id) return;
+    if (!editCaixa || !user?.empresa_id) return;
     try {
       const { error } = await supabase
         .from('caixas')
@@ -115,7 +115,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements, refres
           utilizador_id: editCaixa.user || null
         })
         .eq('id', editCaixa.id)
-        .eq('company_id', user.company_id);
+        .eq('empresa_id', user.empresa_id);
 
       if (error) throw error;
       
@@ -131,13 +131,13 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements, refres
 
   const handleCloseCaixa = async (id: string) => {
     try {
-      if (!user?.company_id) return;
+      if (!user?.empresa_id) return;
 
       const { error } = await supabase
         .from('caixas')
         .update({ status: 'fechado' })
         .eq('id', id)
-        .eq('company_id', user.company_id);
+        .eq('empresa_id', user.empresa_id);
 
       if (error) throw error;
       alert('Caixa fechado com sucesso!');
@@ -151,13 +151,13 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements, refres
   const handleEliminarCaixa = async (id: string) => {
     if (!confirm('Tem a certeza que deseja eliminar este caixa?')) return;
     try {
-      if (!user?.company_id) return;
+      if (!user?.empresa_id) return;
 
       const { error } = await supabase
         .from('caixas')
         .delete()
         .eq('id', id)
-        .eq('company_id', user.company_id);
+        .eq('empresa_id', user.empresa_id);
 
       if (error) throw error;
       alert('Caixa eliminado com sucesso');
@@ -170,7 +170,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements, refres
 
   const handleTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user?.company_id) return;
+    if (!user?.empresa_id) return;
     if (transferData.from === transferData.to) return alert('Selecione caixas diferentes');
     if (transferData.amount <= 0) return;
 
@@ -180,7 +180,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements, refres
     try {
       const toCaixa = caixas.find(c => c.id === transferData.to);
       const newMovement = {
-        company_id: user.company_id,
+        empresa_id: user.empresa_id,
         caixa_id: transferData.from,
         target_caixa_id: transferData.to,
         type: 'transferencia',
@@ -200,13 +200,13 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements, refres
       await supabase.from('caixas')
         .update({ current_balance: fromCaixa.currentBalance - transferData.amount })
         .eq('id', fromCaixa.id)
-        .eq('company_id', user.company_id);
+        .eq('empresa_id', user.empresa_id);
 
       if (toCaixa) {
         await supabase.from('caixas')
           .update({ current_balance: toCaixa.currentBalance + transferData.amount })
           .eq('id', toCaixa.id)
-          .eq('company_id', user.company_id);
+          .eq('empresa_id', user.empresa_id);
       }
 
       alert('Transferência concluída com sucesso!');
@@ -223,7 +223,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements, refres
 
   const handlePayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user?.company_id) return;
+    if (!user?.empresa_id) return;
     if (paymentData.amount <= 0) return;
 
     const caixa = (caixas || []).find(c => c.id === paymentData.caixaId);
@@ -231,7 +231,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements, refres
 
     try {
       const newMovement = {
-        company_id: user.company_id,
+        empresa_id: user.empresa_id,
         caixa_id: paymentData.caixaId,
         type: 'saida',
         amount: paymentData.amount,
@@ -250,7 +250,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements, refres
       await supabase.from('caixas')
         .update({ current_balance: caixa.currentBalance - paymentData.amount })
         .eq('id', caixa.id)
-        .eq('company_id', user.company_id);
+        .eq('empresa_id', user.empresa_id);
 
       alert('Pagamento/Saída registada com sucesso!');
       if (refreshCaixas) await refreshCaixas();
@@ -266,7 +266,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements, refres
 
   const handleReconciliation = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user?.company_id) return;
+    if (!user?.empresa_id) return;
     const caixa = (caixas || []).find(c => c.id === reconData.caixaId);
     if (!caixa) return;
 
@@ -275,7 +275,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements, refres
 
     try {
       const newMovement = {
-        company_id: user.company_id,
+        empresa_id: user.empresa_id,
         caixa_id: reconData.caixaId,
         type: diff > 0 ? 'entrada' : 'saida',
         amount: Math.abs(diff),
@@ -294,7 +294,7 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements, refres
       await supabase.from('caixas')
         .update({ current_balance: reconData.actualBalance })
         .eq('id', caixa.id)
-        .eq('company_id', user.company_id);
+        .eq('empresa_id', user.empresa_id);
 
       alert('Conciliação efetuada com sucesso!');
       if (refreshCaixas) await refreshCaixas();

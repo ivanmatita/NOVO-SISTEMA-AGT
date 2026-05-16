@@ -1,35 +1,22 @@
 import { createClient } from '@supabase/supabase-js';
 
-const rawUrl = process.env.SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL || '';
-// Robust cleaning: remove common trailing paths and ensure protocol
-let supabaseUrl = rawUrl.trim();
-if (supabaseUrl) {
-  // Remove any instance of rest/v1 and trailing slashes
-  supabaseUrl = supabaseUrl.replace(/\/rest\/v1\/?/g, '').replace(/\/$/, '');
-  // Add protocol if missing and it looks like a supabase domain
-  if (!supabaseUrl.startsWith('http') && (supabaseUrl.includes('.supabase.co') || supabaseUrl.includes('.supabase.net'))) {
-    supabaseUrl = `https://${supabaseUrl}`;
-  }
-}
-
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY;
+const rawUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim();
+// Robust cleaning: remove /rest/v1, /auth/v1, and trailing slashes
+const supabaseUrl = rawUrl
+  .replace(/\/rest\/v1\/?$/, "")
+  .replace(/\/auth\/v1\/?$/, "")
+  .replace(/\/$/, "");
+const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn('⚠️ Supabase credentials are missing. Check your project environment variables.');
-} else {
-  try {
-    const urlObj = new URL(supabaseUrl);
-    console.log(`[Supabase] Client initialized for host: ${urlObj.host}`);
-  } catch (e) {
-    console.error(`[Supabase] Invalid URL detected: "${supabaseUrl}"`);
-  }
+  console.warn('⚠️ Supabase credentials are missing. Check VITE_SUPABASE_URL/ANON_KEY.');
 }
 
 export const supabase =
   (globalThis as any).__supabase ??
   createClient(
-    supabaseUrl || '',
-    supabaseAnonKey || '',
+    supabaseUrl,
+    supabaseAnonKey,
     {
       auth: {
         persistSession: true,

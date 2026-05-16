@@ -34,7 +34,7 @@ export const getPreviousHash = async (supabase: any, companyId: string) => {
   const { data, error } = await supabase
     .from('hash_chain')
     .select('current_hash')
-    .eq('company_id', companyId)
+    .eq('empresa_id', companyId)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();

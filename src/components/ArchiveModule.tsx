@@ -23,14 +23,14 @@ const ArchiveModule = () => {
 
   const fetchFiles = async () => {
     try {
-      const res = await fetchWithAuth(`/api/archives?company_id=${user?.company_id}`);
+      const res = await fetchWithAuth(`/api/archives?empresa_id=${user?.empresa_id}`);
       if (res.ok) setFiles(await res.json());
     } catch (err) {
       console.error('Error fetching archives:', err);
     }
   };
 
-  useEffect(() => { fetchFiles(); }, [user?.company_id]);
+  useEffect(() => { fetchFiles(); }, [user?.empresa_id]);
 
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,7 +44,7 @@ const ArchiveModule = () => {
           category: target.category.value,
           type: 'PDF',
           size: `${(Math.random() * 5 + 0.5).toFixed(1)} MB`,
-          company_id: user?.company_id,
+          empresa_id: user?.empresa_id,
           created_at: new Date().toISOString()
         })
       });

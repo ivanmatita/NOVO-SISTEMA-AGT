@@ -141,7 +141,9 @@ import AgrobusinessModule from './components/AgrobusinessModule';
 import SchoolModule from './components/SchoolModule';
 import RestaurantModule from './components/RestaurantModule';
 import HotelModule from './components/HotelModule';
+import { WarehouseModule } from './components/WarehouseModule';
 import { CaixaModule } from './components/CaixaModule';
+import { AlertasModule } from './components/AlertasModule';
 import Modelo7Form from './components/Modelo7Form';
 import AnexoFornecedoresForm from './components/AnexoFornecedoresForm';
 import RegularizacaoClientesForm from './components/RegularizacaoClientesForm';
@@ -161,6 +163,7 @@ import { TopHeader } from './components/TopHeader';
 import { RightSidebar } from './components/RightSidebar';
 import { ClientForm } from './components/ClientForm';
 import { MetricsModule, fetchMetrics, Metric } from './components/MetricsModule';
+import { MediaLibraryModule } from './components/MediaLibraryModule';
 
 // --- Helpers ---
 
@@ -5894,16 +5897,7 @@ const FinancialModule = ({
         </div>
       </div>
 
-      {activeSubTab === 'caixa' && (
-        <CaixaModule 
-          caixas={caixas} 
-          setCaixas={setCaixas} 
-          movements={caixaMovements} 
-          setMovements={setCaixaMovements} 
-          refreshCaixas={refreshCaixas}
-          refreshMovements={refreshMovements}
-        />
-      )}
+      {activeSubTab === 'caixa' && <CaixaModule />}
 
       {activeSubTab === 'irt_inss_map' && (
         <MapaSalarios 
@@ -8837,62 +8831,6 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
   );
 };
 
-const AlertsManagement = ({ alerts, setAlerts, onEdit, onNew }: { alerts: any[], setAlerts: (a: any[]) => void, onEdit: (alert: any) => void, onNew?: () => void }) => {
-  return (
-    <div className="bg-white border border-zinc-200 p-8">
-      <div className="flex justify-between items-center mb-6">
-        <h3 className="text-xl font-bold text-[#003366] tracking-tight">Gestão de Alertas</h3>
-        {onNew && (
-          <button 
-            onClick={onNew}
-            className="bg-[#003366] text-white px-4 py-2 text-xs font-bold uppercase tracking-widest hover:bg-[#002244] transition-all flex items-center gap-2"
-          >
-            <Plus size={14} /> Novo Alerta
-          </button>
-        )}
-      </div>
-      
-      <table className="w-full text-left border-collapse">
-        <thead>
-          <tr className="bg-[#003366] text-white text-[11px] uppercase tracking-wider font-bold">
-            <th className="px-4 py-3">Nome</th>
-            <th className="px-4 py-3">Tipo</th>
-            <th className="px-4 py-3">Responsável</th>
-            <th className="px-4 py-3">Início</th>
-            <th className="px-4 py-3">Fim</th>
-            <th className="px-4 py-3">Aviso (Dias)</th>
-            <th className="px-4 py-3 text-right">Ações</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-zinc-200">
-          {alerts.length === 0 ? (
-            <tr><td colSpan={7} className="p-8 text-center text-zinc-400">Nenhum alerta registado</td></tr>
-          ) : (
-            alerts.map((a: any) => (
-              <tr key={a.id} className="hover:bg-zinc-50 text-sm">
-                <td className="px-4 py-3 font-bold text-zinc-800">{a.name}</td>
-                <td className="px-4 py-3 text-zinc-500 capitalize">{a.type.replace('_', ' ')}</td>
-                <td className="px-4 py-3 text-zinc-600">{a.responsible}</td>
-                <td className="px-4 py-3 text-zinc-500">{new Date(a.startDate).toLocaleDateString()}</td>
-                <td className="px-4 py-3 text-zinc-500">{new Date(a.endDate).toLocaleDateString()}</td>
-                <td className="px-4 py-3 text-zinc-500">{a.advanceTime}</td>
-                <td className="px-4 py-3 text-right space-x-2">
-                  <button 
-                    onClick={() => onEdit(a)}
-                    className="text-blue-600 hover:text-blue-800 text-xs font-bold uppercase tracking-widest"
-                  >
-                    <Edit size={14} className="inline mr-1"/>Editar
-                  </button>
-                  <button className="text-zinc-600 hover:text-zinc-800 text-xs font-bold uppercase tracking-widest"><LinkIcon size={14} className="inline mr-1"/>Associar</button>
-                </td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
-  );
-};
 
 const VisualIdentityModule = ({ companyData, onRefreshData }: { companyData: any, onRefreshData: () => void }) => {
   const { user } = useAuth();
@@ -8920,40 +8858,66 @@ const VisualIdentityModule = ({ companyData, onRefreshData }: { companyData: any
         const { data: { user: authUser } } = await supabase.auth.getUser();
         if (!authUser || !user) return;
 
-        const companyId = user.empresa_id;
+        const { data: profile } = await supabase
+          .from('perfis')
+          .select('empresa_id')
+          .eq('id', authUser.id)
+          .single();
+
+        const empresaId = profile?.empresa_id;
+        if (!empresaId) throw new Error('Empresa não identificada');
+
         const fileExt = file.name.split('.').pop();
-        const fileName = `${companyId}-${field}-${Date.now()}.${fileExt}`;
+        const fileName = `${empresaId}/${Date.now()}-${file.name.replace(/\s+/g, '_')}`;
         
-        console.log(`Fazendo upload de ${field} para bucket 'logos'...`);
+        console.log(`Fazendo upload de ${field} para bucket 'media'...`);
         
         const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('logos')
+          .from('media')
           .upload(fileName, file, {
-            cacheControl: '3600',
             upsert: false
           });
 
         if (uploadError) {
           console.error('Erro no upload de imagem:', uploadError);
-          // Se o erro for bucket not found, informamos mas não paramos o fluxo local
-          if (uploadError.message.includes('Bucket not found')) {
-            alert('Aviso: Bucket "logos" não encontrado no Supabase Storage. Crie o bucket para persistir a imagem.');
-          } else {
-            alert('Erro ao carregar imagem para o servidor: ' + uploadError.message);
-          }
+          alert('Erro ao carregar imagem para o servidor: ' + uploadError.message);
           return;
         }
 
         const { data: urlData } = supabase.storage
-          .from('logos')
+          .from('media')
           .getPublicUrl(fileName);
 
         if (urlData?.publicUrl) {
           console.log('Upload concluído. URL pública:', urlData.publicUrl);
           setFormData(prev => ({ ...prev, [field]: urlData.publicUrl }));
           
+          let tipo = 'imagem';
+          if (field === 'logo_url') tipo = 'menu_logo';
+          if (field === 'watermark_url') tipo = 'imagem';
+          if (field === 'footer_image_url') tipo = 'imagem';
+
+          // Insert into media_arquivos
+          await supabase.from('media_arquivos').insert({
+            empresa_id: empresaId,
+            utilizador_id: authUser.id,
+            tipo: tipo,
+            nome_arquivo: fileName,
+            nome_original: file.name,
+            bucket: 'media',
+            caminho_arquivo: uploadData.path,
+            url_publica: urlData.publicUrl,
+            mime_type: file.type,
+            tamanho_bytes: file.size,
+            extensao: fileExt,
+            entidade: 'empresa_identidade_visual',
+            entidade_id: null,
+            observacao: `Upload do campo ${field}`,
+            ativo: true
+          });
+
           // Atualização imediata na tabela empresas para persistência garantida
-          await supabase.from('empresas').update({ [field]: urlData.publicUrl }).eq('id', companyId);
+          await supabase.from('empresas').update({ [field]: urlData.publicUrl }).eq('id', empresaId);
         }
       } catch (err) {
         console.error('Erro crítico no upload:', err);
@@ -9144,6 +9108,12 @@ const SettingsModule = ({ companyData, onRefreshData, alerts, setAlerts, onEditA
           Configurações Gráficas
         </button>
         <button 
+          onClick={() => setActiveTab('media')}
+          className={`pb-2 text-sm font-bold ${activeTab === 'media' ? 'text-[#003366] border-b-2 border-[#003366]' : 'text-zinc-500 hover:text-zinc-800'}`}
+        >
+          Biblioteca de Media
+        </button>
+        <button 
           onClick={() => setActiveTab('alertas')}
           className={`pb-2 text-sm font-bold ${activeTab === 'alertas' ? 'text-[#003366] border-b-2 border-[#003366]' : 'text-zinc-500 hover:text-zinc-800'}`}
         >
@@ -9227,7 +9197,8 @@ const SettingsModule = ({ companyData, onRefreshData, alerts, setAlerts, onEditA
         />
       )}
       
-      {activeTab === 'alertas' && <AlertsManagement alerts={alerts} setAlerts={setAlerts} onEdit={onEditAlert} onNew={onNewAlert} />}
+      {activeTab === 'media' && <MediaLibraryModule />}
+      {activeTab === 'alertas' && <AlertasModule />}
       {activeTab === 'metrica' && <MetricsModule />}
       {activeTab === 'utilizadores' && <UsersSettings />}
     </div>
@@ -17858,163 +17829,7 @@ const SalesReport = ({ issuedDocuments, onBack }: { issuedDocuments: IssuedDocum
   );
 };
 
-const WarehouseModule = ({ onRefresh }: { onRefresh: () => void }) => {
-  const { user } = useAuth();
-  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
-  const [showForm, setShowForm] = useState(false);
-  const [loading, setLoading] = useState(true);
 
-  const fetchWarehouses = async () => {
-    try {
-      if (!user?.empresa_id) return;
-      const { data, error } = await supabase
-        .from('armazens')
-        .select('*')
-        .eq('empresa_id', user.empresa_id)
-        .order('id', { ascending: true });
-
-      if (!error && data) {
-        setWarehouses(data);
-      }
-    } catch (error) {
-      console.error('Error fetching warehouses:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (user?.empresa_id) {
-      fetchWarehouses();
-    }
-  }, [user?.empresa_id]);
-
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!user?.empresa_id) return;
-
-    const formData = new FormData(e.currentTarget);
-    const data = Object.fromEntries(formData.entries());
-    
-    try {
-      const { error } = await supabase
-        .from('armazens')
-        .insert([{
-          empresa_id: user.empresa_id,
-          name: data.name,
-          localidade: data.localidade,
-          provincia: data.provincia,
-          responsavel: data.responsavel
-        }]);
-
-      if (!error) {
-        fetchWarehouses();
-        onRefresh();
-        setShowForm(false);
-      } else {
-        console.error('Error creating warehouse:', error);
-        alert('Erro ao criar armazém: ' + error.message);
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center bg-white p-6 border border-zinc-200 shadow-sm">
-        <div>
-          <h3 className="text-lg font-bold text-[#003366] uppercase tracking-tight flex items-center gap-2">
-            <Home size={20} /> Gestão de Armazéns
-          </h3>
-          <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-wider mt-1">Configure os locais de armazenamento da sua empresa.</p>
-        </div>
-        <button 
-          onClick={() => setShowForm(true)}
-          className="bg-[#003366] text-white px-6 py-2.5 text-[10px] font-black uppercase tracking-widest hover:bg-[#002244] transition-all shadow-sm flex items-center gap-2"
-        >
-          <Plus size={16} /> Novo Armazém
-        </button>
-      </div>
-
-      <div className="bg-white border border-zinc-200">
-        <div className="p-4 bg-zinc-50 border-b border-zinc-200">
-          <h4 className="text-[11px] font-black text-[#003366] uppercase tracking-widest flex items-center gap-2">
-            <History size={14} /> Lista de Armazéns Registados
-          </h4>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left">
-            <thead className="bg-[#003366] text-white">
-              <tr className="uppercase text-[10px] tracking-wider">
-                <th className="px-6 py-4">ID</th>
-                <th className="px-6 py-4">Nome</th>
-                <th className="px-6 py-4">Localidade</th>
-                <th className="px-6 py-4">Responsável</th>
-                <th className="px-6 py-4">Contacto</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100">
-              {warehouses.map(w => (
-                <tr key={w.id} className="hover:bg-zinc-50 transition-colors">
-                  <td className="px-6 py-4 font-mono font-bold text-zinc-400">#{w.id}</td>
-                  <td className="px-6 py-4 font-black text-[#003366] uppercase">{w.name}</td>
-                  <td className="px-6 py-4 text-zinc-600 font-bold">{w.localidade || '---'}</td>
-                  <td className="px-6 py-4 text-zinc-500">{w.responsavel || '---'}</td>
-                  <td className="px-6 py-4 text-zinc-500 font-mono italic">{w.contacto || '---'}</td>
-                </tr>
-              ))}
-              {warehouses.length === 0 && !loading && (
-                <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-zinc-400 italic">Nenhum armazém encontrado.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {showForm && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md p-8 rounded-none shadow-2xl space-y-6">
-            <div className="flex justify-between items-center border-b border-zinc-100 pb-4">
-              <h3 className="text-lg font-bold text-[#003366] uppercase tracking-tight">Novo Armazém</h3>
-              <button onClick={() => setShowForm(false)} className="text-zinc-400 hover:text-zinc-600"><X size={24} /></button>
-            </div>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Nome do Armazém</label>
-                <input name="name" required className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Localidade</label>
-                  <input name="localidade" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Província</label>
-                  <input name="provincia" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" />
-                </div>
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Responsável</label>
-                <input name="responsavel" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Contacto</label>
-                <input name="contacto" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" />
-              </div>
-              <div className="flex justify-end gap-3 pt-4 border-t border-zinc-100">
-                <button type="button" onClick={() => setShowForm(false)} className="px-6 py-2 text-xs font-bold text-zinc-500 uppercase tracking-widest">Cancelar</button>
-                <button type="submit" className="bg-[#003366] text-white px-8 py-2.5 text-xs font-bold uppercase tracking-widest hover:bg-[#002244] shadow-lg transition-all">Salvar Armazém</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
 
 const ProductList = ({ products, onRefresh, stockMovements, warehouses }: { 
   products: Product[], 
@@ -20209,14 +20024,7 @@ export default function App() {
                         case 'cashier':
                           return <CashierModule issuedDocuments={issuedDocuments} />;
                         case 'caixa':
-                          return <CaixaModule 
-                            caixas={caixas} 
-                            setCaixas={setCaixas} 
-                            movements={caixaMovements} 
-                            setMovements={setCaixaMovements}
-                            refreshCaixas={loadCaixas}
-                            refreshMovements={loadCaixaMovements}
-                          />;
+                          return <CaixaModule />;
                         case 'security':
                           return (
                             <SecurityModule 

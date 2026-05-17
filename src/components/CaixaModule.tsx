@@ -3,19 +3,12 @@ import { Plus, Wallet, ArrowRightLeft, ShieldCheck, Calculator, Search, Eye, Tra
 import { motion, AnimatePresence } from 'motion/react';
 import { Caixa, CaixaMovement } from '../types';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
+import { useCaixas } from '../hooks/useCaixas';
 
-interface CaixaModuleProps {
-  caixas: Caixa[];
-  setCaixas: React.Dispatch<React.SetStateAction<Caixa[]>>;
-  movements: CaixaMovement[];
-  setMovements: React.Dispatch<React.SetStateAction<CaixaMovement[]>>;
-  refreshCaixas?: () => Promise<void>;
-  refreshMovements?: () => Promise<void>;
-}
-
-export const CaixaModule = ({ caixas, setCaixas, movements, setMovements, refreshCaixas, refreshMovements }: CaixaModuleProps) => {
+export const CaixaModule = () => {
   const { user } = useAuth();
+  const { caixas, movements, loading, createCaixa, updateCaixa, deleteCaixa, addMovement } = useCaixas();
+  
   const [showForm, setShowForm] = useState(false);
   const [newCaixa, setNewCaixa] = useState({ name: '', account: '', initialBalance: 0, obs: '', responsible: '', user: '' });
   const [activeSection, setActiveSection] = useState('list');
@@ -36,68 +29,22 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements, refres
     try {
       if (!user?.empresa_id) throw new Error('Empresa não identificada');
 
-      const newCaixaObj = {
-        empresa_id: user.empresa_id,
-        nome_caixa: newCaixa.name,
-        account: newCaixa.account,
-        responsavel: newCaixa.responsible,
-        valor_inicial: Number(newCaixa.initialBalance),
-        current_balance: Number(newCaixa.initialBalance),
-        observacao: newCaixa.obs,
-        utilizador_id: newCaixa.user !== "" ? newCaixa.user : null,
-        moeda: activeCurrency,
-        status: 'aberto'
-      };
-      
-      // Optimistic update so the user sees it immediately on the page
-      const tempId = Date.now().toString();
-      const optimisticCaixa = {
-        id: tempId,
+      await createCaixa({
         name: newCaixa.name,
         account: newCaixa.account,
-        initialBalance: Number(newCaixa.initialBalance),
-        currentBalance: Number(newCaixa.initialBalance),
         responsible: newCaixa.responsible,
+        initialBalance: Number(newCaixa.initialBalance),
         obs: newCaixa.obs,
         user: newCaixa.user,
-        moeda: activeCurrency,
-        status: 'aberto'
-      };
-      setCaixas(prev => [...(prev || []), optimisticCaixa]);
-
-      const { data, error } = await supabase
-        .from('caixas')
-        .insert([newCaixaObj])
-        .select()
-        .single();
-
-      if (error) {
-        // Rollback se falhar
-        setCaixas(prev => prev.filter(c => c.id !== tempId));
-        if (error.message.includes('moeda')) {
-          throw new Error('A tabela caixas no Supabase não tem a coluna "moeda". Atualize a base de dados (execute o script SQL).');
-        } else if (error.message.includes('row-level security')) {
-          throw new Error('Acesso negado pelas políticas (RLS). Execute o script SQL para corrigir os acessos da empresa.');
-        } else if (error.message.includes('does not exist')) {
-          throw new Error(`Tabela inexistente: ${error.message}`);
-        }
-        throw error;
-      }
-      
-      // Substituir o otimista pelo real
-      setCaixas(prev => prev.map(c => c.id === tempId ? {
-        ...c,
-        id: data.id
-      } : c));
+        moeda: activeCurrency
+      } as any);
 
       alert('Caixa registado com sucesso!');
-      if (refreshCaixas) await refreshCaixas();
-      
       setNewCaixa({ name: '', account: '', initialBalance: 0, obs: '', responsible: '', user: '' });
       setShowForm(false);
     } catch (error: any) {
       console.error('Error creating caixa:', error);
-      alert(`⚠️ Erro ao registar caixa no Supabase:\n\n${error.message}\n\nA informação apenas constará temporariamente.`);
+      alert(`Erro ao registar caixa: ${error.message}`);
     }
   };
 
@@ -105,22 +52,15 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements, refres
     e.preventDefault();
     if (!editCaixa || !user?.empresa_id) return;
     try {
-      const { error } = await supabase
-        .from('caixas')
-        .update({
-          nome_caixa: editCaixa.name,
-          account: editCaixa.account,
-          responsavel: editCaixa.responsible,
-          observacao: editCaixa.obs,
-          utilizador_id: editCaixa.user || null
-        })
-        .eq('id', editCaixa.id)
-        .eq('empresa_id', user.empresa_id);
-
-      if (error) throw error;
+      await updateCaixa(editCaixa.id, {
+        name: editCaixa.name,
+        account: editCaixa.account,
+        responsible: editCaixa.responsible,
+        obs: editCaixa.obs,
+        user: editCaixa.user
+      });
       
       alert('Caixa atualizado com sucesso!');
-      if (refreshCaixas) await refreshCaixas();
       setEditCaixa(null);
       setActiveSection('list');
     } catch (err: any) {
@@ -131,17 +71,8 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements, refres
 
   const handleCloseCaixa = async (id: string) => {
     try {
-      if (!user?.empresa_id) return;
-
-      const { error } = await supabase
-        .from('caixas')
-        .update({ status: 'fechado' })
-        .eq('id', id)
-        .eq('empresa_id', user.empresa_id);
-
-      if (error) throw error;
+      await updateCaixa(id, { status: 'fechado' });
       alert('Caixa fechado com sucesso!');
-      if (refreshCaixas) await refreshCaixas();
     } catch (error: any) {
       console.error('Error closing caixa:', error);
       alert(`Erro ao fechar caixa: ${error.message}`);
@@ -151,17 +82,8 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements, refres
   const handleEliminarCaixa = async (id: string) => {
     if (!confirm('Tem a certeza que deseja eliminar este caixa?')) return;
     try {
-      if (!user?.empresa_id) return;
-
-      const { error } = await supabase
-        .from('caixas')
-        .delete()
-        .eq('id', id)
-        .eq('empresa_id', user.empresa_id);
-
-      if (error) throw error;
+      await deleteCaixa(id);
       alert('Caixa eliminado com sucesso');
-      if (refreshCaixas) await refreshCaixas();
     } catch (error: any) {
       console.error('Error deleting caixa:', error);
       alert(`Erro ao eliminar caixa: ${error.message}`);
@@ -179,40 +101,16 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements, refres
 
     try {
       const toCaixa = caixas.find(c => c.id === transferData.to);
-      const newMovement = {
-        empresa_id: user.empresa_id,
-        caixa_id: transferData.from,
-        target_caixa_id: transferData.to,
+      await addMovement({
+        caixaId: transferData.from,
+        targetCaixaId: transferData.to,
         type: 'transferencia',
         amount: transferData.amount,
         moeda: activeCurrency,
         description: transferData.description || `Transferência para ${toCaixa?.name || 'outro caixa'}`,
-        date: new Date().toISOString()
-      };
-
-      const { error: movErr } = await supabase
-        .from('caixa_movimentacoes')
-        .insert(newMovement);
-
-      if (movErr) throw movErr;
-
-      // Update balances in Supabase with isolation
-      await supabase.from('caixas')
-        .update({ current_balance: fromCaixa.currentBalance - transferData.amount })
-        .eq('id', fromCaixa.id)
-        .eq('empresa_id', user.empresa_id);
-
-      if (toCaixa) {
-        await supabase.from('caixas')
-          .update({ current_balance: toCaixa.currentBalance + transferData.amount })
-          .eq('id', toCaixa.id)
-          .eq('empresa_id', user.empresa_id);
-      }
+      });
 
       alert('Transferência concluída com sucesso!');
-      if (refreshCaixas) await refreshCaixas();
-      if (refreshMovements) await refreshMovements();
-
       setTransferData({ from: '', to: '', amount: 0, description: '' });
       setActiveSection('list');
     } catch (error: any) {
@@ -227,40 +125,25 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements, refres
     if (paymentData.amount <= 0) return;
 
     const caixa = (caixas || []).find(c => c.id === paymentData.caixaId);
-    if (!caixa || caixa.currentBalance < paymentData.amount) return alert('Saldo insuficiente no caixa selecionado');
+    if (!caixa || (paymentData.type !== 'entrada' && caixa.currentBalance < paymentData.amount)) {
+        if (paymentData.type !== 'entrada') return alert('Saldo insuficiente no caixa selecionado');
+    }
 
     try {
-      const newMovement = {
-        empresa_id: user.empresa_id,
-        caixa_id: paymentData.caixaId,
-        type: 'saida',
+      await addMovement({
+        caixaId: paymentData.caixaId,
+        type: paymentData.type === 'entrada' ? 'entrada' : 'saida',
         amount: paymentData.amount,
         moeda: activeCurrency,
         description: paymentData.description,
-        date: new Date().toISOString()
-      };
+      });
 
-      const { error: movErr } = await supabase
-        .from('caixa_movimentacoes')
-        .insert(newMovement);
-
-      if (movErr) throw movErr;
-
-      // Update balance
-      await supabase.from('caixas')
-        .update({ current_balance: caixa.currentBalance - paymentData.amount })
-        .eq('id', caixa.id)
-        .eq('empresa_id', user.empresa_id);
-
-      alert('Pagamento/Saída registada com sucesso!');
-      if (refreshCaixas) await refreshCaixas();
-      if (refreshMovements) await refreshMovements();
-
+      alert('Operação registada com sucesso!');
       setPaymentData({ caixaId: '', amount: 0, description: '', type: 'outros' });
       setActiveSection('list');
     } catch (error: any) {
       console.error('Error in payment:', error);
-      alert(`Erro ao realizar pagamento: ${error.message}`);
+      alert(`Erro ao realizar operação: ${error.message}`);
     }
   };
 
@@ -274,32 +157,15 @@ export const CaixaModule = ({ caixas, setCaixas, movements, setMovements, refres
     if (diff === 0) return alert('O saldo já está correto');
 
     try {
-      const newMovement = {
-        empresa_id: user.empresa_id,
-        caixa_id: reconData.caixaId,
+      await addMovement({
+        caixaId: reconData.caixaId,
         type: diff > 0 ? 'entrada' : 'saida',
         amount: Math.abs(diff),
         moeda: activeCurrency,
         description: `Conciliação: ${reconData.description}`,
-        date: new Date().toISOString()
-      };
-
-      const { error: movErr } = await supabase
-        .from('caixa_movimentacoes')
-        .insert(newMovement);
-
-      if (movErr) throw movErr;
-
-      // Update balance
-      await supabase.from('caixas')
-        .update({ current_balance: reconData.actualBalance })
-        .eq('id', caixa.id)
-        .eq('empresa_id', user.empresa_id);
+      });
 
       alert('Conciliação efetuada com sucesso!');
-      if (refreshCaixas) await refreshCaixas();
-      if (refreshMovements) await refreshMovements();
-
       setReconData({ caixaId: '', actualBalance: 0, description: '' });
       setActiveSection('list');
     } catch (error: any) {

@@ -9612,21 +9612,33 @@ const TaxSeriesModule = () => {
   const [showImportModal, setShowImportModal] = useState(false);
 
   useEffect(() => {
-    loadTaxes();
-  }, []);
+    if (user?.empresa_id) {
+      loadTaxes();
+    }
+  }, [user?.empresa_id]);
 
   const loadTaxes = async () => {
-    if (!user) return;
-    const { data } = await supabase.from('tabela_impostos').select('*').eq('empresa_id', user.empresa_id);
-    if (data) setTaxes(data.map(d => ({
-      id: d.id,
-      date: new Date(d.created_at).toLocaleDateString(),
-      layout: d.nome,
-      type: 'IVA',
-      code: d.codigo_imposto || 'NOR',
-      rate: `${d.taxa}%`,
-      motive: d.descricao || ''
-    })));
+    if (!user?.empresa_id) return;
+    
+    console.log(`[TaxSeriesModule] Carregando impostos para empresa: ${user.empresa_id}`);
+    const { data } = await supabase
+      .from('tabela_impostos')
+      .select('*')
+      .eq('empresa_id', user.empresa_id)
+      .order('created_at', { ascending: false });
+      
+    if (data) {
+      console.log(`[TaxSeriesModule] ${data.length} impostos encontrados.`);
+      setTaxes(data.map(d => ({
+        id: d.id,
+        date: new Date(d.created_at).toLocaleDateString(),
+        layout: d.nome,
+        type: 'IVA',
+        code: d.codigo_imposto || 'NOR',
+        rate: `${d.taxa}%`,
+        motive: d.descricao || ''
+      })));
+    }
   };
 
   const removeTax = async (id: number) => {
@@ -18992,8 +19004,12 @@ export default function App() {
 
   useEffect(() => {
     // Com o AuthContext sincronizado, apenas precisamos garantir que o App saiba quando pode começar
-    if (user !== undefined) {
+    if (user !== undefined && user !== null) {
+      console.log('[App] Utilize autenticado detetado. Empresa:', user.empresa_id);
       setAuthReady(true);
+    } else if (user === null) {
+      console.log('[App] Utilizador não autenticado.');
+      setAuthReady(false);
     }
   }, [user]);
 
@@ -19477,29 +19493,32 @@ export default function App() {
         return;
       }
 
-      // 1. Recuperar Tenant ID (Prioridade: Contexto -> Perfil DB -> Fresh API)
+      // 1. Recuperar Tenant ID (Prioridade: Contexto -> Fresh API -> Perfil DB)
       let targetCompanyId = user?.empresa_id;
 
       if (!targetCompanyId) {
-        console.log('[DEBUG-SYNC] empresa_id ausente no estado. Buscando no DB...');
-        const { data: profileCheck } = await supabase
-          .from('perfis')
-          .select('empresa_id')
-          .eq('id', session.user.id)
-          .maybeSingle();
-        
-        targetCompanyId = profileCheck?.empresa_id;
-      }
-
-      if (!targetCompanyId) {
-        console.log('[DEBUG-SYNC] Ainda sem empresa_id. Tentativa final via authService...');
+        console.log('[DEBUG-SYNC] empresa_id ausente no estado. Tentativa via getCurrentUser...');
         const freshUser = await authService.getCurrentUser();
         targetCompanyId = freshUser?.empresa_id;
       }
 
       if (!targetCompanyId) {
+        console.log('[DEBUG-SYNC] Ainda sem empresa_id. Buscando no DB (perfis)...');
+        const { data: profileCheck, error: profileErr } = await supabase
+          .from('perfis')
+          .select('empresa_id')
+          .eq('id', session.user.id)
+          .maybeSingle();
+        
+        if (profileErr) console.error('[DEBUG-SYNC] Erro ao buscar perfil:', profileErr);
+        targetCompanyId = profileCheck?.empresa_id;
+      }
+
+      if (!targetCompanyId) {
         console.error('[DEBUG-SYNC] ERRO CRÍTICO: Não foi possível determinar o Tenant ID do utilizador.');
-        return;
+        // Tentativa de último recurso via conta órfã (o user ID como empresa_id)
+        targetCompanyId = session.user.id;
+        console.warn('[DEBUG-SYNC] Usando UserID como fallback de EmpresaID:', targetCompanyId);
       }
 
       console.log('[DEBUG-SYNC] Sincronizando dados para o Tenant:', targetCompanyId);
@@ -19508,22 +19527,22 @@ export default function App() {
       // Fontes de Verdade Principais (Supabase com RLS)
       try {
         console.time('[TIMER-SYNC] Supabase Queries');
-        await Promise.all([
-          doLoadClientes(targetCompanyId),
-          doLoadLocaisTrabalho(targetCompanyId),
-          doLoadDocumentosEmitidos(targetCompanyId),
-          doLoadCaixas(targetCompanyId),
-          doLoadCaixaMovements(targetCompanyId),
-          doLoadFornecedores(targetCompanyId),
-          doLoadCompras(targetCompanyId)
-        ]);
+        // Carregamos sequencialmente para melhor diagnóstico se um falhar
+        await doLoadClientes(targetCompanyId);
+        await doLoadLocaisTrabalho(targetCompanyId);
+        await doLoadDocumentosEmitidos(targetCompanyId);
+        await doLoadCaixas(targetCompanyId);
+        await doLoadCaixaMovements(targetCompanyId);
+        await doLoadFornecedores(targetCompanyId);
+        await doLoadCompras(targetCompanyId);
+        
         console.timeEnd('[TIMER-SYNC] Supabase Queries');
       } catch (err: any) {
         console.error('[DEBUG-SYNC] Erro nas queries Supabase:', err);
         if (err.message?.includes('fetch') || err.name === 'TypeError') {
           setConnectionError(true);
         }
-        throw err;
+        // Não lançamos erro aqui para permitir que o resto da página carregue (parcialmente)
       }
 
       // Dados da Empresa (Blinda o UI com dados reais do Tenant)
@@ -19584,7 +19603,10 @@ export default function App() {
       setInvoices(Array.isArray(i) ? i : []);
       setEmployees(Array.isArray(e) ? e : []);
       
-      // setFiscalSeries(Array.isArray(fs) ? fs : []); // Already handled by SF check
+      if (Array.isArray(fs)) {
+        setFiscalSeries(fs);
+      }
+      
       setCostCenters(Array.isArray(cc) ? cc : []);
       setPosPoints(Array.isArray(pp) ? pp : []);
       setSessions(Array.isArray(sess) ? sess : []);

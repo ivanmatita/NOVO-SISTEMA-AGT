@@ -215,7 +215,12 @@ export const authService = {
   async getCurrentUser(): Promise<User | null> {
     try {
       const session = await this.getSessionSafe();
-      if (!session) return null;
+      if (!session) {
+        console.log('[AuthService] Nenhuma sessão encontrada em getCurrentUser.');
+        return null;
+      }
+
+      console.log('[AuthService] Recuperando perfil para o utilizador:', session.user.id);
 
       // Promise de timeout comum para as queries
       const queryTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout DB Query')), 8000));
@@ -245,24 +250,51 @@ export const authService = {
       const empresa = perfil?.empresas as any;
 
       if (!perfil || !empresa) {
-        console.warn('[AuthService] Perfil ou empresa não encontrados para utilizador logado.');
+        console.warn('[AuthService] Perfil ou empresa não encontrados via JOIN. Tentando via lookup direto em empresas...');
+        
+        // Tentativa 1: Buscar empresa onde o utilizador é o dono
         const legacyQuery = supabase
           .from('empresas')
           .select('*')
           .or(`id.eq.${session.user.id},auth_user_id.eq.${session.user.id}`)
           .maybeSingle();
           
-        const { data: legacyEmpresa } = await Promise.race([legacyQuery, queryTimeout]) as any;
+        const { data: legacyEmpresa, error: legacyError } = await Promise.race([legacyQuery, queryTimeout]) as any;
 
-        return {
-          id: session.user.id,
-          username: legacyEmpresa?.nome_empresa || session.user.email?.split('@')[0] || 'Usuário',
-          email: session.user.email || '',
-          empresa_id: legacyEmpresa?.id || session.user.id,
-          role: 'admin',
-          created_at: legacyEmpresa?.created_at || session.user.created_at,
-          company: legacyEmpresa
-        };
+        if (legacyError) console.error('[AuthService] Erro no fallback legacy query:', legacyError);
+
+        if (legacyEmpresa) {
+          console.log('[AuthService] Empresa encontrada via fallback:', legacyEmpresa.id);
+          return {
+            id: session.user.id,
+            username: legacyEmpresa.nome_empresa || session.user.email?.split('@')[0] || 'Usuário',
+            email: session.user.email || '',
+            empresa_id: legacyEmpresa.id,
+            role: 'admin',
+            created_at: legacyEmpresa.created_at || session.user.created_at,
+            company: legacyEmpresa
+          };
+        }
+
+        // Tentativa 2: Buscar QUALQUER perfil deste utilizador (caso o JOIN tenha falhado)
+        const { data: profileOnly } = await supabase.from('perfis').select('empresa_id, role').eq('id', session.user.id).maybeSingle();
+        if (profileOnly?.empresa_id) {
+           const { data: companyOnly } = await supabase.from('empresas').select('*').eq('id', profileOnly.empresa_id).maybeSingle();
+           if (companyOnly) {
+              return {
+                id: session.user.id,
+                username: companyOnly.nome_empresa || session.user.email?.split('@')[0] || 'Usuário',
+                email: session.user.email || '',
+                empresa_id: companyOnly.id,
+                role: profileOnly.role || 'admin',
+                created_at: companyOnly.created_at || session.user.created_at,
+                company: companyOnly
+              };
+           }
+        }
+
+        console.error('[AuthService] Falha total na identificação da empresa para o user:', session.user.id);
+        return null; // Don't return a half-baked user if we can't find their company
       }
 
       return {

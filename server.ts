@@ -175,6 +175,93 @@ async function startServer() {
 
   // --- API Routes (Robust Mock) ---
 
+  // --- Tenancy Repair & Admin Tools ---
+  app.post("/api/admin/repair-tenancy", async (req, res) => {
+    if (!supabaseAdmin) return res.status(500).json({ error: "Service role key missing" });
+
+    try {
+      console.log("[SERVER-ADMIN] Iniciando reparação global de tenacidade...");
+
+      // 1. Obter todos os utilizadores auth
+      const { data: { users }, error: usersErr } = await supabaseAdmin.auth.admin.listUsers();
+      if (usersErr) throw usersErr;
+
+      const results = [];
+
+      for (const authUser of users) {
+        // Verificar se tem empresa
+        const { data: company } = await supabaseAdmin
+          .from('empresas')
+          .select('id')
+          .eq('auth_user_id', authUser.id)
+          .maybeSingle();
+
+        let companyId = company?.id;
+
+        if (!companyId) {
+          // Se não for dono, verificar se está num perfil
+          const { data: profile } = await supabaseAdmin
+            .from('perfis')
+            .select('empresa_id')
+            .eq('id', authUser.id)
+            .maybeSingle();
+          
+          companyId = profile?.empresa_id;
+        }
+
+        // Se ainda não tiver empresa, criar uma Empresa Padrão (Auto-Onboarding)
+        if (!companyId) {
+          console.warn(`[SERVER-ADMIN] Utilizador órfão detetado: ${authUser.email}. Criando empresa base...`);
+          
+          const newCompanyId = crypto.randomUUID();
+          const { data: newCompany, error: createError } = await supabaseAdmin
+            .from('empresas')
+            .insert([{
+              id: newCompanyId,
+              auth_user_id: authUser.id,
+              nome_empresa: `Empresa de ${authUser.email?.split('@')[0]}`,
+              email: authUser.email,
+              plano: 'trial'
+            }])
+            .select('id')
+            .single();
+
+          if (createError) {
+            results.push({ email: authUser.email, status: 'error', error: `Falha ao criar empresa: ${createError.message}` });
+            continue;
+          }
+          companyId = newCompany.id;
+        }
+
+        // Garantir Perfil e Metadata
+        const { error: upsertErr } = await supabaseAdmin
+          .from('perfis')
+          .upsert({
+            id: authUser.id,
+            empresa_id: companyId,
+            email: authUser.email,
+            role: 'admin',
+            nome: authUser.user_metadata?.full_name || authUser.email?.split('@')[0]
+          }, { onConflict: 'id' });
+
+        if (upsertErr) {
+          results.push({ email: authUser.email, status: 'error', error: upsertErr.message });
+        } else {
+          // Atualizar Auth Metadata para permitir policy via JWT se o utilizador quiser
+          await supabaseAdmin.auth.admin.updateUserById(authUser.id, {
+            user_metadata: { ...authUser.user_metadata, empresa_id: companyId }
+          });
+          results.push({ email: authUser.email, status: 'fixed', companyId });
+        }
+      }
+
+      res.json({ success: true, results });
+    } catch (err: any) {
+      console.error("[SERVER-ADMIN] Falha na reparação:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get("/api/health", (req, res) => res.json({ status: "ok", mode: "offline" }));
 
   // --- SaaS Registration (Bypassing Rate Limits) ---

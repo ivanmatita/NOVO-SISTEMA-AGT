@@ -26,7 +26,10 @@ export interface Cliente {
 
 export const clienteService = {
   async getClientes(empresa_id: string): Promise<Cliente[]> {
-    if (!empresa_id) throw new Error("empresa_id é obrigatório para listar clientes.");
+    if (!empresa_id) {
+      console.warn('[ClienteService] empresa_id ausente ao tentar listar clientes.');
+      return [];
+    }
     
     try {
       console.log(`[ClienteService] Buscando clientes para empresa: ${empresa_id}`);
@@ -37,27 +40,34 @@ export const clienteService = {
         .order('nome', { ascending: true });
 
       if (error) {
+        console.error('[ClienteService] Erro ao buscar:', error);
         await handleSupabaseError(error, OperationType.LIST, 'clientes');
       }
       
-      console.log(`[ClienteService] ${data?.length || 0} clientes encontrados.`);
+      console.log(`[ClienteService] ${data?.length || 0} clientes encontrados para a empresa ${empresa_id}.`);
       return data || [];
     } catch (err) {
       console.error('[ClienteService] Falha crítica ao buscar:', err);
-      throw err;
+      // Fallback para evitar crash
+      return [];
     }
   },
 
   async createCliente(cliente: Omit<Cliente, 'id'>): Promise<Cliente> {
     try {
+      if (!cliente.empresa_id) throw new Error("empresa_id é obrigatório para criar um cliente.");
+
       // Garantir que campos legados sejam mapeados
       const payload = {
         ...cliente,
         nome: cliente.nome,
         nif: cliente.contribuinte || cliente.nif,
+        contribuinte: cliente.contribuinte || cliente.nif,
         endereco: cliente.endereco,
         updated_at: new Date().toISOString()
       };
+
+      console.log('[ClienteService] Inserindo cliente:', payload.nome);
 
       const { data, error } = await supabase
         .from('clientes')
@@ -65,7 +75,10 @@ export const clienteService = {
         .select()
         .single();
 
-      if (error) await handleSupabaseError(error, OperationType.CREATE, 'clientes');
+      if (error) {
+        console.error('[ClienteService] Erro no INSERT:', error);
+        await handleSupabaseError(error, OperationType.CREATE, 'clientes');
+      }
       return data;
     } catch (err) {
       console.error('[ClienteService] Erro ao criar cliente:', err);

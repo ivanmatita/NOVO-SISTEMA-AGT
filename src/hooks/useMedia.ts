@@ -177,7 +177,7 @@ export const useMedia = () => {
 
        const { error: dbError } = await supabase
         .from('media_arquivos')
-        .delete()
+        .update({ ativo: false })
         .eq('id', id)
         .eq('empresa_id', currentEmpresaId);
 

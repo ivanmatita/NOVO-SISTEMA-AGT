@@ -8636,27 +8636,61 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
 
       // Upload para o Supabase
       try {
-        if (!user?.empresa_id) return;
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (!authUser) return;
 
-        const fileName = `${user.empresa_id}-${field}-${Date.now()}`;
-        const { error } = await supabase.storage
-          .from('logos')
-          .upload(fileName, file);
+        const { data: profile } = await supabase
+          .from('perfis')
+          .select('empresa_id')
+          .eq('id', authUser.id)
+          .single();
+          
+        const empresaId = profile?.empresa_id;
+        if (!empresaId) throw new Error('Empresa não identificada');
 
-        if (error) {
-          console.error(error);
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${empresaId}/sidebar-${Date.now()}-${file.name.replace(/\s+/g, '_')}`;
+
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('media')
+          .upload(fileName, file, { upsert: false });
+
+        if (uploadError) {
+          console.error('Erro ao fazer upload:', uploadError);
+          alert('Erro no upload da imagem: ' + uploadError.message);
           return;
         }
 
         const { data: urlData } = supabase.storage
-          .from('logos')
+          .from('media')
           .getPublicUrl(fileName);
 
-        if (urlData) {
+        if (urlData?.publicUrl) {
           setFormData(prev => ({ ...prev, [field]: urlData.publicUrl }));
+
+          let tipo = 'imagem';
+          if (field === 'logo_url') tipo = 'sidebar_image';
+          
+          await supabase.from('media_arquivos').insert({
+            empresa_id: empresaId,
+            utilizador_id: authUser.id,
+            tipo: tipo,
+            nome_arquivo: fileName,
+            nome_original: file.name,
+            bucket: 'media',
+            caminho_arquivo: uploadData.path,
+            url_publica: urlData.publicUrl,
+            mime_type: file.type,
+            tamanho_bytes: file.size,
+            extensao: fileExt,
+            entidade: 'ui',
+            entidade_id: null,
+            observacao: `Upload via perfil da empresa - ${field}`,
+            ativo: true
+          });
         }
       } catch (err) {
-        console.error('Erro ao fazer upload:', err);
+        console.error('Erro ao processar imagem:', err);
       }
     }
   };
@@ -8893,7 +8927,7 @@ const VisualIdentityModule = ({ companyData, onRefreshData }: { companyData: any
           setFormData(prev => ({ ...prev, [field]: urlData.publicUrl }));
           
           let tipo = 'imagem';
-          if (field === 'logo_url') tipo = 'menu_logo';
+          if (field === 'logo_url') tipo = 'sidebar_image';
           if (field === 'watermark_url') tipo = 'imagem';
           if (field === 'footer_image_url') tipo = 'imagem';
 
@@ -8910,7 +8944,7 @@ const VisualIdentityModule = ({ companyData, onRefreshData }: { companyData: any
             mime_type: file.type,
             tamanho_bytes: file.size,
             extensao: fileExt,
-            entidade: 'empresa_identidade_visual',
+            entidade: 'ui',
             entidade_id: null,
             observacao: `Upload do campo ${field}`,
             ativo: true

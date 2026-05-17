@@ -1,46 +1,67 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { useAuth } from '../contexts/AuthContext';
 import { Warehouse } from '../types';
 
 export const useWarehouses = () => {
-  const { user } = useAuth();
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [loading, setLoading] = useState(true);
+  const [empresaId, setEmpresaId] = useState<string | null>(null);
 
   const fetchWarehouses = useCallback(async () => {
-    if (!user?.empresa_id) return;
-    setLoading(true);
     try {
+      setLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: profile } = await supabase
+        .from('perfis')
+        .select('empresa_id')
+        .eq('id', user.id)
+        .single();
+      
+      const currentEmpresaId = profile?.empresa_id;
+      setEmpresaId(currentEmpresaId);
+
+      if (!currentEmpresaId) return;
+
       const { data, error } = await supabase
         .from('armazens')
         .select('*')
-        .eq('empresa_id', user.empresa_id)
+        .eq('empresa_id', currentEmpresaId)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching warehouses:', error);
+        return;
+      }
+
+      console.log("[ARMAZENS] empresaId:", currentEmpresaId);
+      console.log("[ARMAZENS] data:", data);
+
       setWarehouses(data || []);
     } catch (error) {
-      console.error('Error fetching warehouses:', error);
+      console.error('Unexpected error fetching warehouses:', error);
     } finally {
       setLoading(false);
     }
-  }, [user?.empresa_id]);
+  }, []);
 
   useEffect(() => {
-    if (!user?.empresa_id) return;
-
     fetchWarehouses();
+  }, [fetchWarehouses]);
+
+  useEffect(() => {
+    if (!empresaId) return;
 
     const channel = supabase
-      .channel(`armazens-${user.empresa_id}`)
+      .channel(`armazens-${empresaId}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'armazens',
-          filter: `empresa_id=eq.${user.empresa_id}`
+          filter: `empresa_id=eq.${empresaId}`
         },
         () => {
           fetchWarehouses();
@@ -51,16 +72,26 @@ export const useWarehouses = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user?.empresa_id, fetchWarehouses]);
+  }, [empresaId, fetchWarehouses]);
 
   const createWarehouse = async (warehouseData: Partial<Warehouse>) => {
-    if (!user?.empresa_id) throw new Error('Empresa não identificada');
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Não autenticado');
+
+      const { data: profile } = await supabase
+        .from('perfis')
+        .select('empresa_id')
+        .eq('id', user.id)
+        .single();
+      const currentEmpresaId = profile?.empresa_id;
+      if (!currentEmpresaId) throw new Error('Empresa não identificada');
+
       const { data, error } = await supabase
         .from('armazens')
         .insert([{
           ...warehouseData,
-          empresa_id: user.empresa_id,
+          empresa_id: currentEmpresaId,
         }])
         .select()
         .single();
@@ -74,13 +105,23 @@ export const useWarehouses = () => {
   };
 
   const updateWarehouse = async (id: number, updates: Partial<Warehouse>) => {
-    if (!user?.empresa_id) throw new Error('Empresa não identificada');
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Não autenticado');
+
+      const { data: profile } = await supabase
+        .from('perfis')
+        .select('empresa_id')
+        .eq('id', user.id)
+        .single();
+      const currentEmpresaId = profile?.empresa_id;
+      if (!currentEmpresaId) throw new Error('Empresa não identificada');
+
       const { data, error } = await supabase
         .from('armazens')
         .update(updates)
         .eq('id', id)
-        .eq('empresa_id', user.empresa_id)
+        .eq('empresa_id', currentEmpresaId)
         .select()
         .single();
         
@@ -93,13 +134,23 @@ export const useWarehouses = () => {
   };
 
   const deleteWarehouse = async (id: number) => {
-    if (!user?.empresa_id) throw new Error('Empresa não identificada');
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Não autenticado');
+
+      const { data: profile } = await supabase
+        .from('perfis')
+        .select('empresa_id')
+        .eq('id', user.id)
+        .single();
+      const currentEmpresaId = profile?.empresa_id;
+      if (!currentEmpresaId) throw new Error('Empresa não identificada');
+
       const { error } = await supabase
         .from('armazens')
         .delete()
         .eq('id', id)
-        .eq('empresa_id', user.empresa_id);
+        .eq('empresa_id', currentEmpresaId);
         
       if (error) throw error;
     } catch (e) {

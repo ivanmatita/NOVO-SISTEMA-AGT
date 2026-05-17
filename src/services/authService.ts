@@ -11,13 +11,20 @@ export const authService = {
 
     sessionLoading = true;
     try {
-      const { data, error } = await supabase.auth.getSession();
-      if (error) {
-        console.error('Error getting session:', error);
+      // Add timeout to prevent hanging forever
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout on getSession')), 5000));
+      const getSessionPromise = supabase.auth.getSession();
+      
+      const res = await Promise.race([getSessionPromise, timeoutPromise]) as any;
+      if (res.error) {
+        console.error('Error getting session:', res.error);
         return null;
       }
-      sessionCache = data.session;
+      sessionCache = res.data.session;
       return sessionCache;
+    } catch (err) {
+      console.error('getSessionSafe timeout/error:', err);
+      return null;
     } finally {
       sessionLoading = false;
     }
@@ -210,8 +217,11 @@ export const authService = {
       const session = await this.getSessionSafe();
       if (!session) return null;
 
-      // Busca perfil com a empresa associada
-      const { data: perfil, error } = await supabase
+      // Promise de timeout comum para as queries
+      const queryTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout DB Query')), 8000));
+
+      // Busca perfil com a empresa associada (com timeout)
+      const perfilQuery = supabase
         .from('perfis')
         .select(`
           empresa_id,
@@ -226,6 +236,8 @@ export const authService = {
         .eq('id', session.user.id)
         .maybeSingle();
 
+      const { data: perfil, error } = await Promise.race([perfilQuery, queryTimeout]) as any;
+
       if (error) {
         console.error('[AuthService] Erro ao recuperar perfil:', error);
       }
@@ -234,11 +246,13 @@ export const authService = {
 
       if (!perfil || !empresa) {
         console.warn('[AuthService] Perfil ou empresa não encontrados para utilizador logado.');
-        const { data: legacyEmpresa } = await supabase
+        const legacyQuery = supabase
           .from('empresas')
           .select('*')
           .or(`id.eq.${session.user.id},auth_user_id.eq.${session.user.id}`)
           .maybeSingle();
+          
+        const { data: legacyEmpresa } = await Promise.race([legacyQuery, queryTimeout]) as any;
 
         return {
           id: session.user.id,

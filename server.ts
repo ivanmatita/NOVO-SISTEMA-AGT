@@ -368,24 +368,40 @@ async function startServer() {
     res.json(demoUser);
   });
 
-  // Reports
-  app.get("/api/reports/profit-loss", (req, res) => {
+  // Reports - Integrated with Supabase for SaaS Profit & Loss
+  app.get("/api/reports/profit-loss", async (req, res) => {
+    const { empresa_id } = req.query;
     const year = Number(req.query.year) || new Date().getFullYear();
     
+    let docs = issuedDocuments;
+    let trans = transactions;
+
+    if (supabaseAdmin && empresa_id) {
+       try {
+         const { data: dbDocs } = await supabaseAdmin.from('documentos_emitidos').select('*').eq('empresa_id', empresa_id);
+         if (dbDocs) docs = dbDocs;
+         // Transactions still legacy for now, or we can add /compras if they exist in Supabase
+       } catch (e) {
+         console.error("[SERVER-REPORTS] Supabase error:", e);
+       }
+    }
+
     const monthsData = Array.from({ length: 12 }, (_, i) => {
       const month = i + 1;
       
-      // Calculate Revenue from certified invoices for this month
-      const monthDocs = issuedDocuments.filter(d => {
-        const dDate = new Date(d.date || d.created_at);
-        return d.is_certified && dDate.getFullYear() === year && (dDate.getMonth() + 1) === month;
+      // Calculate Revenue from certified documents for this month
+      const monthDocs = docs.filter(d => {
+        if (empresa_id && d.empresa_id !== empresa_id) return false;
+        const dDate = new Date(d.date || d.created_at || d.data_emissao);
+        return (d.is_certified || d.status === 'CERTIFICADO') && dDate.getFullYear() === year && (dDate.getMonth() + 1) === month;
       });
 
       const factS = monthDocs.reduce((acc, d) => acc + (Number(d.total || d.counter_value || 0) / 1.14), 0); // approx s/ imposto
       const impRec = factS * 0.14;
       
       // Calculate Costs from transactions (type: 'expense' or similar)
-      const monthTransactions = transactions.filter(t => {
+      const monthTransactions = trans.filter(t => {
+        if (empresa_id && t.empresa_id !== empresa_id) return false;
         const tDate = new Date(t.date);
         return tDate.getFullYear() === year && (tDate.getMonth() + 1) === month;
       });
@@ -413,10 +429,43 @@ async function startServer() {
 
     res.json(monthsData);
   });
-  // Stats
-  app.get("/api/stats", (req, res) => {
+  // Stats - Integrated with Supabase for Real-time SaaS data
+  app.get("/api/stats", async (req, res) => {
     const { empresa_id } = req.query;
     if (!empresa_id) return res.status(400).json({ error: "empresa_id required" });
+
+    // Use Supabase if Admin is available, otherwise fallback to memory
+    if (supabaseAdmin) {
+      try {
+        const [docsRes, clientsRes, caixasRes] = await Promise.all([
+          supabaseAdmin.from('documentos_emitidos').select('*').eq('empresa_id', empresa_id),
+          supabaseAdmin.from('clientes').select('id').eq('empresa_id', empresa_id),
+          supabaseAdmin.from('caixas').select('current_balance').eq('empresa_id', empresa_id)
+        ]);
+
+        const dbDocs = docsRes.data || [];
+        const dbClientsCount = clientsRes.data?.length || 0;
+        const dbCaixasTotal = (caixasRes.data || []).reduce((acc, c) => acc + (Number(c.current_balance) || 0), 0);
+
+        return res.json({
+          totalInvoiced: dbDocs.reduce((acc, doc) => acc + (Number(doc.total) || 0), 0),
+          pendingCount: dbDocs.filter(d => (d.status || d.estado_documento || '').toLowerCase() === 'pendente' || d.payment_status === 'pending').length,
+          clientCount: dbClientsCount,
+          totalExpenses: 0,
+          cashBalance: dbCaixasTotal,
+          recentInvoices: dbDocs.slice(-5).map(doc => ({
+            id: doc.id,
+            invoice_number: doc.numero_documento || doc.invoice_number,
+            client_name: doc.cliente_nome || doc.client_name,
+            total: doc.total,
+            date: doc.data_emissao || doc.created_at
+          }))
+        });
+      } catch (err) {
+        console.error("[SERVER-STATS] Error fetching from Supabase:", err);
+        // Fallback to memory
+      }
+    }
 
     const companyDocs = issuedDocuments.filter(d => String(d.empresa_id) === String(empresa_id));
     const companyClients = clients.filter(c => String(c.empresa_id) === String(empresa_id));
@@ -526,7 +575,10 @@ async function startServer() {
         const year = new Date().getFullYear();
         invoice_number = `${docType} ${series.reference}${year}/${counter}`;
       } else {
-        const counter = issuedDocuments.filter(d => d.document_type === docType).length + 1;
+        const counter = issuedDocuments.filter(d => 
+          (d.document_type === docType || d.tipo_documento === docType) && 
+          String(d.empresa_id) === String(doc.empresa_id)
+        ).length + 1;
         invoice_number = `${docType} ${new Date().getFullYear()}/${counter}`;
       }
 
@@ -646,7 +698,10 @@ async function startServer() {
 
       // Also create a "Recibo" document to show in the list
       const year = new Date().getFullYear();
-      const reciboCounter = issuedDocuments.filter(d => d.document_type === 'Recibo').length + 1;
+      const reciboCounter = issuedDocuments.filter(d => 
+        (d.document_type === 'Recibo' || d.tipo_documento === 'Recibo') && 
+        String(d.empresa_id) === String(invoice.empresa_id)
+      ).length + 1;
       const reciboNumber = `Recibo ${year}/${reciboCounter}`;
 
       const reciboDoc = {
@@ -763,7 +818,11 @@ async function startServer() {
         series.counters[associatedDocType]++;
         assoc_number = `${associatedDocType} ${series.reference}${new Date().getFullYear()}/${counter}`;
       } else {
-        const counter = issuedDocuments.filter(d => d.document_type === associatedDocType).length + 1;
+        const empresaId = doc.empresa_id;
+        const counter = issuedDocuments.filter(d => 
+          (d.document_type === associatedDocType || d.tipo_documento === associatedDocType) && 
+          String(d.empresa_id) === String(empresaId)
+        ).length + 1;
         assoc_number = `${associatedDocType} ${new Date().getFullYear()}/${counter}`;
       }
       
@@ -835,7 +894,10 @@ async function startServer() {
         series.counters[targetType]++;
         new_number = `${targetType} ${series.reference}${new Date().getFullYear()}/${counter}`;
       } else {
-        const counter = issuedDocuments.filter(d => d.document_type === targetType).length + 1;
+        const counter = issuedDocuments.filter(d => 
+          (d.document_type === targetType || d.tipo_documento === targetType) && 
+          String(d.empresa_id) === String(doc.empresa_id)
+        ).length + 1;
         new_number = `${targetType} ${new Date().getFullYear()}/${counter}`;
       }
 
@@ -955,7 +1017,11 @@ async function startServer() {
         const year = new Date().getFullYear();
         invoice_number = `${docType} ${series.reference}${year}/${counter}`;
       } else {
-        const counter = issuedDocuments.filter(d => d.document_type === docType).length + 1;
+        const empresaId = req.body.empresa_id;
+        const counter = issuedDocuments.filter(d => 
+          (d.document_type === docType || d.tipo_documento === docType) && 
+          String(d.empresa_id) === String(empresaId)
+        ).length + 1;
         invoice_number = `${docType} ${new Date().getFullYear()}/${counter}`;
       }
     }

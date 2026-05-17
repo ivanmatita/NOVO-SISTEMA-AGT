@@ -5785,7 +5785,9 @@ const FinancialModule = ({
   employees,
   user,
   refreshCaixas,
-  refreshMovements
+  refreshMovements,
+  issuedDocuments,
+  transactions
 }: { 
   caixas: Caixa[], 
   setCaixas: React.Dispatch<React.SetStateAction<Caixa[]>>,
@@ -5794,11 +5796,11 @@ const FinancialModule = ({
   employees: Employee[],
   user: any,
   refreshCaixas?: () => Promise<void>,
-  refreshMovements?: () => Promise<void>
+  refreshMovements?: () => Promise<void>,
+  issuedDocuments: IssuedDocument[],
+  transactions: any[]
 }) => {
   const [activeSubTab, setActiveSubTab] = useState('menu');
-  const [issuedDocuments, setIssuedDocuments] = useState<IssuedDocument[]>([]);
-  const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [description, setDescription] = useState('');
@@ -5807,20 +5809,13 @@ const FinancialModule = ({
   const [selectedMonthForMap, setSelectedMonthForMap] = useState(new Date().toISOString().slice(0, 7));
   const [selectedMapSubTab, setSelectedMapSubTab] = useState('irt_inss');
 
+  // Using props instead of local fetching to ensure Supabase sync
   const fetchIssuedDocuments = () => {
-    setLoading(true);
-    fetchJson(`/api/issued-documents?empresa_id=${user?.empresa_id}`)
-      .then(setIssuedDocuments)
-      .catch(err => console.error('Error fetching issued documents:', err))
-      .finally(() => setLoading(false));
+    // onRefresh could be called here if needed
   };
 
   const fetchTransactions = () => {
-    setLoading(true);
-    fetchJson(`/api/transactions?empresa_id=${user?.empresa_id}`)
-      .then(setTransactions)
-      .catch(err => console.error('Error fetching transactions:', err))
-      .finally(() => setLoading(false));
+    // onRefresh could be called here if needed
   };
 
   useEffect(() => {
@@ -6254,6 +6249,27 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
               </div>
 
               <div className="grid grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+                {/* 0. CERTIFICAR DOCUMENTO (DESBLOQUEAR) */}
+                {!showActionsModal.is_certified && (
+                  <button 
+                    onClick={() => { 
+                      onCertify(showActionsModal);
+                      setShowActionsModal(null);
+                    }}
+                    className="col-span-2 w-full flex items-center gap-4 p-4 bg-emerald-50 hover:bg-emerald-100 transition-all border border-emerald-200 group shadow-md animate-pulse"
+                  >
+                    <div className="w-12 h-12 bg-emerald-500 text-white flex items-center justify-center group-hover:scale-110 transition-transform rounded-full shadow-inner">
+                      <BadgeCheck size={24} />
+                    </div>
+                    <div className="text-left">
+                      <p className="font-black text-emerald-700 text-sm uppercase mb-0.5">Certificar Documento</p>
+                      <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-widest opacity-80">
+                        Clique aqui para desbloquear todas as funcionalidades
+                      </p>
+                    </div>
+                  </button>
+                )}
+
                 {/* 1. Editar Documento (Apenas para documentos não certificados) */}
                 {!showActionsModal.is_certified && (
                      <button 
@@ -19256,19 +19272,36 @@ export default function App() {
 
       console.log('Persistindo documento no Supabase:', doc.invoice_number || doc.numero_documento);
 
+      // Usamos empresa_id conforme solicitado. A FK errada será corrigida via SQL Dashboard.
+      const payload = {
+        empresa_id: user.empresa_id,
+        tipo_documento: doc.document_type || doc.tipo_documento || 'Fatura',
+        numero_documento: doc.invoice_number || doc.numero_documento,
+        cliente_nome: doc.client_name || doc.cliente_nome || 'Desconhecido',
+        cliente_email: doc.client_email || doc.customer_email || '',
+        total: Number(doc.total || 0),
+        imposto: Number(doc.total_tax || doc.imposto || 0),
+        estado: doc.status || doc.estado_documento || 'ativo',
+        data_emissao: doc.date || doc.data_emissao || new Date().toISOString(),
+        detalhes: {
+          items: doc.items || [],
+          payment_method: doc.payment_method,
+          series_id: doc.series_id,
+          observations: doc.observations
+        }
+      };
+
       const { error } = await supabase
         .from('documentos_emitidos')
-        .insert({
-          empresa_id: user.empresa_id,
-          tipo_documento: doc.document_type || doc.tipo_documento || 'Fatura',
-          numero_documento: doc.invoice_number || doc.numero_documento,
-          cliente_nome: doc.client_name || doc.cliente_nome || 'Desconhecido',
-          total: Number(doc.total || 0),
-          data_emissao: doc.date || doc.data_emissao || new Date().toISOString()
-        });
+        .insert([payload]);
 
       if (error) {
         console.error('Erro ao salvar no Supabase (documentos_emitidos):', error);
+        // Fallback: Tentativa com fallback de nome de coluna caso o DB ainda use legacy names
+        if (error.message.includes('column "empresa_id" does not exist')) {
+           console.log('Tentando insert com fallback "company_id"...');
+           await supabase.from('documentos_emitidos').insert([{ ...payload, company_id: user.empresa_id, empresa_id: undefined }]);
+        }
       } else {
         console.log('Documento persistido com sucesso no Supabase');
         await fetchData();
@@ -19296,7 +19329,33 @@ export default function App() {
       }
       
       console.log(`Documentos carregados: ${data?.length || 0}`);
-      setIssuedDocuments(data || []);
+      const docs = data?.map((d: any) => ({
+        ...d,
+        contravalor: Number(d.total || 0), // Mapping Supabase 'total' to UI expected 'contravalor'
+        date: d.data_emissao || d.created_at,
+        client_name: d.cliente_nome || d.client_name,
+        invoice_number: d.numero_documento || d.invoice_number,
+        estado_documento: (d.estado || 'ativo').toLowerCase(),
+        document_type: d.tipo_documento || d.document_type
+      })) || [];
+      
+      setIssuedDocuments(docs);
+      
+      // Sync with invoices state for components using the legacy prop
+      const mappedInvoices: Invoice[] = docs.map((d: any) => ({
+        id: d.id,
+        client_id: d.cliente_id || d.client_id,
+        client_name: d.cliente_nome || d.client_name || 'Consumidor Final',
+        invoice_number: d.numero_documento || d.invoice_number,
+        date: d.data_emissao || d.date || new Date().toISOString(),
+        due_date: d.data_vencimento || d.due_date || new Date().toISOString(),
+        status: (d.estado || d.status || 'ativo').toLowerCase() as any,
+        total: Number(d.total || 0),
+        items: d.detalhes?.items || d.items || [],
+        client_email: d.cliente_email || d.client_email,
+        document_type: d.tipo_documento || d.document_type
+      }));
+      setInvoices(mappedInvoices);
     } catch (err) {
       console.error('Erro ao carregar documentos emitidos do Supabase:', err);
     }
@@ -19573,7 +19632,7 @@ export default function App() {
         fetchJson(`/api/stats?empresa_id=${targetCompanyId}`),
         fetchJson(`/api/products?empresa_id=${targetCompanyId}`),
         fetchJson(`/api/transactions?empresa_id=${targetCompanyId}`),
-        fetchJson(`/api/invoices?empresa_id=${targetCompanyId}`),
+        Promise.resolve(null), // Replaced /api/invoices with Supabase documents call
         fetchJson(`/api/employees?empresa_id=${targetCompanyId}`),
         Promise.resolve(fsDataFormatted), // Replaced API with Supabase series
         fetchJson(`/api/cost-centers?empresa_id=${targetCompanyId}`),
@@ -19600,7 +19659,7 @@ export default function App() {
       setStats(s || null);
       setProducts(Array.isArray(p) ? p : []);
       setTransactions(Array.isArray(tr) ? tr : []);
-      setInvoices(Array.isArray(i) ? i : []);
+      setInvoices([]); // Will be synced via issuedDocuments if needed, or use issuedDocuments directly
       setEmployees(Array.isArray(e) ? e : []);
       
       if (Array.isArray(fs)) {
@@ -19753,6 +19812,7 @@ export default function App() {
           .from('documentos_emitidos')
           .select('*')
           .eq('id', doc.id)
+          .eq('empresa_id', user?.empresa_id)
           .single();
 
         if (data) {
@@ -20229,6 +20289,8 @@ export default function App() {
                               user={user}
                               refreshCaixas={loadCaixas}
                               refreshMovements={loadCaixaMovements}
+                              issuedDocuments={issuedDocuments}
+                              transactions={invoices} // Overloading invoices as transactions for this module's logic if needed, or separate state
                             />
                           );
                         case 'hr':

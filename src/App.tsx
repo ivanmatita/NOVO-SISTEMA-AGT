@@ -19751,7 +19751,7 @@ export default function App() {
         total_staff: Number(site.total_staff || 0),
       };
 
-      await localTrabalhoService.updateLocalTrabalho(id, payload);
+      await localTrabalhoService.updateLocalTrabalho(id, payload, user.empresa_id);
       
       await loadLocaisTrabalho();
       alert('Alterações guardadas com sucesso!');

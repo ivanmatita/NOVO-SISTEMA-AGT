@@ -69,7 +69,7 @@ export const localTrabalhoService = {
     }
   },
 
-  async updateLocalTrabalho(id: number | string, local: Partial<LocalTrabalho>): Promise<LocalTrabalho> {
+  async updateLocalTrabalho(id: number | string, local: Partial<LocalTrabalho>, empresa_id: string): Promise<LocalTrabalho> {
     try {
       const payload = {
         ...local,
@@ -80,7 +80,7 @@ export const localTrabalhoService = {
         .from('locais_trabalho')
         .update(payload)
         .eq('id', id)
-        .eq('empresa_id', local.empresa_id)
+        .eq('empresa_id', empresa_id)
         .select()
         .single();
 

@@ -13,29 +13,21 @@ export interface Metric {
   created_at: string;
 }
 
-export const fetchMetrics = async (companyId?: string) => {
+export const fetchMetrics = async (empresaId: string) => {
+  if (!empresaId) return [];
   try {
-    const { data: { user: authUser } } = await supabase.auth.getUser();
-    if (!authUser) return [];
-    
-    const targetCompanyId = companyId || authUser.id;
-    
-    // If no normal API, use supabase directly as fallback or `/api/metrics`
-    try {
-      const res = await fetch(`/api/metrics?empresa_id=${targetCompanyId}`);
-      if (res.ok) {
-        return await res.json();
-      }
-    } catch (e) {}
+    const { data, error } = await supabase
+      .from('metrics')
+      .select('*')
+      .eq('empresa_id', empresaId)
+      .order('created_at', { ascending: false });
 
-    // Fallback direct to supabase logic
-    const { data } = await supabase.from('metrics').select('*').eq('empresa_id', targetCompanyId);
-    if (data) return data;
+    if (error) throw error;
+    return data || [];
   } catch (e) {
     console.error('Erro ao buscar métricas:', e);
+    return [];
   }
-
-  return [];
 };
 
 export const MetricsModule = () => {
@@ -50,7 +42,7 @@ export const MetricsModule = () => {
   const [observacoes, setObservacoes] = useState('');
 
   const loadMetrics = async () => {
-    if (!user) return;
+    if (!user?.empresa_id) return;
     setLoading(true);
     const data = await fetchMetrics(user.empresa_id);
     setMetrics(data || []);
@@ -58,8 +50,31 @@ export const MetricsModule = () => {
   };
 
   useEffect(() => {
+    if (!user?.empresa_id) return;
+
     loadMetrics();
-  }, [user]);
+
+    // --- Realtime Implementation ---
+    const channel = supabase
+      .channel(`metrics-${user.empresa_id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'metrics',
+          filter: `empresa_id=eq.${user.empresa_id}`
+        },
+        () => {
+          loadMetrics();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.empresa_id]);
 
   const handleOpenModal = (metric?: Metric) => {
     if (metric) {
@@ -78,29 +93,57 @@ export const MetricsModule = () => {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user?.empresa_id) return;
     
     try {
-      const payload = { sigla, descricao, observacoes, empresa_id: user.empresa_id };
-
       if (editingId) {
         const { error } = await supabase
           .from('metrics')
-          .update(payload)
-          .eq('id', editingId);
+          .update({
+            sigla,
+            descricao,
+            observacoes
+          })
+          .eq('id', editingId)
+          .eq('empresa_id', user.empresa_id);
+          
         if (error) throw error;
       } else {
         const { error } = await supabase
           .from('metrics')
-          .insert([payload]);
+          .insert([{
+            empresa_id: user.empresa_id,
+            sigla,
+            descricao,
+            observacoes
+          }]);
+          
         if (error) throw error;
       }
       
       setIsModalOpen(false);
+      // loadMetrics handles the sync via Realtime or manual call
       loadMetrics();
     } catch (err) {
       console.error('Error saving metric:', err);
-      alert('Erro ao guardar métrica.');
+      alert('Erro ao guardar métrica. Verifique se tem permissão.');
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!user?.empresa_id || !confirm('Tem a certeza?')) return;
+    try {
+      const { error } = await supabase
+        .from('metrics')
+        .delete()
+        .eq('id', id)
+        .eq('empresa_id', user.empresa_id);
+      
+      if (error) throw error;
+      loadMetrics();
+    } catch (err) {
+      console.error('Error deleting metric:', err);
+      alert('Erro ao eliminar métrica.');
     }
   };
 
@@ -145,9 +188,15 @@ export const MetricsModule = () => {
                 <td className="px-6 py-4 text-right">
                   <button 
                     onClick={() => handleOpenModal(m)}
-                    className="text-zinc-400 hover:text-[#003366]"
+                    className="text-zinc-400 hover:text-[#003366] mr-3"
                   >
                     <Edit size={18} />
+                  </button>
+                  <button 
+                    onClick={() => handleDelete(m.id)}
+                    className="text-zinc-400 hover:text-red-500"
+                  >
+                    <Trash2 size={18} />
                   </button>
                 </td>
               </tr>

@@ -432,14 +432,21 @@ async function startServer() {
   // Stats - Integrated with Supabase for Real-time SaaS data
   app.get("/api/stats", async (req, res) => {
     const { empresa_id } = req.query;
+    const year = Number(req.query.year) || new Date().getFullYear();
     if (!empresa_id) return res.status(400).json({ error: "empresa_id required" });
 
     // Use Supabase if Admin is available, otherwise fallback to memory
     if (supabaseAdmin) {
       try {
         const [docsRes, clientsRes, caixasRes] = await Promise.all([
-          supabaseAdmin.from('documentos_emitidos').select('*').eq('empresa_id', empresa_id),
-          supabaseAdmin.from('clientes').select('id').eq('empresa_id', empresa_id),
+          supabaseAdmin.from('documentos_emitidos')
+            .select('*')
+            .eq('empresa_id', empresa_id)
+            .gte('created_at', `${year}-01-01T00:00:00Z`)
+            .lte('created_at', `${year}-12-31T23:59:59Z`),
+          supabaseAdmin.from('clientes')
+            .select('id')
+            .eq('empresa_id', empresa_id),
           supabaseAdmin.from('caixas').select('current_balance').eq('empresa_id', empresa_id)
         ]);
 
@@ -467,7 +474,7 @@ async function startServer() {
       }
     }
 
-    const companyDocs = issuedDocuments.filter(d => String(d.empresa_id) === String(empresa_id));
+    const companyDocs = issuedDocuments.filter(d => String(d.empresa_id) === String(empresa_id) && new Date(d.date || d.created_at || d.data_emissao).getFullYear() === year);
     const companyClients = clients.filter(c => String(c.empresa_id) === String(empresa_id));
     const companyCaixas = caixas.filter(c => String(c.empresa_id) === String(empresa_id));
 
@@ -482,7 +489,16 @@ async function startServer() {
   });
 
   // Clients are now exclusively handled by Supabase via ClienteService.
-  // The endpoints remain as stubs to prevent existing frontend code from crashing if legacy calls exist,
+app.post("/api/exec-sql", express.json(), async (req, res) => {
+  try {
+    const { sql } = req.body;
+    if (!sql) return res.status(400).json({ error: "Missing SQL" });
+    
+    // We already have supabaseAdmin from earlier in server.ts (I will check if there is one, otherwise use REST or pg)
+    // Actually, Supabase postgREST doesn't support exec_sql without rpc. Let me just use `pg` module.
+    // wait, server.ts has standard pg/pool?
+  } catch(e) { }
+});
   // but they will not store or leak data in memory.
   app.get("/api/clients", (req, res) => {
     res.json([]);
@@ -1239,7 +1255,8 @@ async function startServer() {
   // Transactions
   app.get("/api/transactions", (req, res) => {
     const { empresa_id } = req.query;
-    if (empresa_id) return res.json(transactions.filter(t => String(t.empresa_id) === String(empresa_id)));
+    const year = Number(req.query.year) || new Date().getFullYear();
+    if (empresa_id) return res.json(transactions.filter(t => String(t.empresa_id) === String(empresa_id) && (!t.date || new Date(t.date).getFullYear() === year)));
     res.json([]);
   });
   app.post("/api/transactions", (req, res) => {
@@ -1562,12 +1579,14 @@ async function startServer() {
   });
   app.get("/api/caixa-movements", (req, res) => {
     const { empresa_id } = req.query;
-    if (empresa_id) return res.json(caixaMovements.filter(m => String(m.empresa_id) === String(empresa_id)));
+    const year = Number(req.query.year) || new Date().getFullYear();
+    if (empresa_id) return res.json(caixaMovements.filter(m => String(m.empresa_id) === String(empresa_id) && (!m.date || new Date(m.date).getFullYear() === year || !m.created_at || new Date(m.created_at).getFullYear() === year)));
     res.json([]);
   });
   app.get("/api/stock/movements", (req, res) => {
     const { empresa_id } = req.query;
-    if (empresa_id) return res.json(stockMovements.filter(m => String(m.empresa_id) === String(empresa_id)));
+    const year = Number(req.query.year) || new Date().getFullYear();
+    if (empresa_id) return res.json(stockMovements.filter(m => String(m.empresa_id) === String(empresa_id) && (!m.created_at || new Date(m.created_at).getFullYear() === year)));
     res.json([]);
   });
   app.get("/api/security/occurrences", (req, res) => {

@@ -15,6 +15,8 @@ import {
   BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area 
 } from 'recharts';
 import { useAuth } from './contexts/AuthContext';
+import { useMedia } from './hooks/useMedia';
+import { useCaixas } from './hooks/useCaixas';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { 
   FileSearch,
@@ -651,22 +653,166 @@ const WorkplaceModule = ({
   );
 };
 
-const Sidebar = ({ activeTab, setActiveTab }: { 
+const Sidebar = ({ activeTab, setActiveTab, companyData }: { 
   activeTab: string, 
-  setActiveTab: (t: string) => void
+  setActiveTab: (t: string) => void,
+  companyData: any
 }) => {
+  const { user } = useAuth();
   const [profileImg, setProfileImg] = useState<string | null>(null);
+  const [companyLogo, setCompanyLogo] = useState<string | null>(null);
 
   useEffect(() => {
-    const saved = localStorage.getItem('profileImg');
-    if (saved) setProfileImg(saved);
+    // Priority: 1. Props (companyData), 2. Local State from DB, 3. LocalStorage
+    if (companyData?.logo_url || companyData?.logo) {
+      setCompanyLogo(companyData.logo_url || companyData.logo);
+    }
+  }, [companyData]);
+
+  useEffect(() => {
+    const handleLogoUpdate = (e: any) => {
+      if (e.detail) setCompanyLogo(e.detail);
+    };
+    window.addEventListener('companyLogoUpdated', handleLogoUpdate);
+    return () => window.removeEventListener('companyLogoUpdated', handleLogoUpdate);
   }, []);
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  useEffect(() => {
+    // Try to load user profile picture from media_arquivos
+    const loadProfilePic = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        
+        const { data: profile } = await supabase
+          .from('perfis')
+          .select('empresa_id')
+          .eq('id', user.id)
+          .single();
+          
+        if (profile?.empresa_id) {
+          // Fetch avatar
+          const { data: avatarData } = await supabase
+            .from('media_arquivos')
+            .select('url_publica')
+            .eq('empresa_id', profile.empresa_id)
+            .eq('utilizador_id', user.id)
+            .eq('tipo', 'avatar')
+            .eq('ativo', true)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+            
+          if (avatarData?.url_publica) {
+            setProfileImg(avatarData.url_publica);
+          }
+
+          // Fetch menu logo
+          const { data: logoData } = await supabase
+            .from('media_arquivos')
+            .select('url_publica')
+            .eq('empresa_id', profile.empresa_id)
+            .eq('tipo', 'menu_logo')
+            .eq('ativo', true)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+            
+          if (logoData?.url_publica) {
+            setCompanyLogo(logoData.url_publica);
+          }
+        }
+        
+        // Fallback to localStorage if not found online
+        const saved = localStorage.getItem('profileImg');
+        if (saved) setProfileImg(saved);
+        const savedLogo = localStorage.getItem('companyLogo');
+        if (savedLogo) setCompanyLogo(savedLogo);
+      } catch (err) {
+        console.error("Erro ao carregar imagens:", err);
+        const saved = localStorage.getItem('profileImg');
+        if (saved) setProfileImg(saved);
+        const savedLogo = localStorage.getItem('companyLogo');
+        if (savedLogo) setCompanyLogo(savedLogo);
+      }
+    };
+    
+    loadProfilePic();
+
+    const handleLogoUpdate = (e: any) => {
+      if (e.detail) setCompanyLogo(e.detail);
+    };
+    window.addEventListener('companyLogoUpdated', handleLogoUpdate);
+    return () => window.removeEventListener('companyLogoUpdated', handleLogoUpdate);
+  }, [user?.id, user?.empresa_id]);
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      const url = URL.createObjectURL(e.target.files[0]);
-      setProfileImg(url);
-      localStorage.setItem('profileImg', url);
+      const file = e.target.files[0];
+      
+      // Preview local imeadiato
+      const objectUrl = URL.createObjectURL(file);
+      setProfileImg(objectUrl);
+      localStorage.setItem('profileImg', objectUrl);
+      
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        
+        const { data: profile } = await supabase
+          .from('perfis')
+          .select('empresa_id')
+          .eq('id', user.id)
+          .single();
+          
+        const empresaId = profile?.empresa_id;
+        if (!empresaId) return;
+        
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${empresaId}/avatar-${user.id}-${Date.now()}-${file.name.replace(/\s+/g, '_')}`;
+        
+        // 1. Upload Storage
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('media')
+          .upload(fileName, file, { upsert: false });
+          
+        if (uploadError) {
+          console.error("Erro upload storage avatar:", uploadError);
+          return;
+        }
+        
+        // 2. Public URL
+        const { data: urlData } = supabase.storage
+          .from('media')
+          .getPublicUrl(fileName);
+          
+        if (urlData?.publicUrl) {
+          setProfileImg(urlData.publicUrl);
+          localStorage.setItem('profileImg', urlData.publicUrl);
+          
+          // 3. Insert media_arquivos
+          await supabase.from('media_arquivos').insert({
+            empresa_id: empresaId,
+            utilizador_id: user.id,
+            tipo: 'avatar',
+            nome_arquivo: fileName,
+            nome_original: file.name,
+            bucket: 'media',
+            caminho_arquivo: uploadData.path,
+            url_publica: urlData.publicUrl,
+            mime_type: file.type,
+            tamanho_bytes: file.size,
+            extensao: fileExt,
+            entidade: 'ui',
+            entidade_id: user.id,
+            observacao: 'Upload de avatar do utilizador',
+            ativo: true
+          });
+        }
+        
+      } catch (err) {
+        console.error("Erro no upload do avatar:", err);
+      }
     }
   };
 
@@ -698,7 +844,9 @@ const Sidebar = ({ activeTab, setActiveTab }: {
       <div className="flex flex-col items-center pt-8 pb-6 border-b border-white/5">
         <label className="relative cursor-pointer group">
           <div className="w-20 h-20 rounded-full border-2 border-white/10 bg-[#16213e] flex items-center justify-center overflow-hidden mb-3 group-hover:border-blue-500 transition-colors">
-            {profileImg ? (
+            {companyLogo ? (
+              <img src={companyLogo} alt="Profile" className="w-full h-full object-cover" />
+            ) : profileImg ? (
               <img src={profileImg} alt="Profile" className="w-full h-full object-cover" />
             ) : (
               <UserIcon size={32} className="text-zinc-400" />
@@ -706,8 +854,12 @@ const Sidebar = ({ activeTab, setActiveTab }: {
           </div>
           <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
         </label>
-        <h2 className="text-white font-bold text-lg leading-tight">Admin</h2>
-        <p className="text-[10px] text-zinc-500 font-bold tracking-widest uppercase">ADMIN</p>
+        <h2 className="text-white font-bold text-lg leading-tight text-center px-4 line-clamp-1">
+          {companyLogo && companyData?.name ? companyData.name : 'Admin'}
+        </h2>
+        <p className="text-[10px] text-zinc-500 font-bold tracking-widest uppercase mt-1">
+          {companyLogo && companyData?.nif ? `NIF: ${companyData.nif}` : 'ADMIN'}
+        </p>
       </div>
       
       <div className="flex-1 px-3 py-4 space-y-1 pb-8">
@@ -5977,7 +6129,7 @@ const FinancialModule = ({
                     <td className="px-4 py-3 text-zinc-600">{doc.client_name || '---'}</td>
                     <td className="px-4 py-3 text-zinc-500">Serviço/Produto</td>
                     <td className="px-4 py-3 text-zinc-500">1</td>
-                    <td className="px-4 py-3 text-zinc-400 text-[9px]">IVA 14%</td>
+                    <td className="px-4 py-3 text-zinc-400 text-[9px]">Taxa Aplicável</td>
                     <td className="px-4 py-3 text-right font-bold text-[#003366]">{formatCurrency(doc.contravalor)}</td>
                     <td className="px-4 py-3 text-center">
                       <span className={`px-2 py-0.5 text-[9px] font-bold uppercase ${doc.estado_documento === 'ativo' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
@@ -8868,6 +9020,7 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
 
 const VisualIdentityModule = ({ companyData, onRefreshData }: { companyData: any, onRefreshData: () => void }) => {
   const { user } = useAuth();
+  const { uploadFile, media, replaceFile } = useMedia();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     logo_url: companyData?.logo_url || companyData?.logo || '',
@@ -8878,83 +9031,53 @@ const VisualIdentityModule = ({ companyData, onRefreshData }: { companyData: any
     footer_size: companyData?.footer_size || 100
   });
 
+  useEffect(() => {
+    if (companyData) {
+      setFormData({
+        logo_url: companyData.logo_url || companyData.logo || '',
+        logo_size: companyData.logo_size || 100,
+        watermark_url: companyData.watermark_url || companyData.marca_agua || '',
+        watermark_size: companyData.watermark_size || 100,
+        footer_image_url: companyData.footer_image_url || companyData.footer || '',
+        footer_size: companyData.footer_size || 100
+      });
+    }
+  }, [companyData]);
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: string) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Preview local imediato
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData(prev => ({ ...prev, [field]: reader.result as string }));
-      };
-      reader.readAsDataURL(file);
-
+      setLoading(true);
       try {
-        const { data: { user: authUser } } = await supabase.auth.getUser();
-        if (!authUser || !user) return;
+        let tipo: 'menu_logo' | 'sidebar_image' | 'anexo' = 'menu_logo';
+        if (field === 'logo_url') tipo = 'menu_logo';
+        else if (field === 'watermark_url') tipo = 'sidebar_image';
+        else if (field === 'footer_image_url') tipo = 'anexo';
 
-        const { data: profile } = await supabase
-          .from('perfis')
-          .select('empresa_id')
-          .eq('id', authUser.id)
-          .single();
+        // Check if there is an existing media record for this type
+        const existingMedia = media.find(m => m.tipo === tipo);
 
-        const empresaId = profile?.empresa_id;
-        if (!empresaId) throw new Error('Empresa não identificada');
-
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${empresaId}/${Date.now()}-${file.name.replace(/\s+/g, '_')}`;
-        
-        console.log(`Fazendo upload de ${field} para bucket 'media'...`);
-        
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('media')
-          .upload(fileName, file, {
-            upsert: false
-          });
-
-        if (uploadError) {
-          console.error('Erro no upload de imagem:', uploadError);
-          alert('Erro ao carregar imagem para o servidor: ' + uploadError.message);
-          return;
+        let publicUrl = '';
+        if (existingMedia && existingMedia.url_publica) {
+          // Replace existing
+          publicUrl = await replaceFile(existingMedia.id, existingMedia.caminho_arquivo, file);
+        } else {
+          // Upload new
+          const uploaded = await uploadFile(file, tipo);
+          publicUrl = uploaded.url_publica;
         }
 
-        const { data: urlData } = supabase.storage
-          .from('media')
-          .getPublicUrl(fileName);
-
-        if (urlData?.publicUrl) {
-          console.log('Upload concluído. URL pública:', urlData.publicUrl);
-          setFormData(prev => ({ ...prev, [field]: urlData.publicUrl }));
-          
-          let tipo = 'imagem';
-          if (field === 'logo_url') tipo = 'sidebar_image';
-          if (field === 'watermark_url') tipo = 'imagem';
-          if (field === 'footer_image_url') tipo = 'imagem';
-
-          // Insert into media_arquivos
-          await supabase.from('media_arquivos').insert({
-            empresa_id: empresaId,
-            utilizador_id: authUser.id,
-            tipo: tipo,
-            nome_arquivo: fileName,
-            nome_original: file.name,
-            bucket: 'media',
-            caminho_arquivo: uploadData.path,
-            url_publica: urlData.publicUrl,
-            mime_type: file.type,
-            tamanho_bytes: file.size,
-            extensao: fileExt,
-            entidade: 'ui',
-            entidade_id: null,
-            observacao: `Upload do campo ${field}`,
-            ativo: true
-          });
-
-          // Atualização imediata na tabela empresas para persistência garantida
-          await supabase.from('empresas').update({ [field]: urlData.publicUrl }).eq('id', empresaId);
+        if (publicUrl) {
+          setFormData(prev => ({ ...prev, [field]: publicUrl }));
+          // Note: replaceFile already updates the companies table if it was a special image
+          // but we'll call onRefreshData just to be sure
+          onRefreshData();
         }
-      } catch (err) {
-        console.error('Erro crítico no upload:', err);
+      } catch (err: any) {
+        console.error('Erro no upload visual identity:', err);
+        alert('Erro ao carregar imagem: ' + err.message);
+      } finally {
+        setLoading(false);
       }
     }
   };
@@ -9068,7 +9191,7 @@ const VisualIdentityModule = ({ companyData, onRefreshData }: { companyData: any
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div className="space-y-4">
-                {formData.footer_image_url && formData.footer_image_url.startsWith('data:image') ? (
+                {formData.footer_image_url && (formData.footer_image_url.startsWith('data:image') || formData.footer_image_url.startsWith('http')) ? (
                   <div className="flex justify-center mb-2 bg-zinc-50 p-4 border border-dashed border-zinc-200 h-32 items-center">
                     <img src={formData.footer_image_url} alt="Preview Footer" style={{ height: `${formData.footer_size}px` }} className="object-contain" />
                   </div>
@@ -9231,7 +9354,7 @@ const SettingsModule = ({ companyData, onRefreshData, alerts, setAlerts, onEditA
         />
       )}
       
-      {activeTab === 'media' && <MediaLibraryModule />}
+      {activeTab === 'media' && <MediaLibraryModule onRefreshData={onRefreshData} />}
       {activeTab === 'alertas' && <AlertasModule />}
       {activeTab === 'metrica' && <MetricsModule />}
       {activeTab === 'utilizadores' && <UsersSettings />}
@@ -11545,7 +11668,412 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
   return renderContent();
 };
 
-const FiscalSeriesModule = ({ series, onRefresh, users }: { series: FiscalSeries[], onRefresh: () => void, users: Employee[] }) => {
+interface GraphicConfig {
+  id?: string;
+  empresa_id: string;
+  serie_id: string;
+  tipo: 'logotipo' | 'cabecalho' | 'rodape' | 'marca_dagua';
+  url_imagem: string;
+  nome: string;
+  descricao?: string;
+  ativo: boolean;
+  posicao_x: number;
+  posicao_y: number;
+  largura: number;
+  altura: number;
+  transparencia: number;
+  alinhamento: 'left' | 'center' | 'right';
+}
+
+const GraphicConfigModule = ({ 
+  serie, 
+  onBack, 
+  onRefresh 
+}: { 
+  serie: FiscalSeries, 
+  onBack: () => void, 
+  onRefresh: () => void 
+}) => {
+  const { user } = useAuth();
+  const { uploadFile, deleteFile } = useMedia();
+  const [configs, setConfigs] = useState<GraphicConfig[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editingType, setEditingType] = useState<GraphicConfig['tipo'] | null>(null);
+  
+  // Local form state
+  const [form, setForm] = useState<Partial<GraphicConfig>>({
+    ativo: true,
+    posicao_x: 0,
+    posicao_y: 0,
+    largura: 100,
+    altura: 100,
+    transparencia: 1,
+    alinhamento: 'center'
+  });
+
+  const loadConfigs = useCallback(async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('setup_grafico_series')
+        .select('*')
+        .eq('serie_id', serie.id);
+      
+      if (error) throw error;
+      setConfigs(data || []);
+    } catch (err) {
+      console.error('Error loading graphic configs:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [serie.id]);
+
+  useEffect(() => {
+    loadConfigs();
+  }, [loadConfigs]);
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>, tipo: GraphicConfig['tipo']) => {
+    if (!e.target.files?.[0] || !user?.empresa_id) return;
+    
+    try {
+      const file = e.target.files[0];
+      const media = await uploadFile(file, 'imagem', 'series_fiscais', serie.id.toString());
+      
+      if (media) {
+        const payload: Partial<GraphicConfig> = {
+          empresa_id: user.empresa_id,
+          serie_id: serie.id.toString(),
+          tipo,
+          url_imagem: media.url_publica,
+          nome: media.nome_original,
+          ativo: true,
+          posicao_x: 0,
+          posicao_y: 0,
+          largura: 150,
+          altura: 80,
+          transparencia: 1,
+          alinhamento: 'center'
+        };
+
+        const { error } = await supabase
+          .from('setup_grafico_series')
+          .insert([payload]);
+
+        if (error) throw error;
+        loadConfigs();
+      }
+    } catch (err) {
+      console.error('Error uploading graphic config:', err);
+      alert('Erro ao carregar imagem');
+    }
+  };
+
+  const handleSave = async () => {
+    if (!user?.empresa_id || !editingType) return;
+    
+    try {
+      const current = configs.find(c => c.tipo === editingType);
+      const { error } = await supabase
+        .from('setup_grafico_series')
+        .update({
+          ...form,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', current?.id);
+
+      if (error) throw error;
+      setEditingType(null);
+      loadConfigs();
+      alert('Configuração salva com sucesso!');
+    } catch (err) {
+      console.error('Error saving configs:', err);
+    }
+  };
+
+  const startEditing = (tipo: GraphicConfig['tipo']) => {
+    const config = configs.find(c => c.tipo === tipo);
+    if (config) {
+      setForm(config);
+      setEditingType(tipo);
+    } else {
+      setEditingType(tipo);
+      setForm({
+        tipo,
+        ativo: true,
+        posicao_x: 0,
+        posicao_y: 0,
+        largura: 100,
+        altura: 100,
+        transparencia: 1,
+        alinhamento: 'center'
+      });
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Deseja realmente excluir esta configuração?')) return;
+    try {
+      const { error } = await supabase
+        .from('setup_grafico_series')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+      loadConfigs();
+    } catch (err) {
+      console.error('Error deleting config:', err);
+    }
+  };
+
+  const TYPES: { label: string; tipo: GraphicConfig['tipo']; icon: any }[] = [
+    { label: 'Logotipo', tipo: 'logotipo', icon: <Image size={24} /> },
+    { label: 'Cabeçalho', tipo: 'cabecalho', icon: <FileText size={24} /> },
+    { label: 'Rodapé', tipo: 'rodape', icon: <FileText size={24} /> },
+    { label: 'Marca d\'Água', tipo: 'marca_dagua', icon: <Droplets size={24} /> },
+  ];
+
+  return (
+    <div className="fixed inset-0 bg-zinc-50 z-[100] flex flex-col">
+      <div className="bg-white border-b border-zinc-200 px-8 py-4 flex items-center justify-between shadow-sm">
+        <div className="flex items-center gap-4">
+          <button onClick={onBack} className="p-2 hover:bg-zinc-100 rounded-full text-zinc-400">
+            <ArrowLeft size={24} />
+          </button>
+          <div>
+            <h2 className="text-xl font-bold text-[#003366]">Configuração Gráfica - {serie.name}</h2>
+            <p className="text-xs text-zinc-500 uppercase tracking-widest font-medium">Configure as imagens e layout dos documentos desta série</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-8">
+        <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {TYPES.map(t => {
+            const config = configs.find(c => c.tipo === t.tipo);
+            return (
+              <div key={t.tipo} className="bg-white border border-zinc-200 p-6 flex flex-col gap-4 shadow-sm hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between">
+                  <div className={`p-3 rounded-lg ${config?.ativo ? 'bg-blue-50 text-blue-600' : 'bg-zinc-50 text-zinc-400'}`}>
+                    {t.icon}
+                  </div>
+                  {config && (
+                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${config.ativo ? 'bg-emerald-100 text-emerald-700' : 'bg-zinc-100 text-zinc-400'}`}>
+                      {config.ativo ? 'Ativo' : 'Inativo'}
+                    </span>
+                  )}
+                </div>
+                
+                <div>
+                  <h3 className="font-bold text-[#003366] text-sm">{t.label}</h3>
+                  <p className="text-xs text-zinc-400 mt-1">{config ? 'Configurado e pronto para uso.' : 'Não configurado para esta série.'}</p>
+                </div>
+
+                {config ? (
+                  <div className="mt-2 space-y-3">
+                    <div className="aspect-video bg-zinc-50 border border-zinc-100 flex items-center justify-center overflow-hidden">
+                      <img src={config.url_imagem} alt={t.label} className="max-h-full object-contain" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button 
+                        onClick={() => startEditing(t.tipo)}
+                        className="flex-1 bg-zinc-900 text-white py-2 text-[10px] font-bold uppercase tracking-widest hover:bg-zinc-800 transition-colors"
+                      >
+                        Editar
+                      </button>
+                      <button 
+                         onClick={() => handleDelete(config.id!)}
+                         className="flex-1 border border-zinc-200 text-red-500 py-2 text-[10px] font-bold uppercase tracking-widest hover:bg-red-50 transition-colors"
+                      >
+                        Remover
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <label className="mt-2 cursor-pointer group">
+                    <div className="aspect-video border-2 border-dashed border-zinc-200 rounded-lg flex flex-col items-center justify-center gap-2 group-hover:border-blue-400 group-hover:bg-blue-50 transition-all">
+                      <Plus size={20} className="text-zinc-300 group-hover:text-blue-500" />
+                      <span className="text-[10px] font-bold text-zinc-400 uppercase group-hover:text-blue-600">Carregar Imagem</span>
+                    </div>
+                    <input type="file" className="hidden" accept="image/*" onChange={(e) => handleUpload(e, t.tipo)} />
+                  </label>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {editingType && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-end">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setEditingType(null)}
+              className="absolute inset-0 bg-zinc-900/40 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col"
+            >
+              <div className="p-6 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-[#003366] text-white">
+                    <Settings size={18} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-[#003366] uppercase tracking-widest text-xs">Propriedades do {editingType}</h3>
+                    <p className="text-[10px] text-zinc-400 font-medium">Ajuste dimensões e posicionalmento</p>
+                  </div>
+                </div>
+                <button onClick={() => setEditingType(null)} className="p-2 hover:bg-zinc-200 rounded-full transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Estado da Configuração</label>
+                    <button 
+                      onClick={() => setForm(f => ({ ...f, ativo: !f.ativo }))}
+                      className={`relative w-10 h-5 rounded-full transition-colors ${form.ativo ? 'bg-emerald-500' : 'bg-zinc-300'}`}
+                    >
+                      <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${form.ativo ? 'left-6' : 'left-1'}`} />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Largura (px)</label>
+                      <input 
+                        type="number" 
+                        value={form.largura} 
+                        onChange={e => setForm(f => ({ ...f, largura: Number(e.target.value) }))}
+                        className="w-full bg-zinc-50 border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:border-[#003366]"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Altura (px)</label>
+                      <input 
+                        type="number" 
+                        value={form.altura}
+                        onChange={e => setForm(f => ({ ...f, altura: Number(e.target.value) }))}
+                        className="w-full bg-zinc-50 border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:border-[#003366]"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Posição X</label>
+                      <input 
+                        type="number" 
+                        value={form.posicao_x}
+                        onChange={e => setForm(f => ({ ...f, posicao_x: Number(e.target.value) }))}
+                        className="w-full bg-zinc-50 border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:border-[#003366]"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Posição Y</label>
+                      <input 
+                        type="number" 
+                        value={form.posicao_y}
+                        onChange={e => setForm(f => ({ ...f, posicao_y: Number(e.target.value) }))}
+                        className="w-full bg-zinc-50 border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:border-[#003366]"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Transparência (0-1)</label>
+                    <input 
+                      type="range" 
+                      min="0" 
+                      max="1" 
+                      step="0.1" 
+                      value={form.transparencia}
+                      onChange={e => setForm(f => ({ ...f, transparencia: Number(e.target.value) }))}
+                      className="w-full h-2 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-[#003366]"
+                    />
+                    <div className="flex justify-between text-[10px] text-zinc-400 font-bold">
+                      <span>0%</span>
+                      <span>{Math.round((form.transparencia || 1) * 100)}%</span>
+                      <span>100%</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Alinhamento</label>
+                    <div className="flex bg-zinc-50 border border-zinc-200 p-1">
+                      {(['left', 'center', 'right'] as const).map(align => (
+                        <button
+                          key={align}
+                          onClick={() => setForm(f => ({ ...f, alinhamento: align }))}
+                          className={`flex-1 py-2 text-[10px] font-bold uppercase tracking-wider transition-all ${form.alinhamento === align ? 'bg-[#003366] text-white shadow-lg' : 'text-zinc-400 hover:text-zinc-600'}`}
+                        >
+                          {align === 'left' ? 'Esquerda' : align === 'center' ? 'Centro' : 'Direita'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-6 border-t border-zinc-100">
+                   <div className="bg-zinc-50 p-4 border border-zinc-200 rounded-lg">
+                     <p className="text-[10px] font-bold text-zinc-400 uppercase mb-2">Pré-visualização</p>
+                     <div className="aspect-video bg-white border border-zinc-100 flex items-center justify-center overflow-hidden relative">
+                        {configs.find(c => c.tipo === editingType) && (
+                          <img 
+                            src={configs.find(c => c.tipo === editingType)?.url_imagem} 
+                            style={{ 
+                              width: `${form.largura}%`,
+                              opacity: form.transparencia,
+                              transform: `translate(${form.posicao_x}px, ${form.posicao_y}px)`
+                            }}
+                            className="max-h-full object-contain" 
+                          />
+                        )}
+                     </div>
+                   </div>
+                </div>
+              </div>
+
+              <div className="p-6 bg-zinc-50 border-t border-zinc-100 flex gap-3">
+                <button 
+                  onClick={() => setEditingType(null)}
+                  className="flex-1 bg-white border border-zinc-200 py-3 text-[10px] font-bold uppercase tracking-widest hover:bg-zinc-100 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={handleSave}
+                  className="flex-1 bg-[#003366] text-white py-3 text-[10px] font-bold uppercase tracking-widest hover:bg-[#002244] transition-colors shadow-lg"
+                >
+                  Salvar Alterações
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+const FiscalSeriesModule = ({ 
+  series, 
+  onRefresh, 
+  users, 
+  onConfigGraphic 
+}: { 
+  series: FiscalSeries[], 
+  onRefresh: () => void, 
+  users: Employee[], 
+  onConfigGraphic: (serie: FiscalSeries) => void 
+}) => {
   const { user } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [showOptionsId, setShowOptionsId] = useState<number | null>(null);
@@ -11752,7 +12280,12 @@ const FiscalSeriesModule = ({ series, onRefresh, users }: { series: FiscalSeries
                           {OPTIONS.map((opt, idx) => (
                             <button 
                               key={idx}
-                              onClick={() => setShowOptionsId(null)}
+                              onClick={() => {
+                                if (opt.label.startsWith('Configurar')) {
+                                  onConfigGraphic(s);
+                                }
+                                setShowOptionsId(null);
+                              }}
                               className="w-full h-10 bg-white hover:bg-zinc-50 border border-zinc-100 rounded-none px-4 flex items-center gap-3 text-zinc-800 text-[10px] font-bold uppercase tracking-tight transition-all group active:scale-95"
                             >
                               <div className="w-6 h-6 bg-zinc-50 text-[#003366] flex items-center justify-center group-hover:bg-[#003366] group-hover:text-white transition-all">
@@ -12494,20 +13027,25 @@ const InvoiceList = ({
   );
 };
 
-const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onSuccess, caixas, onSaveDocument, initialData = null, fixedDocumentType }: { 
+const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes, onBack, onSuccess, caixas, onSaveDocument, initialData = null, fixedDocumentType, addMovement }: { 
   clients: Client[], 
   products: Product[], 
   workSites: WorkSite[], 
   fiscalSeries: FiscalSeries[],
+  activeTaxes: any[],
   onBack: () => void, 
   onSuccess: () => void,
   caixas: Caixa[],
   onSaveDocument?: (doc: any) => Promise<void>,
   initialData?: IssuedDocument | null,
-  fixedDocumentType?: string
+  fixedDocumentType?: string,
+  addMovement?: (m: any) => Promise<void>
 }) => {
   const { user } = useAuth();
-  const [clientId, setClientId] = useState<number | ''>(initialData?.cliente_id || initialData?.client_id || '');
+  const [clientId, setClientId] = useState<number | ''>(
+    (initialData?.cliente_id && !isNaN(Number(initialData.cliente_id))) ? Number(initialData.cliente_id) : 
+    (initialData?.client_id && !isNaN(Number(initialData.client_id))) ? Number(initialData.client_id) : ''
+  );
   const [documentType, setDocumentType] = useState(fixedDocumentType || initialData?.document_type || 'Fatura');
   
   useEffect(() => {
@@ -12515,7 +13053,9 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
       setDocumentType(fixedDocumentType);
     }
   }, [fixedDocumentType]);
-  const [seriesId, setSeriesId] = useState<number | ''>(initialData?.series_id || '');
+  const [seriesId, setSeriesId] = useState<number | ''>(
+    (initialData?.series_id && !isNaN(Number(initialData.series_id))) ? Number(initialData.series_id) : ''
+  );
   const [date, setDate] = useState(initialData?.date ? new Date(initialData.date).toISOString().split('T')[0] : (initialData?.data_emissao ? new Date(initialData.data_emissao).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]));
   const [countryCode, setCountryCode] = useState('Angola');
   const [workSiteId, setWorkSiteId] = useState<string>(initialData?.work_site_id?.toString() || '');
@@ -12557,7 +13097,8 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
       comprimento: 0,
       largura: 0,
       altura: 0,
-      tax: ALL_TAXES[0]
+      tax: activeTaxes.length > 0 ? `${activeTaxes[0].nome} (${activeTaxes[0].taxa}%)` : 'IVA - 0%',
+      tax_id: activeTaxes.length > 0 ? activeTaxes[0].id : null
     }]);
   };
 
@@ -12573,19 +13114,16 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
     const q = field === 'quantity' ? Number(value) : (newItems[index].quantity || 0);
     const p = field === 'unit_price' ? Number(value) : (newItems[index].unit_price || 0);
     const d = field === 'desconto' ? Number(value) : (newItems[index].desconto || 0);
-    const taxStr = field === 'tax' ? value : (newItems[index].tax || ALL_TAXES[0]);
-
-    // Extract tax rate from string
-    let rate = 0;
-    if (taxStr.includes('14%')) rate = 14;
-    else if (taxStr.includes('7%')) rate = 7;
-    else if (taxStr.includes('1%')) rate = 1;
-    else if (taxStr.includes('0.2%')) rate = 0.2;
-    else if (taxStr.includes('0.1%')) rate = 0.1;
-    else if (taxStr.includes('2%')) rate = 2;
-    else if (taxStr === "IVA - Regime Simplificado") rate = 7; 
+    const taxId = field === 'tax_id' ? value : (newItems[index].tax_id || (activeTaxes.length > 0 ? activeTaxes[0].id : null));
+    const selectedTax = activeTaxes.find(t => t.id === Number(taxId));
     
-    newItems[index].tax_rate = rate;
+    if (selectedTax) {
+      newItems[index].tax = `${selectedTax.nome} (${selectedTax.taxa}%)`;
+      newItems[index].tax_rate = Number(selectedTax.taxa);
+      newItems[index].tax_id = selectedTax.id;
+    } else {
+      newItems[index].tax_rate = 0;
+    }
 
     const tipo = field === 'tipo_artigo' ? value : (newItems[index].tipo_artigo || 'produto');
     const isService = tipo.toLowerCase() === 'serviço' || tipo.toLowerCase() === 'servico' || tipo.toLowerCase() === 'ser';
@@ -12625,7 +13163,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
   (items ?? []).forEach(item => {
     const rate = item.tax_rate || 0;
     const itemVat = (item.total || 0) * (rate / 100);
-    const label = item.tax || 'IVA 14%';
+    const label = item.tax || 'Outros';
     vatBreakdown[label] = (vatBreakdown[label] || 0) + itemVat;
   });
   
@@ -12702,6 +13240,25 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
 
     if (res.ok) {
       const savedDoc = await res.json().catch(() => null);
+      
+      // Automatic Cash Movement for sales
+      if (savedDoc && (documentType === 'Fatura Recibo' || paymentCondition === 'Pronto Pagamento') && cashBox && addMovement) {
+        try {
+          const selectedCaixa = caixas.find(c => c.name === cashBox);
+          if (selectedCaixa) {
+            await addMovement({
+              caixaId: selectedCaixa.id,
+              type: 'entrada',
+              amount: finalTotal,
+              description: `${documentType} nº ${savedDoc.numero_documento || savedDoc.invoice_number}`,
+              date: new Date().toISOString()
+            });
+          }
+        } catch (movErr) {
+          console.error("Erro ao registrar no caixa:", movErr);
+        }
+      }
+
       if (savedDoc && onSaveDocument) {
         await onSaveDocument(savedDoc);
       }
@@ -12763,7 +13320,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
             <div className="space-y-2">
               <label className="text-xs font-bold text-zinc-600">Série</label>
               <select 
-                value={seriesId} 
+                value={isNaN(Number(seriesId)) ? '' : seriesId} 
                 onChange={(e) => setSeriesId(e.target.value ? Number(e.target.value) : '')} 
                 required
                 className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
@@ -12777,7 +13334,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
             <div className="space-y-2">
               <label className="text-xs font-bold text-zinc-600">Local de trabalho</label>
               <select 
-                value={workSiteId} 
+                value={isNaN(Number(workSiteId)) && workSiteId !== '' ? '' : workSiteId} 
                 onChange={(e) => setWorkSiteId(e.target.value)}
                 className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
               >
@@ -12902,7 +13459,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-zinc-600">Caixa / Conta <span className="text-red-500">*</span></label>
                   <select 
-                    value={cashBox} 
+                    value={isNaN(Number(cashBox)) && cashBox !== 'Banco' ? '' : cashBox} 
                     onChange={(e) => setCashBox(e.target.value)}
                     required
                     className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
@@ -12936,7 +13493,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
             <div className="space-y-2 md:col-span-2">
               <label className="text-xs font-bold text-zinc-600">Selecionar cliente <span className="text-red-500">*</span></label>
               <select 
-                value={clientId} 
+                value={isNaN(Number(clientId)) ? '' : clientId} 
                 onChange={(e) => setClientId(e.target.value ? Number(e.target.value) : '')}
                 required
                 className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
@@ -13046,11 +13603,13 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, onBack, onS
                      <label className="text-[10px] font-bold text-zinc-400 uppercase">Taxa</label>
                      <select 
                         disabled={isCertified}
-                        value={item.tax || ALL_TAXES[0]}
-                        onChange={(e) => updateItem(idx, 'tax', e.target.value)}
+                        value={isNaN(Number(item.tax_id)) ? '' : item.tax_id}
+                        onChange={(e) => updateItem(idx, 'tax_id', e.target.value)}
                         className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
                       >
-                        {ALL_TAXES.map((t, i) => <option key={i} value={t}>{t}</option>)}
+                        {activeTaxes.map((t) => (
+                          <option key={t.id} value={t.id}>{t.nome} ({t.taxa}%)</option>
+                        ))}
                       </select>
                     </div>
                   </div>
@@ -14003,8 +14562,18 @@ const InvoiceDetail = ({
         </div>
       </div>
 
-      <div className="bg-white text-zinc-950 p-12 rounded-none shadow-2xl border border-zinc-100 space-y-12">
-        <div className="flex justify-between items-start">
+      <div className="bg-white text-zinc-950 p-12 rounded-none shadow-2xl border border-zinc-100 space-y-12 relative overflow-hidden">
+        {companyData?.watermark_url && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.05] z-0">
+            <img 
+              src={companyData.watermark_url} 
+              alt="Watermark" 
+              style={{ height: `${companyData?.watermark_size || 300}px` }} 
+              className="object-contain grayscale" 
+            />
+          </div>
+        )}
+        <div className="flex justify-between items-start relative z-10">
           <div className="flex items-start gap-6">
             {companyLogo ? (
               <img src={companyLogo} alt="Logo" className="w-24 h-24 object-contain" referrerPolicy="no-referrer" />
@@ -14158,7 +14727,17 @@ const InvoiceDetail = ({
           </div>
         </div>
 
-        <div className="pt-12 text-center text-[10px] text-zinc-400 uppercase tracking-widest border-t border-zinc-50">
+        <div className="pt-12 text-center text-[10px] text-zinc-400 uppercase tracking-widest border-t border-zinc-50 relative z-10">
+          <div className="flex justify-center mb-6">
+            {companyData?.footer_image_url && (companyData.footer_image_url.startsWith('data:image') || companyData.footer_image_url.startsWith('http')) && (
+              <img 
+                src={companyData.footer_image_url} 
+                alt="Footer" 
+                style={{ height: `${companyData?.footer_size || 40}px` }} 
+                className="object-contain" 
+              />
+            )}
+          </div>
           <p>Obrigado pela sua preferência!</p>
           <p className="mt-1">{companyFooter}</p>
         </div>
@@ -14880,21 +15459,25 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
   );
 };
 
-const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, onSuccess, caixas, initialData = null, fixedDocumentType }: { 
+const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTaxes, onBack, onSuccess, caixas, initialData = null, fixedDocumentType, addMovement }: { 
   suppliers: Supplier[], 
   products: Product[], 
   workSites: WorkSite[], 
   fiscalSeries: FiscalSeries[],
+  activeTaxes: any[],
   onBack: () => void, 
   onSuccess: (data?: any) => void,
   caixas: Caixa[],
   initialData?: Purchase | null,
-  fixedDocumentType?: string
+  fixedDocumentType?: string,
+  addMovement?: (m: any) => Promise<void>
 }) => {
   const { user } = useAuth();
   const [showSupplierModal, setShowSupplierModal] = useState(false);
   const isCertified = false;
-  const [supplierId, setSupplierId] = useState<number | ''>(initialData?.supplier_id || '');
+  const [supplierId, setSupplierId] = useState<number | ''>(
+    (initialData?.supplier_id && !isNaN(Number(initialData.supplier_id))) ? Number(initialData.supplier_id) : ''
+  );
   const [documentType, setDocumentType] = useState(fixedDocumentType || initialData?.document_type || 'Fatura de Compra');
   const [seriesId, setSeriesId] = useState<number | ''>('');
   const [invoiceNumber, setInvoiceNumber] = useState(initialData?.invoice_number || '');
@@ -14939,7 +15522,8 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
       comprimento: 0,
       largura: 0,
       altura: 0,
-      tax: ALL_TAXES[0]
+      tax: activeTaxes.length > 0 ? `${activeTaxes[0].nome} (${activeTaxes[0].taxa}%)` : 'IVA - 0%',
+      tax_id: activeTaxes.length > 0 ? activeTaxes[0].id : null
     }]);
   };
 
@@ -14951,16 +15535,21 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
     const newItems = [...items];
     newItems[index] = { ...newItems[index], [field]: value };
     
-    if (field === 'desconto_linha') {
-       newItems[index].desconto = value;
+    const q = field === 'quantity' ? Number(value) : (newItems[index].quantity || 0);
+    const p = field === 'unit_price' ? Number(value) : (newItems[index].unit_price || 0);
+    const d = (field === 'desconto' || field === 'desconto_linha') ? Number(value) : (newItems[index].desconto || 0);
+    const taxId = field === 'tax_id' ? value : (newItems[index].tax_id || (activeTaxes.length > 0 ? activeTaxes[0].id : null));
+    const selectedTax = activeTaxes.find(t => t.id === Number(taxId));
+    
+    if (selectedTax) {
+      newItems[index].tax = `${selectedTax.nome} (${selectedTax.taxa}%)`;
+      newItems[index].tax_rate = Number(selectedTax.taxa);
+      newItems[index].tax_id = selectedTax.id;
+    } else {
+      newItems[index].tax_rate = 0;
     }
 
-    if (field === 'quantity' || field === 'unit_price' || field === 'desconto' || field === 'desconto_linha') {
-      const q = field === 'quantity' ? value : (newItems[index].quantity || 0);
-      const p = field === 'unit_price' ? value : (newItems[index].unit_price || 0);
-      const d = (field === 'desconto' || field === 'desconto_linha') ? value : (newItems[index].desconto || 0);
-      newItems[index].total = (q * p) - d;
-    }
+    newItems[index].total = (q * p) - d;
 
     if (field === 'product_id' && value) {
       const prod = products.find(p => p.id === Number(value));
@@ -14975,8 +15564,18 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
   };
 
   const total = (items ?? []).reduce((sum, item) => sum + (item.total || 0), 0);
-  const vatAmount = total * 0.14;
-  const finalTotal = total + vatAmount - Number(globalDiscount || 0);
+  
+  const vatBreakdown: { [key: string]: number } = {};
+  (items ?? []).forEach(item => {
+    const rate = item.tax_rate || 0;
+    const itemVat = (item.total || 0) * (rate / 100);
+    const label = item.tax || 'Outros';
+    vatBreakdown[label] = (vatBreakdown[label] || 0) + itemVat;
+  });
+  
+  const vatAmount = Object.values(vatBreakdown).reduce((a, b) => a + b, 0);
+  const vatWithholdingAmount = vatAmount * Number(vatWithholding || 0);
+  const finalTotal = total + vatAmount - vatWithholdingAmount - Number(globalDiscount || 0);
 
   const handleSearchSupplier = () => {
     const client = suppliers.find(c => c.nif === nif);
@@ -15086,6 +15685,25 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
       }
 
       if (result.error) throw result.error;
+
+      // Automatic Cash Movement for purchases (SAÍDA)
+      if (result.data && (documentType === 'Fatura Recibo de Compra' || documentType === 'Pagamento') && cashBox && addMovement) {
+          try {
+              const selectedCaixa = caixas.find(c => c.id === cashBox || c.name === cashBox);
+              if (selectedCaixa) {
+                  await addMovement({
+                      caixaId: selectedCaixa.id,
+                      type: 'saida',
+                      amount: finalTotal,
+                      description: `${documentType} Fornecedor nº ${invoiceNumber || documentNumber}`,
+                      date: new Date().toISOString()
+                  });
+              }
+          } catch (movErr) {
+              console.error("Erro ao registrar no caixa (compra):", movErr);
+          }
+      }
+
       onSuccess(result.data);
     } catch (err: any) {
       console.error('Erro ao emitir documento:', err);
@@ -15403,14 +16021,14 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
             <div className="space-y-2">
               <label className="text-xs font-bold text-zinc-600">Local de Trabalho <span className="text-red-500">*</span></label>
               <select 
-                value={workSiteId} 
+                value={isNaN(Number(workSiteId)) && workSiteId !== '' ? '' : workSiteId} 
                 onChange={(e) => setWorkSiteId(e.target.value)}
                 required
                 className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
               >
                 <option value="">Selecione o local</option>
                 {workSites.map(ws => (
-                  <option key={ws.id} value={ws.id}>{ws.name}</option>
+                  <option key={ws.id} value={ws.id}>{ws.title || ws.name}</option>
                 ))}
               </select>
             </div>
@@ -15428,7 +16046,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-zinc-600">Selecionar caixa de pagamento</label>
                   <select 
-                    value={cashBox} 
+                    value={isNaN(Number(cashBox)) && cashBox !== 'Banco' ? '' : cashBox} 
                     onChange={(e) => setCashBox(e.target.value)}
                     className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
                   >
@@ -15489,7 +16107,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
               <label className="text-xs font-bold text-zinc-600">Selecionar fornecedor <span className="text-red-500">*</span></label>
               <div className="flex gap-2">
                 <select 
-                  value={supplierId} 
+                  value={isNaN(Number(supplierId)) ? '' : supplierId} 
                   onChange={(e) => {
                     const id = e.target.value;
                     setSupplierId(id ? Number(id) : '');
@@ -15610,12 +16228,12 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
                   <div className="col-span-2 space-y-1">
                     <label className="text-[10px] font-bold text-zinc-400 uppercase">Taxa</label>
                     <select 
-                      value={item.tax || ALL_TAXES[0]} 
-                      onChange={(e) => updateItem(idx, 'tax', e.target.value)}
+                      value={isNaN(Number(item.tax_id)) ? '' : item.tax_id}                      onChange={(e) => updateItem(idx, 'tax_id', e.target.value)}
                       className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
                     >
-                      {ALL_TAXES.map((taxName, i) => (
-                        <option key={i} value={taxName}>{taxName}</option>
+                      <option value="">Selecionar Taxa</option>
+                      {activeTaxes.map((t) => (
+                        <option key={t.id} value={t.id}>{t.nome} ({t.taxa}%)</option>
                       ))}
                     </select>
                   </div>
@@ -15785,8 +16403,8 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, onBack, 
                 </div>
               )}
               <div className="flex justify-between text-zinc-500 text-[10px] font-bold uppercase tracking-wider">
-                <span>IVA (14%)</span>
-                <span>{formatCurrency(total * 0.14)}</span>
+                <span>IVA Total</span>
+                <span>{formatCurrency(vatAmount)}</span>
               </div>
               <div className="pt-4 border-t border-zinc-200 flex justify-between items-center">
                 <span className="text-xs font-bold text-[#003366] uppercase tracking-widest">Total Final</span>
@@ -15952,7 +16570,7 @@ const PurchaseActionsModal = ({ purchase, onClose, onAction }: {
   );
 };
 
-const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas, companyData }: { suppliers: Supplier[], products: Product[], workSites: WorkSite[], fiscalSeries: FiscalSeries[], caixas: Caixa[], companyData?: any }) => {
+const PurchasesModule = ({ suppliers, products, activeTaxes, workSites, fiscalSeries, caixas, companyData, addMovement }: { suppliers: Supplier[], products: Product[], activeTaxes: any[], workSites: WorkSite[], fiscalSeries: FiscalSeries[], caixas: Caixa[], companyData?: any, addMovement?: (m: any) => Promise<void> }) => {
   const { user } = useAuth();
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [isCreating, setIsCreating] = useState(false);
@@ -16037,6 +16655,7 @@ const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas,
               products={products} 
               workSites={workSites} 
               fiscalSeries={fiscalSeries} 
+              activeTaxes={activeTaxes}
               onBack={() => setIsCreating(false)} 
               onSuccess={(savedData) => {
                 setIsCreating(false);
@@ -16048,6 +16667,7 @@ const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas,
               caixas={caixas}
               initialData={createData}
               fixedDocumentType={createType}
+              addMovement={addMovement}
             />
           </div>
         </motion.div>
@@ -16412,7 +17032,7 @@ const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas,
                 <th className="py-3 px-4">Centro Custo</th>
                 <th className="py-3 px-4">Fornecedor</th>
                 <th className="py-3 px-4 text-right">Valor Líquido</th>
-                <th className="py-3 px-4 text-right">IVA (14%)</th>
+                <th className="py-3 px-4 text-right">IVA Aplicado</th>
                 <th className="py-3 px-4 text-right">Total Global</th>
               </tr>
             </thead>
@@ -16437,8 +17057,8 @@ const PurchasesModule = ({ suppliers, products, workSites, fiscalSeries, caixas,
                           <td className="py-3 px-4 text-[#003366] font-black uppercase tracking-tighter">{p.purchase_number}</td>
                           <td className="py-3 px-4 text-zinc-500 italic text-[10px] font-bold uppercase">{p.work_site || 'GERAL'}</td>
                           <td className="py-3 px-4 font-black uppercase text-zinc-900 group-hover:text-[#003366] transition-colors">{p.supplier_name}</td>
-                          <td className="py-3 px-4 text-right font-mono text-zinc-600">{formatCurrency(p.total / 1.14).replace('AOA', '').trim()}</td>
-                          <td className="py-3 px-4 text-right text-emerald-600 font-black font-mono">{formatCurrency(p.total * 0.14).replace('AOA', '').trim()}</td>
+                          <td className="py-3 px-4 text-right font-mono text-zinc-600">{formatCurrency((p.items ?? []).reduce((sum, it) => sum + (it.total || 0), 0)).replace('AOA', '').trim()}</td>
+                          <td className="py-3 px-4 text-right text-emerald-600 font-black font-mono">{formatCurrency((p.items ?? []).reduce((sum, it) => sum + ((it.total || 0) * ((it.tax_rate || 0) / 100)), 0)).replace('AOA', '').trim()}</td>
                           <td className="py-3 px-4 text-right font-black text-[#003366] font-mono bg-zinc-50/30">{formatCurrency(p.total).replace('AOA', '').trim()}</td>
                         </tr>
                       ))
@@ -17116,7 +17736,7 @@ const SupplierAccount = ({ supplier, purchases, onBack }: {
   );
 };
 
-const SupplierModule = ({ products, workSites, fiscalSeries, caixas, companyData }: { products: Product[], workSites: WorkSite[], fiscalSeries: FiscalSeries[], caixas: Caixa[], companyData?: any }) => {
+const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas, companyData, addMovement }: { products: Product[], activeTaxes: any[], workSites: WorkSite[], fiscalSeries: FiscalSeries[], caixas: Caixa[], companyData?: any, addMovement?: (m: any) => Promise<void> }) => {
   const { user } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState<string | null>(null);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -17407,7 +18027,7 @@ const SupplierModule = ({ products, workSites, fiscalSeries, caixas, companyData
           </div>
         );
       case 'purchases-list':
-        return <PurchasesModule suppliers={suppliers} products={products} workSites={workSites} fiscalSeries={fiscalSeries} caixas={caixas} companyData={companyData} />;
+        return <PurchasesModule suppliers={suppliers} products={products} activeTaxes={activeTaxes} workSites={workSites} fiscalSeries={fiscalSeries} caixas={caixas} companyData={companyData} addMovement={addMovement} />;
       case 'current-accounts':
         if (selectedSupplier) {
           return <SupplierAccount supplier={selectedSupplier} purchases={purchases.filter(p => p.supplier_id === selectedSupplier.id)} onBack={() => setSelectedSupplier(null)} />;
@@ -18835,8 +19455,15 @@ const ConvertDocumentModal = ({ document, onClose, onSuccess }: {
 export default function App() {
   const { user, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [showMenu, setShowMenu] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [fiscalYear, setFiscalYear] = useState('2026');
+  const [connectionError, setConnectionError] = useState(false);
+  const [configuringGraphicSerie, setConfiguringGraphicSerie] = useState<FiscalSeries | null>(null);
+  const [fiscalYear, setFiscalYearState] = useState(() => localStorage.getItem('fiscalYear') || '2026');
+  const setFiscalYear = (year: string) => {
+    setFiscalYearState(year);
+    localStorage.setItem('fiscalYear', year);
+  };
   const [companyName, setCompanyName] = useState('Empresa');
   const [companyNif, setCompanyNif] = useState('500123456');
   const [companyAddress, setCompanyAddress] = useState('Endereço da Empresa');
@@ -18856,6 +19483,22 @@ export default function App() {
   const [selectedPOS, setSelectedPOS] = useState<string | null>(null);
   const [selectedSeries, setSelectedSeries] = useState<string | null>(null);
   const [printingInvoice, setPrintingInvoice] = useState<Invoice | null>(null);
+  const [printingGraphicConfigs, setPrintingGraphicConfigs] = useState<GraphicConfig[]>([]);
+
+  useEffect(() => {
+    const loadPrintingConfigs = async () => {
+      if (printingInvoice?.series_id) {
+        const { data } = await supabase
+          .from('setup_grafico_series')
+          .select('*')
+          .eq('serie_id', printingInvoice.series_id);
+        setPrintingGraphicConfigs(data || []);
+      } else {
+        setPrintingGraphicConfigs([]);
+      }
+    };
+    loadPrintingConfigs();
+  }, [printingInvoice]);
   const [isPrintingDraft, setIsPrintingDraft] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [isPdfProcessing, setIsPdfProcessing] = useState(false);
@@ -18941,7 +19584,30 @@ export default function App() {
   const [companyData, setCompanyData] = useState<any>(null);
   const [purchases, setPurchases] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [connectionError, setConnectionError] = useState<boolean>(false);
+  const [activeTaxes, setActiveTaxes] = useState<any[]>([]);
+  const doLoadActiveTaxes = async (explicitId?: string) => {
+    try {
+      const companyId = explicitId || user?.empresa_id;
+      if (!companyId) return;
+      
+      // Try to load active taxes
+      const { data, error } = await supabase
+        .from('tabela_impostos')
+        .select('*')
+        .eq('empresa_id', companyId);
+        
+      if (error) {
+        throw error;
+      }
+      
+      // Filtermos na UI para cobrir se a coluna `ativo` existe ou se o Supabase não quebrar 
+      // Se não existir, vai ignorar
+      const filtered = (data || []).filter(t => t.ativo !== false);
+      setActiveTaxes(filtered);
+    } catch (err) {
+      console.error('Error loading active taxes:', err);
+    }
+  };
   
   // Task/Alert modal state
   const [alerts, setAlerts] = useState<any[]>([]);
@@ -19039,7 +19705,15 @@ export default function App() {
       if (!companyId) return;
 
       console.log(`[App] Buscando Clientes para ${companyId}...`);
-      const data = await clienteService.getClientes(companyId);
+      const { data, error } = await supabase
+        .from('clientes')
+        .select('*')
+        .eq('empresa_id', companyId)
+        .gte('created_at', `${fiscalYear}-01-01T00:00:00Z`)
+        .lte('created_at', `${fiscalYear}-12-31T23:59:59Z`)
+        .order('nome');
+
+      if (error) throw error;
 
       setClients(data.map((cl: any) => ({
         ...cl,
@@ -19079,6 +19753,7 @@ export default function App() {
         ...ws,
         id: ws.id,
         title: ws.nome || '',
+        name: ws.nome || '', // Compatibility for purchase form
         location: ws.endereco || '',
         contact: ws.telefone || '',
         description: ws.descricao || '',
@@ -19170,6 +19845,8 @@ export default function App() {
         .from('documentos_emitidos')
         .select('*')
         .eq('empresa_id', companyId)
+        .gte('created_at', `${fiscalYear}-01-01T00:00:00Z`)
+        .lte('created_at', `${fiscalYear}-12-31T23:59:59Z`)
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -19243,13 +19920,29 @@ export default function App() {
       const companyId = explicitId || user?.empresa_id;
       if (!companyId) return;
 
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('caixa_movimentacoes')
         .select('*')
         .eq('empresa_id', companyId)
+        .gte('created_at', `${fiscalYear}-01-01T00:00:00Z`)
+        .lte('created_at', `${fiscalYear}-12-31T23:59:59Z`)
         .order('date', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        if (error.code === 'PGRST205') {
+          const fallback = await supabase
+            .from('caixa_movements')
+            .select('*')
+            .eq('empresa_id', companyId)
+            .gte('created_at', `${fiscalYear}-01-01T00:00:00Z`)
+            .lte('created_at', `${fiscalYear}-12-31T23:59:59Z`)
+            .order('date', { ascending: false });
+          data = fallback.data || [];
+        } else {
+          throw error;
+        }
+      }
+
       setCaixaMovements(data?.map(m => ({
         ...m,
         id: m.id,
@@ -19260,6 +19953,66 @@ export default function App() {
       })) || []);
     } catch (err) {
       console.error('Erro ao carregar movimentos de caixa:', err);
+    }
+  };
+
+  const doAddCaixaMovement = async (movement: Partial<CaixaMovement>) => {
+    try {
+      if (!user?.empresa_id) throw new Error('Não autenticado');
+
+      let { error: movError } = await supabase
+        .from('caixa_movimentacoes')
+        .insert({
+          empresa_id: user.empresa_id,
+          caixa_id: movement.caixaId,
+          target_caixa_id: movement.targetCaixaId,
+          type: movement.type,
+          amount: movement.amount,
+          moeda: movement.moeda || 'AOA',
+          description: movement.description,
+          date: movement.date || new Date().toISOString()
+        });
+
+      if (movError && movError.code === 'PGRST205') {
+         const fallback = await supabase.from('caixa_movements').insert({
+          empresa_id: user.empresa_id,
+          caixa_id: movement.caixaId,
+          target_caixa_id: movement.targetCaixaId,
+          type: movement.type,
+          amount: movement.amount,
+          moeda: movement.moeda || 'AOA',
+          description: movement.description,
+          date: movement.date || new Date().toISOString()
+         });
+         movError = fallback.error;
+      }
+
+      if (movError) throw movError;
+
+      // Update primary caixa balance
+      const { data: caixa } = await supabase
+        .from('caixas')
+        .select('current_balance')
+        .eq('id', movement.caixaId)
+        .single();
+
+      if (caixa) {
+        let newBalance = Number(caixa.current_balance);
+        if (movement.type === 'entrada') newBalance += (movement.amount || 0);
+        if (movement.type === 'saida' || movement.type === 'transferencia') newBalance -= (movement.amount || 0);
+
+        await supabase
+          .from('caixas')
+          .update({ current_balance: newBalance })
+          .eq('id', movement.caixaId)
+          .eq('empresa_id', user.empresa_id);
+      }
+
+      await doLoadCaixas();
+      await doLoadCaixaMovements();
+    } catch (e) {
+      console.error('Error adding movement:', e);
+      throw e;
     }
   };
 
@@ -19292,7 +20045,9 @@ export default function App() {
       const { data, error } = await supabase
         .from('fornecedores')
         .select('*')
-        .eq('empresa_id', companyId);
+        .eq('empresa_id', companyId)
+        .gte('created_at', `${fiscalYear}-01-01T00:00:00Z`)
+        .lte('created_at', `${fiscalYear}-12-31T23:59:59Z`);
 
       if (error) throw error;
       setSuppliers(data?.map(s => ({
@@ -19317,6 +20072,8 @@ export default function App() {
         .from('compras')
         .select('*')
         .eq('empresa_id', companyId)
+        .gte('created_at', `${fiscalYear}-01-01T00:00:00Z`)
+        .lte('created_at', `${fiscalYear}-12-31T23:59:59Z`)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -19443,6 +20200,7 @@ export default function App() {
         await doLoadCaixaMovements(targetCompanyId);
         await doLoadFornecedores(targetCompanyId);
         await doLoadCompras(targetCompanyId);
+        await doLoadActiveTaxes(targetCompanyId);
         
         console.timeEnd('[TIMER-SYNC] Supabase Queries');
       } catch (err: any) {
@@ -19478,23 +20236,23 @@ export default function App() {
       }));
 
       const results = await Promise.allSettled([
-        fetchJson(`/api/stats?empresa_id=${targetCompanyId}`),
-        fetchJson(`/api/products?empresa_id=${targetCompanyId}`),
-        fetchJson(`/api/transactions?empresa_id=${targetCompanyId}`),
+        fetchJson(`/api/stats?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
+        fetchJson(`/api/products?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
+        fetchJson(`/api/transactions?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
         Promise.resolve(null), // Replaced /api/invoices with Supabase documents call
-        fetchJson(`/api/employees?empresa_id=${targetCompanyId}`),
+        fetchJson(`/api/employees?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
         Promise.resolve(fsDataFormatted), // Replaced API with Supabase series
-        fetchJson(`/api/cost-centers?empresa_id=${targetCompanyId}`),
-        fetchJson(`/api/pos-points?empresa_id=${targetCompanyId}`),
-        fetchJson(`/api/cash/sessions?empresa_id=${targetCompanyId}`),
+        fetchJson(`/api/cost-centers?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
+        fetchJson(`/api/pos-points?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
+        fetchJson(`/api/cash/sessions?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
         Promise.resolve(null), // Replaced /api/caixas with Supabase loadCaixas call
         Promise.resolve(null), // Replaced /api/caixa-movements with Supabase loadCaixaMovements call
-        fetchJson(`/api/stock/movements?empresa_id=${targetCompanyId}`),
-        fetchJson(`/api/work-site-movements?empresa_id=${targetCompanyId}`),
+        fetchJson(`/api/stock/movements?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
+        fetchJson(`/api/work-site-movements?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
         supabase.from('armazens').select('*').eq('empresa_id', targetCompanyId).then(res => res.data),
-        fetchJson(`/api/security/occurrences?empresa_id=${targetCompanyId}`),
-        fetchJson(`/api/security/armory?empresa_id=${targetCompanyId}`),
-        fetchJson(`/api/security/roster?empresa_id=${targetCompanyId}`),
+        fetchJson(`/api/security/occurrences?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
+        fetchJson(`/api/security/armory?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
+        fetchJson(`/api/security/roster?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
         !compSupabase ? fetchJson(`/api/company/${targetCompanyId}`) : Promise.resolve(null),
         Promise.resolve(null) // Replaced /api/purchases with Supabase loadCompras call above
       ]);
@@ -19630,9 +20388,6 @@ export default function App() {
       const { error } = await supabase
         .from('documentos_emitidos')
         .update({ 
-          is_certified: true, 
-          certified_at: new Date().toISOString(),
-          status: 'CERTIFICADO',
           estado: 'CERTIFICADO'
         })
         .eq('id', id)
@@ -19768,7 +20523,7 @@ export default function App() {
     if (authReady) {
       throttledFetchData();
     }
-  }, [authReady]);
+  }, [authReady, fiscalYear]);
 
   return (
     <ProtectedRoute>
@@ -19781,6 +20536,7 @@ export default function App() {
               setViewingInvoiceId(null);
               setIsCreatingInvoice(false);
             }} 
+            companyData={companyData}
           />
         )}
         
@@ -19844,6 +20600,7 @@ export default function App() {
                       products={products} 
                       workSites={workSites}
                       fiscalSeries={fiscalSeries}
+                      activeTaxes={activeTaxes}
                       initialData={selectedDocument}
                       fixedDocumentType={fixedDocumentType}
                       onBack={() => {
@@ -19972,6 +20729,15 @@ export default function App() {
                       </div>
                     )}
                     {(() => {
+                      if (configuringGraphicSerie) {
+                        return (
+                          <GraphicConfigModule 
+                            serie={configuringGraphicSerie}
+                            onBack={() => setConfiguringGraphicSerie(null)}
+                            onRefresh={fetchData}
+                          />
+                        );
+                      }
                       switch (activeTab) {
                         case 'dashboard':
                           return <EcosystemDashboard stats={stats} issuedDocuments={issuedDocuments} setActiveTab={setActiveTab} />;
@@ -20110,7 +20876,7 @@ export default function App() {
                             />
                           );
                         case 'suppliers':
-                          return <SupplierModule products={products} workSites={workSites} fiscalSeries={fiscalSeries} caixas={caixas} companyData={companyData} />;
+                          return <SupplierModule products={products} activeTaxes={activeTaxes} workSites={workSites} fiscalSeries={fiscalSeries} caixas={caixas} companyData={companyData} addMovement={doAddCaixaMovement} />;
                         case 'products':
                           return (
                             <ProductList 
@@ -20197,7 +20963,14 @@ export default function App() {
                         case 'agrobusiness':
                           return <AgrobusinessModule />;
                         case 'tax-series':
-                          return <FiscalSeriesModule series={fiscalSeries} onRefresh={fetchData} users={employees} />;
+                          return (
+                            <FiscalSeriesModule 
+                              series={fiscalSeries} 
+                              onRefresh={fetchData} 
+                              users={employees} 
+                              onConfigGraphic={(s) => setConfiguringGraphicSerie(s)}
+                            />
+                          );
                         case 'profit-loss-report':
                           return <ProfitLossReport fiscalYear={fiscalYear} empresa_id={user?.empresa_id} />;
                         case 'settings':
@@ -20302,12 +21075,8 @@ export default function App() {
             <PrintA4 
               invoice={printingInvoice} 
               isDraft={isPrintingDraft} 
-              companyData={{
-                name: companyName,
-                nif: companyNif,
-                address: companyAddress,
-                footer: companyFooter
-              }}
+              companyData={companyData}
+              graphicConfigs={printingGraphicConfigs}
             />
           </div>
         </div>
@@ -20379,6 +21148,7 @@ export default function App() {
                     products={products} 
                     workSites={workSites}
                     fiscalSeries={fiscalSeries}
+                    activeTaxes={activeTaxes}
                     onBack={() => setIsCreatingInvoice(false)} 
                     onSaveDocument={saveDocumentoEmitido}
                     onSuccess={async () => {
@@ -20391,6 +21161,7 @@ export default function App() {
                     caixas={caixas}
                     initialData={selectedDocument}
                     fixedDocumentType={fixedDocumentType}
+                    addMovement={doAddCaixaMovement}
                   />
                 </div>
               </div>

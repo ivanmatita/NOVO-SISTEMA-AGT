@@ -1,0 +1,78 @@
+549:            {workplaces.length === 0 ? (
+897:        <span className={idx === paths.length - 1 ? 'text-[#003366] font-medium' : 'hover:text-zinc-600 cursor-pointer'}>
+900:        {idx < paths.length - 1 && <span className="text-zinc-300">/</span>}
+1013:                  {docTypeData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
+1524:      const nextStatus = statuses[(statuses.indexOf(currentStatus) + 1) % statuses.length];
+2052:                      {processedReceipts.length === 0 ? (
+2346:                      {processedReceipts.length === 0 ? (
+3559:              <div className="text-sm font-bold text-zinc-700">Funcionários: {localEmployees.length}</div>
+3753:                  {professions.length === 0 ? (
+4301:                  {laborTerminations.length === 0 && (
+5480:              {filtered.length === 0 && (
+5635:                aReceber.length > 0 ? aReceber.map((doc, idx) => {
+5651:                aPagar.length > 0 ? aPagar.map((doc, idx) => (
+5816:        {filteredTransactions.length === 0 && (
+6118:                ) : issuedDocuments.length === 0 ? (
+6363:      {documents.length === 0 && (
+6850:    if (cart.length === 0) return;
+7313:            {cart.length === 0 && (
+7386:                disabled={cart.length === 0}
+7553:                  {sessions.length === 0 && (
+7804:            {users.length === 0 && (
+8511:                    ) : filteredRecords.length === 0 ? (
+8541:                <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">Total: {filteredRecords.length} registros</span>
+9529:              {sessions.length === 0 && !loading && (
+9577:            <p className="text-2xl font-bold text-[#003366]">{sessionDocs.length}</p>
+9612:              {sessionDocs.length === 0 && (
+9775:      console.log(`[TaxSeriesModule] ${data.length} impostos encontrados.`);
+10012:            {filtered.length === 0 && (
+10170:            ) : filteredJournals.length === 0 ? (
+10201:              <span>Total de Diários: {filteredJournals.length}</span>
+10203:              <span>Diários Activos: {filteredJournals.length}</span>
+10287:    if (selectedIds.length === 0) {
+10295:    alert(`Sucesso: ${selectedIds.length} movimentos classificados com a rubrica ${targetRubrica}`);
+10391:                {filteredData.length === 0 ? (
+10596:               {receipts.length === 0 && (
+10743:                 {h1SalesList.length === 0 && (
+12089:    const reference = `S${series.length + 1}${year}`;
+12306:        {series.length === 0 && (
+12770:                ).length === 0 && (
+12838:              {workSites.length === 0 && (
+13100:      tax: activeTaxes.length > 0 ? `${activeTaxes[0].nome} (${activeTaxes[0].taxa}%)` : 'IVA - 0%',
+13101:      tax_id: activeTaxes.length > 0 ? activeTaxes[0].id : null
+13117:    const taxId = field === 'tax_id' ? value : (newItems[index].tax_id || (activeTaxes.length > 0 ? activeTaxes[0].id : null));
+13198:    if (items.length === 0) return;
+13690:            {items.length === 0 && (
+13977:              {movements.length === 0 && (
+14362:                {processedMovements.length === 0 && (
+14370:              {processedMovements.length > 0 && (
+14418:                    {movements.filter(m => m.work_site_id?.toString() === workSite.id?.toString()).length === 0 && (
+14462:                {siteInvoices.length === 0 && (
+14939:        {filteredMovements.length === 0 && (
+15376:                      {issuedDocuments.filter(d => d.cliente_id === showSettledDocsModal.id && d.status === 'pago').length > 0 ? (
+15454:        {clients.length === 0 && (
+15525:      tax: activeTaxes.length > 0 ? `${activeTaxes[0].nome} (${activeTaxes[0].taxa}%)` : 'IVA - 0%',
+15526:      tax_id: activeTaxes.length > 0 ? activeTaxes[0].id : null
+15541:    const taxId = field === 'tax_id' ? value : (newItems[index].tax_id || (activeTaxes.length > 0 ? activeTaxes[0].id : null));
+15591:    if (items.length === 0) return;
+15748:                     {liquidarValue.toLocaleString('pt-PT', { minimumFractionDigits: 2 }).split(',').length > 1 ? ',' + liquidarValue.toLocaleString('pt-PT', { minimumFractionDigits: 2 }).split(',')[1] : ''} Kz
+15864:                   if (items.length === 0) {
+16386:            {items.length === 0 && (
+16430:            disabled={items.length === 0 || loading}
+16611:    if (validPurchases.length === 0) return 'PUR-001/2026';
+16821:            {purchases.filter(p => !['Pagamento', 'Recibo'].includes(p.document_type || '')).length === 0 && (
+16906:            {purchases.filter(p => p.status === 'pending').length === 0 && (
+17043:                ).length === 0 ? (
+17110:                if (supplierPurchases.length === 0) return null;
+17199:               {purchases.length === 0 && (
+18023:              {suppliers.length === 0 && (
+18112:                  {purchases.filter(p => p.document_type === 'Pagamento').length > 0 ? (
+18160:                  {purchases.filter(p => p.document_type === 'Encomenda').length > 0 ? (
+18470:              {filteredDocs.length === 0 && (
+18510:      if (productMovements.length === 0) return total + (p.stock_quantity * (p.cost_price || 0));
+18785:            {filteredProducts.length === 0 && (
+18827:          {stockMovements.length === 0 && (
+19666:      if (editingAlertId && String(editingAlertId).length > 20) {
+19847:      console.log(`Documentos carregados: ${data?.length || 0}`);
+20242:      if (Array.isArray(pp) && pp.length > 0 && !selectedPOS) setSelectedPOS(pp[0].id.toString());
+20243:      if (Array.isArray(fs) && fs.length > 0 && !selectedSeries) setSelectedSeries(fs[0].id.toString());

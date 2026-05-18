@@ -103,17 +103,34 @@ interface PrintA4Props {
     watermark_size?: number;
     regime?: string;
   };
+  graphicConfigs?: {
+    tipo: 'logotipo' | 'cabecalho' | 'rodape' | 'marca_dagua';
+    url_imagem: string;
+    ativo: boolean;
+    posicao_x: number;
+    posicao_y: number;
+    largura: number;
+    altura: number;
+    transparencia: number;
+    alinhamento: 'left' | 'center' | 'right';
+  }[];
 }
 
-const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
+const PrintA4 = ({ invoice, isDraft = false, companyData, graphicConfigs = [] }: PrintA4Props) => {
   if (!invoice) return null;
+  
+  const getConfig = (tipo: string) => graphicConfigs.find(c => c.tipo === tipo && c.ativo);
+  
+  const logoConfig = getConfig('logotipo');
+  const watermarkConfig = getConfig('marca_dagua');
+  const footerConfig = getConfig('rodape');
+  const headerConfig = getConfig('cabecalho');
+
   const isFinal = !isDraft && invoice.is_certified;
   
   const totalInWords = invoice.total_in_words || writeValorPorExtenso(invoice.total || 0);
   
-  // Strict check: if it's draft or not certified by AGT (hash is missing or is_certified is false), it's a PROVISIONAL document
   const isProvisional = isDraft || !invoice.is_certified || !invoice.hash;
-  
   const qrValue = !isProvisional ? `${invoice.invoice_number}|${invoice.client_nif || '999999999'}|${invoice.date}|${invoice.total || 0}|${invoice.hash || ''}` : 'DOCUMENTO NÃO CERTIFICADO';
   const displayCurrency = isProvisional && invoice.currency !== 'AOA' ? (invoice.currency || 'AOA') : 'AOA';
   const formatParams = (val: number) => formatCurrency(val, displayCurrency);
@@ -123,15 +140,16 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
   const subtotalWithLineDiscounts = subtotalRaw - lineDiscountTotal;
   const retencaoTotal = invoice.retencao_fonte_total || invoice.items?.reduce((sum, item) => sum + (item.retencao_fonte || 0), 0) || 0;
   const discountAmount = invoice.global_discount || 0;
-  const vatTotal = invoice.items?.reduce((sum, item) => sum + ((item.total || 0) * ((item.tax_rate || 0) / 100)), 0) || (subtotalWithLineDiscounts * 0.14);
+  const vatTotal = (invoice.items ?? []).reduce((sum, item) => sum + ((item.total || 0) * ((item.tax_rate || 0) / 100)), 0);
   const vatWithholding = invoice.vat_withholding || 0;
   const vatWithholdingAmount = vatTotal * vatWithholding;
   const totalDocumento = subtotalWithLineDiscounts + vatTotal - discountAmount;
   const totalPagar = totalDocumento - retencaoTotal - vatWithholdingAmount;
 
-  const logoSrc = companyData?.logo_url || companyData?.logo;
-  const watermarkSrc = companyData?.watermark_url;
-  const footerSrc = companyData?.footer_image_url;
+  const logoSrc = logoConfig?.url_imagem || companyData?.logo_url || companyData?.logo;
+  const watermarkSrc = watermarkConfig?.url_imagem || companyData?.watermark_url;
+  const footerSrc = footerConfig?.url_imagem || companyData?.footer_image_url;
+  const headerSrc = headerConfig?.url_imagem;
 
   const displayName = invoice.client_name || (invoice as any).supplier_name || 'N/A';
   const displayNif = invoice.client_nif || (invoice as any).supplier_nif || (invoice as any).nif_cliente || (invoice as any).nif_fornecedor || 'Consumidor Final';
@@ -145,8 +163,22 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
   return (
     <div className="bg-white p-[2cm] w-[210mm] min-h-[297mm] mx-auto text-zinc-900 font-sans shadow-lg print:shadow-none print:m-0 relative overflow-hidden">
       {watermarkSrc && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.1] z-0">
-          <img src={watermarkSrc} alt="Watermark" style={{ height: `${companyData?.watermark_size || 400}px` }} className="object-contain grayscale" />
+        <div 
+          className="absolute inset-0 flex items-center justify-center pointer-events-none z-0"
+          style={{ 
+            opacity: watermarkConfig?.transparencia || 0.1,
+            transform: watermarkConfig ? `translate(${watermarkConfig.posicao_x}px, ${watermarkConfig.posicao_y}px)` : 'none'
+          }}
+        >
+          <img 
+            src={watermarkSrc} 
+            alt="Watermark" 
+            style={{ 
+              height: watermarkConfig ? `${watermarkConfig.altura}px` : `${companyData?.watermark_size || 400}px`,
+              width: watermarkConfig ? `${watermarkConfig.largura}px` : 'auto'
+            }} 
+            className="object-contain grayscale" 
+          />
         </div>
       )}
       
@@ -165,18 +197,57 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
       )}
       
       <div className="flex justify-between items-start mb-12 relative z-10">
-        <div className="flex flex-col gap-4">
-          {logoSrc && (
-            <img src={logoSrc} alt="Logo" style={{ height: `${companyData?.logo_size || 60}px` }} className="object-contain self-start" />
+        <div className="flex flex-col gap-4 w-full">
+          {headerSrc && (
+            <div 
+              className="w-full mb-4"
+              style={{
+                opacity: headerConfig?.transparencia || 1,
+                textAlign: headerConfig?.alinhamento || 'left',
+                transform: `translate(${headerConfig?.posicao_x || 0}px, ${headerConfig?.posicao_y || 0}px)`
+              }}
+            >
+              <img 
+                src={headerSrc} 
+                alt="Header" 
+                style={{ 
+                  height: headerConfig?.altura ? `${headerConfig.altura}px` : 'auto',
+                  width: headerConfig?.largura ? `${headerConfig.largura}px` : '100%' 
+                }} 
+                className="object-contain inline-block" 
+              />
+            </div>
           )}
-          <div>
-            <h1 className="text-xl font-black text-[#003366] mb-1 uppercase tracking-tighter">{companyData?.name || 'FaturaPronta Lda'}</h1>
-            <div className="text-[10px] space-y-0.5 text-zinc-600 font-bold uppercase break-words max-w-[250px]">
-              <p>{companyData?.address || 'Rua da Inovação, 123'}</p>
-              <p>NIF: {companyData?.nif || '500 000 000'}</p>
-              {companyData?.phone && <p>Tel: {companyData.phone}</p>}
-              {companyData?.email && <p className="lowercase break-all">Email: {companyData.email}</p>}
-              {companyData?.regime && <p>{companyData.regime}</p>}
+          <div className="flex justify-between items-start">
+            <div className="flex flex-col gap-4">
+              {logoSrc && (
+                <div
+                  style={{
+                    opacity: logoConfig?.transparencia || 1,
+                    transform: logoConfig ? `translate(${logoConfig.posicao_x}px, ${logoConfig.posicao_y}px)` : 'none'
+                  }}
+                >
+                  <img 
+                    src={logoSrc} 
+                    alt="Logo" 
+                    style={{ 
+                      height: logoConfig ? `${logoConfig.altura}px` : `${companyData?.logo_size || 60}px`,
+                      width: logoConfig ? `${logoConfig.largura}px` : 'auto'
+                    }} 
+                    className="object-contain self-start" 
+                  />
+                </div>
+              )}
+              <div>
+                <h1 className="text-xl font-black text-[#003366] mb-1 uppercase tracking-tighter">{companyData?.name || 'FaturaPronta Lda'}</h1>
+                <div className="text-[10px] space-y-0.5 text-zinc-600 font-bold uppercase break-words max-w-[250px]">
+                  <p>{companyData?.address || 'Rua da Inovação, 123'}</p>
+                  <p>NIF: {companyData?.nif || '500 000 000'}</p>
+                  {companyData?.phone && <p>Tel: {companyData.phone}</p>}
+                  {companyData?.email && <p className="lowercase break-all">Email: {companyData.email}</p>}
+                  {companyData?.regime && <p>{companyData.regime}</p>}
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -402,9 +473,23 @@ const PrintA4 = ({ invoice, isDraft = false, companyData }: PrintA4Props) => {
       </div>
 
       <div className="mt-auto pt-4 border-t border-zinc-200 text-[10px] relative z-20">
-        <div className="flex justify-center mb-6">
-          {footerSrc && footerSrc.startsWith('data:image') && (
-            <img src={footerSrc} alt="Footer" style={{ height: `${companyData?.footer_size || 40}px` }} className="object-contain" />
+        <div 
+          className="flex flex-col items-center mb-6"
+          style={{
+            opacity: footerConfig?.transparencia || 1,
+            transform: footerConfig ? `translate(${footerConfig.posicao_x}px, ${footerConfig.posicao_y}px)` : 'none'
+          }}
+        >
+          {footerSrc && (footerSrc.startsWith('data:image') || footerSrc.startsWith('http')) && (
+            <img 
+              src={footerSrc} 
+              alt="Footer" 
+              style={{ 
+                height: footerConfig ? `${footerConfig.altura}px` : `${companyData?.footer_size || 40}px`,
+                width: footerConfig ? `${footerConfig.largura}px` : 'auto'
+              }} 
+              className="object-contain" 
+            />
           )}
         </div>
 

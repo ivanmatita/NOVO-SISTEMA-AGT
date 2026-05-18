@@ -1,12 +1,51 @@
 import React, { useState } from 'react';
 import { useMedia, MediaArquivo } from '../hooks/useMedia';
-import { Upload, FileText, Image as ImageIcon, Trash2, Calendar, File } from 'lucide-react';
+import { Upload, FileText, Image as ImageIcon, Trash2, Calendar, File, Edit2, Check, X as CloseIcon } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 
-export const MediaLibraryModule = () => {
-  const { media, loading, uploadFile, deleteFile } = useMedia();
+export const MediaLibraryModule = ({ onRefreshData }: { onRefreshData?: () => void }) => {
+  const { media, loading, uploadFile, deleteFile, updateFile, replaceFile } = useMedia();
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [filterType, setFilterType] = useState<string>('all');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editType, setEditType] = useState<MediaArquivo['tipo']>('imagem');
+  const [replacingId, setReplacingId] = useState<string | null>(null);
+  const [uploadType, setUploadType] = useState<MediaArquivo['tipo']>('imagem');
+
+  const handleReplace = async (m: MediaArquivo, e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setUploading(true);
+      try {
+        await replaceFile(m.id, m.caminho_arquivo, file);
+        alert('Imagem substituída com sucesso!');
+        if (onRefreshData) onRefreshData();
+      } catch (err: any) {
+        alert('Erro ao substituir imagem: ' + err.message);
+      } finally {
+        setUploading(false);
+        setReplacingId(null);
+      }
+    }
+  };
+
+  const handleStartEdit = (m: MediaArquivo) => {
+    setEditingId(m.id);
+    setEditType(m.tipo);
+  };
+
+  const handleSaveEdit = async (m: MediaArquivo) => {
+    try {
+      await updateFile(m.id, { tipo: editType, url_publica: m.url_publica });
+      setEditingId(null);
+      alert('Arquivo atualizado com sucesso!');
+      if (onRefreshData) onRefreshData();
+    } catch (err: any) {
+      alert('Erro ao atualizar arquivo: ' + err.message);
+    }
+  };
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -39,12 +78,39 @@ export const MediaLibraryModule = () => {
     setUploading(true);
     try {
       const typeStr = file.type;
-      let tipo: MediaArquivo['tipo'] = 'outros';
+      let tipo: MediaArquivo['tipo'] = uploadType;
       
-      if (typeStr.startsWith('image/')) tipo = 'imagem';
-      else if (typeStr.includes('pdf') || typeStr.includes('word') || typeStr.includes('document')) tipo = 'documento';
+      if (tipo === 'imagem') {
+        if (typeStr.includes('pdf') || typeStr.includes('word') || typeStr.includes('document')) {
+          tipo = 'documento';
+        }
+      }
       
-      await uploadFile(file, tipo, 'geral', undefined, 'Upload manual pela biblioteca');
+      const uploaded = await uploadFile(file, tipo, 'geral', undefined, `Upload manual pela biblioteca - Categoria: ${tipo}`);
+      
+      if (uploaded) {
+        // Sync with empresas table if it's a structural image
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: profile } = await supabase.from('perfis').select('empresa_id').eq('id', user.id).single();
+          const empresaId = profile?.empresa_id;
+          
+          if (empresaId) {
+            if (tipo === 'menu_logo') {
+              await supabase.from('empresas').update({ logo_url: uploaded.url_publica }).eq('id', empresaId);
+              localStorage.setItem('companyLogo', uploaded.url_publica);
+              // Trigger a custom event for immediate UI update in sidebar
+              window.dispatchEvent(new CustomEvent('companyLogoUpdated', { detail: uploaded.url_publica }));
+            } else if (tipo === 'sidebar_image') { 
+              await supabase.from('empresas').update({ watermark_url: uploaded.url_publica }).eq('id', empresaId);
+            } else if (tipo === 'anexo') { 
+              await supabase.from('empresas').update({ footer_image_url: uploaded.url_publica }).eq('id', empresaId);
+            }
+          }
+        }
+        if (onRefreshData) onRefreshData();
+      }
+
       alert('Arquivo guardado com sucesso!');
     } catch (err: any) {
       alert('Erro ao guardar arquivo: ' + err.message);
@@ -81,6 +147,25 @@ export const MediaLibraryModule = () => {
             <h4 className="text-[11px] font-black text-[#003366] uppercase tracking-widest mb-4 flex items-center gap-2 border-b border-zinc-100 pb-2">
                <Upload size={14} /> Novo Upload
             </h4>
+            
+            <div className="mb-4">
+              <label className="block text-[10px] font-black uppercase text-zinc-400 mb-1.5 tracking-widest">
+                Descrição / Destino da Imagem
+              </label>
+              <select 
+                value={uploadType}
+                onChange={(e) => setUploadType(e.target.value as MediaArquivo['tipo'])}
+                className="w-full bg-zinc-50 border border-zinc-200 px-3 py-2 text-xs font-bold text-[#003366] appearance-none focus:outline-none focus:ring-1 focus:ring-[#003366]"
+              >
+                <option value="imagem">Imagem Geral (Galeria)</option>
+                <option value="menu_logo">Logo Barra Lateral (Menu)</option>
+                <option value="sidebar_image">Marca d'água (Documentos)</option>
+                <option value="avatar">Avatar (Foto de Perfil)</option>
+                <option value="anexo">Rodapé (Documentos)</option>
+                <option value="documento">Documento / PDF</option>
+              </select>
+            </div>
+
             <div 
               onDragEnter={handleDrag}
               onDragLeave={handleDrag}
@@ -122,10 +207,12 @@ export const MediaLibraryModule = () => {
                 className="bg-zinc-50 border border-zinc-200 px-3 py-1.5 text-xs text-zinc-800 font-bold focus:border-[#003366] focus:outline-none"
              >
                <option value="all">Todos os tipos</option>
-               <option value="imagem">Imagens</option>
-               <option value="documento">Documentos</option>
-               <option value="menu_logo">Logotipos</option>
-               <option value="anexo">Anexos</option>
+               <option value="imagem">Imagens Gerais</option>
+               <option value="menu_logo">Logo Barra Lateral (Menu)</option>
+               <option value="sidebar_image">Marca d'água (Documentos)</option>
+               <option value="anexo">Rodapé (Documentos)</option>
+               <option value="avatar">Avatar / Perfil</option>
+               <option value="documento">Documentos PDF</option>
                <option value="fatura">Faturas</option>
              </select>
           </div>
@@ -145,7 +232,7 @@ export const MediaLibraryModule = () => {
                <div key={m.id} className="border border-zinc-200 bg-white p-3 hover:shadow-md transition-all group flex flex-col justify-between min-h-[140px]">
                  <div>
                     <div className="flex items-start justify-between mb-2">
-                       {m.tipo === 'imagem' || m.tipo === 'menu_logo' || m.tipo === 'sidebar_image' ? (
+                       {m.tipo === 'imagem' || m.tipo === 'menu_logo' || m.tipo === 'sidebar_image' || m.tipo === 'avatar' ? (
                           <div className="h-10 w-10 overflow-hidden bg-zinc-100 border border-zinc-200 flex items-center justify-center">
                             <img src={m.url_publica} alt={m.nome_original} className="object-cover max-h-full max-w-full" referrerPolicy="no-referrer" />
                           </div>
@@ -154,13 +241,65 @@ export const MediaLibraryModule = () => {
                              <FileText size={20} />
                           </div>
                        )}
-                       <button onClick={() => handleDelete(m)} className="text-zinc-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 p-1">
-                          <Trash2 size={14} />
-                       </button>
+                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {editingId === m.id ? (
+                            <>
+                              <button onClick={() => handleSaveEdit(m)} className="text-emerald-500 hover:text-emerald-700 p-1" title="Confirmar">
+                                <Check size={14} />
+                              </button>
+                              <button onClick={() => setEditingId(null)} className="text-red-500 hover:text-red-700 p-1" title="Cancelar">
+                                <CloseIcon size={14} />
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <label className="text-zinc-400 hover:text-blue-600 p-1 cursor-pointer" title="Substituir Imagem">
+                                <Upload size={14} />
+                                <input type="file" className="hidden" accept="image/*" onChange={(e) => handleReplace(m, e)} />
+                              </label>
+                              <button onClick={() => handleStartEdit(m)} className="text-zinc-400 hover:text-[#003366] p-1" title="Mudar Tipo">
+                                <Edit2 size={14} />
+                              </button>
+                              <button 
+                                onClick={() => {
+                                  if (confirm('Tem certeza que deseja apagar permanentemente este arquivo?')) {
+                                    handleDelete(m);
+                                  }
+                                }} 
+                                className="text-zinc-300 hover:text-red-500 transition-colors p-1" 
+                                title="Apagar"
+                              >
+                                 <Trash2 size={14} />
+                              </button>
+                            </>
+                          )}
+                       </div>
                     </div>
                     <a href={m.url_publica} target="_blank" rel="noopener noreferrer" className="block mt-2">
                        <h5 className="text-[11px] font-bold text-[#003366] line-clamp-1 break-all hover:underline" title={m.nome_original}>{m.nome_original}</h5>
-                       <p className="text-[9px] text-zinc-500 uppercase tracking-widest mt-1 font-medium">{m.tipo}</p>
+                       {editingId === m.id ? (
+                          <div onClick={(e) => e.preventDefault()} className="mt-1">
+                            <select 
+                              value={editType}
+                              onChange={(e) => setEditType(e.target.value as MediaArquivo['tipo'])}
+                              className="w-full text-[9px] font-black uppercase bg-white border border-zinc-200 py-0.5 focus:outline-none focus:ring-1 focus:ring-[#003366]"
+                            >
+                               <option value="imagem">Imagem Geral</option>
+                               <option value="menu_logo">Logo Barra Lateral</option>
+                               <option value="sidebar_image">Marca d'água</option>
+                               <option value="avatar">Avatar</option>
+                               <option value="anexo">Rodapé Documento</option>
+                               <option value="documento">Documento PDF</option>
+                            </select>
+                          </div>
+                       ) : (
+                         <p className="text-[9px] text-amber-600 font-black uppercase tracking-wider mt-1">
+                            {m.tipo === 'menu_logo' ? 'Logo Barra Lateral' : 
+                             m.tipo === 'sidebar_image' ? 'Marca d\'água' :
+                             m.tipo === 'anexo' ? 'Rodapé Documento' :
+                             m.tipo}
+                         </p>
+                       )}
                     </a>
                  </div>
                  <div className="flex justify-between items-center mt-3 pt-3 border-t border-zinc-50 text-[9px] text-zinc-400 font-bold tracking-wider">

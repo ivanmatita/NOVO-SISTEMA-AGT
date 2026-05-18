@@ -12,7 +12,7 @@ export const authService = {
     sessionLoading = true;
     try {
       // Add timeout to prevent hanging forever
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout on getSession')), 5000));
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout on getSession')), 15000));
       const getSessionPromise = supabase.auth.getSession();
       
       const res = await Promise.race([getSessionPromise, timeoutPromise]) as any;

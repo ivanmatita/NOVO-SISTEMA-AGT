@@ -169,28 +169,147 @@ export const useMedia = () => {
        const currentEmpresaId = profile?.empresa_id;
        if (!currentEmpresaId) throw new Error('Empresa não identificada');
 
-       const { error: storageError } = await supabase.storage
-        .from('media')
-        .remove([caminho_arquivo]);
-      
-       if (storageError) throw storageError;
-
+       // 1. Apagar do Banco primeiro para garantir que o registro seja removido mesmo que o storage falhe
        const { error: dbError } = await supabase
         .from('media_arquivos')
-        .update({ ativo: false })
+        .delete()
         .eq('id', id)
         .eq('empresa_id', currentEmpresaId);
 
        if (dbError) throw dbError;
 
+       // 2. Apagar do Storage
+       const { error: storageError } = await supabase.storage
+        .from('media')
+        .remove([caminho_arquivo]);
+      
+       if (storageError) {
+         console.warn('Erro ao apagar do storage (pode já ter sido removido):', storageError);
+       }
+
+       await fetchMedia();
     } catch (e) {
       console.error('Erro a apagar arquivo:', e);
       throw e;
     }
   }
 
+  const replaceFile = async (id: string, oldPath: string, newFile: File) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Não autenticado');
+
+      const { data: profile } = await supabase
+        .from('perfis')
+        .select('empresa_id')
+        .eq('id', user.id)
+        .single();
+      const currentEmpresaId = profile?.empresa_id;
+      if (!currentEmpresaId) throw new Error('Empresa não identificada');
+
+      // 1. Upload new file
+      const extensao = newFile.name.split('.').pop() || '';
+      const nomeArquivo = `${Date.now()}_${Math.random().toString(36).substring(2)}.${extensao}`;
+      const newPath = `${currentEmpresaId}/replaced/${nomeArquivo}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('media')
+        .upload(newPath, newFile, { upsert: false });
+
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrlData } = supabase.storage
+        .from('media')
+        .getPublicUrl(newPath);
+
+      const urlPublica = publicUrlData.publicUrl;
+
+      // 2. Update DB
+      const { error: dbError } = await supabase
+        .from('media_arquivos')
+        .update({
+          nome_arquivo: nomeArquivo,
+          nome_original: newFile.name,
+          caminho_arquivo: newPath,
+          url_publica: urlPublica,
+          mime_type: newFile.type,
+          tamanho_bytes: newFile.size,
+          extensao,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .eq('empresa_id', currentEmpresaId);
+
+      if (dbError) throw dbError;
+
+      // 3. Delete old file from storage
+      await supabase.storage.from('media').remove([oldPath]);
+
+      // 4. Update company data if it was a special image
+      const { data: fileData } = await supabase.from('media_arquivos').select('tipo').eq('id', id).single();
+      if (fileData?.tipo) {
+        if (fileData.tipo === 'menu_logo') {
+          await supabase.from('empresas').update({ logo_url: urlPublica }).eq('id', currentEmpresaId);
+          window.dispatchEvent(new CustomEvent('companyLogoUpdated', { detail: urlPublica }));
+        } else if (fileData.tipo === 'sidebar_image') {
+          await supabase.from('empresas').update({ watermark_url: urlPublica }).eq('id', currentEmpresaId);
+        } else if (fileData.tipo === 'anexo') {
+          await supabase.from('empresas').update({ footer_image_url: urlPublica }).eq('id', currentEmpresaId);
+        }
+      }
+
+      await fetchMedia();
+      return urlPublica;
+    } catch (e) {
+      console.error('Erro a substituir arquivo:', e);
+      throw e;
+    }
+  };
+
+  const updateFile = async (id: string, updates: Partial<MediaArquivo>) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Não autenticado');
+
+      const { data: profile } = await supabase
+        .from('perfis')
+        .select('empresa_id')
+        .eq('id', user.id)
+        .single();
+      const currentEmpresaId = profile?.empresa_id;
+      if (!currentEmpresaId) throw new Error('Empresa não identificada');
+
+      const { error } = await supabase
+        .from('media_arquivos')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .eq('empresa_id', currentEmpresaId);
+
+      if (error) throw error;
+      
+      // Se alterou o tipo para um tipo especial, sincronizar com a tabela empresas
+      if (updates.tipo && updates.url_publica) {
+        if (updates.tipo === 'menu_logo') {
+          await supabase.from('empresas').update({ logo_url: updates.url_publica }).eq('id', currentEmpresaId);
+        } else if (updates.tipo === 'sidebar_image') {
+          await supabase.from('empresas').update({ watermark_url: updates.url_publica }).eq('id', currentEmpresaId);
+        } else if (updates.tipo === 'anexo') {
+          await supabase.from('empresas').update({ footer_image_url: updates.url_publica }).eq('id', currentEmpresaId);
+        }
+      }
+
+      await fetchMedia();
+    } catch (e) {
+      console.error('Erro a atualizar arquivo:', e);
+      throw e;
+    }
+  };
+
   const getMediaByType = (tipo: string) => {
-    return media.filter(m => m.tipo === tipo && m.ativo);
+    return media.filter(m => m.tipo === tipo && m.ativo !== false);
   };
 
   const getLatestMediaByType = (tipo: string) => {
@@ -204,6 +323,8 @@ export const useMedia = () => {
     refresh: fetchMedia,
     uploadFile,
     deleteFile,
+    replaceFile,
+    updateFile,
     getMediaByType,
     getLatestMediaByType
   };

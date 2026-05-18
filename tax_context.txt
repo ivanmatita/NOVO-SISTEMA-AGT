@@ -1,0 +1,542 @@
+3140-                      premios: 0, gratificacoes: 0, abonos: 0, subsidioNatal: 0, alojamento: 0, outrosSubsidios: 0,
+3141-                      faltasJustificadas: 0, faltasInjustificadas: 0, ferias: 0, horasExtras: 0, horasPerdidas: 0,
+3142-                      subsidioTransporte: 0, subsidioAlimentacao: 0, adiantamentos: 0, acertos: 0, diasTrabalho: 22, diasFolga: 8
+3143-                    };
+3144-                    const inss_worker = emp.subject_to_inss !== false ? emp.salary * 0.03 : 0;
+3145:                    const base_taxable = emp.subject_to_irt !== false ? (emp.salary - inss_worker) : 0;
+3146:                    const irt = emp.subject_to_irt !== false ? calculateIRT(base_taxable) : 0;
+3147-                    
+3148-                    const dailyRate = emp.salary / 22;
+3149-                    const hourlyRate = emp.salary / 173.33;
+3150-                    const overtimeRate = hourlyRate * 1.5;
+3151-                    const absenceDeduction = inputs.faltasInjustificadas * dailyRate;
+--
+3252-                        faltasJustificadas: 0, faltasInjustificadas: 0, ferias: 0, horasExtras: 0, horasPerdidas: 0,
+3253-                        subsidioTransporte: 0, subsidioAlimentacao: 0, diasTrabalho: 22, diasFolga: 8
+3254-                      };
+3255-                      
+3256-                      const inss_worker = emp.subject_to_inss !== false ? emp.salary * 0.03 : 0;
+3257:                      const base_taxable = emp.subject_to_irt !== false ? (emp.salary - inss_worker) : 0;
+3258:                      const irt = emp.subject_to_irt !== false ? calculateIRT(base_taxable) : 0;
+3259-                      
+3260-                      const dailyRate = emp.salary / 22;
+3261-                      const hourlyRate = emp.salary / 173.33;
+3262-                      const overtimeRate = hourlyRate * 1.5;
+3263-                      const absenceDeduction = inputs.faltasInjustificadas * dailyRate;
+--
+3527-                            premios: 0, gratificacoes: 0, abonos: 0, subsidioNatal: 0, alojamento: 0, outrosSubsidios: 0,
+3528-                            faltasJustificadas: 0, faltasInjustificadas: 0, ferias: 0, horasExtras: 0, horasPerdidas: 0,
+3529-                            subsidioTransporte: 0, subsidioAlimentacao: 0, adiantamentos: 0, acertos: 0, diasTrabalho: 22, diasFolga: 8
+3530-                          };
+3531-                          const inss_worker = emp.subject_to_inss !== false ? emp.salary * 0.03 : 0;
+3532:                          const base_taxable = emp.subject_to_irt !== false ? (emp.salary - inss_worker) : 0;
+3533:                          const irt = emp.subject_to_irt !== false ? calculateIRT(base_taxable) : 0;
+3534-                          
+3535-                          const dailyRate = emp.salary / 22;
+3536-                          const hourlyRate = emp.salary / 173.33;
+3537-                          const overtimeRate = hourlyRate * 1.5;
+3538-                          const absenceDeduction = inputs.faltasInjustificadas * dailyRate;
+--
+4720-                              const newVal = Number(e.target.value);
+4721-                              const updatedInputs = { ...draftReceipt.inputs, [item.field]: newVal };
+4722-                              
+4723-                              // Recalculate
+4724-                              const inss_worker = draftReceipt.employee.subject_to_inss !== false ? draftReceipt.employee.salary * 0.03 : 0;
+4725:                              const base_taxable = draftReceipt.employee.subject_to_irt !== false ? (draftReceipt.employee.salary - inss_worker) : 0;
+4726:                              const irt = draftReceipt.employee.subject_to_irt !== false ? calculateIRT(base_taxable) : 0;
+4727-                              
+4728-                              const dailyRate = draftReceipt.employee.salary / 22;
+4729-                              const hourlyRate = draftReceipt.employee.salary / 173.33;
+4730-                              const overtimeRate = hourlyRate * 1.5;
+4731-                              const absenceDeduction = updatedInputs.faltasInjustificadas * dailyRate;
+--
+4774-                            const hourlyRate = draftReceipt.employee.salary / 173.33;
+4775-                            const overtimeRate = hourlyRate * 1.5;
+4776-                            const overtimePay = newVal * overtimeRate;
+4777-                            
+4778-                            const inss_worker = draftReceipt.employee.subject_to_inss !== false ? draftReceipt.employee.salary * 0.03 : 0;
+4779:                            const base_taxable = draftReceipt.employee.subject_to_irt !== false ? (draftReceipt.employee.salary - inss_worker) : 0;
+4780:                            const irt = draftReceipt.employee.subject_to_irt !== false ? calculateIRT(base_taxable) : 0;
+4781-                            const dailyRate = draftReceipt.employee.salary / 22;
+4782-                            const absenceDeduction = updatedInputs.faltasInjustificadas * dailyRate;
+4783-                            const lostHoursDeduction = updatedInputs.horasPerdidas * hourlyRate;
+4784-
+4785-                            const totalGross = draftReceipt.employee.salary + updatedInputs.premios + updatedInputs.gratificacoes + updatedInputs.abonos + 
+--
+4835-                            // Recalculate...
+4836-                            const dailyRate = draftReceipt.employee.salary / 22;
+4837-                            const absenceDeduction = newVal * dailyRate;
+4838-                            
+4839-                            const inss_worker = draftReceipt.employee.subject_to_inss !== false ? draftReceipt.employee.salary * 0.03 : 0;
+4840:                            const base_taxable = draftReceipt.employee.subject_to_irt !== false ? (draftReceipt.employee.salary - inss_worker) : 0;
+4841:                            const irt = draftReceipt.employee.subject_to_irt !== false ? calculateIRT(base_taxable) : 0;
+4842-                            const hourlyRate = draftReceipt.employee.salary / 173.33;
+4843-                            const overtimeRate = hourlyRate * 1.5;
+4844-                            const overtimePay = updatedInputs.horasExtras * overtimeRate;
+4845-                            const lostHoursDeduction = updatedInputs.horasPerdidas * hourlyRate;
+4846-
+--
+4883-                            // Recalculate...
+4884-                            const hourlyRate = draftReceipt.employee.salary / 173.33;
+4885-                            const lostHoursDeduction = newVal * hourlyRate;
+4886-                            
+4887-                            const inss_worker = draftReceipt.employee.subject_to_inss !== false ? draftReceipt.employee.salary * 0.03 : 0;
+4888:                            const base_taxable = draftReceipt.employee.subject_to_irt !== false ? (draftReceipt.employee.salary - inss_worker) : 0;
+4889:                            const irt = draftReceipt.employee.subject_to_irt !== false ? calculateIRT(base_taxable) : 0;
+4890-                            const dailyRate = draftReceipt.employee.salary / 22;
+4891-                            const absenceDeduction = updatedInputs.faltasInjustificadas * dailyRate;
+4892-                            const overtimeRate = hourlyRate * 1.5;
+4893-                            const overtimePay = updatedInputs.horasExtras * overtimeRate;
+4894-
+--
+6889-            product_id: item.product.id,
+6890-            description: item.product.name,
+6891-            quantity: item.qty,
+6892-            unit_price: item.product.price,
+6893-            discount: item.discount / item.qty,
+6894:            tax_rate: 14 // Default IVA
+6895-          }))
+6896-        })
+6897-      });
+6898-
+6899-      if (invRes.ok) {
+--
+9750-  return null;
+9751-};
+9752-
+9753-const TaxSeriesModule = () => {
+9754-  const { user } = useAuth();
+9755:  const [taxes, setTaxes] = useState<any[]>([]);
+9756-  const [showImportModal, setShowImportModal] = useState(false);
+9757-
+9758-  useEffect(() => {
+9759-    if (user?.empresa_id) {
+9760-      loadTaxes();
+--
+9777-        id: d.id,
+9778-        date: new Date(d.created_at).toLocaleDateString(),
+9779-        layout: d.nome,
+9780-        type: 'IVA',
+9781-        code: d.codigo_imposto || 'NOR',
+9782:        rate: `${d.taxa}%`,
+9783-        motive: d.descricao || ''
+9784-      })));
+9785-    }
+9786-  };
+9787-
+--
+9809-            <th className="p-3">Motivo</th>
+9810-            <th className="p-3"></th>
+9811-          </tr>
+9812-        </thead>
+9813-        <tbody>
+9814:          {taxes.map(tax => (
+9815:            <tr key={tax.id} className="border-b border-zinc-100 text-sm">
+9816:              <td className="p-3">{tax.date}</td>
+9817:              <td className="p-3">{tax.layout}</td>
+9818:              <td className="p-3">{tax.type}</td>
+9819:              <td className="p-3">{tax.region}</td>
+9820:              <td className="p-3">{tax.code}</td>
+9821:              <td className="p-3">{tax.rate}</td>
+9822:              <td className="p-3">{tax.motive}</td>
+9823-              <td className="p-3 text-center">
+9824:                <button onClick={() => removeTax(tax.id)} className="text-red-500 hover:text-red-700">X</button>
+9825-              </td>
+9826-            </tr>
+9827-          ))}
+9828-        </tbody>
+9829-      </table>
+--
+9833-            <h3 className="font-bold text-[#003366] mb-4 flex items-center gap-2">
+9834-              <Plus size={18} />
+9835-              Selecionar Taxa para Importar
+9836-            </h3>
+9837-            <div className="flex-1 overflow-y-auto space-y-1 pr-2">
+9838:              {ALL_TAXES.map((taxName, idx) => (
+9839-                <button 
+9840-                  key={idx}
+9841-                  onClick={async () => { 
+9842:                    const isIva = taxName.includes('IVA');
+9843:                    const isIsento = taxName.includes('Isento') || taxName.includes('Não Sujeita');
+9844:                    const rateMatch = taxName.match(/(\d+)%/);
+9845-                    const rateNum = rateMatch ? parseFloat(rateMatch[1]) : (isIsento ? 0 : 14);
+9846-                    
+9847-                    const { data: { user: authUser } } = await supabase.auth.getUser();
+9848-                    if (!authUser || !user) return;
+9849-                    
+9850-                    const { error } = await supabase.from('tabela_impostos').insert([{
+9851-                      empresa_id: user.empresa_id,
+9852:                      nome: taxName,
+9853:                      taxa: rateNum,
+9854-                      codigo_imposto: isIsento ? 'ISE' : 'NOR',
+9855-                      descricao: isIsento ? 'Isenção' : ''
+9856-                    }]);
+9857-                    
+9858-                    if (!error) {
+9859-                      loadTaxes();
+9860-                      setShowImportModal(false); 
+9861-                    } else {
+9862:                      alert('Erro ao importar taxa: ' + error.message);
+9863-                    }
+9864-                  }} 
+9865-                  className="w-full text-left p-3 hover:bg-zinc-50 border border-transparent hover:border-zinc-200 transition-all text-sm text-zinc-700 flex items-center justify-between group"
+9866-                >
+9867:                  <span>{taxName}</span>
+9868-                  <Plus size={14} className="text-zinc-300 group-hover:text-[#003366]" />
+9869-                </button>
+9870-              ))}
+9871-            </div>
+9872-            <div className="mt-6 pt-4 border-t border-zinc-100">
+--
+9904-      date: s.date || s.data_emissao || (s as any).created_at,
+9905-      doc_no: s.numero_documento || s.invoice_number,
+9906-      entity: s.client_name,
+9907-      type: `Venda (${s.document_type || 'Fatura'})`,
+9908-      base: (s.retencao_fonte_total || s.items?.reduce((acc, i) => acc + (i.retencao_fonte || 0), 0) || 0) / 0.065,
+9909:      tax_value: s.retencao_fonte_total || s.items?.reduce((acc, i) => acc + (i.retencao_fonte || 0), 0) || 0,
+9910-      status: s.status,
+9911-      category: 'receber'
+9912-    })),
+9913-    ...purchasesWithTax.map(p => ({
+9914-      id: p.id,
+9915-      date: p.date || p.data_emissao || (p as any).created_at,
+9916-      doc_no: p.invoice_number || p.numero_documento,
+9917-      entity: p.supplier_name || 'Fornecedor',
+9918-      type: 'Compra / Despesa',
+9919-      base: (p.retencao_fonte_total || p.irt_retido || 0) / 0.065,
+9920:      tax_value: p.retencao_fonte_total || p.irt_retido || 0,
+9921-      status: 'pago',
+9922-      category: 'pagar'
+9923-    }))
+9924-  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+9925-
+--
+9929-    const matchesDate = (!startDate || new Date(r.date) >= new Date(startDate)) &&
+9930-                        (!endDate || new Date(r.date) <= new Date(endDate));
+9931-    return matchesSearch && matchesDate;
+9932-  });
+9933-
+9934:  const totalReceber = filtered.filter(r => r.category === 'receber').reduce((acc, r) => acc + (r.tax_value || 0), 0);
+9935:  const totalPagar = filtered.filter(r => r.category === 'pagar').reduce((acc, r) => acc + (r.tax_value || 0), 0);
+9936-
+9937-  return (
+9938-    <div className="space-y-6 animate-fade-in">
+9939-      <header className="flex justify-between items-end">
+9940-        <div>
+--
+10003-                      {r.category === 'receber' ? 'Venda (Receber)' : 'Compra (Pagar)'}
+10004-                   </span>
+10005-                </td>
+10006-                <td className="px-6 py-4 text-right font-bold text-zinc-600">{formatCurrency(r.base)}</td>
+10007-                <td className={`px-6 py-4 text-right font-black ${r.category === 'receber' ? 'text-emerald-600' : 'text-red-600'}`}>
+10008:                  {r.category === 'pagar' ? '-' : '+'}{formatCurrency(r.tax_value)}
+10009-                </td>
+10010-              </tr>
+10011-            ))}
+10012-            {filtered.length === 0 && (
+10013-              <tr>
+--
+10619-    const month = parseInt(inv.date.split('-')[1]);
+10620-    return month <= 6;
+10621-  });
+10622-  
+10623-  const h1Sales = h1SalesList.reduce((s, i) => s + i.total, 0);
+10624:  const taxDue = h1Sales * 0.02;
+10625-
+10626-  return (
+10627-    <div className="space-y-4">
+10628-      <div className="flex justify-between items-center bg-white p-4 border border-zinc-200">
+10629-        <div className="flex items-center gap-4">
+--
+10648-          <div className="flex items-start gap-4">
+10649-            <AlertCircle className="text-yellow-500 shrink-0" size={20} />
+10650-            <div className="space-y-2">
+10651-              <p className="font-black text-zinc-800 uppercase underline">Lei n.º 26/20 de 20 de Julho - ARTIGO 66.º (Liquidação e pagamento provisórios sobre vendas)</p>
+10652-              <p>O Imposto Industrial relativo aos contribuintes do regime geral é objecto de autoliquidação provisória e pagamento devido, até ao último dia útil do mês de Agosto, por referência ao próprio exercício em que a actividade tenha lugar.</p>
+10653:              <p>O imposto a pagar é calculado sobre o volume total de vendas realizadas no 1º semestre do exercício fiscal. A liquidação a que se refere o n.º 1 do presente artigo pode incidir, a título facultativo, sobre o valor efectivamente recebido das vendas não sujeitas à retenção na fonte, nos primeiros seis meses do exercício fiscal, mediante a aplicação de uma taxa de 2% sobre o respectivo valor...</p>
+10654-              <p className="text-red-600 font-black uppercase">Os contribuintes que tenham apresentado prejuízo no exercício anterior estão dispensados da liquidação provisória.</p>
+10655-            </div>
+10656-          </div>
+10657-      </div>
+10658-
+--
+10681-                    (a) Volume total de vendas realizadas no 1º semestre do exercício (Nº2 do artigo 66º do CII)
+10682-                  </div>
+10683-                  <div className="col-span-4 text-right">
+10684-                    <p className="text-zinc-400 text-[8px] mb-1">VALOR TRIBUTÁVEL</p>
+10685-                    <p className="text-xl font-black text-[#003366]">{formatCurrency(h1Sales).replace('AOA', '')}</p>
+10686:                    <p className="text-[10px] font-black text-blue-600 mt-1">IMPOSTO (2%): {formatCurrency(taxDue).replace('AOA', '')}</p>
+10687-                  </div>
+10688-               </div>
+10689-               <div className="h-px bg-zinc-200 my-4"></div>
+10690-               <div className="grid grid-cols-12 gap-4 items-center">
+10691-                  <div className="col-span-8 text-[#003366] text-[10px] leading-relaxed opacity-50">
+--
+10747-             <tfoot className="bg-zinc-100 font-black border-t-2 border-[#003366] text-[10px]">
+10748-                <tr>
+10749-                   <td colSpan={6} className="p-3 text-right text-[#003366] tracking-widest bg-zinc-50">TOTAL ACUMULADO 1º SEMESTRE</td>
+10750-                   <td className="p-3 text-right border-l border-zinc-300 bg-white">{formatCurrency(h1Sales).replace('AOA', '')}</td>
+10751-                   <td className="p-3 text-right border-l border-zinc-300 bg-white">{formatCurrency(h1Sales).replace('AOA', '')}</td>
+10752:                   <td className="p-3 text-right border-l border-zinc-300 text-[#003366] bg-white">{formatCurrency(taxDue).replace('AOA', '')}</td>
+10753-                </tr>
+10754-             </tfoot>
+10755-           </table>
+10756-         </div>
+10757-      </div>
+--
+11419-  const sections = [
+11420-    { id: 'daily-movements', label: 'Movimento Diário', icon: <History size={24} />, description: 'Registo cronológico de todos os movimentos contabilísticos diários.' },
+11421-    { id: 'pgc', label: 'PGC Plano de Contas', icon: <Book size={24} />, description: 'Consulta e gestão do Plano Geral de Contas angolano.' },
+11422-    { id: 'accounting-maps', label: 'Balancete Analítico', icon: <BarChart3 size={24} />, description: 'Emissão de balancetes, balanços e demonstrações de resultados.' },
+11423-    { id: 'classify-movements', label: 'Classificar Movimentos', icon: <CheckSquare size={24} />, description: 'Ajustamento e classificação de rubricas contabilísticas de vendas e compras.' },
+11424:    { id: 'stamp-tax', label: 'Imposto de Selo', icon: <ShieldCheck size={24} />, description: 'Mapa de liquidação e controlo de Imposto de Selo sobre recebimentos.' },
+11425:    { id: 'income-tax-advance', label: 'Imposto por Conta', icon: <CreditCard size={24} />, description: 'Autoliquidação provisória do Imposto Industrial (2% sobre vendas).' },
+11426-    { id: 'general-regime', label: 'Regime Geral', icon: <BadgeCheck size={24} />, description: 'Contabilidade para empresas enquadradas no regime geral de tributação.' },
+11427-    { id: 'simplified-regime', label: 'Regime Simplificado', icon: <Layers size={24} />, description: 'Gestão simplificada para empresas com volume de negócios reduzido.' },
+11428-    { id: 'exclusion-regime', label: 'Regime de Exclusão', icon: <XCircle size={24} />, description: 'Controlo de entidades isentas ou excluídas do regime de IVA.' },
+11429-    { id: 'accounting-settings', label: 'Configurações Contábeis', icon: <Settings size={24} />, description: 'Definição de parâmetros fiscais, anos e moedas de relato.' },
+11430-    { id: 'annual-declarations', label: 'Declarações Anuais', icon: <Calendar size={24} />, description: 'Preparação e submissão de modelos fiscais anuais (M1, M2).' },
+--
+11471-        return <AccountingMapsModule onBack={() => setActiveSubTab(null)} />;
+11472-      case 'pgc':
+11473-        return <PGCModule onBack={() => setActiveSubTab(null)} />;
+11474-      case 'classify-movements':
+11475-        return <ClassifyMovementsModule invoices={invoices} purchases={purchases} onBack={() => setActiveSubTab(null)} />;
+11476:      case 'stamp-tax':
+11477-        return <StampTaxModule invoices={invoices} onBack={() => setActiveSubTab(null)} />;
+11478:      case 'income-tax-advance':
+11479-        return <IncomeTaxAdvanceModule invoices={invoices} onBack={() => setActiveSubTab(null)} />;
+11480-      case 'simplified-regime':
+11481-        return <RegimeSimplificadoForm invoices={invoices} purchases={purchases} />;
+11482-      case 'retencao-pagar':
+11483-        return <RetencaoPagarForm purchases={purchases} suppliers={suppliers} />;
+--
+13095-      desconto: 0,
+13096-      tipo_artigo: 'produto',
+13097-      comprimento: 0,
+13098-      largura: 0,
+13099-      altura: 0,
+13100:      tax: activeTaxes.length > 0 ? `${activeTaxes[0].nome} (${activeTaxes[0].taxa}%)` : 'IVA - 0%',
+13101:      tax_id: activeTaxes.length > 0 ? activeTaxes[0].id : null
+13102-    }]);
+13103-  };
+13104-
+13105-  const removeItem = (index: number) => {
+13106-    setItems(items.filter((_, i) => i !== index));
+--
+13112-    
+13113-    // Always recalculate on any relevant change
+13114-    const q = field === 'quantity' ? Number(value) : (newItems[index].quantity || 0);
+13115-    const p = field === 'unit_price' ? Number(value) : (newItems[index].unit_price || 0);
+13116-    const d = field === 'desconto' ? Number(value) : (newItems[index].desconto || 0);
+13117:    const taxId = field === 'tax_id' ? value : (newItems[index].tax_id || (activeTaxes.length > 0 ? activeTaxes[0].id : null));
+13118:    const selectedTax = activeTaxes.find(t => t.id === Number(taxId));
+13119-    
+13120-    if (selectedTax) {
+13121:      newItems[index].tax = `${selectedTax.nome} (${selectedTax.taxa}%)`;
+13122:      newItems[index].tax_rate = Number(selectedTax.taxa);
+13123:      newItems[index].tax_id = selectedTax.id;
+13124-    } else {
+13125:      newItems[index].tax_rate = 0;
+13126-    }
+13127-
+13128-    const tipo = field === 'tipo_artigo' ? value : (newItems[index].tipo_artigo || 'produto');
+13129-    const isService = tipo.toLowerCase() === 'serviço' || tipo.toLowerCase() === 'servico' || tipo.toLowerCase() === 'ser';
+13130-    
+--
+13159-  const total = (items ?? []).reduce((sum, item) => sum + (item.total || 0), 0);
+13160-  
+13161-  // Calculate VAT based on individual item rates
+13162-  const vatBreakdown: { [key: string]: number } = {};
+13163-  (items ?? []).forEach(item => {
+13164:    const rate = item.tax_rate || 0;
+13165-    const itemVat = (item.total || 0) * (rate / 100);
+13166:    const label = item.tax || 'Outros';
+13167-    vatBreakdown[label] = (vatBreakdown[label] || 0) + itemVat;
+13168-  });
+13169-  
+13170-  const vatAmount = Object.values(vatBreakdown).reduce((a, b) => a + b, 0);
+13171-  const vatWithholdingAmount = vatAmount * Number(vatWithholding || 0);
+--
+13601-                   </div>
+13602-                   <div className="col-span-1 space-y-1">
+13603-                     <label className="text-[10px] font-bold text-zinc-400 uppercase">Taxa</label>
+13604-                     <select 
+13605-                        disabled={isCertified}
+13606:                        value={isNaN(Number(item.tax_id)) ? '' : item.tax_id}
+13607:                        onChange={(e) => updateItem(idx, 'tax_id', e.target.value)}
+13608-                        className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
+13609-                      >
+13610-                        {activeTaxes.map((t) => (
+13611:                          <option key={t.id} value={t.id}>{t.nome} ({t.taxa}%)</option>
+13612-                        ))}
+13613-                      </select>
+13614-                    </div>
+13615-                  </div>
+13616-                  <div className="grid grid-cols-12 gap-4 items-end bg-white p-3 border border-zinc-100">
+--
+14520-      .then(data => setInvoice(data));
+14521-  }, [id]);
+14522-
+14523-  if (!invoice) return <div className="p-8">Carregando...</div>;
+14524-
+14525:  // Calculate VAT summary by tax label/name instead of just rate
+14526-  const vatSummary = (invoice.items || []).reduce((acc: any, item: any) => {
+14527:    const label = item.tax || (item.tax_rate ? `IVA (${item.tax_rate}%)` : 'ISE (0%)');
+14528-    if (!acc[label]) {
+14529:      acc[label] = { base: 0, vat: 0, rate: item.tax_rate || 0 };
+14530-    }
+14531:    const rate = item.tax_rate || 0;
+14532-    const itemTotal = item.total || 0;
+14533-    const base = itemTotal / (1 + rate / 100);
+14534-    acc[label].base += base;
+14535-    acc[label].vat += itemTotal - base;
+14536-    return acc;
+--
+15520-      desconto: 0,
+15521-      tipo_artigo: 'produto',
+15522-      comprimento: 0,
+15523-      largura: 0,
+15524-      altura: 0,
+15525:      tax: activeTaxes.length > 0 ? `${activeTaxes[0].nome} (${activeTaxes[0].taxa}%)` : 'IVA - 0%',
+15526:      tax_id: activeTaxes.length > 0 ? activeTaxes[0].id : null
+15527-    }]);
+15528-  };
+15529-
+15530-  const removeItem = (index: number) => {
+15531-    setItems(items.filter((_, i) => i !== index));
+--
+15536-    newItems[index] = { ...newItems[index], [field]: value };
+15537-    
+15538-    const q = field === 'quantity' ? Number(value) : (newItems[index].quantity || 0);
+15539-    const p = field === 'unit_price' ? Number(value) : (newItems[index].unit_price || 0);
+15540-    const d = (field === 'desconto' || field === 'desconto_linha') ? Number(value) : (newItems[index].desconto || 0);
+15541:    const taxId = field === 'tax_id' ? value : (newItems[index].tax_id || (activeTaxes.length > 0 ? activeTaxes[0].id : null));
+15542:    const selectedTax = activeTaxes.find(t => t.id === Number(taxId));
+15543-    
+15544-    if (selectedTax) {
+15545:      newItems[index].tax = `${selectedTax.nome} (${selectedTax.taxa}%)`;
+15546:      newItems[index].tax_rate = Number(selectedTax.taxa);
+15547:      newItems[index].tax_id = selectedTax.id;
+15548-    } else {
+15549:      newItems[index].tax_rate = 0;
+15550-    }
+15551-
+15552-    newItems[index].total = (q * p) - d;
+15553-
+15554-    if (field === 'product_id' && value) {
+--
+15565-
+15566-  const total = (items ?? []).reduce((sum, item) => sum + (item.total || 0), 0);
+15567-  
+15568-  const vatBreakdown: { [key: string]: number } = {};
+15569-  (items ?? []).forEach(item => {
+15570:    const rate = item.tax_rate || 0;
+15571-    const itemVat = (item.total || 0) * (rate / 100);
+15572:    const label = item.tax || 'Outros';
+15573-    vatBreakdown[label] = (vatBreakdown[label] || 0) + itemVat;
+15574-  });
+15575-  
+15576-  const vatAmount = Object.values(vatBreakdown).reduce((a, b) => a + b, 0);
+15577-  const vatWithholdingAmount = vatAmount * Number(vatWithholding || 0);
+--
+16226-                    </select>
+16227-                  </div>
+16228-                  <div className="col-span-2 space-y-1">
+16229-                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Taxa</label>
+16230-                    <select 
+16231:                      value={isNaN(Number(item.tax_id)) ? '' : item.tax_id}                      onChange={(e) => updateItem(idx, 'tax_id', e.target.value)}
+16232-                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
+16233-                    >
+16234-                      <option value="">Selecionar Taxa</option>
+16235-                      {activeTaxes.map((t) => (
+16236:                        <option key={t.id} value={t.id}>{t.nome} ({t.taxa}%)</option>
+16237-                      ))}
+16238-                    </select>
+16239-                  </div>
+16240-                  <div className="col-span-1 border-l border-zinc-200 pl-4 flex flex-col gap-2 justify-end pb-1">
+16241-                    <button 
+--
+17056-                          <td className="py-3 px-4 text-[#003366] font-mono text-center">{p.id || index + 1}</td>
+17057-                          <td className="py-3 px-4 text-[#003366] font-black uppercase tracking-tighter">{p.purchase_number}</td>
+17058-                          <td className="py-3 px-4 text-zinc-500 italic text-[10px] font-bold uppercase">{p.work_site || 'GERAL'}</td>
+17059-                          <td className="py-3 px-4 font-black uppercase text-zinc-900 group-hover:text-[#003366] transition-colors">{p.supplier_name}</td>
+17060-                          <td className="py-3 px-4 text-right font-mono text-zinc-600">{formatCurrency((p.items ?? []).reduce((sum, it) => sum + (it.total || 0), 0)).replace('AOA', '').trim()}</td>
+17061:                          <td className="py-3 px-4 text-right text-emerald-600 font-black font-mono">{formatCurrency((p.items ?? []).reduce((sum, it) => sum + ((it.total || 0) * ((it.tax_rate || 0) / 100)), 0)).replace('AOA', '').trim()}</td>
+17062-                          <td className="py-3 px-4 text-right font-black text-[#003366] font-mono bg-zinc-50/30">{formatCurrency(p.total).replace('AOA', '').trim()}</td>
+17063-                        </tr>
+17064-                      ))
+17065-              )}
+17066-            </tbody>
+--
+19588-  const doLoadActiveTaxes = async (explicitId?: string) => {
+19589-    try {
+19590-      const companyId = explicitId || user?.empresa_id;
+19591-      if (!companyId) return;
+19592-      
+19593:      // Try to load active taxes
+19594-      const { data, error } = await supabase
+19595-        .from('tabela_impostos')
+19596-        .select('*')
+19597-        .eq('empresa_id', companyId);
+19598-        
+--
+19603-      // Filtermos na UI para cobrir se a coluna `ativo` existe ou se o Supabase não quebrar 
+19604-      // Se não existir, vai ignorar
+19605-      const filtered = (data || []).filter(t => t.ativo !== false);
+19606-      setActiveTaxes(filtered);
+19607-    } catch (err) {
+19608:      console.error('Error loading active taxes:', err);
+19609-    }
+19610-  };
+19611-  
+19612-  // Task/Alert modal state
+19613-  const [alerts, setAlerts] = useState<any[]>([]);
+--
+19802-        tipo_documento: doc.document_type || doc.tipo_documento || 'Fatura',
+19803-        numero_documento: doc.invoice_number || doc.numero_documento,
+19804-        cliente_nome: doc.client_name || doc.cliente_nome || 'Desconhecido',
+19805-        cliente_email: doc.client_email || doc.customer_email || '',
+19806-        total: Number(doc.total || 0),
+19807:        imposto: Number(doc.total_tax || doc.imposto || 0),
+19808-        estado: doc.status || doc.estado_documento || 'ativo',
+19809-        data_emissao: doc.date || doc.data_emissao || new Date().toISOString(),
+19810-        detalhes: {
+19811-          items: doc.items || [],
+19812-          payment_method: doc.payment_method,
+--
+20782-                              mode={activeTab === 'electronic_invoices' ? 'electronic' : 'standard'}
+20783-                              fiscalSeries={fiscalSeries}
+20784-                              onRefresh={fetchData}
+20785-                            />
+20786-                          );
+20787:                        case 'tax-settings':
+20788-                          return <TaxSeriesModule />;
+20789-                        case 'issued-documents':
+20790-                          return (
+20791-                            <IssuedDocumentsList 
+20792-                              documents={issuedDocuments} 
+--
+20906-                          );
+20907-                        case 'hr':
+20908-                          return <HRModule onRefresh={fetchData} onSetIsContractModalOpen={setIsContractModalOpen} onSetEmployee={setAppSelectedEmployee} caixas={caixas} companyName={companyName} />;
+20909-                        case 'accounting':
+20910-                          return <AccountingModule invoices={invoices} clients={clients} fiscalSeries={fiscalSeries} onRefresh={fetchData} employees={employees} issuedDocuments={issuedDocuments} />;
+20911:                        case 'withholding-tax':
+20912-                          return <WithholdingTaxModule sales={issuedDocuments} purchases={purchases} />;
+20913-                        case 'reports':
+20914-                          return <ReportsModule sales={issuedDocuments} purchases={purchases} clients={clients} products={products} />;
+20915-                        case 'drafts':
+20916-                          const filteredDrafts = issuedDocuments.filter(d => {
+--
+20963-                          return <ArchiveModule />;
+20964-                        case 'church':
+20965-                          return <ChurchModule />;
+20966-                        case 'agrobusiness':
+20967-                          return <AgrobusinessModule />;
+20968:                        case 'tax-series':
+20969-                          return (
+20970-                            <FiscalSeriesModule 
+20971-                              series={fiscalSeries} 
+20972-                              onRefresh={fetchData} 
+20973-                              users={employees} 

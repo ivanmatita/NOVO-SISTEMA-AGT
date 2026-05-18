@@ -36,20 +36,18 @@
 }
 
 @media print {
-  body * {
-    visibility: hidden;
-  }
-  .fixed.inset-0.z-\[100\], .fixed.inset-0.z-\[100\] * {
-    visibility: visible;
+  body > *:not(.fixed.inset-0.z-\[100\]) {
+    display: none !important;
   }
   .fixed.inset-0.z-\[100\] {
     position: absolute;
     left: 0;
     top: 0;
-    width: 80mm;
-    background: white;
+    width: 100%;
+    visibility: visible;
   }
   .fixed.inset-0.z-\[100\] button {
-    display: none;
+    display: none !important;
   }
 }
+

@@ -8356,6 +8356,13 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
   const [loading, setLoading] = useState(false);
   const [records, setRecords] = useState<any[]>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  
+  const [editingCarta, setEditingCarta] = useState<any | null>(null);
+  const [editingDoc, setEditingDoc] = useState<any | null>(null);
+  const [printingCarta, setPrintingCarta] = useState<any | null>(null);
+  const [printFormat, setPrintFormat] = useState<'carta' | 'declaracao'>('carta');
+  const [companySettings, setCompanySettings] = useState<any>(null);
+
   const [formData, setTaskFormData] = useState({
     titulo: '',
     descricao: '',
@@ -8372,20 +8379,101 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
     { id: 'attachments', label: 'Anexos', icon: Paperclip },
   ];
 
+  const loadCompanySettings = async () => {
+    if (!user?.empresa_id) return;
+    try {
+      const { data, error } = await supabase
+        .from('empresas')
+        .select('*')
+        .eq('id', user.empresa_id)
+        .single();
+      if (!error && data) {
+        setCompanySettings(data);
+      }
+    } catch (err) {
+      console.error('Error loading company info for letters:', err);
+    }
+  };
+
   const loadData = async () => {
     if (!user) return;
     setLoading(true);
     try {
       const companyId = user.empresa_id || user.id;
-      const { data, error } = await supabase
-        .from('secretaria_digital')
-        .select('*')
-        .eq('empresa_id', companyId)
-        .eq('categoria', activeSection)
-        .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      setRecords(data || []);
+      if (activeSection === 'letters') {
+         // Query from 'cartas' table for global/isolated letters list
+         const { data, error } = await supabase
+           .from('cartas')
+           .select('*')
+           .eq('empresa_id', companyId)
+           .order('created_at', { ascending: false });
+
+         if (error) throw error;
+         setRecords(data || []);
+      } else if (activeSection === 'attachments') {
+         // Fetch union of files from secretaria_digital and cartas
+         const { data: secData, error: secError } = await supabase
+           .from('secretaria_digital')
+           .select('*')
+           .eq('empresa_id', companyId);
+           
+         const { data: cartasData, error: cartasError } = await supabase
+           .from('cartas')
+           .select('*')
+           .eq('empresa_id', companyId);
+
+         if (secError) throw secError;
+         if (cartasError) throw cartasError;
+
+         const combined: any[] = [];
+         
+         (secData || []).forEach(r => {
+           if (r.anexo_url) {
+             combined.push({
+               id: r.id,
+               source: 'secretaria',
+               titulo: r.titulo || 'Documento sem título',
+               data_inicio: r.data_inicio,
+               descricao: r.descricao || 'Anexo carregado',
+               anexo_nome: r.anexo_nome || 'Arquivo de Documento',
+               anexo_url: r.anexo_url,
+               anexo_path: r.anexo_path,
+               referencia: r.titulo || 'Doc'
+             });
+           }
+         });
+
+         (cartasData || []).forEach(c => {
+           if (c.imagem_url) {
+             combined.push({
+               id: c.id,
+               source: 'cartas',
+               titulo: `Imagem: ${c.assunto || 'Sem assunto'}`,
+               data_inicio: c.data_documento || c.created_at,
+               descricao: `Anexo de imagem para a carta`,
+               anexo_nome: c.imagem_nome || 'Imagem carregada',
+               anexo_url: c.imagem_url,
+               anexo_path: c.imagem_path,
+               referencia: c.referencia || 'Carta'
+             });
+           }
+         });
+
+         combined.sort((a, b) => new Date(b.data_inicio).getTime() - new Date(a.data_inicio).getTime());
+         setRecords(combined);
+      } else {
+         // Default logic for docs/others
+         const { data, error } = await supabase
+           .from('secretaria_digital')
+           .select('*')
+           .eq('empresa_id', companyId)
+           .eq('categoria', activeSection)
+           .order('created_at', { ascending: false });
+
+         if (error) throw error;
+         setRecords(data || []);
+      }
     } catch (error) {
       console.error('Error loading secretaria data:', error);
     } finally {
@@ -8395,6 +8483,7 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
 
   useEffect(() => {
     loadData();
+    loadCompanySettings();
   }, [user, activeSection]);
 
   const uploadFile = async (file: File, userId: string) => {
@@ -8432,6 +8521,12 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
       let anexoData = null;
       if (selectedFile) {
         anexoData = await uploadFile(selectedFile, user.empresa_id);
+      } else if (editingDoc) {
+        anexoData = {
+          name: editingDoc.anexo_nome || '',
+          url: editingDoc.anexo_url || '',
+          path: editingDoc.anexo_path || ''
+        };
       }
 
       const payload = {
@@ -8448,13 +8543,23 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
         anexo_path: anexoData?.path || ''
       };
 
-      const { error } = await supabase
-        .from('secretaria_digital')
-        .insert([payload]);
-
-      if (error) throw error;
+      if (editingDoc) {
+        const { error } = await supabase
+          .from('secretaria_digital')
+          .update(payload)
+          .eq('id', editingDoc.id);
+        if (error) throw error;
+        alert('Registo atualizado com sucesso!');
+      } else {
+        const { error } = await supabase
+          .from('secretaria_digital')
+          .insert([payload]);
+        if (error) throw error;
+        alert('Registo guardado com sucesso!');
+      }
 
       setShowForm(false);
+      setEditingDoc(null);
       setTaskFormData({
         titulo: '',
         descricao: '',
@@ -8466,7 +8571,6 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
       });
       setSelectedFile(null);
       loadData();
-      alert('Registro guardado com sucesso!');
     } catch (error: any) {
       alert('Erro ao guardar: ' + error.message);
     } finally {
@@ -8484,53 +8588,124 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
       const { error } = await supabase.from('secretaria_digital').delete().eq('id', id).eq('empresa_id', user.empresa_id);
       if (error) throw error;
       loadData();
+      alert('Registro eliminado com sucesso!');
     } catch (error: any) {
       alert('Erro ao eliminar: ' + error.message);
     }
   };
 
   const renderSectionContent = () => {
-    const filteredRecords = records.filter(r => 
-      r.titulo?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      r.descricao?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const filteredRecords = records.filter(r => {
+      if (activeSection === 'letters') {
+         return (
+           r.referencia?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+           r.nome_destinatario?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+           r.assunto?.toLowerCase().includes(searchQuery.toLowerCase())
+         );
+      } else if (activeSection === 'attachments') {
+         return (
+           r.titulo?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+           r.referencia?.toLowerCase().includes(searchQuery.toLowerCase())
+         );
+      } else {
+         return (
+           r.titulo?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+           r.descricao?.toLowerCase().includes(searchQuery.toLowerCase())
+         );
+      }
+    });
+
+    const getHeaders = () => {
+      if (activeSection === 'letters') {
+        return (
+          <tr className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest border-b border-zinc-100">
+            <th className="px-6 py-4">Referência</th>
+            <th className="px-6 py-4">Destinatário</th>
+            <th className="px-6 py-4">Assunto</th>
+            <th className="px-6 py-4">Data</th>
+            <th className="px-6 py-4">Anexo / Imagem</th>
+            <th className="px-6 py-4 text-right">Ações</th>
+          </tr>
+        );
+      } else if (activeSection === 'attachments') {
+        return (
+          <tr className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest border-b border-zinc-100">
+            <th className="px-6 py-4">Nome do Anexo</th>
+            <th className="px-6 py-4">Data</th>
+            <th className="px-6 py-4">Descrição</th>
+            <th className="px-6 py-4">Origem</th>
+            <th className="px-6 py-4 text-right">Ações</th>
+          </tr>
+        );
+      } else {
+        return (
+          <tr className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest border-b border-zinc-100">
+            <th className="px-6 py-4">Título</th>
+            <th className="px-6 py-4">Data</th>
+            <th className="px-6 py-4">Descrição</th>
+            <th className="px-6 py-4">Anexo</th>
+            <th className="px-6 py-4 text-right">Ações</th>
+          </tr>
+        );
+      }
+    };
 
     return (
       <div className="space-y-6">
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-center no-print">
           <h3 className="text-xl font-bold text-[#003366]">{sections.find(s => s.id === activeSection)?.label}</h3>
           <div className="flex gap-2">
-            {activeSection === 'letters' && (
+            {activeSection === 'letters' ? (
               <button 
-                onClick={() => setIsCartaFormOpen(true)}
-                className="bg-[#003366] text-white px-4 py-2 text-sm font-bold flex items-center gap-2 shadow-md hover:bg-[#002244] transition-all"
+                onClick={() => {
+                  setEditingCarta(null);
+                  setIsCartaFormOpen(true);
+                }}
+                className="bg-[#003366] text-white px-4 py-2 text-sm font-bold flex items-center gap-2 shadow-md hover:bg-[#002244] transition-all rounded"
               >
                 <Plus size={16} /> Novo Registo de Carta
               </button>
+            ) : (
+              <button 
+                onClick={() => {
+                  setEditingDoc(null);
+                  setTaskFormData({
+                    titulo: '',
+                    descricao: '',
+                    data_inicio: new Date().toISOString().split('T')[0],
+                    observacoes: '',
+                    prioridade: 'normal',
+                    status: 'trabalhando',
+                    categoria: 'docs'
+                  });
+                  setShowForm(!showForm);
+                }}
+                className="bg-[#003366] text-white px-4 py-2 text-sm font-bold flex items-center gap-2 shadow-md hover:bg-[#002244] transition-all rounded"
+              >
+                {showForm ? <X size={16} /> : <Plus size={16} />} 
+                {showForm ? 'Fechar Formulário' : 'Novo Registro'}
+              </button>
             )}
-            <button 
-              onClick={() => setShowForm(!showForm)}
-              className="bg-[#003366] text-white px-4 py-2 text-sm font-bold flex items-center gap-2 shadow-md hover:bg-[#002244] transition-all"
-            >
-              {showForm ? <X size={16} /> : <Plus size={16} />} 
-              {showForm ? 'Fechar Formulário' : 'Novo Registro'}
-            </button>
-            <button className="bg-white border border-zinc-200 text-zinc-600 px-4 py-2 text-sm font-bold flex items-center gap-2 hover:bg-zinc-50 transition-all">
+            <button className="bg-white border border-zinc-200 text-zinc-600 px-4 py-2 text-sm font-bold flex items-center gap-2 hover:bg-zinc-50 transition-all rounded">
               <Filter size={16} /> Filtrar
             </button>
           </div>
         </div>
 
         {isCartaFormOpen && (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm">
-            <CartaForm onBack={() => setIsCartaFormOpen(false)} onSuccess={() => setIsCartaFormOpen(false)} />
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm no-print">
+            <CartaForm 
+              onBack={() => { setIsCartaFormOpen(false); setEditingCarta(null); }} 
+              onSuccess={() => { setIsCartaFormOpen(false); setEditingCarta(null); loadData(); }} 
+              editingCarta={editingCarta}
+            />
           </div>
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           <div className="lg:col-span-3 space-y-6">
-            <div className="bg-white border border-zinc-200 shadow-sm overflow-hidden">
-              <div className="p-4 border-b border-zinc-100 bg-zinc-50 flex justify-between items-center">
+            <div className="bg-white border border-zinc-200 shadow-sm overflow-hidden rounded">
+              <div className="p-4 border-b border-zinc-100 bg-zinc-50 flex justify-between items-center no-print">
                 <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Lista de Registros</span>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={14} />
@@ -8539,54 +8714,200 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
                     placeholder="Pesquisar..." 
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
-                    className="pl-9 pr-4 py-1.5 bg-white border border-zinc-200 text-xs focus:outline-none focus:border-[#003366] w-64" 
+                    className="pl-9 pr-4 py-1.5 bg-white border border-zinc-200 text-xs focus:outline-none focus:border-[#003366] w-64 rounded" 
                   />
                 </div>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
                   <thead>
-                    <tr className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest border-b border-zinc-100">
-                      <th className="px-6 py-4">Título</th>
-                      <th className="px-6 py-4">Data</th>
-                      <th className="px-6 py-4">Descrição</th>
-                      <th className="px-6 py-4">Anexo</th>
-                      <th className="px-6 py-4 text-right">Ações</th>
-                    </tr>
+                    {getHeaders()}
                   </thead>
                   <tbody className="divide-y divide-zinc-50">
                     {loading ? (
-                      <tr><td colSpan={5} className="px-6 py-8 text-center text-zinc-400 animate-pulse">Carregando dados...</td></tr>
+                      <tr><td colSpan={6} className="px-6 py-8 text-center text-zinc-400 animate-pulse">Carregando dados...</td></tr>
                     ) : filteredRecords.length === 0 ? (
-                      <tr><td colSpan={5} className="px-6 py-8 text-center text-zinc-400 italic">Nenhum registro encontrado.</td></tr>
-                    ) : filteredRecords.map(record => (
-                      <tr key={record.id} className="text-sm hover:bg-zinc-50 transition-colors group">
-                        <td className="px-6 py-4 font-bold text-[#003366]">{record.titulo}</td>
-                        <td className="px-6 py-4 text-zinc-500">{new Date(record.data_inicio).toLocaleDateString('pt-PT')}</td>
-                        <td className="px-6 py-4 text-zinc-600 truncate max-w-xs">{record.descricao}</td>
-                        <td className="px-6 py-4">
-                          {record.anexo_url ? (
-                            <a href={record.anexo_url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-blue-600 hover:underline">
-                              <Paperclip size={14} /> <span className="text-xs truncate max-w-[100px]">{record.anexo_nome}</span>
-                            </a>
-                          ) : (
-                            <span className="text-zinc-300 text-xs">-</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            {record.anexo_url && (
-                              <button onClick={() => window.open(record.anexo_url)} className="p-1 text-zinc-400 hover:text-blue-500"><Download size={16} /></button>
-                            )}
-                            <button onClick={() => handleDelete(record.id, record.anexo_path)} className="p-1 text-zinc-400 hover:text-red-500"><Trash2 size={16} /></button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                      <tr><td colSpan={6} className="px-6 py-8 text-center text-zinc-400 italic">Nenhum registro encontrado.</td></tr>
+                    ) : filteredRecords.map(record => {
+                      if (activeSection === 'letters') {
+                        return (
+                          <tr key={record.id} className="text-sm hover:bg-zinc-50 transition-colors group">
+                            <td className="px-6 py-4 font-bold text-[#003366]">{record.referencia || 'Sem Ref.'}</td>
+                            <td className="px-6 py-4 font-semibold text-zinc-700">{record.nome_destinatario || record.destinatario || '-'}</td>
+                            <td className="px-6 py-4 text-zinc-600 truncate max-w-xs">{record.assunto || 'Sem Assunto'}</td>
+                            <td className="px-6 py-4 text-zinc-500">
+                              {record.data_documento ? new Date(record.data_documento).toLocaleDateString('pt-PT') : '-'}
+                            </td>
+                            <td className="px-6 py-4">
+                              {record.imagem_url ? (
+                                <div className="flex items-center gap-2">
+                                  <a href={record.imagem_url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-emerald-600 hover:underline font-medium">
+                                    <Paperclip size={14} /> <span className="text-xs truncate max-w-[100px]">{record.imagem_nome || 'Imagem'}</span>
+                                  </a>
+                                  <button 
+                                    onClick={async () => {
+                                      if (confirm('Deseja eliminar esta imagem?')) {
+                                        try {
+                                          if (record.imagem_path) {
+                                            await supabase.storage.from('documentos').remove([record.imagem_path]);
+                                          }
+                                          await supabase.from('cartas').update({ imagem_url: null, imagem_path: null, imagem_nome: null }).eq('id', record.id);
+                                          loadData();
+                                          alert('Imagem eliminada com sucesso!');
+                                        } catch (err: any) {
+                                          alert('Erro ao eliminar imagem: ' + err.message);
+                                        }
+                                      }
+                                    }}
+                                    className="text-xs text-red-500 hover:text-red-700 font-semibold"
+                                  >
+                                    Apagar
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="text-zinc-300 text-xs">-</span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button 
+                                  onClick={() => {
+                                    setPrintingCarta(record);
+                                    setPrintFormat('carta');
+                                  }}
+                                  className="p-1 px-2 border border-[#003366]/20 bg-[#003366]/5 text-[#003366] rounded hover:bg-[#003366]/10 flex items-center gap-1 text-xs font-bold transition-all"
+                                  title="Imprimir"
+                                >
+                                  <Printer size={14} /> Imprimir
+                                </button>
+                                <button 
+                                  onClick={() => {
+                                    setEditingCarta(record);
+                                    setIsCartaFormOpen(true);
+                                  }}
+                                  className="p-1 text-zinc-400 hover:text-[#003366] transition-colors"
+                                  title="Editar"
+                                >
+                                  <Edit size={16} />
+                                </button>
+                                <button 
+                                  onClick={async () => {
+                                    if (confirm('Deseja eliminar esta carta definitivamente?')) {
+                                      try {
+                                        if (record.imagem_path) {
+                                          await supabase.storage.from('documentos').remove([record.imagem_path]);
+                                        }
+                                        const { error } = await supabase.from('cartas').delete().eq('id', record.id);
+                                        if (error) throw error;
+                                        loadData();
+                                        alert('Carta eliminada do supabase e da lista!');
+                                      } catch (err: any) {
+                                        alert('Erro ao eliminar: ' + err.message);
+                                      }
+                                    }
+                                  }}
+                                  className="p-1 text-zinc-400 hover:text-red-600 transition-colors"
+                                  title="Eliminar"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      } else if (activeSection === 'attachments') {
+                        return (
+                          <tr key={`${record.source}-${record.id}`} className="text-sm hover:bg-zinc-50 transition-colors group">
+                            <td className="px-6 py-4 font-bold text-[#003366]">{record.anexo_nome}</td>
+                            <td className="px-6 py-4 text-zinc-500">{new Date(record.data_inicio).toLocaleDateString('pt-PT')}</td>
+                            <td className="px-6 py-4 text-zinc-600 truncate max-w-sm">{record.titulo} ({record.referencia})</td>
+                            <td className="px-6 py-4">
+                              <span className={`px-2 py-0.5 text-[10px] font-bold rounded uppercase ${record.source === 'cartas' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
+                                {record.source === 'cartas' ? 'Cartas' : 'Docs Empresa'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button onClick={() => window.open(record.anexo_url)} className="p-1 text-zinc-400 hover:text-blue-500" title="Visualizar File"><Download size={16} /></button>
+                                <button 
+                                  onClick={async () => {
+                                    if (confirm('Deseja apagar esta imagem/documento dos anexos?')) {
+                                      try {
+                                        if (record.anexo_path) {
+                                          await supabase.storage.from('documentos').remove([record.anexo_path]);
+                                        }
+                                        if (record.source === 'cartas') {
+                                          await supabase.from('cartas').update({ imagem_url: null, imagem_path: null, imagem_name: null }).eq('id', record.id);
+                                        } else {
+                                          await supabase.from('secretaria_digital').update({ anexo_url: null, anexo_path: null, anexo_nome: null }).eq('id', record.id);
+                                        }
+                                        loadData();
+                                        alert('Anexo removido do registro!');
+                                      } catch (err: any) {
+                                        alert('Erro ao remover anexo: ' + err.message);
+                                      }
+                                    }
+                                  }}
+                                  className="p-1 text-zinc-400 hover:text-red-500"
+                                  title="Remover anexo"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      } else {
+                        // 'docs' (Documentos da empresa)
+                        return (
+                          <tr key={record.id} className="text-sm hover:bg-zinc-50 transition-colors group">
+                            <td className="px-6 py-4 font-bold text-[#003366]">{record.titulo}</td>
+                            <td className="px-6 py-4 text-zinc-500">{new Date(record.data_inicio).toLocaleDateString('pt-PT')}</td>
+                            <td className="px-6 py-4 text-zinc-600 truncate max-w-xs">{record.descricao}</td>
+                            <td className="px-6 py-4">
+                              {record.anexo_url ? (
+                                <a href={record.anexo_url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-blue-600 hover:underline">
+                                  <Paperclip size={14} /> <span className="text-xs truncate max-w-[100px]">{record.anexo_nome}</span>
+                                </a>
+                              ) : (
+                                <span className="text-zinc-300 text-xs">-</span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                {record.anexo_url && (
+                                  <button onClick={() => window.open(record.anexo_url)} className="p-1 text-zinc-400 hover:text-blue-500" title="Descarregar"><Download size={16} /></button>
+                                )}
+                                <button 
+                                  onClick={() => {
+                                    setEditingDoc(record);
+                                    setTaskFormData({
+                                      titulo: record.titulo || '',
+                                      descricao: record.descricao || '',
+                                      data_inicio: record.data_inicio ? new Date(record.data_inicio).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+                                      observacoes: record.observacoes || '',
+                                      prioridade: record.prioridade || 'normal',
+                                      status: record.status || 'trabalhando',
+                                      categoria: record.categoria || 'docs'
+                                    });
+                                    setShowForm(true);
+                                  }}
+                                  className="p-1 text-zinc-400 hover:text-[#003366]"
+                                  title="Editar"
+                                >
+                                  <Edit size={16} />
+                                </button>
+                                <button onClick={() => handleDelete(record.id, record.anexo_path)} className="p-1 text-zinc-400 hover:text-red-500" title="Apagar"><Trash2 size={16} /></button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      }
+                    })}
                   </tbody>
                 </table>
               </div>
-              <div className="p-4 border-t border-zinc-100 bg-zinc-50 flex justify-between items-center">
+              <div className="p-4 border-t border-zinc-100 bg-zinc-50 flex justify-between items-center no-print">
                 <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">Total: {filteredRecords.length} registros</span>
                 <div className="flex gap-2">
                   <button className="p-1 border border-zinc-200 bg-white text-zinc-400 disabled:opacity-50" disabled><ChevronLeft size={16} /></button>
@@ -8596,8 +8917,8 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
             </div>
           </div>
 
-          <div className="space-y-6">
-            <div className="bg-white border border-zinc-200 p-8 shadow-sm relative overflow-hidden">
+          <div className="space-y-6 no-print">
+            <div className="bg-white border border-zinc-200 p-8 shadow-sm relative overflow-hidden rounded">
               <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500" />
               <h4 className="font-bold text-[#003366] mb-4 flex items-center gap-2 uppercase tracking-tight">
                 <AlertCircle size={18} className="text-emerald-500" /> Informações Úteis
@@ -8612,16 +8933,178 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
                 </li>
                 <li className="flex items-start gap-2 text-xs text-zinc-500">
                   <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full mt-1.5 shrink-0" />
-                  <span>Anexe documentos digitalizados para consulta rápida.</span>
+                  <span>Anexe documentos e imagens para consulta rápida.</span>
                 </li>
                 <li className="flex items-start gap-2 text-xs text-zinc-500">
                   <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full mt-1.5 shrink-0" />
-                  <span>Use referências claras para facilitar a pesquisa.</span>
+                  <span>As imagens inseridas nas Cartas aparecem automaticamente na tab de Anexos.</span>
                 </li>
               </ul>
             </div>
           </div>
         </div>
+
+        {/* PRINT WATERMARK AND THE BEAUTIFUL A4 VIEW */}
+        {printingCarta && (
+          <div className="fixed inset-0 z-[100] bg-zinc-900/60 flex items-center justify-center overflow-y-auto p-4 md:p-8">
+            <div className="bg-white rounded-lg shadow-2xl max-w-4xl w-full p-6 space-y-6 max-h-[95vh] overflow-y-auto print:p-0 print:h-full print:shadow-none print:w-full">
+              <div className="flex justify-between items-center border-b pb-4 print:hidden">
+                <div>
+                  <h3 className="text-lg font-bold text-[#003366]">Visualização do Documento em A4</h3>
+                  <p className="text-xs text-zinc-400 mt-0.5">Selecione o formato para impressão do documento</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="flex bg-zinc-100 rounded p-1 gap-1">
+                    <button 
+                      onClick={() => setPrintFormat('carta')}
+                      className={`px-3 py-1 text-xs font-bold rounded transition-all ${printFormat === 'carta' ? 'bg-[#003366] text-white shadow' : 'text-zinc-500 hover:text-[#003366]'}`}
+                    >
+                      Formato Carta
+                    </button>
+                    <button 
+                      onClick={() => setPrintFormat('declaracao')}
+                      className={`px-3 py-1 text-xs font-bold rounded transition-all ${printFormat === 'declaracao' ? 'bg-[#003366] text-white shadow' : 'text-zinc-500 hover:text-[#003366]'}`}
+                    >
+                      Formato Declaração
+                    </button>
+                  </div>
+                  <button 
+                    onClick={() => window.print()} 
+                    className="bg-[#003366] text-white px-4 py-2 text-xs font-bold uppercase tracking-wider rounded flex items-center gap-1.5 hover:bg-[#002244]"
+                  >
+                    <Printer size={14} /> Imprimir
+                  </button>
+                  <button 
+                    onClick={() => setPrintingCarta(null)} 
+                    className="bg-zinc-100 text-zinc-600 px-4 py-2 text-xs font-bold uppercase tracking-wider rounded hover:bg-zinc-200"
+                  >
+                    Fechar
+                  </button>
+                </div>
+              </div>
+
+              {/* A4 sheet styling mockup */}
+              <div className="flex justify-center bg-zinc-100 p-4 border rounded shadow-inner print:p-0 print:bg-white print:border-none print:shadow-none">
+                <div className="bg-white w-[210mm] min-h-[297mm] p-[20mm] text-zinc-800 shadow-lg text-sm flex flex-col justify-between relative print:shadow-none print:p-0 print:m-0 print:w-full" style={{ fontFamily: 'Inter, sans-serif' }}>
+                  
+                  {/* Watermark in background if requested */}
+                  {companySettings?.watermark_url && (
+                    <div className="absolute inset-0 flex items-center justify-center opacity-[0.04] pointer-events-none select-none">
+                      <img src={companySettings.watermark_url} alt="Watermark" style={{ width: `${companySettings.watermark_size || 150}mm` }} />
+                    </div>
+                  )}
+
+                  {/* Document Header */}
+                  <div>
+                    <div className="flex justify-between items-start border-b pb-6 border-zinc-200 mb-6">
+                      <div>
+                        {companySettings?.logo_url ? (
+                          <img src={companySettings.logo_url} alt="Logo" className="max-h-16 object-contain mb-2" style={{ maxHeight: `${(companySettings.logo_size || 100) / 2}px` }} referrerPolicy="no-referrer" />
+                        ) : (
+                          <div className="text-xl font-bold tracking-tight text-[#003366]">{companySettings?.nome_empresa || user?.nome_empresa || 'Empresa Logada'}</div>
+                        )}
+                        <p className="text-[9px] text-zinc-400 font-mono tracking-widest uppercase mt-1">SÉRIE: {printingCarta.serie || 'S12026'}</p>
+                      </div>
+                      
+                      <div className="text-right text-[11px] text-zinc-500 space-y-0.5">
+                        <div className="font-extrabold text-zinc-800 uppercase tracking-tight">{companySettings?.nome_empresa || 'Secretaria Digital'}</div>
+                        {companySettings?.nif && <div>NIF: <span className="font-semibold text-zinc-600">{companySettings.nif}</span></div>}
+                        {companySettings?.contacto && <div>Contacto: <span className="font-semibold text-zinc-600">{companySettings.contacto}</span></div>}
+                        {companySettings?.email && <div>Email: <span className="font-semibold text-zinc-600">{companySettings.email}</span></div>}
+                        {companySettings?.localizacao && <div className="max-w-[180px] leading-tight text-right ml-auto text-[10px]">{companySettings.localizacao}</div>}
+                      </div>
+                    </div>
+
+                    {/* Format Layouts */}
+                    {printFormat === 'carta' ? (
+                      // FORMATO CARTA COMERCIAL
+                      <div className="space-y-6">
+                        <div className="flex justify-between text-xs text-zinc-500">
+                          <div>Sua Refª: <span className="font-semibold text-zinc-700">{printingCarta.referencia || 'Generação automática'}</span></div>
+                          <div>Data: <span className="font-semibold text-zinc-700">{printingCarta.descricao_data || new Date(printingCarta.data_documento).toLocaleDateString('pt-PT')}</span></div>
+                        </div>
+
+                        {/* Recipient area */}
+                        <div className="bg-zinc-50 border border-zinc-100 p-4 rounded text-xs space-y-1 w-[60%] ml-auto shadow-sm">
+                          <div className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest">Destinatário</div>
+                          <div className="font-bold text-zinc-700 text-xs">{printingCarta.destinatario || 'Exo(a) Sr(a)'}</div>
+                          <div className="font-extrabold text-zinc-900 text-sm mt-0.5">{printingCarta.nome_destinatario}</div>
+                          {printingCarta.morada && <div className="text-zinc-600">{printingCarta.morada}</div>}
+                          <div className="text-zinc-600">{printingCarta.localidade || 'Luanda'}{printingCarta.provincia ? `, ${printingCarta.provincia}` : ''}</div>
+                          {printingCarta.email_destinatario && <div className="text-zinc-500 truncate mt-1">Email: {printingCarta.email_destinatario}</div>}
+                        </div>
+
+                        {/* Subject */}
+                        <div className="pt-4 border-t border-zinc-100">
+                          <span className="text-[10px] text-zinc-400 font-extrabold uppercase tracking-widest block mb-0.5">ASSUNTO:</span>
+                          <h1 className="text-md font-extrabold text-[#003366] tracking-tight uppercase">{printingCarta.assunto || 'Sem Assunto Definido'}</h1>
+                        </div>
+
+                        {/* Document Content Box */}
+                        <div className="pt-4 text-zinc-700 leading-relaxed text-sm select-text whitespace-normal break-words prose max-w-none">
+                          <div dangerouslySetInnerHTML={{ __html: printingCarta.conteudo }} />
+                        </div>
+                      </div>
+                    ) : (
+                      // FORMATO DECLARAÇÃO
+                      <div className="space-y-8 pt-4">
+                        <div className="text-center space-y-2 mt-4">
+                          <h1 className="text-3xl font-black tracking-widest text-[#003366] border-b-2 border-[#003366] inline-block px-12 pb-2 uppercase text-center mx-auto">DECLARAÇÃO</h1>
+                          <p className="text-[10px] text-zinc-400 font-mono tracking-wider">Código de Validação: {printingCarta.referencia}</p>
+                        </div>
+
+                        <div className="pt-6 text-zinc-700 text-sm space-y-6 text-justify leading-loose min-h-[300px]">
+                          <p className="font-bold indent-8 text-zinc-800">
+                            Para os devidos efeitos de legalidade e de direito administrativo, declara-se pública e especificamente que:
+                          </p>
+                          <div className="prose max-w-none text-zinc-700 prose-sm px-4 bg-zinc-50/40 p-4 rounded border border-zinc-100" dangerouslySetInnerHTML={{ __html: printingCarta.conteudo }} />
+                          
+                          {printingCarta.observacoes && (
+                            <div className="bg-zinc-50 p-3 rounded text-xs text-zinc-500 border border-zinc-200 border-l-4 border-l-[#003366]">
+                              <span className="font-bold uppercase tracking-wider block text-[9px] mb-1">Notas Suplementares:</span>
+                              {printingCarta.observacoes}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex justify-between items-center text-xs text-zinc-400 border-t pt-2">
+                          <div>Série: <span className="font-semibold text-zinc-600">{printingCarta.serie}</span></div>
+                          <div>{printingCarta.descricao_data || new Date(printingCarta.data_documento).toLocaleDateString('pt-PT')}</div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Footer Seal and Sign-off */}
+                  <div className="border-t border-zinc-200 pt-8 mt-10 space-y-6">
+                    <div className="flex justify-around text-center text-xs">
+                      <div>
+                        <div className="w-56 border-b border-zinc-300 mx-auto h-12" />
+                        <p className="mt-2 font-bold text-zinc-800">Assinatura Certificada</p>
+                        <p className="text-zinc-500 text-[10px]">({companySettings?.responsavel || 'O Responsável Autoritário'})</p>
+                      </div>
+                      
+                      {printFormat === 'declaracao' && (
+                        <div>
+                          <div className="w-56 border-b border-zinc-300 mx-auto h-12" />
+                          <p className="mt-2 font-bold text-zinc-800">O Destinatário Declarado</p>
+                          <p className="text-zinc-500 text-[10px]">({printingCarta.nome_destinatario || 'Assinatura do Titular'})</p>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="text-center text-[9px] text-zinc-400 leading-normal max-w-lg mx-auto">
+                      Emitido eletronicamente pela secretaria da empresa {companySettings?.nome_empresa || 'registada'}. 
+                      É proibida a reprodução sem autorização prévia por escrito. 
+                      Os dados contidos são confidenciais ao abrigo do regulamento em vigor.
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         <AnimatePresence>
           {showForm && (
@@ -8630,7 +9113,7 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="bg-white border border-zinc-200 p-8 shadow-2xl relative overflow-hidden max-w-lg w-full max-h-[90vh] overflow-y-auto"
+                className="bg-white border border-zinc-200 p-8 shadow-2xl relative overflow-hidden max-w-lg w-full max-h-[90vh] overflow-y-auto rounded-lg"
               >
                 <button 
                   onClick={() => setShowForm(false)}
@@ -8640,7 +9123,7 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
                 </button>
                 <div className="absolute top-0 left-0 w-1 h-full bg-[#003366]" />
                 <h4 className="font-bold text-[#003366] mb-6 flex items-center gap-2 uppercase tracking-tight">
-                  <PlusCircle size={18} /> Novo Registro: {sections.find(s => s.id === activeSection)?.label}
+                  <PlusCircle size={18} /> {editingDoc ? 'Editar Registro' : 'Novo Registro'}: {sections.find(s => s.id === activeSection)?.label}
                 </h4>
                 <form className="space-y-5" onSubmit={handleSubmit}>
                   <div className="space-y-1.5">
@@ -8650,7 +9133,7 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
                       required 
                       value={formData.titulo}
                       onChange={e => setTaskFormData({...formData, titulo: e.target.value})}
-                      className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all" 
+                      className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all rounded" 
                       placeholder="Ex: Contrato de Arrendamento" 
                     />
                   </div>
@@ -8660,7 +9143,7 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
                       type="text" 
                       value={formData.descricao}
                       onChange={e => setTaskFormData({...formData, descricao: e.target.value})}
-                      className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all" 
+                      className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all rounded" 
                       placeholder="Breve descrição..." 
                     />
                   </div>
@@ -8672,7 +9155,7 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
                         required 
                         value={formData.data_inicio}
                         onChange={e => setTaskFormData({...formData, data_inicio: e.target.value})}
-                        className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all" 
+                        className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all rounded" 
                       />
                     </div>
                     <div className="space-y-1.5">
@@ -8680,7 +9163,7 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
                       <select 
                         value={formData.prioridade}
                         onChange={e => setTaskFormData({...formData, prioridade: e.target.value})}
-                        className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all"
+                        className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all rounded"
                       >
                         <option value="baixa">Baixa</option>
                         <option value="normal">Normal</option>
@@ -8691,15 +9174,24 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Anexo (Opcional)</label>
                     <div className="flex items-center gap-3">
-                      <label className="flex-1 flex items-center justify-center gap-2 border-2 border-dashed border-zinc-200 p-4 cursor-pointer hover:border-[#003366] transition-all">
+                      <label className="flex-1 flex items-center justify-center gap-2 border-2 border-dashed border-zinc-200 p-4 cursor-pointer hover:border-[#003366] transition-all rounded bg-zinc-50/50">
                         <Upload size={16} className="text-zinc-400" />
                         <span className="text-xs text-zinc-500 font-bold uppercase truncate max-w-[200px]">
-                          {selectedFile ? selectedFile.name : 'Carregar Ficheiro'}
+                          {selectedFile ? selectedFile.name : editingDoc?.anexo_nome ? editingDoc.anexo_nome : 'Carregar Ficheiro'}
                         </span>
                         <input type="file" className="hidden" onChange={e => setSelectedFile(e.target.files?.[0] || null)} />
                       </label>
-                      {selectedFile && (
-                        <button type="button" onClick={() => setSelectedFile(null)} className="p-2 text-zinc-400 hover:text-red-500">
+                      {(selectedFile || editingDoc?.anexo_url) && (
+                        <button 
+                          type="button" 
+                          onClick={() => {
+                            setSelectedFile(null);
+                            if (editingDoc) {
+                              setEditingDoc({...editingDoc, anexo_url: '', anexo_path: '', anexo_nome: ''});
+                            }
+                          }} 
+                          className="p-2 border border-zinc-200 text-zinc-400 hover:text-red-500 rounded"
+                        >
                           <X size={16} />
                         </button>
                       )}
@@ -8710,7 +9202,7 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
                     <textarea 
                       value={formData.observacoes}
                       onChange={e => setTaskFormData({...formData, observacoes: e.target.value})}
-                      className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] h-24 transition-all" 
+                      className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] h-24 transition-all rounded" 
                       placeholder="Descreva os detalhes importantes..."
                     ></textarea>
                   </div>
@@ -8719,14 +9211,14 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
                       type="button" 
                       onClick={() => setShowForm(false)} 
                       disabled={loading}
-                      className="flex-1 bg-zinc-100 text-zinc-600 py-3 text-xs font-bold uppercase tracking-widest hover:bg-zinc-200 transition-all disabled:opacity-50"
+                      className="flex-1 bg-zinc-100 text-zinc-600 py-3 text-xs font-bold uppercase tracking-widest hover:bg-zinc-200 transition-all disabled:opacity-50 rounded"
                     >
                       Cancelar
                     </button>
                     <button 
                       type="submit" 
                       disabled={loading}
-                      className="flex-2 bg-[#003366] text-white py-3 px-8 text-xs font-bold uppercase tracking-widest shadow-lg hover:bg-[#002244] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                      className="flex-2 bg-[#003366] text-white py-3 px-8 text-xs font-bold uppercase tracking-widest shadow-lg hover:bg-[#002244] transition-all disabled:opacity-50 flex items-center justify-center gap-2 rounded"
                     >
                       {loading ? <RefreshCw size={14} className="animate-spin" /> : null}
                       Guardar Registro
@@ -8743,17 +9235,17 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
 
   return (
     <div className="space-y-8">
-      <header>
+      <header className="no-print">
         <Breadcrumbs paths={['Home', 'Área Reservada', 'Secretária']} />
         <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Secretária Digital</h2>
       </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 no-print">
         {sections.map(section => (
           <button
             key={section.id}
             onClick={() => setActiveSection(section.id)}
-            className={`p-6 border transition-all flex flex-col items-center gap-3 group ${
+            className={`p-6 border transition-all flex flex-col items-center gap-3 group rounded ${
               activeSection === section.id 
                 ? 'bg-[#003366] border-[#003366] text-white shadow-xl scale-105 z-10' 
                 : 'bg-white border-zinc-200 text-zinc-600 hover:border-[#003366] hover:text-[#003366]'

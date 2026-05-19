@@ -1634,6 +1634,38 @@ app.post("/api/exec-sql", express.json(), async (req, res) => {
     if (empresa_id) return res.json(employees.filter(e => String(e.empresa_id) === String(empresa_id)));
     res.json([]);
   });
+  app.post("/api/employees", (req, res) => {
+    const newEmp = { 
+      ...req.body, 
+      id: generateId(), 
+      created_at: new Date().toISOString() 
+    };
+    employees.push(newEmp);
+    saveData();
+    res.json(newEmp);
+  });
+  app.put("/api/employees/:id", (req, res) => {
+    const id = Number(req.params.id);
+    const index = employees.findIndex(e => e.id === id);
+    if (index !== -1) {
+      employees[index] = { ...employees[index], ...req.body };
+      saveData();
+      res.json(employees[index]);
+    } else {
+      res.status(404).json({ error: "Funcionário não encontrado" });
+    }
+  });
+  app.delete("/api/employees/:id", (req, res) => {
+    const id = Number(req.params.id);
+    const index = employees.findIndex(e => e.id === id);
+    if (index !== -1) {
+      employees.splice(index, 1);
+      saveData();
+      res.json({ success: true });
+    } else {
+      res.status(404).json({ error: "Funcionário não encontrado" });
+    }
+  });
   app.get("/api/professions", (req, res) => {
     const { empresa_id } = req.query;
     if (empresa_id) return res.json(professions.filter(p => String(p.empresa_id) === String(empresa_id)));

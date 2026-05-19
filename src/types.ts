@@ -216,6 +216,42 @@ export interface Employee {
   dismissal_reason?: string;
   dismissal_ordered_by?: string;
   dismissal_observations?: string;
+
+  // Additional form fields
+  casa_no?: string;
+  rua?: string;
+  zona?: string;
+  bairro?: string;
+  provincia_morada?: string;
+  municipio_morada?: string;
+  codigo_postal?: string;
+  pais?: string;
+  seg_hours?: string;
+  ter_hours?: string;
+  qua_hours?: string;
+  qui_hours?: string;
+  sex_hours?: string;
+  sab_hours?: string;
+  dom_hours?: string;
+  complemento_salarial?: number;
+  local_trabalho_id?: string;
+  solicitante_admissao?: string;
+  motivo_admissao?: string;
+  reparticao_fiscal?: string;
+  inss_number_antigo?: string;
+  provincia_trabalho?: string;
+  municipio_trabalho?: string;
+  grupo_irt?: string;
+  agente_no?: string;
+  document_type?: string;
+  entidade_emissora?: string;
+  data_emissao_doc?: string;
+  data_validade_doc?: string;
+  naturalidade?: string;
+  provincia_nascimento?: string;
+  nacionalidade?: string;
+  nome_pai?: string;
+  nome_mae?: string;
 }
 
 export interface Profession {

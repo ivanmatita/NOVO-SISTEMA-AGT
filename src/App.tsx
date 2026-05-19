@@ -36,6 +36,8 @@ import {
   ChevronRight,
   ChevronLeft,
   ChevronDown,
+  ChevronUp,
+  Info,
   ArrowLeft,
   Printer,
   Truck,
@@ -175,6 +177,7 @@ import { supabase } from './lib/supabase';
 import { authService } from './services/authService';
 import { clienteService, Cliente as DbCliente } from './services/clienteService';
 import { localTrabalhoService, LocalTrabalho as DbLocalTrabalho } from './services/localTrabalhoService';
+import { employeeService } from './services/employeeService';
 import { throttle } from './utils/throttle';
 
 const fetchWithAuth = async (url: string, options?: RequestInit) => {
@@ -1077,6 +1080,20 @@ const INSS_PROFESSIONS = [
   "Tesoureiro", "Topógrafo", "Traductor", "Vendedor", "Veterinário", "Vigilante", "Zelador"
 ];
 
+const PROVINCIAS_ANGOLA = [
+  'Bengo', 'Benguela', 'Bié', 'Cabinda', 'Cuando Cubango', 'Cuanza Norte', 
+  'Cuanza Sul', 'Cunene', 'Huambo', 'Huíla', 'Luanda', 'Lunda Norte', 
+  'Lunda Sul', 'Malanje', 'Moxico', 'Namibe', 'Uíge', 'Zaire'
+];
+
+const MUNICIPADOS_ANGOLA: Record<string, string[]> = {
+  'Luanda': ['Luanda', 'Belas', 'Talatona', 'Viana', 'Cacuaco', 'Cazenga', 'Quiçama', 'Icolo e Bengo'],
+  'Benguela': ['Benguela', 'Lobito', 'Catumbela', 'Baía Farta', 'Bocoio', 'Balombo', 'Caimbambo', 'Chongorói', 'Ganda', 'Cubal'],
+  'Huambo': ['Huambo', 'Caála', 'Eculica', 'Bailundo', 'Catchiungo', 'Londuimbale', 'Longonjo', 'Mungo', 'Tchicala-Tcholoanga', 'Tchindjenje', 'Ucuma'],
+  'Huíla': ['Lubango', 'Chibia', 'Caconda', 'Caluquembe', 'Chiange', 'Chicomba', 'Chipindo', 'Gambos', 'Humpata', 'Jamba', 'Kuvango', 'Matala', 'Quilengues', 'Quipungo'],
+  'Cabinda': ['Cabinda', 'Cacongo', 'Buco-Zau', 'Belize'],
+};
+
 const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, companyName, fiscalYear }: { onRefresh: () => void, onSetIsContractModalOpen: (b: boolean) => void, onSetEmployee: (e: Employee | null) => void, caixas: Caixa[], companyName: string, fiscalYear: string }) => {
   const { user } = useAuth();
   const professionsRef = useRef<HTMLDivElement>(null);
@@ -1101,6 +1118,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
   const [selectedMapSubTab, setSelectedMapSubTab] = useState('irt_inss');
   const [selectedPaymentCaixa, setSelectedPaymentCaixa] = useState('');
   const [isProcessingComplete, setIsProcessingComplete] = useState(false);
+  const [workSites, setWorkSites] = useState<WorkSite[]>([]);
 
   const [showDismissForm, setShowDismissForm] = useState(false);
   const [dismissData, setDismissData] = useState({ date: new Date().toISOString().split('T')[0], reason: '', observations: '', orderedBy: '' });
@@ -1461,6 +1479,48 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
   const [subjectToIRT, setSubjectToIRT] = useState(true);
   const [subjectToINSS, setSubjectToINSS] = useState(true);
   const [hiredAt, setHiredAt] = useState(new Date().toISOString().split('T')[0]);
+
+  // Additional form fields states
+  const [casaNo, setCasaNo] = useState('');
+  const [rua, setRua] = useState('');
+  const [zona, setZona] = useState('');
+  const [bairro, setBairro] = useState('');
+  const [provinciaMorada, setProvinciaMorada] = useState('');
+  const [municipioMorada, setMunicipioMorada] = useState('');
+  const [codigoPostal, setCodigoPostal] = useState('0000-00');
+  const [pais, setPais] = useState('AO');
+  const [segHours, setSegHours] = useState('8');
+  const [terHours, setTerHours] = useState('8');
+  const [quaHours, setQuaHours] = useState('8');
+  const [quiHours, setQuiHours] = useState('8');
+  const [sexHours, setSexHours] = useState('8');
+  const [sabHours, setSabHours] = useState('4');
+  const [domHours, setDomHours] = useState('0');
+  const [complementoSalarial, setComplementoSalarial] = useState('0');
+  const [localTrabalhoId, setLocalTrabalhoId] = useState('');
+  const [solicitanteAdmissao, setSolicitanteAdmissao] = useState('');
+  const [motivoAdmissao, setMotivoAdmissao] = useState('');
+  const [reparticaoFiscal, setReparticaoFiscal] = useState('');
+  const [inssNumberAntigo, setInssNumberAntigo] = useState('');
+  const [provinciaTrabalho, setProvinciaTrabalho] = useState('');
+  const [municipioTrabalho, setMunicipioTrabalho] = useState('');
+  const [grupoIrt, setGrupoIrt] = useState('');
+  const [agenteNo, setAgenteNo] = useState('');
+  const [documentType, setDocumentType] = useState('');
+  const [entidadeEmissora, setEntidadeEmissora] = useState('');
+  const [dataEmissaoDoc, setDataEmissaoDoc] = useState('');
+  const [dataValidadeDoc, setDataValidadeDoc] = useState('');
+  const [naturalidade, setNaturalidade] = useState('');
+  const [provinciaNascimento, setProvinciaNascimento] = useState('');
+  const [nacionalidade, setNacionalidade] = useState('');
+  const [nomePai, setNomePai] = useState('');
+  const [nomeMae, setNomeMae] = useState('');
+
+  // Form section collapse states
+  const [openDadosPessoais, setOpenDadosPessoais] = useState(true);
+  const [openDadosProfissionais, setOpenDadosProfissionais] = useState(true);
+  const [openDadosFiscais, setOpenDadosFiscais] = useState(true);
+  const [openOutrosDados, setOpenOutrosDados] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState(`Março / ${fiscalYear}`);
   const [processedAttendance, setProcessedAttendance] = useState<Record<number, boolean>>({});
   const [processedReceipts, setProcessedReceipts] = useState<any[]>([]);
@@ -1552,14 +1612,67 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
     return { fj, fi, fe, he, hp, p, d };
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, callback: (url: string) => void) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, callback: (url: string) => void) => {
     const file = e.target.files?.[0];
     if (file) {
+      // First, do a local preview readout for instant UI feedback
       const reader = new FileReader();
       reader.onloadend = () => {
         callback(reader.result as string);
       };
       reader.readAsDataURL(file);
+
+      // Upload to Supabase Storage
+      try {
+        const empresaId = user?.empresa_id;
+        if (!empresaId) return;
+
+        const fileExt = file.name.split('.').pop() || 'png';
+        const fileName = `${empresaId}/colaborador-${Date.now()}-${file.name.replace(/\s+/g, '_')}`;
+
+        // 1. Upload
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('media')
+          .upload(fileName, file, { upsert: false });
+
+        if (uploadError) {
+          console.error("Erro upload storage colaborador:", uploadError);
+          return;
+        }
+
+        // 2. Public URL
+        const { data: urlData } = supabase.storage
+          .from('media')
+          .getPublicUrl(fileName);
+
+        if (urlData?.publicUrl) {
+          // Send public url to the form state
+          callback(urlData.publicUrl);
+
+          // 3. Register in media files table
+          try {
+            await supabase.from('media_arquivos').insert({
+              empresa_id: empresaId,
+              utilizador_id: user?.id,
+              tipo: 'colaborador',
+              nome_arquivo: fileName,
+              nome_original: file.name,
+              bucket: 'media',
+              caminho_arquivo: uploadData.path,
+              url_publica: urlData.publicUrl,
+              mime_type: file.type,
+              tamanho_bytes: file.size,
+              extensao: fileExt,
+              entidade: 'colaboradores',
+              descricao: 'Foto do Colaborador adicionada via formulario'
+            });
+          } catch (metaErr) {
+            console.warn('Erro ao registrar metadados de midia:', metaErr);
+          }
+        }
+      } catch (err) {
+        console.error("Erro no upload da foto do colaborador:", err);
+      }
     }
   };
 
@@ -1585,8 +1698,23 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
         pList = await fetchJson(`/api/professions?empresa_id=${user?.empresa_id}`);
       }
 
-      const [e, att, abs, lt] = await Promise.all([
-        fetchJson(`/api/employees?empresa_id=${user?.empresa_id}`),
+      let e: any[] = [];
+      try {
+        if (user?.empresa_id) {
+          e = await employeeService.getEmployees(user.empresa_id);
+        }
+      } catch (err) {
+        console.warn('Erro ao carregar colaboradores do Supabase, buscando do banco local...', err);
+      }
+      if (!e || e.length === 0) {
+        try {
+          e = await fetchJson(`/api/employees?empresa_id=${user?.empresa_id}`);
+        } catch (err) {
+          console.error('Erro ao buscar do banco local como fallback:', err);
+        }
+      }
+
+      const [att, abs, lt] = await Promise.all([
         fetchJson(`/api/employees/attendance?date=${attendanceDate}&empresa_id=${user?.empresa_id}`),
         fetchJson(`/api/employees/absences?empresa_id=${user?.empresa_id}`),
         fetchJson(`/api/labor-terminations?empresa_id=${user?.empresa_id}`)
@@ -1596,6 +1724,31 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
       setAttendance(Array.isArray(att) ? att : []);
       setAbsences(Array.isArray(abs) ? abs : []);
       setLaborTerminations(Array.isArray(lt) ? lt : []);
+
+      try {
+        if (user?.empresa_id) {
+          const wsData = await localTrabalhoService.getLocaisTrabalho(user.empresa_id);
+          setWorkSites(wsData.map((ws: any) => ({
+            ...ws,
+            id: ws.id,
+            title: ws.nome || '',
+            name: ws.nome || '',
+            location: ws.endereco || '',
+            contact: ws.telefone || '',
+            description: ws.descricao || '',
+            observations: ws.observacoes || '',
+            client_id: ws.client_id,
+            client_name: ws.client_name,
+            code: ws.code,
+            start_date: ws.start_date,
+            end_date: ws.end_date,
+            staff_per_day: Number(ws.staff_per_day || 0),
+            total_staff: Number(ws.total_staff || 0)
+          })));
+        }
+      } catch (wsErr) {
+        console.error('Error fetching workSites inside HRModule:', wsErr);
+      }
     } catch (err) {
       console.error('Error fetching HR data:', err);
     }
@@ -1653,10 +1806,21 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
     }
   };
 
-  const handleDeleteEmployee = async (id: number) => {
+  const handleDeleteEmployee = async (id: number | string) => {
     if (!confirm('Tem a certeza que deseja eliminar este funcionário?')) return;
     try {
-      await fetchWithAuth(`/api/employees/${id}`, { method: 'DELETE' });
+      if (user?.empresa_id) {
+        try {
+          await employeeService.deleteEmployee(id, user.empresa_id);
+        } catch (supaErr) {
+          console.error('[DeleteEmployee] Erro ao deletar no Supabase:', supaErr);
+        }
+      }
+      try {
+        await fetchWithAuth(`/api/employees/${id}`, { method: 'DELETE' });
+      } catch (err) {
+        console.warn('Banco local delete fallback failed (this is fine if it only exists in Supabase):', err);
+      }
       fetchHRData();
       onRefresh();
     } catch (err) {
@@ -1690,11 +1854,51 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
     setEmail(emp.email || '');
     setBankAccount(emp.bank_account || '');
     setInssNumber(emp.inss_number || '');
+
+    // Map additional fields on edit
+    setCasaNo(emp.casa_no || '');
+    setRua(emp.rua || '');
+    setZona(emp.zona || '');
+    setBairro(emp.bairro || '');
+    setProvinciaMorada(emp.provincia_morada || '');
+    setMunicipioMorada(emp.municipio_morada || '');
+    setCodigoPostal(emp.codigo_postal || '0000-00');
+    setPais(emp.pais || 'AO');
+    setSegHours(emp.seg_hours || '8');
+    setTerHours(emp.ter_hours || '8');
+    setQuaHours(emp.qua_hours || '8');
+    setQuiHours(emp.qui_hours || '8');
+    setSexHours(emp.sex_hours || '8');
+    setSabHours(emp.sab_hours || '4');
+    setDomHours(emp.dom_hours || '0');
+    setComplementoSalarial(String(emp.complemento_salarial || '0'));
+    setLocalTrabalhoId(emp.local_trabalho_id || '');
+    setSolicitanteAdmissao(emp.solicitante_admissao || '');
+    setMotivoAdmissao(emp.motivo_admissao || '');
+    setReparticaoFiscal(emp.reparticao_fiscal || '');
+    setInssNumberAntigo(emp.inss_number_antigo || '');
+    setProvinciaTrabalho(emp.provincia_trabalho || '');
+    setMunicipioTrabalho(emp.municipio_trabalho || '');
+    setGrupoIrt(emp.grupo_irt || '');
+    setAgenteNo(emp.agente_no || '');
+    setDocumentType(emp.document_type || '');
+    setEntidadeEmissora(emp.entidade_emissora || '');
+    setDataEmissaoDoc(emp.data_emissao_doc || '');
+    setDataValidadeDoc(emp.data_validade_doc || '');
+    setNaturalidade(emp.naturalidade || '');
+    setProvinciaNascimento(emp.provincia_nascimento || '');
+    setNacionalidade(emp.nacionalidade || '');
+    setNomePai(emp.nome_pai || '');
+    setNomeMae(emp.nome_mae || '');
+
     setShowForm(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    const combinedAddress = `${casaNo ? 'Casa ' + casaNo + ', ' : ''}${rua ? 'Rua ' + rua + ', ' : ''}${bairro ? 'Bairro ' + bairro + ', ' : ''}${zona ? 'Zona ' + zona + ', ' : ''}${municipioMorada ? municipioMorada + ', ' : ''}${provinciaMorada ? provinciaMorada : ''}`.trim().replace(/,$/, '');
+
     const payload = { 
       name, 
       role, 
@@ -1704,7 +1908,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
       phone,
       nif,
       bi,
-      address,
+      address: combinedAddress || address,
       iban,
       bank_name: bankName,
       image_url: imageUrl,
@@ -1720,22 +1924,85 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
       hired_at: hiredAt,
       bank_account: bankAccount,
       inss_number: inssNumber,
-      status: editingEmployee ? editingEmployee.status : 'active'
+      status: editingEmployee ? editingEmployee.status : 'active',
+
+      // Additional fields saved in database
+      casa_no: casaNo,
+      rua,
+      zona,
+      bairro,
+      provincia_morada: provinciaMorada,
+      municipio_morada: municipioMorada,
+      codigo_postal: codigoPostal,
+      pais,
+      seg_hours: segHours,
+      ter_hours: terHours,
+      qua_hours: quaHours,
+      qui_hours: quiHours,
+      sex_hours: sexHours,
+      sab_hours: sabHours,
+      dom_hours: domHours,
+      complemento_salarial: Number(complementoSalarial) || 0,
+      local_trabalho_id: localTrabalhoId,
+      solicitante_admissao: solicitanteAdmissao,
+      motivo_admissao: motivoAdmissao,
+      reparticao_fiscal: reparticaoFiscal,
+      inss_number_antigo: inssNumberAntigo,
+      provincia_trabalho: provinciaTrabalho,
+      municipio_trabalho: municipioTrabalho,
+      grupo_irt: grupoIrt,
+      agente_no: agenteNo,
+      document_type: documentType,
+      entidade_emissora: entidadeEmissora,
+      data_emissao_doc: dataEmissaoDoc,
+      data_validade_doc: dataValidadeDoc,
+      naturalidade,
+      provincia_nascimento: provinciaNascimento,
+      nacionalidade,
+      nome_pai: nomePai,
+      nome_mae: nomeMae
     };
 
     const url = editingEmployee ? `/api/employees/${editingEmployee.id}` : '/api/employees';
     const method = editingEmployee ? 'PUT' : 'POST';
 
     try {
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+      // 1. Save to Supabase (Master Database)
+      if (user?.empresa_id) {
+        const supaPayload = {
+          ...payload,
+          empresa_id: user.empresa_id,
+          profession_id: (professionId && String(professionId).trim() !== '') ? String(professionId) : null,
+        };
+        try {
+          if (editingEmployee) {
+            await employeeService.updateEmployee(editingEmployee.id, supaPayload as any);
+          } else {
+            await employeeService.createEmployee(supaPayload as any);
+          }
+        } catch (supaErr: any) {
+          console.error('[SubmitEmployee] Erro ao salvar colaborador no Supabase:', supaErr);
+          throw new Error(supaErr?.message || 'Erro ao salvar colaborador no banco de dados Supabase');
+        }
+      } else {
+        throw new Error('Sua sessão expirou ou empresa não associada. Não foi possível salvar o colaborador.');
+      }
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Erro ao registar funcionário');
+      // 2. Save locally as fallback/dual sync (only if ID is numeric or when creating, to avoid local server backend parse crash on UUID)
+      const isNumericId = editingEmployee ? !isNaN(Number(editingEmployee.id)) : true;
+      if (isNumericId) {
+        try {
+          const response = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          if (!response.ok) {
+            console.warn('[Sync] Banco local de sincronização não respondeu com OK, continuando.');
+          }
+        } catch (localErr) {
+          console.warn('[Sync] Falha ao sincronizar banco local:', localErr);
+        }
       }
 
       setName(''); setRole(''); setSalary(''); setProfessionId(''); 
@@ -1747,6 +2014,16 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
       setBankAccount(''); setInssNumber('');
       setContractType('efetivo'); setDependents('0');
       setSubjectToIRT(true); setSubjectToINSS(true);
+
+      // Clear new additional fields
+      setCasaNo(''); setRua(''); setZona(''); setBairro('');
+      setProvinciaMorada(''); setMunicipioMorada(''); setCodigoPostal('0000-00'); setPais('AO');
+      setSegHours('8'); setTerHours('8'); setQuaHours('8'); setQuiHours('8'); setSexHours('8'); setSabHours('4'); setDomHours('0');
+      setComplementoSalarial('0'); setLocalTrabalhoId(''); setSolicitanteAdmissao(''); setMotivoAdmissao('');
+      setReparticaoFiscal(''); setInssNumberAntigo(''); setProvinciaTrabalho(''); setMunicipioTrabalho(''); setGrupoIrt('');
+      setAgenteNo(''); setDocumentType(''); setEntidadeEmissora(''); setDataEmissaoDoc(''); setDataValidadeDoc('');
+      setNaturalidade(''); setProvinciaNascimento(''); setNacionalidade(''); setNomePai(''); setNomeMae('');
+
       setEditingEmployee(null);
       setShowForm(false);
       
@@ -1884,179 +2161,782 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
               </div>
               
               <div className="flex-1 overflow-y-auto p-8">
-                <form onSubmit={handleSubmit} className="space-y-8">
-                  {/* Image Upload Section */}
-                  <div className="flex items-center gap-6 pb-8 border-b border-zinc-100">
-                    <div className="relative group">
-                      <div className="w-24 h-24 bg-zinc-100 rounded-none border-2 border-dashed border-zinc-300 flex items-center justify-center overflow-hidden">
-                        {imageUrl ? (
-                          <img src={imageUrl} alt="Preview" className="w-full h-full object-cover" />
-                        ) : (
-                          <UserIcon size={40} className="text-zinc-300" />
+                <form onSubmit={handleSubmit} className="space-y-6">
+                  {/* Form Helper component declared locally for label formatting */}
+                  {(() => {
+                    const FormLabel = ({ children, required = false, info = false, tooltip = "" }: { children: React.ReactNode, required?: boolean, info?: boolean, tooltip?: string }) => (
+                      <div className="flex items-center gap-1 mb-1">
+                        {required && (
+                          <span className="w-1.5 h-1.5 bg-red-600 rounded-full shrink-0" title="Campo Obrigatório"></span>
+                        )}
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">{children}</label>
+                        {info && (
+                          <span className="text-[#004b93] hover:text-[#003366] cursor-help shrink-0" title={tooltip}>
+                            <Info size={14} className="inline ml-1" />
+                          </span>
                         )}
                       </div>
-                      <label className="absolute inset-0 flex items-center justify-center bg-black/40 text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
-                        <Camera size={20} />
-                        <input type="file" className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, setImageUrl)} />
-                      </label>
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-zinc-700 uppercase text-xs tracking-wider">Foto do Funcionário</h4>
-                      <p className="text-zinc-400 text-[10px] uppercase">Clique na imagem para carregar (JPG, PNG)</p>
-                    </div>
-                  </div>
+                    );
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                    {/* Personal Info */}
-                    <div className="space-y-4">
-                      <h4 className="font-black text-[#003366] text-[10px] uppercase tracking-[0.2em] border-b border-zinc-100 pb-2">Informação Pessoal</h4>
-                      <div className="space-y-1">
-                        <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Nome Completo</label>
-                        <input value={name} onChange={e => setName(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" required />
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                          <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Data de Nascimento</label>
-                          <input type="date" value={birthDate} onChange={e => setBirthDate(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Gênero</label>
-                          <select value={gender} onChange={e => setGender(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
-                            <option>Masculino</option>
-                            <option>Feminino</option>
-                          </select>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                          <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">NIF</label>
-                          <input value={nif} onChange={e => setNif(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">BI</label>
-                          <input value={bi} onChange={e => setBi(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                          <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Estado Civil</label>
-                          <select value={maritalStatus} onChange={e => setMaritalStatus(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
-                            <option>Solteiro(a)</option>
-                            <option>Casado(a)</option>
-                            <option>Divorciado(a)</option>
-                            <option>Viúvo(a)</option>
-                          </select>
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Dependentes</label>
-                          <input type="number" value={dependents} onChange={e => setDependents(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
-                        </div>
-                      </div>
-                    </div>
+                    const totalWeeklyHours = (
+                      (Number(segHours) || 0) +
+                      (Number(terHours) || 0) +
+                      (Number(quaHours) || 0) +
+                      (Number(quiHours) || 0) +
+                      (Number(sexHours) || 0) +
+                      (Number(sabHours) || 0) +
+                      (Number(domHours) || 0)
+                    );
 
-                    {/* Professional Info */}
-                    <div className="space-y-4">
-                      <h4 className="font-black text-[#003366] text-[10px] uppercase tracking-[0.2em] border-b border-zinc-100 pb-2">Informação Profissional</h4>
-                      <div className="space-y-1">
-                        <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Profissão / Cargo</label>
-                        <select 
-                          value={professionId} 
-                          onChange={e => {
-                            const pid = e.target.value;
-                            setProfessionId(pid);
-                            const prof = professions.find(p => p.id === Number(pid));
-                            if (prof) {
-                              setSalary(String(prof.base_salary || 0));
-                              setRole(prof.name);
-                            }
-                          }} 
-                          className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]"
-                          required
-                        >
-                          <option value="">Selecionar Profissão</option>
-                          {professions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                        </select>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                          <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Departamento</label>
-                          <input value={department} onChange={e => setDepartment(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Tipo de Contrato</label>
-                          <select value={contractType} onChange={e => setContractType(e.target.value as any)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
-                            <option value="efetivo">Efetivo</option>
-                            <option value="temporario">Temporário</option>
-                            <option value="estagiario">Estagiário</option>
-                          </select>
-                        </div>
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Salário Base</label>
-                        <input type="number" value={salary} onChange={e => setSalary(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" required />
-                      </div>
-                      <div className="flex gap-6 py-2">
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input type="checkbox" checked={subjectToIRT} onChange={e => setSubjectToIRT(e.target.checked)} className="w-4 h-4 text-[#003366] border-zinc-300 rounded-none focus:ring-[#003366]" />
-                          <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-wider">Sujeito a IRT</span>
-                        </label>
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input type="checkbox" checked={subjectToINSS} onChange={e => setSubjectToINSS(e.target.checked)} className="w-4 h-4 text-[#003366] border-zinc-300 rounded-none focus:ring-[#003366]" />
-                          <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-wider">Sujeito a INSS</span>
-                        </label>
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Habilitações Literárias</label>
-                        <select value={academicLevel} onChange={e => setAcademicLevel(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
-                          <option>Ensino Primário</option>
-                          <option>Ensino Básico</option>
-                          <option>Ensino Médio</option>
-                          <option>Licenciatura</option>
-                          <option>Mestrado</option>
-                          <option>Doutoramento</option>
-                        </select>
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Data de Admissão</label>
-                        <input type="date" value={hiredAt} onChange={e => setHiredAt(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
-                      </div>
-                    </div>
+                    const totalMonthlySalary = (Number(salary) || 0) + (Number(complementoSalarial) || 0);
 
-                    {/* Contact & Banking */}
-                    <div className="space-y-4">
-                      <h4 className="font-black text-[#003366] text-[10px] uppercase tracking-[0.2em] border-b border-zinc-100 pb-2">Contacto & Bancário</h4>
-                      <div className="space-y-1">
-                        <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Telefone</label>
-                        <input value={phone} onChange={e => setPhone(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Email</label>
-                        <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Banco</label>
-                        <input value={bankName} onChange={e => setBankName(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                          <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Conta Bancária</label>
-                          <input value={bankAccount} onChange={e => setBankAccount(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Nº INSS</label>
-                          <input value={inssNumber} onChange={e => setInssNumber(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
-                        </div>
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">IBAN</label>
-                        <input value={iban} onChange={e => setIban(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
-                      </div>
-                    </div>
-                  </div>
+                    const getMunicipalities = (prov: string) => {
+                      if (!prov) return [];
+                      return MUNICIPADOS_ANGOLA[prov] || [];
+                    };
 
-                  <div className="flex justify-end gap-3 pt-8 border-t border-zinc-100">
-                    <button type="button" onClick={() => setShowForm(false)} className="px-6 py-2.5 text-sm font-bold text-zinc-400 hover:text-zinc-600 uppercase tracking-widest">Cancelar</button>
-                    <button type="submit" className="bg-[#003366] text-white font-bold px-10 py-2.5 rounded-none hover:bg-[#002244] transition-all shadow-lg uppercase tracking-widest text-xs">Finalizar Registo</button>
+                    return (
+                      <>
+                        {/* Header Info Banner: Data de Admissão, Agente Nº & Photo */}
+                        <div className="flex flex-col md:flex-row shadow-sm border border-zinc-200 p-6 bg-zinc-50/50 gap-6 items-center">
+                          {/* Image Upload Block */}
+                          <div className="relative group shrink-0">
+                            <div className="w-24 h-24 bg-zinc-100 rounded-none border border-zinc-200 flex items-center justify-center overflow-hidden">
+                              {imageUrl ? (
+                                <img src={imageUrl} alt="Preview" className="w-full h-full object-cover" />
+                              ) : (
+                                <UserIcon size={40} className="text-zinc-300" />
+                              )}
+                            </div>
+                            <label className="absolute inset-0 flex items-center justify-center bg-black/40 text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                              <Camera size={20} />
+                              <input type="file" className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, setImageUrl)} />
+                            </label>
+                            <div className="text-center mt-1">
+                              <span className="text-[8px] font-bold text-zinc-400 uppercase">Foto do Colaborador</span>
+                            </div>
+                          </div>
+
+                          {/* Admission Data Fields */}
+                          <div className="flex-1 w-full grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-1 block">
+                              <FormLabel required>Data de Admissão</FormLabel>
+                              <input 
+                                type="date" 
+                                value={hiredAt} 
+                                onChange={e => setHiredAt(e.target.value)} 
+                                className="w-full bg-white border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366] font-bold" 
+                                required 
+                              />
+                            </div>
+                            <div className="space-y-1 block">
+                              <FormLabel>Agente Nº</FormLabel>
+                              <input 
+                                value={agenteNo} 
+                                onChange={e => setAgenteNo(e.target.value)} 
+                                className="w-full bg-white border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366] font-mono text-zinc-700 font-bold" 
+                                placeholder="Indique Nº de Agente" 
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Collapsible Section 1: Dados Pessoais */}
+                        <div className="border border-zinc-200">
+                          <button
+                            type="button"
+                            onClick={() => setOpenDadosPessoais(!openDadosPessoais)}
+                            className="w-full flex justify-between items-center px-6 py-3.5 bg-zinc-50 border-b border-zinc-200 text-[#003366] font-black text-xs uppercase tracking-widest"
+                          >
+                            <span className="flex items-center gap-2">Dados Pessoais do Funcionário</span>
+                            {openDadosPessoais ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                          </button>
+                          {openDadosPessoais && (
+                            <div className="p-6 space-y-4">
+                              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                <div className="space-y-1 md:col-span-2">
+                                  <FormLabel required>Nome do Funcionário</FormLabel>
+                                  <input 
+                                    value={name} 
+                                    onChange={e => setName(e.target.value)} 
+                                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366] font-bold text-zinc-800" 
+                                    placeholder="Nome completo do funcionário"
+                                    required 
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <FormLabel required>Sexo</FormLabel>
+                                  <select 
+                                    value={gender} 
+                                    onChange={e => setGender(e.target.value)} 
+                                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366] font-bold"
+                                    required
+                                  >
+                                    <option value="">Seleccione</option>
+                                    <option value="Masculino">Masculino</option>
+                                    <option value="Feminino">Feminino</option>
+                                  </select>
+                                </div>
+                                <div className="space-y-1">
+                                  <FormLabel required>Data de Nascimento</FormLabel>
+                                  <input 
+                                    type="date" 
+                                    value={birthDate} 
+                                    onChange={e => setBirthDate(e.target.value)} 
+                                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366] font-bold" 
+                                    required
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="space-y-1">
+                                  <FormLabel required>Tipo de documento</FormLabel>
+                                  <select 
+                                    value={documentType} 
+                                    onChange={e => setDocumentType(e.target.value)} 
+                                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" 
+                                    required
+                                  >
+                                    <option value="">Seleccione Tipo</option>
+                                    <option value="BI">BI (Bilhete de Identidade)</option>
+                                    <option value="Passaporte">Passaporte</option>
+                                    <option value="Cartão de Residente">Cartão de Residente</option>
+                                    <option value="Outro">Outro</option>
+                                  </select>
+                                </div>
+                                <div className="space-y-1">
+                                  <FormLabel required>Nº de Documento</FormLabel>
+                                  <input 
+                                    value={bi} 
+                                    onChange={e => setBi(e.target.value)} 
+                                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366] font-bold font-mono" 
+                                    placeholder="Nº de identificação do documento"
+                                    required 
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <FormLabel required>Entidade Emissora</FormLabel>
+                                  <input 
+                                    value={entidadeEmissora} 
+                                    onChange={e => setEntidadeEmissora(e.target.value)} 
+                                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" 
+                                    placeholder="Ex: Direcção Nacional de Identificação"
+                                    required 
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="space-y-1">
+                                  <FormLabel required>Data de Emissão</FormLabel>
+                                  <input 
+                                    type="date" 
+                                    value={dataEmissaoDoc} 
+                                    onChange={e => setDataEmissaoDoc(e.target.value)} 
+                                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" 
+                                    required 
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <FormLabel required>Data de Validade</FormLabel>
+                                  <input 
+                                    type="date" 
+                                    value={dataValidadeDoc} 
+                                    onChange={e => setDataValidadeDoc(e.target.value)} 
+                                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" 
+                                    required 
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <FormLabel>Estado Civil</FormLabel>
+                                  <select 
+                                    value={maritalStatus} 
+                                    onChange={e => setMaritalStatus(e.target.value)} 
+                                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]"
+                                  >
+                                    <option value="Solteiro(a)">Solteiro(a)</option>
+                                    <option value="Casado(a)">Casado(a)</option>
+                                    <option value="Divorciado(a)">Divorciado(a)</option>
+                                    <option value="Viúvo(a)">Viúvo(a)</option>
+                                  </select>
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="space-y-1">
+                                  <FormLabel>Naturalidade</FormLabel>
+                                  <input 
+                                    value={naturalidade} 
+                                    onChange={e => setNaturalidade(e.target.value)} 
+                                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" 
+                                    placeholder="Ex: Luanda" 
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <FormLabel>Província (Nascimento)</FormLabel>
+                                  <select 
+                                    value={provinciaNascimento} 
+                                    onChange={e => setProvinciaNascimento(e.target.value)} 
+                                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]"
+                                  >
+                                    <option value="">Seleccione Província</option>
+                                    {PROVINCIAS_ANGOLA.map((p) => (
+                                      <option key={p} value={p}>{p}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div className="space-y-1">
+                                  <FormLabel>Nacionalidade</FormLabel>
+                                  <input 
+                                    value={nacionalidade} 
+                                    onChange={e => setNacionalidade(e.target.value)} 
+                                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" 
+                                    placeholder="Ex: Angolana" 
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                  <FormLabel>Nome do Pai</FormLabel>
+                                  <input 
+                                    value={nomePai} 
+                                    onChange={e => setNomePai(e.target.value)} 
+                                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" 
+                                    placeholder="Nome completo do pai" 
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <FormLabel>Nome da Mãe</FormLabel>
+                                  <input 
+                                    value={nomeMae} 
+                                    onChange={e => setNomeMae(e.target.value)} 
+                                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" 
+                                    placeholder="Nome completo da mãe" 
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Collapsible Section 2: Dados Fiscais */}
+                        <div className="border border-zinc-200">
+                          <button
+                            type="button"
+                            onClick={() => setOpenDadosFiscais(!openDadosFiscais)}
+                            className="w-full flex justify-between items-center px-6 py-3.5 bg-zinc-50 border-b border-zinc-200 text-[#003366] font-black text-xs uppercase tracking-widest"
+                          >
+                            <span className="flex items-center gap-2">Dados Fiscais & Segurança Social</span>
+                            {openDadosFiscais ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                          </button>
+                          {openDadosFiscais && (
+                            <div className="p-6 space-y-4">
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                  <FormLabel required info tooltip="Número de Identificação Fiscal">NIF</FormLabel>
+                                  <input 
+                                    value={nif} 
+                                    onChange={e => setNif(e.target.value)} 
+                                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366] font-bold font-mono text-zinc-800" 
+                                    placeholder="Número de NIF em Angola"
+                                    required 
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <FormLabel required>Repartição Fiscal</FormLabel>
+                                  <input 
+                                    value={reparticaoFiscal} 
+                                    onChange={e => setReparticaoFiscal(e.target.value)} 
+                                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" 
+                                    placeholder="Ex: Repartição Fiscal de Luanda"
+                                    required 
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                  <FormLabel required>Nº de Segurança Social (INSS)</FormLabel>
+                                  <input 
+                                    value={inssNumber} 
+                                    onChange={e => setInssNumber(e.target.value)} 
+                                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366] font-bold font-mono" 
+                                    placeholder="Nº de INSS do funcionário"
+                                    required 
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <FormLabel required info tooltip="Número de inscrição INSS anterior do funcionário">Nº de INSS Antigo</FormLabel>
+                                  <input 
+                                    value={inssNumberAntigo} 
+                                    onChange={e => setInssNumberAntigo(e.target.value)} 
+                                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366] font-mono text-zinc-500" 
+                                    placeholder="Nº de INSS Antigo"
+                                    required 
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Local Predominante de Actividade Subsegment */}
+                              <div className="border-t border-zinc-200 pt-4 mt-2">
+                                <h5 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-3 font-bold">Local Predominante da Actividade Laboral</h5>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                  <div className="space-y-1">
+                                    <FormLabel required>Província (Trabalho)</FormLabel>
+                                    <select 
+                                      value={provinciaTrabalho} 
+                                      onChange={e => {
+                                        setProvinciaTrabalho(e.target.value);
+                                        setMunicipioTrabalho('');
+                                      }}
+                                      className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366] font-bold"
+                                      required
+                                    >
+                                      <option value="">Seleccione Província</option>
+                                      {PROVINCIAS_ANGOLA.map((p) => (
+                                        <option key={p} value={p}>{p}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <div className="space-y-1">
+                                    <FormLabel required>Município (Trabalho)</FormLabel>
+                                    {getMunicipalities(provinciaTrabalho).length > 0 ? (
+                                      <select
+                                        value={municipioTrabalho}
+                                        onChange={(e) => setMunicipioTrabalho(e.target.value)}
+                                        className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]"
+                                        required
+                                      >
+                                        <option value="">Seleccione Município</option>
+                                        {getMunicipalities(provinciaTrabalho).map((mun) => (
+                                          <option key={mun} value={mun}>{mun}</option>
+                                        ))}
+                                      </select>
+                                    ) : (
+                                      <input
+                                        value={municipioTrabalho}
+                                        onChange={(e) => setMunicipioTrabalho(e.target.value)}
+                                        className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366] font-bold text-zinc-600"
+                                        placeholder={provinciaTrabalho ? "Introduza o Município" : "Aguarda Selecção de Provincia"}
+                                        disabled={!provinciaTrabalho}
+                                        required
+                                      />
+                                    )}
+                                  </div>
+                                  <div className="space-y-1">
+                                    <FormLabel required>Grupo de IRT</FormLabel>
+                                    <select 
+                                      value={grupoIrt} 
+                                      onChange={e => setGrupoIrt(e.target.value)} 
+                                      className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366] font-bold" 
+                                      required
+                                    >
+                                      <option value="">Seleccione Grupo de IRT</option>
+                                      <option value="Grupo A">Grupo A (Por Conta de Outrem)</option>
+                                      <option value="Grupo B">Grupo B (Trabalho Dependente/Indep)</option>
+                                      <option value="Grupo C">Grupo C (Actividades Comerciais)</option>
+                                    </select>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Collapsible Section 3: Dados Profissionais */}
+                        <div className="border border-zinc-200">
+                          <button
+                            type="button"
+                            onClick={() => setOpenDadosProfissionais(!openDadosProfissionais)}
+                            className="w-full flex justify-between items-center px-6 py-3.5 bg-zinc-50 border-b border-zinc-200 text-[#003366] font-black text-xs uppercase tracking-widest"
+                          >
+                            <span className="flex items-center gap-2">Dados Profissionais & Salário</span>
+                            {openDadosProfissionais ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                          </button>
+                          {openDadosProfissionais && (
+                            <div className="p-6 space-y-4">
+                              {/* Hours Weekly Grid segment */}
+                              <div className="bg-zinc-50 border border-zinc-200 p-4 rounded-none">
+                                <h5 className="text-[10px] font-black text-[#003366] uppercase tracking-widest mb-3">Indicar Carga Semanal em Horas</h5>
+                                <div className="grid grid-cols-4 sm:grid-cols-8 gap-3">
+                                  {[
+                                    { label: 'SEG', value: segHours, setter: setSegHours },
+                                    { label: 'TER', value: terHours, setter: setTerHours },
+                                    { label: 'QUA', value: quaHours, setter: setQuaHours },
+                                    { label: 'QUI', value: quiHours, setter: setQuiHours },
+                                    { label: 'SEX', value: sexHours, setter: setSexHours },
+                                    { label: 'SAB', value: sabHours, setter: setSabHours },
+                                    { label: 'DOM', value: domHours, setter: setDomHours },
+                                  ].map((day) => (
+                                    <div key={day.label} className="space-y-1">
+                                      <label className="text-[9px] font-black text-zinc-500 uppercase block text-center tracking-wider">{day.label}</label>
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        max="24"
+                                        value={day.value}
+                                        onChange={(e) => day.setter(e.target.value)}
+                                        className="w-full text-center bg-white border border-zinc-200 rounded-none py-1.5 font-mono text-sm font-bold text-zinc-800 focus:outline-none focus:border-[#003366]"
+                                      />
+                                    </div>
+                                  ))}
+                                  <div className="space-y-1">
+                                    <label className="text-[9px] font-black text-[#003366] uppercase block text-center tracking-wider">TOTAL</label>
+                                    <div className="w-full text-center bg-[#003366]/5 border border-[#003366]/20 rounded-none py-1.5 font-mono text-sm font-extrabold text-[#003366]">
+                                      {totalWeeklyHours}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="space-y-1">
+                                  <FormLabel required>Profissão / Cargo</FormLabel>
+                                  <select 
+                                    value={professionId} 
+                                    onChange={e => {
+                                      const pid = e.target.value;
+                                      setProfessionId(pid);
+                                      const prof = professions.find(p => p.id === Number(pid));
+                                      if (prof) {
+                                        setSalary(String(prof.base_salary || 0));
+                                        setRole(prof.name);
+                                      }
+                                    }} 
+                                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366] font-bold"
+                                    required
+                                  >
+                                    <option value="">Seleccione Profissão</option>
+                                    {professions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                  </select>
+                                </div>
+                                <div className="space-y-1">
+                                  <FormLabel>Departamento</FormLabel>
+                                  <input 
+                                    value={department} 
+                                    onChange={e => setDepartment(e.target.value)} 
+                                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" 
+                                    placeholder="Departamento operacional" 
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <FormLabel>Tipo de Contrato</FormLabel>
+                                  <select 
+                                    value={contractType} 
+                                    onChange={e => setContractType(e.target.value as any)} 
+                                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]"
+                                  >
+                                    <option value="efetivo">Efetivo</option>
+                                    <option value="temporario">Temporário</option>
+                                    <option value="estagiario">Estagiário</option>
+                                  </select>
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="space-y-1">
+                                  <FormLabel required>Salário Base (AOA)</FormLabel>
+                                  <input 
+                                    type="number" 
+                                    value={salary} 
+                                    onChange={e => setSalary(e.target.value)} 
+                                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366] font-mono font-bold text-zinc-900" 
+                                    required 
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <FormLabel>Complemento Salarial</FormLabel>
+                                  <input 
+                                    type="number" 
+                                    value={complementoSalarial} 
+                                    onChange={e => setComplementoSalarial(e.target.value)} 
+                                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366] font-mono" 
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <FormLabel>Total Salário Mensal</FormLabel>
+                                  <div className="w-full bg-emerald-50 border border-emerald-200 rounded-none px-4 py-2 font-mono text-sm font-extrabold text-emerald-700">
+                                    {formatCurrency(totalMonthlySalary)}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex gap-6 py-2 border-b border-zinc-100 mb-2 font-bold">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={subjectToIRT} 
+                                    onChange={e => setSubjectToIRT(e.target.checked)} 
+                                    className="w-4 h-4 text-[#003366] border-zinc-300 rounded-none focus:ring-[#003366]" 
+                                  />
+                                  <span className="text-[10px] font-black text-zinc-600 uppercase tracking-widest">Sujeito a IRT</span>
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={subjectToINSS} 
+                                    onChange={e => setSubjectToINSS(e.target.checked)} 
+                                    className="w-4 h-4 text-[#003366] border-zinc-300 rounded-none focus:ring-[#003366]" 
+                                  />
+                                  <span className="text-[10px] font-black text-zinc-600 uppercase tracking-widest">Sujeito a INSS</span>
+                                </label>
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                  <FormLabel>Habilitações Literárias</FormLabel>
+                                  <select 
+                                    value={academicLevel} 
+                                    onChange={e => setAcademicLevel(e.target.value)} 
+                                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]"
+                                  >
+                                    <option value="Ensino Primário">Ensino Primário</option>
+                                    <option value="Ensino Básico">Ensino Básico</option>
+                                    <option value="Ensino Médio">Ensino Médio</option>
+                                    <option value="Licenciatura">Licenciatura</option>
+                                    <option value="Mestrado">Mestrado</option>
+                                    <option value="Doutoramento">Doutoramento</option>
+                                  </select>
+                                </div>
+                                <div className="space-y-1">
+                                  <FormLabel>Dependentes</FormLabel>
+                                  <input 
+                                    type="number" 
+                                    value={dependents} 
+                                    onChange={e => setDependents(e.target.value)} 
+                                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" 
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="space-y-1">
+                                  <FormLabel required>Local de Serviço Base</FormLabel>
+                                  <select 
+                                    value={localTrabalhoId} 
+                                    onChange={e => setLocalTrabalhoId(e.target.value)} 
+                                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366] font-bold"
+                                    required
+                                  >
+                                    <option value="">Seleccione Local de Serviço</option>
+                                    {workSites.map(ws => (
+                                      <option key={ws.id} value={ws.id.toString()}>{ws.title}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div className="space-y-1">
+                                  <FormLabel required>Quem Solicitou a Admissão</FormLabel>
+                                  <input 
+                                    value={solicitanteAdmissao} 
+                                    onChange={e => setSolicitanteAdmissao(e.target.value)} 
+                                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" 
+                                    placeholder="Nome do solicitante"
+                                    required 
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <FormLabel required>Motivo da Admissão</FormLabel>
+                                  <input 
+                                    value={motivoAdmissao} 
+                                    onChange={e => setMotivoAdmissao(e.target.value)} 
+                                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" 
+                                    placeholder="Motivo em detalhe"
+                                    required 
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Collapsible Section 4: Outros Dados */}
+                        <div className="border border-zinc-200">
+                          <button
+                            type="button"
+                            onClick={() => setOpenOutrosDados(!openOutrosDados)}
+                            className="w-full flex justify-between items-center px-6 py-3.5 bg-zinc-50 border-b border-zinc-200 text-[#003366] font-black text-xs uppercase tracking-widest"
+                          >
+                            <span className="flex items-center gap-2">Outros Dados / Morada & Contacto</span>
+                            {openOutrosDados ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                          </button>
+                          {openOutrosDados && (
+                            <div className="p-6 space-y-4">
+                              {/* Morada Segment */}
+                              <div>
+                                <h5 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-3 border-b border-zinc-100 pb-1 font-bold">Dados da Morada do Funcionario</h5>
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                  <div className="space-y-1">
+                                    <FormLabel>Casa Nº</FormLabel>
+                                    <input 
+                                      value={casaNo} 
+                                      onChange={e => setCasaNo(e.target.value)} 
+                                      className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" 
+                                      placeholder="Nº da residência" 
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <FormLabel>Rua</FormLabel>
+                                    <input 
+                                      value={rua} 
+                                      onChange={e => setRua(e.target.value)} 
+                                      className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" 
+                                      placeholder="Nome da rua" 
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <FormLabel>Zona</FormLabel>
+                                    <input 
+                                      value={zona} 
+                                      onChange={e => setZona(e.target.value)} 
+                                      className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" 
+                                      placeholder="Zona/Quarteirão" 
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <FormLabel>Bairro</FormLabel>
+                                    <input 
+                                      value={bairro} 
+                                      onChange={e => setBairro(e.target.value)} 
+                                      className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" 
+                                      placeholder="Bairro" 
+                                    />
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
+                                  <div className="space-y-1">
+                                    <FormLabel>Província (Morada)</FormLabel>
+                                    <select 
+                                      value={provinciaMorada} 
+                                      onChange={e => {
+                                        setProvinciaMorada(e.target.value);
+                                        setMunicipioMorada('');
+                                      }}
+                                      className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]"
+                                    >
+                                      <option value="">Seleccione Província</option>
+                                      {PROVINCIAS_ANGOLA.map((p) => (
+                                        <option key={p} value={p}>{p}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <div className="space-y-1">
+                                    <FormLabel>Município (Morada)</FormLabel>
+                                    {getMunicipalities(provinciaMorada).length > 0 ? (
+                                      <select
+                                        value={municipioMorada}
+                                        onChange={(e) => setMunicipioMorada(e.target.value)}
+                                        className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]"
+                                      >
+                                        <option value="">Seleccione Município</option>
+                                        {getMunicipalities(provinciaMorada).map((mun) => (
+                                          <option key={mun} value={mun}>{mun}</option>
+                                        ))}
+                                      </select>
+                                    ) : (
+                                      <input
+                                        value={municipioMorada}
+                                        onChange={(e) => setMunicipioMorada(e.target.value)}
+                                        className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]"
+                                        placeholder={provinciaMorada ? "Introduza o Município" : "Selecione Província"}
+                                        disabled={!provinciaMorada}
+                                      />
+                                    )}
+                                  </div>
+                                  <div className="space-y-1">
+                                    <FormLabel>Código Postal</FormLabel>
+                                    <input 
+                                      value={codigoPostal} 
+                                      onChange={e => setCodigoPostal(e.target.value)} 
+                                      className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366] font-mono" 
+                                      placeholder="0000-00" 
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <FormLabel>País</FormLabel>
+                                    <select 
+                                      value={pais} 
+                                      onChange={e => setPais(e.target.value)} 
+                                      className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366] font-bold"
+                                    >
+                                      <option value="AO">Angola (AO)</option>
+                                      <option value="PT">Portugal (PT)</option>
+                                      <option value="BR">Brasil (BR)</option>
+                                      <option value="ZM">Zâmbia (ZM)</option>
+                                      <option value="NA">Namíbia (NA)</option>
+                                      <option value="CD">Congo (CD)</option>
+                                    </select>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Contact & Banking Segment */}
+                              <div className="pt-2">
+                                <h5 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-3 border-b border-zinc-100 pb-1 font-bold">Contacto e Conta Bancária</h5>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  <div className="space-y-1">
+                                    <FormLabel>Contacto Telefónico</FormLabel>
+                                    <input 
+                                      value={phone} 
+                                      onChange={e => setPhone(e.target.value)} 
+                                      className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366] font-bold" 
+                                      placeholder="(+244) 000 000 000" 
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <FormLabel>Email</FormLabel>
+                                    <input 
+                                      type="email" 
+                                      value={email} 
+                                      onChange={e => setEmail(e.target.value)} 
+                                      className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" 
+                                      placeholder="email@exemplo.com" 
+                                    />
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                                  <div className="space-y-1">
+                                    <FormLabel>Banco</FormLabel>
+                                    <input 
+                                      value={bankName} 
+                                      onChange={e => setBankName(e.target.value)} 
+                                      className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" 
+                                      placeholder="Ex: BFA, BIC, BAI..." 
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <FormLabel>Conta Bancária</FormLabel>
+                                    <input 
+                                      value={bankAccount} 
+                                      onChange={e => setBankAccount(e.target.value)} 
+                                      className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366] font-mono" 
+                                      placeholder="Número de Conta" 
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <FormLabel>IBAN</FormLabel>
+                                    <input 
+                                      value={iban} 
+                                      onChange={e => setIban(e.target.value)} 
+                                      className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366] font-mono" 
+                                      placeholder="AO06.0000.0000..." 
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    );
+                  })()}
+
+                  <div className="flex justify-end gap-3 pt-6 border-t border-zinc-100 bg-zinc-50/50 p-4 -mx-8 -mb-8 mt-8">
+                    <button type="button" onClick={() => setShowForm(false)} className="px-6 py-2.5 text-xs font-black text-zinc-400 hover:text-zinc-600 uppercase tracking-widest transition-colors">Cancelar</button>
+                    <button type="submit" className="bg-[#003366] text-white font-black px-10 py-2.5 rounded-none hover:bg-[#002244] transition-all shadow-md uppercase tracking-widest text-xs">Finalizar Registo</button>
                   </div>
                 </form>
               </div>

@@ -18647,6 +18647,52 @@ const ProductList = ({ products, onRefresh, stockMovements, warehouses }: {
     }
   };
 
+  const handleQuickImageUpload = async (productId: string | number, file?: File) => {
+    if (!file) return;
+    setLoading(true);
+    try {
+      if (!user?.empresa_id) {
+        alert('Empresa não identificada.');
+        return;
+      }
+      const companyId = user.empresa_id;
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}.${fileExt}`;
+      const filePath = `${companyId}/produtos/${fileName}`;
+
+      console.log('[QuickImageUpload] Enviando para:', filePath);
+
+      const { error: uploadError } = await supabase.storage
+        .from('produtos-imagens')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('produtos-imagens')
+        .getPublicUrl(filePath);
+
+      const { error: updateError } = await supabase
+        .from('produtos')
+        .update({ 
+          image_url: publicUrl,
+          image_path: filePath
+        })
+        .eq('id', productId)
+        .eq('empresa_id', companyId);
+
+      if (updateError) throw updateError;
+      
+      onRefresh();
+      alert('Imagem atualizada com sucesso!');
+    } catch (err: any) {
+      console.error('[QuickImageUpload] Erro:', err);
+      alert('Erro ao carregar imagem: ' + (err.message || 'Erro de permissão ou rede'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const tabs = [
     { id: 'stock', label: 'Stock Atual', icon: Package },
     { id: 'movements', label: 'Movimentos', icon: History },
@@ -18762,6 +18808,7 @@ const ProductList = ({ products, onRefresh, stockMovements, warehouses }: {
                   <th className="px-6 py-4 text-center">Saídas</th>
                   <th className="px-6 py-4 text-center">Stock Total</th>
                   <th className="px-6 py-4 text-center">Relatório</th>
+                  <th className="px-6 py-4 text-right">Preço</th>
                   <th className="px-6 py-4 text-right">Ações</th>
                 </tr>
               </thead>
@@ -18775,13 +18822,24 @@ const ProductList = ({ products, onRefresh, stockMovements, warehouses }: {
                   return (
                     <tr key={p.id} className="hover:bg-zinc-50 transition-colors text-xs group border-b border-zinc-50">
                       <td className="px-6 py-4">
-                        <div className="w-10 h-10 bg-zinc-100 flex items-center justify-center overflow-hidden border border-zinc-200">
-                          {p.image_url ? (
-                            <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                          ) : (
-                            <Package size={20} className="text-zinc-300" />
-                          )}
-                        </div>
+                        <label className="cursor-pointer block" title="Carregar Imagem">
+                          <input 
+                            type="file" 
+                            className="hidden" 
+                            accept="image/*" 
+                            onChange={(e) => handleQuickImageUpload(p.id, e.target.files?.[0])}
+                          />
+                          <div className="w-10 h-10 bg-zinc-100 flex items-center justify-center overflow-hidden border border-zinc-200 hover:border-[#003366] transition-all relative group/img">
+                            {p.image_url ? (
+                              <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            ) : (
+                              <Package size={20} className="text-zinc-300" />
+                            )}
+                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity">
+                              <Upload size={14} className="text-white" />
+                            </div>
+                          </div>
+                        </label>
                       </td>
                       <td className="px-6 py-4">
                         <button 
@@ -18825,32 +18883,35 @@ const ProductList = ({ products, onRefresh, stockMovements, warehouses }: {
                           Ver Relatório
                         </button>
                       </td>
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <td className="px-6 py-4 text-right font-black text-[#003366]">
+                        {new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'AOA' }).format(p.price || 0)}
+                      </td>
+                      <td className="px-6 py-4 text-right whitespace-nowrap">
+                        <div className="flex justify-end gap-2">
                           <button 
-                            onClick={() => { setEditingProduct(p); setShowForm(true); }}
-                            className="p-2 text-zinc-400 hover:text-blue-600 hover:bg-zinc-100 transition-all"
+                            onClick={(e) => { e.stopPropagation(); setEditingProduct(p); setShowForm(true); }}
+                            className="w-8 h-8 flex items-center justify-center bg-white border border-zinc-200 text-[#003366] hover:bg-[#003366] hover:text-white transition-all rounded shadow-sm"
                             title="Editar Produto"
                           >
                             <Edit size={14} />
                           </button>
                           <button 
-                            onClick={() => handleDeleteProduct(p.id)}
-                            className="p-2 text-zinc-400 hover:text-red-600 hover:bg-zinc-100 transition-all"
+                            onClick={(e) => { e.stopPropagation(); handleDeleteProduct(p.id); }}
+                            className="w-8 h-8 flex items-center justify-center bg-white border border-zinc-200 text-red-600 hover:bg-red-600 hover:text-white transition-all rounded shadow-sm"
                             title="Eliminar Produto"
                           >
                             <Trash2 size={14} />
                           </button>
                           <button 
-                            onClick={() => { setSelectedProduct(p); setShowAdjustmentModal(true); }}
-                            className="p-2 text-zinc-400 hover:text-[#003366] hover:bg-zinc-100 transition-all"
+                            onClick={(e) => { e.stopPropagation(); setSelectedProduct(p); setShowAdjustmentModal(true); }}
+                            className="w-8 h-8 flex items-center justify-center bg-white border border-zinc-200 text-[#003366] hover:bg-[#003366] hover:text-white transition-all rounded shadow-sm"
                             title="Ajuste de Stock"
                           >
                             <Settings size={14} />
                           </button>
                           <button 
-                            onClick={() => { setSelectedProduct(p); setShowTransferModal(true); }}
-                            className="p-2 text-zinc-400 hover:text-[#003366] hover:bg-zinc-100 transition-all"
+                            onClick={(e) => { e.stopPropagation(); setSelectedProduct(p); setShowTransferModal(true); }}
+                            className="w-8 h-8 flex items-center justify-center bg-white border border-zinc-200 text-amber-600 hover:bg-amber-600 hover:text-white transition-all rounded shadow-sm"
                             title="Transferir Produto"
                           >
                             <Truck size={14} />

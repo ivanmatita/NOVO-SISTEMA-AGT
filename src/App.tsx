@@ -9051,11 +9051,27 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
                             <td className="px-6 py-4 text-zinc-600 truncate max-w-xs">{record.descricao}</td>
                             <td className="px-6 py-4">
                               {record.anexo_url ? (
-                                <a href={record.anexo_url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-blue-600 hover:underline">
-                                  <Paperclip size={14} /> <span className="text-xs truncate max-w-[100px]">{record.anexo_nome}</span>
-                                </a>
+                                <div className="flex items-center gap-2">
+                                  {/\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i.test(record.anexo_url) ? (
+                                    <div className="relative group/thumb">
+                                      <img 
+                                        src={record.anexo_url} 
+                                        alt={record.anexo_nome || "Anexo"} 
+                                        className="w-10 h-10 object-cover border border-zinc-200 rounded shadow-sm bg-white cursor-zoom-in hover:scale-110 active:scale-95 transition-transform" 
+                                        onClick={() => window.open(record.anexo_url)}
+                                        referrerPolicy="no-referrer"
+                                        title="Clique para ampliar"
+                                      />
+                                    </div>
+                                  ) : (
+                                    <a href={record.anexo_url} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-blue-600 hover:text-blue-800 hover:underline font-semibold bg-blue-50/50 hover:bg-blue-50 px-2 py-1 rounded border border-blue-100 transition-colors">
+                                      <Paperclip size={13} className="shrink-0 text-blue-500" /> 
+                                      <span className="text-xs truncate max-w-[120px]">{record.anexo_nome || 'Visualizar'}</span>
+                                    </a>
+                                  )}
+                                </div>
                               ) : (
-                                <span className="text-zinc-300 text-xs">-</span>
+                                <span className="text-zinc-300 text-xs italic">Sem anexo</span>
                               )}
                             </td>
                             <td className="px-6 py-4 text-right">

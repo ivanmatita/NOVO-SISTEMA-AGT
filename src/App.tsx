@@ -9,6 +9,7 @@ import FleetManagementModule from './components/FleetManagementModule';
 import ProjectManagementModule from './components/ProjectManagementModule';
 import LiteracyModule from './components/LiteracyModule';
 import ArchiveModule from './components/ArchiveModule';
+import { CartaForm } from './components/CartaForm';
 import { QRCodeCanvas } from 'qrcode.react';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
@@ -8350,6 +8351,7 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
   const { user } = useAuth();
   const [activeSection, setActiveSection] = useState('docs');
   const [showForm, setShowForm] = useState(false);
+  const [isCartaFormOpen, setIsCartaFormOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [records, setRecords] = useState<any[]>([]);
@@ -8498,6 +8500,14 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
         <div className="flex justify-between items-center">
           <h3 className="text-xl font-bold text-[#003366]">{sections.find(s => s.id === activeSection)?.label}</h3>
           <div className="flex gap-2">
+            {activeSection === 'letters' && (
+              <button 
+                onClick={() => setIsCartaFormOpen(true)}
+                className="bg-[#003366] text-white px-4 py-2 text-sm font-bold flex items-center gap-2 shadow-md hover:bg-[#002244] transition-all"
+              >
+                <Plus size={16} /> Novo Registo de Carta
+              </button>
+            )}
             <button 
               onClick={() => setShowForm(!showForm)}
               className="bg-[#003366] text-white px-4 py-2 text-sm font-bold flex items-center gap-2 shadow-md hover:bg-[#002244] transition-all"
@@ -8510,6 +8520,12 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
             </button>
           </div>
         </div>
+
+        {isCartaFormOpen && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm">
+            <CartaForm onBack={() => setIsCartaFormOpen(false)} onSuccess={() => setIsCartaFormOpen(false)} />
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           <div className="lg:col-span-3 space-y-6">
@@ -20662,27 +20678,27 @@ export default function App() {
 
       const results = await Promise.allSettled([
         fetchJson(`/api/stats?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
-        Promise.resolve(null), // Replaced /api/products with Supabase products call
+        Promise.resolve(null), // p
         fetchJson(`/api/transactions?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
-        Promise.resolve(null), // Replaced /api/invoices with Supabase documents call
+        Promise.resolve(null), // i
         fetchJson(`/api/employees?empresa_id=${targetCompanyId}`),
-        Promise.resolve(fsDataFormatted), // Replaced API with Supabase series
+        Promise.resolve(fsDataFormatted), // fs
         fetchJson(`/api/cost-centers?empresa_id=${targetCompanyId}`),
         fetchJson(`/api/pos-points?empresa_id=${targetCompanyId}`),
         fetchJson(`/api/cash/sessions?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
-        Promise.resolve(null), // Replaced /api/caixas with Supabase loadCaixas call
-        Promise.resolve(null), // Replaced /api/caixa-movements with Supabase loadCaixaMovements call
-        Promise.resolve(null), // Replaced /api/stock/movements with Supabase loadStockMovements call
+        Promise.resolve(null), // cx
+        Promise.resolve(null), // cm
+        Promise.resolve(null), // sm
         fetchJson(`/api/work-site-movements?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
         supabase.from('armazens').select('*').eq('empresa_id', targetCompanyId).then(res => res.data),
         fetchJson(`/api/security/occurrences?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
         fetchJson(`/api/security/armory?empresa_id=${targetCompanyId}`),
         fetchJson(`/api/security/roster?empresa_id=${targetCompanyId}`),
         !compSupabase ? fetchJson(`/api/company/${targetCompanyId}`) : Promise.resolve(null),
-        Promise.resolve(null) // Replaced /api/purchases with Supabase loadCompras call above
+        Promise.resolve(null) // pur
       ]);
 
-      const [s, p, tr, i, e, fs, cc, pp, sess, cx, cm, sm, wsm, wh, occ, arm, rost, comp, pur] = results.map((res, idx) => {
+      const [s, p, tr, i, e, fs, cc, pp, sess, cx, cm, sm, wsm, wh, occ, arm, rost, comp, pur] = results.map((res: any, idx) => {
         if (res.status === 'fulfilled') return res.value;
         console.error(`Fetch failed for index ${idx}:`, res.status === 'rejected' ? res.reason : 'unknown');
         return null;

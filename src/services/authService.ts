@@ -251,10 +251,9 @@ export const authService = {
       }
 
       // Promise de timeout comum para as queries
+      let timer: any;
       const queryTimeout = new Promise((_, reject) => {
-        const timer = setTimeout(() => reject(new Error('Timeout DB Query')), 30000);
-        // We will clear the timer if it succeeds
-        (queryTimeout as any).timer = timer;
+        timer = setTimeout(() => reject(new Error('Timeout DB Query')), 30000);
       });
 
       const startTime = Date.now();
@@ -275,7 +274,7 @@ export const authService = {
 
       const { data: perfil, error } = await Promise.race([
         perfilQuery.then(res => {
-          clearTimeout((queryTimeout as any).timer);
+          clearTimeout(timer);
           return res;
         }), 
         queryTimeout
@@ -300,7 +299,7 @@ export const authService = {
           
         const { data: legacyEmpresa, error: legacyError } = await Promise.race([
           legacyQuery.then(res => {
-            clearTimeout((queryTimeout as any).timer);
+            clearTimeout(timer);
             return res;
           }),
           queryTimeout

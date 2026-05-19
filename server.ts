@@ -324,6 +324,26 @@ async function startServer() {
     }
   });
 
+  app.get("/api/migrate-ativo", async (req, res) => {
+    try {
+      const sql = "ALTER TABLE produtos ADD COLUMN IF NOT EXISTS ativo BOOLEAN DEFAULT true;";
+      
+      if (supabaseAdmin) {
+        const { error } = await supabaseAdmin.rpc('query_exec', { query: sql });
+        if (error) {
+             console.error("RPC Error:", error);
+             res.status(500).json({ error: error.message });
+        } else {
+             res.json({ status: "done" });
+        }
+      } else {
+        res.status(500).json({ error: "No supabaseAdmin" });
+      }
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.get("/api/run-fix", async (req, res) => {
     try {
       const sqlBuffer = fs.readFileSync(path.join(process.cwd(), 'FIX_RECURSION.sql'), 'utf-8');

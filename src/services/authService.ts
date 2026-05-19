@@ -222,10 +222,42 @@ export const authService = {
 
       console.log('[AuthService] Recuperando perfil para o utilizador:', session.user.id);
 
-      // Promise de timeout comum para as queries
-      const queryTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout DB Query')), 15000));
+      // Try fetching via backend API to bypass RLS recursion timeouts
+      try {
+        const token = session.access_token;
+        const res = await fetch('/api/auth/me', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        if (res.ok) {
+          const { user: userAuth, perfil, empresa } = await res.json();
+          if (perfil && empresa) {
+            console.log('[AuthService] Recuperado via API (Bypass RLS):', empresa.nome_empresa);
+            return {
+              id: userAuth.id,
+              username: empresa.nome_empresa || userAuth.email?.split('@')[0] || 'Usuário',
+              email: userAuth.email || '',
+              empresa_id: perfil.empresa_id,
+              role: perfil.role || 'admin',
+              created_at: empresa.created_at || userAuth.created_at,
+              company: empresa
+            };
+          }
+        }
+      } catch(e) {
+        console.warn('[AuthService] Fallback to direct supabase query, API failed:', e);
+      }
 
-      // Busca perfil com a empresa associada (com timeout)
+      // Promise de timeout comum para as queries
+      const queryTimeout = new Promise((_, reject) => {
+        const timer = setTimeout(() => reject(new Error('Timeout DB Query')), 30000);
+        // We will clear the timer if it succeeds
+        (queryTimeout as any).timer = timer;
+      });
+
+      const startTime = Date.now();
       const perfilQuery = supabase
         .from('perfis')
         .select(`
@@ -241,7 +273,14 @@ export const authService = {
         .eq('id', session.user.id)
         .maybeSingle();
 
-      const { data: perfil, error } = await Promise.race([perfilQuery, queryTimeout]) as any;
+      const { data: perfil, error } = await Promise.race([
+        perfilQuery.then(res => {
+          clearTimeout((queryTimeout as any).timer);
+          return res;
+        }), 
+        queryTimeout
+      ]) as any;
+      console.log(`[AuthService] perfilQuery levou ${Date.now() - startTime}ms`);
 
       if (error) {
         console.error('[AuthService] Erro ao recuperar perfil:', error);
@@ -259,7 +298,13 @@ export const authService = {
           .or(`id.eq.${session.user.id},auth_user_id.eq.${session.user.id}`)
           .maybeSingle();
           
-        const { data: legacyEmpresa, error: legacyError } = await Promise.race([legacyQuery, queryTimeout]) as any;
+        const { data: legacyEmpresa, error: legacyError } = await Promise.race([
+          legacyQuery.then(res => {
+            clearTimeout((queryTimeout as any).timer);
+            return res;
+          }),
+          queryTimeout
+        ]) as any;
 
         if (legacyError) console.error('[AuthService] Erro no fallback legacy query:', legacyError);
 

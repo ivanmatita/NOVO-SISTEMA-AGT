@@ -264,6 +264,84 @@ async function startServer() {
 
   app.get("/api/health", (req, res) => res.json({ status: "ok", mode: "offline" }));
 
+  app.get("/api/auth/me", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: "Missing token" });
+      }
+      
+      if (!supabaseAdmin) {
+        return res.status(500).json({ error: "No admin client available" });
+      }
+
+      const token = authHeader.split(' ')[1];
+      const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
+      
+      if (userError || !user) {
+        return res.status(401).json({ error: "Invalid token" });
+      }
+
+      // Fetch without RLS
+      const { data: perfil } = await supabaseAdmin
+        .from('perfis')
+        .select('*')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (perfil?.empresa_id) {
+        const { data: empresa } = await supabaseAdmin
+          .from('empresas')
+          .select('*')
+          .eq('id', perfil.empresa_id)
+          .maybeSingle();
+          
+        return res.json({
+          user: user,
+          perfil: perfil,
+          empresa: empresa
+        });
+      }
+
+      // Fallback: look for empresa where user is owner
+      const { data: legacyEmpresa } = await supabaseAdmin
+        .from('empresas')
+        .select('*')
+        .or(`id.eq.${user.id},auth_user_id.eq.${user.id}`)
+        .maybeSingle();
+        
+      if (legacyEmpresa) {
+        return res.json({
+          user: user,
+          perfil: { id: user.id, empresa_id: legacyEmpresa.id, role: 'admin' },
+          empresa: legacyEmpresa
+        });
+      }
+
+      return res.status(404).json({ error: "Profile not found" });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/run-fix", async (req, res) => {
+    try {
+      const sqlBuffer = fs.readFileSync(path.join(process.cwd(), 'FIX_RECURSION.sql'), 'utf-8');
+      
+      let errorStr = "";
+      if (supabaseAdmin) {
+        const { error } = await supabaseAdmin.rpc('query_exec', { query: sqlBuffer });
+        if (error) { errorStr = JSON.stringify(error) || error.message; }
+      } else {
+        errorStr = "No supabaseAdmin available";
+      }
+
+      res.json({ status: "done", error: errorStr });
+    } catch (e: any) {
+      res.json({ error: e.message });
+    }
+  });
+
   // --- SaaS Registration (Bypassing Rate Limits) ---
   app.post("/api/auth/register-saas", async (req, res) => {
     if (!supabaseAdmin) {

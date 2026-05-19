@@ -9395,7 +9395,7 @@ const SettingsModule = ({ companyData, onRefreshData, alerts, setAlerts, onEditA
       
       {activeTab === 'media' && <MediaLibraryModule onRefreshData={onRefreshData} />}
       {activeTab === 'alertas' && <AlertasModule />}
-      {activeTab === 'metrica' && <MetricsModule />}
+      {activeTab === 'metrica' && <MetricsModule onRefreshData={onRefreshData} />}
       {activeTab === 'impostos' && <TaxesModule onRefreshData={onRefreshData} />}
       {activeTab === 'utilizadores' && <UsersSettings />}
     </div>
@@ -15531,8 +15531,8 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
   const { user } = useAuth();
   const [showSupplierModal, setShowSupplierModal] = useState(false);
   const isCertified = false;
-  const [supplierId, setSupplierId] = useState<number | ''>(
-    (initialData?.supplier_id && !isNaN(Number(initialData.supplier_id))) ? Number(initialData.supplier_id) : ''
+  const [supplierId, setSupplierId] = useState<number | string | ''>(
+    initialData?.supplier_id || ''
   );
   const [documentType, setDocumentType] = useState(fixedDocumentType || initialData?.document_type || 'Fatura de Compra');
   const [seriesId, setSeriesId] = useState<number | ''>('');
@@ -16177,7 +16177,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
                   value={supplierId || ''} 
                   onChange={(e) => {
                     const id = e.target.value;
-                    setSupplierId(id ? Number(id) : '');
+                    setSupplierId(id);
                     const client = suppliers.find(c => String(c.id) === String(id));
                     if (client) {
                       setSupplierName(client.name);
@@ -16938,7 +16938,7 @@ const PurchasesModule = ({ suppliers, products, activeTaxes, workSites, fiscalSe
               <tbody className="divide-y divide-zinc-100 italic">
                 {purchases
                   .filter(p => !['cancelled', 'anulado'].includes(p.status || ''))
-                  .filter(p => (['Fatura Recibo de Compra', 'Fatura-Recibo de Compra', 'Fatura Recibo'].includes(p.document_type || '')))
+                  .filter(p => (['Fatura Recibo de Compra'].includes(p.document_type || '')))
                   .filter(p => {
                     const linkedReceipt = purchases.find((pur: any) => 
                       (['Pagamento', 'Recibo', 'Recibo de Pagamento'].includes(pur.document_type || '')) && 
@@ -18714,11 +18714,7 @@ const ProductList = ({ products, setProducts, onRefresh, stockMovements, warehou
       // PASSO 3: apagar produto do banco (Soft Delete e limpar URL da imagem)
       const { error: deleteError } = await supabase
         .from('produtos')
-        .update({ 
-          ativo: false,
-          image_path: null,
-          image_url: null 
-        })
+        .delete()
         .eq('id', id)
         .eq('empresa_id', user.empresa_id);
 
@@ -20117,7 +20113,6 @@ export default function App() {
         .from('produtos')
         .select('*')
         .eq('empresa_id', companyId)
-        .neq('ativo', false)
         .order('name');
 
       if (error) throw error;
@@ -20789,21 +20784,14 @@ export default function App() {
           .remove([product.image_path]);
       }
 
-      // 3. Delete record from database (Soft delete)
-      const { error: softError } = await supabase
+      // 3. Delete record from database (Hard delete)
+      const { error: deleteError } = await supabase
         .from('produtos')
-        .update({ ativo: false })
+        .delete()
         .eq('id', id)
         .eq('empresa_id', user.empresa_id);
 
-      if (softError) {
-        const { error: hardError } = await supabase
-          .from('produtos')
-          .delete()
-          .eq('id', id)
-          .eq('empresa_id', user.empresa_id);
-        if (hardError) throw hardError;
-      }
+      if (deleteError) throw deleteError;
       
       await fetchData();
       alert('Produto eliminado com sucesso!');

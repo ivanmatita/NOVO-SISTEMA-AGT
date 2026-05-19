@@ -30,7 +30,7 @@ export const fetchMetrics = async (empresaId: string) => {
   }
 };
 
-export const MetricsModule = () => {
+export const MetricsModule = ({ onRefreshData }: { onRefreshData?: () => void }) => {
   const { user } = useAuth();
   const [metrics, setMetrics] = useState<Metric[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,6 +46,7 @@ export const MetricsModule = () => {
     setLoading(true);
     const data = await fetchMetrics(user.empresa_id);
     setMetrics(data || []);
+    if (onRefreshData) onRefreshData();
     setLoading(false);
   };
 

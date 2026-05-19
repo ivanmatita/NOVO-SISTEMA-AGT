@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Upload, Search, FileText, Download, Trash2, UploadCloud, ChevronLeft, Filter, Folder, List, Grid, X, Archive
+  Upload, Search, FileText, Download, Trash2, UploadCloud, ChevronLeft, Filter, Folder, List, Grid, X, Archive, Edit3, Loader2, Eye
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { fetchWithAuth } from '../lib/fetchWithAuth';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 
 const formatDate = (date: any) => {
   if (!date) return '---';
@@ -20,50 +20,246 @@ const ArchiveModule = () => {
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState('Todos');
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [loading, setLoading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [editingFile, setEditingFile] = useState<any | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 5000);
+  };
 
   const fetchFiles = async () => {
+    if (!user?.empresa_id) return;
+    setLoading(true);
     try {
-      const res = await fetchWithAuth(`/api/archives?empresa_id=${user?.empresa_id}`);
-      if (res.ok) setFiles(await res.json());
-    } catch (err) {
-      console.error('Error fetching archives:', err);
+      console.log('[ArchiveModule] Fetching files for empresa_id:', user.empresa_id);
+      const { data, error } = await supabase
+        .from('arquivos')
+        .select('*')
+        .eq('empresa_id', user.empresa_id)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('[ArchiveModule] Error fetching from "arquivos" table:', error);
+        throw error;
+      }
+      setFiles(data || []);
+    } catch (err: any) {
+      console.error('[ArchiveModule] Catch block in fetchFiles:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
-  useEffect(() => { fetchFiles(); }, [user?.empresa_id]);
+  useEffect(() => { 
+    if (user?.empresa_id) {
+      fetchFiles(); 
+    }
+  }, [user?.empresa_id]);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setSelectedFile(e.target.files[0]);
+    }
+  };
+
+  const uploadFile = async (file: File) => {
+    const fileExt = file.name.split('.').pop();
+    const uniqueId = Math.random().toString(36).substring(2, 8);
+    // Requested structure: /empresa_id/documentos/filename
+    const filePath = `${user?.empresa_id}/documentos/${Date.now()}_${uniqueId}.${fileExt}`;
+
+    console.log('[ArchiveModule] Starting storage upload to bucket "arquivos-empresas":', filePath);
+    const { error: uploadError, data } = await supabase.storage
+      .from('arquivos-empresas')
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: false
+      });
+
+    if (uploadError) {
+      console.error('[ArchiveModule] Storage upload error:', uploadError);
+      throw uploadError;
+    }
+
+    console.log('[ArchiveModule] Upload success, getting public URL...');
+    const { data: { publicUrl } } = supabase.storage
+      .from('arquivos-empresas')
+      .getPublicUrl(filePath);
+
+    return { url: publicUrl, path: filePath };
+  };
 
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user?.empresa_id) return;
+    
+    setIsUploading(true);
     const target = e.target as any;
+    const name = target.name.value;
+    const category = target.category.value;
+    const description = target.description?.value || '';
+
     try {
-      const res = await fetchWithAuth('/api/archives', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: target.name.value,
-          category: target.category.value,
-          type: 'PDF',
-          size: `${(Math.random() * 5 + 0.5).toFixed(1)} MB`,
-          empresa_id: user?.empresa_id,
-          created_at: new Date().toISOString()
-        })
-      });
-      if (res.ok) { 
-        fetchFiles(); 
-        setShowUpload(false); 
+      let fileUrl = editingFile?.arquivo_url;
+      let filePath = editingFile?.arquivo_path;
+      let fileName = editingFile?.arquivo_nome;
+      let fileSize = editingFile?.arquivo_tamanho;
+      let fileType = editingFile?.arquivo_tipo;
+
+      if (selectedFile) {
+        console.log('[ArchiveModule] Uploading new file:', selectedFile.name);
+        // If editing, delete old file first
+        if (editingFile?.arquivo_path) {
+          try {
+             await supabase.storage
+              .from('arquivos-empresas')
+              .remove([editingFile.arquivo_path]);
+          } catch (delErr) {
+            console.warn('[ArchiveModule] Failed to remove old file (might not exist):', delErr);
+          }
+        }
+
+        const uploadRes = await uploadFile(selectedFile);
+        fileUrl = uploadRes.url;
+        filePath = uploadRes.path;
+        fileName = selectedFile.name;
+        fileSize = `${(selectedFile.size / (1024 * 1024)).toFixed(2)} MB`;
+        fileType = selectedFile.type.split('/').pop()?.toUpperCase() || 'FILE';
       }
-    } catch (err) {
-      console.error('Error uploading archive:', err);
+
+      if (editingFile) {
+        console.log('[ArchiveModule] Updating existing record:', editingFile.id);
+        const { error } = await supabase
+          .from('arquivos')
+          .update({
+            nome_documento: name,
+            categoria: category,
+            descricao: description,
+            arquivo_url: fileUrl,
+            arquivo_path: filePath,
+            arquivo_nome: fileName,
+            arquivo_tipo: fileType,
+            arquivo_tamanho: fileSize,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', editingFile.id);
+        
+        if (error) throw error;
+      } else {
+        console.log('[ArchiveModule] Inserting new record');
+        if (!selectedFile) throw new Error('Selecione um ficheiro');
+
+        const { error } = await supabase
+          .from('arquivos')
+          .insert({
+            empresa_id: user.empresa_id,
+            nome_documento: name,
+            categoria: category,
+            descricao: description,
+            arquivo_url: fileUrl,
+            arquivo_path: filePath,
+            arquivo_nome: fileName,
+            arquivo_tipo: fileType,
+            arquivo_tamanho: fileSize,
+            data_registro: new Date().toISOString()
+          });
+
+        if (error) throw error;
+      }
+
+      console.log('[ArchiveModule] Success! Refreshing list.');
+      showToast(editingFile ? 'Registro atualizado com sucesso.' : 'Novo registro guardado com sucesso.', 'success');
+      fetchFiles();
+      setShowUpload(false);
+      setEditingFile(null);
+      setSelectedFile(null);
+    } catch (err: any) {
+      console.error('[ArchiveModule] Final catch in handleUpload:', err);
+      let errorMsg = err.message || 'Erro desconhecido';
+      if (errorMsg === 'Failed to fetch') {
+        errorMsg = 'Falha de rede (Failed to fetch). Verifique a sua ligação ou permissões do Supabase Storage.';
+      } else if (errorMsg.includes('row-level security')) {
+        errorMsg = 'Erro de permissão: Certifique-se que a sua empresa está devidamente configurada no seu perfil.';
+      }
+      showToast('Erro ao processar ficheiro: ' + errorMsg, 'error');
+    } finally {
+      setIsUploading(false);
     }
   };
 
-  const handleDelete = async (id: number) => {
-    setFiles(files.filter(f => f.id !== id));
+  const handleDelete = async (file: any) => {
+    console.log('[ArchiveModule] Botão apagar clicado para:', file);
+    
+    if (!file || !file.id) {
+      console.error('[ArchiveModule] Erro: Ficheiro sem ID para eliminar');
+      return;
+    }
+
+    const confirmed = window.confirm(`Tem a certeza que deseja eliminar o ficheiro "${file.nome_documento}"? Esta ação removerá o ficheiro permanentemente do sistema e do armazenamento.`);
+    
+    if (!confirmed) {
+      console.log('[ArchiveModule] Eliminação cancelada pelo utilizador.');
+      return;
+    }
+
+    setIsDeletingId(file.id);
+    try {
+      console.log('[ArchiveModule] Iniciando processo de eliminação para ID:', file.id);
+      
+      // 1. Eliminar do storage se existir caminho
+      if (file.arquivo_path) {
+        console.log('[ArchiveModule] A eliminar do Supabase Storage:', file.arquivo_path);
+        const { error: storageError } = await supabase.storage
+          .from('arquivos-empresas')
+          .remove([file.arquivo_path]);
+        
+        if (storageError) {
+          console.warn('[ArchiveModule] Aviso de eliminação no storage (prosseguindo):', storageError);
+        } else {
+          console.log('[ArchiveModule] Ficheiro removido do storage com sucesso.');
+        }
+      }
+
+      // 2. Eliminar do banco de dados
+      console.log('[ArchiveModule] A eliminar registo da tabela "arquivos" ID:', file.id);
+      const { error: dbError } = await supabase
+        .from('arquivos')
+        .delete()
+        .eq('id', file.id);
+
+      if (dbError) {
+        console.error('[ArchiveModule] Erro ao eliminar da tabela Supabase:', dbError);
+        throw dbError;
+      }
+      
+      console.log('[ArchiveModule] Eliminação concluída na base de dados. Atualizando estado local.');
+      
+      // 3. Atualizar estado local
+      setFiles(prev => prev.filter(f => f.id !== file.id));
+      
+      showToast('Ficheiro eliminado com sucesso!', 'success');
+    } catch (err: any) {
+      console.error('[ArchiveModule] Falha total na eliminação:', err);
+      showToast('Erro ao eliminar ficheiro: ' + (err.message || 'Erro de permissão ou rede'), 'error');
+    } finally {
+      setIsDeletingId(null);
+    }
+  };
+
+  const handleEdit = (file: any) => {
+    setEditingFile(file);
+    setShowUpload(true);
   };
 
   const filteredFiles = files.filter(f => 
-    (activeCategory === 'Todos' || f.category === activeCategory) && 
-    (f.name.toLowerCase().includes(search.toLowerCase()) || f.category.toLowerCase().includes(search.toLowerCase()))
+    (activeCategory === 'Todos' || f.categoria === activeCategory) && 
+    ((f.nome_documento || '').toLowerCase().includes(search.toLowerCase()) || (f.categoria || '').toLowerCase().includes(search.toLowerCase()))
   );
 
   return (
@@ -104,15 +300,15 @@ const ArchiveModule = () => {
               </h4>
             </div>
             <div className="divide-y divide-zinc-100">
-              {[
-                { id: 'Todos', count: files.length },
-                { id: 'Contratos', count: files.filter(f=>f.category==='Contratos').length },
-                { id: 'Faturas', count: files.filter(f=>f.category==='Faturas').length },
-                { id: 'Recibos', count: files.filter(f=>f.category==='Recibos').length },
-                { id: 'RH', count: files.filter(f=>f.category==='RH').length },
-                { id: 'Legal', count: files.filter(f=>f.category==='Legal').length },
-                { id: 'Impostos', count: files.filter(f=>f.category==='Impostos').length }
-              ].map(cat => (
+                { [
+                  { id: 'Todos', count: files.length },
+                  { id: 'Contratos', count: files.filter(f=>f.categoria==='Contratos').length },
+                  { id: 'Faturas', count: files.filter(f=>f.categoria==='Faturas').length },
+                  { id: 'Recibos', count: files.filter(f=>f.categoria==='Recibos').length },
+                  { id: 'RH', count: files.filter(f=>f.categoria==='RH').length },
+                  { id: 'Legal', count: files.filter(f=>f.categoria==='Legal').length },
+                  { id: 'Impostos', count: files.filter(f=>f.categoria==='Impostos').length }
+                ].map(cat => (
                 <button 
                   key={cat.id} 
                   onClick={() => setActiveCategory(cat.id)}
@@ -157,23 +353,54 @@ const ArchiveModule = () => {
                           <div className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center text-red-500">
                             <FileText size={14} />
                           </div>
-                          <span className="font-bold text-[#003366]">{f.name}</span>
+                          <div>
+                            <p className="font-bold text-[#003366]">{f.nome_documento}</p>
+                            {f.descricao && <p className="text-[10px] text-zinc-400 mt-1">{f.descricao}</p>}
+                          </div>
                         </div>
                       </td>
                       <td className="px-6 py-4">
                         <span className="bg-zinc-100 text-zinc-600 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider">
-                          {f.category}
+                          {f.categoria}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-center font-mono text-zinc-500">{f.size}</td>
-                      <td className="px-6 py-4 text-zinc-500 font-medium">{formatDate(f.created_at)}</td>
+                      <td className="px-6 py-4 text-center font-mono text-zinc-500">{f.arquivo_tamanho}</td>
+                      <td className="px-6 py-4 text-zinc-500 font-medium">{formatDate(f.data_registro || f.created_at)}</td>
                       <td className="px-6 py-4 text-right">
-                        <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button className="p-2 text-zinc-400 hover:bg-zinc-100 hover:text-[#003366] transition-colors" title="Transferir">
+                        <div className="flex items-center justify-end gap-2">
+                          <a 
+                            href={f.arquivo_url} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="p-2 text-zinc-400 hover:bg-zinc-100 hover:text-[#003366] transition-colors rounded-none border border-zinc-100" 
+                            title="Visualizar"
+                          >
+                            <Eye size={16} />
+                          </a>
+                          <a 
+                            href={f.arquivo_url} 
+                            download={f.arquivo_nome}
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="p-2 text-zinc-400 hover:bg-zinc-100 hover:text-[#003366] transition-colors rounded-none border border-zinc-100" 
+                            title="Baixar"
+                          >
                             <Download size={16} />
+                          </a>
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleEdit(f); }} 
+                            className="p-2 text-zinc-400 hover:bg-blue-50 hover:text-blue-600 transition-colors rounded-none border border-zinc-100" 
+                            title="Editar"
+                          >
+                            <Edit3 size={16} />
                           </button>
-                          <button onClick={() => handleDelete(f.id)} className="p-2 text-zinc-400 hover:bg-red-50 hover:text-red-500 transition-colors" title="Eliminar">
-                            <Trash2 size={16} />
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleDelete(f); }} 
+                            disabled={isDeletingId === f.id}
+                            className="p-2 text-zinc-400 hover:bg-red-50 hover:text-red-600 transition-colors rounded-none border border-zinc-100 disabled:opacity-50" 
+                            title="Eliminar"
+                          >
+                            {isDeletingId === f.id ? <Loader2 size={16} className="animate-spin text-red-600" /> : <Trash2 size={16} />}
                           </button>
                         </div>
                       </td>
@@ -195,16 +422,44 @@ const ArchiveModule = () => {
                     <div className="w-12 h-12 bg-red-50 text-red-500 flex justify-center items-center rounded-full mb-3 group-hover:scale-110 transition-transform">
                       <FileText size={20} />
                     </div>
-                    <p className="font-bold text-[#003366] text-sm truncate w-full" title={f.name}>{f.name}</p>
-                    <p className="text-[10px] font-medium text-zinc-400 uppercase tracking-wider mt-1">{f.category}</p>
-                    <p className="text-[10px] text-zinc-500 mt-2 font-mono">{f.size}</p>
+                    <p className="font-bold text-[#003366] text-sm truncate w-full" title={f.nome_documento}>{f.nome_documento}</p>
+                    <p className="text-[10px] font-medium text-zinc-400 uppercase tracking-wider mt-1">{f.categoria}</p>
+                    <p className="text-[10px] text-zinc-500 mt-2 font-mono">{f.arquivo_tamanho}</p>
                     
-                    <div className="flex items-center justify-center gap-2 mt-4 pt-4 border-t border-zinc-100 w-full opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button className="p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-[#003366] transition-colors rounded-full" title="Transferir">
+                    <div className="flex items-center justify-center gap-2 mt-4 pt-4 border-t border-zinc-100 w-full">
+                      <a 
+                        href={f.arquivo_url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-[#003366] transition-colors rounded-full border border-zinc-100" 
+                        title="Visualizar"
+                      >
+                        <Eye size={14} />
+                      </a>
+                      <a 
+                        href={f.arquivo_url} 
+                        download={f.arquivo_nome}
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-[#003366] transition-colors rounded-full border border-zinc-100" 
+                        title="Baixar"
+                      >
                         <Download size={14} />
+                      </a>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleEdit(f); }} 
+                        className="p-1.5 text-zinc-400 hover:bg-blue-50 hover:text-blue-600 transition-colors rounded-full border border-zinc-100" 
+                        title="Editar"
+                      >
+                        <Edit3 size={14} />
                       </button>
-                      <button onClick={(e) => { e.stopPropagation(); handleDelete(f.id); }} className="p-1.5 text-zinc-400 hover:bg-red-50 hover:text-red-500 transition-colors rounded-full" title="Eliminar">
-                        <Trash2 size={14} />
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleDelete(f); }} 
+                        disabled={isDeletingId === f.id}
+                        className="p-1.5 text-zinc-400 hover:bg-red-50 hover:text-red-600 transition-colors rounded-full border border-zinc-100 disabled:opacity-50" 
+                        title="Eliminar"
+                      >
+                        {isDeletingId === f.id ? <Loader2 size={14} className="animate-spin text-red-600" /> : <Trash2 size={14} />}
                       </button>
                     </div>
                   </div>
@@ -230,8 +485,10 @@ const ArchiveModule = () => {
               className="bg-white w-full max-w-md border border-zinc-200 shadow-2xl p-6 space-y-6"
             >
               <div className="flex justify-between items-center border-b border-zinc-100 pb-4">
-                <h3 className="text-lg font-bold text-[#003366] uppercase tracking-tight">Registar Novo Ficheiro</h3>
-                <button type="button" onClick={() => setShowUpload(false)} className="text-zinc-400 hover:text-zinc-600">
+                <h3 className="text-lg font-bold text-[#003366] uppercase tracking-tight">
+                  {editingFile ? 'Editar Ficheiro' : 'Registar Novo Ficheiro'}
+                </h3>
+                <button type="button" onClick={() => { setShowUpload(false); setEditingFile(null); setSelectedFile(null); }} className="text-zinc-400 hover:text-zinc-600">
                   <X size={20} />
                 </button>
               </div>
@@ -241,6 +498,7 @@ const ArchiveModule = () => {
                   <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Nome do Ficheiro</label>
                   <input 
                     type="text" name="name" required 
+                    defaultValue={editingFile?.nome_documento || ''}
                     className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium"
                     placeholder="Ex: Contrato de Prestação de Serviços"
                   />
@@ -249,6 +507,7 @@ const ArchiveModule = () => {
                   <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Categoria</label>
                   <select 
                     name="category" required
+                    defaultValue={editingFile?.categoria || 'Contratos'}
                     className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium"
                   >
                     <option value="Contratos">Contratos</option>
@@ -260,30 +519,84 @@ const ArchiveModule = () => {
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Ficheiro (PDF, DOCX)</label>
-                  <div className="border border-dashed border-zinc-300 bg-zinc-50 p-6 text-center cursor-pointer hover:bg-zinc-100 transition-colors">
-                    <UploadCloud size={32} className="mx-auto text-zinc-400 mb-2" />
-                    <p className="text-xs text-zinc-500 font-medium tracking-wide">Arraste para aqui ou clique para procurar</p>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Descrição</label>
+                  <textarea 
+                    name="description" 
+                    defaultValue={editingFile?.descricao || ''}
+                    className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium h-20"
+                    placeholder="Breve descrição do conteúdo..."
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                    {editingFile ? 'Substituir Ficheiro (opcional)' : 'Ficheiro (PDF, Word, Excel, Imagem)'}
+                  </label>
+                  <input 
+                    type="file" 
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                    className="hidden"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                  />
+                  <div 
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`border border-dashed p-6 text-center cursor-pointer transition-colors ${selectedFile ? 'border-emerald-300 bg-emerald-50' : 'border-zinc-300 bg-zinc-50 hover:bg-zinc-100'}`}
+                  >
+                    {selectedFile ? (
+                      <div className="flex flex-col items-center gap-1">
+                        <FileText size={32} className="text-emerald-500 mb-1" />
+                        <p className="text-xs text-emerald-700 font-bold">{selectedFile.name}</p>
+                        <p className="text-[10px] text-emerald-600">{(selectedFile.size / 1024).toFixed(0)} KB</p>
+                      </div>
+                    ) : (
+                      <>
+                        <UploadCloud size={32} className="mx-auto text-zinc-400 mb-2" />
+                        <p className="text-xs text-zinc-500 font-medium tracking-wide">
+                          {editingFile ? 'Clique para trocar o ficheiro' : 'Clique para procurar ficheiro'}
+                        </p>
+                      </>
+                    )}
                   </div>
+                  {editingFile && !selectedFile && (
+                    <p className="text-[10px] text-zinc-400 mt-1 italic">Atual: {editingFile.arquivo_nome || 'Documento existente'}</p>
+                  )}
                 </div>
                 
                 <div className="pt-4 border-t border-zinc-100 flex justify-end gap-3 mt-6">
                   <button 
-                    type="button" onClick={() => setShowUpload(false)}
+                    type="button" onClick={() => { setShowUpload(false); setEditingFile(null); setSelectedFile(null); }}
                     className="px-6 py-2 bg-zinc-100 text-zinc-600 text-xs font-bold uppercase tracking-wider hover:bg-zinc-200 transition-colors"
                   >
                     Cancelar
                   </button>
                   <button 
                     type="submit"
-                    className="px-6 py-2 bg-[#003366] text-white text-xs font-bold uppercase tracking-wider hover:bg-[#002244] transition-colors"
+                    disabled={isUploading || (!editingFile && !selectedFile)}
+                    className="px-6 py-2 bg-[#003366] text-white text-xs font-bold uppercase tracking-wider hover:bg-[#002244] transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Guardar
+                    {isUploading ? <Loader2 size={14} className="animate-spin" /> : null}
+                    {editingFile ? 'Atualizar' : 'Guardar'}
                   </button>
                 </div>
               </form>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className={`fixed bottom-6 right-6 z-[100] px-6 py-4 shadow-2xl flex items-center gap-3 border ${toast.type === 'success' ? 'bg-[#003366] text-white border-[#004488]' : 'bg-red-600 text-white border-red-700'}`}
+          >
+            <div className={`p-1 rounded-full ${toast.type === 'success' ? 'bg-emerald-500' : 'bg-white text-red-600'}`}>
+              <X size={14} className={toast.type === 'success' ? 'text-white' : ''} />
+            </div>
+            <p className="text-xs font-bold uppercase tracking-wider">{toast.message}</p>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

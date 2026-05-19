@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import html2pdf from 'html2pdf.js';
 import { DocumentReportModal } from './components/DocumentReportModal';
 import { AnularModal } from './components/AnularModal';
@@ -12510,6 +12510,7 @@ const InvoiceList = ({
             series={fiscalSeries} 
             onRefresh={onRefresh} 
             users={employees} 
+            onConfigGraphic={() => {}} 
           />
         )}
         {activeSubTab === 'sales_report' && (
@@ -16021,7 +16022,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
             <div className="space-y-2">
               <label className="text-xs font-bold text-zinc-600">Local de Trabalho <span className="text-red-500">*</span></label>
               <select 
-                value={isNaN(Number(workSiteId)) && workSiteId !== '' ? '' : workSiteId} 
+                value={workSiteId || ''} 
                 onChange={(e) => setWorkSiteId(e.target.value)}
                 required
                 className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
@@ -16046,7 +16047,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-zinc-600">Selecionar caixa de pagamento</label>
                   <select 
-                    value={isNaN(Number(cashBox)) && cashBox !== 'Banco' ? '' : cashBox} 
+                    value={cashBox || ''} 
                     onChange={(e) => setCashBox(e.target.value)}
                     className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
                   >
@@ -16107,7 +16108,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
               <label className="text-xs font-bold text-zinc-600">Selecionar fornecedor <span className="text-red-500">*</span></label>
               <div className="flex gap-2">
                 <select 
-                  value={isNaN(Number(supplierId)) ? '' : supplierId} 
+                  value={supplierId || ''} 
                   onChange={(e) => {
                     const id = e.target.value;
                     setSupplierId(id ? Number(id) : '');
@@ -16228,7 +16229,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
                   <div className="col-span-2 space-y-1">
                     <label className="text-[10px] font-bold text-zinc-400 uppercase">Taxa</label>
                     <select 
-                      value={isNaN(Number(item.tax_id)) ? '' : item.tax_id}                      onChange={(e) => updateItem(idx, 'tax_id', e.target.value)}
+                      value={item.tax_id || ''}                      onChange={(e) => updateItem(idx, 'tax_id', e.target.value)}
                       className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
                     >
                       <option value="">Selecionar Taxa</option>
@@ -18501,6 +18502,7 @@ const ProductList = ({ products, onRefresh, stockMovements, warehouses }: {
   const [showProductDetailModal, setShowProductDetailModal] = useState(false);
   const [showStockReportModal, setShowStockReportModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [stockFilter, setStockFilter] = useState<'all' | 'positive' | 'negative' | 'low'>('all');
   const [warehouseFilter, setWarehouseFilter] = useState<string>('all');
 
@@ -18544,40 +18546,104 @@ const ProductList = ({ products, onRefresh, stockMovements, warehouses }: {
     return true;
   });
 
-  const handleAdjustment = async (productId: number, type: string, quantity: number, description: string) => {
-    const res = await fetchWithAuth('/api/stock/movements', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        product_id: productId, 
-        type, 
-        quantity, 
-        description,
-        empresa_id: user?.empresa_id
-      })
-    });
-    if (res.ok) {
+  const handleAdjustment = async (productId: string | number, type: string, quantity: number, description: string) => {
+    try {
+      if (!user?.empresa_id) return;
+      const product = products.find(p => p.id === productId);
+      if (!product) return;
+      const previous_stock = Number(product.stock_quantity);
+      let current_stock = previous_stock;
+      if (type === 'adjustment_plus') current_stock += quantity;
+      if (type === 'adjustment_minus') current_stock -= quantity;
+
+      const { error: movError } = await supabase.from('movimentacoes_stock').insert({
+        empresa_id: user.empresa_id,
+        product_id: productId,
+        type,
+        quantity,
+        previous_stock,
+        current_stock,
+        description
+      });
+      if (movError) throw movError;
+
+      const { error: prodError } = await supabase.from('produtos').update({ stock_quantity: current_stock }).eq('id', productId).eq('empresa_id', user.empresa_id);
+      if (prodError) throw prodError;
+
       onRefresh();
       setShowAdjustmentModal(false);
+      alert('Ajuste de stock realizado com sucesso!');
+    } catch (err: any) {
+      console.error('Erro no ajuste de stock:', err);
+      alert('Erro ao realizar ajuste: ' + (err.message || 'Erro desconhecido'));
     }
   };
 
-  const handleTransfer = async (productId: number, fromWh: number, toWh: number, quantity: number) => {
-    const res = await fetchWithAuth('/api/stock/movements', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        product_id: productId, 
-        type: 'transfer', 
-        quantity, 
-        warehouse_id: fromWh, 
+  const handleTransfer = async (productId: string | number, fromWh: number, toWh: number, quantity: number) => {
+    try {
+      if (!user?.empresa_id) return;
+      const { error: movError } = await supabase.from('movimentacoes_stock').insert({
+        empresa_id: user.empresa_id,
+        product_id: productId,
+        type: 'transfer',
+        quantity,
+        warehouse_id: fromWh,
         to_warehouse_id: toWh,
-        empresa_id: user?.empresa_id
-      })
-    });
-    if (res.ok) {
+        description: `Transferência do armazém ${fromWh} para ${toWh}`
+      });
+      if (movError) throw movError;
       onRefresh();
       setShowTransferModal(false);
+      alert('Transferência de stock registada com sucesso!');
+    } catch (err: any) {
+      console.error('Erro na transferência de stock:', err);
+      alert('Erro ao realizar transferência: ' + (err.message || 'Erro desconhecido'));
+    }
+  };
+
+  const handleDeleteProduct = async (id: string | number) => {
+    if (!window.confirm('Tem a certeza que deseja eliminar este produto? Esta ação removerá o registo e a imagem permanentemente.')) return;
+    try {
+      if (!user?.empresa_id) {
+        alert('Usuário não identificado. Verifique se está logado.');
+        return;
+      }
+
+      console.log('[ProductList] A eliminar produto ID:', id, 'Empresa:', user.empresa_id);
+
+      // 1. Buscar o path da imagem antes de apagar o registo
+      const { data: product, error: fetchError } = await supabase
+        .from('produtos')
+        .select('image_path')
+        .eq('id', id)
+        .eq('empresa_id', user.empresa_id)
+        .single();
+
+      if (fetchError && fetchError.code !== 'PGRST116') {
+        throw fetchError;
+      }
+
+      // 2. Apagar o registo do banco de dados
+      const { error: deleteError } = await supabase
+        .from('produtos')
+        .delete()
+        .eq('id', id)
+        .eq('empresa_id', user.empresa_id);
+
+      if (deleteError) throw deleteError;
+
+      // 3. Apagar a imagem do storage se existir
+      if (product?.image_path) {
+        await supabase.storage
+          .from('produtos-imagens')
+          .remove([product.image_path]);
+      }
+      
+      onRefresh();
+      alert('Produto e imagem eliminados com sucesso!');
+    } catch (err: any) {
+      console.error('[ProductList] Erro ao eliminar produto:', err);
+      alert('Erro ao eliminar produto: ' + (err.message || 'Erro desconhecido'));
     }
   };
 
@@ -18607,7 +18673,7 @@ const ProductList = ({ products, onRefresh, stockMovements, warehouses }: {
               className="pl-10 pr-4 py-2.5 bg-zinc-50 border border-zinc-200 rounded-none text-sm focus:outline-none focus:border-[#003366] w-64 font-medium" 
             />
           </div>
-          <button onClick={() => setShowForm(true)} className="bg-[#003366] hover:bg-[#002244] text-white font-bold px-6 py-2.5 rounded-none flex items-center gap-2 transition-all shadow-sm text-sm uppercase tracking-widest">
+          <button onClick={() => { setEditingProduct(null); setShowForm(true); }} className="bg-[#003366] hover:bg-[#002244] text-white font-bold px-6 py-2.5 rounded-none flex items-center gap-2 transition-all shadow-sm text-sm uppercase tracking-widest">
             <Plus size={18} /> Novo Produto
           </button>
         </div>
@@ -18710,8 +18776,8 @@ const ProductList = ({ products, onRefresh, stockMovements, warehouses }: {
                     <tr key={p.id} className="hover:bg-zinc-50 transition-colors text-xs group border-b border-zinc-50">
                       <td className="px-6 py-4">
                         <div className="w-10 h-10 bg-zinc-100 flex items-center justify-center overflow-hidden border border-zinc-200">
-                          {p.image ? (
-                            <img src={p.image} alt={p.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          {p.image_url ? (
+                            <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                           ) : (
                             <Package size={20} className="text-zinc-300" />
                           )}
@@ -18761,6 +18827,20 @@ const ProductList = ({ products, onRefresh, stockMovements, warehouses }: {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button 
+                            onClick={() => { setEditingProduct(p); setShowForm(true); }}
+                            className="p-2 text-zinc-400 hover:text-blue-600 hover:bg-zinc-100 transition-all"
+                            title="Editar Produto"
+                          >
+                            <Edit size={14} />
+                          </button>
+                          <button 
+                            onClick={() => handleDeleteProduct(p.id)}
+                            className="p-2 text-zinc-400 hover:text-red-600 hover:bg-zinc-100 transition-all"
+                            title="Eliminar Produto"
+                          >
+                            <Trash2 size={14} />
+                          </button>
                           <button 
                             onClick={() => { setSelectedProduct(p); setShowAdjustmentModal(true); }}
                             className="p-2 text-zinc-400 hover:text-[#003366] hover:bg-zinc-100 transition-all"
@@ -19135,83 +19215,144 @@ const ProductList = ({ products, onRefresh, stockMovements, warehouses }: {
           <div className="bg-white w-full max-w-4xl p-10 rounded-none shadow-2xl my-8">
             <div className="flex justify-between items-center mb-8 border-b border-zinc-100 pb-4">
               <h3 className="text-2xl font-bold text-[#003366] uppercase tracking-tight flex items-center gap-3">
-                <Package size={24} /> Registar Novo Produto
+                <Package size={24} /> {editingProduct ? 'Editar Produto' : 'Registar Novo Produto'}
               </h3>
-              <button onClick={() => setShowForm(false)} className="text-zinc-400 hover:text-zinc-600"><X size={24} /></button>
+              <button onClick={() => { setShowForm(false); setEditingProduct(null); }} className="text-zinc-400 hover:text-zinc-600"><X size={24} /></button>
             </div>
-            <form onSubmit={async (e) => {
+            <form 
+              key={editingProduct?.id || 'new'}
+              onSubmit={async (e) => {
               e.preventDefault();
               const formData = new FormData(e.currentTarget);
               const data = Object.fromEntries(formData.entries());
+              const imageFile = formData.get('image_file') as File;
+              
               try {
-                const res = await fetchWithAuth('/api/products', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    ...data,
-                    price: Number(data.price),
-                    cost_price: Number(data.cost_price),
-                    stock_quantity: Number(data.stock_quantity),
-                    min_stock: Number(data.min_stock),
-                    warehouse_id: data.warehouse_id ? Number(data.warehouse_id) : null,
-                    empresa_id: user?.empresa_id
-                  })
-                });
-                if (res.ok) {
-                  onRefresh();
-                  setShowForm(false);
-                } else {
-                  const errorData = await res.json().catch(() => ({ error: 'Erro desconhecido' }));
-                  alert('Erro ao salvar produto: ' + (errorData.error || 'Verifique os dados e tente novamente.'));
+                let image_url = editingProduct?.image_url || '';
+                let image_path = editingProduct?.image_path || '';
+
+                // Upload image if a new one is selected
+                if (imageFile && imageFile.size > 0) {
+                  const companyId = user?.empresa_id;
+                  const fileExt = imageFile.name.split('.').pop();
+                  const fileName = `${Date.now()}.${fileExt}`;
+                  const filePath = `${companyId}/produtos/${fileName}`;
+
+                  const { error: uploadError } = await supabase.storage
+                    .from('produtos-imagens')
+                    .upload(filePath, imageFile);
+
+                  if (uploadError) throw uploadError;
+
+                  const { data: { publicUrl } } = supabase.storage
+                    .from('produtos-imagens')
+                    .getPublicUrl(filePath);
+
+                  image_url = publicUrl;
+                  image_path = filePath;
                 }
-              } catch (error) {
-                console.error('Erro de rede:', error);
-                alert('Erro de rede ao salvar produto.');
+
+                const payload = {
+                  name: data.name,
+                  referente: data.referente,
+                  price: Number(data.price),
+                  cost_price: Number(data.cost_price),
+                  stock_quantity: Number(data.stock_quantity),
+                  min_stock: Number(data.min_stock),
+                  category: data.category,
+                  unit: data.unit,
+                  barcode: data.barcode,
+                  data_registo: data.data_registo,
+                  warehouse_id: data.warehouse_id ? Number(data.warehouse_id) : null,
+                  empresa_id: user?.empresa_id,
+                  image_url,
+                  image_path
+                };
+
+                if (editingProduct) {
+                  const { error } = await supabase
+                    .from('produtos')
+                    .update(payload)
+                    .eq('id', editingProduct.id)
+                    .eq('empresa_id', user?.empresa_id);
+                  if (error) throw error;
+                } else {
+                  const { error } = await supabase
+                    .from('produtos')
+                    .insert([payload]);
+                  if (error) throw error;
+                }
+
+                onRefresh();
+                setShowForm(false);
+                setEditingProduct(null);
+                alert(editingProduct ? 'Produto atualizado com sucesso!' : 'Produto registado com sucesso!');
+              } catch (error: any) {
+                console.error('Erro ao salvar produto:', error);
+                alert('Erro ao salvar produto: ' + (error.message || 'Verifique os dados e tente novamente.'));
               }
             }} className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              <div className="md:col-span-3 border-2 border-dashed border-zinc-200 p-6 flex flex-col items-center justify-center bg-zinc-50 hover:bg-zinc-100 transition-colors relative group">
+                <input 
+                  type="file" 
+                  name="image_file" 
+                  accept="image/*" 
+                  className="absolute inset-0 opacity-0 cursor-pointer"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onload = (ev) => {
+                        const preview = document.getElementById('product-prev') as HTMLImageElement;
+                        if (preview) preview.src = ev.target?.result as string;
+                      };
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                />
+                <div className="text-center space-y-2 pointer-events-none">
+                  {editingProduct?.image_url ? (
+                    <img id="product-prev" src={editingProduct.image_url} alt="Preview" className="w-24 h-24 object-cover mx-auto shadow-md border-2 border-white" />
+                  ) : (
+                    <div id="product-prev-box" className="w-24 h-24 bg-zinc-200 flex items-center justify-center mx-auto">
+                      <img id="product-prev" className="w-full h-full object-cover hidden" />
+                      <Camera size={32} className="text-zinc-400" />
+                    </div>
+                  )}
+                  <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Clique ou arraste para carregar imagem</p>
+                </div>
+              </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Nome do Produto</label>
-                <input name="name" required className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" />
+                <input name="name" required defaultValue={editingProduct?.name} className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" />
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Referência / SKU</label>
-                <input name="referente" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" />
+                <input name="referente" defaultValue={editingProduct?.referente} className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" />
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Preço de Venda (Kz)</label>
-                <input name="price" type="number" step="0.01" required className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold" />
+                <input name="price" type="number" step="0.01" required defaultValue={editingProduct?.price} className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold" />
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Preço de Custo (Kz)</label>
-                <input name="cost_price" type="number" step="0.01" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold" />
+                <input name="cost_price" type="number" step="0.01" defaultValue={editingProduct?.cost_price} className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold" />
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Stock Inicial</label>
-                <input name="stock_quantity" type="number" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold" />
+                <input name="stock_quantity" type="number" defaultValue={editingProduct?.stock_quantity} className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold" />
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Stock Mínimo</label>
-                <input name="min_stock" type="number" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold" />
+                <input name="min_stock" type="number" defaultValue={editingProduct?.min_stock} className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold" />
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Categoria</label>
-                <input name="category" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" />
+                <input name="category" defaultValue={editingProduct?.category} className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" />
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Unidade</label>
-                <input name="unit" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Barcode</label>
-                <input name="barcode" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data de Registo</label>
-                <input name="data_registo" type="date" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Unidade</label>
-                <select name="unit" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold">
+                <select name="unit" defaultValue={editingProduct?.unit || 'un'} className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold">
                   <option value="">Selecione a unidade</option>
                   <option value="un">Unidade (un)</option>
                   <option value="kg">Quilograma (kg)</option>
@@ -19220,14 +19361,24 @@ const ProductList = ({ products, onRefresh, stockMovements, warehouses }: {
                 </select>
               </div>
               <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Barcode</label>
+                <input name="barcode" defaultValue={editingProduct?.barcode} className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data de Registo</label>
+                <input name="data_registo" type="date" defaultValue={editingProduct?.data_registo ? new Date(editingProduct.data_registo).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]} className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" />
+              </div>
+              <div className="space-y-1">
                 <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Armazém</label>
-                <select name="warehouse_id" className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold">
+                <select name="warehouse_id" defaultValue={editingProduct?.warehouse_id} className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold">
                   <option value="">Selecione o armazém</option>
                   {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
                 </select>
               </div>
               <div className="md:col-span-3 flex justify-end pt-4">
-                <button type="submit" className="bg-[#003366] text-white px-8 py-3 text-sm font-bold hover:bg-[#002244] transition-all">Registar Produto</button>
+                <button type="submit" className="bg-[#003366] text-white px-8 py-3 text-sm font-bold hover:bg-[#002244] transition-all">
+                  {editingProduct ? 'Guardar Alterações' : 'Registar Produto'}
+                </button>
               </div>
             </form>
           </div>
@@ -19472,6 +19623,7 @@ export default function App() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [issuedDocuments, setIssuedDocuments] = useState<IssuedDocument[]>([]);
   const [workSites, setWorkSites] = useState<WorkSite[]>([]);
@@ -19709,8 +19861,6 @@ export default function App() {
         .from('clientes')
         .select('*')
         .eq('empresa_id', companyId)
-        .gte('created_at', `${fiscalYear}-01-01T00:00:00Z`)
-        .lte('created_at', `${fiscalYear}-12-31T23:59:59Z`)
         .order('nome');
 
       if (error) throw error;
@@ -19787,6 +19937,58 @@ export default function App() {
     syncLockRef.current = false;
   }, 3000);
 
+  const doLoadProducts = async (explicitId?: string) => {
+    try {
+      const companyId = explicitId || user?.empresa_id;
+      if (!companyId) return;
+
+      console.log(`[App] Buscando Produtos para ${companyId}...`);
+      const { data, error } = await supabase
+        .from('produtos')
+        .select('*')
+        .eq('empresa_id', companyId)
+        .order('name');
+
+      if (error) throw error;
+
+      setProducts(data.map((p: any) => ({
+        ...p,
+        id: p.id,
+        name: p.name || '',
+        referente: p.referente || '',
+        data_registo: p.data_registo || p.created_at,
+        armazem: p.armazem || '',
+        warehouse_id: p.warehouse_id,
+        tipo_documento: p.tipo_documento || '',
+        preco_compra: Number(p.preco_compra || 0),
+        cost_price: Number(p.cost_price || p.preco_compra || 0),
+        price: Number(p.price || 0),
+        finalidade: p.finalidade || '',
+        tipologia: p.tipologia || '',
+        unit: p.unit || 'un',
+        stock_quantity: Number(p.stock_quantity || 0),
+        min_stock: Number(p.min_stock || 0),
+        category: p.category || '',
+        barcode: p.barcode || '',
+        created_at: p.created_at,
+        image: p.image || '',
+        image_url: p.image_url || '',
+        image_path: p.image_path || ''
+      })));
+
+      localStorage.setItem('products_backup', JSON.stringify(data));
+    } catch (err) {
+      console.error('[App] Erro ao carregar produtos:', err);
+    }
+  };
+
+  const loadProducts = throttle(async (explicitId?: string) => {
+    if (syncLockRef.current) return;
+    syncLockRef.current = true;
+    await doLoadProducts(explicitId);
+    syncLockRef.current = false;
+  }, 3000);
+
   async function saveDocumentoEmitido(doc: any) {
     try {
       if (!user?.empresa_id) {
@@ -19834,6 +20036,38 @@ export default function App() {
       console.error('Erro crítico no saveDocumentoEmitido:', err);
     }
   }
+
+  const doLoadStockMovements = async (explicitId?: string) => {
+    try {
+      const companyId = explicitId || user?.empresa_id;
+      if (!companyId) return;
+
+      const { data, error } = await supabase
+        .from('movimentacoes_stock')
+        .select('*')
+        .eq('empresa_id', companyId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setStockMovements(data?.map(sm => ({
+        ...sm,
+        id: sm.id,
+        product_id: sm.product_id,
+        type: sm.type,
+        quantity: Number(sm.quantity),
+        unit_price: Number(sm.unit_price || 0),
+        previous_stock: Number(sm.previous_stock || 0),
+        current_stock: Number(sm.current_stock || 0),
+        warehouse_id: sm.warehouse_id,
+        to_warehouse_id: sm.to_warehouse_id,
+        description: sm.description,
+        reference_id: sm.reference_id,
+        created_at: sm.created_at
+      })) || []);
+    } catch (err) {
+      console.error('Erro ao carregar movimentos de stock:', err);
+    }
+  };
 
   const doLoadDocumentosEmitidos = async (explicitId?: string) => {
     try {
@@ -20040,16 +20274,25 @@ export default function App() {
   const doLoadFornecedores = async (explicitId?: string) => {
     try {
       const companyId = explicitId || user?.empresa_id;
-      if (!companyId) return;
+      if (!companyId) {
+        console.log('[App] doLoadFornecedores: companyId missing');
+        return;
+      }
 
       const { data, error } = await supabase
         .from('fornecedores')
         .select('*')
-        .eq('empresa_id', companyId)
-        .gte('created_at', `${fiscalYear}-01-01T00:00:00Z`)
-        .lte('created_at', `${fiscalYear}-12-31T23:59:59Z`);
+        .eq('empresa_id', companyId);
 
-      if (error) throw error;
+      if (error) {
+        console.error('[App] doLoadFornecedores error:', error);
+        if (error.message && (error.message.includes('Refresh Token Not Found') || error.message.includes('invalid_grant'))) {
+             console.error('[App] Session expired or invalid, logging out...');
+             await authService.logout();
+             window.location.reload();
+        }
+        throw error;
+      }
       setSuppliers(data?.map(s => ({
         ...s,
         id: s.id,
@@ -20200,6 +20443,8 @@ export default function App() {
         await doLoadCaixaMovements(targetCompanyId);
         await doLoadFornecedores(targetCompanyId);
         await doLoadCompras(targetCompanyId);
+        await doLoadProducts(targetCompanyId);
+        await doLoadStockMovements(targetCompanyId);
         await doLoadActiveTaxes(targetCompanyId);
         
         console.timeEnd('[TIMER-SYNC] Supabase Queries');
@@ -20237,22 +20482,22 @@ export default function App() {
 
       const results = await Promise.allSettled([
         fetchJson(`/api/stats?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
-        fetchJson(`/api/products?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
+        Promise.resolve(null), // Replaced /api/products with Supabase products call
         fetchJson(`/api/transactions?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
         Promise.resolve(null), // Replaced /api/invoices with Supabase documents call
-        fetchJson(`/api/employees?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
+        fetchJson(`/api/employees?empresa_id=${targetCompanyId}`),
         Promise.resolve(fsDataFormatted), // Replaced API with Supabase series
-        fetchJson(`/api/cost-centers?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
-        fetchJson(`/api/pos-points?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
+        fetchJson(`/api/cost-centers?empresa_id=${targetCompanyId}`),
+        fetchJson(`/api/pos-points?empresa_id=${targetCompanyId}`),
         fetchJson(`/api/cash/sessions?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
         Promise.resolve(null), // Replaced /api/caixas with Supabase loadCaixas call
         Promise.resolve(null), // Replaced /api/caixa-movements with Supabase loadCaixaMovements call
-        fetchJson(`/api/stock/movements?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
+        Promise.resolve(null), // Replaced /api/stock/movements with Supabase loadStockMovements call
         fetchJson(`/api/work-site-movements?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
         supabase.from('armazens').select('*').eq('empresa_id', targetCompanyId).then(res => res.data),
         fetchJson(`/api/security/occurrences?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
-        fetchJson(`/api/security/armory?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
-        fetchJson(`/api/security/roster?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
+        fetchJson(`/api/security/armory?empresa_id=${targetCompanyId}`),
+        fetchJson(`/api/security/roster?empresa_id=${targetCompanyId}`),
         !compSupabase ? fetchJson(`/api/company/${targetCompanyId}`) : Promise.resolve(null),
         Promise.resolve(null) // Replaced /api/purchases with Supabase loadCompras call above
       ]);
@@ -20264,7 +20509,7 @@ export default function App() {
       });
 
       setStats(s || null);
-      setProducts(Array.isArray(p) ? p : []);
+      // setProducts(Array.isArray(p) ? p : []); // DO NOT OVERWRITE SUPABASE DATA
       setTransactions(Array.isArray(tr) ? tr : []);
       setInvoices([]); // Will be synced via issuedDocuments if needed, or use issuedDocuments directly
       setEmployees(Array.isArray(e) ? e : []);
@@ -20289,6 +20534,7 @@ export default function App() {
       setSecurityArmory(Array.isArray(arm) ? arm : []);
       setSecurityRoster(Array.isArray(rost) ? rost : []);
       // setPurchases(Array.isArray(pur) ? pur : []); // DO NOT OVERWRITE SUPABASE DATA
+      // setStockMovements(Array.isArray(sm) ? sm : []); // DO NOT OVERWRITE SUPABASE DATA
       
       if (!compSupabase && comp) {
         setCompanyData(comp);
@@ -20335,6 +20581,43 @@ export default function App() {
     } catch (err: any) {
       console.error('[App] Erro ao adicionar Local:', err);
       alert('Erro ao guardar: ' + (err.message || 'Erro desconhecido'));
+    }
+  };
+
+  const handleDeleteProduct = async (id: string | number) => {
+    if (!window.confirm('Tem a certeza que deseja eliminar este produto? Esta ação não pode ser revertida.')) return;
+    try {
+      if (!user?.empresa_id) return;
+      
+      // 1. Get image path before deleting record
+      const { data: product } = await supabase
+        .from('produtos')
+        .select('image_path')
+        .eq('id', id)
+        .eq('empresa_id', user.empresa_id)
+        .single();
+      
+      // 2. Delete record from database
+      const { error } = await supabase
+        .from('produtos')
+        .delete()
+        .eq('id', id)
+        .eq('empresa_id', user.empresa_id);
+
+      if (error) throw error;
+
+      // 3. Delete image from storage if it exists
+      if (product?.image_path) {
+        await supabase.storage
+          .from('produtos-imagens')
+          .remove([product.image_path]);
+      }
+      
+      await fetchData();
+      alert('Produto eliminado com sucesso!');
+    } catch (err: any) {
+      console.error('[App] Erro ao eliminar produto:', err);
+      alert('Erro ao eliminar produto: ' + (err.message || 'Erro desconhecido'));
     }
   };
 

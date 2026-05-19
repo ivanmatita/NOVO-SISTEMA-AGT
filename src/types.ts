@@ -93,7 +93,7 @@ export interface Client {
 }
 
 export interface Product {
-  id: number;
+  id: number | string;
   name: string;
   referente?: string;
   data_registo?: string;
@@ -112,6 +112,8 @@ export interface Product {
   barcode?: string;
   created_at?: string;
   image?: string;
+  image_url?: string;
+  image_path?: string;
 }
 
 export interface InvoiceItem {
@@ -121,6 +123,7 @@ export interface InvoiceItem {
   quantity: number;
   unit_price: number;
   total: number;
+  tax_id?: number | string | null;
   retencao_fonte?: number;
   tipologia?: string;
   desconto?: number;
@@ -426,8 +429,8 @@ export interface IssuedDocument {
 }
 
 export interface StockMovement {
-  id: number;
-  product_id: number;
+  id: number | string;
+  product_id: number | string;
   product_name?: string;
   empresa_id?: string;
   type: 'entry' | 'exit' | 'transfer' | 'adjustment' | 'adjustment_plus' | 'adjustment_minus';

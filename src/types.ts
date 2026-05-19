@@ -219,10 +219,11 @@ export interface Employee {
 }
 
 export interface Profession {
-  id: number;
+  id: any;
   name: string;
   inss_profession?: string;
   base_salary?: number;
+  acerto_salarial?: number;
 }
 
 export interface EmployeeContract {

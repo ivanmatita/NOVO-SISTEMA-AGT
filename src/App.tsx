@@ -1084,10 +1084,12 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
   const [professions, setProfessions] = useState<Profession[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [showProfessionForm, setShowProfessionForm] = useState(false);
+  const [editingProfession, setEditingProfession] = useState<Profession | null>(null);
   const [showInssList, setShowInssList] = useState(false);
   const [inssProfession, setInssProfession] = useState('');
   const [companyProfession, setCompanyProfession] = useState('');
   const [baseSalary, setBaseSalary] = useState('');
+  const [acertoSalarial, setAcertoSalarial] = useState('');
   const [inssSearch, setInssSearch] = useState('');
   const [selectedReport, setSelectedReport] = useState<string | null>(null);
   const [localEmployees, setLocalEmployees] = useState<Employee[]>([]);
@@ -1565,14 +1567,31 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
 
   const fetchHRData = async () => {
     try {
-      const [p, e, att, abs, lt] = await Promise.all([
-        fetchJson(`/api/professions?empresa_id=${user?.empresa_id}`),
+      let pList: Profession[] = [];
+      try {
+        const { data: supaProfessions, error: supaError } = await supabase
+          .from('professions')
+          .select('*')
+          .eq('empresa_id', user?.empresa_id);
+        
+        if (supaError) {
+          console.warn('Supabase professions load failed (possibly table does not exist yet). Falling back to local Express database. Error:', supaError.message);
+          pList = await fetchJson(`/api/professions?empresa_id=${user?.empresa_id}`);
+        } else {
+          pList = supaProfessions || [];
+        }
+      } catch (err) {
+        console.warn('DB client error during professions fetch. Falling back to local Express database.', err);
+        pList = await fetchJson(`/api/professions?empresa_id=${user?.empresa_id}`);
+      }
+
+      const [e, att, abs, lt] = await Promise.all([
         fetchJson(`/api/employees?empresa_id=${user?.empresa_id}`),
         fetchJson(`/api/employees/attendance?date=${attendanceDate}&empresa_id=${user?.empresa_id}`),
         fetchJson(`/api/employees/absences?empresa_id=${user?.empresa_id}`),
         fetchJson(`/api/labor-terminations?empresa_id=${user?.empresa_id}`)
       ]);
-      setProfessions(Array.isArray(p) ? p : []);
+      setProfessions(Array.isArray(pList) ? pList : []);
       setLocalEmployees(Array.isArray(e) ? e : []);
       setAttendance(Array.isArray(att) ? att : []);
       setAbsences(Array.isArray(abs) ? abs : []);
@@ -1610,10 +1629,24 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
     }
   };
 
-  const handleDeleteProfession = async (id: number) => {
+  const handleDeleteProfession = async (id: any) => {
     if (!confirm('Tem a certeza que deseja eliminar esta profissão?')) return;
     try {
-      await fetchWithAuth(`/api/professions/${id}`, { method: 'DELETE' });
+      try {
+        const { error: supaError } = await supabase
+          .from('professions')
+          .delete()
+          .eq('id', id)
+          .eq('empresa_id', user?.empresa_id);
+        
+        if (supaError) {
+          console.warn('Supabase delete failed, trying Express database fallback:', supaError.message);
+          await fetchWithAuth(`/api/professions/${id}`, { method: 'DELETE' });
+        }
+      } catch (err) {
+        console.warn('DB client error during delete, trying Express database fallback.', err);
+        await fetchWithAuth(`/api/professions/${id}`, { method: 'DELETE' });
+      }
       fetchHRData();
     } catch (err) {
       console.error('Error deleting profession:', err);
@@ -3592,163 +3625,274 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
           <div className="space-y-8">
             <div className="flex justify-between items-center">
               <h3 className="text-lg font-bold text-[#003366]">Gestão de Profissões</h3>
+              <button 
+                onClick={() => {
+                  setEditingProfession(null);
+                  setCompanyProfession('');
+                  setInssProfession('');
+                  setBaseSalary('');
+                  setAcertoSalarial('');
+                  setShowProfessionForm(true);
+                }}
+                className="bg-[#003366] hover:bg-[#002244] text-white font-bold px-4 py-2 text-xs uppercase tracking-wider flex items-center gap-2 transition-all shadow-sm flex-row"
+              >
+                <Plus size={14} />
+                Registar Profissão
+              </button>
             </div>
 
-            {!showProfessionForm ? (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <button 
-                  onClick={() => setShowProfessionForm(true)}
-                  className="bg-white border-2 border-dashed border-zinc-200 p-12 flex flex-col items-center gap-4 hover:border-[#003366] hover:text-[#003366] transition-all group"
-                >
-                  <div className="w-16 h-16 bg-zinc-50 rounded-full flex items-center justify-center group-hover:bg-[#003366]/5 transition-colors">
-                    <Plus size={32} className="text-[#003366]" />
-                  </div>
-                  <span className="font-bold uppercase tracking-widest text-xs">Registar Profissão</span>
-                </button>
-                
-                <button 
-                  onClick={() => {
-                    setShowProfessionForm(false);
-                    setTimeout(() => {
-                      professionsRef.current?.scrollIntoView({ behavior: 'smooth' });
-                    }, 100);
-                  }}
-                  className="bg-white border border-zinc-200 p-12 flex flex-col items-center gap-4 hover:border-[#003366] hover:text-[#003366] transition-all group"
-                >
-                  <div className="w-16 h-16 bg-zinc-50 rounded-full flex items-center justify-center group-hover:bg-[#003366]/5 transition-colors">
-                    <FileText size={32} className="text-[#003366]" />
-                  </div>
-                  <span className="font-bold uppercase tracking-widest text-xs">Listar Profissões</span>
-                </button>
-              </div>
-            ) : (
-              <motion.div 
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-6 relative"
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <button 
+                onClick={() => {
+                  setEditingProfession(null);
+                  setCompanyProfession('');
+                  setInssProfession('');
+                  setBaseSalary('');
+                  setAcertoSalarial('');
+                  setShowProfessionForm(true);
+                }}
+                className="bg-white border-2 border-dashed border-zinc-200 p-12 flex flex-col items-center gap-4 hover:border-[#003366] hover:text-[#003366] transition-all group cursor-pointer"
               >
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="space-y-1 relative">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Profissão INSS</label>
-                    <div 
-                      onClick={() => setShowInssList(true)}
-                      className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2.5 text-zinc-800 cursor-pointer text-sm flex justify-between items-center"
-                    >
-                      <span>{inssProfession || 'Selecionar da Lista INSS'}</span>
-                      <Search size={14} className="text-zinc-400" />
-                    </div>
-                    
-                    {showInssList && (
-                      <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                        <motion.div 
-                          initial={{ scale: 0.9, opacity: 0 }}
-                          animate={{ scale: 1, opacity: 1 }}
-                          className="bg-white w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col rounded-none shadow-2xl"
-                        >
-                          <div className="p-6 border-b border-zinc-100 flex justify-between items-center bg-[#003366] text-white">
-                            <h4 className="font-bold">Lista de Profissões INSS (Angola)</h4>
-                            <button onClick={() => setShowInssList(false)} className="hover:bg-white/10 p-1"><X size={20} /></button>
-                          </div>
-                          <div className="p-4 border-b border-zinc-100 bg-zinc-50">
-                            <div className="relative">
-                              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
-                              <input 
-                                type="text"
-                                placeholder="Pesquisar profissão..."
-                                value={inssSearch}
-                                onChange={e => setInssSearch(e.target.value)}
-                                className="w-full bg-white border border-zinc-200 rounded-none pl-10 pr-4 py-2 text-sm focus:outline-none focus:border-[#003366]"
-                                autoFocus
-                              />
-                            </div>
-                          </div>
-                          <div className="overflow-y-auto p-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            {INSS_PROFESSIONS.filter(p => p.toLowerCase().includes(inssSearch.toLowerCase())).map(p => (
-                              <button 
-                                key={p}
-                                onClick={() => {
-                                  setInssProfession(p);
-                                  setShowInssList(false);
-                                  setInssSearch('');
-                                }}
-                                className="text-left p-3 hover:bg-zinc-50 border border-zinc-100 text-sm text-zinc-700 transition-colors"
-                              >
-                                {p}
-                              </button>
-                            ))}
-                          </div>
-                        </motion.div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Profissão Empresa</label>
-                    <input 
-                      type="text" 
-                      value={companyProfession}
-                      onChange={e => setCompanyProfession(e.target.value)}
-                      placeholder="Ex: Técnico Especialista"
-                      className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Salário Base</label>
-                    <input 
-                      type="number" 
-                      value={baseSalary}
-                      onChange={e => setBaseSalary(e.target.value)}
-                      placeholder="0.00"
-                      className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]"
-                    />
-                  </div>
+                <div className="w-16 h-16 bg-zinc-50 rounded-full flex items-center justify-center group-hover:bg-[#003366]/5 transition-colors">
+                  <Plus size={32} className="text-[#003366]" />
                 </div>
+                <span className="font-bold uppercase tracking-widest text-xs">Registar Profissão</span>
+              </button>
+              
+              <button 
+                onClick={() => {
+                  professionsRef.current?.scrollIntoView({ behavior: 'smooth' });
+                }}
+                className="bg-white border border-zinc-200 p-12 flex flex-col items-center gap-4 hover:border-[#003366] hover:text-[#003366] transition-all group cursor-pointer"
+              >
+                <div className="w-16 h-16 bg-zinc-50 rounded-full flex items-center justify-center group-hover:bg-[#003366]/5 transition-colors">
+                  <FileText size={32} className="text-[#003366]" />
+                </div>
+                <span className="font-bold uppercase tracking-widest text-xs">Listar Profissões</span>
+              </button>
+            </div>
 
-                <div className="flex justify-end gap-3 pt-4 border-t border-zinc-100">
-                  <button 
-                    onClick={() => setShowProfessionForm(false)}
-                    className="text-zinc-500 hover:text-zinc-700 text-sm font-medium"
-                  >
-                    Cancelar
-                  </button>
-                  <button 
-                    onClick={async () => {
-                      if (!inssProfession || !companyProfession || !baseSalary) {
-                        alert('Por favor preencha todos os campos');
-                        return;
-                      }
-                      await fetchWithAuth('/api/professions', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
+            {showProfessionForm && (
+              <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                <motion.div 
+                  initial={{ scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="bg-white w-full max-w-xl border border-zinc-200 p-8 shadow-2xl relative space-y-6 rounded-none text-left"
+                >
+                  <div className="flex justify-between items-center border-b border-zinc-150 pb-4">
+                    <h4 className="font-bold text-[#003366] text-base uppercase tracking-wider">
+                      {editingProfession ? 'Alterar Profissão' : 'Registar Profissão'}
+                    </h4>
+                    <button 
+                      onClick={() => {
+                        setShowProfessionForm(false);
+                        setEditingProfession(null);
+                      }} 
+                      className="hover:bg-zinc-100 p-1.5 rounded-full text-zinc-400 hover:text-zinc-600 transition-colors cursor-pointer"
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="space-y-1 relative">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Profissão INSS</label>
+                      <div 
+                        onClick={() => setShowInssList(true)}
+                        className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-3 text-zinc-800 cursor-pointer text-sm flex justify-between items-center hover:border-zinc-400 transition-colors"
+                      >
+                        <span>{inssProfession || 'Selecionar da Lista INSS'}</span>
+                        <Search size={14} className="text-zinc-400" />
+                      </div>
+                      
+                      {showInssList && (
+                        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[60] flex items-center justify-center p-4">
+                          <motion.div 
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            className="bg-white w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col rounded-none shadow-2xl"
+                          >
+                            <div className="p-6 border-b border-zinc-100 flex justify-between items-center bg-[#003366] text-white">
+                              <h4 className="font-bold">Lista de Profissões INSS (Angola)</h4>
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setShowInssList(false);
+                                }} 
+                                className="hover:bg-white/10 p-1 cursor-pointer"
+                              >
+                                <X size={20} />
+                              </button>
+                            </div>
+                            <div className="p-4 border-b border-zinc-100 bg-zinc-50">
+                              <div className="relative">
+                                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+                                <input 
+                                  type="text"
+                                  placeholder="Pesquisar profissão..."
+                                  value={inssSearch}
+                                  onChange={e => setInssSearch(e.target.value)}
+                                  className="w-full bg-white border border-zinc-200 rounded-none pl-10 pr-4 py-2 text-sm focus:outline-none focus:border-[#003366]"
+                                  autoFocus
+                                />
+                              </div>
+                            </div>
+                            <div className="overflow-y-auto p-4 grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[50vh]">
+                              {INSS_PROFESSIONS.filter(p => p.toLowerCase().includes(inssSearch.toLowerCase())).map(p => (
+                                <button 
+                                  key={p}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setInssProfession(p);
+                                    setShowInssList(false);
+                                    setInssSearch('');
+                                  }}
+                                  className="text-left p-3 hover:bg-zinc-50 border border-zinc-100 text-sm text-zinc-700 transition-colors cursor-pointer"
+                                >
+                                  {p}
+                                </button>
+                              ))}
+                            </div>
+                          </motion.div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Profissão Empresa</label>
+                      <input 
+                        type="text" 
+                        value={companyProfession}
+                        onChange={e => setCompanyProfession(e.target.value)}
+                        placeholder="Ex: Técnico Especialista"
+                        className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-colors"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Salário Base</label>
+                        <input 
+                          type="number" 
+                          value={baseSalary}
+                          onChange={e => setBaseSalary(e.target.value)}
+                          placeholder="0.00"
+                          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-colors"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Acerto Salarial</label>
+                        <input 
+                          type="number" 
+                          value={acertoSalarial}
+                          onChange={e => setAcertoSalarial(e.target.value)}
+                          placeholder="0.00"
+                          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-colors"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-3 pt-4 border-t border-zinc-100">
+                    <button 
+                      onClick={() => {
+                        setShowProfessionForm(false);
+                        setEditingProfession(null);
+                      }}
+                      className="text-zinc-500 hover:text-zinc-700 text-sm font-medium px-4 py-2 bg-zinc-150 transition-colors cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                    <button 
+                      onClick={async () => {
+                        if (!inssProfession || !companyProfession || !baseSalary) {
+                          alert('Por favor preencha todos os campos obrigatórios (INSS, Empresa, Salário Base)');
+                          return;
+                        }
+
+                        const payload = {
                           name: companyProfession,
                           inss_profession: inssProfession,
-                          base_salary: Number(baseSalary)
-                        })
-                      });
-                      setInssProfession('');
-                      setCompanyProfession('');
-                      setBaseSalary('');
-                      setShowProfessionForm(false);
-                      fetchHRData();
-                    }}
-                    className="bg-[#003366] text-white px-8 py-2 rounded-none text-sm font-bold hover:bg-[#002244] shadow-sm flex items-center gap-2"
-                  >
-                    <Check size={16} />
-                    Registar
-                  </button>
-                </div>
-              </motion.div>
+                          base_salary: Number(baseSalary),
+                          acerto_salarial: Number(acertoSalarial || 0),
+                          empresa_id: user?.empresa_id
+                        };
+
+                        if (editingProfession) {
+                          try {
+                            const { error: supaError } = await supabase
+                              .from('professions')
+                              .update(payload)
+                              .eq('id', editingProfession.id)
+                              .eq('empresa_id', user?.empresa_id);
+                            
+                            if (supaError) {
+                              console.warn('Supabase update failed, trying Express database fallback:', supaError.message);
+                              await fetchWithAuth(`/api/professions/${editingProfession.id}`, {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(payload)
+                              });
+                            }
+                          } catch (err) {
+                            console.warn('DB client error during update, trying Express database fallback.', err);
+                            await fetchWithAuth(`/api/professions/${editingProfession.id}`, {
+                              method: 'PUT',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify(payload)
+                            });
+                          }
+                        } else {
+                          try {
+                            const { error: supaError } = await supabase
+                              .from('professions')
+                              .insert([payload]);
+                            
+                            if (supaError) {
+                              console.warn('Supabase insert failed, trying Express database fallback:', supaError.message);
+                              await fetchWithAuth('/api/professions', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(payload)
+                              });
+                            }
+                          } catch (err) {
+                            console.warn('DB client error during insert, trying Express database fallback.', err);
+                            await fetchWithAuth('/api/professions', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify(payload)
+                            });
+                          }
+                        }
+
+                        setInssProfession('');
+                        setCompanyProfession('');
+                        setBaseSalary('');
+                        setAcertoSalarial('');
+                        setEditingProfession(null);
+                        setShowProfessionForm(false);
+                        fetchHRData();
+                      }}
+                      className="bg-[#003366] text-white px-8 py-2 rounded-none text-sm font-bold hover:bg-[#002244] transition-colors shadow-sm flex items-center gap-2 cursor-pointer"
+                    >
+                      <Check size={16} />
+                      {editingProfession ? 'Salvar Alterações' : 'Registar'}
+                    </button>
+                  </div>
+                </motion.div>
+              </div>
             )}
 
             <div ref={professionsRef} className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-[#003366] text-white text-[10px] uppercase tracking-wider font-bold">
+                  <tr className="bg-[#003366] text-white text-[10px] uppercase tracking-wider font-bold animate-fade-in">
                     <th className="px-6 py-4">Profissão Empresa</th>
                     <th className="px-6 py-4">Profissão INSS</th>
                     <th className="px-6 py-4 text-right">Salário Base</th>
+                    <th className="px-6 py-4 text-right">Acerto Salarial</th>
                     <th className="px-6 py-4 text-right">INSS Trab. (3%)</th>
                     <th className="px-6 py-4 text-right">INSS Emp. (8%)</th>
                     <th className="px-6 py-4 text-right">Custo Total</th>
@@ -3758,28 +3902,58 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
                 <tbody className="divide-y divide-zinc-100">
                   {professions.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-6 py-12 text-center text-zinc-400 italic">
+                      <td colSpan={8} className="px-6 py-12 text-center text-zinc-400 italic">
                         Nenhuma profissão registada.
                       </td>
                     </tr>
-                  ) : professions.map(p => (
-                    <tr key={p.id} className="hover:bg-zinc-50 transition-colors text-sm">
-                      <td className="px-6 py-4 font-bold text-[#003366]">{p.name}</td>
-                      <td className="px-6 py-4 text-zinc-500">{p.inss_profession || '---'}</td>
-                      <td className="px-6 py-4 text-right font-medium text-zinc-900">{formatCurrency(p.base_salary || 0)}</td>
-                      <td className="px-6 py-4 text-right text-red-500">-{formatCurrency((p.base_salary || 0) * 0.03)}</td>
-                      <td className="px-6 py-4 text-right text-zinc-500">+{formatCurrency((p.base_salary || 0) * 0.08)}</td>
-                      <td className="px-6 py-4 text-right font-black text-[#003366]">{formatCurrency((p.base_salary || 0) * 1.08)}</td>
-                      <td className="px-6 py-4 text-center">
-                        <button 
-                          onClick={() => handleDeleteProfession(p.id)}
-                          className="text-zinc-300 hover:text-red-500 transition-colors"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  ) : professions.map(p => {
+                    const base = p.base_salary || 0;
+                    const acerto = p.acerto_salarial || 0;
+                    const totalBase = base + acerto;
+                    const inssTrab = totalBase * 0.03;
+                    const inssEmp = totalBase * 0.08;
+                    const custoTotal = totalBase + inssEmp;
+                    return (
+                      <tr key={p.id} className="hover:bg-zinc-50 transition-colors text-sm">
+                        <td className="px-6 py-4 font-bold text-[#003366]">{p.name}</td>
+                        <td className="px-6 py-4 text-zinc-500">{p.inss_profession || '---'}</td>
+                        <td className="px-6 py-4 text-right font-medium text-zinc-900">{formatCurrency(base)}</td>
+                        <td className="px-6 py-4 text-right font-medium text-emerald-600">
+                          {acerto > 0 ? `+${formatCurrency(acerto)}` : '---'}
+                        </td>
+                        <td className="px-6 py-4 text-right text-red-500">-{formatCurrency(inssTrab)}</td>
+                        <td className="px-6 py-4 text-right text-zinc-500">+{formatCurrency(inssEmp)}</td>
+                        <td className="px-6 py-4 text-right font-black text-[#003366]">{formatCurrency(custoTotal)}</td>
+                        <td className="px-6 py-4 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <button 
+                              onClick={() => {
+                                setEditingProfession(p);
+                                setCompanyProfession(p.name);
+                                setInssProfession(p.inss_profession || '');
+                                setBaseSalary(String(p.base_salary || ''));
+                                setAcertoSalarial(String(p.acerto_salarial || ''));
+                                setShowProfessionForm(true);
+                              }}
+                              className="bg-zinc-50 hover:bg-[#003366] text-[#003366] hover:text-white p-1.5 transition-colors border border-zinc-200 hover:border-[#003366] flex items-center gap-1 text-xs px-2.5 font-semibold cursor-pointer"
+                              title="Editar"
+                            >
+                              <Edit size={12} />
+                              <span>Editar</span>
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteProfession(p.id)}
+                              className="bg-zinc-50 hover:bg-red-500 text-zinc-600 hover:text-white p-1.5 transition-colors border border-zinc-200 hover:border-red-500 flex items-center gap-1 text-xs px-2.5 font-semibold cursor-pointer"
+                              title="Eliminar"
+                            >
+                              <Trash2 size={12} />
+                              <span>Apagar</span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -8769,26 +8943,28 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
                               )}
                             </td>
                             <td className="px-6 py-4 text-right">
-                              <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <div className="flex justify-end gap-2 flex-wrap items-center">
                                 <button 
                                   onClick={() => {
                                     setPrintingCarta(record);
                                     setPrintFormat('carta');
                                   }}
-                                  className="p-1 px-2 border border-[#003366]/20 bg-[#003366]/5 text-[#003366] rounded hover:bg-[#003366]/10 flex items-center gap-1 text-xs font-bold transition-all"
+                                  className="bg-[#003366]/5 hover:bg-[#003366]/10 text-[#003366] p-1.5 transition-colors border border-[#003366]/20 flex items-center gap-1 text-xs px-2.5 font-bold cursor-pointer rounded"
                                   title="Imprimir"
                                 >
-                                  <Printer size={14} /> Imprimir
+                                  <Printer size={12} />
+                                  <span>Imprimir</span>
                                 </button>
                                 <button 
                                   onClick={() => {
                                     setEditingCarta(record);
                                     setIsCartaFormOpen(true);
                                   }}
-                                  className="p-1 text-zinc-400 hover:text-[#003366] transition-colors"
+                                  className="bg-zinc-50 hover:bg-[#003366] text-[#003366] hover:text-white p-1.5 transition-colors border border-zinc-200 hover:border-[#003366] flex items-center gap-1 text-xs px-2.5 font-semibold cursor-pointer rounded"
                                   title="Editar"
                                 >
-                                  <Edit size={16} />
+                                  <Edit size={12} />
+                                  <span>Editar</span>
                                 </button>
                                 <button 
                                   onClick={async () => {
@@ -8800,16 +8976,17 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
                                         const { error } = await supabase.from('cartas').delete().eq('id', record.id);
                                         if (error) throw error;
                                         loadData();
-                                        alert('Carta eliminada do supabase e da lista!');
+                                        alert('Carta eliminada com sucesso!');
                                       } catch (err: any) {
                                         alert('Erro ao eliminar: ' + err.message);
                                       }
                                     }
                                   }}
-                                  className="p-1 text-zinc-400 hover:text-red-600 transition-colors"
+                                  className="bg-zinc-50 hover:bg-red-500 text-zinc-650 hover:text-white p-1.5 transition-colors border border-zinc-200 hover:border-red-500 flex items-center gap-1 text-xs px-2.5 font-semibold cursor-pointer rounded"
                                   title="Eliminar"
                                 >
-                                  <Trash2 size={16} />
+                                  <Trash2 size={12} />
+                                  <span>Apagar</span>
                                 </button>
                               </div>
                             </td>
@@ -8827,8 +9004,15 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
                               </span>
                             </td>
                             <td className="px-6 py-4 text-right">
-                              <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button onClick={() => window.open(record.anexo_url)} className="p-1 text-zinc-400 hover:text-blue-500" title="Visualizar File"><Download size={16} /></button>
+                              <div className="flex justify-end gap-2 flex-wrap items-center">
+                                <button 
+                                  onClick={() => window.open(record.anexo_url)} 
+                                  className="bg-zinc-50 hover:bg-blue-600 text-blue-600 hover:text-white p-1.5 transition-colors border border-zinc-200 hover:border-blue-600 flex items-center gap-1 text-xs px-2.5 font-semibold cursor-pointer rounded" 
+                                  title="Visualizar"
+                                >
+                                  <Download size={12} />
+                                  <span>Visualizar</span>
+                                </button>
                                 <button 
                                   onClick={async () => {
                                     if (confirm('Deseja apagar esta imagem/documento dos anexos?')) {
@@ -8848,10 +9032,11 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
                                       }
                                     }
                                   }}
-                                  className="p-1 text-zinc-400 hover:text-red-500"
+                                  className="bg-zinc-50 hover:bg-red-500 text-zinc-650 hover:text-white p-1.5 transition-colors border border-zinc-200 hover:border-red-500 flex items-center gap-1 text-xs px-2.5 font-semibold cursor-pointer rounded"
                                   title="Remover anexo"
                                 >
-                                  <Trash2 size={16} />
+                                  <Trash2 size={12} />
+                                  <span>Remover</span>
                                 </button>
                               </div>
                             </td>
@@ -8874,9 +9059,16 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
                               )}
                             </td>
                             <td className="px-6 py-4 text-right">
-                              <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <div className="flex justify-end gap-2 flex-wrap items-center">
                                 {record.anexo_url && (
-                                  <button onClick={() => window.open(record.anexo_url)} className="p-1 text-zinc-400 hover:text-blue-500" title="Descarregar"><Download size={16} /></button>
+                                  <button 
+                                    onClick={() => window.open(record.anexo_url)} 
+                                    className="bg-zinc-50 hover:bg-blue-600 text-blue-600 hover:text-white p-1.5 transition-colors border border-zinc-200 hover:border-blue-600 flex items-center gap-1 text-xs px-2.5 font-semibold cursor-pointer rounded" 
+                                    title="Descarregar"
+                                  >
+                                    <Download size={12} />
+                                    <span>Download</span>
+                                  </button>
                                 )}
                                 <button 
                                   onClick={() => {
@@ -8892,12 +9084,20 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
                                     });
                                     setShowForm(true);
                                   }}
-                                  className="p-1 text-zinc-400 hover:text-[#003366]"
+                                  className="bg-zinc-50 hover:bg-[#003366] text-[#003366] hover:text-white p-1.5 transition-colors border border-zinc-200 hover:border-[#003366] flex items-center gap-1 text-xs px-2.5 font-semibold cursor-pointer rounded"
                                   title="Editar"
                                 >
-                                  <Edit size={16} />
+                                  <Edit size={12} />
+                                  <span>Editar</span>
                                 </button>
-                                <button onClick={() => handleDelete(record.id, record.anexo_path)} className="p-1 text-zinc-400 hover:text-red-500" title="Apagar"><Trash2 size={16} /></button>
+                                <button 
+                                  onClick={() => handleDelete(record.id, record.anexo_path)} 
+                                  className="bg-zinc-50 hover:bg-red-500 text-zinc-650 hover:text-white p-1.5 transition-colors border border-zinc-200 hover:border-red-500 flex items-center gap-1 text-xs px-2.5 font-semibold cursor-pointer rounded" 
+                                  title="Apagar"
+                                >
+                                  <Trash2 size={12} />
+                                  <span>Apagar</span>
+                                </button>
                               </div>
                             </td>
                           </tr>

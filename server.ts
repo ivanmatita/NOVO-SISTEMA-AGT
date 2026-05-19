@@ -1639,6 +1639,38 @@ app.post("/api/exec-sql", express.json(), async (req, res) => {
     if (empresa_id) return res.json(professions.filter(p => String(p.empresa_id) === String(empresa_id)));
     res.json([]);
   });
+  app.post("/api/professions", (req, res) => {
+    const newP = { 
+      ...req.body, 
+      id: generateId(), 
+      created_at: new Date().toISOString() 
+    };
+    professions.push(newP);
+    saveData();
+    res.json(newP);
+  });
+  app.put("/api/professions/:id", (req, res) => {
+    const id = Number(req.params.id);
+    const index = professions.findIndex(p => p.id === id);
+    if (index !== -1) {
+      professions[index] = { ...professions[index], ...req.body };
+      saveData();
+      res.json(professions[index]);
+    } else {
+      res.status(404).json({ error: "Profissão não encontrada" });
+    }
+  });
+  app.delete("/api/professions/:id", (req, res) => {
+    const id = Number(req.params.id);
+    const index = professions.findIndex(p => p.id === id);
+    if (index !== -1) {
+      professions.splice(index, 1);
+      saveData();
+      res.json({ success: true });
+    } else {
+      res.status(404).json({ error: "Profissão não encontrada" });
+    }
+  });
   app.get("/api/employees/attendance", (req, res) => {
     const { empresa_id, date } = req.query;
     let filtered = attendance;

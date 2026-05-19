@@ -164,6 +164,7 @@ import SaftExportForm from './components/SaftExportForm';
 import { TopHeader } from './components/TopHeader';
 import { RightSidebar } from './components/RightSidebar';
 import { ClientForm } from './components/ClientForm';
+import TaxesModule from './components/TaxesModule';
 import { MetricsModule, fetchMetrics, Metric } from './components/MetricsModule';
 import { MediaLibraryModule } from './components/MediaLibraryModule';
 
@@ -1075,7 +1076,7 @@ const INSS_PROFESSIONS = [
   "Tesoureiro", "Topógrafo", "Traductor", "Vendedor", "Veterinário", "Vigilante", "Zelador"
 ];
 
-const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, companyName }: { onRefresh: () => void, onSetIsContractModalOpen: (b: boolean) => void, onSetEmployee: (e: Employee | null) => void, caixas: Caixa[], companyName: string }) => {
+const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, companyName, fiscalYear }: { onRefresh: () => void, onSetIsContractModalOpen: (b: boolean) => void, onSetEmployee: (e: Employee | null) => void, caixas: Caixa[], companyName: string, fiscalYear: string }) => {
   const { user } = useAuth();
   const professionsRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -1378,7 +1379,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
               </div>
               <div>
                 <p className="text-[9px] font-black uppercase tracking-widest text-zinc-400">Período</p>
-                <p className="text-sm font-bold text-zinc-700">Março / 2026</p>
+                <p className="text-sm font-bold text-zinc-700">{selectedMonth}</p>
               </div>
             </div>
           </div>
@@ -1457,7 +1458,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
   const [subjectToIRT, setSubjectToIRT] = useState(true);
   const [subjectToINSS, setSubjectToINSS] = useState(true);
   const [hiredAt, setHiredAt] = useState(new Date().toISOString().split('T')[0]);
-  const [selectedMonth, setSelectedMonth] = useState('Março / 2026');
+  const [selectedMonth, setSelectedMonth] = useState(`Março / ${fiscalYear}`);
   const [processedAttendance, setProcessedAttendance] = useState<Record<number, boolean>>({});
   const [processedReceipts, setProcessedReceipts] = useState<any[]>([]);
   const [selectedProcedure, setSelectedProcedure] = useState<any | null>(null);
@@ -2863,9 +2864,9 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
                   className="w-full border border-zinc-200 px-4 py-2 text-xs focus:outline-none focus:border-[#003366] font-bold text-[#003366]"
                 >
                   {[
-                    "Janeiro / 2026", "Fevereiro / 2026", "Março / 2026", "Abril / 2026", "Maio / 2026", "Junho / 2026",
-                    "Julho / 2026", "Agosto / 2026", "Setembro / 2026", "Outubro / 2026", "Novembro / 2026", "Dezembro / 2026"
-                  ].map(m => <option key={m} value={m}>{m}</option>)}
+                    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+                    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+                  ].map(m => `${m} / ${fiscalYear}`).map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
               </div>
               <button 
@@ -3115,9 +3116,13 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
                 <div className="min-w-[200px]">
                   <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Mês/Ano:</label>
                   <select className="w-full border border-zinc-200 px-4 py-2 text-xs focus:outline-none focus:border-[#003366] font-bold text-[#003366]">
-                    <option>Março / 2026</option>
-                    <option>Fevereiro / 2026</option>
-                    <option>Janeiro / 2026</option>
+                    <option>{selectedMonth}</option>
+                    {[
+                      "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+                      "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+                    ].map(m => `${m} / ${fiscalYear}`).filter(m => m !== selectedMonth).map(m => (
+                      <option key={m}>{m}</option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -6805,14 +6810,42 @@ const POSManagementView = ({
   );
 };
 
-const POSModule = ({ products, onRefresh, caixas, onSaveDocument }: { products: Product[], onRefresh: () => void, caixas: Caixa[], onSaveDocument: (doc: any) => Promise<void> }) => {
+const POSModule = ({ products, onRefresh, caixas, onSaveDocument, sessions, fiscalSeries, fiscalYear }: { 
+  products: Product[], 
+  onRefresh: () => void, 
+  caixas: Caixa[], 
+  onSaveDocument: (doc: any) => Promise<void>, 
+  sessions: CashSession[],
+  fiscalSeries: FiscalSeries[],
+  fiscalYear: string
+}) => {
   const [activeArea, setActiveArea] = useState<POSArea | 'dashboard'>('dashboard');
   const [cart, setCart] = useState<{product: Product, qty: number, discount: number}[]>([]);
   const [search, setSearch] = useState('');
-  const [series, setSeries] = useState<FiscalSeries[]>([]);
+  const [series, setSeries] = useState<FiscalSeries[]>(fiscalSeries || []);
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
   const [posPoints, setPosPoints] = useState<POSPoint[]>([]);
-  const [sessions, setSessions] = useState<CashSession[]>([]);
+
+  useEffect(() => {
+    const loadPOSData = async () => {
+      try {
+        const [cc, pp] = await Promise.all([
+          fetchJson('/api/cost-centers'),
+          fetchJson('/api/pos-points')
+        ]);
+        setCostCenters(cc);
+        setPosPoints(pp);
+        if (pp.length > 0 && !selectedPOS) setSelectedPOS(pp[0].id.toString());
+      } catch (err) {
+        console.error('Error loading POS data:', err);
+      }
+    };
+    loadPOSData();
+  }, []);
+
+  useEffect(() => {
+    setSeries(fiscalSeries || []);
+  }, [fiscalSeries]);
   
   const [selectedSeries, setSelectedSeries] = useState('');
   const [selectedCostCenter, setSelectedCostCenter] = useState('');
@@ -9283,6 +9316,12 @@ const SettingsModule = ({ companyData, onRefreshData, alerts, setAlerts, onEditA
           Métrica
         </button>
         <button 
+          onClick={() => setActiveTab('impostos')}
+          className={`pb-2 text-sm font-bold ${activeTab === 'impostos' ? 'text-[#003366] border-b-2 border-[#003366]' : 'text-zinc-500 hover:text-zinc-800'}`}
+        >
+          Taxas e Impostos
+        </button>
+        <button 
           onClick={() => setActiveTab('utilizadores')}
           className={`pb-2 text-sm font-bold ${activeTab === 'utilizadores' ? 'text-[#003366] border-b-2 border-[#003366]' : 'text-zinc-500 hover:text-zinc-800'}`}
         >
@@ -9357,6 +9396,7 @@ const SettingsModule = ({ companyData, onRefreshData, alerts, setAlerts, onEditA
       {activeTab === 'media' && <MediaLibraryModule onRefreshData={onRefreshData} />}
       {activeTab === 'alertas' && <AlertasModule />}
       {activeTab === 'metrica' && <MetricsModule />}
+      {activeTab === 'impostos' && <TaxesModule onRefreshData={onRefreshData} />}
       {activeTab === 'utilizadores' && <UsersSettings />}
     </div>
   );
@@ -11352,13 +11392,14 @@ const PGCModule = ({ onBack }: { onBack: () => void }) => {
   );
 };
 
-const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employees, issuedDocuments }: { 
+const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employees, issuedDocuments, fiscalYear }: { 
   invoices: Invoice[], 
   clients: Client[], 
   fiscalSeries: FiscalSeries[], 
   onRefresh: () => void, 
   employees: Employee[],
-  issuedDocuments: IssuedDocument[]
+  issuedDocuments: IssuedDocument[],
+  fiscalYear: string
 }) => {
   const { user } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState<string | null>(null);
@@ -11378,6 +11419,8 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
           .from('compras')
           .select('*')
           .eq('empresa_id', user.empresa_id)
+          .gte('created_at', `${fiscalYear}-01-01T00:00:00Z`)
+          .lte('created_at', `${fiscalYear}-12-31T23:59:59Z`)
           .order('created_at', { ascending: false });
         
         if (purData) {
@@ -11408,7 +11451,7 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
     };
 
     loadAccountingData();
-  }, []);
+  }, [user?.empresa_id, fiscalYear]);
 
   const totalSales = (invoices || []).reduce((sum, inv) => sum + inv.total, 0);
   const totalPurchases = (purchases || []).reduce((sum, pur) => sum + pur.total, 0);
@@ -13116,14 +13159,16 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
     const p = field === 'unit_price' ? Number(value) : (newItems[index].unit_price || 0);
     const d = field === 'desconto' ? Number(value) : (newItems[index].desconto || 0);
     const taxId = field === 'tax_id' ? value : (newItems[index].tax_id || (activeTaxes.length > 0 ? activeTaxes[0].id : null));
-    const selectedTax = activeTaxes.find(t => t.id === Number(taxId));
+    const selectedTax = activeTaxes.find(t => String(t.id) === String(taxId));
     
     if (selectedTax) {
       newItems[index].tax = `${selectedTax.nome} (${selectedTax.taxa}%)`;
       newItems[index].tax_rate = Number(selectedTax.taxa);
       newItems[index].tax_id = selectedTax.id;
+      newItems[index].tax_type = selectedTax.tipo;
     } else {
       newItems[index].tax_rate = 0;
+      newItems[index].tax_id = null;
     }
 
     const tipo = field === 'tipo_artigo' ? value : (newItems[index].tipo_artigo || 'produto');
@@ -13159,18 +13204,28 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
 
   const total = (items ?? []).reduce((sum, item) => sum + (item.total || 0), 0);
   
-  // Calculate VAT based on individual item rates
   const vatBreakdown: { [key: string]: number } = {};
+  const retencaoBreakdown: { [key: string]: number } = {};
+  
   (items ?? []).forEach(item => {
     const rate = item.tax_rate || 0;
-    const itemVat = (item.total || 0) * (rate / 100);
+    const itemTaxAmount = (item.total || 0) * (rate / 100);
     const label = item.tax || 'Outros';
-    vatBreakdown[label] = (vatBreakdown[label] || 0) + itemVat;
+    
+    // If tax_type is 'Retencao' or 'Retenção'
+    const typeStr = item.tax_type?.toLowerCase() || '';
+    if (typeStr.includes('retencao') || typeStr.includes('retenção')) {
+      retencaoBreakdown[label] = (retencaoBreakdown[label] || 0) + itemTaxAmount;
+    } else {
+      vatBreakdown[label] = (vatBreakdown[label] || 0) + itemTaxAmount;
+    }
   });
   
   const vatAmount = Object.values(vatBreakdown).reduce((a, b) => a + b, 0);
+  const retencaoTaxesAmount = Object.values(retencaoBreakdown).reduce((a, b) => a + b, 0);
   const vatWithholdingAmount = vatAmount * Number(vatWithholding || 0);
-  const retencaoFonteTotal = (items ?? []).reduce((sum, item) => sum + (item.retencao_fonte || 0), 0);
+  // Add legacy retencao_fonte (hardcoded) + taxes retencao setup
+  const retencaoFonteTotal = (items ?? []).reduce((sum, item) => sum + (item.retencao_fonte || 0), 0) + retencaoTaxesAmount;
   const lineDiscountsTotal = (items ?? []).reduce((sum, item) => sum + Number(item.desconto || 0), 0);
   const finalTotal = total + vatAmount - vatWithholdingAmount - Number(globalDiscount || 0) - retencaoFonteTotal;
 
@@ -13733,7 +13788,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                )}
                {retencaoFonteTotal > 0 && (
                  <div className="flex justify-between text-xs font-bold text-zinc-600 bg-zinc-200/50 px-1">
-                    <span>RETENÇÃO NA FONTE (6,5%)</span>
+                    <span>RETENÇÕES</span>
                     <span>- {formatCurrency(retencaoFonteTotal)}</span>
                  </div>
                )}
@@ -15539,15 +15594,17 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
     const q = field === 'quantity' ? Number(value) : (newItems[index].quantity || 0);
     const p = field === 'unit_price' ? Number(value) : (newItems[index].unit_price || 0);
     const d = (field === 'desconto' || field === 'desconto_linha') ? Number(value) : (newItems[index].desconto || 0);
-    const taxId = field === 'tax_id' ? value : (newItems[index].tax_id || (activeTaxes.length > 0 ? activeTaxes[0].id : null));
-    const selectedTax = activeTaxes.find(t => t.id === Number(taxId));
+    const taxId = field === 'tax_id' ? value : (newItems[index].tax_id || '');
+    const selectedTax = activeTaxes.find(t => String(t.id) === String(taxId));
     
     if (selectedTax) {
       newItems[index].tax = `${selectedTax.nome} (${selectedTax.taxa}%)`;
       newItems[index].tax_rate = Number(selectedTax.taxa);
       newItems[index].tax_id = selectedTax.id;
+      newItems[index].tax_type = selectedTax.tipo;
     } else {
       newItems[index].tax_rate = 0;
+      newItems[index].tax_id = null;
     }
 
     newItems[index].total = (q * p) - d;
@@ -15567,16 +15624,25 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
   const total = (items ?? []).reduce((sum, item) => sum + (item.total || 0), 0);
   
   const vatBreakdown: { [key: string]: number } = {};
+  const retencaoBreakdown: { [key: string]: number } = {};
   (items ?? []).forEach(item => {
     const rate = item.tax_rate || 0;
-    const itemVat = (item.total || 0) * (rate / 100);
+    const itemTaxAmount = (item.total || 0) * (rate / 100);
     const label = item.tax || 'Outros';
-    vatBreakdown[label] = (vatBreakdown[label] || 0) + itemVat;
+    
+    // If tax_type is 'Retencao' or 'Retenção'
+    const typeStr = item.tax_type?.toLowerCase() || '';
+    if (typeStr.includes('retencao') || typeStr.includes('retenção')) {
+      retencaoBreakdown[label] = (retencaoBreakdown[label] || 0) + itemTaxAmount;
+    } else {
+      vatBreakdown[label] = (vatBreakdown[label] || 0) + itemTaxAmount;
+    }
   });
   
   const vatAmount = Object.values(vatBreakdown).reduce((a, b) => a + b, 0);
+  const retencaoTaxesAmount = Object.values(retencaoBreakdown).reduce((a, b) => a + b, 0);
   const vatWithholdingAmount = vatAmount * Number(vatWithholding || 0);
-  const finalTotal = total + vatAmount - vatWithholdingAmount - Number(globalDiscount || 0);
+  const finalTotal = total + vatAmount - vatWithholdingAmount - Number(globalDiscount || 0) - retencaoTaxesAmount;
 
   const handleSearchSupplier = () => {
     const client = suppliers.find(c => c.nif === nif);
@@ -16112,10 +16178,10 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
                   onChange={(e) => {
                     const id = e.target.value;
                     setSupplierId(id ? Number(id) : '');
-                    const client = suppliers.find(c => c.id === Number(id));
+                    const client = suppliers.find(c => String(c.id) === String(id));
                     if (client) {
                       setSupplierName(client.name);
-                      setNif(client.nif);
+                      setNif(client.nif || '');
                     } else {
                       setSupplierName('');
                       setNif('');
@@ -16124,7 +16190,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
                   className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
                 >
                   <option value="">Selecione um fornecedor</option>
-                  {suppliers.map(c => <option key={c.id} value={c.id}>{c.name} ({c.nif})</option>)}
+                  {suppliers.map(c => <option key={String(c.id)} value={c.id}>{c.name} ({c.nif})</option>)}
                 </select>
                 <button 
                   type="button"
@@ -16229,7 +16295,8 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
                   <div className="col-span-2 space-y-1">
                     <label className="text-[10px] font-bold text-zinc-400 uppercase">Taxa</label>
                     <select 
-                      value={item.tax_id || ''}                      onChange={(e) => updateItem(idx, 'tax_id', e.target.value)}
+                      value={item.tax_id || ''}
+                      onChange={(e) => updateItem(idx, 'tax_id', e.target.value)}
                       className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
                     >
                       <option value="">Selecionar Taxa</option>
@@ -16404,9 +16471,15 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
                 </div>
               )}
               <div className="flex justify-between text-zinc-500 text-[10px] font-bold uppercase tracking-wider">
-                <span>IVA Total</span>
+                <span>Impostos (IVA, etc)</span>
                 <span>{formatCurrency(vatAmount)}</span>
               </div>
+              {retencaoTaxesAmount > 0 && (
+                <div className="flex justify-between text-red-500 text-[10px] font-bold uppercase tracking-wider">
+                  <span>Retenções</span>
+                  <span>-{formatCurrency(retencaoTaxesAmount)}</span>
+                </div>
+              )}
               <div className="pt-4 border-t border-zinc-200 flex justify-between items-center">
                 <span className="text-xs font-bold text-[#003366] uppercase tracking-widest">Total Final</span>
                 <span className="text-3xl font-black text-[#003366]">{formatCurrency(finalTotal)}</span>
@@ -16865,7 +16938,7 @@ const PurchasesModule = ({ suppliers, products, activeTaxes, workSites, fiscalSe
               <tbody className="divide-y divide-zinc-100 italic">
                 {purchases
                   .filter(p => !['cancelled', 'anulado'].includes(p.status || ''))
-                  .filter(p => (['Fatura de Compra', 'Compra', 'Fatura'].includes(p.document_type || '')))
+                  .filter(p => (['Fatura Recibo de Compra', 'Fatura-Recibo de Compra', 'Fatura Recibo'].includes(p.document_type || '')))
                   .filter(p => {
                     const linkedReceipt = purchases.find((pur: any) => 
                       (['Pagamento', 'Recibo', 'Recibo de Pagamento'].includes(pur.document_type || '')) && 
@@ -18486,11 +18559,13 @@ const SalesReport = ({ issuedDocuments, onBack }: { issuedDocuments: IssuedDocum
 
 
 
-const ProductList = ({ products, onRefresh, stockMovements, warehouses }: { 
-  products: Product[], 
+const ProductList = ({ products, setProducts, onRefresh, stockMovements, warehouses, metrics }: { 
+  products: Product[],
+  setProducts: React.Dispatch<React.SetStateAction<Product[]>>,
   onRefresh: () => void,
   stockMovements: StockMovement[],
-  warehouses: Warehouse[]
+  warehouses: Warehouse[],
+  metrics: Metric[]
 }) => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('stock');
@@ -18602,19 +18677,21 @@ const ProductList = ({ products, onRefresh, stockMovements, warehouses }: {
   };
 
   const handleDeleteProduct = async (id: string | number) => {
-    if (!window.confirm('Tem a certeza que deseja eliminar este produto? Esta ação removerá o registo e a imagem permanentemente.')) return;
+    if (!window.confirm('Tem a certeza que deseja eliminar este produto? Esta ação removerá o registo da lista e a imagem permanentemente.')) return;
+    setLoading(true);
     try {
       if (!user?.empresa_id) {
         alert('Usuário não identificado. Verifique se está logado.');
+        setLoading(false);
         return;
       }
 
       console.log('[ProductList] A eliminar produto ID:', id, 'Empresa:', user.empresa_id);
 
-      // 1. Buscar o path da imagem antes de apagar o registo
+      // PASSO 1: buscar: id, empresa_id, image_path
       const { data: product, error: fetchError } = await supabase
         .from('produtos')
-        .select('image_path')
+        .select('id, empresa_id, image_path')
         .eq('id', id)
         .eq('empresa_id', user.empresa_id)
         .single();
@@ -18623,27 +18700,49 @@ const ProductList = ({ products, onRefresh, stockMovements, warehouses }: {
         throw fetchError;
       }
 
-      // 2. Apagar o registo do banco de dados
+      // PASSO 2: apagar imagem do bucket, e não deixar lixo no storage
+      if (product?.image_path) {
+        const { error: storageError } = await supabase.storage
+          .from('produtos-imagens')
+          .remove([product.image_path]);
+          
+        if (storageError) {
+          console.warn('[ProductList] Erro ao apagar imagem do storage:', storageError);
+        }
+      }
+
+      // PASSO 3: apagar produto do banco (Soft Delete e limpar URL da imagem)
       const { error: deleteError } = await supabase
         .from('produtos')
-        .delete()
+        .update({ 
+          ativo: false,
+          image_path: null,
+          image_url: null 
+        })
         .eq('id', id)
         .eq('empresa_id', user.empresa_id);
 
-      if (deleteError) throw deleteError;
-
-      // 3. Apagar a imagem do storage se existir
-      if (product?.image_path) {
-        await supabase.storage
-          .from('produtos-imagens')
-          .remove([product.image_path]);
+      if (deleteError) {
+        // Se a coluna ativo não existir, tentamos Hard Delete fallback
+        const { error: hardDeleteError } = await supabase
+          .from('produtos')
+          .delete()
+          .eq('id', id)
+          .eq('empresa_id', user.empresa_id);
+          
+        if (hardDeleteError) throw hardDeleteError;
       }
+
+      // PASSO 4: remover item da lista local automaticamente e atualizar
+      setProducts(prev => prev.filter(p => p.id !== id));
       
-      onRefresh();
-      alert('Produto e imagem eliminados com sucesso!');
+      // PASSO 5: mostrar toast
+      alert('Produto apagado com sucesso');
     } catch (err: any) {
       console.error('[ProductList] Erro ao eliminar produto:', err);
       alert('Erro ao eliminar produto: ' + (err.message || 'Erro desconhecido'));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -18897,8 +18996,9 @@ const ProductList = ({ products, onRefresh, stockMovements, warehouses }: {
                           </button>
                           <button 
                             onClick={(e) => { e.stopPropagation(); handleDeleteProduct(p.id); }}
-                            className="w-8 h-8 flex items-center justify-center bg-white border border-zinc-200 text-red-600 hover:bg-red-600 hover:text-white transition-all rounded shadow-sm"
+                            className="w-8 h-8 flex items-center justify-center bg-white border border-zinc-200 text-red-600 hover:bg-red-600 hover:text-white transition-all rounded shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                             title="Eliminar Produto"
+                            disabled={loading}
                           >
                             <Trash2 size={14} />
                           </button>
@@ -19124,8 +19224,8 @@ const ProductList = ({ products, onRefresh, stockMovements, warehouses }: {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div className="space-y-4">
                 <div className="aspect-square bg-zinc-100 border border-zinc-200 flex items-center justify-center overflow-hidden">
-                  {selectedProduct.image ? (
-                    <img src={selectedProduct.image} alt={selectedProduct.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  {(selectedProduct.image_url || selectedProduct.image) ? (
+                    <img src={selectedProduct.image_url || selectedProduct.image || ''} alt={selectedProduct.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                   ) : (
                     <Package size={64} className="text-zinc-300" />
                   )}
@@ -19415,10 +19515,18 @@ const ProductList = ({ products, onRefresh, stockMovements, warehouses }: {
                 <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Unidade</label>
                 <select name="unit" defaultValue={editingProduct?.unit || 'un'} className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold">
                   <option value="">Selecione a unidade</option>
-                  <option value="un">Unidade (un)</option>
-                  <option value="kg">Quilograma (kg)</option>
-                  <option value="lt">Litro (lt)</option>
-                  <option value="mt">Metro (mt)</option>
+                  {metrics.length > 0 ? (
+                    metrics.map(m => (
+                      <option key={m.id} value={m.sigla}>{m.descricao} ({m.sigla})</option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="un">Unidade (un)</option>
+                      <option value="kg">Quilograma (kg)</option>
+                      <option value="lt">Litro (lt)</option>
+                      <option value="mt">Metro (mt)</option>
+                    </>
+                  )}
                 </select>
               </div>
               <div className="space-y-1">
@@ -19798,6 +19906,7 @@ export default function App() {
   const [purchases, setPurchases] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [activeTaxes, setActiveTaxes] = useState<any[]>([]);
+  const [metrics, setMetrics] = useState<Metric[]>([]);
   const doLoadActiveTaxes = async (explicitId?: string) => {
     try {
       const companyId = explicitId || user?.empresa_id;
@@ -20008,6 +20117,7 @@ export default function App() {
         .from('produtos')
         .select('*')
         .eq('empresa_id', companyId)
+        .neq('ativo', false)
         .order('name');
 
       if (error) throw error;
@@ -20107,6 +20217,8 @@ export default function App() {
         .from('movimentacoes_stock')
         .select('*')
         .eq('empresa_id', companyId)
+        .gte('created_at', `${fiscalYear}-01-01T00:00:00Z`)
+        .lte('created_at', `${fiscalYear}-12-31T23:59:59Z`)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -20367,6 +20479,17 @@ export default function App() {
     }
   };
 
+  const doLoadMetrics = async (explicitId?: string) => {
+    try {
+      const companyId = explicitId || user?.empresa_id;
+      if (!companyId) return;
+      const data = await fetchMetrics(companyId);
+      setMetrics(data || []);
+    } catch (err) {
+      console.error('Erro ao carregar métricas:', err);
+    }
+  };
+
   const doLoadCompras = async (explicitId?: string) => {
     try {
       const companyId = explicitId || user?.empresa_id;
@@ -20507,6 +20630,7 @@ export default function App() {
         await doLoadProducts(targetCompanyId);
         await doLoadStockMovements(targetCompanyId);
         await doLoadActiveTaxes(targetCompanyId);
+        await doLoadMetrics(targetCompanyId);
         
         console.timeEnd('[TIMER-SYNC] Supabase Queries');
       } catch (err: any) {
@@ -20658,20 +20782,27 @@ export default function App() {
         .eq('empresa_id', user.empresa_id)
         .single();
       
-      // 2. Delete record from database
-      const { error } = await supabase
-        .from('produtos')
-        .delete()
-        .eq('id', id)
-        .eq('empresa_id', user.empresa_id);
-
-      if (error) throw error;
-
-      // 3. Delete image from storage if it exists
+      // 2. Delete image from storage if it exists
       if (product?.image_path) {
         await supabase.storage
           .from('produtos-imagens')
           .remove([product.image_path]);
+      }
+
+      // 3. Delete record from database (Soft delete)
+      const { error: softError } = await supabase
+        .from('produtos')
+        .update({ ativo: false })
+        .eq('id', id)
+        .eq('empresa_id', user.empresa_id);
+
+      if (softError) {
+        const { error: hardError } = await supabase
+          .from('produtos')
+          .delete()
+          .eq('id', id)
+          .eq('empresa_id', user.empresa_id);
+        if (hardError) throw hardError;
       }
       
       await fetchData();
@@ -21086,7 +21217,15 @@ export default function App() {
                         case 'dashboard':
                           return <EcosystemDashboard stats={stats} issuedDocuments={issuedDocuments} setActiveTab={setActiveTab} />;
                         case 'pos':
-                          return <POSModule products={products} onRefresh={fetchData} caixas={caixas} onSaveDocument={saveDocumentoEmitido} />;
+                          return <POSModule 
+                            products={products} 
+                            onRefresh={fetchData} 
+                            caixas={caixas} 
+                            onSaveDocument={saveDocumentoEmitido} 
+                            sessions={sessions}
+                            fiscalSeries={fiscalSeries}
+                            fiscalYear={fiscalYear}
+                          />;
                         case 'electronic_invoices':
                         case 'invoices':
                         case 'vendas':
@@ -21225,9 +21364,11 @@ export default function App() {
                           return (
                             <ProductList 
                               products={products} 
+                              setProducts={setProducts}
                               onRefresh={fetchData} 
                               stockMovements={stockMovements}
                               warehouses={warehouses}
+                              metrics={metrics}
                             />
                           );
                         case 'financial':
@@ -21246,9 +21387,24 @@ export default function App() {
                             />
                           );
                         case 'hr':
-                          return <HRModule onRefresh={fetchData} onSetIsContractModalOpen={setIsContractModalOpen} onSetEmployee={setAppSelectedEmployee} caixas={caixas} companyName={companyName} />;
+                          return <HRModule 
+                            onRefresh={fetchData} 
+                            onSetIsContractModalOpen={setIsContractModalOpen} 
+                            onSetEmployee={setAppSelectedEmployee} 
+                            caixas={caixas} 
+                            companyName={companyName} 
+                            fiscalYear={fiscalYear}
+                          />;
                         case 'accounting':
-                          return <AccountingModule invoices={invoices} clients={clients} fiscalSeries={fiscalSeries} onRefresh={fetchData} employees={employees} issuedDocuments={issuedDocuments} />;
+                          return <AccountingModule 
+                            invoices={invoices} 
+                            clients={clients} 
+                            fiscalSeries={fiscalSeries} 
+                            onRefresh={fetchData} 
+                            employees={employees} 
+                            issuedDocuments={issuedDocuments} 
+                            fiscalYear={fiscalYear}
+                          />;
                         case 'withholding-tax':
                           return <WithholdingTaxModule sales={issuedDocuments} purchases={purchases} />;
                         case 'reports':
@@ -21301,7 +21457,7 @@ export default function App() {
                         case 'specialized':
                           return <SpecializedManagementModule activeTab={activeTab} setActiveTab={setActiveTab} />;
                         case 'archive':
-                          return <ArchiveModule />;
+                          return <ArchiveModule fiscalYear={fiscalYear} />;
                         case 'church':
                           return <ChurchModule />;
                         case 'agrobusiness':

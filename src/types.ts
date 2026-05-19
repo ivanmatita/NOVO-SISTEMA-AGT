@@ -298,6 +298,7 @@ export interface CashSession {
   total_discounts?: number;
   status: 'open' | 'closed';
   pos_point_id?: number;
+  pos_point_name?: string;
 }
 
 export interface FiscalSeries {

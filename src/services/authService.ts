@@ -223,7 +223,7 @@ export const authService = {
       console.log('[AuthService] Recuperando perfil para o utilizador:', session.user.id);
 
       // Promise de timeout comum para as queries
-      const queryTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout DB Query')), 8000));
+      const queryTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout DB Query')), 15000));
 
       // Busca perfil com a empresa associada (com timeout)
       const perfilQuery = supabase

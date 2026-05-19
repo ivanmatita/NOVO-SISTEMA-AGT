@@ -13,9 +13,10 @@ const formatDate = (date: any) => {
   return d.toLocaleDateString('pt-AO');
 };
 
-const ArchiveModule = () => {
+const ArchiveModule = ({ fiscalYear }: { fiscalYear?: string }) => {
   const { user } = useAuth();
   const [files, setFiles] = useState<any[]>([]);
+  const currentYear = fiscalYear || new Date().getFullYear().toString();
   const [showUpload, setShowUpload] = useState(false);
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState('Todos');
@@ -37,11 +38,13 @@ const ArchiveModule = () => {
     if (!user?.empresa_id) return;
     setLoading(true);
     try {
-      console.log('[ArchiveModule] Fetching files for empresa_id:', user.empresa_id);
+      console.log('[ArchiveModule] Fetching files for:', user.empresa_id, 'Year:', currentYear);
       const { data, error } = await supabase
         .from('arquivos')
         .select('*')
         .eq('empresa_id', user.empresa_id)
+        .gte('created_at', `${currentYear}-01-01T00:00:00Z`)
+        .lte('created_at', `${currentYear}-12-31T23:59:59Z`)
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -60,7 +63,7 @@ const ArchiveModule = () => {
     if (user?.empresa_id) {
       fetchFiles(); 
     }
-  }, [user?.empresa_id]);
+  }, [user?.empresa_id, currentYear]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {

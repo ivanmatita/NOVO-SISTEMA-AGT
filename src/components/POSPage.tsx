@@ -10,7 +10,7 @@ const fetchJson = async (url: string) => {
 
 const formatCurrency = (value: number) => new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(value);
 
-const POSPage = ({ products = [], onRefresh = () => {}, onNavigate = () => {} }: { products?: Product[], onRefresh?: () => void, onNavigate?: (page: string) => void }) => {
+const POSPage = ({ products = [], onRefresh = () => {}, onNavigate = () => {}, fiscalYear }: { products?: Product[], onRefresh?: () => void, onNavigate?: (page: string) => void, fiscalYear: string }) => {
   const [activeArea, setActiveArea] = useState<POSArea | 'dashboard'>('dashboard');
   const [cart, setCart] = useState<{product: Product, qty: number, discount: number}[]>([]);
   const [search, setSearch] = useState('');
@@ -41,7 +41,7 @@ const POSPage = ({ products = [], onRefresh = () => {}, onNavigate = () => {} }:
       fetchJson('/api/fiscal-series'),
       fetchJson('/api/cost-centers'),
       fetchJson('/api/pos-points'),
-      fetchJson('/api/cash/sessions')
+      fetchJson(`/api/cash/sessions?year=${fiscalYear}`)
     ]);
     setSeries(s);
     setCostCenters(cc);
@@ -53,7 +53,7 @@ const POSPage = ({ products = [], onRefresh = () => {}, onNavigate = () => {} }:
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fiscalYear]);
 
   const addToCart = (product: Product) => {
     const existing = (cart || []).find(item => item.product.id === product.id);

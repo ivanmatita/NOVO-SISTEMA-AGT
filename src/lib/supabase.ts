@@ -8,27 +8,68 @@ const supabaseUrl = rawUrl
   .replace(/\/$/, "");
 const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
 
+// Connection status exported for UI inspection
+export const supabaseStatus = {
+  configured: Boolean(supabaseUrl && supabaseAnonKey && supabaseUrl.startsWith('http')),
+  url: supabaseUrl || 'MISSING',
+  keyPresent: Boolean(supabaseAnonKey),
+  environment: import.meta.env.MODE,
+};
+
+/**
+ * Perform a real network health check to verify connectivity and API keys.
+ * Use this in development or diagnostics screens.
+ */
+export async function checkSupabaseHealth() {
+  if (!supabaseStatus.configured) {
+    return { 
+      status: 'error', 
+      message: 'Credenciais não configuradas (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY)', 
+      code: 'CONFIG_MISSING' 
+    };
+  }
+
+  try {
+    const { data, error } = await supabase.from('_health').select('*').limit(1);
+    if (error) {
+      // If error is 404 (table not found), it still means Supabase is reachable
+      if (error.code === '42P01' || error.message?.includes('does not exist')) {
+        return { status: 'ok', message: 'Conectado ao Supabase (API respondendo)', code: 'READY' };
+      }
+      return { status: 'warning', message: `Erro de conexão: ${error.message}`, code: error.code };
+    }
+    return { status: 'ok', message: 'Sistema operacional e conectado', code: 'READY' };
+  } catch (err: any) {
+    return { status: 'error', message: `Falha crítica de rede: ${err.message}`, code: 'NETWORK_ERROR' };
+  }
+}
+
 const createSupabaseClient = () => {
-  if (!supabaseUrl || !supabaseAnonKey || !supabaseUrl.startsWith('http')) {
-    const msg = '⚠️ Supabase credentials are missing or invalid. Please check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.';
-    console.warn(msg);
+  if (!supabaseStatus.configured) {
+    const msg = `⚠️ Supabase [${supabaseStatus.environment}]: Credenciais inválidas ou ausentes. 
+    Verifique as variáveis de ambiente no Vercel/Local.
+    URL: ${supabaseStatus.url}
+    Key: ${supabaseStatus.keyPresent ? 'Presente' : 'Ausente'}`;
     
-    // Create a recursive proxy that returns itself for any property access or function call.
-    // This allows chains like supabase.from('...').select('...').eq('...', '...') to not crash.
+    if (import.meta.env.DEV) {
+      console.warn(msg);
+    } else {
+      console.error('SUPABASE_CONFIG_ERROR: production build missing credentials');
+    }
+    
     const createRecursiveMock = (targetName: string): any => {
       const mock: any = new Proxy(() => mock, {
         get: (_target, prop) => {
           if (prop === 'isMock') return true;
+          if (prop === 'status') return supabaseStatus;
           
-          // Special cases for properties that components might check
           if (prop === 'then') {
-            // Make it awaitable / thenable
             return (onFulfilled: any) => {
               const result = { 
                 data: (targetName === 'auth' || targetName === 'getUser' || targetName === 'getSession') 
                   ? { session: null, user: null, subscription: { unsubscribe: () => {} } } 
                   : (targetName === 'single' || targetName === 'maybeSingle') ? null : [], 
-                error: null 
+                error: { message: 'Supabase mock active due to missing configuration', code: 'MISSING_CONFIG' } 
               };
               return Promise.resolve(onFulfilled ? onFulfilled(result) : result);
             };
@@ -43,15 +84,13 @@ const createSupabaseClient = () => {
             return [];
           }
           
-          if (prop === 'error') return null;
+          if (prop === 'error') return { message: 'Configuração ausente', code: 'CONFIG_MISSING' };
           
-          // Specific method mocks for common patterns
           if (targetName === 'auth') {
             if (prop === 'getSession') return async () => ({ data: { session: null }, error: null });
             if (prop === 'getUser') return async () => ({ data: { user: null }, error: null });
-            if (prop === 'signInWithPassword') return async () => ({ data: { user: null, session: null }, error: new Error(msg) });
+            if (prop === 'signInWithPassword') return async () => ({ data: { user: null, session: null }, error: new Error('Configuração ausente') });
             if (prop === 'onAuthStateChange') return (callback: any) => {
-              // Optionally trigger callback with null session
               if (typeof callback === 'function') {
                 setTimeout(() => callback('INITIAL_SESSION', null), 0);
               }
@@ -62,13 +101,11 @@ const createSupabaseClient = () => {
           if (prop === 'storage') return createRecursiveMock('storage');
           if (prop === 'channel') return () => createRecursiveMock('channel');
           
-          // Support for commonly used builder methods that shouldn't break the chain
           const builders = ['select', 'from', 'eq', 'order', 'single', 'maybeSingle', 'insert', 'update', 'delete', 'upsert', 'match', 'or', 'range'];
           if (builders.includes(prop.toString())) {
              return () => createRecursiveMock(prop.toString());
           }
 
-          // For any other access, return a new mock proxy
           return createRecursiveMock(prop.toString());
         }
       });

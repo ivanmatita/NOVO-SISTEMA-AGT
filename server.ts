@@ -128,28 +128,130 @@ let absences: any[] = savedData?.absences || [];
 let laborTerminations: any[] = savedData?.laborTerminations || [];
 let contracts: any[] = savedData?.contracts || [];
 
-const saveData = () => {
-  const data = {
-    clients, products, issuedDocuments, workSites, workSiteMovements,
-    employees, fiscalSeries, caixas, caixaMovements, warehouses,
-    systemUsers, archives, fleetVehicles, projectTasks, companies,
-    stockMovements, securityOccurrences, securityArmory, securityRoster,
-    transactions, receipts, suppliers, purchases, professions,
-    attendance, absences, laborTerminations, contracts,
-    costCenters, posPoints, sessions, posSales,
-    accountingJournals, accountingMovements, pgcAccounts
-  };
+// --- Supabase Persistence Layer (Cloud Sync) ---
+let isInitialLoadComplete = false;
+
+async function syncFromSupabase() {
+  if (!supabaseAdmin) return;
   try {
-    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
-  } catch (e) {
-    console.error("Error saving data to db.json:", e);
+    console.log("[Supabase Persistence] Tentando carregar db.json da Storage...");
+    const { data, error } = await supabaseAdmin
+      .storage
+      .from('system-data')
+      .download('db.json');
+
+    if (error) {
+      // Handle missing bucket or file gracefully
+      const isNotFound = error.message?.toLowerCase().includes('not found') || 
+                        (error as any).status === 404 ||
+                        (error as any).code === 'PGRST116';
+
+      if (isNotFound) {
+         console.log("[Supabase Persistence] Repositório de dados ainda não inicializado na nuvem. Usando estado local.");
+         isInitialLoadComplete = true; // Mark as done to stop retrying
+         return;
+      }
+      throw error;
+    }
+    
+    const content = await data.text();
+    const json = JSON.parse(content);
+    
+    // Sync to memory
+    if (json.clients) clients = json.clients;
+    if (json.products) products = json.products;
+    if (json.issuedDocuments) issuedDocuments = json.issuedDocuments;
+    if (json.workSites) workSites = json.workSites;
+    if (json.workSiteMovements) workSiteMovements = json.workSiteMovements;
+    if (json.employees) employees = json.employees;
+    if (json.fiscalSeries) fiscalSeries = json.fiscalSeries;
+    if (json.caixas) caixas = json.caixas;
+    if (json.costCenters) costCenters = json.costCenters;
+    if (json.posPoints) posPoints = json.posPoints;
+    if (json.sessions) sessions = json.sessions;
+    if (json.posSales) posSales = json.posSales;
+    if (json.caixaMovements) caixaMovements = json.caixaMovements;
+    if (json.warehouses) warehouses = json.warehouses;
+    if (json.systemUsers) systemUsers = json.systemUsers;
+    if (json.archives) archives = json.archives;
+    if (json.fleetVehicles) fleetVehicles = json.fleetVehicles;
+    if (json.projectTasks) projectTasks = json.projectTasks;
+    if (json.companies) companies = json.companies;
+    if (json.stockMovements) stockMovements = json.stockMovements;
+    if (json.securityOccurrences) securityOccurrences = json.securityOccurrences;
+    if (json.securityArmory) securityArmory = json.securityArmory;
+    if (json.securityRoster) securityRoster = json.securityRoster;
+    if (json.transactions) transactions = json.transactions;
+    if (json.receipts) receipts = json.receipts;
+    if (json.suppliers) suppliers = json.suppliers;
+    if (json.purchases) purchases = json.purchases;
+    if (json.professions) professions = json.professions;
+    if (json.attendance) attendance = json.attendance;
+    if (json.absences) absences = json.absences;
+    if (json.laborTerminations) laborTerminations = json.laborTerminations;
+    if (json.contracts) contracts = json.contracts;
+    if (json.accountingJournals) accountingJournals = json.accountingJournals;
+    if (json.accountingMovements) accountingMovements = json.accountingMovements;
+    if (json.pgcAccounts) pgcAccounts = json.pgcAccounts;
+
+    console.log("[Supabase Persistence] Dados sincronizados com sucesso da nuvem.");
+    isInitialLoadComplete = true;
+  } catch (err: any) {
+    console.error("[Supabase Persistence] Erro ao sincronizar:", err.message || err);
+    // Even on error, we mark load as "complete" to avoid blocking API requests with persistent retries
+    isInitialLoadComplete = true;
   }
+}
+
+const saveData = () => {
+    // Fire and forget for async persistence without breaking existing sync routes
+    const data = {
+        clients, products, issuedDocuments, workSites, workSiteMovements,
+        employees, fiscalSeries, caixas, caixaMovements, warehouses,
+        systemUsers, archives, fleetVehicles, projectTasks, companies,
+        stockMovements, securityOccurrences, securityArmory, securityRoster,
+        transactions, receipts, suppliers, purchases, professions,
+        attendance, absences, laborTerminations, contracts,
+        costCenters, posPoints, sessions, posSales,
+        accountingJournals, accountingMovements, pgcAccounts
+    };
+    
+    // 1. Local attempt
+    try {
+        fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+    } catch (e) {}
+
+    // 2. Supabase Upload
+    if (supabaseAdmin) {
+        supabaseAdmin.storage
+            .from('system-data')
+            .upload('db.json', JSON.stringify(data, null, 2), {
+                upsert: true,
+                contentType: 'application/json'
+            })
+            .then(({ error }) => {
+                if (error && !error.message.includes('bucket not found')) {
+                    console.error("Cloud Save Error:", error.message);
+                }
+            })
+            .catch(err => console.error("Cloud Save Exception:", err));
+    }
 };
 
-  const app = express();
-  const PORT = 3000;
+const app = express();
+const PORT = 3000;
+
+// Middleware to ensure data is loaded before processing requests
+app.use(async (req, res, next) => {
+  if (!isInitialLoadComplete && supabaseAdmin && req.path.startsWith('/api')) {
+    await syncFromSupabase();
+  }
+  next();
+});
 
 async function startServer() {
+  // Sync on startup
+  await syncFromSupabase();
   app.use(compression());
   app.use(express.json({ limit: '50mb' }));
 

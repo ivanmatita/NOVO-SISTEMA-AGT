@@ -7049,11 +7049,11 @@ const RetencaoFonteModule = ({ issuedDocuments }: { issuedDocuments: IssuedDocum
 
       // 2. Filter by search
       const term = search.toLowerCase();
-      const matchSearch = doc.numero_documento?.toLowerCase().includes(term) || 
-                          doc.invoice_number?.toLowerCase().includes(term) ||
-                          doc.client_name?.toLowerCase().includes(term) ||
-                          doc.supplier_name?.toLowerCase().includes(term) ||
-                          doc.cliente_id?.toString().includes(term);
+      const matchSearch = (doc.numero_documento || '').toLowerCase().includes(term) || 
+                          (doc.invoice_number || '').toLowerCase().includes(term) ||
+                          (doc.client_name || '').toLowerCase().includes(term) ||
+                          (doc.supplier_name || '').toLowerCase().includes(term) ||
+                          (doc.cliente_id || '').toString().includes(term);
       if (search && !matchSearch) return false;
 
       // 3. Filter by date
@@ -10029,19 +10029,19 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
     const filteredRecords = records.filter(r => {
       if (activeSection === 'letters') {
          return (
-           r.referencia?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-           r.nome_destinatario?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-           r.assunto?.toLowerCase().includes(searchQuery.toLowerCase())
+           (r.referencia || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+           (r.nome_destinatario || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+           (r.assunto || '').toLowerCase().includes(searchQuery.toLowerCase())
          );
       } else if (activeSection === 'attachments') {
          return (
-           r.titulo?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-           r.referencia?.toLowerCase().includes(searchQuery.toLowerCase())
+           (r.titulo || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+           (r.referencia || '').toLowerCase().includes(searchQuery.toLowerCase())
          );
       } else {
          return (
-           r.titulo?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-           r.descricao?.toLowerCase().includes(searchQuery.toLowerCase())
+           (r.titulo || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+           (r.descricao || '').toLowerCase().includes(searchQuery.toLowerCase())
          );
       }
     });
@@ -12136,8 +12136,8 @@ const DailyMovementsModule = ({ onBack }: { onBack: () => void }) => {
   };
 
   const filteredJournals = journals.filter(j => 
-    j.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    j.id.toLowerCase().includes(searchTerm.toLowerCase())
+    (j.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+    (j.id || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -12342,7 +12342,7 @@ const ClassifyMovementsModule = ({ invoices, purchases, onBack }: { invoices: In
                   />
                   {showPgcList && targetRubrica && (
                     <div className="absolute top-full left-0 right-0 z-[100] bg-white border-2 border-[#003366] shadow-2xl max-h-64 overflow-y-auto">
-                      {pgcAccounts.filter(a => a.id.includes(targetRubrica) || a.description.toLowerCase().includes(targetRubrica.toLowerCase())).map(a => (
+                      {pgcAccounts.filter(a => (a.id || '').includes(targetRubrica) || (a.description || '').toLowerCase().includes(targetRubrica.toLowerCase())).map(a => (
                         <div 
                           key={a.id} 
                           className="p-3 hover:bg-zinc-100 cursor-pointer text-xs font-black border-b border-zinc-100 flex justify-between group"

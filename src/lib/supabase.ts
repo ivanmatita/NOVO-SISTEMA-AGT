@@ -18,6 +18,8 @@ const createSupabaseClient = () => {
     const createRecursiveMock = (targetName: string): any => {
       const mock: any = new Proxy(() => mock, {
         get: (_target, prop) => {
+          if (prop === 'isMock') return true;
+          
           // Special cases for properties that components might check
           if (prop === 'then') {
             // Make it awaitable / thenable
@@ -25,7 +27,7 @@ const createSupabaseClient = () => {
               const result = { 
                 data: (targetName === 'auth' || targetName === 'getUser' || targetName === 'getSession') 
                   ? { session: null, user: null, subscription: { unsubscribe: () => {} } } 
-                  : [], 
+                  : (targetName === 'single' || targetName === 'maybeSingle') ? null : [], 
                 error: null 
               };
               return Promise.resolve(onFulfilled ? onFulfilled(result) : result);
@@ -33,9 +35,12 @@ const createSupabaseClient = () => {
           }
           
           if (prop === 'data') {
-            return (targetName === 'auth' || targetName === 'getUser' || targetName === 'getSession') 
-              ? { session: null, user: null, subscription: { unsubscribe: () => {} } } 
-              : [];
+            if (targetName === 'auth' || targetName === 'getUser' || targetName === 'getSession') {
+              return { session: null, user: null, subscription: { unsubscribe: () => {} } };
+            }
+            if (targetName === 'single' || targetName === 'maybeSingle') return null;
+            if (targetName === 'getPublicUrl') return { publicUrl: 'https://placehold.co/600x400?text=Supabase+Simulated+Image' };
+            return [];
           }
           
           if (prop === 'error') return null;
@@ -57,6 +62,12 @@ const createSupabaseClient = () => {
           if (prop === 'storage') return createRecursiveMock('storage');
           if (prop === 'channel') return () => createRecursiveMock('channel');
           
+          // Support for commonly used builder methods that shouldn't break the chain
+          const builders = ['select', 'from', 'eq', 'order', 'single', 'maybeSingle', 'insert', 'update', 'delete', 'upsert', 'match', 'or', 'range'];
+          if (builders.includes(prop.toString())) {
+             return () => createRecursiveMock(prop.toString());
+          }
+
           // For any other access, return a new mock proxy
           return createRecursiveMock(prop.toString());
         }

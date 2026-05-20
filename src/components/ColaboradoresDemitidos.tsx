@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
+import { motion } from 'motion/react';
 import { Employee } from '../types';
-import { Search, Printer, Calculator, Info, UserMinus, Eye, FileText, Scale, ArrowLeft, UserCheck } from 'lucide-react';
+import { Search, Printer, Calculator, Info, UserMinus, Eye, FileText, Scale, ArrowLeft, UserCheck, X } from 'lucide-react';
 
 interface DismissedEmployee extends Employee {
   dismissal_type?: string;
@@ -10,11 +11,118 @@ interface DismissedEmployee extends Employee {
   total_compensation?: number;
 }
 
-const ColaboradoresDemitidos = ({ employees, onReadmit }: { employees: Employee[], onReadmit?: (id: number, date: string) => Promise<void> }) => {
+const ColaboradoresDemitidos = ({ employees, onReadmit }: { employees: Employee[], onReadmit?: (id: number, date: string, reason?: string, orderedBy?: string, observations?: string) => Promise<void> }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedEmp, setSelectedEmp] = useState<DismissedEmployee | null>(null);
-  
+  const [showReadmitModal, setShowReadmitModal] = useState(false);
+  const [readmitTarget, setReadmitTarget] = useState<Employee | null>(null);
+  const [readmitData, setReadmitData] = useState({
+    date: new Date().toISOString().split('T')[0],
+    reason: 'Fim do período de suspensão / Recontratação',
+    orderedBy: '',
+    observations: ''
+  });
+
   const dismissedEmployees = (employees || []).filter(emp => emp.status === 'dismissed');
+
+  const handleReadmitSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (readmitTarget && onReadmit) {
+      // Logic for readmission with detailed data
+      await onReadmit(
+        readmitTarget.id, 
+        readmitData.date,
+        readmitData.reason,
+        readmitData.orderedBy,
+        readmitData.observations
+      );
+      setShowReadmitModal(false);
+      setReadmitTarget(null);
+      if (selectedEmp?.id === readmitTarget.id) {
+        setSelectedEmp(null);
+      }
+    }
+  };
+
+  const ReadmitModal = () => {
+    if (!readmitTarget) return null;
+    return (
+      <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="bg-white border border-zinc-200 w-full max-w-xl shadow-2xl overflow-hidden"
+        >
+          <div className="bg-emerald-600 text-white p-6 flex justify-between items-center">
+            <h3 className="font-black uppercase tracking-widest flex items-center gap-2">
+              <UserCheck size={20} /> Formuário de Readmissão
+            </h3>
+            <button onClick={() => setShowReadmitModal(false)} className="hover:bg-white/10 p-2">
+              <X size={20} className="text-white" />
+            </button>
+          </div>
+          <form onSubmit={handleReadmitSubmit} className="p-8 space-y-6">
+            <div className="grid grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Data de Readmissão</label>
+                <input 
+                  type="date" 
+                  required
+                  className="w-full border border-zinc-200 p-3 text-sm focus:outline-none focus:border-emerald-600"
+                  value={readmitData.date}
+                  onChange={e => setReadmitData({...readmitData, date: e.target.value})}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Ordenado Por</label>
+                <input 
+                  type="text" 
+                  className="w-full border border-zinc-200 p-3 text-sm focus:outline-none focus:border-emerald-600"
+                  placeholder="Nome do responsável"
+                  value={readmitData.orderedBy}
+                  onChange={e => setReadmitData({...readmitData, orderedBy: e.target.value})}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Motivo da Readmissão</label>
+              <input 
+                type="text" 
+                required
+                className="w-full border border-zinc-200 p-3 text-sm focus:outline-none focus:border-emerald-600"
+                value={readmitData.reason}
+                onChange={e => setReadmitData({...readmitData, reason: e.target.value})}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Observações</label>
+              <textarea 
+                className="w-full border border-zinc-200 p-3 text-sm focus:outline-none focus:border-emerald-600 h-24 resize-none"
+                placeholder="Notas adicionais sobre a readmissão..."
+                value={readmitData.observations}
+                onChange={e => setReadmitData({...readmitData, observations: e.target.value})}
+              />
+            </div>
+            <div className="pt-4 flex gap-4">
+              <button 
+                type="button"
+                onClick={() => setShowReadmitModal(false)}
+                className="flex-1 bg-zinc-100 text-zinc-600 py-4 font-black uppercase tracking-widest text-xs hover:bg-zinc-200"
+              >
+                Cancelar
+              </button>
+              <button 
+                type="submit"
+                className="flex-2 bg-emerald-600 text-white py-4 font-black uppercase tracking-widest text-xs hover:bg-emerald-700 shadow-xl"
+              >
+                Readmitir Colaborador
+              </button>
+            </div>
+          </form>
+        </motion.div>
+      </div>
+    );
+  };
   
   const filteredEmployees = (dismissedEmployees || []).filter(emp => 
     emp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -125,10 +233,8 @@ const ColaboradoresDemitidos = ({ employees, onReadmit }: { employees: Employee[
                           {onReadmit && (
                             <button 
                               onClick={() => {
-                                const rDate = prompt(`Digite a data de readmissão para ${emp.name} (AAAA-MM-DD):`, new Date().toISOString().split('T')[0]);
-                                if (rDate) {
-                                  onReadmit(emp.id, rDate);
-                                }
+                                setReadmitTarget(emp);
+                                setShowReadmitModal(true);
                               }}
                               className="p-2 bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
                               title="Readmitir Colaborador"
@@ -306,10 +412,8 @@ const ColaboradoresDemitidos = ({ employees, onReadmit }: { employees: Employee[
             {onReadmit && (
               <button 
                 onClick={() => {
-                  const rDate = prompt(`Digite a data de readmissão para ${selectedEmp.name} (AAAA-MM-DD):`, new Date().toISOString().split('T')[0]);
-                  if (rDate) {
-                    onReadmit(selectedEmp.id, rDate).then(() => setSelectedEmp(null));
-                  }
+                  setReadmitTarget(selectedEmp);
+                  setShowReadmitModal(true);
                 }}
                 className="bg-emerald-600 text-white px-8 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all flex items-center gap-2"
               >
@@ -326,6 +430,7 @@ const ColaboradoresDemitidos = ({ employees, onReadmit }: { employees: Employee[
               <Printer size={16} /> Processar Guia Final
             </button>
           </div>
+          {showReadmitModal && <ReadmitModal />}
         </div>
       )}
     </div>

@@ -1113,6 +1113,14 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
   const [selectedReport, setSelectedReport] = useState<string | null>(null);
   const [localEmployees, setLocalEmployees] = useState<Employee[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showReadmitModal, setShowReadmitModal] = useState(false);
+  const [readmitTarget, setReadmitTarget] = useState<Employee | null>(null);
+  const [readmitData, setReadmitData] = useState({
+    date: new Date().toISOString().split('T')[0],
+    reason: 'Fim do período de suspensão / Recontratação',
+    orderedBy: '',
+    observations: ''
+  });
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [selectedEmployeeForOptions, setSelectedEmployeeForOptions] = useState<Employee | null>(null);
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
@@ -1124,6 +1132,101 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
 
   const [showDismissForm, setShowDismissForm] = useState(false);
   const [dismissData, setDismissData] = useState({ date: new Date().toISOString().split('T')[0], reason: '', observations: '', orderedBy: '' });
+
+  const handleReadmitSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (readmitTarget) {
+      await handleReadmitEmployee(
+        readmitTarget.id, 
+        readmitData.date, 
+        readmitData.reason, 
+        readmitData.orderedBy, 
+        readmitData.observations
+      );
+      setShowReadmitModal(false);
+      setReadmitTarget(null);
+    }
+  };
+
+  const ReadmitModal = () => {
+    if (!readmitTarget) return null;
+    return (
+      <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="bg-white border border-zinc-200 w-full max-w-xl shadow-2xl overflow-hidden"
+        >
+          <div className="bg-emerald-600 text-white p-6 flex justify-between items-center">
+            <h3 className="font-black uppercase tracking-widest flex items-center gap-2">
+              <UserCheck size={20} /> Formuário de Readmissão
+            </h3>
+            <button onClick={() => setShowReadmitModal(false)} className="hover:bg-white/10 p-2">
+              <X size={20} className="text-white" />
+            </button>
+          </div>
+          <form onSubmit={handleReadmitSubmit} className="p-8 space-y-6">
+            <div className="grid grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Data de Readmissão</label>
+                <input 
+                  type="date" 
+                  required
+                  className="w-full border border-zinc-200 p-3 text-sm focus:outline-none focus:border-emerald-600"
+                  value={readmitData.date}
+                  onChange={e => setReadmitData({...readmitData, date: e.target.value})}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Ordenado Por</label>
+                <input 
+                  type="text" 
+                  className="w-full border border-zinc-200 p-3 text-sm focus:outline-none focus:border-emerald-600"
+                  placeholder="Nome do responsável"
+                  value={readmitData.orderedBy}
+                  onChange={e => setReadmitData({...readmitData, orderedBy: e.target.value})}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Motivo da Readmissão</label>
+              <input 
+                type="text" 
+                required
+                className="w-full border border-zinc-200 p-3 text-sm focus:outline-none focus:border-emerald-600"
+                value={readmitData.reason}
+                onChange={e => setReadmitData({...readmitData, reason: e.target.value})}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Observações</label>
+              <textarea 
+                className="w-full border border-zinc-200 p-3 text-sm focus:outline-none focus:border-emerald-600 h-24 resize-none"
+                placeholder="Notas adicionais sobre a readmissão..."
+                value={readmitData.observations}
+                onChange={e => setReadmitData({...readmitData, observations: e.target.value})}
+              />
+            </div>
+            <div className="pt-4 flex gap-4">
+              <button 
+                type="button"
+                onClick={() => setShowReadmitModal(false)}
+                className="flex-1 bg-zinc-100 text-zinc-600 py-4 font-black uppercase tracking-widest text-xs hover:bg-zinc-200"
+              >
+                Cancelar
+              </button>
+              <button 
+                type="submit"
+                className="flex-2 bg-emerald-600 text-white py-4 font-black uppercase tracking-widest text-xs hover:bg-emerald-700 shadow-xl"
+              >
+                Readmitir Colaborador
+              </button>
+            </div>
+          </form>
+        </motion.div>
+      </div>
+    );
+  };
 
   const handleDismissEmployee = async () => {
     if (!selectedEmployeeForOptions) return;
@@ -1163,7 +1266,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
     }
   };
 
-  const handleReadmitEmployee = async (employeeId: number, date: string) => {
+  const handleReadmitEmployee = async (employeeId: number, date: string, reason?: string, orderedBy?: string, observations?: string) => {
     try {
       if (user?.empresa_id) {
         try {
@@ -1173,7 +1276,10 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
               status: 'active',
               dismissed_at: null,
               is_blocked: false,
-              readmitted_at: date
+              readmitted_at: date,
+              readmission_reason: reason,
+              readmission_ordered_by: orderedBy,
+              readmission_observations: observations
             })
             .eq('id', employeeId)
             .eq('empresa_id', user.empresa_id);
@@ -1185,7 +1291,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
       const res = await fetchWithAuth(`/api/employees/readmit/${employeeId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date })
+        body: JSON.stringify({ date, reason, orderedBy, observations })
       });
       if (res.ok) {
         alert('Funcionário readmitido com sucesso!');
@@ -1251,10 +1357,11 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                   } else if (opt.id === 'demitir') {
                     setShowDismissForm(true);
                   } else if (opt.id === 'readmitir') {
-                    const rDate = prompt("Digite a data de readmissão (AAAA-MM-DD):", new Date().toISOString().split('T')[0]);
-                    if (rDate) {
-                      handleReadmitEmployee(employee.id, rDate);
-                    }
+                    // Triggering readmission logic - for EmployeeOptionsMenu, 
+                    // we can't easily show the modal without passing state up or having it in HRModule.
+                    // I will add the readmit target state to HRModule.
+                    setReadmitTarget(employee);
+                    setShowReadmitModal(true);
                     onClose();
                   } else {
                     onSetEmployee(employee);
@@ -1349,6 +1456,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
               </div>
             </div>
           )}
+          {showReadmitModal && <ReadmitModal />}
           <div className="p-4 border-t border-zinc-100 bg-white text-center">
             <p className="text-[10px] text-zinc-400 font-black uppercase tracking-[0.3em] italic">Secretária Digital • Gestão de Recursos Humanos</p>
           </div>
@@ -1497,7 +1605,8 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                       <th className="px-3 py-3 border-r border-zinc-200 text-left">Beneficiário (Nome)</th>
                       <th className="px-3 py-3 border-r border-zinc-200 text-left">Banco Destinatário</th>
                       <th className="px-3 py-3 border-r border-zinc-200 text-left font-mono">IBAN / Conta</th>
-                      <th className="px-3 py-3 text-right">Montante Líquido</th>
+                      <th className="px-3 py-3 text-right border-r border-zinc-200">Montante Líquido</th>
+                      <th className="px-3 py-3 text-center no-print">Ações</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-200">
@@ -1507,7 +1616,19 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                         <td className="px-3 py-2 border-r border-zinc-200 uppercase text-[#003366]">{rcpt.employee.name}</td>
                         <td className="px-3 py-2 border-r border-zinc-200 uppercase text-zinc-500">{rcpt.employee.bank_name || 'BFA'}</td>
                         <td className="px-3 py-2 border-r border-zinc-200 font-mono text-xs">{rcpt.employee.iban || 'AO00 0000 0000 0000 0000 0000 0'}</td>
-                        <td className="px-3 py-2 text-right font-mono text-emerald-600">{formatCurrency(rcpt.calculations.totalNet)}</td>
+                        <td className="px-3 py-2 text-right font-mono text-emerald-600 border-r border-zinc-200">{formatCurrency(rcpt.calculations.totalNet)}</td>
+                        <td className="px-3 py-2 text-center no-print">
+                          <button 
+                            onClick={() => {
+                              if (confirm('Tem a certeza que deseja remover este registo da ordem de transferência?')) {
+                                setProcessedReceipts(prev => prev.filter(p => (p.id || p.employee.id) !== (rcpt.id || rcpt.employee.id)));
+                              }
+                            }}
+                            className="p-1.5 text-red-600 hover:bg-red-50 transition-colors"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1519,6 +1640,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                       <td className="px-3 py-4 text-right font-mono text-sm bg-emerald-50 text-emerald-700 border-l border-emerald-200">
                         {formatCurrency(collectiveTransfersSum)}
                       </td>
+                      <td className="no-print bg-zinc-50 border-l border-zinc-200"></td>
                     </tr>
                   </tfoot>
                 </table>
@@ -2271,13 +2393,6 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
             <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Recursos Humanos</h2>
             <p className="text-zinc-500 text-sm">Gestão completa de capital humano e processamento.</p>
           </div>
-          <button 
-            onClick={() => setShowForm(true)}
-            className="bg-[#003366] hover:bg-[#002244] text-white font-bold px-6 py-2.5 rounded-none flex items-center gap-2 transition-all shadow-sm text-sm"
-          >
-            <Plus size={18} />
-            Admitir Funcionário
-          </button>
         </div>
       </header>
 
@@ -3835,6 +3950,13 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                       className="pl-9 pr-4 py-1.5 bg-white border border-zinc-200 rounded-none text-xs focus:outline-none focus:border-[#003366]" 
                     />
                   </div>
+                  <button 
+                    onClick={() => setShowForm(true)}
+                    className="bg-[#003366] hover:bg-[#002244] text-white font-bold px-4 py-1.5 rounded-none flex items-center gap-2 transition-all shadow-sm text-[10px] uppercase tracking-widest"
+                  >
+                    <Plus size={14} />
+                    Admitir Funcionário
+                  </button>
                 </div>
               </div>
               <div className="overflow-x-auto">
@@ -4266,8 +4388,25 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
               <h2 className="text-lg font-black uppercase tracking-widest">LISTA DE PROCESSAMENTO DE SALÁRIO</h2>
               {isProcessingComplete && (
                 <button 
-                  onClick={() => setActiveTab('transfer_order')}
-                  className="bg-[#F27D26] hover:bg-[#d96a1a] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all animate-pulse"
+                  onClick={() => {
+                    if (!selectedPaymentCaixa) {
+                      alert('Selecione primeiro a caixa de pagamento.');
+                      return;
+                    }
+                    // Handle logical transfer
+                    setProcessedReceipts(prev => {
+                      const updated = prev.map(r => {
+                        if (r.status !== 'paid') {
+                          return { ...r, status: 'paid', caixa: selectedPaymentCaixa };
+                        }
+                        return r;
+                      });
+                      return updated;
+                    });
+                    alert('Salários transferidos e marcados como pagos com sucesso!');
+                    setActiveTab('transfer_order');
+                  }}
+                  className="bg-[#F27D26] hover:bg-[#d96a1a] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all shadow-lg"
                 >
                   <ArrowRightLeft size={14} /> Transferir
                 </button>
@@ -4524,8 +4663,12 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                                 <div className="flex items-center gap-2">
                                   <div className="font-black text-[#003366] uppercase text-xs">{emp.name}</div>
                                   {processedAttendance[emp.id] && (
-                                    <span className="px-2 py-0.5 bg-emerald-100 text-emerald-600 text-[8px] font-black uppercase tracking-widest border border-emerald-200">
-                                      Processado
+                                    <span className={`px-2 py-0.5 text-[8px] font-black uppercase tracking-widest border ${
+                                      processedReceipts.find(r => r.employee.id === emp.id)?.status === 'paid'
+                                        ? 'bg-blue-100 text-blue-600 border-blue-200'
+                                        : 'bg-emerald-100 text-emerald-600 border-emerald-200'
+                                    }`}>
+                                      {processedReceipts.find(r => r.employee.id === emp.id)?.status === 'paid' ? 'PAGO' : 'Processado'}
                                     </span>
                                   )}
                                 </div>
@@ -4686,18 +4829,35 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                           </td>
                           <td className="px-4 py-4 text-center">
                             <div className="flex items-center justify-center gap-2">
-                              <button 
-                                onClick={() => {
-                                  setAppSelectedEmployee(emp);
-                                  setActiveTab('transfer_order');
-                                }}
-                                className="bg-[#003366] text-white px-3 py-1.5 text-[9px] font-black uppercase tracking-widest hover:bg-[#002244] flex items-center gap-1"
-                              >
-                                <ArrowRightLeft size={10} /> Ordem
-                              </button>
-                              <button className="bg-red-600 text-white px-3 py-1.5 text-[9px] font-black uppercase tracking-widest hover:bg-red-700">
-                                Apagar
-                              </button>
+                              {processedAttendance[emp.id] ? (
+                                <button 
+                                  onClick={() => {
+                                    setProcessedAttendance(prev => {
+                                      const next = {...prev};
+                                      delete next[emp.id];
+                                      return next;
+                                    });
+                                    setProcessedReceipts(prev => prev.filter(r => r.employee.id !== emp.id));
+                                  }}
+                                  className="bg-amber-600 text-white px-3 py-1.5 text-[9px] font-black uppercase tracking-widest hover:bg-amber-700 flex items-center gap-1"
+                                >
+                                  <RotateCcw size={10} /> Desprocessar
+                                </button>
+                              ) : (
+                                <button 
+                                  onClick={() => {
+                                    if (!selectedEmployeesToProcess[emp.id]) {
+                                      alert('Selecione o funcionário primeiro.');
+                                      return;
+                                    }
+                                    setProcessedAttendance(prev => ({...prev, [emp.id]: true}));
+                                    setProcessedReceipts(prev => [...prev, receipt]);
+                                  }}
+                                  className="bg-emerald-600 text-white px-3 py-1.5 text-[9px] font-black uppercase tracking-widest hover:bg-emerald-700"
+                                >
+                                  Processar
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>

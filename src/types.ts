@@ -211,8 +211,10 @@ export interface Employee {
   subject_to_irt?: boolean;
   subject_to_inss?: boolean;
   status: 'active' | 'inactive' | 'dismissed';
+  is_blocked?: boolean;
   hired_at: string;
   dismissed_at?: string;
+  readmitted_at?: string;
   dismissal_reason?: string;
   dismissal_ordered_by?: string;
   dismissal_observations?: string;
@@ -445,7 +447,6 @@ export interface IssuedDocument {
   data_registo: string;
   estado_documento: 'ativo' | 'anulado';
   status?: string;
-  is_certified?: boolean;
   series_id?: number;
   series_reference?: string;
   series_name?: string;
@@ -464,6 +465,15 @@ export interface IssuedDocument {
   service_date?: string;
   service_location?: string;
   retencao_fonte_total?: number;
+  hash_documento?: string;
+  hash_anterior?: string;
+  codigo_validacao?: string;
+  assinatura_digital?: string;
+  numero_sequencial?: number;
+  serie?: string;
+  ano?: number;
+  is_certified?: boolean;
+  estado_certificacao?: string;
 }
 
 export interface StockMovement {

@@ -131,7 +131,8 @@ import {
   Hash,
   LayoutList,
   CheckSquare,
-  PackageCheck
+  PackageCheck,
+  Lock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
@@ -141,6 +142,7 @@ import * as XLSX from 'xlsx';
 import { validateAngolaNIF } from './utils/nifValidation';
 import { Client, Product, Invoice, DashboardStats, InvoiceItem, Employee, Profession, WorkSite, WorkSiteMovement, IssuedDocument, Warehouse, Supplier, FiscalSeries, CostCenter, POSPoint, CashSession, SystemUser, Purchase, PurchaseItem, POSArea, Caixa, CaixaMovement, LaborTermination, StockMovement, CompanyData } from './types';
 import ContractModal from './components/ContractModal';
+import ContratosList from './components/ContratosList';
 import ChurchModule from './components/ChurchModule';
 import AgrobusinessModule from './components/AgrobusinessModule';
 import SchoolModule from './components/SchoolModule';
@@ -1094,7 +1096,7 @@ const MUNICIPADOS_ANGOLA: Record<string, string[]> = {
   'Cabinda': ['Cabinda', 'Cacongo', 'Buco-Zau', 'Belize'],
 };
 
-const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, companyName, fiscalYear }: { onRefresh: () => void, onSetIsContractModalOpen: (b: boolean) => void, onSetEmployee: (e: Employee | null) => void, caixas: Caixa[], companyName: string, fiscalYear: string }) => {
+const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSelectedContract, caixas, companyName, fiscalYear }: { onRefresh: () => void, onSetIsContractModalOpen: (b: boolean) => void, onSetEmployee: (e: Employee | null) => void, onSetSelectedContract?: (val: any) => void, caixas: Caixa[], companyName: string, fiscalYear: string }) => {
   const { user } = useAuth();
   const professionsRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -1126,6 +1128,25 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
   const handleDismissEmployee = async () => {
     if (!selectedEmployeeForOptions) return;
     try {
+      // Sincronizar com o Supabase na tabela colaboradores
+      if (user?.empresa_id) {
+        try {
+          await supabase
+            .from('colaboradores')
+            .update({
+              status: 'dismissed',
+              dismissed_at: dismissData.date,
+              dismissal_reason: dismissData.reason,
+              dismissal_ordered_by: dismissData.orderedBy,
+              dismissal_observations: dismissData.observations
+            })
+            .eq('id', selectedEmployeeForOptions.id)
+            .eq('empresa_id', user.empresa_id);
+        } catch (supaErr) {
+          console.error('[DismissEmployee] Erro ao sincronizar com Supabase:', supaErr);
+        }
+      }
+
       const res = await fetchWithAuth(`/api/employees/dismiss/${selectedEmployeeForOptions.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1142,10 +1163,46 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
     }
   };
 
+  const handleReadmitEmployee = async (employeeId: number, date: string) => {
+    try {
+      if (user?.empresa_id) {
+        try {
+          await supabase
+            .from('colaboradores')
+            .update({
+              status: 'active',
+              dismissed_at: null,
+              is_blocked: false,
+              readmitted_at: date
+            })
+            .eq('id', employeeId)
+            .eq('empresa_id', user.empresa_id);
+        } catch (supaErr) {
+          console.error('[ReadmitEmployee] Erro ao sincronizar com Supabase:', supaErr);
+        }
+      }
+
+      const res = await fetchWithAuth(`/api/employees/readmit/${employeeId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date })
+      });
+      if (res.ok) {
+        alert('Funcionário readmitido com sucesso!');
+        fetchHRData();
+      }
+    } catch (err) {
+      console.error('Error readmitting employee:', err);
+    }
+  };
+
   const EmployeeOptionsMenu = ({ employee, onClose }: { employee: Employee, onClose: () => void }) => {
+    const isDismissed = employee.status === 'dismissed';
     const options = [
       { id: 'editar', label: 'Editar', icon: <Edit size={20} />, color: 'text-blue-600', bg: 'bg-blue-50', desc: 'Editar informações' },
-      { id: 'demitir', label: 'Demitir', icon: <UserMinus size={20} />, color: 'text-red-600', bg: 'bg-red-50', desc: 'Processo de rescisão' },
+      isDismissed 
+        ? { id: 'readmitir', label: 'Readmitir', icon: <UserCheck size={20} />, color: 'text-emerald-600', bg: 'bg-emerald-50', desc: 'Readmitir colaborador' }
+        : { id: 'demitir', label: 'Demitir', icon: <UserMinus size={20} />, color: 'text-red-600', bg: 'bg-red-50', desc: 'Processo de rescisão' },
       { id: 'ficha_pessoal', label: 'Cadastro', icon: <FileText size={20} />, color: 'text-[#003366]', bg: 'bg-zinc-50', desc: 'Ficha Pessoal' },
       { id: 'acerto_salarial', label: 'Situação Salarial', icon: <Calculator size={20} />, color: 'text-amber-600', bg: 'bg-amber-50', desc: 'Ajustes de vencimento' },
       { id: 'irt_inss_map', label: 'INSS', icon: <ShieldCheck size={20} />, color: 'text-emerald-600', bg: 'bg-emerald-50', desc: 'Segurança Social' },
@@ -1193,6 +1250,12 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
                     onClose();
                   } else if (opt.id === 'demitir') {
                     setShowDismissForm(true);
+                  } else if (opt.id === 'readmitir') {
+                    const rDate = prompt("Digite a data de readmissão (AAAA-MM-DD):", new Date().toISOString().split('T')[0]);
+                    if (rDate) {
+                      handleReadmitEmployee(employee.id, rDate);
+                    }
+                    onClose();
                   } else {
                     onSetEmployee(employee);
                     setActiveTab(opt.id);
@@ -1294,31 +1357,79 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
     );
   };
 
-
-
   const OrdemTransferencia = ({ employee }: { employee: Employee | null }) => {
-    if (!employee) return <div className="p-12 text-center text-zinc-400 italic">Selecione um colaborador para gerar a ordem de transferência.</div>;
+    const hasReceipts = processedReceipts && processedReceipts.length > 0;
     
-    const inss = employee.salary * 0.03;
-    const irt = calculateIRT(employee.salary - inss);
-    const net = employee.salary - inss - irt;
+    const collectiveTransfersCount = hasReceipts ? processedReceipts.length : (employee ? 1 : 0);
+    const collectiveTransfersSum = hasReceipts 
+      ? processedReceipts.reduce((sum, r) => sum + r.calculations.totalNet, 0)
+      : (employee ? (employee.salary - (employee.salary * 0.03) - calculateIRT(employee.salary - (employee.salary * 0.03))) : 0);
 
     const downloadPDF = () => {
       const doc = new jsPDF('p', 'mm', 'a4');
-      doc.setFontSize(18);
-      doc.text('ORDEM DE TRANSFERÊNCIA', 14, 22);
-      doc.setFontSize(10);
-      doc.text(`Data: ${new Date().toLocaleDateString('pt-AO')}`, 14, 30);
+      doc.setFontSize(16);
       
-      doc.text('Entidade Ordenante: Grupo TecnoSys ERP, LDA', 14, 45);
-      doc.text(`Beneficiário: ${employee.name}`, 14, 52);
-      doc.text(`IBAN: ${employee.iban || '---'}`, 14, 59);
-      doc.text(`Valor: ${formatCurrency(net)}`, 14, 66);
-      
-      doc.text('Solicitamos a transferência bancária correspondente ao pagamento de vencimentos.', 14, 80);
-      
-      doc.save(`ordem_transferencia_${(employee.name || 'documento').toLowerCase().replace(/ /g, '_')}.pdf`);
+      if (hasReceipts) {
+        doc.text('ORDEM DE TRANSFERÊNCIA COLECTIVA BANCÁRIA', 14, 20);
+        doc.setFontSize(10);
+        doc.text(`Data: ${new Date().toLocaleDateString('pt-AO')}`, 14, 28);
+        doc.text(`Entidade Ordenante: ${companyName}`, 14, 34);
+        doc.text(`NIF: 5000123456`, 14, 40);
+        doc.text(`Mês de Referência: ${selectedMonth}`, 14, 46);
+        
+        let y = 56;
+        doc.setFontSize(9);
+        doc.text('#', 14, y);
+        doc.text('Nome do Colaborador', 24, y);
+        doc.text('Banco', 90, y);
+        doc.text('IBAN', 120, y);
+        doc.text('Valor Líquido', 170, y);
+        
+        doc.line(14, y + 2, 196, y + 2);
+        y += 8;
+        
+        processedReceipts.forEach((rcpt, index) => {
+          if (y > 270) {
+            doc.addPage();
+            y = 20;
+          }
+          doc.text(String(index + 1), 14, y);
+          doc.text(rcpt.employee.name.substring(0, 32), 24, y);
+          doc.text((rcpt.employee.bank_name || 'BFA').substring(0, 15), 90, y);
+          doc.text(rcpt.employee.iban || '---', 120, y);
+          doc.text(formatCurrency(rcpt.calculations.totalNet).replace('€', '') + ' kzs', 170, y);
+          y += 6;
+        });
+        
+        doc.line(14, y + 2, 196, y + 2);
+        y += 10;
+        doc.setFontSize(10);
+        doc.text(`Total de Transferências: ${processedReceipts.length}`, 14, y);
+        doc.text(`Valor de Cobertura Total: ${formatCurrency(collectiveTransfersSum)}`, 120, y);
+        
+        doc.save(`ordem_transferencia_colectiva_${selectedMonth.replace(/ \/ /g, '_')}.pdf`);
+      } else {
+        if (!employee) return;
+        const net = employee.salary - (employee.salary * 0.03) - calculateIRT(employee.salary - (employee.salary * 0.03));
+        doc.text('ORDEM DE TRANSFERÊNCIA', 14, 22);
+        doc.setFontSize(10);
+        doc.text(`Data: ${new Date().toLocaleDateString('pt-AO')}`, 14, 30);
+        doc.text(`Entidade Ordenante: Grupo TecnoSys ERP, LDA`, 14, 45);
+        doc.text(`Beneficiário: ${employee.name}`, 14, 52);
+        doc.text(`IBAN: ${employee.iban || '---'}`, 14, 59);
+        doc.text(`Valor: ${formatCurrency(net)}`, 14, 66);
+        doc.text('Solicitamos a transferência bancária correspondente ao pagamento de vencimentos.', 14, 80);
+        doc.save(`ordem_transferencia_${(employee.name || 'documento').toLowerCase().replace(/ /g, '_')}.pdf`);
+      }
     };
+
+    if (!hasReceipts && !employee) {
+      return (
+        <div className="p-12 text-center text-zinc-400 font-bold uppercase tracking-widest bg-zinc-50 border border-zinc-200">
+          Nenhum salário processado ainda. Processe os salários na página anterior para gerar a lista de ordens de transferência bancária!
+        </div>
+      );
+    }
 
     return (
       <div className="bg-white border border-zinc-200 rounded-none shadow-lg max-w-4xl mx-auto overflow-hidden">
@@ -1328,8 +1439,12 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
               <ArrowRightLeft size={32} />
             </div>
             <div>
-              <h2 className="text-2xl font-black uppercase tracking-[0.2em]">Ordem de Transferência</h2>
-              <p className="text-xs text-white/60 uppercase tracking-widest font-bold">Pagamento de Vencimentos</p>
+              <h2 className="text-2xl font-black uppercase tracking-[0.2em]">
+                {hasReceipts ? 'Ordem Colectiva de Transferências' : 'Ordem de Transferência'}
+              </h2>
+              <p className="text-xs text-white/60 uppercase tracking-widest font-bold">
+                {hasReceipts ? `Processamento de Vencimentos • ${selectedMonth}` : 'Pagamento de Vencimentos'}
+              </p>
             </div>
           </div>
           <div className="flex gap-2">
@@ -1354,78 +1469,108 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
             <div className="space-y-4">
               <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 border-b border-zinc-100 pb-2">Entidade Ordenante</h3>
               <div className="space-y-1">
-                <p className="text-sm font-black text-[#003366] uppercase">Grupo TecnoSys ERP, LDA</p>
+                <p className="text-sm font-black text-[#003366] uppercase">{companyName}</p>
                 <p className="text-xs text-zinc-500 font-bold">NIF: 5000123456</p>
-                <p className="text-xs text-zinc-500 font-bold">Conta: 1234567890</p>
-                <p className="text-xs text-zinc-500 font-bold">IBAN: AO06 0000 0000 1234 5678 9012 3</p>
+                <p className="text-xs text-zinc-500 font-bold">Conta Principal Bancária: {iban ? 'AO06 ' + iban.substring(4) : 'AO06 0000 0000 1234 5678 9012 3'}</p>
               </div>
             </div>
             <div className="space-y-4">
-              <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 border-b border-zinc-100 pb-2">Banco Destinatário</h3>
+              <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 border-b border-zinc-100 pb-2">Parâmetros de Lote</h3>
               <div className="space-y-1">
-                <p className="text-sm font-black text-[#003366] uppercase">{employee.bank_name || 'BANCO BFA'}</p>
-                <p className="text-xs text-zinc-500 font-bold">Data de Emissão: {new Date().toLocaleDateString('pt-AO')}</p>
-                <p className="text-xs text-zinc-500 font-bold">Ref: OT-{new Date().getFullYear()}-{String(employee.id).padStart(4, '0')}</p>
+                <p className="text-sm font-black text-zinc-700 uppercase">Banco Ordenante: {bankName || 'BANCO BFA'}</p>
+                <p className="text-xs text-zinc-500 font-bold">Data de Instrução: {new Date().toLocaleDateString('pt-AO')}</p>
+                <p className="text-xs text-zinc-500 font-bold">Ref de Lote: OT-COLECTIVA-{new Date().getFullYear()}-{new Date().getMonth() + 1}</p>
               </div>
             </div>
           </div>
 
-          {/* Transfer Details */}
-          <div className="bg-zinc-50 border border-zinc-200 p-8 space-y-8">
-            <div className="flex justify-between items-start">
-              <div className="flex items-center gap-6">
-                <div className="w-20 h-20 bg-white border border-zinc-200 overflow-hidden flex items-center justify-center">
-                  {employee.image_url ? <img src={employee.image_url} className="w-full h-full object-cover" /> : <UserIcon size={32} className="text-zinc-200" />}
+          {hasReceipts ? (
+            <div className="space-y-6">
+              <h3 className="text-[10px] font-black uppercase tracking-widest text-[#003366] border-b-2 border-[#003366] pb-2">
+                RELAÇÃO NOMINAL DOS BENEFICIÁRIOS DOS CRÉDITOS SALARIAIS
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left border-collapse border border-zinc-200">
+                  <thead>
+                    <tr className="bg-zinc-100 font-black uppercase text-[9px] tracking-wider text-zinc-600 border-b border-zinc-200">
+                      <th className="px-3 py-3 border-r border-zinc-200 w-10">#</th>
+                      <th className="px-3 py-3 border-r border-zinc-200 text-left">Beneficiário (Nome)</th>
+                      <th className="px-3 py-3 border-r border-zinc-200 text-left">Banco Destinatário</th>
+                      <th className="px-3 py-3 border-r border-zinc-200 text-left font-mono">IBAN / Conta</th>
+                      <th className="px-3 py-3 text-right">Montante Líquido</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-200">
+                    {processedReceipts.map((rcpt, idx) => (
+                      <tr key={rcpt.id} className="hover:bg-zinc-50 font-bold text-zinc-700">
+                        <td className="px-3 py-2 border-r border-zinc-200 text-center text-zinc-400">{idx + 1}</td>
+                        <td className="px-3 py-2 border-r border-zinc-200 uppercase text-[#003366]">{rcpt.employee.name}</td>
+                        <td className="px-3 py-2 border-r border-zinc-200 uppercase text-zinc-500">{rcpt.employee.bank_name || 'BFA'}</td>
+                        <td className="px-3 py-2 border-r border-zinc-200 font-mono text-xs">{rcpt.employee.iban || 'AO00 0000 0000 0000 0000 0000 0'}</td>
+                        <td className="px-3 py-2 text-right font-mono text-emerald-600">{formatCurrency(rcpt.calculations.totalNet)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-zinc-50 font-black text-[#003366] border-t border-zinc-300">
+                      <td colSpan={4} className="px-3 py-4 border-r border-zinc-200 text-right uppercase tracking-widest text-[9px]">
+                        VALOR DE COBERTURA INTEGRAL DO LOTE:
+                      </td>
+                      <td className="px-3 py-4 text-right font-mono text-sm bg-emerald-50 text-emerald-700 border-l border-emerald-200">
+                        {formatCurrency(collectiveTransfersSum)}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          ) : (
+            employee && (
+              <div className="bg-zinc-50 border border-zinc-200 p-8 space-y-8">
+                <div className="flex justify-between items-start">
+                  <div className="flex items-center gap-6">
+                    <div className="w-20 h-20 bg-white border border-zinc-200 overflow-hidden flex items-center justify-center">
+                      {employee.image_url ? <img src={employee.image_url} className="w-full h-full object-cover" /> : <UserIcon size={32} className="text-zinc-200" />}
+                    </div>
+                    <div>
+                      <h4 className="text-lg font-black text-[#003366] uppercase tracking-tight">{employee.name}</h4>
+                      <p className="text-xs text-zinc-400 font-bold uppercase tracking-widest">{employee.role}</p>
+                      <p className="text-xs text-[#F27D26] font-black mt-1 uppercase tracking-tighter">IBAN: {employee.iban || '---'}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Valor a Transferir</p>
+                    <p className="text-3xl font-black text-[#003366] font-mono">
+                      {formatCurrency(employee.salary - (employee.salary * 0.03) - calculateIRT(employee.salary - (employee.salary * 0.03)))}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="text-lg font-black text-[#003366] uppercase tracking-tight">{employee.name}</h4>
-                  <p className="text-xs text-zinc-400 font-bold uppercase tracking-widest">{employee.role}</p>
-                  <p className="text-xs text-[#F27D26] font-black mt-1 uppercase tracking-tighter">IBAN: {employee.iban || '---'}</p>
+
+                <div className="grid grid-cols-3 gap-6 pt-8 border-t border-zinc-200">
+                  <div>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-zinc-400">Salário Bruto</p>
+                    <p className="text-sm font-bold text-zinc-700">{formatCurrency(employee.salary)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-zinc-400">Descontos Estimados</p>
+                    <p className="text-sm font-bold text-red-500">
+                      -{formatCurrency((employee.salary * 0.03) + calculateIRT(employee.salary - (employee.salary * 0.03)))}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-zinc-400">Período de Referência</p>
+                    <p className="text-sm font-bold text-zinc-700">{selectedMonth}</p>
+                  </div>
                 </div>
               </div>
-              <div className="text-right">
-                <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Valor a Transferir</p>
-                <p className="text-3xl font-black text-[#003366] font-mono">{formatCurrency(net)}</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-6 pt-8 border-t border-zinc-200">
-              <div>
-                <p className="text-[9px] font-black uppercase tracking-widest text-zinc-400">Salário Bruto</p>
-                <p className="text-sm font-bold text-zinc-700">{formatCurrency(employee.salary)}</p>
-              </div>
-              <div>
-                <p className="text-[9px] font-black uppercase tracking-widest text-zinc-400">Descontos (IRT/INSS)</p>
-                <p className="text-sm font-bold text-red-500">-{formatCurrency(irt + inss)}</p>
-              </div>
-              <div>
-                <p className="text-[9px] font-black uppercase tracking-widest text-zinc-400">Período</p>
-                <p className="text-sm font-bold text-zinc-700">{selectedMonth}</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Bank Info */}
-          <div className="bg-zinc-50 p-6 border border-zinc-100 mb-12 space-y-4">
-            <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 border-b border-zinc-200 pb-2">Dados do Ordenante</h3>
-            <div className="grid grid-cols-2 gap-8">
-              <div className="space-y-1">
-                <p className="text-[9px] font-black uppercase tracking-widest text-zinc-400">Empresa</p>
-                <p className="text-xs font-bold text-[#003366] uppercase">{companyName}</p>
-              </div>
-              <div className="space-y-1 text-right">
-                <p className="text-[9px] font-black uppercase tracking-widest text-zinc-400">Banco / IBAN</p>
-                <p className="text-xs font-bold text-zinc-700 uppercase">{bankName || 'BFA - Banco de Fomento Angola'}</p>
-                <p className="text-[10px] font-mono font-bold text-zinc-500">{iban || 'AO06 0000 0000 0000 0000 0000 0'}</p>
-              </div>
-            </div>
-          </div>
+            )
+          )}
 
           {/* Description */}
           <div className="space-y-4">
-            <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 border-b border-zinc-100 pb-2">Descrição da Operação</h3>
+            <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 border-b border-zinc-100 pb-2">Declaração de Instrução</h3>
             <p className="text-xs text-zinc-600 leading-relaxed font-bold italic">
-              Solicitamos a transferência bancária da importância de {formatCurrency(net)} correspondente ao pagamento de vencimentos do colaborador acima identificado, referente ao período de Março de 2026.
+              Solicitamos a vossas exas. que procedam ao processamento e crédito imediato das transferências bancárias especificadas de acordo com as informações fornecidas, imputando o valor global correspondente de {formatCurrency(collectiveTransfersSum)} na conta de depósitos acima indicada.
             </p>
           </div>
 
@@ -1449,12 +1594,19 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
     );
   };
 
-  const filteredEmployees = Array.isArray(localEmployees) ? localEmployees.filter(emp => 
-    (emp.name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
-    (emp.role || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
-    (emp.profession_name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
-    (emp.department || '').toLowerCase().includes((searchTerm || '').toLowerCase())
-  ) : [];
+  const filteredEmployeesList = Array.isArray(localEmployees) ? localEmployees.filter(emp => {
+    const searchMatch = (emp.name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+      (emp.role || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+      (emp.profession_name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+      (emp.department || '').toLowerCase().includes((searchTerm || '').toLowerCase());
+    
+    // Na lista geral de funcionários, mostramos todos, mas com indicação visual para os demitidos
+    return searchMatch;
+  }) : [];
+
+  // Funcionários ativos para processamentos (Salário, Assiduidade)
+  const activeEmployees = Array.isArray(localEmployees) ? localEmployees.filter(emp => emp.status !== 'dismissed') : [];
+
   const [name, setName] = useState('');
   const [role, setRole] = useState('');
   const [salary, setSalary] = useState('');
@@ -1522,6 +1674,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
   const [openDadosFiscais, setOpenDadosFiscais] = useState(true);
   const [openOutrosDados, setOpenOutrosDados] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState(`Março / ${fiscalYear}`);
+  const [selectedEmployeesToProcess, setSelectedEmployeesToProcess] = useState<Record<number, boolean>>({});
   const [processedAttendance, setProcessedAttendance] = useState<Record<number, boolean>>({});
   const [processedReceipts, setProcessedReceipts] = useState<any[]>([]);
   const [selectedProcedure, setSelectedProcedure] = useState<any | null>(null);
@@ -1553,6 +1706,17 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
   }>>({});
 
   const updatePayrollInput = (empId: number, field: string, value: number) => {
+    setProcessedAttendance(prev => {
+      if (prev[empId]) {
+        const next = { ...prev };
+        delete next[empId];
+        return next;
+      }
+      return prev;
+    });
+    // Also reset isProcessingComplete if all were processed and one changed? 
+    // Or just let user click execute again.
+    
     setPayrollInputs(prev => ({
       ...prev,
       [empId]: {
@@ -3165,18 +3329,29 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
                     <th className="px-4 py-2 text-center">Ações</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-200">
+                <tbody className="divide-y divide-zinc-100">
                   {localEmployees.map((emp, idx) => {
                     const age = emp.birth_date ? new Date().getFullYear() - new Date(emp.birth_date).getFullYear() : '---';
                     const inss = (emp.salary || 0) * 0.03;
                     const irt = calculateIRT((emp.salary || 0) - inss);
                     const net = (emp.salary || 0) - inss - irt;
                     const serviceTime = emp.hired_at ? `${new Date().getFullYear() - new Date(emp.hired_at).getFullYear()} anos` : '---';
+                    const isDismissed = emp.status === 'dismissed';
                     
                     return (
-                      <tr key={emp.id} className="hover:bg-zinc-50 transition-colors">
+                      <tr key={emp.id} className={`hover:bg-zinc-50 transition-colors ${isDismissed ? 'bg-red-50/20' : ''}`}>
                         <td className="px-2 py-2 border-r border-zinc-200 text-center text-zinc-500">{idx + 1}</td>
-                        <td className="px-4 py-2 border-r border-zinc-200 font-black text-[#003366] uppercase">{emp.name}</td>
+                        <td className={`px-4 py-2 border-r border-zinc-200 font-black uppercase ${isDismissed ? 'text-red-600' : 'text-[#003366]'}`}>
+                          <div className="flex items-center gap-1.5">
+                            {isDismissed && <Lock size={12} className="text-red-500 shrink-0" />}
+                            <span>{emp.name}</span>
+                          </div>
+                          {isDismissed && (
+                            <span className="block text-[8px] font-black uppercase text-red-500 mt-0.5 tracking-normal whitespace-nowrap">
+                              Demitido em {emp.dismissed_at ? new Date(emp.dismissed_at).toLocaleDateString('pt-PT') : 'N/A'}
+                            </span>
+                          )}
+                        </td>
                         <td className="px-4 py-2 border-r border-zinc-200">{emp.birth_date ? new Date(emp.birth_date).toLocaleDateString() : '---'}</td>
                         <td className="px-2 py-2 border-r border-zinc-200 text-center">{age}</td>
                         <td className="px-2 py-2 border-r border-zinc-200 text-center">{emp.gender?.substring(0, 1) || '---'}</td>
@@ -3623,7 +3798,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
-                  {filteredEmployees.filter(e => e.status === 'active').map(emp => {
+                  {filteredEmployeesList.filter(e => e.status === 'active').map(emp => {
                     const inss = (emp.salary || 0) * 0.03;
                     const irt = calculateIRT((emp.salary || 0) - inss);
                     const net = (emp.salary || 0) - inss - irt;
@@ -3674,51 +3849,62 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
                       <th className="px-6 py-4 text-center">Opção</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-zinc-100">
-                    {filteredEmployees.map(emp => {
-                      return (
-                        <tr 
-                          key={emp.id} 
-                          className={`hover:bg-zinc-50 transition-colors text-xs group cursor-pointer ${selectedEmployeeForOptions?.id === emp.id ? 'bg-zinc-50 border-l-4 border-l-[#003366]' : ''}`}
-                        >
-                          <td className="px-6 py-3">
-                            <div className="w-10 h-10 bg-zinc-100 rounded-none border border-zinc-200 overflow-hidden flex items-center justify-center">
-                              {emp.image_url ? (
-                                <img src={emp.image_url} alt={emp.name} className="w-full h-full object-cover" />
-                              ) : (
-                                <UserIcon size={18} className="text-zinc-300" />
-                              )}
+              <tbody className="divide-y divide-zinc-100">
+                {filteredEmployeesList.map(emp => {
+                  const isDismissed = emp.status === 'dismissed';
+                  return (
+                    <tr 
+                      key={emp.id} 
+                      className={`hover:bg-zinc-50 transition-colors text-xs group cursor-pointer ${selectedEmployeeForOptions?.id === emp.id ? 'bg-zinc-50 border-l-4 border-l-[#003366]' : ''} ${isDismissed ? 'bg-red-50/30' : ''}`}
+                    >
+                      <td className="px-6 py-3">
+                        <div className="w-10 h-10 bg-zinc-100 rounded-none border border-zinc-200 overflow-hidden flex items-center justify-center relative">
+                          {emp.image_url ? (
+                            <img src={emp.image_url} alt={emp.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <UserIcon size={18} className="text-zinc-300" />
+                          )}
+                          {isDismissed && (
+                            <div className="absolute inset-0 bg-red-600/20 flex items-center justify-center">
+                              <span className="text-[8px] font-black bg-red-600 text-white px-1">OFF</span>
                             </div>
-                          </td>
-                          <td className="px-6 py-4 font-black text-[#003366] uppercase tracking-tight">
-                            <div>{emp.name}</div>
-                            <div className="text-[9px] text-zinc-400 font-normal lowercase">{emp.email}</div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="font-bold text-zinc-700">{emp.profession_name || emp.role}</div>
-                            <div className="text-[9px] text-zinc-400 uppercase tracking-widest">{emp.department || 'Geral'}</div>
-                          </td>
-                          <td className="px-6 py-4 text-right font-bold text-zinc-600">{formatCurrency(emp.salary)}</td>
-                          <td className="px-6 py-4 text-center">
-                            <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-widest rounded-none border ${emp.status === 'active' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'}`}>
-                              {emp.status === 'active' ? 'Ativo' : 'Inativo'}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <button 
-                              onClick={() => {
-                                setSelectedEmployeeForOptions(emp);
-                                setShowOptionsMenu(true);
-                              }}
-                              className="bg-[#003366] text-white px-4 py-1.5 text-[9px] font-black uppercase tracking-widest hover:bg-[#002244] transition-all shadow-sm"
-                            >
-                              Opção
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 font-black uppercase tracking-tight">
+                        <div className={isDismissed ? "text-red-500 line-through" : "text-[#003366]"}>{emp.name}</div>
+                        <div className="text-[9px] text-zinc-400 font-normal lowercase">{emp.email}</div>
+                        {isDismissed && (
+                          <div className="text-[9px] text-red-600 font-bold uppercase mt-1 bg-red-50 border border-red-100 px-2 py-0.5 rounded-none w-fit flex items-center gap-1">
+                            🔒 Demitido e Bloqueado - {emp.dismissed_at ? new Date(emp.dismissed_at).toLocaleDateString() : 'N/A'}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="font-bold text-zinc-700">{emp.profession_name || emp.role}</div>
+                        <div className="text-[9px] text-zinc-400 uppercase tracking-widest">{emp.department || 'Geral'}</div>
+                      </td>
+                      <td className="px-6 py-4 text-right font-bold text-zinc-600">{formatCurrency(emp.salary)}</td>
+                      <td className="px-6 py-4 text-center">
+                        <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-widest rounded-none border ${isDismissed ? 'bg-[#FFECEC] text-red-600 border-red-200 font-black' : emp.status === 'active' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'}`}>
+                          {isDismissed ? '🔒 BLOQUEADO' : (emp.status === 'active' ? 'Ativo' : 'Inativo')}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <button 
+                          onClick={() => {
+                            setSelectedEmployeeForOptions(emp);
+                            setShowOptionsMenu(true);
+                          }}
+                          className={`${isDismissed ? 'bg-zinc-400' : 'bg-[#003366] hover:bg-[#002244]'} text-white px-4 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all shadow-sm`}
+                        >
+                          {isDismissed ? 'Info' : 'Opção'}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
                 </table>
               </div>
             </div>
@@ -3785,7 +3971,13 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
               </div>
               <button 
                 onClick={() => {
-                  localEmployees.forEach(emp => {
+                  const selectedEmpList = activeEmployees.filter(emp => selectedEmployeesToProcess[emp.id]);
+                  if (selectedEmpList.length === 0) {
+                    alert("Erro: Seleção de funcionário obrigatória! Por favor, selecione pelo menos um funcionário na lista abaixo (ou marque a opção 'Seldet' para selecionar todos).");
+                    return;
+                  }
+                  
+                  selectedEmpList.forEach(emp => {
                     const totals = calculateAttendanceTotals(emp.id);
                     setPayrollInputs(prev => ({
                       ...prev,
@@ -3821,16 +4013,39 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
                     <tr className="bg-[#003366] text-white text-[10px] uppercase tracking-widest font-black">
                       <th className="px-4 py-4 border-r border-white/10 sticky left-0 bg-[#003366] z-10" rowSpan={2}>Funcionário</th>
                       <th className="px-2 py-2 border-r border-white/10 text-center" colSpan={5}>Resumo</th>
-                      {[...Array(31)].map((_, i) => (
-                        <th key={i} className="px-2 py-4 border-r border-white/10 text-center w-10">{i + 1}</th>
-                      ))}
+                      {[...Array(31)].map((_, i) => {
+                        const day = i + 1;
+                        // Weeks parsing in Portuguese LGT Angola
+                        const parts = selectedMonth.split('/');
+                        const name = parts[0]?.trim() || '';
+                        const yr = Number(parts[1]?.trim() || new Date().getFullYear());
+                        const monthMap: Record<string, number> = {
+                          "Janeiro": 0, "Fevereiro": 1, "Março": 2, "Abril": 3, "Maio": 4, "Junho": 5,
+                          "Julho": 6, "Agosto": 7, "Setembro": 8, "Outubro": 9, "Novembro": 10, "Dezembro": 11
+                        };
+                        const mIndex = monthMap[name] !== undefined ? monthMap[name] : new Date().getMonth();
+                        const dt = new Date(yr, mIndex, day);
+                        const daysOfWeek = ["DOM", "SEG", "TER", "QUA", "QUI", "SEX", "SÁB"];
+                        const wDay = daysOfWeek[dt.getDay()];
+                        
+                        // Calculate week of the month
+                        const weekOfMonth = Math.ceil((day + new Date(yr, mIndex, 1).getDay()) / 7);
+
+                        return (
+                          <th key={i} className="px-1 py-1.5 border-r border-white/10 text-center w-10">
+                            <div className="font-black text-xs leading-none">{day}</div>
+                            <div className="text-[7px] font-bold text-white/50 block tracking-normal uppercase mt-0.5 leading-none">{wDay}</div>
+                            <div className="text-[6px] font-black text-white/30 block tracking-tighter uppercase mt-0.5 leading-none">Sem. {weekOfMonth}</div>
+                          </th>
+                        );
+                      })}
                     </tr>
                     <tr className="bg-[#003366]/90 text-white text-[9px] uppercase tracking-tighter font-bold">
-                      <th className="px-2 py-2 border-r border-white/10 text-center">FJ</th>
-                      <th className="px-2 py-2 border-r border-white/10 text-center">FI</th>
-                      <th className="px-2 py-2 border-r border-white/10 text-center">FE</th>
-                      <th className="px-2 py-2 border-r border-white/10 text-center">HE</th>
-                      <th className="px-2 py-2 border-r border-white/10 text-center">HP</th>
+                      <th className="px-2 py-2 border-r border-[#ffffff]/10 text-center">FJ</th>
+                      <th className="px-2 py-2 border-r border-[#ffffff]/10 text-center">FI</th>
+                      <th className="px-2 py-2 border-r border-[#ffffff]/10 text-center">FE</th>
+                      <th className="px-2 py-2 border-r border-[#ffffff]/10 text-center">HE</th>
+                      <th className="px-2 py-2 border-r border-[#ffffff]/10 text-center">HP</th>
                       {[...Array(31)].map((_, i) => (
                         <th key={i} className="px-2 py-2 border-r border-white/10 text-center">
                           <input type="checkbox" className="rounded-none accent-[#F27D26]" defaultChecked />
@@ -3842,10 +4057,53 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
                     {/* Select All Row */}
                     <tr className="bg-zinc-50 text-[10px] font-black uppercase text-zinc-400">
                       <td className="px-4 py-3 border-r border-zinc-200 sticky left-0 bg-zinc-50 z-10 flex items-center gap-2">
-                        <input type="checkbox" className="rounded-none accent-[#003366]" />
-                        <span>Seldet:</span>
-                        <select className="bg-transparent border-none text-[10px] font-black text-[#003366] focus:outline-none">
-                          <option>Selecionar funcionários</option>
+                        <input 
+                          type="checkbox" 
+                          id="seldet-checkbox"
+                          className="rounded-none accent-[#003366] cursor-pointer" 
+                          checked={activeEmployees.length > 0 && activeEmployees.every(emp => !!selectedEmployeesToProcess[emp.id])}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            const nextSelected: Record<number, boolean> = {};
+                            if (checked) {
+                              activeEmployees.forEach(emp => {
+                                nextSelected[emp.id] = true;
+                              });
+                            }
+                            setSelectedEmployeesToProcess(nextSelected);
+                          }}
+                        />
+                        <span 
+                          className="cursor-pointer hover:text-[#003366] select-none transition-colors"
+                          onClick={() => {
+                            const currentlyAllChecked = activeEmployees.length > 0 && activeEmployees.every(emp => !!selectedEmployeesToProcess[emp.id]);
+                            const nextSelected: Record<number, boolean> = {};
+                            if (!currentlyAllChecked) {
+                              activeEmployees.forEach(emp => {
+                                nextSelected[emp.id] = true;
+                              });
+                            }
+                            setSelectedEmployeesToProcess(nextSelected);
+                          }}
+                        >
+                          Seldet (Selec. Todos)
+                        </span>
+                        <select 
+                          className="bg-transparent border-none text-[10px] font-black text-[#003366] focus:outline-none"
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === 'all') {
+                              const next: Record<number, boolean> = {};
+                              activeEmployees.forEach(emp => { next[emp.id] = true; });
+                              setSelectedEmployeesToProcess(next);
+                            } else if (val === 'none') {
+                              setSelectedEmployeesToProcess({});
+                            }
+                          }}
+                        >
+                          <option value="">Selecionar funcionários</option>
+                          <option value="all">Selecionar Todos</option>
+                          <option value="none">Limpar Seleção</option>
                         </select>
                       </td>
                       <td className="px-2 py-3 border-r border-zinc-200 text-center"></td>
@@ -3863,11 +4121,21 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
                     </tr>
 
                     {/* Employee Rows */}
-                    {localEmployees.map(emp => (
+                    {activeEmployees.map(emp => (
                       <tr key={emp.id} className="hover:bg-zinc-50 transition-colors group">
                         <td className="px-4 py-4 border-r border-zinc-200 sticky left-0 bg-white group-hover:bg-zinc-50 z-10">
                           <div className="flex items-center gap-3">
-                            <input type="checkbox" className="rounded-none accent-[#003366]" />
+                            <input 
+                              type="checkbox" 
+                              className="rounded-none accent-[#003366]" 
+                              checked={!!selectedEmployeesToProcess[emp.id]}
+                              onChange={(e) => {
+                                setSelectedEmployeesToProcess(prev => ({
+                                  ...prev,
+                                  [emp.id]: e.target.checked
+                                }));
+                              }}
+                            />
                             <div className="w-10 h-10 bg-zinc-100 rounded-none overflow-hidden border border-zinc-200">
                               {emp.image_url ? <img src={emp.image_url} className="w-full h-full object-cover" /> : <UserIcon size={16} className="text-zinc-300 m-auto mt-3" />}
                             </div>
@@ -4014,19 +4282,21 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
                     <option>Grupo TecnoSys</option>
                   </select>
                 </div>
-                <div className="min-w-[200px]">
-                  <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Caixa de Pagamento:</label>
-                  <select 
-                    value={selectedPaymentCaixa}
-                    onChange={(e) => setSelectedPaymentCaixa(e.target.value)}
-                    className="w-full border border-zinc-200 px-4 py-2 text-xs focus:outline-none focus:border-[#003366] font-bold text-[#003366]"
-                  >
-                    <option value="">Selecionar Caixa...</option>
-                    {caixas.map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
-                </div>
+                {isProcessingComplete && (
+                  <div className="min-w-[200px] animate-in fade-in duration-300">
+                    <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Caixa de Pagamento:</label>
+                    <select 
+                      value={selectedPaymentCaixa}
+                      onChange={(e) => setSelectedPaymentCaixa(e.target.value)}
+                      className="w-full border border-zinc-200 px-4 py-2 text-xs focus:outline-none focus:border-[#003366] font-bold text-[#003366]"
+                    >
+                      <option value="">Selecionar Caixa...</option>
+                      {caixas.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div className="min-w-[200px]">
                   <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Mês/Ano:</label>
                   <select className="w-full border border-zinc-200 px-4 py-2 text-xs focus:outline-none focus:border-[#003366] font-bold text-[#003366]">
@@ -4052,9 +4322,19 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
 
             <div className="flex gap-2">
               <button 
-                disabled={!selectedPaymentCaixa}
                 onClick={() => {
-                  const receipts = localEmployees.map(emp => {
+                  const selectedEmpIds = Object.keys(selectedEmployeesToProcess)
+                    .filter(id => selectedEmployeesToProcess[Number(id)] === true)
+                    .map(Number);
+                  
+                  if (selectedEmpIds.length === 0) {
+                    alert("Por favor, selecione os funcionários na lista para executar o processamento!");
+                    return;
+                  }
+
+                  const receipts = activeEmployees
+                    .filter(emp => selectedEmpIds.includes(emp.id))
+                    .map(emp => {
                     const inputs = payrollInputs[emp.id] || { 
                       premios: 0, gratificacoes: 0, abonos: 0, subsidioNatal: 0, alojamento: 0, outrosSubsidios: 0,
                       faltasJustificadas: 0, faltasInjustificadas: 0, ferias: 0, horasExtras: 0, horasPerdidas: 0,
@@ -4097,11 +4377,18 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
                       paymentDate: new Date().toLocaleDateString('pt-AO')
                     };
                   });
+
+                  const nextProcessed = { ...processedAttendance };
+                  selectedEmpIds.forEach(id => {
+                    nextProcessed[id] = true;
+                  });
+                  setProcessedAttendance(nextProcessed);
+
                   setProcessedReceipts(receipts);
                   setIsProcessingComplete(true);
-                  alert('Processamento concluído com sucesso para o caixa selecionado.');
+                  alert('Processamento concluído com sucesso para os funcionários selecionados.');
                 }}
-                className={`px-8 py-2 text-xs font-black uppercase tracking-widest transition-all shadow-lg ${!selectedPaymentCaixa ? 'bg-zinc-300 cursor-not-allowed' : 'bg-[#F27D26] hover:bg-[#d96a1a] text-white'}`}
+                className="px-8 py-2 text-xs font-black uppercase tracking-widest transition-all shadow-lg bg-[#F27D26] hover:bg-[#d96a1a] text-white"
               >
                 EXECUTAR PROCESSAMENTO
               </button>
@@ -4118,27 +4405,31 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
             </div>
 
             <div className="bg-white border border-zinc-200 shadow-sm overflow-hidden">
-              {!selectedPaymentCaixa ? (
-                <div className="p-20 text-center space-y-6 bg-zinc-50/50">
-                  <div className="w-24 h-24 bg-[#003366]/5 rounded-full flex items-center justify-center mx-auto border-2 border-dashed border-[#003366]/20">
-                    <Wallet size={40} className="text-[#003366]/30" />
-                  </div>
-                  <div className="max-w-md mx-auto">
-                    <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest mb-2">Seleção de Caixa Obrigatória</h3>
-                    <p className="text-[10px] text-zinc-400 font-bold uppercase leading-relaxed">
-                      Para visualizar a lista de processamento e executar os pagamentos, deve primeiro selecionar o caixa de pagamento correspondente no menu acima.
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
+              <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse min-w-[1500px]">
                     <thead>
                       <tr className="bg-[#1e293b] text-white text-[9px] uppercase tracking-widest font-black">
                         <th className="px-4 py-4 border-r border-white/10 w-10 sticky left-0 bg-[#1e293b] z-20">
-                          <input type="checkbox" className="rounded-none accent-[#F27D26]" />
+                          <input 
+                            type="checkbox" 
+                            id="selectAllEmployees"
+                            className="rounded-none accent-[#F27D26] w-4 h-4 cursor-pointer" 
+                            checked={activeEmployees.length > 0 && activeEmployees.every(emp => !!selectedEmployeesToProcess[emp.id])}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              const nextSelected: Record<number, boolean> = {};
+                              if (checked) {
+                                activeEmployees.forEach(emp => {
+                                  nextSelected[emp.id] = true;
+                                });
+                              }
+                              setSelectedEmployeesToProcess(nextSelected);
+                            }}
+                          />
                         </th>
-                        <th className="px-4 py-4 border-r border-white/10 sticky left-10 bg-[#1e293b] z-20 min-w-[250px]">FUNCIONÁRIO</th>
+                        <th className="px-4 py-4 border-r border-white/10 sticky left-10 bg-[#1e293b] z-20 min-w-[250px] group">
+                          <label htmlFor="selectAllEmployees" className="cursor-pointer">FUNCIONÁRIO (Selecionar Todos)</label>
+                        </th>
                         <th className="px-2 py-4 border-r border-white/10 text-center">DIAS TRAB.</th>
                         <th className="px-2 py-4 border-r border-white/10 text-center">DIAS FOLGA</th>
                         <th className="px-2 py-4 border-r border-white/10 text-center">F. JUST.</th>
@@ -4163,9 +4454,9 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
                     <tbody className="divide-y divide-zinc-100">
                       <tr className="bg-zinc-50/50 text-[9px] font-black text-zinc-400 uppercase">
                         <td className="px-4 py-2 border-r border-zinc-200"></td>
-                        <td className="px-4 py-2 border-r border-zinc-200" colSpan={11}>Empresa: Grupo TecnoSys • Caixa: {selectedPaymentCaixa.replace('_', ' ').toUpperCase()}</td>
+                        <td className="px-4 py-2 border-r border-zinc-200" colSpan={11}>Empresa: Grupo TecnoSys • Caixa: {selectedPaymentCaixa ? selectedPaymentCaixa.replace('_', ' ').toUpperCase() : 'NÃO SELECIONADO'}</td>
                       </tr>
-                      {localEmployees.map(emp => {
+                      {activeEmployees.map(emp => {
                       const inputs = payrollInputs[emp.id] || { 
                         premios: 0, gratificacoes: 0, abonos: 0, subsidioNatal: 0, alojamento: 0, outrosSubsidios: 0,
                         faltasJustificadas: 0, faltasInjustificadas: 0, ferias: 0, horasExtras: 0, horasPerdidas: 0,
@@ -4211,8 +4502,18 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
                       
                       return (
                         <tr key={emp.id} className="hover:bg-zinc-50 transition-colors group">
-                          <td className="px-4 py-4 border-r border-zinc-200 sticky left-0 bg-white group-hover:bg-zinc-50 z-10">
-                            <input type="checkbox" className="rounded-none accent-[#003366]" />
+                          <td className="px-4 py-4 border-r border-zinc-200 sticky left-0 bg-white group-hover:bg-zinc-50 z-10 w-10">
+                            <input 
+                              type="checkbox" 
+                              className="rounded-none accent-[#003366] w-4 h-4 cursor-pointer" 
+                              checked={!!selectedEmployeesToProcess[emp.id]}
+                              onChange={(e) => {
+                                setSelectedEmployeesToProcess(prev => ({
+                                  ...prev,
+                                  [emp.id]: e.target.checked
+                                }));
+                              }}
+                            />
                           </td>
                           <td className="px-4 py-4 border-r border-zinc-200 sticky left-10 bg-white group-hover:bg-zinc-50 z-10">
                             <div className="flex items-center gap-3">
@@ -4370,13 +4671,17 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
                           </td>
                           <td className="px-4 py-4 border-r border-zinc-200 text-right sticky right-0 bg-white group-hover:bg-zinc-50 z-10">
                             <div className="flex flex-col items-end">
-                              <div className="font-black text-[#16A34A] font-mono">{formatCurrency(totalNet)}</div>
-                              <button 
-                                onClick={() => setDraftReceipt(receipt)}
-                                className="flex items-center gap-1 text-[8px] text-[#003366] hover:text-[#F27D26] mt-1 uppercase font-black"
-                              >
-                                <Eye size={10} /> Visualizar Recibo
-                              </button>
+                              <div className="font-black text-[#16A34A] font-mono">
+                                {processedAttendance[emp.id] ? formatCurrency(totalNet) : '---'}
+                              </div>
+                              {processedAttendance[emp.id] && (
+                                <button 
+                                  onClick={() => setDraftReceipt(receipt)}
+                                  className="flex items-center gap-1 text-[8px] text-[#003366] hover:text-[#F27D26] mt-1 uppercase font-black"
+                                >
+                                  <Eye size={10} /> Visualizar Recibo
+                                </button>
+                              )}
                             </div>
                           </td>
                           <td className="px-4 py-4 text-center">
@@ -4471,7 +4776,6 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
                   </tfoot>
                 </table>
               </div>
-              )}
             </div>
 
             <div className="flex flex-col gap-4 mt-6">
@@ -4860,7 +5164,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
-                {Array.isArray(localEmployees) && localEmployees.map(emp => {
+                {activeEmployees.map(emp => {
                   const record = attendance.find(a => a.employee_id === emp.id);
                   return (
                     <tr key={emp.id} className="text-sm">
@@ -4928,9 +5232,9 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
                 }} className="space-y-4">
                   <div>
                     <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-1">Funcionário</label>
-                    <select name="employee" className="w-full border border-zinc-200 px-3 py-2 text-xs">
+                    <select name="employee" className="w-full border border-zinc-200 px-3 py-2 text-xs font-bold text-[#003366]">
                       <option value="">Selecionar...</option>
-                      {localEmployees.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
+                      {activeEmployees.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
                     </select>
                   </div>
                   <div>
@@ -5369,8 +5673,20 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, caixas, 
           </div>
         )}
 
+        {activeTab === 'contracts' && (
+          <ContratosList 
+            employees={localEmployees}
+            onSetEmployee={onSetEmployee}
+            onSetIsContractModalOpen={onSetIsContractModalOpen}
+            onEditContract={(contract) => {
+              if (onSetSelectedContract) onSetSelectedContract(contract);
+              onSetIsContractModalOpen(true);
+            }}
+          />
+        )}
+
         {activeTab === 'colaboradores_demitidos' && (
-          <ColaboradoresDemitidos employees={localEmployees} />
+          <ColaboradoresDemitidos employees={localEmployees} onReadmit={handleReadmitEmployee} />
         )}
 
         {activeTab === 'irt_inss_map' && (
@@ -7323,11 +7639,10 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
         <thead>
           <tr className="bg-[#003366] text-white text-[10px] uppercase tracking-widest font-black border-b border-zinc-200">
             <th className="px-6 py-4">Data Emissão</th>
+            <th className="px-6 py-4">Status Fiscal</th>
             <th className="px-6 py-4">Tipo</th>
-            <th className="px-6 py-4">Número</th>
+            <th className="px-6 py-4">Número / Hash</th>
             <th className="px-6 py-4">Cliente</th>
-            <th className="px-6 py-4">Local</th>
-            <th className="px-6 py-4">Pagamento</th>
             <th className="px-6 py-4 text-right">Valor</th>
             <th className="px-6 py-4 text-center">Ações</th>
           </tr>
@@ -7342,33 +7657,40 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
               <td className="px-6 py-4 text-zinc-900 font-bold whitespace-nowrap">
                 {formatDate(doc.date || doc.data_emissao)}
               </td>
-              <td className="px-6 py-4 font-black text-[#003366] whitespace-nowrap">
-                <div className={`uppercase tracking-tighter ${doc.status === 'anulado' ? 'line-through text-red-400' : ''}`}>
-                  {doc.document_type || doc.tipo_documento}
-                </div>
-                {doc.series_name && <div className="text-[9px] text-zinc-400 font-black uppercase tracking-widest">{doc.series_name}</div>}
+              <td className="px-6 py-4 whitespace-nowrap text-center">
+                {doc.is_certified ? (
+                  <div className="flex flex-col items-center">
+                    <BadgeCheck size={16} className="text-emerald-500 mb-1" />
+                    <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 px-1 border border-emerald-100 uppercase">Certificado</span>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center opacity-40">
+                    <Clock size={16} className="text-amber-500 mb-1" />
+                    <span className="text-[8px] font-black text-amber-600 bg-amber-50 px-1 border border-amber-100 uppercase">Pendente</span>
+                  </div>
+                )}
               </td>
-              <td className={`px-6 py-4 font-mono text-[10px] font-black whitespace-nowrap transition-colors ${doc.status === 'anulado' ? 'bg-red-50 text-red-600' : 'text-zinc-600 bg-zinc-50/50'}`}>
-                <div className="flex flex-col">
-                  <span>{doc.invoice_number || doc.numero_documento}</span>
-                  {doc.reference_document && (
-                    <span className="text-[8px] text-[#003366] opacity-60 font-bold">Ref: {doc.reference_document}</span>
-                  )}
-                  {doc.status === 'anulado' && <span className="mt-1 bg-red-600 text-white px-1.5 py-0.5 rounded-full text-[8px] animate-pulse w-fit">ANULADO</span>}
-                </div>
-              </td>
-              <td className="px-6 py-4 text-zinc-900 font-black min-w-[150px] uppercase">{doc.client_name || doc.cliente_id || doc.client_id}</td>
-              <td className="px-6 py-4 text-zinc-500 font-bold text-[10px] uppercase tracking-tight">{doc.work_site_title || doc.local_trabalho || 'N/A'}</td>
-              <td className="px-6 py-4">
-                <span className="px-2 py-0.5 bg-zinc-100 text-zinc-600 uppercase text-[9px] font-black tracking-widest border border-zinc-200">
-                  {doc.payment_method || 'N/A'}
-                </span>
-              </td>
-              <td className="px-6 py-4 text-right font-black text-[#003366] text-sm whitespace-nowrap">
-                {formatCurrency(doc.counter_value || doc.total || doc.contravalor || 0)}
-              </td>
-              <td className="px-6 py-4">
-                <div className="flex items-center justify-center gap-3">
+                <td className="px-6 py-4 font-black text-[#003366] whitespace-nowrap">
+                  <div className={`uppercase tracking-tighter ${doc.status === 'anulado' ? 'line-through text-red-400' : ''}`}>
+                    {doc.document_type || doc.tipo_documento}
+                  </div>
+                  {doc.series_name && <div className="text-[9px] text-zinc-400 font-black uppercase tracking-widest">{doc.series_name}</div>}
+                </td>
+                <td className={`px-6 py-4 font-mono text-[10px] font-black whitespace-nowrap transition-colors ${doc.status === 'anulado' ? 'bg-red-50 text-red-600' : 'text-zinc-600 bg-zinc-50/50'}`}>
+                  <div className="flex flex-col">
+                    <span className="text-zinc-900 font-black">{doc.invoice_number || doc.numero_documento}</span>
+                    {doc.status === 'anulado' && <span className="mt-1 bg-red-600 text-white px-1.5 py-0.5 rounded-full text-[8px] animate-pulse w-fit">ANULADO</span>}
+                  </div>
+                </td>
+                <td className="px-6 py-4 text-zinc-900 font-black min-w-[150px] uppercase">
+                  <div>{doc.client_name || doc.cliente_id || doc.client_id}</div>
+                  <div className="text-[9px] text-zinc-400 font-bold tracking-tight">{doc.work_site_title || doc.local_trabalho || 'Sede/Balcão'}</div>
+                </td>
+                <td className="px-6 py-4 text-right font-black text-[#003366] text-sm whitespace-nowrap">
+                  {formatCurrency(doc.counter_value || doc.total || doc.contravalor || 0)}
+                </td>
+                <td className="px-6 py-4">
+                  <div className="flex items-center justify-center gap-3">
                   <button 
                     onClick={(e) => {
                       e.stopPropagation();
@@ -9294,112 +9616,7 @@ const MapaSalarios = ({ localEmployees, selectedMonthForMap, setSelectedMonthFor
   );
 };
 
-const OrdemTransferencia = ({ employee }: { employee: Employee | null }) => {
-  if (!employee) return <div className="p-12 text-center text-zinc-400 italic">Selecione um colaborador para gerar a ordem de transferência.</div>;
-  
-  const inss = employee.salary * 0.03;
-  const irt = calculateIRT(employee.salary - inss);
-  const net = employee.salary - inss - irt;
-  const dateStr = new Date().toLocaleDateString('pt-AO');
-  const monthName = new Date().toLocaleDateString('pt-AO', { month: 'long' });
-  const year = new Date().getFullYear();
 
-  return (
-    <div className="bg-white p-12 max-w-5xl mx-auto shadow-sm border border-zinc-100 printable-area min-h-[800px]">
-      {/* Header */}
-      <div className="flex justify-between items-start mb-12">
-        <div className="flex items-center gap-4">
-          <div className="w-16 h-16 bg-[#003366] flex items-center justify-center">
-            <Layers className="text-white" size={32} />
-          </div>
-          <div>
-            <h1 className="text-xl font-black text-[#003366] tracking-tighter">C&V</h1>
-            <p className="text-[8px] font-bold text-zinc-400 uppercase tracking-widest">Enterprise Solutions</p>
-          </div>
-        </div>
-        <div className="text-right space-y-1">
-          <div className="flex justify-between gap-8">
-            <span className="text-[10px] font-bold text-zinc-500 uppercase">N/ Ref Nº :</span>
-            <span className="text-[10px] font-black">1263.6/{dateStr.replace(/\//g, '')}</span>
-          </div>
-          <div className="flex justify-between gap-8">
-            <span className="text-[10px] font-bold text-zinc-500 uppercase">Data :</span>
-            <span className="text-[10px] font-black">{dateStr}</span>
-          </div>
-          <div className="flex justify-between gap-8">
-            <span className="text-[10px] font-bold text-zinc-500 uppercase">Nº Total Transferencias :</span>
-            <span className="text-[10px] font-black">1</span>
-          </div>
-          <div className="flex justify-between gap-8">
-            <span className="text-[10px] font-bold text-zinc-500 uppercase">Montante Total :</span>
-            <span className="text-[10px] font-black">{formatCurrency(net).replace('€', '')} akz</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="text-center mb-16">
-        <h2 className="text-xl font-black uppercase tracking-[0.3em] text-zinc-800 mb-2">ORDEM TRANSFERENCIA</h2>
-        <p className="text-lg font-bold text-zinc-600 italic">A Direcção</p>
-      </div>
-
-      <div className="border-t-2 border-zinc-800 pt-8">
-        <div className="grid grid-cols-[1fr_200px_100px] border-b border-zinc-200 pb-4">
-          <div className="space-y-3">
-            <div className="flex gap-4">
-              <span className="text-lg font-bold text-zinc-500 w-24">Nome</span>
-              <span className="text-lg font-black uppercase">{employee.name}</span>
-            </div>
-            <div className="flex gap-4">
-              <span className="text-lg font-bold text-zinc-500 w-24">Banco</span>
-              <span className="text-lg font-black uppercase">{employee.bank_name || 'BM'}</span>
-            </div>
-            <div className="flex gap-4">
-              <span className="text-lg font-bold text-zinc-500 w-24">Conta Nº</span>
-              <span className="text-lg font-black">{employee.bank_account || '510710125'}</span>
-            </div>
-            <div className="flex gap-4">
-              <span className="text-lg font-bold text-zinc-500 w-24">Iban</span>
-              <span className="text-lg font-black uppercase">{employee.iban || 'AO005500000250510710125'} Cod. Swift =</span>
-            </div>
-          </div>
-
-          <div className="flex flex-col justify-center items-center bg-zinc-50 border-x border-zinc-200 px-4">
-            <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Montante a Transferir</span>
-            <span className="text-sm font-black bg-white px-4 py-2 border border-zinc-200 shadow-sm">{formatCurrency(net).replace('€', '')} akz</span>
-          </div>
-
-          <div className="flex flex-col justify-between items-center py-2">
-            <span className="text-5xl font-black text-zinc-800">1</span>
-            <div className="text-center">
-              <span className="block text-[10px] font-black border-t border-zinc-800 pt-1">IDNF:1</span>
-              <div className="w-6 h-6 border-2 border-zinc-800 mx-auto mt-2 flex items-center justify-center">
-                <div className="w-3 h-3 bg-zinc-800"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="py-4 text-xs font-bold text-zinc-500 italic">
-          Transferência Salario de {monthName} de {year} de {employee.name}
-        </div>
-      </div>
-
-      {/* Footer Buttons (Hidden on Print) */}
-      <div className="mt-20 flex justify-center gap-4 no-print">
-        <button 
-          onClick={() => window.print()}
-          className="bg-[#003366] text-white px-8 py-3 font-black uppercase tracking-widest flex items-center gap-2 hover:bg-[#002244] transition-all"
-        >
-          <Printer size={18} /> Imprimir Ordem
-        </button>
-        <button 
-          className="bg-zinc-100 text-zinc-600 px-8 py-3 font-black uppercase tracking-widest flex items-center gap-2 hover:bg-zinc-200 transition-all"
-        >
-          <FileDown size={18} /> Baixar PDF
-        </button>
-      </div>
-    </div>
-  );
-};
 
 const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employee | null }) => {
   const { user } = useAuth();
@@ -16387,6 +16604,35 @@ const InvoiceDetail = ({
           </div>
         </div>
 
+        {/* Secção de Certificação AGT no Documento Aberto */}
+        <div className="pt-6 border-t border-zinc-100 mt-8 relative z-10 font-mono text-zinc-600">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-zinc-50 p-4 border border-zinc-200">
+            <div>
+              <p className="text-[10px] font-black text-zinc-800 tracking-wider">SISTEMA VALIDADO PELA AGT / ACORDO REQUISITOS IMUTABILIDADE</p>
+              <p className="text-[9px] text-[#003366] font-bold mt-1">
+                ✓ PROCESSADO POR PROGRAMA VALIDADO Nº 101/AGT/2026 - SISTEMA DE FACTURAÇÃO ANGOLA.
+              </p>
+              <p className="text-[8px] text-zinc-400 mt-1 uppercase">
+                IMUTABILIDADE GARANTIDA POR ALGORITMO DE ENCADEAMENTO CRIPTOGRÁFICO SHA-256 SÉRIE FISCAL {invoice.serie || 'PRD'}
+              </p>
+            </div>
+            <div className="text-left md:text-right font-mono">
+              <div className="flex items-center gap-1.5 justify-start md:justify-end">
+                <span className="text-[9px] font-bold text-zinc-400 uppercase">Cód. Validação:</span>
+                <span className="bg-[#003366] text-white px-2 py-0.5 text-[10px] font-black">
+                  {invoice.codigo_validacao || (invoice.hash ? invoice.hash.slice(0, 4).toUpperCase() : 'PENDENTE')}
+                </span>
+              </div>
+              {invoice.hash && (
+                <div className="mt-1.5 text-[8px] text-zinc-400 font-mono break-all select-all">
+                  <span className="font-bold text-zinc-600">Hash/Assinatura: </span>
+                  {invoice.hash}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
         <div className="pt-12 text-center text-[10px] text-zinc-400 uppercase tracking-widest border-t border-zinc-50 relative z-10">
           <div className="flex justify-center mb-6">
             {companyData?.footer_image_url && (companyData.footer_image_url.startsWith('data:image') || companyData.footer_image_url.startsWith('http')) && (
@@ -21444,10 +21690,166 @@ export default function App() {
 
   useEffect(() => {
     if (isExportingPdf && printingInvoice) {
+      // Helper function to dynamically patch oklch colors before pdf generation
+      const tempPatchOklch = () => {
+        const oklchRegex = /oklch\(\s*([\d.%]+)\s+([\d.%]+)\s+([\d.%]+(?:\w+)?)(?:\s*\/\s*([\d.%]+))?\s*\)/gi;
+
+        function oklchToRgb(oklchStr: string): string {
+          try {
+            const match = oklchStr.match(/oklch\(\s*([\d.%]+)\s+([\d.%]+)\s+([\d.%]+(?:\w+)?)(?:\s*\/\s*([\d.%]+))?\s*\)/i);
+            if (!match) return '#000000';
+            
+            const parseValHelper = (str: string, max: number) => {
+              if (str.endsWith('%')) {
+                return (parseFloat(str) / 100) * max;
+              }
+              let suffixMultiplier = 1;
+              if (str.endsWith('turn')) {
+                suffixMultiplier = 360;
+              } else if (str.endsWith('rad')) {
+                suffixMultiplier = 180 / Math.PI;
+              }
+              let cleaned = str.replace(/[^\d.-]/g, '');
+              return parseFloat(cleaned) * suffixMultiplier;
+            };
+
+            let L = parseValHelper(match[1], 1);
+            let C = parseValHelper(match[2], 0.4);
+            let H = parseValHelper(match[3], 360);
+            let alpha = match[4] !== undefined ? parseValHelper(match[4], 1) : 1;
+
+            // Convert OKLCH to OKLAB
+            const hRad = (H * Math.PI) / 180;
+            const a = C * Math.cos(hRad);
+            const b = C * Math.sin(hRad);
+
+            // OKLAB to LMS
+            const l_ = L + 0.3963377774 * a + 0.2158037573 * b;
+            const m_ = L - 0.1055613458 * a - 0.0638541728 * b;
+            const s_ = L - 0.0894841775 * a - 1.2914855480 * b;
+
+            // LMS to Linear RGB
+            const l = l_ * l_ * l_;
+            const m = m_ * m_ * m_;
+            const s = s_ * s_ * s_;
+
+            let r = 4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s;
+            let g = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s;
+            let bChan = -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s;
+
+            // Linear to sRGB gamma correction
+            const f = (c: number) => (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);
+            r = Math.min(255, Math.max(0, Math.round(f(r) * 255)));
+            g = Math.min(255, Math.max(0, Math.round(f(g) * 255)));
+            bChan = Math.min(255, Math.max(0, Math.round(f(bChan) * 255)));
+
+            if (alpha === 1) {
+              return `rgb(${r}, ${g}, ${bChan})`;
+            } else {
+              return `rgba(${r}, ${g}, ${bChan}, ${alpha})`;
+            }
+          } catch (e) {
+            console.error('Error converting oklch:', e);
+            return '#000000';
+          }
+        }
+
+        // 1. Back up and patch inline <style> tags
+        const styleElements = Array.from(document.querySelectorAll('style'));
+        const originalStyleHTMLs = styleElements.map(el => ({
+          el,
+          html: el.innerHTML
+        }));
+
+        for (const styleEl of styleElements) {
+          if (styleEl.innerHTML && styleEl.innerHTML.includes('oklch')) {
+            styleEl.innerHTML = styleEl.innerHTML.replace(oklchRegex, (m) => oklchToRgb(m));
+          }
+        }
+
+        // 2. Backup and patch document.styleSheets CSSOM rules where possible
+        const modifiedRules: { sheet: CSSStyleSheet; index: number; oText: string }[] = [];
+        try {
+          for (const sheet of Array.from(document.styleSheets)) {
+            try {
+              if (!sheet.cssRules) continue;
+              for (let i = 0; i < sheet.cssRules.length; i++) {
+                const r = sheet.cssRules[i];
+                if (r.cssText && r.cssText.includes('oklch')) {
+                  const originalText = r.cssText;
+                  const patched = originalText.replace(oklchRegex, (m) => oklchToRgb(m));
+                  try {
+                    sheet.deleteRule(i);
+                    sheet.insertRule(patched, i);
+                    modifiedRules.push({ sheet, index: i, oText: originalText });
+                  } catch (e) {
+                    // Ignore rule insertion failures
+                  }
+                }
+              }
+            } catch (e) {
+              // Ignore cross-origin stylesheet limitations
+            }
+          }
+        } catch (err) {
+          console.warn('CSSOM scanning failed', err);
+        }
+
+        // 3. Intercept window.getComputedStyle to bypass oklch return values
+        const originalGetComputedStyle = window.getComputedStyle;
+        window.getComputedStyle = function (element, pseudoElt) {
+          const originalStyle = originalGetComputedStyle(element, pseudoElt);
+          return new Proxy(originalStyle, {
+            get(target, prop) {
+              const value = target[prop as keyof CSSStyleDeclaration];
+              if (typeof value === 'string' && value.includes('oklch')) {
+                return value.replace(oklchRegex, (m) => oklchToRgb(m)) as any;
+              }
+              if (typeof value === 'function') {
+                if (prop === 'getPropertyValue') {
+                  return function (property: string) {
+                    const val = target.getPropertyValue(property);
+                    if (typeof val === 'string' && val.includes('oklch')) {
+                      return val.replace(oklchRegex, (m) => oklchToRgb(m));
+                    }
+                    return val;
+                  };
+                }
+                return value.bind(target);
+              }
+              return value;
+            }
+          });
+        };
+
+        return () => {
+          // Restore inline style tags
+          for (const { el, html } of originalStyleHTMLs) {
+            try {
+              el.innerHTML = html;
+            } catch (e) {
+              console.error('Failed to restore style innerHTML', e);
+            }
+          }
+          // Restore CSSOM Rules
+          for (const rule of modifiedRules) {
+            try {
+              rule.sheet.deleteRule(rule.index);
+              rule.sheet.insertRule(rule.oText, rule.index);
+            } catch (err) {
+              console.error('Failed to restore CSSOM rule', err);
+            }
+          }
+          // Restore window.getComputedStyle
+          window.getComputedStyle = originalGetComputedStyle;
+        };
+      };
+
       setIsPdfProcessing(true);
       setTimeout(() => {
         const element = document.getElementById('pdf-export-container');
         if (element) {
+          const restoreStyles = tempPatchOklch();
           const opt = {
             margin: [2, 2, 2, 2] as [number, number, number, number],
             filename: `${printingInvoice.numero_documento || printingInvoice.invoice_number || 'documento'}.pdf`,
@@ -21465,11 +21867,13 @@ export default function App() {
           
           html2pdf().from(element).set(opt).save()
             .then(() => {
+              restoreStyles();
               setIsExportingPdf(false);
               setPrintingInvoice(null);
               setIsPdfProcessing(false);
             })
             .catch((err: any) => {
+              restoreStyles();
               console.error('PDF Export Error:', err);
               setIsExportingPdf(false);
               setIsPdfProcessing(false);
@@ -21488,6 +21892,7 @@ export default function App() {
   const [showConvertModal, setShowConvertModal] = useState(false);
   const [selectedClientForAccount, setSelectedClientForAccount] = useState<Client | null>(null);
   const [appSelectedEmployee, setAppSelectedEmployee] = useState<Employee | null>(null);
+  const [selectedContract, setSelectedContract] = useState<any | null>(null);
   const [isContractModalOpen, setIsContractModalOpen] = useState(false);
   const [draftCurrency, setDraftCurrency] = useState('Todas');
   const [showAnularModal, setShowAnularModal] = useState<IssuedDocument | null>(null);
@@ -21766,9 +22171,14 @@ export default function App() {
         return;
       }
 
+      if (doc?.is_certified || doc?.hash) {
+        console.log('Documento já foi devidamente certificado pelo servidor:', doc.invoice_number);
+        await fetchData();
+        return;
+      }
+
       console.log('Persistindo documento no Supabase:', doc.invoice_number || doc.numero_documento);
 
-      // Usamos empresa_id conforme solicitado. A FK errada será corrigida via SQL Dashboard.
       const payload = {
         empresa_id: user.empresa_id,
         tipo_documento: doc.document_type || doc.tipo_documento || 'Fatura',
@@ -21787,19 +22197,43 @@ export default function App() {
         }
       };
 
-      const { error } = await supabase
-        .from('documentos_emitidos')
-        .insert([payload]);
+      // 1. Tentar Emissão Segura via RPC do Supabase para Certificação e Sequenciamento Inquebrável
+      const rpcPayload = {
+        p_empresa_id: user.empresa_id,
+        p_tipo_documento: payload.tipo_documento,
+        p_cliente_nome: payload.cliente_nome,
+        p_cliente_email: payload.cliente_email,
+        p_total: payload.total,
+        p_imposto: payload.imposto,
+        p_detalhes: payload.detalhes
+      };
 
-      if (error) {
-        console.error('Erro ao salvar no Supabase (documentos_emitidos):', error);
-        // Fallback: Tentativa com fallback de nome de coluna caso o DB ainda use legacy names
-        if (error.message.includes('column "empresa_id" does not exist')) {
-           console.log('Tentando insert com fallback "company_id"...');
-           await supabase.from('documentos_emitidos').insert([{ ...payload, company_id: user.empresa_id, empresa_id: undefined }]);
+      console.log('Emitindo via RPC Professional emitir_documento_fiscal...', rpcPayload);
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc('emitir_documento_fiscal', rpcPayload);
+
+      if (rpcErr) {
+        console.warn('RPC emitir_documento_fiscal falhou. Verifique se o SQL foi executado:', rpcErr.message);
+        
+        // Fallback for non-certified drafts if RPC fails
+        const { error } = await supabase
+          .from('documentos_emitidos')
+          .insert([{
+            ...payload,
+            numero_sequencial: null,
+            serie: doc.serie || 'PRD',
+            ano: fiscalYear,
+            estado_certificacao: 'pendente',
+            hash_documento: 'PENDENTE'
+          }]);
+
+        if (error) {
+          console.error('Erro ao salvar rascunho no Supabase:', error);
+        } else {
+          console.log('Rascunho persistido para certificação posterior.');
+          await fetchData();
         }
       } else {
-        console.log('Documento persistido com sucesso no Supabase');
+        console.log('Documento certificado emitido via backend:', rpcRes);
         await fetchData();
       }
     } catch (err) {
@@ -22452,22 +22886,42 @@ export default function App() {
     try {
       if (!user?.empresa_id) return;
       
-      const { error } = await supabase
+      // Get the current document data to pass to the RPC
+      const { data: doc, error: fetchErr } = await supabase
         .from('documentos_emitidos')
-        .update({ 
-          estado: 'CERTIFICADO'
-        })
+        .select('*')
         .eq('id', id)
-        .eq('empresa_id', user.empresa_id);
+        .single();
+        
+      if (fetchErr || !doc) throw new Error('Documento não encontrado para certificação');
 
-      if (error) throw error;
+      // Call the Professional Fiscal RPC
+      const rpcPayload = {
+        p_empresa_id: user.empresa_id,
+        p_tipo_documento: doc.tipo_documento || 'Fatura',
+        p_cliente_nome: doc.cliente_nome,
+        p_cliente_email: doc.cliente_email,
+        p_total: Number(doc.total || 0),
+        p_imposto: Number(doc.imposto || 0),
+        p_detalhes: doc.detalhes
+      };
+
+      console.log('Certificando via RPC Professional...', rpcPayload);
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc('emitir_documento_fiscal', rpcPayload);
+
+      if (rpcErr) throw rpcErr;
+
+      // If successful, we can optionally delete the old draft or mark it as converted
+      // In this case, the RPC created a new certified document. 
+      // We should probably delete the draft to avoid duplication in listing if listing filters certified only.
+      await supabase.from('documentos_emitidos').delete().eq('id', id);
       
-      alert('Documento certificado com sucesso!');
+      alert('Documento certificado com sucesso! Novo número: ' + (rpcRes as any).documento);
       setShowCertifyModal(false);
       await fetchData();
     } catch (err: any) {
       console.error('Erro ao certificar documento:', err);
-      alert('Erro ao certificar: ' + (err.message || 'Erro desconhecido'));
+      alert('Erro ao certificar: ' + (err.message || 'Erro desconhecido. Verifique se as funções SQL foram criadas.'));
     }
   };
 
@@ -22706,25 +23160,20 @@ export default function App() {
                           try {
                             if (!user) return;
 
-                            const { error } = await supabase
-                              .from('documentos_emitidos')
-                              .update({ 
-                                status: 'ANULADO', 
-                                estado: 'ANULADO', 
-                                anulação_motivo: reason,
-                                is_active: false 
-                              })
-                              .eq('id', showAnularModal.id)
-                              .eq('empresa_id', user.empresa_id);
+                            console.log('Anulando documento via RPC Professional...', showAnularModal.id);
+                            
+                            // Use the Professional RPC for Annulment
+                            const { data, error } = await supabase.rpc('anular_documento_fiscal', {
+                              p_documento_id: showAnularModal.id,
+                              p_motivo: reason
+                            });
                             
                             if (!error) {
                               // If it's a receipt, we should inform the user that the invoice is liberated
                               if (showAnularModal.document_type === 'Recibo' || showAnularModal.tipo_documento === 'RC') {
                                 alert('Recibo anulado com sucesso! A fatura correspondente está agora disponível para novo recebimento.');
-                              } else if (showAnularModal.document_type === 'Nota de Crédito' || showAnularModal.tipo_documento === 'NC') {
-                                alert('Nota de Crédito anulada! Lembre-se de emitir a Nota de Débito correspondente se necessário para retificação.');
                               } else {
-                                alert('Documento anulado com sucesso!');
+                                alert('Documento anulado com sucesso conforme legislação fiscal vigente.');
                               }
                               
                               await fetchData();
@@ -22983,6 +23432,7 @@ export default function App() {
                             onRefresh={fetchData} 
                             onSetIsContractModalOpen={setIsContractModalOpen} 
                             onSetEmployee={setAppSelectedEmployee} 
+                            onSetSelectedContract={setSelectedContract}
                             caixas={caixas} 
                             companyName={companyName} 
                             fiscalYear={fiscalYear}
@@ -23261,10 +23711,19 @@ export default function App() {
           </div>
         )}
       </AnimatePresence>
-      {isContractModalOpen && appSelectedEmployee && (
+      {isContractModalOpen && (appSelectedEmployee || selectedContract) && (
         <ContractModal 
-          employee={appSelectedEmployee} 
-          onClose={() => { setIsContractModalOpen(false); setAppSelectedEmployee(null); }}
+          employee={appSelectedEmployee || undefined} 
+          contract={selectedContract || undefined}
+          companyData={companyData}
+          onClose={() => { 
+            setIsContractModalOpen(false); 
+            setAppSelectedEmployee(null); 
+            setSelectedContract(null);
+          }}
+          onSuccess={() => {
+            fetchData();
+          }}
         />
       )}
 

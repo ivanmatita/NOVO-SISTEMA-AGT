@@ -126,6 +126,7 @@ let professions: any[] = savedData?.professions || [];
 let attendance: any[] = savedData?.attendance || [];
 let absences: any[] = savedData?.absences || [];
 let laborTerminations: any[] = savedData?.laborTerminations || [];
+let contracts: any[] = savedData?.contracts || [];
 
 const saveData = () => {
   const data = {
@@ -134,7 +135,7 @@ const saveData = () => {
     systemUsers, archives, fleetVehicles, projectTasks, companies,
     stockMovements, securityOccurrences, securityArmory, securityRoster,
     transactions, receipts, suppliers, purchases, professions,
-    attendance, absences, laborTerminations,
+    attendance, absences, laborTerminations, contracts,
     costCenters, posPoints, sessions, posSales,
     accountingJournals, accountingMovements, pgcAccounts
   };
@@ -639,23 +640,125 @@ app.post("/api/exec-sql", express.json(), async (req, res) => {
   });
 
   // Invoices & Issued Documents
-  app.get("/api/invoices", (req, res) => {
+  app.get("/api/invoices", async (req, res) => {
     const { empresa_id } = req.query;
-    if (empresa_id) {
-      return res.json(issuedDocuments.filter(d => String(d.empresa_id) === String(empresa_id)));
+    if (!empresa_id) return res.json([]);
+
+    if (supabaseAdmin) {
+      try {
+        const { data, error } = await supabaseAdmin
+          .from('documentos_emitidos')
+          .select('*')
+          .eq('empresa_id', empresa_id)
+          .order('data_emissao', { ascending: false });
+
+        if (!error && data) {
+          const formatted = data.map((d: any) => ({
+            ...d,
+            id: d.id,
+            client_id: d.cliente_id || d.client_id,
+            client_name: d.cliente_nome || d.client_name || 'Desconhecido',
+            invoice_number: d.numero_documento || d.invoice_number,
+            date: d.data_emissao || d.created_at,
+            due_date: d.data_vencimento || d.due_date,
+            status: (d.status || d.estado || 'ativo').toLowerCase(),
+            total: Number(d.total || 0),
+            imposto: Number(d.imposto || 0),
+            items: d.detalhes?.items || d.items || [],
+            client_email: d.cliente_email || d.client_email,
+            document_type: d.tipo_documento || d.document_type,
+            is_certified: d.is_certified,
+            hash: d.hash_documento || d.hash
+          }));
+          return res.json(formatted);
+        }
+      } catch (err) {
+        console.error('Erro ao ler faturas do Supabase:', err);
+      }
     }
-    res.json([]);
+
+    // Fallback
+    res.json(issuedDocuments.filter(d => String(d.empresa_id) === String(empresa_id)));
   });
-  app.get("/api/issued-documents", (req, res) => {
+
+  app.get("/api/issued-documents", async (req, res) => {
     const { empresa_id } = req.query;
-    if (empresa_id) {
-      return res.json(issuedDocuments.filter(d => String(d.empresa_id) === String(empresa_id)));
+    if (!empresa_id) return res.json([]);
+
+    if (supabaseAdmin) {
+      try {
+        const { data, error } = await supabaseAdmin
+          .from('documentos_emitidos')
+          .select('*')
+          .eq('empresa_id', empresa_id)
+          .order('data_emissao', { ascending: false });
+
+        if (!error && data) {
+          const formatted = data.map((d: any) => ({
+            ...d,
+            id: d.id,
+            client_id: d.cliente_id || d.client_id,
+            client_name: d.cliente_nome || d.client_name || 'Desconhecido',
+            invoice_number: d.numero_documento || d.invoice_number,
+            date: d.data_emissao || d.created_at,
+            due_date: d.data_vencimento || d.due_date,
+            status: (d.status || d.estado || 'ativo').toLowerCase(),
+            total: Number(d.total || 0),
+            imposto: Number(d.imposto || 0),
+            items: d.detalhes?.items || d.items || [],
+            client_email: d.cliente_email || d.client_email,
+            document_type: d.tipo_documento || d.document_type,
+            is_certified: d.is_certified,
+            hash: d.hash_documento || d.hash
+          }));
+          return res.json(formatted);
+        }
+      } catch (err) {
+        console.error('Erro ao ler documentos emitidos do Supabase:', err);
+      }
     }
-    res.json([]);
+
+    // Fallback
+    res.json(issuedDocuments.filter(d => String(d.empresa_id) === String(empresa_id)));
   });
-  app.get("/api/invoices/:id", (req, res) => {
+
+  app.get("/api/invoices/:id", async (req, res) => {
     const docId = req.params.id;
-    // Tenta encontrar por ID (número ou string UUID)
+
+    if (supabaseAdmin) {
+      try {
+        const { data, error } = await supabaseAdmin
+          .from('documentos_emitidos')
+          .select('*')
+          .eq('id', docId)
+          .single();
+
+        if (!error && data) {
+          const formatted = {
+            ...data,
+            id: data.id,
+            client_id: data.cliente_id || data.client_id,
+            client_name: data.cliente_nome || data.client_name || 'Desconhecido',
+            invoice_number: data.numero_documento || data.invoice_number,
+            date: data.data_emissao || data.created_at,
+            due_date: data.data_vencimento || data.due_date,
+            status: (data.status || data.estado || 'ativo').toLowerCase(),
+            total: Number(data.total || 0),
+            imposto: Number(data.imposto || 0),
+            items: data.detalhes?.items || data.items || [],
+            client_email: data.cliente_email || data.client_email,
+            document_type: data.tipo_documento || data.document_type,
+            is_certified: data.is_certified,
+            hash: data.hash_documento || data.hash,
+            codigo_validacao: data.codigo_validacao
+          };
+          return res.json(formatted);
+        }
+      } catch (err) {
+        console.error('Erro ao buscar fatura unica no Supabase:', err);
+      }
+    }
+
     const doc = issuedDocuments.find(d => String(d.id) === String(docId));
     if (doc) res.json(doc);
     else res.status(404).json({ error: "Document not found" });
@@ -1115,47 +1218,148 @@ app.post("/api/exec-sql", express.json(), async (req, res) => {
     } else res.status(404).json({ error: "Document not found" });
   });
 
-  app.post("/api/invoices", (req, res) => {
-    const series = fiscalSeries.find(s => s.id === Number(req.body.series_id));
-    const docType = req.body.document_type || 'Fatura';
-    
-    // Auto-generate or use manual number
-    let invoice_number = req.body.invoice_number;
-    
-    if (!invoice_number) {
+  function getDocTypeAbbreviation(type: string): string {
+    const t = String(type || '').trim().toLowerCase();
+    if (t.includes('fatura recibo') || t === 'fr' || t === 'fatura_recibo') return 'FR';
+    if (t.includes('proforma') || t === 'fp' || t === 'fatura_proforma') return 'FP';
+    if (t.includes('nota de credito') || t.includes('nota de crédito') || t === 'nc') return 'NC';
+    if (t.includes('nota de debito') || t.includes('nota de débito') || t === 'nd') return 'ND';
+    if (t.includes('recibo') || t === 'rc') return 'RC';
+    if (t.includes('fatura') || t === 'ft') return 'FT';
+    return 'FT'; // Default
+  }
+
+  app.post("/api/invoices", async (req, res) => {
+    try {
+      const docType = req.body.document_type || 'Fatura';
+      const docTypeAbbr = getDocTypeAbbreviation(docType);
+      
+      const series = fiscalSeries.find(s => s.id === Number(req.body.series_id));
+      const year = new Date().getFullYear();
+      
+      const companyId = req.body.empresa_id || (series ? series.empresa_id : undefined);
+
+      // Ensure we have a series reference
+      const seriesRef = series ? series.reference : 'PRD';
+
+      // Lock and increment active series / counter
+      let counter = 1;
       if (series) {
         if (!series.counters) series.counters = {};
-        if (!series.counters[docType]) series.counters[docType] = 1;
-        const counter = series.counters[docType];
-        series.counters[docType]++;
-        const year = new Date().getFullYear();
-        invoice_number = `${docType} ${series.reference}${year}/${counter}`;
+        if (!series.counters[docTypeAbbr]) series.counters[docTypeAbbr] = 0;
+        series.counters[docTypeAbbr]++;
+        counter = series.counters[docTypeAbbr];
+      } else if (companyId) {
+        const matchingDocs = issuedDocuments.filter(d => {
+          const dAbbr = getDocTypeAbbreviation(d.document_type || d.tipo_documento);
+          return dAbbr === docTypeAbbr && String(d.empresa_id) === String(companyId);
+        });
+        counter = matchingDocs.length + 1;
       } else {
-        const empresaId = req.body.empresa_id;
-        const counter = issuedDocuments.filter(d => 
-          (d.document_type === docType || d.tipo_documento === docType) && 
-          String(d.empresa_id) === String(empresaId)
-        ).length + 1;
-        invoice_number = `${docType} ${new Date().getFullYear()}/${counter}`;
+        const matchingDocs = issuedDocuments.filter(d => {
+          const dAbbr = getDocTypeAbbreviation(d.document_type || d.tipo_documento);
+          return dAbbr === docTypeAbbr;
+        });
+        counter = matchingDocs.length + 1;
       }
-    }
 
-    const isDuplicate = issuedDocuments.some(d => d.invoice_number === invoice_number);
-    if (isDuplicate) {
-      invoice_number = `${invoice_number}-${Date.now().toString().slice(-4)}`;
-    }
+      // Format AGT compliant sequential billing number: FT PRD/2026/000001
+      let invoice_number = req.body.invoice_number;
+      if (!invoice_number) {
+        invoice_number = `${docTypeAbbr} ${seriesRef}/${year}/${String(counter).padStart(6, '0')}`;
+      }
 
-    const newDoc = { 
-      ...req.body, 
-      id: generateId(), 
-      invoice_number,
-      currency: req.body.currency || req.body.moeda || 'Kwanza',
-      moeda: req.body.moeda || req.body.currency || 'Kwanza',
-      created_at: new Date().toISOString() 
-    };
-    issuedDocuments.push(newDoc);
-    saveData();
-    res.json(newDoc);
+      // Check duplicates
+      const isDuplicate = issuedDocuments.some(d => d.invoice_number === invoice_number);
+      if (isDuplicate) {
+        invoice_number = `${invoice_number}-${Date.now().toString().slice(-4)}`;
+      }
+
+      // Chain Hashing (Encadeamento Fiscal)
+      const previousDoc = [...issuedDocuments]
+        .reverse()
+        .find(d => {
+          const dAbbr = getDocTypeAbbreviation(d.document_type || d.tipo_documento);
+          return dAbbr === docTypeAbbr && String(d.empresa_id) === String(companyId);
+        });
+      const previousHash = previousDoc?.hash || '';
+
+      const totalValue = Number(req.body.total || req.body.counter_value || 0);
+      const impuestoValue = Number(req.body.imposto || req.body.total_tax || 0);
+
+      const hashContent = `${invoice_number}${req.body.client_name || ''}${totalValue}${impuestoValue}${previousHash}`;
+      const hash = crypto.createHash('sha256').update(hashContent).digest('hex');
+      const codigo_validacao = hash.substring(0, 4).toUpperCase();
+
+      const newId = generateId();
+
+      const newDoc = { 
+        ...req.body, 
+        id: newId, 
+        invoice_number,
+        numero_documento: invoice_number,
+        document_type: docTypeAbbr,
+        tipo_documento: docTypeAbbr,
+        is_certified: true, // Auto-certified immediately!
+        hash,
+        codigo_validacao,
+        currency: req.body.currency || req.body.moeda || 'Kwanza',
+        moeda: req.body.moeda || req.body.currency || 'Kwanza',
+        created_at: new Date().toISOString()
+      };
+
+      if (supabaseAdmin && companyId) {
+        try {
+          const { data: dbData, error: dbErr } = await supabaseAdmin
+            .from('documentos_emitidos')
+            .insert([{
+              empresa_id: companyId,
+              tipo_documento: docTypeAbbr,
+              numero_documento: invoice_number,
+              cliente_nome: req.body.client_name || req.body.cliente_nome || 'Consumidor Final',
+              cliente_email: req.body.client_email || req.body.customer_email || '',
+              total: totalValue,
+              imposto: impuestoValue,
+              estado: 'emitido',
+              data_emissao: newDoc.created_at,
+              detalhes: {
+                items: req.body.items || [],
+                payment_method: req.body.payment_method,
+                series_id: req.body.series_id,
+                observations: req.body.observations
+              },
+              serie: seriesRef,
+              ano: year,
+              numero_sequencial: counter,
+              hash_anterior: previousHash,
+              hash_documento: hash,
+              codigo_validacao: codigo_validacao,
+              assinatura_digital: hash,
+              documento_formatado: invoice_number,
+              is_certified: true,
+              estado_certificacao: 'CERTIFICADO',
+              status: 'ativo'
+            }])
+            .select()
+            .single();
+
+          if (!dbErr && dbData) {
+            newDoc.id = dbData.id; // Sync back database UUID to maintain absolute relational link
+          } else {
+            console.error('Erro ao instanciar no Supabase:', dbErr);
+          }
+        } catch (supabaseErr) {
+          console.error('Falha de ligacao ao Supabase:', supabaseErr);
+        }
+      }
+
+      issuedDocuments.push(newDoc);
+      saveData();
+      res.json(newDoc);
+    } catch (err: any) {
+      console.error('Erro geral ao instanciar fatura:', err);
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // Fiscal Series
@@ -1727,7 +1931,121 @@ app.post("/api/exec-sql", express.json(), async (req, res) => {
   app.get("/api/labor-terminations", (req, res) => {
     const { empresa_id } = req.query;
     if (empresa_id) return res.json(laborTerminations.filter(l => String(l.empresa_id) === String(empresa_id)));
-    res.json([]);
+    res.json(laborTerminations);
+  });
+  app.get("/api/contracts", (req, res) => {
+    res.json(contracts);
+  });
+  app.post("/api/contracts", (req, res) => {
+    const newContract = { 
+      ...req.body, 
+      id: generateId(), 
+      created_at: new Date().toISOString() 
+    };
+    contracts.push(newContract);
+    
+    // Also update the employee state in employees if they exist
+    const empId = Number(newContract.employee_id);
+    const empIndex = employees.findIndex(e => e.id === empId);
+    if (empIndex !== -1) {
+      employees[empIndex].contract_type = newContract.contract_type === "Contrato por Tempo Indeterminado" ? "efetivo" : "temporario";
+      employees[empIndex].salary = Number(newContract.salary);
+    }
+    
+    saveData();
+    res.json(newContract);
+  });
+  app.put("/api/contracts/:id", (req, res) => {
+    const id = Number(req.params.id);
+    const index = contracts.findIndex(c => c.id === id);
+    if (index !== -1) {
+      contracts[index] = { ...contracts[index], ...req.body };
+      
+      const empId = Number(contracts[index].employee_id);
+      const empIndex = employees.findIndex(e => e.id === empId);
+      if (empIndex !== -1) {
+        employees[empIndex].contract_type = contracts[index].contract_type === "Contrato por Tempo Indeterminado" ? "efetivo" : "temporario";
+        employees[empIndex].salary = Number(contracts[index].salary);
+      }
+      
+      saveData();
+      res.json(contracts[index]);
+    } else {
+      res.status(404).json({ error: "Contrato não encontrado" });
+    }
+  });
+  app.delete("/api/contracts/:id", (req, res) => {
+    const id = Number(req.params.id);
+    const index = contracts.findIndex(c => c.id === id);
+    if (index !== -1) {
+      contracts.splice(index, 1);
+      saveData();
+      res.json({ success: true });
+    } else {
+      res.status(404).json({ error: "Contrato não encontrado" });
+    }
+  });
+
+  // Handle employee dismissal with automatic labor termination registration
+  app.post("/api/employees/dismiss/:id", (req, res) => {
+    const id = Number(req.params.id);
+    const empIdx = employees.findIndex(e => e.id === id);
+    if (empIdx === -1) {
+      return res.status(404).json({ error: "Funcionário não encontrado" });
+    }
+    const emp = employees[empIdx];
+    const { date, reason, observations, orderedBy } = req.body;
+
+    // Update employee status and block them
+    emp.status = 'dismissed';
+    emp.dismissed_at = date;
+    emp.dismissal_reason = reason;
+    emp.dismissal_ordered_by = orderedBy;
+    emp.dismissal_observations = observations;
+    emp.is_blocked = true;
+
+    // Add to labor terminations
+    const newLt = {
+      id: generateId(),
+      empresa_id: emp.empresa_id,
+      employee_id: emp.id,
+      employee_name: emp.name,
+      employee_role: emp.role,
+      dismissal_date: date,
+      reason: reason || 'Mútuo Acordo',
+      ordered_by: orderedBy || 'Direcção Geral',
+      observations: observations || '',
+      created_at: new Date().toISOString()
+    };
+    laborTerminations.push(newLt);
+    saveData();
+    res.json({ success: true, employee: emp, laborTermination: newLt });
+  });
+
+  // Handle employee readmission
+  app.post("/api/employees/readmit/:id", (req, res) => {
+    const id = Number(req.params.id);
+    const empIdx = employees.findIndex(e => e.id === id);
+    if (empIdx === -1) {
+      return res.status(404).json({ error: "Funcionário não encontrado" });
+    }
+    const emp = employees[empIdx];
+    const { date } = req.body;
+
+    // Update employee status and unblock them
+    emp.status = 'active';
+    emp.dismissed_at = undefined;
+    emp.is_blocked = false;
+    emp.readmitted_at = date || new Date().toISOString().split('T')[0];
+
+    // Remove from labor terminations
+    const ltIndex = laborTerminations.findIndex(lt => lt.employee_id === id);
+    if (ltIndex !== -1) {
+      laborTerminations.splice(ltIndex, 1);
+    }
+
+    saveData();
+    res.json({ success: true, employee: emp });
   });
   app.get("/api/warehouses", (req, res) => {
     const { empresa_id } = req.query;

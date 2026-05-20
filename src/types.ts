@@ -138,6 +138,7 @@ export interface InvoiceItem {
   tax_rate?: number;
   warehouse_id?: number;
   warehouse_responsible?: string;
+  data_validade?: string;
 }
 
 export interface Invoice {

@@ -15090,6 +15090,9 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
   const [currency, setCurrency] = useState<string>(initialData?.currency || 'Kwanza');
   const [counterValue, setCounterValue] = useState<string>('0');
   const [globalDiscount, setGlobalDiscount] = useState<string>(initialData?.global_discount?.toString() || '0');
+  const [retencaoTaxa, setRetencaoTaxa] = useState<string>('');
+  const [showCalculator, setShowCalculator] = useState(false);
+  const [calcData, setCalcData] = useState({ iva: 0, total: 0 });
   const [serviceDate, setServiceDate] = useState(initialData?.service_date ? new Date(initialData.service_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
   const [serviceLocation, setServiceLocation] = useState(initialData?.service_location || '');
   const [items, setItems] = useState<Partial<InvoiceItem>[]>(initialData?.items || []);
@@ -15456,6 +15459,22 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
               />
             </div>
             <div className="space-y-2">
+              <label className="text-xs font-bold text-zinc-600">Seleccione a Taxa de Retenção</label>
+              <select 
+                value={retencaoTaxa} 
+                onChange={(e) => setRetencaoTaxa(e.target.value)}
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+              >
+                <option value="">Selecione...</option>
+                <option value="6.5">Retencao II 6,5 %</option>
+                <option value="6.5-irt">Retencao IRT 6,5%</option>
+                <option value="2.4">Retencao II 2,4 %</option>
+                <option value="0">Nao Sujeito</option>
+                <option value="15">Retencao IPU 15%</option>
+                <option value="0-ii">Retencao II 0%</option>
+              </select>
+            </div>
+            <div className="space-y-2">
               <label className="text-xs font-bold text-zinc-600">Desconto global</label>
               <input 
                 type="number" 
@@ -15632,10 +15651,25 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                        onChange={(e) => updateItem(idx, 'tipo_artigo', e.target.value)}
                        className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
                      >
-                       <option value="produto">PRO</option>
-                       <option value="servico">SER</option>
+                       <option value="produto">Produto</option>
+                       <option value="servico">Serviço</option>
+                       <option value="impostos_especiais">Impostos Especiais de Consumo</option>
+                       <option value="impostos_taxas_encargos">Impostos, Taxas e Encargos</option>
+                       <option value="outros">Outros</option>
                      </select>
                    </div>
+                   {item.tipo_artigo === 'produto' && (
+                     <div className="col-span-1 space-y-1">
+                       <label className="text-[10px] font-bold text-zinc-400 uppercase">Validade</label>
+                       <input 
+                         disabled={isCertified}
+                         type="date" 
+                         value={item.data_validade || ''} 
+                         onChange={(e) => updateItem(idx, 'data_validade', e.target.value)}
+                         className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
+                       />
+                     </div>
+                   )}
                    <div className="col-span-1 space-y-1">
                      <label className="text-[10px] font-bold text-zinc-400 uppercase">Taxa</label>
                      <select 
@@ -15650,6 +15684,29 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                       </select>
                     </div>
                   </div>
+                  {showCalculator && (
+                    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4">
+                       <div className="bg-white p-6 rounded-lg w-full max-w-sm space-y-4">
+                          <div className="flex justify-between items-center">
+                             <h3 className="font-bold text-[#003366]">Calculo Separação IVA</h3>
+                             <X className="cursor-pointer" onClick={() => setShowCalculator(false)} />
+                          </div>
+                          <div className="space-y-1">
+                             <label className="text-xs">Taxa de IVA</label>
+                             <input type="number" className="w-full border p-2" onChange={(e) => setCalcData({...calcData, iva: Number(e.target.value)})} />
+                          </div>
+                          <div className="space-y-1">
+                             <label className="text-xs">Valor Com IVA</label>
+                             <input type="number" className="w-full border p-2" onChange={(e) => setCalcData({...calcData, total: Number(e.target.value)})} />
+                          </div>
+                          <div className="space-y-1">
+                             <label className="text-xs">Valor Sem IVA</label>
+                             <input type="number" className="w-full border p-2" disabled value={(calcData.total / (1 + (calcData.iva / 100))).toFixed(2)} />
+                          </div>
+                          <button className="w-full bg-[#003366] text-white p-2" onClick={() => setShowCalculator(false)}>Fechar</button>
+                       </div>
+                    </div>
+                  )}
                   <div className="grid grid-cols-12 gap-4 items-end bg-white p-3 border border-zinc-100">
                     <div className="col-span-2 space-y-1">
                        <label className="text-[10px] font-bold text-zinc-400 uppercase">Qtd</label>
@@ -15672,7 +15729,10 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                        />
                     </div>
                     <div className="col-span-3 space-y-1">
-                       <label className="text-[10px] font-bold text-zinc-400 uppercase">P. Unitário</label>
+                       <label className="text-[10px] font-bold text-zinc-400 uppercase flex items-center justify-between">
+                         P. Unitário
+                         <Calculator size={12} className="cursor-pointer text-[#003366]" onClick={() => setShowCalculator(true)} />
+                       </label>
                        <input 
                          disabled={isCertified}
                          type="number" 
@@ -22792,18 +22852,18 @@ export default function App() {
         const { data: profileCheck, error: profileErr } = await supabase
           .from('perfis')
           .select('empresa_id')
-          .eq('id', session.user.id)
+          .eq('id', session?.user?.id)
           .maybeSingle();
         
         if (profileErr) console.error('[DEBUG-SYNC] Erro ao buscar perfil:', profileErr);
         targetCompanyId = profileCheck?.empresa_id;
       }
 
-      if (!targetCompanyId) {
+      if (!targetCompanyId && session?.user?.id) {
         console.error('[DEBUG-SYNC] ERRO CRÍTICO: Não foi possível determinar o Tenant ID do utilizador.');
         // Tentativa de último recurso via conta órfã (o user ID como empresa_id)
-        targetCompanyId = session.user.id;
-        console.warn('[DEBUG-SYNC] Usando UserID como fallback de EmpresaID:', targetCompanyId);
+        targetCompanyId = session?.user?.id;
+        console.warn('[DEBUG-SYNC] Usando UserID as fallback de EmpresaID:', targetCompanyId);
       }
 
       console.log('[DEBUG-SYNC] Sincronizando dados para o Tenant:', targetCompanyId);

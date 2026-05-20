@@ -102,7 +102,7 @@ export const authService = {
         throw authError;
       }
       
-      if (!authData.user) throw new Error('Falha interna: Sessão não encontrada.');
+      if (!authData || !authData.user) throw new Error('Falha interna: Sessão não encontrada ou credenciais inválidas.');
 
       sessionCache = authData.session;
 
@@ -220,7 +220,7 @@ export const authService = {
         return null;
       }
 
-      console.log('[AuthService] Recuperando perfil para o utilizador:', session.user.id);
+      console.log('[AuthService] Recuperando perfil para o utilizador:', session?.user?.id);
 
       // Try fetching via backend API to bypass RLS recursion timeouts
       try {
@@ -269,7 +269,7 @@ export const authService = {
             created_at
           )
         `)
-        .eq('id', session.user.id)
+        .eq('id', session?.user?.id)
         .maybeSingle();
 
       const { data: perfil, error } = await Promise.race([
@@ -294,7 +294,7 @@ export const authService = {
         const legacyQuery = supabase
           .from('empresas')
           .select('*')
-          .or(`id.eq.${session.user.id},auth_user_id.eq.${session.user.id}`)
+          .or(`id.eq.${session?.user?.id},auth_user_id.eq.${session?.user?.id}`)
           .maybeSingle();
           
         const { data: legacyEmpresa, error: legacyError } = await Promise.race([
@@ -310,44 +310,44 @@ export const authService = {
         if (legacyEmpresa) {
           console.log('[AuthService] Empresa encontrada via fallback:', legacyEmpresa.id);
           return {
-            id: session.user.id,
-            username: legacyEmpresa.nome_empresa || session.user.email?.split('@')[0] || 'Usuário',
-            email: session.user.email || '',
+            id: session?.user?.id,
+            username: legacyEmpresa.nome_empresa || session?.user?.email?.split('@')[0] || 'Usuário',
+            email: session?.user?.email || '',
             empresa_id: legacyEmpresa.id,
             role: 'admin',
-            created_at: legacyEmpresa.created_at || session.user.created_at,
+            created_at: legacyEmpresa.created_at || session?.user?.created_at,
             company: legacyEmpresa
           };
         }
 
         // Tentativa 2: Buscar QUALQUER perfil deste utilizador (caso o JOIN tenha falhado)
-        const { data: profileOnly } = await supabase.from('perfis').select('empresa_id, role').eq('id', session.user.id).maybeSingle();
+        const { data: profileOnly } = await supabase.from('perfis').select('empresa_id, role').eq('id', session?.user?.id).maybeSingle();
         if (profileOnly?.empresa_id) {
            const { data: companyOnly } = await supabase.from('empresas').select('*').eq('id', profileOnly.empresa_id).maybeSingle();
            if (companyOnly) {
               return {
-                id: session.user.id,
-                username: companyOnly.nome_empresa || session.user.email?.split('@')[0] || 'Usuário',
-                email: session.user.email || '',
+                id: session?.user?.id,
+                username: companyOnly.nome_empresa || session?.user?.email?.split('@')[0] || 'Usuário',
+                email: session?.user?.email || '',
                 empresa_id: companyOnly.id,
                 role: profileOnly.role || 'admin',
-                created_at: companyOnly.created_at || session.user.created_at,
+                created_at: companyOnly.created_at || session?.user?.created_at,
                 company: companyOnly
               };
            }
         }
 
-        console.error('[AuthService] Falha total na identificação da empresa para o user:', session.user.id);
+        console.error('[AuthService] Falha total na identificação da empresa para o user:', session?.user?.id);
         return null; // Don't return a half-baked user if we can't find their company
       }
 
       return {
-        id: session.user.id,
-        username: empresa.nome_empresa || session.user.email?.split('@')[0] || 'Usuário',
-        email: session.user.email || '',
+        id: session?.user?.id,
+        username: empresa.nome_empresa || session?.user?.email?.split('@')[0] || 'Usuário',
+        email: session?.user?.email || '',
         empresa_id: perfil.empresa_id,
         role: perfil.role || 'admin',
-        created_at: empresa.created_at || session.user.created_at,
+        created_at: empresa.created_at || session?.user?.created_at,
         company: empresa
       };
     } catch (err) {

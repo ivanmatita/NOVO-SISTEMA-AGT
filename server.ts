@@ -130,96 +130,111 @@ let contracts: any[] = savedData?.contracts || [];
 
 // --- Supabase Persistence Layer (Cloud Sync) ---
 let isInitialLoadComplete = false;
+let syncPromise: Promise<void> | null = null;
 
-async function syncFromSupabase() {
+async function syncFromSupabase(): Promise<void> {
   if (!supabaseAdmin) return;
-  try {
-    console.log("[Supabase Persistence] Tentando carregar db.json da Storage...");
-    const { data, error } = await supabaseAdmin
-      .storage
-      .from('system-data')
-      .download('db.json');
+  if (isInitialLoadComplete) return;
 
-    if (error) {
-      const errMsg = (error.message || '').toLowerCase();
-      const status = (error as any).status || (error as any).statusCode;
-      if (
-        errMsg.includes('object not found') || 
-        errMsg.includes('bucket not found') || 
-        errMsg.includes('does not exist') ||
-        status === 404 ||
-        status === 400
-      ) {
-         console.log("[Supabase Persistence] db.json ou bucket 'system-data' não encontrado. Tentando criar o bucket...");
-         try {
-            const { error: createError } = await supabaseAdmin.storage.createBucket('system-data', { public: false });
-            if (createError) {
-              console.warn("[Supabase Persistence] Erro ao criar o bucket automaticamente:", createError.message);
-            } else {
-              console.log("[Supabase Persistence] Bucket 'system-data' criado/verificado com sucesso.");
-            }
-         } catch (createErr: any) {
-            console.warn("[Supabase Persistence] Exceção ao tentar criar o bucket:", createErr.message || createErr);
-         }
-         console.log("[Supabase Persistence] Usando estado inicial local.");
-         return;
-      }
-      throw error;
-    }
-    
-    const content = await data.text();
-    const json = JSON.parse(content);
-    
-    // Sync to memory
-    if (json.clients) clients = json.clients;
-    if (json.products) products = json.products;
-    if (json.issuedDocuments) issuedDocuments = json.issuedDocuments;
-    if (json.workSites) workSites = json.workSites;
-    if (json.workSiteMovements) workSiteMovements = json.workSiteMovements;
-    if (json.employees) employees = json.employees;
-    if (json.fiscalSeries) fiscalSeries = json.fiscalSeries;
-    if (json.caixas) caixas = json.caixas;
-    if (json.costCenters) costCenters = json.costCenters;
-    if (json.posPoints) posPoints = json.posPoints;
-    if (json.sessions) sessions = json.sessions;
-    if (json.posSales) posSales = json.posSales;
-    if (json.caixaMovements) caixaMovements = json.caixaMovements;
-    if (json.warehouses) warehouses = json.warehouses;
-    if (json.systemUsers) systemUsers = json.systemUsers;
-    if (json.archives) archives = json.archives;
-    if (json.fleetVehicles) fleetVehicles = json.fleetVehicles;
-    if (json.projectTasks) projectTasks = json.projectTasks;
-    if (json.companies) companies = json.companies;
-    if (json.stockMovements) stockMovements = json.stockMovements;
-    if (json.securityOccurrences) securityOccurrences = json.securityOccurrences;
-    if (json.securityArmory) securityArmory = json.securityArmory;
-    if (json.securityRoster) securityRoster = json.securityRoster;
-    if (json.transactions) transactions = json.transactions;
-    if (json.receipts) receipts = json.receipts;
-    if (json.suppliers) suppliers = json.suppliers;
-    if (json.purchases) purchases = json.purchases;
-    if (json.professions) professions = json.professions;
-    if (json.attendance) attendance = json.attendance;
-    if (json.absences) absences = json.absences;
-    if (json.laborTerminations) laborTerminations = json.laborTerminations;
-    if (json.contracts) contracts = json.contracts;
-    if (json.accountingJournals) accountingJournals = json.accountingJournals;
-    if (json.accountingMovements) accountingMovements = json.accountingMovements;
-    if (json.pgcAccounts) pgcAccounts = json.pgcAccounts;
-
-    console.log("[Supabase Persistence] Dados sincronizados com sucesso.");
-    isInitialLoadComplete = true;
-  } catch (err: any) {
-    console.warn("[Supabase Persistence] Erro ao sincronizar:", err.message || err);
-    const errMsg = (err?.message || String(err)).toLowerCase();
-    if (errMsg.includes('bucket not found') || errMsg.includes('storage') || errMsg.includes('not found') || (err as any)?.__isStorageError) {
-      console.log("[Supabase Persistence] Tratamento de fallback de erro de storage ativado. Tentando criar bucket...");
-      try {
-        await supabaseAdmin.storage.createBucket('system-data', { public: false });
-        console.log("[Supabase Persistence] Bucket 'system-data' criado como fallback.");
-      } catch (e) {}
-    }
+  if (syncPromise) {
+    return syncPromise;
   }
+
+  syncPromise = (async () => {
+    try {
+      console.log("[Supabase Persistence] Tentando carregar db.json da Storage...");
+      const { data, error } = await supabaseAdmin
+        .storage
+        .from('system-data')
+        .download('db.json');
+
+      if (error) {
+        const errMsg = (error.message || '').toLowerCase();
+        const status = (error as any).status || (error as any).statusCode;
+        if (
+          errMsg.includes('object not found') || 
+          errMsg.includes('bucket not found') || 
+          errMsg.includes('does not exist') ||
+          status === 404 ||
+          status === 400
+        ) {
+           console.log("[Supabase Persistence] db.json ou bucket 'system-data' não encontrado. Tentando criar o bucket...");
+           try {
+              const { error: createError } = await supabaseAdmin.storage.createBucket('system-data', { public: false });
+              if (createError) {
+                console.warn("[Supabase Persistence] Erro ao criar o bucket automaticamente:", createError.message);
+              } else {
+                console.log("[Supabase Persistence] Bucket 'system-data' criado/verificado com sucesso.");
+              }
+           } catch (createErr: any) {
+              console.warn("[Supabase Persistence] Exceção ao tentar criar o bucket:", createErr.message || createErr);
+           }
+           console.log("[Supabase Persistence] Usando estado inicial local.");
+           isInitialLoadComplete = true;
+           return;
+        }
+        throw error;
+      }
+      
+      const content = await data.text();
+      const json = JSON.parse(content);
+      
+      // Sync to memory
+      if (json.clients) clients = json.clients;
+      if (json.products) products = json.products;
+      if (json.issuedDocuments) issuedDocuments = json.issuedDocuments;
+      if (json.workSites) workSites = json.workSites;
+      if (json.workSiteMovements) workSiteMovements = json.workSiteMovements;
+      if (json.employees) employees = json.employees;
+      if (json.fiscalSeries) fiscalSeries = json.fiscalSeries;
+      if (json.caixas) caixas = json.caixas;
+      if (json.costCenters) costCenters = json.costCenters;
+      if (json.posPoints) posPoints = json.posPoints;
+      if (json.sessions) sessions = json.sessions;
+      if (json.posSales) posSales = json.posSales;
+      if (json.caixaMovements) caixaMovements = json.caixaMovements;
+      if (json.warehouses) warehouses = json.warehouses;
+      if (json.systemUsers) systemUsers = json.systemUsers;
+      if (json.archives) archives = json.archives;
+      if (json.fleetVehicles) fleetVehicles = json.fleetVehicles;
+      if (json.projectTasks) projectTasks = json.projectTasks;
+      if (json.companies) companies = json.companies;
+      if (json.stockMovements) stockMovements = json.stockMovements;
+      if (json.securityOccurrences) securityOccurrences = json.securityOccurrences;
+      if (json.securityArmory) securityArmory = json.securityArmory;
+      if (json.securityRoster) securityRoster = json.securityRoster;
+      if (json.transactions) transactions = json.transactions;
+      if (json.receipts) receipts = json.receipts;
+      if (json.suppliers) suppliers = json.suppliers;
+      if (json.purchases) purchases = json.purchases;
+      if (json.professions) professions = json.professions;
+      if (json.attendance) attendance = json.attendance;
+      if (json.absences) absences = json.absences;
+      if (json.laborTerminations) laborTerminations = json.laborTerminations;
+      if (json.contracts) contracts = json.contracts;
+      if (json.accountingJournals) accountingJournals = json.accountingJournals;
+      if (json.accountingMovements) accountingMovements = json.accountingMovements;
+      if (json.pgcAccounts) pgcAccounts = json.pgcAccounts;
+
+      console.log("[Supabase Persistence] Dados sincronizados com sucesso.");
+      isInitialLoadComplete = true;
+    } catch (err: any) {
+      console.warn("[Supabase Persistence] Erro ao sincronizar:", err.message || err);
+      const errMsg = (err?.message || String(err)).toLowerCase();
+      if (errMsg.includes('bucket not found') || errMsg.includes('storage') || errMsg.includes('not found') || (err as any)?.__isStorageError) {
+        console.log("[Supabase Persistence] Tratamento de fallback de erro de storage ativado. Tentando criar bucket...");
+        try {
+          await supabaseAdmin.storage.createBucket('system-data', { public: false });
+          console.log("[Supabase Persistence] Bucket 'system-data' criado como fallback.");
+        } catch (e) {}
+      }
+      isInitialLoadComplete = true; // Evitar travar todo o resto em caso de falha de conexão
+    } finally {
+      syncPromise = null;
+    }
+  })();
+
+  return syncPromise;
 }
 
 let pendingSave: Promise<any> = Promise.resolve();
@@ -332,8 +347,9 @@ app.use((req, res, next) => {
 });
 
 async function startServer() {
-  // Sync on startup
-  await syncFromSupabase();
+  // Sync in background on startup (non-blocking to prevent serverless/Vercel timeouts)
+  syncFromSupabase().catch(err => console.warn("[Background Sync] Failed on startup:", err));
+  
   app.use(compression());
   app.use(express.json({ limit: '50mb' }));
 

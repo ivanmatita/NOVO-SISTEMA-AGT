@@ -141,8 +141,27 @@ async function syncFromSupabase() {
       .download('db.json');
 
     if (error) {
-      if (error.message.includes('Object not found') || error.message.includes('bucket not found')) {
-         console.log("[Supabase Persistence] db.json não encontrado. Usando estado inicial local.");
+      const errMsg = (error.message || '').toLowerCase();
+      const status = (error as any).status || (error as any).statusCode;
+      if (
+        errMsg.includes('object not found') || 
+        errMsg.includes('bucket not found') || 
+        errMsg.includes('does not exist') ||
+        status === 404 ||
+        status === 400
+      ) {
+         console.log("[Supabase Persistence] db.json ou bucket 'system-data' não encontrado. Tentando criar o bucket...");
+         try {
+            const { error: createError } = await supabaseAdmin.storage.createBucket('system-data', { public: false });
+            if (createError) {
+              console.warn("[Supabase Persistence] Erro ao criar o bucket automaticamente:", createError.message);
+            } else {
+              console.log("[Supabase Persistence] Bucket 'system-data' criado/verificado com sucesso.");
+            }
+         } catch (createErr: any) {
+            console.warn("[Supabase Persistence] Exceção ao tentar criar o bucket:", createErr.message || createErr);
+         }
+         console.log("[Supabase Persistence] Usando estado inicial local.");
          return;
       }
       throw error;
@@ -190,8 +209,16 @@ async function syncFromSupabase() {
 
     console.log("[Supabase Persistence] Dados sincronizados com sucesso.");
     isInitialLoadComplete = true;
-  } catch (err) {
-    console.error("[Supabase Persistence] Erro ao sincronizar:", err);
+  } catch (err: any) {
+    console.warn("[Supabase Persistence] Erro ao sincronizar:", err.message || err);
+    const errMsg = (err?.message || String(err)).toLowerCase();
+    if (errMsg.includes('bucket not found') || errMsg.includes('storage') || errMsg.includes('not found') || (err as any)?.__isStorageError) {
+      console.log("[Supabase Persistence] Tratamento de fallback de erro de storage ativado. Tentando criar bucket...");
+      try {
+        await supabaseAdmin.storage.createBucket('system-data', { public: false });
+        console.log("[Supabase Persistence] Bucket 'system-data' criado como fallback.");
+      } catch (e) {}
+    }
   }
 }
 
@@ -219,14 +246,40 @@ const saveData = () => {
         // 2. Supabase Upload
         if (supabaseAdmin) {
             try {
-                const { error } = await supabaseAdmin.storage
+                let { error } = await supabaseAdmin.storage
                     .from('system-data')
                     .upload('db.json', JSON.stringify(data, null, 2), {
                         upsert: true,
                         contentType: 'application/json'
                     });
-                if (error && !error.message.includes('bucket not found')) {
-                    console.error("Cloud Save Error:", error.message);
+                if (error) {
+                    const errMsg = (error.message || '').toLowerCase();
+                    if (errMsg.includes('bucket not found') || errMsg.includes('does not exist') || (error as any)?.__isStorageError) {
+                        console.log("[Supabase Persistence] Bucket 'system-data' não encontrado ao salvar. Tentando criar...");
+                        try {
+                            const { error: createError } = await supabaseAdmin.storage.createBucket('system-data', { public: false });
+                            if (!createError) {
+                                // Tentar upload novamente
+                                const { error: retryError } = await supabaseAdmin.storage
+                                    .from('system-data')
+                                    .upload('db.json', JSON.stringify(data, null, 2), {
+                                        upsert: true,
+                                        contentType: 'application/json'
+                                    });
+                                if (retryError) {
+                                    console.error("[Supabase Persistence] Erro ao tentar salvar após criar o bucket:", retryError.message);
+                                } else {
+                                    console.log("[Supabase Persistence] Salvo com sucesso após criação automática do bucket.");
+                                }
+                            } else {
+                                console.error("[Supabase Persistence] Erro ao criar bucket 'system-data':", createError.message);
+                            }
+                        } catch (e: any) {
+                            console.error("[Supabase Persistence] Exceção ao criar bucket:", e.message || e);
+                        }
+                    } else {
+                        console.error("[Supabase Persistence] Erro ao fazer cloud save:", error.message);
+                    }
                 }
             } catch (err: any) {
                 console.error("Cloud Save Exception:", err.message || err);

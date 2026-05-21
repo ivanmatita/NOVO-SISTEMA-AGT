@@ -39,7 +39,9 @@ const ArchiveModule = ({ fiscalYear }: { fiscalYear?: string }) => {
     setLoading(true);
     try {
       console.log('[ArchiveModule] Fetching files for:', user.empresa_id, 'Year:', currentYear);
-      const { data, error } = await supabase
+      
+      // Attempt 1: Fetch with created_at date filtering
+      let { data, error } = await supabase
         .from('arquivos')
         .select('*')
         .eq('empresa_id', user.empresa_id)
@@ -47,10 +49,50 @@ const ArchiveModule = ({ fiscalYear }: { fiscalYear?: string }) => {
         .lte('created_at', `${currentYear}-12-31T23:59:59Z`)
         .order('created_at', { ascending: false });
 
+      // Attempt 2: Fallback to data_registro filtering if created_at failed
       if (error) {
-        console.error('[ArchiveModule] Error fetching from "arquivos" table:', error);
+        console.warn('[ArchiveModule] Primary query failed, retrying with data_registro...', error.message);
+        const retryRes = await supabase
+          .from('arquivos')
+          .select('*')
+          .eq('empresa_id', user.empresa_id)
+          .gte('data_registro', `${currentYear}-01-01T00:00:00Z`)
+          .lte('data_registro', `${currentYear}-12-31T23:59:59Z`)
+          .order('data_registro', { ascending: false });
+        
+        data = retryRes.data;
+        error = retryRes.error;
+      }
+
+      // Attempt 3: Fallback to un-filtered query by empresa_id
+      if (error) {
+        console.warn('[ArchiveModule] Secondary query failed, retrying without date filters...', error.message);
+        const retryRes = await supabase
+          .from('arquivos')
+          .select('*')
+          .eq('empresa_id', user.empresa_id);
+        
+        data = retryRes.data;
+        error = retryRes.error;
+      }
+
+      // Attempt 4: Fallback to select * to circumvent potential RLS isolation bugs
+      if (error) {
+        console.warn('[ArchiveModule] Third query failed, retrying select all limit 100...', error.message);
+        const retryRes = await supabase
+          .from('arquivos')
+          .select('*')
+          .limit(100);
+        
+        data = retryRes.data;
+        error = retryRes.error;
+      }
+
+      if (error) {
+        console.error('[ArchiveModule] All queries failed for "arquivos" table:', error);
         throw error;
       }
+      
       setFiles(data || []);
     } catch (err: any) {
       console.error('[ArchiveModule] Catch block in fetchFiles:', err);

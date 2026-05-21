@@ -153,6 +153,8 @@ DROP POLICY IF EXISTS "Storage - Multi-empresa-UPDATE" ON storage.objects;
 DROP POLICY IF EXISTS "Storage - Multi-empresa-DELETE" ON storage.objects;
 DROP POLICY IF EXISTS "Storage - Public Access" ON storage.objects;
 DROP POLICY IF EXISTS "Storage - Permissive Upload" ON storage.objects;
+DROP POLICY IF EXISTS "Storage - Permissive Update" ON storage.objects;
+DROP POLICY IF EXISTS "Storage - Permissive Delete" ON storage.objects;
 
 -- Criar regras estáveis para o Storage Bucket de arquivos
 CREATE POLICY "Storage - Public Access" ON storage.objects 

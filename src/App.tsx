@@ -1729,6 +1729,14 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
   // Funcionários ativos para processamentos (Salário, Assiduidade)
   const activeEmployees = Array.isArray(localEmployees) ? localEmployees.filter(emp => emp.status !== 'dismissed') : [];
 
+  const payrollFiltered = activeEmployees.filter(emp => {
+    const matchesWorkSite = !payrollWorkSiteId || String(emp.local_trabalho_id) === String(payrollWorkSiteId);
+    const matchesSearch = !payrollSearch ||
+      (emp.name || '').toLowerCase().includes(payrollSearch.toLowerCase()) ||
+      (emp.role || '').toLowerCase().includes(payrollSearch.toLowerCase());
+    return matchesWorkSite && matchesSearch;
+  });
+
   const [name, setName] = useState('');
   const [role, setRole] = useState('');
   const [salary, setSalary] = useState('');
@@ -1796,6 +1804,12 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
   const [openDadosFiscais, setOpenDadosFiscais] = useState(true);
   const [openOutrosDados, setOpenOutrosDados] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState(`Março / ${fiscalYear}`);
+  const [payrollWorkSiteId, setPayrollWorkSiteId] = useState<string>('');
+  const [payrollSearch, setPayrollSearch] = useState<string>('');
+  const [transferOrders, setTransferOrders] = useState<any[]>([]);
+  const [selectedPayEmployees, setSelectedPayEmployees] = useState<Record<string, boolean>>({});
+  const [selectedPayCaixaId, setSelectedPayCaixaId] = useState<string>('');
+  const [editingTransferOrder, setEditingTransferOrder] = useState<any | null>(null);
   const [selectedEmployeesToProcess, setSelectedEmployeesToProcess] = useState<Record<number, boolean>>({});
   const [processedAttendance, setProcessedAttendance] = useState<Record<number, boolean>>({});
   const [processedReceipts, setProcessedReceipts] = useState<any[]>([]);
@@ -2365,6 +2379,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
     { id: 'effective_list', label: 'LISTA EFETIVA', icon: <Users size={14} />, description: 'Lista detalhada de trabalhadores' },
     { id: 'salary_procedures', label: 'PROCEDIMENTOS DE SALÁRIO', icon: <FileText size={14} />, description: 'Gestão de procedimentos salariais' },
     { id: 'payroll', label: 'PROCESSAMENTO', icon: <Calculator size={14} />, description: 'Cálculo de vencimentos e subsídios' },
+    { id: 'pay_salary', label: 'PAGAR SALÁRIO', icon: <Wallet size={14} />, description: 'Liquidação de salários processados' },
     { id: 'salary_receipts', label: 'RECIBOS DE SALÁRIO', icon: <FileCheck size={14} />, description: 'Emissão de recibos de vencimento' },
     { id: 'contracts', label: 'GESTÃO DE CONTRATOS', icon: <FileText size={14} />, description: 'Controle de vínculos laborais' },
     { id: 'irt_table', label: 'TABELA IRT', icon: <Table size={14} />, description: 'Configuração de escalões de imposto' },
@@ -4421,6 +4436,19 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                     <option>Grupo TecnoSys</option>
                   </select>
                 </div>
+                <div className="min-w-[200px]">
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Local de Trabalho:</label>
+                  <select 
+                    value={payrollWorkSiteId}
+                    onChange={(e) => setPayrollWorkSiteId(e.target.value)}
+                    className="w-full border border-zinc-200 px-4 py-2 text-xs focus:outline-none focus:border-[#003366] font-bold text-[#003366]"
+                  >
+                    <option value="">Todos os Locais</option>
+                    {workSites.map(ws => (
+                      <option key={ws.id} value={String(ws.id)}>{ws.title}</option>
+                    ))}
+                  </select>
+                </div>
                 {isProcessingComplete && (
                   <div className="min-w-[200px] animate-in fade-in duration-300">
                     <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Caixa de Pagamento:</label>
@@ -4438,13 +4466,16 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                 )}
                 <div className="min-w-[200px]">
                   <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Mês/Ano:</label>
-                  <select className="w-full border border-zinc-200 px-4 py-2 text-xs focus:outline-none focus:border-[#003366] font-bold text-[#003366]">
-                    <option>{selectedMonth}</option>
+                  <select 
+                    value={selectedMonth}
+                    onChange={(e) => setSelectedMonth(e.target.value)}
+                    className="w-full border border-zinc-200 px-4 py-2 text-xs focus:outline-none focus:border-[#003366] font-bold text-[#003366]"
+                  >
                     {[
                       "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
                       "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
-                    ].map(m => `${m} / ${fiscalYear}`).filter(m => m !== selectedMonth).map(m => (
-                      <option key={m}>{m}</option>
+                    ].map(m => `${m} / ${fiscalYear}`).map(m => (
+                      <option key={m} value={m}>{m}</option>
                     ))}
                   </select>
                 </div>
@@ -4453,6 +4484,8 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
                 <input 
                   type="text" 
+                  value={payrollSearch}
+                  onChange={(e) => setPayrollSearch(e.target.value)}
                   placeholder="Pesquisar funcionário..." 
                   className="w-full border border-zinc-200 pl-10 pr-4 py-2 text-xs focus:outline-none focus:border-[#003366]"
                 />
@@ -4519,11 +4552,11 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
 
                   const nextProcessed = { ...processedAttendance };
                   selectedEmpIds.forEach(id => {
-                    nextProcessed[id] = true;
+                    nextProcessed[`${id}_${selectedMonth}`] = true;
                   });
                   setProcessedAttendance(nextProcessed);
 
-                  setProcessedReceipts(receipts);
+                  setProcessedReceipts(prev => [...prev.filter(r => !selectedEmpIds.includes(r.employee.id) || r.period !== selectedMonth), ...receipts]);
                   setIsProcessingComplete(true);
                   alert('Processamento concluído com sucesso para os funcionários selecionados.');
                 }}
@@ -4553,12 +4586,12 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                             type="checkbox" 
                             id="selectAllEmployees"
                             className="rounded-none accent-[#F27D26] w-4 h-4 cursor-pointer" 
-                            checked={activeEmployees.length > 0 && activeEmployees.every(emp => !!selectedEmployeesToProcess[emp.id])}
+                            checked={payrollFiltered.length > 0 && payrollFiltered.every(emp => !!selectedEmployeesToProcess[emp.id])}
                             onChange={(e) => {
                               const checked = e.target.checked;
                               const nextSelected: Record<number, boolean> = {};
                               if (checked) {
-                                activeEmployees.forEach(emp => {
+                                payrollFiltered.forEach(emp => {
                                   nextSelected[emp.id] = true;
                                 });
                               }
@@ -4595,7 +4628,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                         <td className="px-4 py-2 border-r border-zinc-200"></td>
                         <td className="px-4 py-2 border-r border-zinc-200" colSpan={11}>Empresa: Grupo TecnoSys • Caixa: {selectedPaymentCaixa ? selectedPaymentCaixa.replace('_', ' ').toUpperCase() : 'NÃO SELECIONADO'}</td>
                       </tr>
-                      {activeEmployees.map(emp => {
+                      {payrollFiltered.map(emp => {
                       const inputs = payrollInputs[emp.id] || { 
                         premios: 0, gratificacoes: 0, abonos: 0, subsidioNatal: 0, alojamento: 0, outrosSubsidios: 0,
                         faltasJustificadas: 0, faltasInjustificadas: 0, ferias: 0, horasExtras: 0, horasPerdidas: 0,
@@ -4618,6 +4651,9 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                                        inputs.subsidioTransporte + inputs.subsidioAlimentacao + overtimePay + inputs.acertos;
                       
                       const totalNet = totalGross - inss_worker - irt - absenceDeduction - lostHoursDeduction - inputs.adiantamentos;
+
+                      const isProcessed = !!processedAttendance[`${emp.id}_${selectedMonth}`];
+                      const isPaid = processedReceipts.find(r => r.employee.id === emp.id && r.period === selectedMonth)?.status === 'paid';
 
                       const receipt = {
                         id: emp.id,
@@ -4645,7 +4681,8 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                             <input 
                               type="checkbox" 
                               className="rounded-none accent-[#003366] w-4 h-4 cursor-pointer" 
-                              checked={!!selectedEmployeesToProcess[emp.id]}
+                              checked={isProcessed || !!selectedEmployeesToProcess[emp.id]}
+                              disabled={isProcessed}
                               onChange={(e) => {
                                 setSelectedEmployeesToProcess(prev => ({
                                   ...prev,
@@ -4662,13 +4699,13 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                               <div>
                                 <div className="flex items-center gap-2">
                                   <div className="font-black text-[#003366] uppercase text-xs">{emp.name}</div>
-                                  {processedAttendance[emp.id] && (
+                                  {isProcessed && (
                                     <span className={`px-2 py-0.5 text-[8px] font-black uppercase tracking-widest border ${
-                                      processedReceipts.find(r => r.employee.id === emp.id)?.status === 'paid'
+                                      isPaid
                                         ? 'bg-blue-100 text-blue-600 border-blue-200'
                                         : 'bg-emerald-100 text-emerald-600 border-emerald-200'
                                     }`}>
-                                      {processedReceipts.find(r => r.employee.id === emp.id)?.status === 'paid' ? 'PAGO' : 'Processado'}
+                                      {isPaid ? 'PAGO' : 'Processado'}
                                     </span>
                                   )}
                                 </div>
@@ -4680,144 +4717,161 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                             <input 
                               type="number" 
                               value={inputs.diasTrabalho}
+                              disabled={isProcessed}
                               onChange={(e) => updatePayrollInput(emp.id, 'diasTrabalho', Number(e.target.value))}
-                              className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                              className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
                             />
                           </td>
                           <td className="px-2 py-4 border-r border-zinc-200">
                             <input 
                               type="number" 
                               value={inputs.diasFolga}
+                              disabled={isProcessed}
                               onChange={(e) => updatePayrollInput(emp.id, 'diasFolga', Number(e.target.value))}
-                              className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                              className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
                             />
                           </td>
                           <td className="px-2 py-4 border-r border-zinc-200">
                             <input 
                               type="number" 
                               value={inputs.faltasJustificadas}
+                              disabled={isProcessed}
                               onChange={(e) => updatePayrollInput(emp.id, 'faltasJustificadas', Number(e.target.value))}
-                              className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                              className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
                             />
                           </td>
                           <td className="px-2 py-4 border-r border-zinc-200">
                             <input 
                               type="number" 
                               value={inputs.faltasInjustificadas}
+                              disabled={isProcessed}
                               onChange={(e) => updatePayrollInput(emp.id, 'faltasInjustificadas', Number(e.target.value))}
-                              className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                              className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
                             />
                           </td>
                           <td className="px-2 py-4 border-r border-zinc-200">
                             <input 
                               type="number" 
                               value={inputs.ferias}
+                              disabled={isProcessed}
                               onChange={(e) => updatePayrollInput(emp.id, 'ferias', Number(e.target.value))}
-                              className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                              className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
                             />
                           </td>
                           <td className="px-2 py-4 border-r border-zinc-200">
                             <input 
                               type="number" 
                               value={inputs.horasExtras}
+                              disabled={isProcessed}
                               onChange={(e) => updatePayrollInput(emp.id, 'horasExtras', Number(e.target.value))}
-                              className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                              className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
                             />
                           </td>
                           <td className="px-2 py-4 border-r border-zinc-200">
                             <input 
                               type="number" 
                               value={inputs.horasPerdidas}
+                              disabled={isProcessed}
                               onChange={(e) => updatePayrollInput(emp.id, 'horasPerdidas', Number(e.target.value))}
-                              className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                              className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
                             />
                           </td>
                           <td className="px-2 py-4 border-r border-zinc-200">
                             <input 
                               type="number" 
                               value={inputs.premios}
+                              disabled={isProcessed}
                               onChange={(e) => updatePayrollInput(emp.id, 'premios', Number(e.target.value))}
-                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
                             />
                           </td>
                           <td className="px-2 py-4 border-r border-zinc-200">
                             <input 
                               type="number" 
                               value={inputs.gratificacoes}
+                              disabled={isProcessed}
                               onChange={(e) => updatePayrollInput(emp.id, 'gratificacoes', Number(e.target.value))}
-                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
                             />
                           </td>
                           <td className="px-2 py-4 border-r border-zinc-200">
                             <input 
                               type="number" 
                               value={inputs.abonos}
+                              disabled={isProcessed}
                               onChange={(e) => updatePayrollInput(emp.id, 'abonos', Number(e.target.value))}
-                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
                             />
                           </td>
                           <td className="px-2 py-4 border-r border-zinc-200">
                             <input 
                               type="number" 
                               value={inputs.subsidioNatal}
+                              disabled={isProcessed}
                               onChange={(e) => updatePayrollInput(emp.id, 'subsidioNatal', Number(e.target.value))}
-                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
                             />
                           </td>
                           <td className="px-2 py-4 border-r border-zinc-200">
                             <input 
                               type="number" 
                               value={inputs.alojamento}
+                              disabled={isProcessed}
                               onChange={(e) => updatePayrollInput(emp.id, 'alojamento', Number(e.target.value))}
-                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
                             />
                           </td>
                           <td className="px-2 py-4 border-r border-zinc-200">
                             <input 
                               type="number" 
                               value={inputs.subsidioTransporte}
+                              disabled={isProcessed}
                               onChange={(e) => updatePayrollInput(emp.id, 'subsidioTransporte', Number(e.target.value))}
-                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
                             />
                           </td>
                           <td className="px-2 py-4 border-r border-zinc-200">
                             <input 
                               type="number" 
                               value={inputs.subsidioAlimentacao}
+                              disabled={isProcessed}
                               onChange={(e) => updatePayrollInput(emp.id, 'subsidioAlimentacao', Number(e.target.value))}
-                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
                             />
                           </td>
                           <td className="px-2 py-4 border-r border-zinc-200">
                             <input 
                               type="number" 
                               value={inputs.outrosSubsidios}
+                              disabled={isProcessed}
                               onChange={(e) => updatePayrollInput(emp.id, 'outrosSubsidios', Number(e.target.value))}
-                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
                             />
                           </td>
                           <td className="px-2 py-4 border-r border-zinc-200">
                             <input 
                               type="number" 
                               value={inputs.adiantamentos}
+                              disabled={isProcessed}
                               onChange={(e) => updatePayrollInput(emp.id, 'adiantamentos', Number(e.target.value))}
-                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
                             />
                           </td>
                           <td className="px-2 py-4 border-r border-zinc-200">
                             <input 
                               type="number" 
                               value={inputs.acertos}
+                              disabled={isProcessed}
                               onChange={(e) => updatePayrollInput(emp.id, 'acertos', Number(e.target.value))}
-                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366]" 
+                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
                             />
                           </td>
                           <td className="px-4 py-4 border-r border-zinc-200 text-right sticky right-0 bg-white group-hover:bg-zinc-50 z-10">
                             <div className="flex flex-col items-end">
                               <div className="font-black text-[#16A34A] font-mono">
-                                {processedAttendance[emp.id] ? formatCurrency(totalNet) : '---'}
+                                {isProcessed ? formatCurrency(totalNet) : '---'}
                               </div>
-                              {processedAttendance[emp.id] && (
+                              {isProcessed && (
                                 <button 
                                   onClick={() => setDraftReceipt(receipt)}
                                   className="flex items-center gap-1 text-[8px] text-[#003366] hover:text-[#F27D26] mt-1 uppercase font-black"
@@ -4829,15 +4883,15 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                           </td>
                           <td className="px-4 py-4 text-center">
                             <div className="flex items-center justify-center gap-2">
-                              {processedAttendance[emp.id] ? (
+                              {isProcessed ? (
                                 <button 
                                   onClick={() => {
                                     setProcessedAttendance(prev => {
                                       const next = {...prev};
-                                      delete next[emp.id];
+                                      delete next[`${emp.id}_${selectedMonth}`];
                                       return next;
                                     });
-                                    setProcessedReceipts(prev => prev.filter(r => r.employee.id !== emp.id));
+                                    setProcessedReceipts(prev => prev.filter(r => !(r.employee.id === emp.id && r.period === selectedMonth)));
                                   }}
                                   className="bg-amber-600 text-white px-3 py-1.5 text-[9px] font-black uppercase tracking-widest hover:bg-amber-700 flex items-center gap-1"
                                 >
@@ -4850,8 +4904,8 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                                       alert('Selecione o funcionário primeiro.');
                                       return;
                                     }
-                                    setProcessedAttendance(prev => ({...prev, [emp.id]: true}));
-                                    setProcessedReceipts(prev => [...prev, receipt]);
+                                    setProcessedAttendance(prev => ({...prev, [`${emp.id}_${selectedMonth}`]: true}));
+                                    setProcessedReceipts(prev => [...prev.filter(r => !(r.employee.id === emp.id && r.period === selectedMonth)), receipt]);
                                   }}
                                   className="bg-emerald-600 text-white px-3 py-1.5 text-[9px] font-black uppercase tracking-widest hover:bg-emerald-700"
                                 >
@@ -5861,17 +5915,423 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
           />
         )}
 
-        {activeTab === 'transfer_order' && (
-          <div className="space-y-6">
-            <button 
-              onClick={() => setActiveTab('payroll')}
-              className="flex items-center gap-2 text-zinc-500 hover:text-[#003366] transition-colors font-bold text-xs uppercase tracking-widest"
-            >
-              <ArrowLeft size={14} /> Voltar ao Processamento
-            </button>
-            <OrdemTransferencia employee={appSelectedEmployee} />
-          </div>
-        )}
+        {activeTab === 'pay_salary' && (() => {
+          const unpaidReceipts = processedReceipts.filter(rcpt => rcpt.period === selectedMonth && rcpt.status !== 'paid');
+
+          const handlePayAllSelected = () => {
+            const selectedReceiptsToPay = unpaidReceipts.filter(rcpt => !!selectedPayEmployees[rcpt.employee.id]);
+            if (selectedReceiptsToPay.length === 0) {
+              alert("Por favor, selecione os colaboradores para efetuar o pagamento!");
+              return;
+            }
+            if (!selectedPayCaixaId) {
+              alert("Por favor, selecione um caixa de pagamento!");
+              return;
+            }
+
+            const chosenCaixa = caixas.find(c => String(c.id) === String(selectedPayCaixaId));
+
+            const nextOrder = {
+              id: 'OT-' + String(transferOrders.length + 1).padStart(4, '0'),
+              date: new Date().toISOString().split('T')[0],
+              month: selectedMonth,
+              caixaId: selectedPayCaixaId,
+              caixaName: chosenCaixa ? chosenCaixa.name : 'Caixa Geral',
+              employeeCount: selectedReceiptsToPay.length,
+              totalPaid: selectedReceiptsToPay.reduce((sum, r) => sum + r.calculations.totalNet, 0),
+              employees: selectedReceiptsToPay.map(r => ({
+                id: r.employee.id,
+                name: r.employee.name,
+                salary: r.employee.salary,
+                role: r.employee.role,
+                iban: r.employee.iban,
+                bankName: r.employee.bankName || r.employee.bank_name || 'BFA',
+                net: r.calculations.totalNet,
+                inss: r.calculations?.inss_worker || 0,
+                irt: r.calculations?.irt || 0
+              }))
+            };
+
+            setTransferOrders(prev => [...prev, nextOrder]);
+
+            // Transition status in processedReceipts
+            setProcessedReceipts(prev => prev.map(rcpt => {
+              if (selectedReceiptsToPay.some(s => s.employee.id === rcpt.employee.id && s.period === rcpt.period)) {
+                return { ...rcpt, status: 'paid', paymentCaixaId: selectedPayCaixaId };
+              }
+              return rcpt;
+            }));
+
+            // Clear selected pays
+            setSelectedPayEmployees({});
+            alert("Salários liquidados com sucesso! Ordem de transferência gerada.");
+            setActiveTab('transfer_order');
+          };
+
+          return (
+            <div className="space-y-6">
+              <div className="flex justify-between items-center bg-white p-6 border border-zinc-200">
+                <div>
+                  <h3 className="text-lg font-black text-[#003366] uppercase tracking-wider">LIQUIDAÇÃO DE SALÁRIOS (PAGAR SALÁRIO)</h3>
+                  <p className="text-xs text-zinc-400 font-bold uppercase mt-1">Período de Referência: {selectedMonth}</p>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="text-right">
+                    <p className="text-[9px] font-black uppercase text-zinc-400 tracking-widest">Colaboradores Processados</p>
+                    <p className="text-xl font-black text-[#003366]">{unpaidReceipts.length}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white p-6 border border-zinc-200 flex flex-wrap items-end justify-between gap-6">
+                <div className="flex gap-6 flex-wrap">
+                  <div className="min-w-[250px]">
+                    <label className="block text-[10px] font-black uppercase tracking-widest text-[#003366] mb-2">Caixa de Pagamento:</label>
+                    <select 
+                      value={selectedPayCaixaId}
+                      onChange={(e) => setSelectedPayCaixaId(e.target.value)}
+                      className="w-full border border-zinc-200 px-4 py-2.5 text-xs focus:outline-none focus:border-[#003366] font-bold text-[#003366]"
+                    >
+                      <option value="">Selecionar Caixa...</option>
+                      {caixas.map(c => (
+                        <option key={c.id} value={String(c.id)}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <button 
+                    onClick={handlePayAllSelected}
+                    className="bg-[#16A34A] hover:bg-[#15803d] text-white px-6 py-2.5 text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all shadow-lg text-[10px]"
+                  >
+                    <Wallet size={14} /> PAGAR SALÁRIO SELECIONADOS
+                  </button>
+                </div>
+              </div>
+
+              {unpaidReceipts.length === 0 ? (
+                <div className="p-12 text-center text-zinc-400 font-bold uppercase tracking-widest bg-zinc-50 border border-zinc-200">
+                  Não restam salários pendentes de liquidação para {selectedMonth}. Por favor, processe salários na folha de processamento primeiro!
+                </div>
+              ) : (
+                <div className="bg-white border border-zinc-200 shadow-sm overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse min-w-[1200px]">
+                      <thead>
+                        <tr className="bg-[#1e293b] text-white text-[9px] uppercase tracking-widest font-black">
+                          <th className="px-4 py-4 border-r border-white/10 w-12 text-center">
+                            <input 
+                              type="checkbox" 
+                              className="rounded-none accent-[#F27D26] w-4 h-4 cursor-pointer align-middle"
+                              checked={unpaidReceipts.length > 0 && unpaidReceipts.every(r => !!selectedPayEmployees[r.employee.id])}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                const nextSelected: Record<string, boolean> = {};
+                                if (checked) {
+                                  unpaidReceipts.forEach(r => {
+                                    nextSelected[r.employee.id] = true;
+                                  });
+                                }
+                                setSelectedPayEmployees(nextSelected);
+                              }}
+                            />
+                          </th>
+                          <th className="px-4 py-4 border-r border-white/10">ID</th>
+                          <th className="px-4 py-4 border-r border-white/10">COLABORADOR</th>
+                          <th className="px-4 py-4 border-r border-white/10">CARGO / FUNÇÃO</th>
+                          <th className="px-4 py-4 border-r border-white/10 text-right">SALÁRIO BASE</th>
+                          <th className="px-4 py-4 border-r border-white/10 text-right">DESCONTOS (INSS+IRT)</th>
+                          <th className="px-4 py-4 border-r border-white/10 text-right">TOTAL BRUTO</th>
+                          <th className="px-4 py-4 border-r border-white/10 text-right">VALOR LÍQUIDO</th>
+                          <th className="px-4 py-4 border-r border-white/10">BANCO</th>
+                          <th className="px-4 py-4">IBAN</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-100">
+                        {unpaidReceipts.map(rcpt => {
+                          const totalDeducts = (rcpt.calculations?.inss_worker || 0) + (rcpt.calculations?.irt || 0) + (rcpt.inputs?.faltasInjustificadas * (rcpt.employee.salary / 22) || 0);
+                          return (
+                            <tr key={rcpt.employee.id} className="hover:bg-zinc-50 text-[11px] font-medium text-zinc-700">
+                              <td className="px-4 py-4 border-r border-zinc-200 text-center w-12">
+                                <input 
+                                  type="checkbox" 
+                                  className="rounded-none accent-[#003366] w-4 h-4 cursor-pointer align-middle"
+                                  checked={!!selectedPayEmployees[rcpt.employee.id]}
+                                  onChange={(e) => {
+                                    setSelectedPayEmployees(prev => ({
+                                      ...prev,
+                                      [rcpt.employee.id]: e.target.checked
+                                    }));
+                                  }}
+                                />
+                              </td>
+                              <td className="px-4 py-4 border-r border-zinc-200 font-mono text-zinc-400">#{String(rcpt.employee.id).padStart(3, '0')}</td>
+                              <td className="px-4 py-4 border-r border-zinc-200 font-black text-[#003366] uppercase">{rcpt.employee.name}</td>
+                              <td className="px-4 py-4 border-r border-zinc-200 uppercase text-zinc-500 font-bold">{rcpt.employee.role}</td>
+                              <td className="px-4 py-4 border-r border-zinc-200 text-right font-mono font-bold">{formatCurrency(rcpt.employee.salary)}</td>
+                              <td className="px-4 py-4 border-r border-zinc-200 text-right font-mono text-red-500 font-bold">-{formatCurrency(totalDeducts)}</td>
+                              <td className="px-4 py-4 border-r border-zinc-200 text-right font-mono text-zinc-500">{formatCurrency(rcpt.calculations?.totalGross || rcpt.employee.salary)}</td>
+                              <td className="px-4 py-4 border-r border-zinc-200 text-right font-mono text-emerald-600 font-black">{formatCurrency(rcpt.calculations?.totalNet)}</td>
+                              <td className="px-4 py-4 border-r border-zinc-200 uppercase text-zinc-500 font-bold">{rcpt.employee.bank_name || 'BFA'}</td>
+                              <td className="px-4 py-4 font-mono text-xs">{rcpt.employee.iban || '---'}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {activeTab === 'transfer_order' && (() => {
+          const [printingOrder, setPrintingOrder] = useState<any | null>(null);
+
+          const handleEditOrder = (order: any) => {
+            // Take back to the pay_salary page and roll back receipts of this order of this month back to active status (not paid)
+            setProcessedReceipts(prev => prev.map(rcpt => {
+              if (order.employees.some((s: any) => String(s.id) === String(rcpt.employee.id)) && rcpt.period === order.month) {
+                return { ...rcpt, status: 'processed' };
+              }
+              return rcpt;
+            }));
+
+            // Pre-select these employees in pay_salary selection
+            const nextSelects: Record<string, boolean> = {};
+            order.employees.forEach((s: any) => {
+              nextSelects[s.id] = true;
+            });
+            setSelectedPayEmployees(nextSelects);
+            setSelectedPayCaixaId(order.caixaId);
+
+            // Delete order from list
+            setTransferOrders(prev => prev.filter(o => o.id !== order.id));
+            setActiveTab('pay_salary');
+            alert(`A Ordem ${order.id} foi reaberta. Pode corrigir as seleções e pagar novamente!`);
+          };
+
+          const handleDeleteOrder = (order: any) => {
+            if (confirm(`Tem certeza que deseja apagar a Ordem de Transferência ${order.id}?`)) {
+              setProcessedReceipts(prev => prev.map(rcpt => {
+                if (order.employees.some((s: any) => String(s.id) === String(rcpt.employee.id)) && rcpt.period === order.month) {
+                  return { ...rcpt, status: 'processed' };
+                }
+                return rcpt;
+              }));
+              setTransferOrders(prev => prev.filter(o => o.id !== order.id));
+              alert(`Ordem ${order.id} excluída com sucesso e os vencimentos correspondentes foram redefinidos para pendentes.`);
+            }
+          };
+
+          return (
+            <div className="space-y-6">
+              <div className="flex justify-between items-center bg-white p-6 border border-zinc-200 shadow-sm">
+                <div>
+                  <h3 className="text-lg font-black text-[#003366] uppercase tracking-wider">ORDEM DE TRANSFERÊNCIA BANCÁRIA</h3>
+                  <p className="text-xs text-zinc-400 font-bold uppercase mt-1">Controle operacional e emissão de lotes de pagamento</p>
+                </div>
+                <button 
+                  onClick={() => setActiveTab('pay_salary')}
+                  className="bg-[#003366] hover:bg-[#002244] text-white px-5 py-2 text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all shadow-md"
+                >
+                  <Plus size={14} /> Novo Pagamento
+                </button>
+              </div>
+
+              {transferOrders.length === 0 ? (
+                <div className="p-12 text-center text-zinc-400 font-bold uppercase tracking-widest bg-zinc-50 border border-zinc-200">
+                  Nenhuma ordem de transferência gerada ainda. Vá para a página "Pagar Salário" para processar liquidações!
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-6">
+                  <div className="bg-white border border-zinc-200 overflow-hidden shadow-sm shadow-[#000000]/5">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-[#1e293b] text-white text-[9px] uppercase tracking-widest font-black">
+                            <th className="px-6 py-4 border-r border-white/10">Nº ORDEM</th>
+                            <th className="px-6 py-4 border-r border-white/10 text-center">DATA</th>
+                            <th className="px-6 py-4 border-r border-white/10 text-center">MÊS DE REF.</th>
+                            <th className="px-6 py-4 border-r border-white/10">CAIXA UTILIZADO</th>
+                            <th className="px-6 py-4 border-r border-white/10 text-center">QUANTIDADE DE FUNCIONÁRIOS</th>
+                            <th className="px-6 py-4 border-r border-white/10 text-right">MONTANTE TOTAL</th>
+                            <th className="px-6 py-4 text-center">OPÇÕES</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-200">
+                          {transferOrders.map(order => (
+                            <tr key={order.id} className="hover:bg-zinc-50 text-[11px] font-medium text-zinc-700">
+                              <td className="px-6 py-4 border-r border-zinc-200 font-black text-[#003366]">{order.id}</td>
+                              <td className="px-6 py-4 border-r border-zinc-200 text-center font-mono font-bold">{new Date(order.date).toLocaleDateString('pt-AO')}</td>
+                              <td className="px-6 py-4 border-r border-zinc-200 text-center font-bold uppercase text-zinc-500">{order.month}</td>
+                              <td className="px-6 py-4 border-r border-zinc-200 font-bold uppercase text-zinc-600">{order.caixaName}</td>
+                              <td className="px-6 py-4 border-r border-zinc-200 text-center font-black text-zinc-600">{order.employeeCount} colabs.</td>
+                              <td className="px-6 py-4 border-r border-zinc-200 text-right font-mono text-emerald-600 font-black">{formatCurrency(order.totalPaid)}</td>
+                              <td className="px-6 py-4 text-center">
+                                <div className="flex items-center justify-center gap-2">
+                                  <button 
+                                    onClick={() => setPrintingOrder(order)}
+                                    className="bg-emerald-600 text-white px-3 py-1.5 text-[9px] font-black uppercase tracking-widest hover:bg-emerald-700 flex items-center gap-1"
+                                  >
+                                    <Printer size={10} /> Imprimir
+                                  </button>
+                                  <button 
+                                    onClick={() => handleEditOrder(order)}
+                                    className="bg-sky-600 text-white px-3 py-1.5 text-[9px] font-black uppercase tracking-widest hover:bg-sky-700 flex items-center gap-1"
+                                  >
+                                    <Edit size={10} /> Editar
+                                  </button>
+                                  <button 
+                                    onClick={() => handleDeleteOrder(order)}
+                                    className="bg-red-600 text-white px-3 py-1.5 text-[9px] font-black uppercase tracking-widest hover:bg-red-700 flex items-center gap-1"
+                                  >
+                                    <Trash2 size={10} /> Apagar
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {printingOrder && (
+                <div className="fixed inset-0 z-[300] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="bg-white border border-zinc-200 w-full max-w-4xl shadow-2xl overflow-hidden my-8"
+                  >
+                    <div className="bg-[#003366] text-white p-6 flex justify-between items-center no-print">
+                      <h4 className="font-black uppercase tracking-widest flex items-center gap-2">
+                        <Printer size={18} /> IMPRIMIR ORDEM DE TRANSFERÊNCIA - {printingOrder.id}
+                      </h4>
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => window.print()}
+                          className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-1"
+                        >
+                          <Printer size={12} /> Confirmar Impressão
+                        </button>
+                        <button 
+                          onClick={() => setPrintingOrder(null)} 
+                          className="hover:bg-white/10 p-2 text-white"
+                        >
+                          <X size={20} />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="p-12 space-y-10 printable-area text-zinc-800 font-sans" id="print-order-content">
+                      <div className="flex justify-between items-start border-b border-zinc-100 pb-6">
+                        <div>
+                          <h2 className="text-xl font-black text-[#003366] uppercase tracking-[0.1em]">ORDEM DE TRANSFERÊNCIA COLECTIVA BANCÁRIA</h2>
+                          <div className="text-xs text-zinc-500 font-bold mt-1 uppercase tracking-widest font-sans">Controle de Lote Salarial • Período: {printingOrder.month}</div>
+                        </div>
+                        <div className="text-right font-sans">
+                          <div className="text-xs text-zinc-400 font-bold uppercase font-sans">Nº de Controle</div>
+                          <div className="text-xl font-black text-[#F27D26]">{printingOrder.id}</div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-12 text-xs font-sans">
+                        <div className="space-y-3">
+                          <h4 className="font-black text-[#003366] uppercase tracking-wider border-b border-zinc-100 pb-1">ENTIDADE EMISSORA</h4>
+                          <div>
+                            <p className="font-extrabold uppercase text-[#003366] text-sm">GRUPO TECNOSYS LTD</p>
+                            <p className="text-zinc-500 font-bold">NIF: 5000123456</p>
+                            <p className="text-zinc-500 font-bold">Origem de Conta: AO06 0000 0000 1234 5678 9012 3</p>
+                            <p className="text-zinc-500 font-bold">Banco: BANCO DE FOMENTO ANGOLA (BFA)</p>
+                          </div>
+                        </div>
+                        <div className="space-y-3">
+                          <h4 className="font-black text-[#003366] uppercase tracking-wider border-b border-zinc-100 pb-1">INFORME DE COBERTURA</h4>
+                          <div>
+                            <p className="text-zinc-500 font-bold">Data de Emissão: {new Date(printingOrder.date).toLocaleDateString('pt-AO')}</p>
+                            <p className="text-zinc-500 font-bold">Caixa de Pagamento: {printingOrder.caixaName.toUpperCase()}</p>
+                            <p className="text-zinc-500 font-bold">Total de Funcionários Beneficiários: {printingOrder.employeeCount}</p>
+                            <p className="text-sm font-black text-emerald-600 font-mono mt-1">Valor Total Pago: {formatCurrency(printingOrder.totalPaid)}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3 font-sans">
+                        <h4 className="font-black text-[#003366] uppercase tracking-wider text-[10px] border-b-2 border-[#003366] pb-1">RELAÇÃO DE TRANSFERÊNCIAS DETALHADAS</h4>
+                        <div className="overflow-hidden border border-zinc-200">
+                          <table className="w-full text-[10px] text-left border-collapse">
+                            <thead>
+                              <tr className="bg-zinc-100 uppercase tracking-wider text-zinc-600 font-black border-b border-zinc-200">
+                                <th className="px-3 py-2 border-r border-zinc-200 w-10 text-center">ID</th>
+                                <th className="px-3 py-2 border-r border-zinc-200">COLABORADOR</th>
+                                <th className="px-3 py-2 border-r border-zinc-200">CARGO / FUNÇÃO</th>
+                                <th className="px-3 py-2 border-r border-zinc-200 text-right">BASE SALÁRIO</th>
+                                <th className="px-3 py-2 border-r border-zinc-200 text-right font-mono">DESC. IRT</th>
+                                <th className="px-3 py-2 border-r border-zinc-200 text-right font-mono">DESC. INSS</th>
+                                <th className="px-3 py-2 border-r border-zinc-200">BANCO DESTINO</th>
+                                <th className="px-3 py-2 border-r border-zinc-200">IBAN DESTINATÁRIO</th>
+                                <th className="px-3 py-2 text-right">VALOR PAGO</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-zinc-200">
+                              {printingOrder.employees.map((emp: any) => (
+                                <tr key={emp.id} className="font-bold text-zinc-700 font-sans">
+                                  <td className="px-3 py-2 border-r border-zinc-200 font-mono text-center text-zinc-400">#{emp.id}</td>
+                                  <td className="px-3 py-2 border-r border-zinc-200 font-extrabold uppercase text-[#003366]">{emp.name}</td>
+                                  <td className="px-3 py-2 border-r border-zinc-200 uppercase text-zinc-500 text-[9px]">{emp.role}</td>
+                                  <td className="px-3 py-2 border-r border-zinc-200 text-right font-mono">{formatCurrency(emp.salary)}</td>
+                                  <td className="px-3 py-2 border-r border-zinc-200 text-right font-mono text-red-500">-{formatCurrency(emp.irt)}</td>
+                                  <td className="px-3 py-2 border-r border-zinc-200 text-right font-mono text-red-500">-{formatCurrency(emp.inss)}</td>
+                                  <td className="px-3 py-2 border-r border-zinc-200 uppercase text-zinc-500 text-[9px]">{emp.bankName || 'BFA'}</td>
+                                  <td className="px-3 py-2 border-r border-zinc-200 font-mono text-[9px]">{emp.iban || '---'}</td>
+                                  <td className="px-3 py-2 text-right font-mono text-emerald-600 font-black">{formatCurrency(emp.net)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                            <tfoot>
+                              <tr className="bg-zinc-50 font-black text-[#003366] border-t border-zinc-300">
+                                <td colSpan={8} className="px-3 py-3 border-r border-zinc-200 text-right uppercase tracking-widest text-[9px]">
+                                  SOMA TOTAL INTEGRAL:
+                                </td>
+                                <td className="px-3 py-3 text-right font-mono text-xs bg-emerald-50 text-emerald-700">
+                                  {formatCurrency(printingOrder.totalPaid)}
+                                </td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+                      </div>
+
+                      <div className="text-xs text-zinc-600 leading-relaxed font-semibold italic font-sans pb-4">
+                        Instruímos o banco creditante a transferir imediatamente os montantes acima indicados das nossas contas para as contas especificadas dos respectivos beneficiários.
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-24 pt-16 border-t border-zinc-100">
+                        <div className="text-center space-y-4 font-sans">
+                          <div className="border-t border-zinc-900 pt-4">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-zinc-800">Assinatura Autorizada</p>
+                            <p className="text-[8px] font-bold text-zinc-400 uppercase">Administração / Direção Geral</p>
+                          </div>
+                        </div>
+                        <div className="text-center space-y-4 font-sans">
+                          <div className="border-t border-zinc-900 pt-4">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-zinc-800 font-bold font-sans">Responsável de RH</p>
+                            <p className="text-[8px] font-bold text-zinc-400 uppercase">GRUPO TECNOSYS</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {activeTab === 'maps' && (
           <MapaSalarios 

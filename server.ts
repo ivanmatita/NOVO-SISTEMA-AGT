@@ -2081,8 +2081,8 @@ app.post("/api/exec-sql", express.json(), async (req, res) => {
     res.json(newEmp);
   });
   app.put("/api/employees/:id", (req, res) => {
-    const id = Number(req.params.id);
-    const index = employees.findIndex(e => e.id === id);
+    const id = req.params.id;
+    const index = employees.findIndex(e => String(e.id) === String(id));
     if (index !== -1) {
       employees[index] = { ...employees[index], ...req.body };
       saveData();
@@ -2092,8 +2092,8 @@ app.post("/api/exec-sql", express.json(), async (req, res) => {
     }
   });
   app.delete("/api/employees/:id", (req, res) => {
-    const id = Number(req.params.id);
-    const index = employees.findIndex(e => e.id === id);
+    const id = req.params.id;
+    const index = employees.findIndex(e => String(e.id) === String(id));
     if (index !== -1) {
       employees.splice(index, 1);
       saveData();
@@ -2220,8 +2220,8 @@ app.post("/api/exec-sql", express.json(), async (req, res) => {
 
   // Handle employee dismissal with automatic labor termination registration
   app.post("/api/employees/dismiss/:id", (req, res) => {
-    const id = Number(req.params.id);
-    const empIdx = employees.findIndex(e => e.id === id);
+    const id = req.params.id;
+    const empIdx = employees.findIndex(e => String(e.id) === String(id));
     if (empIdx === -1) {
       return res.status(404).json({ error: "Funcionário não encontrado" });
     }
@@ -2256,8 +2256,8 @@ app.post("/api/exec-sql", express.json(), async (req, res) => {
 
   // Handle employee readmission
   app.post("/api/employees/readmit/:id", (req, res) => {
-    const id = Number(req.params.id);
-    const empIdx = employees.findIndex(e => e.id === id);
+    const id = req.params.id;
+    const empIdx = employees.findIndex(e => String(e.id) === String(id));
     if (empIdx === -1) {
       return res.status(404).json({ error: "Funcionário não encontrado" });
     }
@@ -2271,7 +2271,7 @@ app.post("/api/exec-sql", express.json(), async (req, res) => {
     emp.readmitted_at = date || new Date().toISOString().split('T')[0];
 
     // Remove from labor terminations
-    const ltIndex = laborTerminations.findIndex(lt => lt.employee_id === id);
+    const ltIndex = laborTerminations.findIndex(lt => String(lt.employee_id) === String(id));
     if (ltIndex !== -1) {
       laborTerminations.splice(ltIndex, 1);
     }

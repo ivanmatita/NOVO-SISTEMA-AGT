@@ -1,6 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
 
 const rawUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim();
+if (!import.meta.env.VITE_SUPABASE_URL) {
+  console.error("VITE_SUPABASE_URL não encontrada");
+}
+if (!import.meta.env.VITE_SUPABASE_ANON_KEY) {
+  console.error("VITE_SUPABASE_ANON_KEY não encontrada");
+}
 // Robust cleaning: remove /rest/v1, /auth/v1, and trailing slashes
 const supabaseUrl = rawUrl
   .replace(/\/rest\/v1\/?$/, "")

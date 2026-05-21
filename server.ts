@@ -141,14 +141,8 @@ async function syncFromSupabase() {
       .download('db.json');
 
     if (error) {
-      // Handle missing bucket or file gracefully
-      const isNotFound = error.message?.toLowerCase().includes('not found') || 
-                        (error as any).status === 404 ||
-                        (error as any).code === 'PGRST116';
-
-      if (isNotFound) {
-         console.log("[Supabase Persistence] Repositório de dados ainda não inicializado na nuvem. Usando estado local.");
-         isInitialLoadComplete = true; // Mark as done to stop retrying
+      if (error.message.includes('Object not found') || error.message.includes('bucket not found')) {
+         console.log("[Supabase Persistence] db.json não encontrado. Usando estado inicial local.");
          return;
       }
       throw error;
@@ -194,48 +188,51 @@ async function syncFromSupabase() {
     if (json.accountingMovements) accountingMovements = json.accountingMovements;
     if (json.pgcAccounts) pgcAccounts = json.pgcAccounts;
 
-    console.log("[Supabase Persistence] Dados sincronizados com sucesso da nuvem.");
+    console.log("[Supabase Persistence] Dados sincronizados com sucesso.");
     isInitialLoadComplete = true;
-  } catch (err: any) {
-    console.error("[Supabase Persistence] Erro ao sincronizar:", err.message || err);
-    // Even on error, we mark load as "complete" to avoid blocking API requests with persistent retries
-    isInitialLoadComplete = true;
+  } catch (err) {
+    console.error("[Supabase Persistence] Erro ao sincronizar:", err);
   }
 }
 
-const saveData = () => {
-    // Fire and forget for async persistence without breaking existing sync routes
-    const data = {
-        clients, products, issuedDocuments, workSites, workSiteMovements,
-        employees, fiscalSeries, caixas, caixaMovements, warehouses,
-        systemUsers, archives, fleetVehicles, projectTasks, companies,
-        stockMovements, securityOccurrences, securityArmory, securityRoster,
-        transactions, receipts, suppliers, purchases, professions,
-        attendance, absences, laborTerminations, contracts,
-        costCenters, posPoints, sessions, posSales,
-        accountingJournals, accountingMovements, pgcAccounts
-    };
-    
-    // 1. Local attempt
-    try {
-        fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
-    } catch (e) {}
+let pendingSave: Promise<any> = Promise.resolve();
 
-    // 2. Supabase Upload
-    if (supabaseAdmin) {
-        supabaseAdmin.storage
-            .from('system-data')
-            .upload('db.json', JSON.stringify(data, null, 2), {
-                upsert: true,
-                contentType: 'application/json'
-            })
-            .then(({ error }) => {
+const saveData = () => {
+    // Chain the save operation to guarantee serialization and that we can wait on the latest operation
+    pendingSave = pendingSave.then(async () => {
+        const data = {
+            clients, products, issuedDocuments, workSites, workSiteMovements,
+            employees, fiscalSeries, caixas, caixaMovements, warehouses,
+            systemUsers, archives, fleetVehicles, projectTasks, companies,
+            stockMovements, securityOccurrences, securityArmory, securityRoster,
+            transactions, receipts, suppliers, purchases, professions,
+            attendance, absences, laborTerminations, contracts,
+            costCenters, posPoints, sessions, posSales,
+            accountingJournals, accountingMovements, pgcAccounts
+        };
+        
+        // 1. Local attempt
+        try {
+            fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+        } catch (e) {}
+
+        // 2. Supabase Upload
+        if (supabaseAdmin) {
+            try {
+                const { error } = await supabaseAdmin.storage
+                    .from('system-data')
+                    .upload('db.json', JSON.stringify(data, null, 2), {
+                        upsert: true,
+                        contentType: 'application/json'
+                    });
                 if (error && !error.message.includes('bucket not found')) {
                     console.error("Cloud Save Error:", error.message);
                 }
-            })
-            .catch(err => console.error("Cloud Save Exception:", err));
-    }
+            } catch (err: any) {
+                console.error("Cloud Save Exception:", err.message || err);
+            }
+        }
+    });
 };
 
 const app = express();
@@ -246,6 +243,38 @@ app.use(async (req, res, next) => {
   if (!isInitialLoadComplete && supabaseAdmin && req.path.startsWith('/api')) {
     await syncFromSupabase();
   }
+  next();
+});
+
+// Middleware to guarantee that all preceding and current saveData operations are fully 
+// persisted before returning the HTTP response. Essential to prevent Vercel Serverless Function freezes.
+app.use((req, res, next) => {
+  const originalJson = res.json;
+  const originalSend = res.send;
+  let hasAwaited = false;
+
+  res.json = function (obj) {
+    if (hasAwaited) {
+      return originalJson.call(this, obj);
+    }
+    hasAwaited = true;
+    pendingSave.finally(() => {
+      originalJson.call(this, obj);
+    });
+    return this;
+  };
+
+  res.send = function (body) {
+    if (hasAwaited) {
+      return originalSend.call(this, body);
+    }
+    hasAwaited = true;
+    pendingSave.finally(() => {
+      originalSend.call(this, body);
+    });
+    return this;
+  };
+
   next();
 });
 

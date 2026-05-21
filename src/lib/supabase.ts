@@ -38,8 +38,13 @@ export async function checkSupabaseHealth() {
   try {
     const { data, error } = await supabase.from('_health').select('*').limit(1);
     if (error) {
-      // If error is 404 (table not found), it still means Supabase is reachable
-      if (error.code === '42P01' || error.message?.includes('does not exist')) {
+      // If error is table not found, it still means Supabase is reachable and keys are valid
+      if (
+        error.code === '42P01' || 
+        error.code === 'PGRST205' || 
+        error.message?.includes('does not exist') ||
+        error.message?.includes('_health')
+      ) {
         return { status: 'ok', message: 'Conectado ao Supabase (API respondendo)', code: 'READY' };
       }
       return { status: 'warning', message: `Erro de conexão: ${error.message}`, code: error.code };

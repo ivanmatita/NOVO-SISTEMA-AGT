@@ -1041,26 +1041,92 @@ app.post("/api/exec-sql", express.json(), async (req, res) => {
   });
 
   // Receipts
-  app.post("/api/receipts", (req, res) => {
-    const { invoice_id, amount, payment_method, date, cash_box } = req.body;
-    const invoice = issuedDocuments.find(d => d.id === Number(invoice_id));
+  app.post("/api/receipts", async (req, res) => {
+    const { invoice_id, amount, payment_method, date, cash_box, empresa_id } = req.body;
+    let invoice = issuedDocuments.find(d => d.id === Number(invoice_id));
     
+    // Fallback search in database in case of Vercel memory sweep
+    if (!invoice && supabaseAdmin) {
+      const { data } = await supabaseAdmin.from('documentos_emitidos').select('*').eq('id', invoice_id).single();
+      if (data) {
+        invoice = {
+          ...data,
+          contravalor: Number(data.total || 0),
+          date: data.data_emissao || data.created_at,
+          client_name: data.cliente_nome || data.client_name,
+          invoice_number: data.numero_documento || data.invoice_number,
+          estado_documento: (data.estado || 'ativo').toLowerCase(),
+          document_type: data.tipo_documento || data.document_type
+        };
+      }
+    }
+
     if (invoice) {
       if (!invoice.paid_amount) invoice.paid_amount = 0;
       invoice.paid_amount += Number(amount);
       
       const total = invoice.total || invoice.counter_value || 0;
+      let p_status = 'partial';
+      let statusStr = 'parcial';
       
       if (invoice.paid_amount >= total) {
+        p_status = 'paid';
+        statusStr = 'pago';
         invoice.payment_status = 'paid';
         invoice.status = 'pago';
-        invoice.estado_documento = 'ativo'; // Still active but paid
+        invoice.estado_documento = 'ativo';
       } else if (invoice.paid_amount > 0) {
         invoice.payment_status = 'partial';
         invoice.status = 'parcial';
       }
 
-      // Record receipt
+      const activeCompanyId = empresa_id || invoice.empresa_id || '11111111-1111-1111-1111-111111111111';
+
+      // 1. Update the parent invoice in Supabase
+      if (supabaseAdmin) {
+        await supabaseAdmin
+          .from('documentos_emitidos')
+          .update({ 
+            paid_amount: invoice.paid_amount,
+            payment_status: p_status,
+            status: statusStr
+          })
+          .eq('id', invoice_id);
+      }
+
+      // 2. Generate and Insert the 'Recibo' document into documentos_emitidos so it appears in the documents list
+      const receiptNum = `RC PRD/${Date.now().toString().slice(-6)}`;
+      const newReceiptDoc = {
+        empresa_id: activeCompanyId,
+        tipo_documento: 'Recibo',
+        document_type: 'Recibo',
+        numero_documento: receiptNum,
+        invoice_number: receiptNum,
+        cliente_id: invoice.cliente_id || invoice.client_id || null,
+        cliente_nome: invoice.cliente_nome || invoice.client_name || 'Desconhecido',
+        total: Number(amount),
+        counter_value: Number(amount),
+        data_emissao: date || new Date().toISOString(),
+        date: date || new Date().toISOString(),
+        is_certified: true, // receipts are certified
+        status: 'emitido',
+        payment_method: payment_method,
+        cash_box: cash_box,
+        items: [
+          {
+            description: `Liquidação de Factura Ref. ${invoice.numero_documento || invoice.invoice_number}`,
+            quantity: 1,
+            price: Number(amount),
+            total: Number(amount)
+          }
+        ]
+      };
+
+      if (supabaseAdmin) {
+        await supabaseAdmin.from('documentos_emitidos').insert([newReceiptDoc]);
+      }
+
+      // Record receipt in memory list
       const newReceipt = { id: generateId(), invoice_id: Number(invoice_id), amount: Number(amount), payment_method, date: date || new Date().toISOString(), cash_box, status: 'ativo' };
       receipts.push(newReceipt);
 
@@ -1095,6 +1161,26 @@ app.post("/api/exec-sql", express.json(), async (req, res) => {
         if (targetCaixa) {
           targetCaixa.currentBalance = (targetCaixa.currentBalance || 0) + Number(amount);
         }
+
+        // Direct write to caixas and caixa_movimentacoes on Supabase
+        if (supabaseAdmin) {
+          const { data: dbCaixas } = await supabaseAdmin.from('caixas').select('*').eq('empresa_id', activeCompanyId);
+          const matchedDbCaixa = dbCaixas?.find(c => String(c.id) === String(cash_box) || c.nome_caixa === cash_box);
+          if (matchedDbCaixa) {
+            const newBal = Number(matchedDbCaixa.current_balance || 0) + Number(amount);
+            await supabaseAdmin.from('caixas').update({ current_balance: newBal }).eq('id', matchedDbCaixa.id);
+            
+            await supabaseAdmin.from('caixa_movimentacoes').insert([{
+              empresa_id: activeCompanyId,
+              caixa_id: matchedDbCaixa.id,
+              type: 'entrada',
+              amount: Number(amount),
+              description: `Recebimento Ref. ${invoice.invoice_number}`,
+              date: date || new Date().toISOString(),
+              moeda: invoice.moeda || 'AOA'
+            }]);
+          }
+        }
       }
 
       // Record Work Site Movement if applicable
@@ -1113,64 +1199,10 @@ app.post("/api/exec-sql", express.json(), async (req, res) => {
         });
       }
 
-      // Also create a "Recibo" document to show in the list
-      const year = new Date().getFullYear();
-      const reciboCounter = issuedDocuments.filter(d => 
-        (d.document_type === 'Recibo' || d.tipo_documento === 'Recibo') && 
-        String(d.empresa_id) === String(invoice.empresa_id)
-      ).length + 1;
-      const reciboNumber = `Recibo ${year}/${reciboCounter}`;
-
-      const reciboDoc = {
-        id: generateId(),
-        document_type: 'Recibo',
-        tipo_documento: 'Recibo',
-        invoice_number: reciboNumber,
-        numero_documento: reciboNumber,
-        client_name: invoice.client_name,
-        client_nif: invoice.client_nif,
-        client_address: invoice.client_address,
-        date: date || new Date().toISOString(),
-        data_emissao: date || new Date().toISOString(),
-        total: Number(amount),
-        counter_value: Number(amount),
-        moeda: invoice.moeda || 'Kwanza',
-        payment_method: payment_method,
-        cash_box: cash_box,
-        is_certified: true, // Auto-certified as it is a receipt of payment
-        hash: Math.random().toString(36).substring(2, 15),
-        reference_document: invoice.invoice_number,
-        items: [{
-           description: `Liquidante da Fatura ${invoice.invoice_number}`,
-           quantity: 1,
-           unit_price: Number(amount),
-           total: Number(amount),
-           tax_rate: 0
-        }]
-      };
-      issuedDocuments.push(reciboDoc);
-
-      // Record caixa movement if applicable
-      if (cash_box) {
-        caixaMovements.push({
-          id: generateStrId(),
-          caixaId: cash_box,
-          type: 'entrada',
-          amount: Number(amount),
-          moeda: invoice.moeda || 'Kwanza',
-          description: `Recebimento Ref: ${invoice.invoice_number}`,
-          date: new Date().toISOString()
-        });
-        const targetCaixa = caixas.find(c => String(c.id) === String(cash_box) || c.name === cash_box);
-        if (targetCaixa) {
-          targetCaixa.currentBalance = (targetCaixa.currentBalance || 0) + Number(amount);
-        }
-      }
-      
       saveData();
-      res.json({ success: true, invoice, recibo: reciboDoc });
+      res.json({ success: true, receipt: newReceipt });
     } else {
-      res.status(404).json({ error: "Invoice not found" });
+      res.status(404).json({ error: "Invoice not found or invalid." });
     }
   });
 

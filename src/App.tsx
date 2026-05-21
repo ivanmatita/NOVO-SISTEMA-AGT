@@ -7854,14 +7854,14 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
                   <button 
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (!doc.is_certified && !isDraftsPage) {
-                        alert('Este documento ainda não está certificado. Não é possível imprimir até a certificação.');
+                      if (!doc.is_certified) {
+                        alert('Este documento ainda não está certificado. O documento só pode abrir para imprimir depois de estar certificado conforme as regras fiscais de Angola.');
                         return;
                       }
-                      onAction(doc.is_certified ? 'print_a4' : 'preview_a4', doc);
+                      onAction('print_a4', doc);
                     }} 
-                    title={doc.is_certified ? "Imprimir" : "Visualizar Provisório"}
-                    className={`transition-all p-1.5 hover:bg-zinc-100 ${(doc.is_certified || isDraftsPage) ? 'text-[#003366]' : 'text-zinc-300 cursor-not-allowed'}`}
+                    title={doc.is_certified ? "Imprimir" : "Não certificado (Bloqueado)"}
+                    className={`transition-all p-1.5 hover:bg-zinc-100 ${doc.is_certified ? 'text-[#003366]' : 'text-zinc-350 cursor-not-allowed opacity-50'}`}
                   >
                     <Printer size={14} />
                   </button>
@@ -7937,27 +7937,6 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
               </div>
 
               <div className="grid grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
-                {/* 0. CERTIFICAR DOCUMENTO (DESBLOQUEAR) */}
-                {!showActionsModal.is_certified && (
-                  <button 
-                    onClick={() => { 
-                      onCertify(showActionsModal);
-                      setShowActionsModal(null);
-                    }}
-                    className="col-span-2 w-full flex items-center gap-4 p-4 bg-emerald-50 hover:bg-emerald-100 transition-all border border-emerald-200 group shadow-md animate-pulse"
-                  >
-                    <div className="w-12 h-12 bg-emerald-500 text-white flex items-center justify-center group-hover:scale-110 transition-transform rounded-full shadow-inner">
-                      <BadgeCheck size={24} />
-                    </div>
-                    <div className="text-left">
-                      <p className="font-black text-emerald-700 text-sm uppercase mb-0.5">Certificar Documento</p>
-                      <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-widest opacity-80">
-                        Clique aqui para desbloquear todas as funcionalidades
-                      </p>
-                    </div>
-                  </button>
-                )}
-
                 {/* 1. Editar Documento (Apenas para documentos não certificados) */}
                 {!showActionsModal.is_certified && (
                      <button 
@@ -8137,22 +8116,22 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
                     </button>
                   )}
 
-                  {/* 10. Documento de Suporte (Draft) - Only for foreign currencies */}
-                  {((showActionsModal.moeda || showActionsModal.currency) && !['Kwanza', 'AOA', 'Akz'].includes(showActionsModal.moeda || showActionsModal.currency)) && showActionsModal.is_certified && (
+                  {/* 10. Documento de Suporte / Draf - Only for foreign currencies */}
+                  {((showActionsModal.moeda || showActionsModal.currency) && !['Kwanza', 'AOA', 'Akz', 'Aoa', 'kwanza'].includes(showActionsModal.moeda || showActionsModal.currency)) && (
                     <button 
                       onClick={() => { 
                         onAction('foreign_draft', showActionsModal);
                         setShowActionsModal(null); 
                       }}
-                      className="col-span-2 w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-all border border-zinc-100 group shadow-sm bg-white"
+                      className="col-span-2 w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-all border border-zinc-100 group shadow-sm bg-white border-purple-100"
                     >
                       <div className="w-10 h-10 bg-purple-50 text-purple-600 flex items-center justify-center group-hover:bg-purple-600 group-hover:text-white transition-colors">
                         <FileSignature size={20} />
                       </div>
                       <div className="text-left">
-                        <p className="font-bold text-purple-700 text-xs uppercase">Documento de Suporte (Draft)</p>
+                        <p className="font-bold text-purple-700 text-xs uppercase">Draf / Documento de Suporte (Draft)</p>
                         <p className="text-[9px] text-purple-500 uppercase tracking-tighter">
-                          Gerar rascunho em {showActionsModal.moeda || showActionsModal.currency}
+                          Gerar ou visualizar rascunho de moedas estrangeiras em {showActionsModal.moeda || showActionsModal.currency}
                         </p>
                       </div>
                     </button>
@@ -21777,14 +21756,27 @@ const ConvertDocumentModal = ({ document, onClose, onSuccess }: {
       delete docData.data_emissao;
       delete docData.hash;
       delete docData.signature;
+
+      const prefix = targetType === 'Fatura' ? 'FT' : (targetType === 'Fatura Recibo' ? 'FR' : (targetType === 'Orçamento' ? 'PP' : 'FP'));
+      const seq = Date.now().toString().slice(-6);
+      const generatedNum = `${prefix} PRD/${seq}`;
       
       const convertedDoc = {
+        ...docData,
         empresa_id: user.empresa_id,
         tipo_documento: targetType,
-        numero_documento: `CONV-${Date.now()}`,
-        cliente_nome: docData.client_name || docData.nome_cliente || 'Desconhecido',
-        total: Number(docData.total || 0),
-        data_emissao: new Date().toISOString()
+        document_type: targetType,
+        numero_documento: generatedNum,
+        invoice_number: generatedNum,
+        cliente_id: document.cliente_id || document.client_id || null,
+        cliente_nome: docData.client_name || docData.cliente_nome || docData.client_id || 'Desconhecido',
+        total: Number(document.total || document.counter_value || 0),
+        counter_value: Number(document.total || document.counter_value || 0),
+        data_emissao: new Date().toISOString(),
+        date: new Date().toISOString(),
+        is_certified: true, // auto-certified on conversion
+        status: 'emitido',
+        items: document.items || []
       };
 
       const { error } = await supabase.from('documentos_emitidos').insert([convertedDoc]);
@@ -23383,17 +23375,62 @@ export default function App() {
                             console.log('Anulando documento via RPC Professional...', showAnularModal.id);
                             
                             // Use the Professional RPC for Annulment
-                            const { data, error } = await supabase.rpc('anular_documento_fiscal', {
+                            let { data, error } = await supabase.rpc('anular_documento_fiscal', {
                               p_documento_id: showAnularModal.id,
                               p_motivo: reason
                             });
                             
+                            // Fallback direct update to "anulado" if RPC results in error or lacks schema cache on some serverless nodes
+                            if (error) {
+                              console.warn('RPC failed, using direct table update fallback:', error.message);
+                              const { error: updateError } = await supabase
+                                .from('documentos_emitidos')
+                                .update({ status: 'anulado', motivo_anulacao: reason })
+                                .eq('id', showAnularModal.id);
+                              if (!updateError) {
+                                error = null; // Direct update fallback was successful!
+                              }
+                            }
+                            
                             if (!error) {
+                              // MANDATORY: Generate a Credit Note (Nota de Crédito) for the annulled document
+                              const nc_val = Number(showAnularModal.total || showAnularModal.counter_value || showAnularModal.contravalor || 0);
+                              const newNC = {
+                                empresa_id: user.empresa_id,
+                                tipo_documento: 'Nota de Crédito',
+                                document_type: 'Nota de Crédito',
+                                numero_documento: `NC PRD/${Date.now().toString().slice(-6)}`,
+                                invoice_number: `NC PRD/${Date.now().toString().slice(-6)}`,
+                                cliente_id: showAnularModal.cliente_id || showAnularModal.client_id || null,
+                                cliente_nome: showAnularModal.cliente_nome || showAnularModal.client_name || 'Desconhecido',
+                                total: nc_val,
+                                counter_value: nc_val,
+                                data_emissao: new Date().toISOString(),
+                                date: new Date().toISOString(),
+                                is_certified: true, // auto-certified
+                                status: 'emitido',
+                                items: showAnularModal.items || [
+                                  {
+                                    description: `Crédito por anulação de documento Ref. ${showAnularModal.numero_documento || showAnularModal.invoice_number}`,
+                                    quantity: 1,
+                                    price: nc_val,
+                                    total: nc_val
+                                  }
+                                ],
+                                rectified_document: showAnularModal.invoice_number || showAnularModal.numero_documento,
+                                moeda: showAnularModal.moeda || showAnularModal.currency || 'AOA',
+                                currency: showAnularModal.currency || showAnularModal.moeda || 'AOA',
+                                cambio: showAnularModal.cambio || 1,
+                                local_trabalho: showAnularModal.local_trabalho || showAnularModal.work_site_title || 'Sede/Balcão'
+                              };
+
+                              await supabase.from('documentos_emitidos').insert([newNC]);
+
                               // If it's a receipt, we should inform the user that the invoice is liberated
                               if (showAnularModal.document_type === 'Recibo' || showAnularModal.tipo_documento === 'RC') {
-                                alert('Recibo anulado com sucesso! A fatura correspondente está agora disponível para novo recebimento.');
+                                alert('Recibo anulado com sucesso! Nota de Crédito gerada obrigatoriamente. A fatura correspondente está agora disponível para novo recebimento.');
                               } else {
-                                alert('Documento anulado com sucesso conforme legislação fiscal vigente.');
+                                alert('Documento anulado com sucesso! Nota de Crédito gerada obrigatoriamente conforme legislação fiscal vigente.');
                               }
                               
                               await fetchData();

@@ -2257,18 +2257,27 @@ app.post("/api/exec-sql", express.json(), async (req, res) => {
   // Handle employee readmission
   app.post("/api/employees/readmit/:id", (req, res) => {
     const id = req.params.id;
-    const empIdx = employees.findIndex(e => String(e.id) === String(id));
-    if (empIdx === -1) {
-      return res.status(404).json({ error: "Funcionário não encontrado" });
-    }
-    const emp = employees[empIdx];
+    let emp = employees.find(e => String(e.id) === String(id));
     const { date } = req.body;
 
-    // Update employee status and unblock them
-    emp.status = 'active';
-    emp.dismissed_at = undefined;
-    emp.is_blocked = false;
-    emp.readmitted_at = date || new Date().toISOString().split('T')[0];
+    if (!emp) {
+      // Create a local placeholder to maintain status sync
+      emp = {
+        id: isNaN(Number(id)) ? id : Number(id),
+        name: req.body.name || `Colaborador #${id}`,
+        role: req.body.role || 'Colaborador',
+        status: 'active',
+        is_blocked: false,
+        readmitted_at: date || new Date().toISOString().split('T')[0]
+      };
+      employees.push(emp);
+    } else {
+      // Update employee status and unblock them
+      emp.status = 'active';
+      emp.dismissed_at = undefined;
+      emp.is_blocked = false;
+      emp.readmitted_at = date || new Date().toISOString().split('T')[0];
+    }
 
     // Remove from labor terminations
     const ltIndex = laborTerminations.findIndex(lt => String(lt.employee_id) === String(id));
@@ -2365,11 +2374,9 @@ app.post("/api/exec-sql", express.json(), async (req, res) => {
     app.get('*', (req, res) => res.sendFile(path.join(distPath, 'index.html')));
   }
 
-if (process.env.NODE_ENV !== "production") {
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`ERP Server (Offline Mode) running on port ${PORT}`);
+    console.log(`ERP Server running on port ${PORT}`);
   });
-}
 }
 startServer();
 

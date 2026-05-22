@@ -238,6 +238,10 @@ export interface Employee {
   dom_hours?: string;
   complemento_salarial?: number;
   local_trabalho_id?: string;
+  naturalness?: string;
+  nationality?: string;
+  subsidy_food?: number;
+  subsidy_transport?: number;
   solicitante_admissao?: string;
   motivo_admissao?: string;
   reparticao_fiscal?: string;

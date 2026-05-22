@@ -68,75 +68,84 @@ const ContractModal = ({ employee, contract, companyData, onClose, onSuccess }: 
     const companyAddress = companyData?.address || '_________________________________';
     const companyNif = companyData?.nif || '_________________________________';
 
-    const formattedSalary = salary ? Number(salary).toLocaleString('pt-AO', { style: 'currency', currency: 'AOA' }) : '__________________';
-    const displayStartDate = startDate && !isNaN(Date.parse(startDate)) ? new Date(startDate).toLocaleDateString('pt-AO') : '___/___/______';
-    const displayExperimental = experimentalDays !== '' ? experimentalDays : '____';
-    const displayNotice = noticeDays !== '' ? noticeDays : '____';
+    const formattedSalary = salary ? Number(salary).toLocaleString('pt-AO', { minimumFractionDigits: 2 }) : '100.000,00';
+    const displayStartDate = startDate && !isNaN(Date.parse(startDate)) ? new Date(startDate).toLocaleDateString('pt-AO') : '20/05/2026';
+    const displayExperimental = experimentalDays !== '' ? experimentalDays : '30';
+    const displayNotice = noticeDays !== '' ? noticeDays : '30';
     const displayDuration = duration !== '' ? duration : '____';
 
     return `
-      <div style="font-family: 'Inter', sans-serif; line-height: 1.6; color: #1f2937;">
-        <h2 style="text-align: center; font-size: 1.25rem; font-weight: 800; text-transform: uppercase; margin-bottom: 0.25rem; color: #003366;">
+      <div style="font-family: 'Inter', sans-serif; line-height: 1.6; color: #000; text-align: justify; font-size: 11px;">
+        <h2 style="text-align: center; font-size: 13px; font-weight: 800; text-transform: uppercase; margin-bottom: 0px;">
           ${selectedType}
         </h2>
-        <p style="text-align: center; font-size: 0.875rem; font-weight: 600; margin-top: 0; margin-bottom: 1.5rem; text-transform: uppercase; color: #4b5563;">
-          Lei Geral do Trabalho de Angola (Lei 12/23 de 27 de Dezembro)
+        <p style="text-align: center; font-size: 12px; font-weight: 700; margin-top: 2px; margin-bottom: 25px;">
+          Lei 12/23 de 27 de Dezembro
         </p>
 
-        <p>Entre</p>
-        <p>
-          <strong>${baseCompany}</strong>, com sede em ${companyAddress}, contribuinte fiscal Nº ${companyNif}, representada neste acto por <strong>${cleanRepName}</strong>, de nacionalidade ${cleanRepNationality}, portador do ${cleanRepDocType} nº ${cleanRepDocNum}, na qualidade de ${cleanRepRole}, com plenos poderes para o acto, adiante designado por <strong>EMPREGADOR</strong>
+        <p style="margin-bottom: 5px;">Entre</p>
+        <p style="margin-bottom: 10px;">
+          <strong>${baseCompany}</strong>, com sede em ANGOLA- ${companyAddress}, contribuinte fiscal Nº ${companyNif}, representada neste acto por ${cleanRepName}, de nacionalidade ${cleanRepNationality}, portador do ${cleanRepDocType} nº ${cleanRepDocNum}, na qualidade de ${cleanRepRole}, com plenos poderes para o acto, adiante designado por <strong>EMPREGADOR</strong>
         </p>
-        <p>E</p>
-        <p>
+        <p style="margin-bottom: 5px;">E</p>
+        <p style="margin-bottom: 15px;">
           <strong>${empName}</strong>, estado civil ${empCivil}, nascido(a) em <strong>${empBirthday}</strong>, residente em ${empAddress}, Titular do Bilhete de Identidade Nº <strong>${empBi}</strong>, emitido em <strong>${displayStartDate}</strong>, pelo arquivo de identificação civil nacional, contribuinte fiscal Nº <strong>${empNif}</strong>, adiante designado por <strong>TRABALHADOR</strong>.
         </p>
         
-        <p>É celebrado o presente Contrato de Trabalho que se rege pelas disposições da Lei Geral do Trabalho (LGT) e respectiva Legislação Complementar, Regulamentos Internos, Acordos Colectivos e ainda pelas cláusulas seguintes:</p>
+        <p style="margin-bottom: 15px;">É celebrado o presente Contrato de Trabalho que se rege pelas disposições da Lei Geral do Trabalho e respectiva Legislação Complementar, Regulamentos Internos, Acordos Colectivos e ainda pelas cláusulas seguintes:</p>
 
-        <p><strong>Cláusula 1: (Das Tarefas do Trabalhador)</strong><br />
-        A Actividade do trabalhador consiste em trabalhos inerentes à actividade de <strong>${empRole}</strong>, e é prestado em local de trabalho Sede da Empresa. Por motivos adequados ao interesse da economia nacional e nos limites da Lei, o EMPREGADOR reserva a faculdade de transferir o trabalhador para outro local de trabalho. É objecto do presente contrato a prestação de serviços do TRABALHADOR à EMPRESA, de acordo com o Estatuto da empresa, Regulamentos e a Lei Geral do Trabalho.</p>
+        <p style="margin-bottom: 12px;"><strong>Cláusula 1:</strong> <i>Das Tarefas do Trabalhador</i><br />
+        A Actividade do trabalhador consiste em trabalhos inerentes á actividade de <strong>${empRole}</strong>, e é prestado em local trabalho Sede da Empresa, por motivos adequados ao interesse da economia nacional e nos limites da Lei, reserva a faculdade de transferir o trabalhador para outro local de trabalho. É objecto do presente contrato a prestação de serviços de, do TRABALHADOR à EMPRESA, de acordo com o Estatuto da ${baseCompany}, Regulamentos da ${baseCompany}, a Lei Geral do Trabalho e estipulado entre as partes.</p>
 
-        <p><strong>Cláusula 2: (Categoria Profissional)</strong><br />
-        Ao <strong>TRABALHADOR</strong> é garantida a ocupação efectiva do posto de trabalho de <strong>${empRole}</strong> pertencente ao qualificador ocupacional regulamentado e integrado na escala salarial do sector de actividade profissional.</p>
+        <p style="margin-bottom: 12px;"><strong>Cláusula 2:</strong> <i>Categoria Profissional</i><br />
+        Ao <strong>TRABALHADOR</strong> é garantida a ocupação efectiva do posto de trabalho de <strong>${empRole}</strong> pertencentes ao qualificador ocupacional NA e integrado no grupo NA da escala salarial com a categoria ocupacional de NA.</p>
 
-        <p><strong>Cláusula 3: (Duração do Trabalho)</strong><br />
-        O período normal de trabalho diário é de <strong>8</strong> horas diárias, perfazendo um total de <strong>44</strong> horas semanais, com os intervalos de descanso legalmente estabelecidos.</p>
+        <p style="margin-bottom: 12px;"><strong>Cláusula 3:</strong> <i>Duração do Trabalho</i><br />
+        O periodo normal de trabalho diário é de <strong>8</strong> horas diárias, perfazendo um total de <strong>44</strong> horas semanais.</p>
 
-        <p><strong>Cláusula 4: (Remuneração do Trabalhador)</strong><br />
-        O <strong>TRABALHADOR</strong> tem direito a uma remuneração paga mensalmente, sob a forma monetária no valor bruto de <strong>${formattedSalary}</strong> (AOA), sujeito aos devidos descontos legais (IRT e INSS), integrado pelos seguintes elementos e subsídios nos termos da lei aplicável.</p>
+        <p style="margin-bottom: 12px;"><strong>Cláusula 4:</strong> <i>Remuneração do Trabalhador</i><br />
+        O <strong>TRABALHADOR</strong> tem direito a uma remuneração paga mensalmente, sob a forma monetária no valor de <strong>${formattedSalary} AKZ</strong> ( são ), integrado pelos seguintes elementos: gratificações e/ou outros subsídios, a título de subsídio de férias (50%) e de subsídio de Natal (50%) do salário base, nos termos da lei.</p>
 
-        <p><strong>Cláusula 5: (Segurança, Higiene e Saúde no Trabalho)</strong><br />
-        O posto de trabalho obedece às condições de higiene, segurança e saúde no trabalho legalmente exigidas por lei.</p>
+        <p style="margin-bottom: 12px;"><strong>Cláusula 5:</strong> <i>Segurança, higiene e segurança.</i><br />
+        O posto de trabalho obedece as condições de segurança, higiene e saúde no trabalho legalmente exigidas.</p>
 
-        <p><strong>Cláusula 6: (Duração do Contrato e Início)</strong><br />
-        O presente contrato é celebrado por ${selectedType === "Contrato por Tempo Indeterminado" ? "tempo indeterminado" : `${displayDuration} meses`} com início em <strong>${displayStartDate}</strong>, com um período experimental de <strong>${displayExperimental}</strong> dias.</p>
+        <p style="margin-bottom: 12px;"><strong>Cláusula 6:</strong> <i>Duração do Contrato</i><br />
+        O contrato é celebrado por tempo indeterminado, com <strong>inicio em ${displayStartDate}</strong>, com um periodo experimental de ${displayExperimental} dias.</p>
 
-        <p><strong>Cláusula 7: (Confidencialidade)</strong><br />
-        No acto de assinatura do contrato e após a cessação do mesmo, o trabalhador obriga-se a manter total confidencialidade e a não divulgar a terceiros dados técnicos, operacionais ou comerciais a que tenha acesso.</p>
+        <p style="margin-bottom: 12px;"><strong>Cláusula 7:</strong> <i>Confidencialidade</i><br />
+        No acto de assinatura do contrato o trabalhador obriga-se a não divulgar a terceiros ou mesmo em repartições da propria empresa, a natureza do seu trabalho, dados técnicos ou outra informações relevantes a que tiver acesso em função das suas actividades, decorrentes da execução do contrato.</p>
 
-        <p><strong>Cláusula 8: (Da Nulidade do Contrato)</strong><br />
-        Qualquer alteração ou modificação das condições estabelecidas neste contrato apenas será válida se celebrada por mútuo acordo por escrito pelas partes.</p>
+        <p style="margin-bottom: 12px;"><strong>Cláusula 8:</strong> <i>Da nulidade do Contrato</i><br />
+        O contrato apenas pode ser modificado nas condições previstas na Lei Geral do Trabalho.</p>
 
-        <p><strong>Cláusula 9: (Pré-Aviso de Rescisão)</strong><br />
-        Ocorrendo motivos justificativos por qualquer das partes para a rescisão com pré-aviso, a iniciativa deve ser comunicada com antecedência mínima de <strong>${displayNotice}</strong> dias nos termos da legislação em vigor.</p>
+        <p style="margin-bottom: 12px;"><strong>Cláusula 9:</strong> <i>Pré-Aviso de Rescisão</i><br />
+        Ocorrendo algum dos motivos que justifiquem a rescisão com aviso prévio, a parte a quem couber a iniciativa avisa a outra com uma antecedência de ${displayNotice} dias especificando as razões que considera justificativas da rescisao que pretende concretizar, depois de observar os requisitos previstos na Lei Geral do Trabalho.</p>
 
-        <p><strong>Cláusula 10: (Renovação)</strong><br />
-        O contrato vigora pelo período acima acordado, renovando-se nos termos permitidos pela Lei Geral do Trabalho de Angola caso nenhuma das partes se oponha por escrito.</p>
+        <p style="margin-bottom: 12px;"><strong>Cláusula 10:</strong> <i>Renovação do Contrato</i><br />
+        O contrato cessa no termo do periodo pelo qual foi celebrado e renova-se automaticamente se nenhuma das partes se manifestar.</p>
 
-        <p><strong>Cláusula 11: (Regulamentos Internos)</strong><br />
-        O TRABALHADOR declara expressamente ter tomado conhecimento das normas internas de disciplina e serviço em vigor nas instalações da empresa.</p>
+        <p style="margin-bottom: 12px;"><strong>Cláusula 11:</strong> <i>Horário de Trabalho</i><br />
+        No momento da celebração do presente contrato, o trabalhador tomou conhecimento do horário de trabalho, regulamento interno e cordo colectivo em vigor na empresa.</p>
 
-        <p><strong>Cláusula 12: (Vias de Contrato e Trâmites)</strong><br />
-        O presente contrato é redigido e assinado em três exemplares de igual valor jurídico, destinando-se uma via ao trabalhador, outra para a entidade empregadora e a terceira a ser arquivada pelo Centro de Emprego competente.</p>
+        <p style="margin-bottom: 12px;"><strong>Cláusula 12:</strong> <i>Trâmites legais</i><br />
+        O presente contrato é reproduzido em três vias, sendo uma para o trabalhador, a outra para a entidade empregadora e a teceira remetida ao Centro de Emprego competente da respectiva área de actividade.</p>
 
-        <p style="margin-top: 3rem;">O TRABALHADOR:<br />
-        ____________________________________________________</p>
+        <p style="margin-bottom: 12px;"><strong>Cláusula 13:</strong> <i>Responsabilidade acessória</i><br />
+        O TRABALHADOR deverá ainda, acessoriamente, realizar quaisquer outras tarefas que lhe sejam indicadas, para as quais tenha qualificação ou capacidade bastantes e que tenha afinidade funcional com as que habitualmente correspondem as suas funções normais, sem qualquer prejuízo para a sua posição na EMPRESA.</p>
 
-        <p style="margin-top: 2rem;">O EMPREGADOR:<br />
-        ____________________________________________________</p>
+        <p style="margin-bottom: 12px;"><strong>Cláusula 14:</strong> <i>Responsabilidade Civil</i><br />
+        Findo o presente contrato, seja qual for o motivo ou forma, o segundo outorgante deve devolver, os instrumentos de trabalhos e qualquer outro objeto que seja pertença desta, sob pena de incorrer em responsabilidade criminal e em responsabilidade civil pelos danos causados.</p>
 
-        <p style="margin-top: 3rem; text-align: right;">Luanda, _____ de ____________________ de ________</p>
+        <p style="margin-bottom: 12px;"><strong>Cláusula 15:</strong> <i>Da Lei Geral do Trabalho</i><br />
+        Tudo o mais omisso no presente contrato será regido pela Lei Geral do Trabalho ou outra, que regulamente o presente contrato. Em caso de litígio, será elegida a Comarca de Luanda com renúncia a qualquer outra.</p>
+
+        <p style="margin-top: 40px; margin-bottom: 10px;">O FUNCIONARIO:</p>
+        <div style="border-bottom: 1px solid #ddd; width: 100%; margin-bottom: 40px;"></div>
+
+        <p style="margin-bottom: 10px;">O EMPREGADOR:</p>
+        <div style="border-bottom: 1px solid #ddd; width: 100%; margin-bottom: 60px;"></div>
+
+        <p style="text-align: right; margin-top: 20px;">Luanda,______ de _______________________ de _________</p>
       </div>
     `;
   };
@@ -232,7 +241,7 @@ const ContractModal = ({ employee, contract, companyData, onClose, onSuccess }: 
                 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-wider">Data Início Contrato</label>
+                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-wider">Data Inicio Contrato</label>
                     <input 
                       type="date" 
                       className="w-full border border-zinc-200 p-2 text-xs font-bold uppercase tracking-wider bg-[#fafafa] placeholder-zinc-400 focus:bg-white transition-all focus:border-[#003366] duration-200"
@@ -241,108 +250,107 @@ const ContractModal = ({ employee, contract, companyData, onClose, onSuccess }: 
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-wider">Duração (Meses)</label>
+                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-wider">Duração Contrato (meses)</label>
                     <input 
                       type="number" 
                       className="w-full border border-zinc-200 p-2 text-xs font-bold bg-[#fafafa] placeholder-zinc-400 focus:bg-white transition-all focus:border-[#003366] duration-200"
                       value={duration} 
                       onChange={(e) => setDuration(e.target.value !== '' ? Number(e.target.value) : '')} 
-                      placeholder="Prazo de duração do vínculo em meses (ex: 12)"
+                      placeholder="0"
                     />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-wider">Dias Experiência</label>
+                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-wider">Dia de Experiencia (dias)</label>
                     <input 
                       type="number" 
                       className="w-full border border-zinc-200 p-2 text-xs font-bold bg-[#fafafa] placeholder-zinc-400 focus:bg-white transition-all focus:border-[#003366] duration-200"
                       value={experimentalDays} 
                       onChange={(e) => setExperimentalDays(e.target.value !== '' ? Number(e.target.value) : '')} 
-                      placeholder="Duração do período experimental em dias (ex: 60)"
+                      placeholder="30"
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-wider">Aviso Prévio (Dias)</label>
+                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-wider">Pré-Aviso (dias)</label>
                     <input 
                       type="number" 
                       className="w-full border border-zinc-200 p-2 text-xs font-bold bg-[#fafafa] placeholder-zinc-400 focus:bg-white transition-all focus:border-[#003366] duration-200"
                       value={noticeDays} 
                       onChange={(e) => setNoticeDays(e.target.value !== '' ? Number(e.target.value) : '')} 
-                      placeholder="Prazo oficial para aviso prévio de cessação"
+                      placeholder="30"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[9px] font-black text-zinc-400 uppercase tracking-wider">Salário Mensal (AKZ)</label>
+                  <label className="text-[9px] font-black text-zinc-400 uppercase tracking-wider">Salario Mensal</label>
                   <input 
                     type="number" 
                     className="w-full border border-zinc-200 p-2 text-xs font-bold text-[#003366] bg-[#fafafa] placeholder-zinc-400 focus:bg-white transition-all focus:border-[#003366] duration-200"
                     value={salary} 
                     onChange={(e) => setSalary(e.target.value !== '' ? Number(e.target.value) : '')} 
-                    placeholder="Vencimento mensal de base ilíquido em Kwanzas"
+                    placeholder="100000.00"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[9px] font-black text-zinc-400 uppercase tracking-wider">Nome do Responsável (Empregador)</label>
+                  <label className="text-[9px] font-black text-zinc-400 uppercase tracking-wider">Nome do Responsavel (Empresa)</label>
                   <input 
                     type="text" 
                     className="w-full border border-zinc-200 p-2 text-xs font-bold uppercase bg-[#fafafa] placeholder-zinc-400 focus:bg-white transition-all focus:border-[#003366] duration-200"
                     value={repName} 
                     onChange={(e) => setRepName(e.target.value)} 
-                    placeholder="Nome completo do outorgante/representante"
+                    placeholder="Xxx"
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-wider">Doc. de Identificação</label>
+                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-wider">Documento de Identificação</label>
                     <select 
                       className="w-full border border-zinc-200 p-2 text-xs font-bold uppercase bg-white focus:outline-none focus:border-[#003366]"
                       value={repDocType} 
                       onChange={(e) => setRepDocType(e.target.value)}
                     >
-                      <option value="Bilhete de identidade">Bilhete de identidade</option>
+                      <option value="Bilhete de Identidade">Bilhete de Identidade</option>
                       <option value="Passaporte">Passaporte</option>
-                      <option value="Cartão de residente">Cartão de residente</option>
+                      <option value="Cartão de Residente">Cartão de Residente</option>
                       <option value="Cédula">Cédula</option>
-                      <option value="Outro">Outro</option>
                     </select>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-wider">Nº de Documento</label>
+                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-wider">Numero do Documento</label>
                     <input 
                       type="text" 
                       className="w-full border border-zinc-200 p-2 text-xs font-bold uppercase bg-[#fafafa] placeholder-zinc-400 focus:bg-white transition-all focus:border-[#003366] duration-200"
                       value={repDocNum} 
                       onChange={(e) => setRepDocNum(e.target.value)} 
-                      placeholder="Nº de documento oficial de identificação"
+                      placeholder="Dd"
                     />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-wider">Nacionalidade Responsável</label>
+                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-wider">Nacionalidade do Responsavel</label>
                     <input 
                       type="text" 
                       className="w-full border border-zinc-200 p-2 text-xs font-bold uppercase bg-[#fafafa] placeholder-zinc-400 focus:bg-white transition-all focus:border-[#003366] duration-200"
                       value={repNationality} 
                       onChange={(e) => setRepNationality(e.target.value)} 
-                      placeholder="Nacionalidade oficial (ex: Angolana)"
+                      placeholder="Ddd"
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-wider">Cargo Responsável</label>
+                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-wider">Cargo do Responsável</label>
                     <input 
                       type="text" 
                       className="w-full border border-zinc-200 p-2 text-xs font-bold uppercase bg-[#fafafa] placeholder-zinc-400 focus:bg-white transition-all focus:border-[#003366] duration-200"
                       value={repRole} 
                       onChange={(e) => setRepRole(e.target.value)} 
-                      placeholder="Cargo na empresa delegante (ex: Diretor Geral)"
+                      placeholder="Dddd"
                     />
                   </div>
                 </div>
@@ -372,7 +380,7 @@ const ContractModal = ({ employee, contract, companyData, onClose, onSuccess }: 
                           }
                         }}
                       />
-                      <span className={`font-bold uppercase tracking-tight ${selectedType === type ? 'text-[#003366]' : 'text-zinc-600'}`}>{type}</span>
+                      <span className={`font-bold uppercase tracking-tight ${selectedType === type ? 'text-[#003366]' : 'text-zinc-600 font-bold'}`}>{type}</span>
                     </label>
                   ))}
                 </div>
@@ -384,27 +392,27 @@ const ContractModal = ({ employee, contract, companyData, onClose, onSuccess }: 
             <div className="lg:col-span-4 bg-white border border-zinc-200 p-6 shadow-sm space-y-4 h-full">
               <h3 className="text-xs font-black uppercase tracking-wider text-[#003366] border-b border-zinc-100 pb-2 flex items-center gap-2">
                 <span className="w-1.5 h-3 bg-[#003366] block"></span>
-                Descrição
+                Descricao
               </h3>
               
               <div className="bg-zinc-50 border border-zinc-100 p-4 space-y-4">
                 <div>
-                  <h4 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1.5">Período Experimental:</h4>
-                  <div className="space-y-1 font-mono text-[9px] text-zinc-600 line-clamp-4">
+                  <h4 className="text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-1.5">Periodo experimental:</h4>
+                  <div className="space-y-1 font-mono text-[9px] text-zinc-500">
                     <p className="border-b border-zinc-200 pb-1">{"<=60 dias --- Trabalhadores"}</p>
                     <p className="border-b border-zinc-200 pb-1">{"<=120 / 180 dias para funções de direcção."}</p>
-                    <p className="font-bold text-[#003366] bg-blue-50 px-2 py-0.5 mt-2">Duração definida: {experimentalDays} dias.</p>
+                    <p className="font-bold text-[#003366] pt-1">{experimentalDays || 0} dias.</p>
                   </div>
                 </div>
 
                 <div className="pt-4 border-t border-zinc-200">
-                  <h4 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1.5">Aviso Prévio:</h4>
-                  <div className="space-y-1 font-mono text-[9px] text-zinc-600">
-                    <p className="font-bold text-[#003366] bg-blue-50 px-2 py-0.5 mb-1">Aviso configurado: {noticeDays} dias.</p>
+                  <h4 className="text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-1.5">Aviso prévio:</h4>
+                  <div className="space-y-1 font-mono text-[9px] text-zinc-500">
+                    <p className="pt-1">{noticeDays || 0} dias.</p>
                     {selectedType === "Contrato por Tempo Indeterminado" ? (
-                      <p className="text-emerald-600 font-bold uppercase">Duração por tempo indeterminado.</p>
+                      <p className="mt-2 text-zinc-400">Duração por tempo indeterminado.</p>
                     ) : (
-                      <p className="text-amber-600 font-bold uppercase">Duração temporária definida.</p>
+                      <p className="mt-2 text-zinc-400">Duração: {duration || 0} meses.</p>
                     )}
                   </div>
                 </div>
@@ -412,7 +420,6 @@ const ContractModal = ({ employee, contract, companyData, onClose, onSuccess }: 
 
               <div className="text-[10px] text-zinc-400 uppercase font-black tracking-widest pt-2">
                 <p>✓ Legislação vinculada: LGT Lei 12/23</p>
-                <p className="mt-1">✓ Sistema imutável certificado AGT</p>
               </div>
             </div>
 

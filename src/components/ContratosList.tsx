@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Printer, Calendar, FileText, Trash2, Edit, Award, UserPlus, FileCheck } from 'lucide-react';
+import { Search, Printer, Calendar, FileText, Trash2, Edit, Award, UserPlus, FileCheck, Plus } from 'lucide-react';
 
 interface ContratosListProps {
   employees: any[];
@@ -162,6 +162,15 @@ const ContratosList = ({ employees, onSetEmployee, onSetIsContractModalOpen, onE
             <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">Base Geral de Contratos e Acordos de Colaboradores</p>
           </div>
         </div>
+        <button 
+          onClick={() => {
+            onSetEmployee(null);
+            onSetIsContractModalOpen(true);
+          }}
+          className="bg-[#003366] text-white px-6 py-2.5 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-black transition-all shadow-lg"
+        >
+          <Plus size={16} /> Novo Contrato
+        </button>
       </div>
 
       {/* Filter and stats banner */}

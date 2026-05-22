@@ -11,6 +11,10 @@ import LiteracyModule from './components/LiteracyModule';
 import ArchiveModule from './components/ArchiveModule';
 import { CartaForm } from './components/CartaForm';
 import { QRCodeCanvas } from 'qrcode.react';
+import { PurchasesReport } from './components/Reports/PurchasesReport';
+import { SalesReport } from './components/Reports/SalesReport';
+import { InventoryReport } from './components/Reports/InventoryReport';
+import { CashFlowReport } from './components/Reports/CashFlowReport';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
   BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area 
@@ -132,7 +136,8 @@ import {
   LayoutList,
   CheckSquare,
   PackageCheck,
-  Lock
+  Lock,
+  Star
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
@@ -158,10 +163,8 @@ import RegimeSimplificadoForm from './components/RegimeSimplificadoForm';
 import RetencaoPagarForm from './components/RetencaoPagarForm';
 import RetencaoReceberForm from './components/RetencaoReceberForm';
 import CalculosImpostosForm from './components/CalculosImpostosForm';
-import FichaPessoal from './components/FichaPessoal';
-import DeclaracaoServico from './components/DeclaracaoServico';
-import AcordoConfidencialidade from './components/AcordoConfidencialidade';
 import ColaboradoresDemitidos from './components/ColaboradoresDemitidos';
+import { EmployeeOptionsMenu } from './components/EmployeeOptionsMenu';
 import RegimeExclusaoForm from './components/RegimeExclusaoForm';
 import ImpostoPorContaForm from './components/ImpostoPorContaForm';
 import DeclaracaoAnualForm from './components/DeclaracaoAnualForm';
@@ -218,7 +221,7 @@ const fetchJson = async (url: string, options?: RequestInit) => {
   const response = await fetch(url, { ...options, headers });
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Failed to fetch ${url}: ${errorText || response.statusText}`);
+    throw new Error(`Failed to fetch ${url} (Status: ${response.status}): ${errorText || response.statusText}`);
   }
   return response.json();
 };
@@ -829,6 +832,7 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
     { id: 'workplaces', label: 'Locais de Trabalho', icon: Briefcase },
     { id: 'secretary', label: 'Secretaria Beta', icon: Paperclip },
     { id: 'pos', label: 'Ponto de Venda', icon: Monitor, hasChevron: true },
+    { id: 'contracts', label: 'Contratos', icon: FileText },
     { id: 'electronic_invoices', label: 'Faturação Electrónica', icon: FileCheck },
     { id: 'security', label: 'Segurança Gestão privada', icon: ShieldCheck },
     { id: 'specialized', label: 'Gestão Especializada', icon: Briefcase, hasChevron: true },
@@ -1096,10 +1100,355 @@ const MUNICIPADOS_ANGOLA: Record<string, string[]> = {
   'Cabinda': ['Cabinda', 'Cacongo', 'Buco-Zau', 'Belize'],
 };
 
-const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSelectedContract, caixas, companyName, fiscalYear }: { onRefresh: () => void, onSetIsContractModalOpen: (b: boolean) => void, onSetEmployee: (e: Employee | null) => void, onSetSelectedContract?: (val: any) => void, caixas: Caixa[], companyName: string, fiscalYear: string }) => {
+const ReadmitModal = ({ show, onClose, target, data, onChange, onSubmit }: { 
+  show: boolean, 
+  onClose: () => void, 
+  target: any, 
+  data: any, 
+  onChange: (newData: any) => void, 
+  onSubmit: (e: React.FormEvent) => void 
+}) => {
+  if (!show || !target) return null;
+  return (
+    <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-white border border-zinc-200 w-full max-w-xl shadow-2xl overflow-hidden"
+      >
+        <div className="bg-emerald-600 text-white p-6 flex justify-between items-center">
+          <h3 className="font-black uppercase tracking-widest flex items-center gap-2">
+            <UserCheck size={20} /> Formuário de Readmissão
+          </h3>
+          <button onClick={onClose} className="hover:bg-white/10 p-2">
+            <X size={20} className="text-white" />
+          </button>
+        </div>
+        <form onSubmit={onSubmit} className="p-8 space-y-6">
+          <div className="grid grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Data de Readmissão</label>
+              <input 
+                type="date" 
+                required
+                className="w-full border border-zinc-200 p-3 text-sm focus:outline-none focus:border-emerald-600"
+                value={data.date}
+                onChange={e => onChange({...data, date: e.target.value})}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Ordenado Por</label>
+              <input 
+                type="text" 
+                className="w-full border border-zinc-200 p-3 text-sm focus:outline-none focus:border-emerald-600 font-sans"
+                placeholder="Nome do responsável"
+                value={data.orderedBy}
+                onChange={e => onChange({...data, orderedBy: e.target.value})}
+              />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Motivo da Readmissão</label>
+            <input 
+              type="text" 
+              required
+              className="w-full border border-zinc-200 p-3 text-sm focus:outline-none focus:border-emerald-600 font-sans"
+              value={data.reason}
+              onChange={e => onChange({...data, reason: e.target.value})}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Observações</label>
+            <textarea 
+              className="w-full border border-zinc-200 p-3 text-sm focus:outline-none focus:border-emerald-600 h-24 resize-none font-sans"
+              placeholder="Notas adicionais sobre a readmissão..."
+              value={data.observations}
+              onChange={e => onChange({...data, observations: e.target.value})}
+            />
+          </div>
+          <div className="pt-4 flex gap-4">
+            <button 
+              type="button"
+              onClick={onClose}
+              className="flex-1 bg-zinc-100 text-zinc-600 py-4 font-black uppercase tracking-widest text-xs hover:bg-zinc-200"
+            >
+              Cancelar
+            </button>
+            <button 
+              type="submit"
+              className="flex-2 bg-emerald-600 text-white py-4 font-black uppercase tracking-widest text-xs hover:bg-emerald-700 shadow-xl"
+            >
+              Readmitir Colaborador
+            </button>
+          </div>
+        </form>
+      </motion.div>
+    </div>
+  );
+};
+
+const OrdemTransferencia = ({ employee, hasReceipts, processedReceipts, companyName, selectedMonth, iban, bankName, setProcessedReceipts }: { 
+  employee: Employee | null, 
+  hasReceipts: boolean, 
+  processedReceipts: any[], 
+  companyName: string, 
+  selectedMonth: string, 
+  iban?: string, 
+  bankName?: string,
+  setProcessedReceipts: (val: any) => void
+}) => {
+  const collectiveTransfersSum = hasReceipts 
+    ? processedReceipts.reduce((sum, r) => sum + (r.calculations?.totalNet || 0), 0)
+    : (employee ? (employee.salary - (employee.salary * 0.03) - calculateIRT(employee.salary - (employee.salary * 0.03))) : 0);
+
+  const downloadPDF = () => {
+    const doc = new jsPDF('p', 'mm', 'a4');
+    doc.setFontSize(16);
+    
+    if (hasReceipts && processedReceipts.length > 0) {
+      doc.text('ORDEM DE TRANSFERÊNCIA COLECTIVA BANCÁRIA', 14, 20);
+      doc.setFontSize(10);
+      doc.text(`Data: ${new Date().toLocaleDateString('pt-AO')}`, 14, 28);
+      doc.text(`Entidade Ordenante: ${companyName}`, 14, 34);
+      doc.text(`NIF: 5000123456`, 14, 40);
+      doc.text(`Mês de Referência: ${selectedMonth}`, 14, 46);
+      
+      let y = 56;
+      doc.setFontSize(9);
+      doc.text('#', 14, y);
+      doc.text('Nome do Colaborador', 24, y);
+      doc.text('Banco', 90, y);
+      doc.text('IBAN', 120, y);
+      doc.text('Valor Líquido', 170, y);
+      
+      doc.line(14, y + 2, 196, y + 2);
+      y += 8;
+      
+      processedReceipts.forEach((rcpt, index) => {
+        if (y > 270) {
+          doc.addPage();
+          y = 20;
+        }
+        doc.text(String(index + 1), 14, y);
+        doc.text(rcpt.employee.name.substring(0, 32), 24, y);
+        doc.text((rcpt.employee.bank_name || 'BFA').substring(0, 15), 90, y);
+        doc.text(rcpt.employee.iban || '---', 120, y);
+        doc.text(formatCurrency(rcpt.calculations?.totalNet || 0).replace('€', '') + ' kzs', 170, y);
+        y += 6;
+      });
+      
+      doc.line(14, y + 2, 196, y + 2);
+      y += 10;
+      doc.setFontSize(10);
+      doc.text(`Total de Transferências: ${processedReceipts.length}`, 14, y);
+      doc.text(`Valor de Cobertura Total: ${formatCurrency(collectiveTransfersSum)}`, 120, y);
+      
+      doc.save(`ordem_transferencia_colectiva_${selectedMonth.replace(/ \/ /g, '_')}.pdf`);
+    } else {
+      if (!employee) return;
+      const net = employee.salary - (employee.salary * 0.03) - calculateIRT(employee.salary - (employee.salary * 0.03));
+      doc.text('ORDEM DE TRANSFERÊNCIA', 14, 22);
+      doc.setFontSize(10);
+      doc.text(`Data: ${new Date().toLocaleDateString('pt-AO')}`, 14, 30);
+      doc.text(`Entidade Ordenante: ${companyName}`, 14, 45);
+      doc.text(`Beneficiário: ${employee.name}`, 14, 52);
+      doc.text(`IBAN: ${employee.iban || '---'}`, 14, 59);
+      doc.text(`Valor: ${formatCurrency(net)}`, 14, 66);
+      doc.text('Solicitamos a transferência bancária correspondente ao pagamento de vencimentos.', 14, 80);
+      doc.save(`ordem_transferencia_${(employee.name || 'documento').toLowerCase().replace(/ /g, '_')}.pdf`);
+    }
+  };
+
+  if (!hasReceipts && !employee) {
+    return (
+      <div className="p-12 text-center text-zinc-400 font-bold uppercase tracking-widest bg-zinc-50 border border-zinc-200">
+        Nenhum salário processado ainda. Processe os salários na página anterior para gerar a lista de ordens de transferência bancária!
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white border border-zinc-200 rounded-none shadow-lg max-w-4xl mx-auto overflow-hidden">
+      <div className="bg-[#003366] text-white p-8 flex justify-between items-center">
+        <div className="flex items-center gap-4">
+          <div className="bg-white/10 p-3">
+            <ArrowRightLeft size={32} />
+          </div>
+          <div>
+            <h2 className="text-2xl font-black uppercase tracking-[0.2em]">
+              {hasReceipts ? 'Ordem Colectiva de Transferências' : 'Ordem de Transferência'}
+            </h2>
+            <p className="text-xs text-white/60 uppercase tracking-widest font-bold">
+              {hasReceipts ? `Processamento de Vencimentos • ${selectedMonth}` : 'Pagamento de Vencimentos'}
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button 
+            onClick={() => window.print()}
+            className="bg-white/10 hover:bg-white/20 px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all"
+          >
+            <Printer size={14} /> Imprimir
+          </button>
+          <button 
+            onClick={downloadPDF}
+            className="bg-[#F27D26] hover:bg-[#d96a1a] px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all"
+          >
+            <FileDown size={14} /> PDF
+          </button>
+        </div>
+      </div>
+
+      <div className="p-12 space-y-12 printable-area">
+        <div className="grid grid-cols-2 gap-12">
+          <div className="space-y-4">
+            <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 border-b border-zinc-100 pb-2">Entidade Ordenante</h3>
+            <div className="space-y-1">
+              <p className="text-sm font-black text-[#003366] uppercase">{companyName}</p>
+              <p className="text-xs text-zinc-500 font-bold">NIF: 5000123456</p>
+              <p className="text-xs text-zinc-500 font-bold">Conta Principal Bancária: {iban ? 'AO06 ' + iban.substring(4) : 'AO06 0000 0000 1234 5678 9012 3'}</p>
+            </div>
+          </div>
+          <div className="space-y-4">
+            <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 border-b border-zinc-100 pb-2">Parâmetros de Lote</h3>
+            <div className="space-y-1">
+              <p className="text-sm font-black text-zinc-700 uppercase">Banco Ordenante: {bankName || 'BANCO BFA'}</p>
+              <p className="text-xs text-zinc-500 font-bold">Data de Instrução: {new Date().toLocaleDateString('pt-AO')}</p>
+              <p className="text-xs text-zinc-500 font-bold">Ref de Lote: OT-COLECTIVA-{new Date().getFullYear()}-{new Date().getMonth() + 1}</p>
+            </div>
+          </div>
+        </div>
+
+        {hasReceipts ? (
+          <div className="space-y-6">
+            <h3 className="text-[10px] font-black uppercase tracking-widest text-[#003366] border-b-2 border-[#003366] pb-2">
+              RELAÇÃO NOMINAL DOS BENEFICIÁRIOS DOS CRÉDITOS SALARIAIS
+            </h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left border-collapse border border-zinc-200">
+                <thead>
+                  <tr className="bg-zinc-100 font-black uppercase text-[9px] tracking-wider text-zinc-600 border-b border-zinc-200">
+                    <th className="px-3 py-3 border-r border-zinc-200 w-10">#</th>
+                    <th className="px-3 py-3 border-r border-zinc-200 text-left">Beneficiário (Nome)</th>
+                    <th className="px-3 py-3 border-r border-zinc-200 text-left">Banco Destinatário</th>
+                    <th className="px-3 py-3 border-r border-zinc-200 text-left font-mono">IBAN / Conta</th>
+                    <th className="px-3 py-3 text-right border-r border-zinc-200">Montante Líquido</th>
+                    <th className="px-3 py-3 text-center no-print">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-200">
+                  {processedReceipts.map((rcpt, idx) => (
+                    <tr key={rcpt.id} className="hover:bg-zinc-50 font-bold text-zinc-700">
+                      <td className="px-3 py-2 border-r border-zinc-200 text-center text-zinc-400">{idx + 1}</td>
+                      <td className="px-3 py-2 border-r border-zinc-200 uppercase text-[#003366]">{rcpt.employee.name}</td>
+                      <td className="px-3 py-2 border-r border-zinc-200 uppercase text-zinc-500">{rcpt.employee.bank_name || 'BFA'}</td>
+                      <td className="px-3 py-2 border-r border-zinc-200 font-mono text-xs">{rcpt.employee.iban || 'AO00 0000 0000 0000 0000 0000 0'}</td>
+                      <td className="px-3 py-2 text-right font-mono text-emerald-600 border-r border-zinc-200">{formatCurrency(rcpt.calculations?.totalNet || 0)}</td>
+                      <td className="px-3 py-2 text-center no-print">
+                        <button 
+                          onClick={() => {
+                            if (confirm('Tem a certeza que deseja remover este registo da ordem de transferência?')) {
+                              setProcessedReceipts((prev: any[]) => prev.filter(p => (p.id || p.employee.id) !== (rcpt.id || rcpt.employee.id)));
+                            }
+                          }}
+                          className="p-1.5 text-red-600 hover:bg-red-50 transition-colors"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-zinc-50 font-black text-[#003366] border-t border-zinc-300">
+                    <td colSpan={4} className="px-3 py-4 border-r border-zinc-200 text-right uppercase tracking-widest text-[9px]">
+                      VALOR DE COBERTURA INTEGRAL DO LOTE:
+                    </td>
+                    <td className="px-3 py-4 text-right font-mono text-sm bg-emerald-50 text-emerald-700 border-l border-emerald-200">
+                      {formatCurrency(collectiveTransfersSum)}
+                    </td>
+                    <td className="no-print bg-zinc-50 border-l border-zinc-200"></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        ) : (
+          employee && (
+            <div className="bg-zinc-50 border border-zinc-200 p-8 space-y-8">
+              <div className="flex justify-between items-start">
+                <div className="flex items-center gap-6">
+                  <div className="w-20 h-20 bg-white border border-zinc-200 overflow-hidden flex items-center justify-center">
+                    {employee.image_url ? <img src={employee.image_url} className="w-full h-full object-cover" /> : <UserIcon size={32} className="text-zinc-200" />}
+                  </div>
+                  <div>
+                    <h4 className="text-lg font-black text-[#003366] uppercase tracking-tight">{employee.name}</h4>
+                    <p className="text-xs text-zinc-400 font-bold uppercase tracking-widest">{employee.role}</p>
+                    <p className="text-xs text-[#F27D26] font-black mt-1 uppercase tracking-tighter">IBAN: {employee.iban || '---'}</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Valor a Transferir</p>
+                  <p className="text-3xl font-black text-[#003366] font-mono">
+                    {formatCurrency(employee.salary - (employee.salary * 0.03) - calculateIRT(employee.salary - (employee.salary * 0.03)))}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )
+        )}
+      </div>
+    </div>
+  );
+};
+
+const HRModule = ({ 
+  onRefetch, 
+  onSetIsContractModalOpen, 
+  onSetEmployee, 
+  onSetSelectedContract, 
+  caixas, 
+  companyName, 
+  fiscalYear,
+  processedReceipts,
+  setProcessedReceipts,
+  processedAttendance,
+  setProcessedAttendance,
+  attendanceDone,
+  setAttendanceDone,
+  payrollInputs,
+  setPayrollInputs,
+  transferOrders,
+  setTransferOrders,
+  localEmployees,
+  setLocalEmployees
+}: { 
+  onRefetch?: () => void, 
+  onSetIsContractModalOpen: (b: boolean) => void, 
+  onSetEmployee: (e: Employee | null) => void, 
+  onSetSelectedContract?: (val: any) => void, 
+  caixas: Caixa[], 
+  companyName: string, 
+  fiscalYear: string,
+  processedReceipts: any[],
+  setProcessedReceipts: React.Dispatch<React.SetStateAction<any[]>>,
+  processedAttendance: Record<string, boolean>,
+  setProcessedAttendance: React.Dispatch<React.SetStateAction<Record<string, boolean>>>,
+  attendanceDone: Record<string, boolean>,
+  setAttendanceDone: React.Dispatch<React.SetStateAction<Record<string, boolean>>>,
+  payrollInputs: Record<string, any>,
+  setPayrollInputs: React.Dispatch<React.SetStateAction<Record<string, any>>>,
+  transferOrders: any[],
+  setTransferOrders: React.Dispatch<React.SetStateAction<any[]>>,
+  localEmployees: Employee[],
+  setLocalEmployees: React.Dispatch<React.SetStateAction<Employee[]>>
+}) => {
+
+
   const { user } = useAuth();
   const professionsRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [contractView, setContractView] = useState<'list' | 'emit'>('emit');
   const [professions, setProfessions] = useState<Profession[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [showProfessionForm, setShowProfessionForm] = useState(false);
@@ -1111,7 +1460,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
   const [acertoSalarial, setAcertoSalarial] = useState('');
   const [inssSearch, setInssSearch] = useState('');
   const [selectedReport, setSelectedReport] = useState<string | null>(null);
-  const [localEmployees, setLocalEmployees] = useState<Employee[]>([]);
+  
   const [searchTerm, setSearchTerm] = useState('');
   const [showReadmitModal, setShowReadmitModal] = useState(false);
   const [readmitTarget, setReadmitTarget] = useState<Employee | null>(null);
@@ -1129,6 +1478,37 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
   const [selectedPaymentCaixa, setSelectedPaymentCaixa] = useState('');
   const [isProcessingComplete, setIsProcessingComplete] = useState(false);
   const [workSites, setWorkSites] = useState<WorkSite[]>([]);
+
+  const [openDadosPessoais, setOpenDadosPessoais] = useState(true);
+  const [openDadosFiscais, setOpenDadosFiscais] = useState(false);
+  const [openDadosProfissionais, setOpenDadosProfissionais] = useState(false);
+  const [openOutrosDados, setOpenOutrosDados] = useState(false);
+  const currentMonthName = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"][new Date().getMonth()];
+  const [selectedMonth, setSelectedMonth] = useState(`${currentMonthName} / ${fiscalYear}`);
+  const [payrollWorkSiteId, setPayrollWorkSiteId] = useState('');
+  const [payrollSearch, setPayrollSearch] = useState('');
+  const [paySearch, setPaySearch] = useState('');
+  
+  const [printingOrder, setPrintingOrder] = useState<any | null>(null);
+  const [selectedPayEmployees, setSelectedPayEmployees] = useState<Record<string, boolean>>({});
+  const [selectedPayCaixaId, setSelectedPayCaixaId] = useState('');
+  const [editingTransferOrder, setEditingTransferOrder] = useState<any | null>(null);
+  const [selectedEmployeesToProcess, setSelectedEmployeesToProcess] = useState<Record<number, boolean>>({});
+  
+  
+
+  const [selectedProcedure, setSelectedProcedure] = useState<any | null>(null);
+  const [selectedReceipt, setSelectedReceipt] = useState<any | null>(null);
+  const [draftReceipt, setDraftReceipt] = useState<any | null>(null);
+  const [appSelectedEmployee, setAppSelectedEmployee] = useState<Employee | null>(null);
+  const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
+  const [absences, setAbsences] = useState<any[]>([]);
+  const [attendance, setAttendance] = useState<any[]>([]);
+  const [attendanceMap, setAttendanceMap] = useState<Record<string, any>>({});
+  const [manualHE, setManualHE] = useState<Record<string, number>>({});
+  const [manualHP, setManualHP] = useState<Record<string, number>>({});
+  
+  const [laborTerminations, setLaborTerminations] = useState<any[]>([]);
 
   const [showDismissForm, setShowDismissForm] = useState(false);
   const [dismissData, setDismissData] = useState({ date: new Date().toISOString().split('T')[0], reason: '', observations: '', orderedBy: '' });
@@ -1148,87 +1528,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
     }
   };
 
-  const ReadmitModal = () => {
-    if (!readmitTarget) return null;
-    return (
-      <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="bg-white border border-zinc-200 w-full max-w-xl shadow-2xl overflow-hidden"
-        >
-          <div className="bg-emerald-600 text-white p-6 flex justify-between items-center">
-            <h3 className="font-black uppercase tracking-widest flex items-center gap-2">
-              <UserCheck size={20} /> Formuário de Readmissão
-            </h3>
-            <button onClick={() => setShowReadmitModal(false)} className="hover:bg-white/10 p-2">
-              <X size={20} className="text-white" />
-            </button>
-          </div>
-          <form onSubmit={handleReadmitSubmit} className="p-8 space-y-6">
-            <div className="grid grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Data de Readmissão</label>
-                <input 
-                  type="date" 
-                  required
-                  className="w-full border border-zinc-200 p-3 text-sm focus:outline-none focus:border-emerald-600"
-                  value={readmitData.date}
-                  onChange={e => setReadmitData({...readmitData, date: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Ordenado Por</label>
-                <input 
-                  type="text" 
-                  className="w-full border border-zinc-200 p-3 text-sm focus:outline-none focus:border-emerald-600"
-                  placeholder="Nome do responsável"
-                  value={readmitData.orderedBy}
-                  onChange={e => setReadmitData({...readmitData, orderedBy: e.target.value})}
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Motivo da Readmissão</label>
-              <input 
-                type="text" 
-                required
-                className="w-full border border-zinc-200 p-3 text-sm focus:outline-none focus:border-emerald-600"
-                value={readmitData.reason}
-                onChange={e => setReadmitData({...readmitData, reason: e.target.value})}
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Observações</label>
-              <textarea 
-                className="w-full border border-zinc-200 p-3 text-sm focus:outline-none focus:border-emerald-600 h-24 resize-none"
-                placeholder="Notas adicionais sobre a readmissão..."
-                value={readmitData.observations}
-                onChange={e => setReadmitData({...readmitData, observations: e.target.value})}
-              />
-            </div>
-            <div className="pt-4 flex gap-4">
-              <button 
-                type="button"
-                onClick={() => setShowReadmitModal(false)}
-                className="flex-1 bg-zinc-100 text-zinc-600 py-4 font-black uppercase tracking-widest text-xs hover:bg-zinc-200"
-              >
-                Cancelar
-              </button>
-              <button 
-                type="submit"
-                className="flex-2 bg-emerald-600 text-white py-4 font-black uppercase tracking-widest text-xs hover:bg-emerald-700 shadow-xl"
-              >
-                Readmitir Colaborador
-              </button>
-            </div>
-          </form>
-        </motion.div>
-      </div>
-    );
-  };
-
-  const handleDismissEmployee = async () => {
+  const handleDismissEmployeeWrapper = async () => {
     if (!selectedEmployeeForOptions) return;
     try {
       // Sincronizar com o Supabase na tabela colaboradores
@@ -1268,6 +1568,14 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
 
   const handleReadmitEmployee = async (employeeId: number, date: string, reason?: string, orderedBy?: string, observations?: string) => {
     try {
+      // Immediate local state update for responsiveness
+      setLocalEmployees(prev => prev.map(emp => {
+        if (emp.id === employeeId) {
+          return { ...emp, status: 'active', dismissed_at: undefined, is_blocked: false };
+        }
+        return emp;
+      }));
+
       if (user?.empresa_id) {
         try {
           await supabase
@@ -1275,11 +1583,9 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
             .update({
               status: 'active',
               dismissed_at: null,
-              is_blocked: false,
-              readmitted_at: date,
-              readmission_reason: reason,
-              readmission_ordered_by: orderedBy,
-              readmission_observations: observations
+              dismissal_reason: null,
+              dismissal_ordered_by: null,
+              dismissal_observations: null
             })
             .eq('id', employeeId)
             .eq('empresa_id', user.empresa_id);
@@ -1294,448 +1600,14 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
         body: JSON.stringify({ date, reason, orderedBy, observations })
       });
       if (res.ok) {
-        alert('Funcionário readmitido com sucesso!');
+        alert('Funcionário readmitido com sucesso! O mesmo já está desbloqueado no sistema.');
         fetchHRData();
       }
     } catch (err) {
       console.error('Error readmitting employee:', err);
+      alert('Ocorreu um erro ao tentar readmitir o funcionário.');
     }
   };
-
-  const EmployeeOptionsMenu = ({ employee, onClose }: { employee: Employee, onClose: () => void }) => {
-    const isDismissed = employee.status === 'dismissed';
-    const options = [
-      { id: 'editar', label: 'Editar', icon: <Edit size={20} />, color: 'text-blue-600', bg: 'bg-blue-50', desc: 'Editar informações' },
-      isDismissed 
-        ? { id: 'readmitir', label: 'Readmitir', icon: <UserCheck size={20} />, color: 'text-emerald-600', bg: 'bg-emerald-50', desc: 'Readmitir colaborador' }
-        : { id: 'demitir', label: 'Demitir', icon: <UserMinus size={20} />, color: 'text-red-600', bg: 'bg-red-50', desc: 'Processo de rescisão' },
-      { id: 'ficha_pessoal', label: 'Cadastro', icon: <FileText size={20} />, color: 'text-[#003366]', bg: 'bg-zinc-50', desc: 'Ficha Pessoal' },
-      { id: 'acerto_salarial', label: 'Situação Salarial', icon: <Calculator size={20} />, color: 'text-amber-600', bg: 'bg-amber-50', desc: 'Ajustes de vencimento' },
-      { id: 'irt_inss_map', label: 'INSS', icon: <ShieldCheck size={20} />, color: 'text-emerald-600', bg: 'bg-emerald-50', desc: 'Segurança Social' },
-      { id: 'emitir_contrato', label: 'Contrato', icon: <FileSignature size={20} />, color: 'text-[#003366]', bg: 'bg-zinc-50', desc: 'Contrato de Trabalho' },
-    ];
-
-    return (
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md"
-        onClick={onClose}
-      >
-        <div 
-          className="bg-white border border-zinc-200 w-full max-w-2xl shadow-2xl overflow-hidden"
-          onClick={e => e.stopPropagation()}
-        >
-          <div className="bg-[#003366] text-white p-8 flex justify-between items-center relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32 blur-3xl"></div>
-            <div className="flex items-center gap-6 relative z-10">
-              <div className="w-20 h-20 bg-white/10 rounded-none overflow-hidden border-2 border-white/20 flex items-center justify-center shadow-inner">
-                {employee.image_url ? <img src={employee.image_url} className="w-full h-full object-cover" /> : <UserIcon size={40} />}
-              </div>
-              <div>
-                <h3 className="text-2xl font-black uppercase tracking-[0.2em]">{employee.name}</h3>
-                <p className="text-xs text-white/60 uppercase tracking-widest font-bold mt-1">{employee.role} • ID: {employee.id}</p>
-              </div>
-            </div>
-            <button onClick={onClose} className="p-3 hover:bg-white/10 transition-colors relative z-10">
-              <X size={24} />
-            </button>
-          </div>
-          <div className="p-8 grid grid-cols-2 gap-6 bg-zinc-50/50">
-            {options.map(opt => (
-              <button
-                key={opt.id}
-                onClick={() => {
-                  if (opt.id === 'editar') {
-                    handleEditEmployee(employee);
-                    onClose();
-                  } else if (opt.id === 'emitir_contrato') {
-                    onSetEmployee(employee);
-                    onSetIsContractModalOpen(true);
-                    onClose();
-                  } else if (opt.id === 'demitir') {
-                    setShowDismissForm(true);
-                  } else if (opt.id === 'readmitir') {
-                    // Triggering readmission logic - for EmployeeOptionsMenu, 
-                    // we can't easily show the modal without passing state up or having it in HRModule.
-                    // I will add the readmit target state to HRModule.
-                    setReadmitTarget(employee);
-                    setShowReadmitModal(true);
-                    onClose();
-                  } else {
-                    onSetEmployee(employee);
-                    setActiveTab(opt.id);
-                    onClose();
-                  }
-                }}
-                className="flex items-center gap-6 p-6 bg-white border border-zinc-200 hover:border-[#003366] hover:shadow-xl transition-all group text-left"
-              >
-                <div className={`w-16 h-16 ${opt.bg} ${opt.color} rounded-none flex items-center justify-center group-hover:scale-110 transition-transform shadow-sm`}>
-                  {opt.icon}
-                </div>
-                <div>
-                  <span className="block text-xs font-black uppercase tracking-widest text-[#003366] mb-1">{opt.label}</span>
-                  <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-tight">{opt.desc}</span>
-                </div>
-              </button>
-            ))}
-          </div>
-
-          {showDismissForm && (
-            <div className="absolute inset-0 z-[60] bg-white flex flex-col">
-              <div className="p-6 bg-red-600 text-white flex justify-between items-center">
-                <h4 className="font-black uppercase tracking-widest flex items-center gap-2">
-                  <UserMinus size={18} /> Processo de Demissão
-                </h4>
-                <button onClick={() => setShowDismissForm(false)} className="hover:bg-white/10 p-2">
-                  <X size={20} />
-                </button>
-              </div>
-              <div className="p-8 space-y-6 overflow-y-auto">
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Data de Demissão</label>
-                    <input 
-                      type="date" 
-                      className="w-full border border-zinc-200 p-3 text-sm focus:outline-none focus:border-red-600"
-                      value={dismissData.date}
-                      onChange={e => setDismissData({...dismissData, date: e.target.value})}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Ordenado Por</label>
-                    <input 
-                      type="text" 
-                      className="w-full border border-zinc-200 p-3 text-sm focus:outline-none focus:border-red-600"
-                      placeholder="Nome do responsável"
-                      value={dismissData.orderedBy}
-                      onChange={e => setDismissData({...dismissData, orderedBy: e.target.value})}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Motivo da Demissão</label>
-                  <select 
-                    className="w-full border border-zinc-200 p-3 text-sm focus:outline-none focus:border-red-600"
-                    value={dismissData.reason}
-                    onChange={e => setDismissData({...dismissData, reason: e.target.value})}
-                  >
-                    <option value="">Selecione o motivo...</option>
-                    <option value="Rescisão por mútuo acordo">Rescisão por mútuo acordo</option>
-                    <option value="Despedimento com justa causa">Despedimento com justa causa</option>
-                    <option value="Despedimento por causas objetivas">Despedimento por causas objetivas</option>
-                    <option value="Caducidade do contrato">Caducidade do contrato</option>
-                    <option value="Pedido de demissão">Pedido de demissão</option>
-                    <option value="Reforma">Reforma</option>
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Observações Adicionais</label>
-                  <textarea 
-                    className="w-full border border-zinc-200 p-3 text-sm focus:outline-none focus:border-red-600 h-32 resize-none"
-                    placeholder="Detalhes sobre o processo de rescisão..."
-                    value={dismissData.observations}
-                    onChange={e => setDismissData({...dismissData, observations: e.target.value})}
-                  />
-                </div>
-                <div className="pt-4 flex gap-4">
-                  <button 
-                    onClick={() => setShowDismissForm(false)}
-                    className="flex-1 bg-zinc-100 text-zinc-600 py-4 font-black uppercase tracking-widest text-xs hover:bg-zinc-200"
-                  >
-                    Cancelar
-                  </button>
-                  <button 
-                    onClick={handleDismissEmployee}
-                    className="flex-2 bg-red-600 text-white py-4 font-black uppercase tracking-widest text-xs hover:bg-red-700 shadow-xl"
-                  >
-                    Confirmar Demissão
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-          {showReadmitModal && <ReadmitModal />}
-          <div className="p-4 border-t border-zinc-100 bg-white text-center">
-            <p className="text-[10px] text-zinc-400 font-black uppercase tracking-[0.3em] italic">Secretária Digital • Gestão de Recursos Humanos</p>
-          </div>
-        </div>
-      </motion.div>
-    );
-  };
-
-  const OrdemTransferencia = ({ employee }: { employee: Employee | null }) => {
-    const hasReceipts = processedReceipts && processedReceipts.length > 0;
-    
-    const collectiveTransfersCount = hasReceipts ? processedReceipts.length : (employee ? 1 : 0);
-    const collectiveTransfersSum = hasReceipts 
-      ? processedReceipts.reduce((sum, r) => sum + r.calculations.totalNet, 0)
-      : (employee ? (employee.salary - (employee.salary * 0.03) - calculateIRT(employee.salary - (employee.salary * 0.03))) : 0);
-
-    const downloadPDF = () => {
-      const doc = new jsPDF('p', 'mm', 'a4');
-      doc.setFontSize(16);
-      
-      if (hasReceipts) {
-        doc.text('ORDEM DE TRANSFERÊNCIA COLECTIVA BANCÁRIA', 14, 20);
-        doc.setFontSize(10);
-        doc.text(`Data: ${new Date().toLocaleDateString('pt-AO')}`, 14, 28);
-        doc.text(`Entidade Ordenante: ${companyName}`, 14, 34);
-        doc.text(`NIF: 5000123456`, 14, 40);
-        doc.text(`Mês de Referência: ${selectedMonth}`, 14, 46);
-        
-        let y = 56;
-        doc.setFontSize(9);
-        doc.text('#', 14, y);
-        doc.text('Nome do Colaborador', 24, y);
-        doc.text('Banco', 90, y);
-        doc.text('IBAN', 120, y);
-        doc.text('Valor Líquido', 170, y);
-        
-        doc.line(14, y + 2, 196, y + 2);
-        y += 8;
-        
-        processedReceipts.forEach((rcpt, index) => {
-          if (y > 270) {
-            doc.addPage();
-            y = 20;
-          }
-          doc.text(String(index + 1), 14, y);
-          doc.text(rcpt.employee.name.substring(0, 32), 24, y);
-          doc.text((rcpt.employee.bank_name || 'BFA').substring(0, 15), 90, y);
-          doc.text(rcpt.employee.iban || '---', 120, y);
-          doc.text(formatCurrency(rcpt.calculations.totalNet).replace('€', '') + ' kzs', 170, y);
-          y += 6;
-        });
-        
-        doc.line(14, y + 2, 196, y + 2);
-        y += 10;
-        doc.setFontSize(10);
-        doc.text(`Total de Transferências: ${processedReceipts.length}`, 14, y);
-        doc.text(`Valor de Cobertura Total: ${formatCurrency(collectiveTransfersSum)}`, 120, y);
-        
-        doc.save(`ordem_transferencia_colectiva_${selectedMonth.replace(/ \/ /g, '_')}.pdf`);
-      } else {
-        if (!employee) return;
-        const net = employee.salary - (employee.salary * 0.03) - calculateIRT(employee.salary - (employee.salary * 0.03));
-        doc.text('ORDEM DE TRANSFERÊNCIA', 14, 22);
-        doc.setFontSize(10);
-        doc.text(`Data: ${new Date().toLocaleDateString('pt-AO')}`, 14, 30);
-        doc.text(`Entidade Ordenante: Grupo TecnoSys ERP, LDA`, 14, 45);
-        doc.text(`Beneficiário: ${employee.name}`, 14, 52);
-        doc.text(`IBAN: ${employee.iban || '---'}`, 14, 59);
-        doc.text(`Valor: ${formatCurrency(net)}`, 14, 66);
-        doc.text('Solicitamos a transferência bancária correspondente ao pagamento de vencimentos.', 14, 80);
-        doc.save(`ordem_transferencia_${(employee.name || 'documento').toLowerCase().replace(/ /g, '_')}.pdf`);
-      }
-    };
-
-    if (!hasReceipts && !employee) {
-      return (
-        <div className="p-12 text-center text-zinc-400 font-bold uppercase tracking-widest bg-zinc-50 border border-zinc-200">
-          Nenhum salário processado ainda. Processe os salários na página anterior para gerar a lista de ordens de transferência bancária!
-        </div>
-      );
-    }
-
-    return (
-      <div className="bg-white border border-zinc-200 rounded-none shadow-lg max-w-4xl mx-auto overflow-hidden">
-        <div className="bg-[#003366] text-white p-8 flex justify-between items-center">
-          <div className="flex items-center gap-4">
-            <div className="bg-white/10 p-3">
-              <ArrowRightLeft size={32} />
-            </div>
-            <div>
-              <h2 className="text-2xl font-black uppercase tracking-[0.2em]">
-                {hasReceipts ? 'Ordem Colectiva de Transferências' : 'Ordem de Transferência'}
-              </h2>
-              <p className="text-xs text-white/60 uppercase tracking-widest font-bold">
-                {hasReceipts ? `Processamento de Vencimentos • ${selectedMonth}` : 'Pagamento de Vencimentos'}
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <button 
-              onClick={() => window.print()}
-              className="bg-white/10 hover:bg-white/20 px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all"
-            >
-              <Printer size={14} /> Imprimir
-            </button>
-            <button 
-              onClick={downloadPDF}
-              className="bg-[#F27D26] hover:bg-[#d96a1a] px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all"
-            >
-              <FileDown size={14} /> PDF
-            </button>
-          </div>
-        </div>
-
-        <div className="p-12 space-y-12 printable-area">
-          {/* Bank Info */}
-          <div className="grid grid-cols-2 gap-12">
-            <div className="space-y-4">
-              <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 border-b border-zinc-100 pb-2">Entidade Ordenante</h3>
-              <div className="space-y-1">
-                <p className="text-sm font-black text-[#003366] uppercase">{companyName}</p>
-                <p className="text-xs text-zinc-500 font-bold">NIF: 5000123456</p>
-                <p className="text-xs text-zinc-500 font-bold">Conta Principal Bancária: {iban ? 'AO06 ' + iban.substring(4) : 'AO06 0000 0000 1234 5678 9012 3'}</p>
-              </div>
-            </div>
-            <div className="space-y-4">
-              <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 border-b border-zinc-100 pb-2">Parâmetros de Lote</h3>
-              <div className="space-y-1">
-                <p className="text-sm font-black text-zinc-700 uppercase">Banco Ordenante: {bankName || 'BANCO BFA'}</p>
-                <p className="text-xs text-zinc-500 font-bold">Data de Instrução: {new Date().toLocaleDateString('pt-AO')}</p>
-                <p className="text-xs text-zinc-500 font-bold">Ref de Lote: OT-COLECTIVA-{new Date().getFullYear()}-{new Date().getMonth() + 1}</p>
-              </div>
-            </div>
-          </div>
-
-          {hasReceipts ? (
-            <div className="space-y-6">
-              <h3 className="text-[10px] font-black uppercase tracking-widest text-[#003366] border-b-2 border-[#003366] pb-2">
-                RELAÇÃO NOMINAL DOS BENEFICIÁRIOS DOS CRÉDITOS SALARIAIS
-              </h3>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs text-left border-collapse border border-zinc-200">
-                  <thead>
-                    <tr className="bg-zinc-100 font-black uppercase text-[9px] tracking-wider text-zinc-600 border-b border-zinc-200">
-                      <th className="px-3 py-3 border-r border-zinc-200 w-10">#</th>
-                      <th className="px-3 py-3 border-r border-zinc-200 text-left">Beneficiário (Nome)</th>
-                      <th className="px-3 py-3 border-r border-zinc-200 text-left">Banco Destinatário</th>
-                      <th className="px-3 py-3 border-r border-zinc-200 text-left font-mono">IBAN / Conta</th>
-                      <th className="px-3 py-3 text-right border-r border-zinc-200">Montante Líquido</th>
-                      <th className="px-3 py-3 text-center no-print">Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-200">
-                    {processedReceipts.map((rcpt, idx) => (
-                      <tr key={rcpt.id} className="hover:bg-zinc-50 font-bold text-zinc-700">
-                        <td className="px-3 py-2 border-r border-zinc-200 text-center text-zinc-400">{idx + 1}</td>
-                        <td className="px-3 py-2 border-r border-zinc-200 uppercase text-[#003366]">{rcpt.employee.name}</td>
-                        <td className="px-3 py-2 border-r border-zinc-200 uppercase text-zinc-500">{rcpt.employee.bank_name || 'BFA'}</td>
-                        <td className="px-3 py-2 border-r border-zinc-200 font-mono text-xs">{rcpt.employee.iban || 'AO00 0000 0000 0000 0000 0000 0'}</td>
-                        <td className="px-3 py-2 text-right font-mono text-emerald-600 border-r border-zinc-200">{formatCurrency(rcpt.calculations.totalNet)}</td>
-                        <td className="px-3 py-2 text-center no-print">
-                          <button 
-                            onClick={() => {
-                              if (confirm('Tem a certeza que deseja remover este registo da ordem de transferência?')) {
-                                setProcessedReceipts(prev => prev.filter(p => (p.id || p.employee.id) !== (rcpt.id || rcpt.employee.id)));
-                              }
-                            }}
-                            className="p-1.5 text-red-600 hover:bg-red-50 transition-colors"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="bg-zinc-50 font-black text-[#003366] border-t border-zinc-300">
-                      <td colSpan={4} className="px-3 py-4 border-r border-zinc-200 text-right uppercase tracking-widest text-[9px]">
-                        VALOR DE COBERTURA INTEGRAL DO LOTE:
-                      </td>
-                      <td className="px-3 py-4 text-right font-mono text-sm bg-emerald-50 text-emerald-700 border-l border-emerald-200">
-                        {formatCurrency(collectiveTransfersSum)}
-                      </td>
-                      <td className="no-print bg-zinc-50 border-l border-zinc-200"></td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </div>
-          ) : (
-            employee && (
-              <div className="bg-zinc-50 border border-zinc-200 p-8 space-y-8">
-                <div className="flex justify-between items-start">
-                  <div className="flex items-center gap-6">
-                    <div className="w-20 h-20 bg-white border border-zinc-200 overflow-hidden flex items-center justify-center">
-                      {employee.image_url ? <img src={employee.image_url} className="w-full h-full object-cover" /> : <UserIcon size={32} className="text-zinc-200" />}
-                    </div>
-                    <div>
-                      <h4 className="text-lg font-black text-[#003366] uppercase tracking-tight">{employee.name}</h4>
-                      <p className="text-xs text-zinc-400 font-bold uppercase tracking-widest">{employee.role}</p>
-                      <p className="text-xs text-[#F27D26] font-black mt-1 uppercase tracking-tighter">IBAN: {employee.iban || '---'}</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Valor a Transferir</p>
-                    <p className="text-3xl font-black text-[#003366] font-mono">
-                      {formatCurrency(employee.salary - (employee.salary * 0.03) - calculateIRT(employee.salary - (employee.salary * 0.03)))}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-6 pt-8 border-t border-zinc-200">
-                  <div>
-                    <p className="text-[9px] font-black uppercase tracking-widest text-zinc-400">Salário Bruto</p>
-                    <p className="text-sm font-bold text-zinc-700">{formatCurrency(employee.salary)}</p>
-                  </div>
-                  <div>
-                    <p className="text-[9px] font-black uppercase tracking-widest text-zinc-400">Descontos Estimados</p>
-                    <p className="text-sm font-bold text-red-500">
-                      -{formatCurrency((employee.salary * 0.03) + calculateIRT(employee.salary - (employee.salary * 0.03)))}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[9px] font-black uppercase tracking-widest text-zinc-400">Período de Referência</p>
-                    <p className="text-sm font-bold text-zinc-700">{selectedMonth}</p>
-                  </div>
-                </div>
-              </div>
-            )
-          )}
-
-          {/* Description */}
-          <div className="space-y-4">
-            <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 border-b border-zinc-100 pb-2">Declaração de Instrução</h3>
-            <p className="text-xs text-zinc-600 leading-relaxed font-bold italic">
-              Solicitamos a vossas exas. que procedam ao processamento e crédito imediato das transferências bancárias especificadas de acordo com as informações fornecidas, imputando o valor global correspondente de {formatCurrency(collectiveTransfersSum)} na conta de depósitos acima indicada.
-            </p>
-          </div>
-
-          {/* Signatures */}
-          <div className="grid grid-cols-2 gap-24 pt-12">
-            <div className="text-center space-y-4">
-              <div className="border-t border-zinc-900 pt-4">
-                <p className="text-[10px] font-black uppercase tracking-widest">Autorizado por</p>
-                <p className="text-[8px] font-bold text-zinc-400 uppercase">Administração / Gerência</p>
-              </div>
-            </div>
-            <div className="text-center space-y-4">
-              <div className="border-t border-zinc-900 pt-4">
-                <p className="text-[10px] font-black uppercase tracking-widest">Processado por</p>
-                <p className="text-[8px] font-bold text-zinc-400 uppercase">Departamento de RH</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const filteredEmployeesList = Array.isArray(localEmployees) ? localEmployees.filter(emp => {
-    const searchMatch = (emp.name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
-      (emp.role || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
-      (emp.profession_name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
-      (emp.department || '').toLowerCase().includes((searchTerm || '').toLowerCase());
-    
-    // Na lista geral de funcionários, mostramos todos, mas com indicação visual para os demitidos
-    return searchMatch;
-  }) : [];
-
-  // Funcionários ativos para processamentos (Salário, Assiduidade)
-  const activeEmployees = Array.isArray(localEmployees) ? localEmployees.filter(emp => emp.status !== 'dismissed') : [];
-
-  const payrollFiltered = activeEmployees.filter(emp => {
-    const matchesWorkSite = !payrollWorkSiteId || String(emp.local_trabalho_id) === String(payrollWorkSiteId);
-    const matchesSearch = !payrollSearch ||
-      (emp.name || '').toLowerCase().includes(payrollSearch.toLowerCase()) ||
-      (emp.role || '').toLowerCase().includes(payrollSearch.toLowerCase());
-    return matchesWorkSite && matchesSearch;
-  });
 
   const [name, setName] = useState('');
   const [role, setRole] = useState('');
@@ -1798,54 +1670,11 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
   const [nomePai, setNomePai] = useState('');
   const [nomeMae, setNomeMae] = useState('');
 
-  // Form section collapse states
-  const [openDadosPessoais, setOpenDadosPessoais] = useState(true);
-  const [openDadosProfissionais, setOpenDadosProfissionais] = useState(true);
-  const [openDadosFiscais, setOpenDadosFiscais] = useState(true);
-  const [openOutrosDados, setOpenOutrosDados] = useState(true);
-  const [selectedMonth, setSelectedMonth] = useState(`Março / ${fiscalYear}`);
-  const [payrollWorkSiteId, setPayrollWorkSiteId] = useState<string>('');
-  const [payrollSearch, setPayrollSearch] = useState<string>('');
-  const [transferOrders, setTransferOrders] = useState<any[]>([]);
-  const [selectedPayEmployees, setSelectedPayEmployees] = useState<Record<string, boolean>>({});
-  const [selectedPayCaixaId, setSelectedPayCaixaId] = useState<string>('');
-  const [editingTransferOrder, setEditingTransferOrder] = useState<any | null>(null);
-  const [selectedEmployeesToProcess, setSelectedEmployeesToProcess] = useState<Record<number, boolean>>({});
-  const [processedAttendance, setProcessedAttendance] = useState<Record<number, boolean>>({});
-  const [processedReceipts, setProcessedReceipts] = useState<any[]>([]);
-  const [selectedProcedure, setSelectedProcedure] = useState<any | null>(null);
-  const [selectedReceipt, setSelectedReceipt] = useState<any | null>(null);
-  const [draftReceipt, setDraftReceipt] = useState<any | null>(null);
-  const [appSelectedEmployee, setAppSelectedEmployee] = useState<Employee | null>(null);
-  const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
-  const [absences, setAbsences] = useState<any[]>([]);
-  const [attendance, setAttendance] = useState<any[]>([]);
-  const [attendanceMap, setAttendanceMap] = useState<Record<number, Record<number, string>>>({});
-  const [payrollInputs, setPayrollInputs] = useState<Record<number, { 
-    premios: number, 
-    gratificacoes: number, 
-    abonos: number, 
-    subsidioNatal: number, 
-    alojamento: number, 
-    outrosSubsidios: number,
-    faltasJustificadas: number,
-    faltasInjustificadas: number,
-    ferias: number,
-    horasExtras: number,
-    horasPerdidas: number,
-    subsidioTransporte: number,
-    subsidioAlimentacao: number,
-    adiantamentos: number,
-    acertos: number,
-    diasTrabalho: number,
-    diasFolga: number
-  }>>({});
-
   const updatePayrollInput = (empId: number, field: string, value: number) => {
     setProcessedAttendance(prev => {
-      if (prev[empId]) {
+      if (prev[`${empId}_${selectedMonth}`]) {
         const next = { ...prev };
-        delete next[empId];
+        delete next[`${empId}_${selectedMonth}`];
         return next;
       }
       return prev;
@@ -1855,8 +1684,8 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
     
     setPayrollInputs(prev => ({
       ...prev,
-      [empId]: {
-        ...(prev[empId] || { 
+      [`${empId}_${selectedMonth}`]: {
+        ...(prev[`${empId}_${selectedMonth}`] || { 
           premios: 0, 
           gratificacoes: 0, 
           abonos: 0, 
@@ -1909,8 +1738,39 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
       else if (status === 'P') p++;
       else if (status === 'D') d++;
     }
+    
+    // Override with manual inputs for the current period if they exist
+    const key = `${empId}_${selectedMonth}`;
+    if (manualHE[key] !== undefined) {
+      he = manualHE[key];
+    }
+    if (manualHP[key] !== undefined) {
+      hp = manualHP[key];
+    }
+    
     return { fj, fi, fe, he, hp, p, d };
   };
+
+  const filteredEmployeesList = Array.isArray(localEmployees) ? localEmployees.filter(emp => {
+    const searchMatch = (emp.name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+      (emp.role || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+      (emp.profession_name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+      (emp.department || '').toLowerCase().includes((searchTerm || '').toLowerCase());
+    
+    // Na lista geral de funcionários, mostramos todos, mas com indicação visual para os demitidos
+    return searchMatch;
+  }) : [];
+
+  // Funcionários ativos para processamentos (Salário, Assiduidade)
+  const activeEmployees = Array.isArray(localEmployees) ? localEmployees.filter(emp => emp.status !== 'dismissed') : [];
+
+  const payrollFiltered = activeEmployees.filter(emp => {
+    const matchesWorkSite = !payrollWorkSiteId || String(emp.local_trabalho_id) === String(payrollWorkSiteId);
+    const matchesSearch = !payrollSearch ||
+      (emp.name || '').toLowerCase().includes(payrollSearch.toLowerCase()) ||
+      (emp.role || '').toLowerCase().includes(payrollSearch.toLowerCase());
+    return matchesWorkSite && matchesSearch;
+  });
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, callback: (url: string) => void) => {
     const file = e.target.files?.[0];
@@ -1976,8 +1836,6 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
     }
   };
 
-  const [laborTerminations, setLaborTerminations] = useState<LaborTermination[]>([]);
-
   const fetchHRData = async () => {
     try {
       let pList: Profession[] = [];
@@ -2020,7 +1878,15 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
         fetchJson(`/api/labor-terminations?empresa_id=${user?.empresa_id}`)
       ]);
       setProfessions(Array.isArray(pList) ? pList : []);
-      setLocalEmployees(Array.isArray(e) ? e : []);
+      setLocalEmployees(prev => {
+        // Deduplicate by ID
+        const unique = Array.isArray(e) ? e.filter((item, index, self) =>
+          index === self.findIndex((t) => (
+            t.id === item.id
+          ))
+        ) : [];
+        return unique;
+      });
       setAttendance(Array.isArray(att) ? att : []);
       setAbsences(Array.isArray(abs) ? abs : []);
       setLaborTerminations(Array.isArray(lt) ? lt : []);
@@ -2122,7 +1988,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
         console.warn('Banco local delete fallback failed (this is fine if it only exists in Supabase):', err);
       }
       fetchHRData();
-      onRefresh();
+      onRefetch?.();
     } catch (err) {
       console.error('Error deleting employee:', err);
     }
@@ -2329,7 +2195,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
       
       // Refresh data
       await fetchHRData();
-      onRefresh();
+      onRefetch?.();
       
       alert(editingEmployee ? 'Funcionário atualizado com sucesso!' : 'Funcionário registado com sucesso!');
     } catch (err) {
@@ -4052,6 +3918,13 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                 <EmployeeOptionsMenu 
                   employee={selectedEmployeeForOptions} 
                   onClose={() => setShowOptionsMenu(false)} 
+                  setActiveTab={setActiveTab}
+                  setAppSelectedEmployee={setAppSelectedEmployee}
+                  handleEditEmployee={handleEditEmployee}
+                  handleDeleteEmployee={handleDeleteEmployee}
+                  handleReadmitEmployee={handleReadmitEmployee}
+                  onRefreshHRData={fetchHRData}
+                  onSetIsContractModalOpen={onSetIsContractModalOpen}
                 />
               )}
             </AnimatePresence>
@@ -4118,10 +3991,10 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                     const totals = calculateAttendanceTotals(emp.id);
                     setPayrollInputs(prev => ({
                       ...prev,
-                      [emp.id]: {
-                        ...(prev[emp.id] || { 
+                      [`${emp.id}_${selectedMonth}`]: {
+                        ...(prev[`${emp.id}_${selectedMonth}`] || { 
                           premios: 0, gratificacoes: 0, abonos: 0, subsidioNatal: 0, alojamento: 0, outrosSubsidios: 0,
-                          subsidioTransporte: 0, subsidioAlimentacao: 0, diasTrabalho: 22, diasFolga: 8
+                          subsidioTransporte: 0, subsidioAlimentacao: 0, adiantamentos: 0, acertos: 0, diasTrabalho: 22, diasFolga: 8
                         }),
                         faltasJustificadas: totals.fj,
                         faltasInjustificadas: totals.fi,
@@ -4132,7 +4005,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                         diasFolga: totals.d
                       }
                     }));
-                    setProcessedAttendance(prev => ({ ...prev, [emp.id]: true }));
+                    setAttendanceDone(prev => ({ ...prev, [`${emp.id}_${selectedMonth}`]: true }));
                   });
                   setActiveTab('payroll');
                 }}
@@ -4342,16 +4215,30 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                   <tfoot>
                     <tr className="bg-zinc-50 font-black text-[#003366] text-xs">
                       <td className="px-4 py-4 border-r border-zinc-200 sticky left-0 bg-zinc-50 z-10 uppercase tracking-widest">Total Geral:</td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center">61</td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center">15</td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center"></td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center"></td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center"></td>
-                      {[...Array(22)].map((_, i) => (
-                        <td key={i} className="px-2 py-4 border-r border-zinc-200 text-center">
-                          {i % 5 === 0 ? '19:00' : i % 3 === 0 ? '11:00' : '€ 210,00'}
-                        </td>
-                      ))}
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center font-mono text-xs text-blue-600">
+                        {activeEmployees.reduce((sum, emp) => sum + calculateAttendanceTotals(emp.id).fj, 0)} FJ
+                      </td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center font-mono text-xs text-red-600">
+                        {activeEmployees.reduce((sum, emp) => sum + calculateAttendanceTotals(emp.id).fi, 0)} FI
+                      </td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center font-mono text-xs text-indigo-600">
+                        {activeEmployees.reduce((sum, emp) => sum + calculateAttendanceTotals(emp.id).fe, 0)} FE
+                      </td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center font-mono text-xs text-amber-600">
+                        {activeEmployees.reduce((sum, emp) => sum + calculateAttendanceTotals(emp.id).he, 0)} HE
+                      </td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center font-mono text-xs text-zinc-500">
+                        {activeEmployees.reduce((sum, emp) => sum + calculateAttendanceTotals(emp.id).hp, 0)} HP
+                      </td>
+                      {[...Array(31)].map((_, i) => {
+                        const day = i + 1;
+                        const presentsCount = activeEmployees.filter(emp => (attendanceMap[emp.id]?.[day] || (day % 7 === 0 ? 'D' : 'P')) === 'P').length;
+                        return (
+                          <td key={i} className="px-2 py-4 border-r border-zinc-200 text-center text-[10px] font-bold text-emerald-600">
+                            {presentsCount} P
+                          </td>
+                        );
+                      })}
                     </tr>
                   </tfoot>
                 </table>
@@ -4371,26 +4258,46 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-8">
               <div className="space-y-4">
                 <div className="flex justify-between border-b border-zinc-100 pb-2">
-                  <span className="text-xs font-bold text-[#003366] uppercase tracking-widest">Horas Totais Trabalhadas:</span>
-                  <span className="text-sm font-black">435.00</span>
+                  <span className="text-xs font-bold text-[#003366] uppercase tracking-widest">Horas Extraordinárias Totais (HE):</span>
+                  <span className="text-sm font-black font-mono">
+                    {activeEmployees.reduce((sum, emp) => sum + calculateAttendanceTotals(emp.id).he, 0)} Horas
+                  </span>
                 </div>
                 <div className="flex justify-between border-b border-zinc-100 pb-2">
-                  <span className="text-xs font-bold text-[#003366] uppercase tracking-widest">Horas Totais Perdidas:</span>
-                  <span className="text-sm font-black">11:00</span>
+                  <span className="text-xs font-bold text-[#003366] uppercase tracking-widest">Horas Perdidas Totais (HP):</span>
+                  <span className="text-sm font-black font-mono">
+                    {activeEmployees.reduce((sum, emp) => sum + calculateAttendanceTotals(emp.id).hp, 0)} Horas
+                  </span>
                 </div>
               </div>
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Base Legal:</span>
-                  <span className="text-xs font-bold text-zinc-600">Lei Geral do Trabalho</span>
+                  <span className="text-xs font-bold text-zinc-600">Lei Geral do Trabalho de Angola</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-xs font-bold text-[#003366] uppercase tracking-widest">Desconto Faltas Injustificadas:</span>
-                  <span className="text-sm font-black text-red-600">- € 180,00</span>
+                  <span className="text-xs font-bold text-[#003366] uppercase tracking-widest">Desconto de Faltas Injustificadas Totais:</span>
+                  <span className="text-sm font-black text-red-600 font-mono">
+                    -{formatCurrency(activeEmployees.reduce((sum, emp) => {
+                      const totals = calculateAttendanceTotals(emp.id);
+                      const dailyRate = emp.salary / 22;
+                      return sum + (totals.fi * dailyRate);
+                    }, 0))}
+                  </span>
                 </div>
                 <div className="flex justify-between items-center bg-[#003366]/5 p-4 border border-[#003366]/10">
-                  <span className="text-sm font-black text-[#003366] uppercase tracking-widest">Total de Vencimentos a Pagar:</span>
-                  <span className="text-xl font-black text-[#003366]">€ 5.040,00</span>
+                  <span className="text-sm font-black text-[#003366] uppercase tracking-widest">Vencimento Base Estimado a Pagar (com acréscimos/descontos):</span>
+                  <span className="text-xl font-black text-[#003366] font-mono">
+                    {formatCurrency(activeEmployees.reduce((sum, emp) => {
+                      const totals = calculateAttendanceTotals(emp.id);
+                      const dailyRate = emp.salary / 22;
+                      const hourlyRate = emp.salary / 173.33;
+                      const overtimePay = totals.he * (hourlyRate * 1.5);
+                      const lostHoursDeduction = totals.hp * hourlyRate;
+                      const absenceDeduction = totals.fi * dailyRate;
+                      return sum + (emp.salary + overtimePay - lostHoursDeduction - absenceDeduction);
+                    }, 0))}
+                  </span>
                 </div>
               </div>
             </div>
@@ -4404,26 +4311,13 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
               {isProcessingComplete && (
                 <button 
                   onClick={() => {
-                    if (!selectedPaymentCaixa) {
-                      alert('Selecione primeiro a caixa de pagamento.');
-                      return;
-                    }
-                    // Handle logical transfer
-                    setProcessedReceipts(prev => {
-                      const updated = prev.map(r => {
-                        if (r.status !== 'paid') {
-                          return { ...r, status: 'paid', caixa: selectedPaymentCaixa };
-                        }
-                        return r;
-                      });
-                      return updated;
-                    });
-                    alert('Salários transferidos e marcados como pagos com sucesso!');
-                    setActiveTab('transfer_order');
+                    // Logic fix: Just go to settlement page, do not mark as paid yet
+                    alert('Processamento concluído! Pode agora proceder à liquidação dos salários na página seguinte.');
+                    setActiveTab('pay_salary');
                   }}
                   className="bg-[#F27D26] hover:bg-[#d96a1a] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all shadow-lg"
                 >
-                  <ArrowRightLeft size={14} /> Transferir
+                  <ArrowRightLeft size={14} /> Proceder à Liquidação
                 </button>
               )}
             </div>
@@ -4465,11 +4359,15 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                   </div>
                 )}
                 <div className="min-w-[200px]">
-                  <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Mês/Ano:</label>
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-[#003366] mb-2">Mês/Ano de Processamento:</label>
                   <select 
                     value={selectedMonth}
-                    onChange={(e) => setSelectedMonth(e.target.value)}
-                    className="w-full border border-zinc-200 px-4 py-2 text-xs focus:outline-none focus:border-[#003366] font-bold text-[#003366]"
+                    onChange={(e) => {
+                      setSelectedMonth(e.target.value);
+                      setSelectedEmployeesToProcess({});
+                      setIsProcessingComplete(false);
+                    }}
+                    className="w-full border-2 border-zinc-100 px-4 py-2 text-xs focus:outline-none focus:border-[#003366] font-black text-[#003366] bg-zinc-50"
                   >
                     {[
                       "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -4497,21 +4395,38 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                 onClick={() => {
                   const selectedEmpIds = Object.keys(selectedEmployeesToProcess)
                     .filter(id => selectedEmployeesToProcess[Number(id)] === true)
-                    .map(Number);
+                    .map(Number)
+                    .filter(id => !processedAttendance[`${id}_${selectedMonth}`]);
                   
                   if (selectedEmpIds.length === 0) {
-                    alert("Por favor, selecione os funcionários na lista para executar o processamento!");
+                    alert("Por favor, selecione os funcionários na lista que ainda não foram processados!");
                     return;
+                  }
+
+                  // VALIDATION: Cannot process without attendance
+                  const pendingAttendance = selectedEmpIds.filter(id => !attendanceDone[`${id}_${selectedMonth}`]);
+                  if (pendingAttendance.length > 0) {
+                     alert("Atenção: Os salários não podem ser processados sem assiduidade processada primeiro! Verifique os colaboradores selecionados.");
+                     return;
                   }
 
                   const receipts = activeEmployees
                     .filter(emp => selectedEmpIds.includes(emp.id))
                     .map(emp => {
-                    const inputs = payrollInputs[emp.id] || { 
-                      premios: 0, gratificacoes: 0, abonos: 0, subsidioNatal: 0, alojamento: 0, outrosSubsidios: 0,
-                      faltasJustificadas: 0, faltasInjustificadas: 0, ferias: 0, horasExtras: 0, horasPerdidas: 0,
-                      subsidioTransporte: 0, subsidioAlimentacao: 0, adiantamentos: 0, acertos: 0, diasTrabalho: 22, diasFolga: 8
-                    };
+                     const baseInputs = payrollInputs[`${emp.id}_${selectedMonth}`] || { 
+                       premios: 0, gratificacoes: 0, abonos: 0, subsidioNatal: 0, alojamento: 0, outrosSubsidios: 0,
+                       faltasJustificadas: 0, faltasInjustificadas: 0, ferias: 0, horasExtras: 0, horasPerdidas: 0,
+                       subsidioTransporte: 0, subsidioAlimentacao: 0, adiantamentos: 0, acertos: 0, diasTrabalho: 22, diasFolga: 8
+                     };
+                     const attTotals = calculateAttendanceTotals(emp.id);
+                     const inputs = {
+                       ...baseInputs,
+                       horasExtras: attTotals.he,
+                       horasPerdidas: attTotals.hp,
+                       faltasJustificadas: attTotals.fj,
+                       faltasInjustificadas: attTotals.fi,
+                       ferias: attTotals.fe
+                     };
                     const inss_worker = emp.subject_to_inss !== false ? emp.salary * 0.03 : 0;
                     const base_taxable = emp.subject_to_irt !== false ? (emp.salary - inss_worker) : 0;
                     const irt = emp.subject_to_irt !== false ? calculateIRT(base_taxable) : 0;
@@ -4546,6 +4461,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                         overtimeRate
                       },
                       period: selectedMonth,
+                      status: 'processed',
                       paymentDate: new Date().toLocaleDateString('pt-AO')
                     };
                   });
@@ -4586,15 +4502,20 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                             type="checkbox" 
                             id="selectAllEmployees"
                             className="rounded-none accent-[#F27D26] w-4 h-4 cursor-pointer" 
-                            checked={payrollFiltered.length > 0 && payrollFiltered.every(emp => !!selectedEmployeesToProcess[emp.id])}
+                            checked={payrollFiltered.length > 0 && payrollFiltered.filter(emp => !processedAttendance[`${emp.id}_${selectedMonth}`]).length > 0 && payrollFiltered.filter(emp => !processedAttendance[`${emp.id}_${selectedMonth}`]).every(emp => !!selectedEmployeesToProcess[emp.id])}
                             onChange={(e) => {
                               const checked = e.target.checked;
-                              const nextSelected: Record<number, boolean> = {};
-                              if (checked) {
-                                payrollFiltered.forEach(emp => {
-                                  nextSelected[emp.id] = true;
-                                });
-                              }
+                              const nextSelected: Record<number, boolean> = { ...selectedEmployeesToProcess };
+                              payrollFiltered.forEach(emp => {
+                                const isEmpProcessed = !!processedAttendance[`${emp.id}_${selectedMonth}`];
+                                if (!isEmpProcessed) {
+                                  if (checked) {
+                                    nextSelected[emp.id] = true;
+                                  } else {
+                                    delete nextSelected[emp.id];
+                                  }
+                                }
+                              });
                               setSelectedEmployeesToProcess(nextSelected);
                             }}
                           />
@@ -4629,10 +4550,19 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                         <td className="px-4 py-2 border-r border-zinc-200" colSpan={11}>Empresa: Grupo TecnoSys • Caixa: {selectedPaymentCaixa ? selectedPaymentCaixa.replace('_', ' ').toUpperCase() : 'NÃO SELECIONADO'}</td>
                       </tr>
                       {payrollFiltered.map(emp => {
-                      const inputs = payrollInputs[emp.id] || { 
+                      const baseInputs = payrollInputs[`${emp.id}_${selectedMonth}`] || { 
                         premios: 0, gratificacoes: 0, abonos: 0, subsidioNatal: 0, alojamento: 0, outrosSubsidios: 0,
                         faltasJustificadas: 0, faltasInjustificadas: 0, ferias: 0, horasExtras: 0, horasPerdidas: 0,
                         subsidioTransporte: 0, subsidioAlimentacao: 0, diasTrabalho: 22, diasFolga: 8
+                      };
+                      const attTotals = calculateAttendanceTotals(emp.id);
+                      const inputs = {
+                        ...baseInputs,
+                        horasExtras: attTotals.he,
+                        horasPerdidas: attTotals.hp,
+                        faltasJustificadas: attTotals.fj,
+                        faltasInjustificadas: attTotals.fi,
+                        ferias: attTotals.fe
                       };
                       
                       const inss_worker = emp.subject_to_inss !== false ? emp.salary * 0.03 : 0;
@@ -4672,6 +4602,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                           overtimeRate
                         },
                         period: selectedMonth,
+                        status: 'processed',
                         paymentDate: new Date().toLocaleDateString('pt-AO')
                       };
                       
@@ -4705,7 +4636,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                                         ? 'bg-blue-100 text-blue-600 border-blue-200'
                                         : 'bg-emerald-100 text-emerald-600 border-emerald-200'
                                     }`}>
-                                      {isPaid ? 'PAGO' : 'Processado'}
+                                    {isPaid ? 'PAGO' : 'Processado'}
                                     </span>
                                   )}
                                 </div>
@@ -4716,7 +4647,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                           <td className="px-2 py-4 border-r border-zinc-200">
                             <input 
                               type="number" 
-                              value={inputs.diasTrabalho}
+                              value={inputs.diasTrabalho ?? 22}
                               disabled={isProcessed}
                               onChange={(e) => updatePayrollInput(emp.id, 'diasTrabalho', Number(e.target.value))}
                               className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
@@ -4725,7 +4656,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                           <td className="px-2 py-4 border-r border-zinc-200">
                             <input 
                               type="number" 
-                              value={inputs.diasFolga}
+                              value={inputs.diasFolga ?? 8}
                               disabled={isProcessed}
                               onChange={(e) => updatePayrollInput(emp.id, 'diasFolga', Number(e.target.value))}
                               className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
@@ -4734,7 +4665,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                           <td className="px-2 py-4 border-r border-zinc-200">
                             <input 
                               type="number" 
-                              value={inputs.faltasJustificadas}
+                              value={inputs.faltasJustificadas ?? 0}
                               disabled={isProcessed}
                               onChange={(e) => updatePayrollInput(emp.id, 'faltasJustificadas', Number(e.target.value))}
                               className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
@@ -4743,7 +4674,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                           <td className="px-2 py-4 border-r border-zinc-200">
                             <input 
                               type="number" 
-                              value={inputs.faltasInjustificadas}
+                              value={inputs.faltasInjustificadas ?? 0}
                               disabled={isProcessed}
                               onChange={(e) => updatePayrollInput(emp.id, 'faltasInjustificadas', Number(e.target.value))}
                               className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
@@ -4752,7 +4683,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                           <td className="px-2 py-4 border-r border-zinc-200">
                             <input 
                               type="number" 
-                              value={inputs.ferias}
+                              value={inputs.ferias ?? 0}
                               disabled={isProcessed}
                               onChange={(e) => updatePayrollInput(emp.id, 'ferias', Number(e.target.value))}
                               className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
@@ -4761,7 +4692,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                           <td className="px-2 py-4 border-r border-zinc-200">
                             <input 
                               type="number" 
-                              value={inputs.horasExtras}
+                              value={inputs.horasExtras ?? 0}
                               disabled={isProcessed}
                               onChange={(e) => updatePayrollInput(emp.id, 'horasExtras', Number(e.target.value))}
                               className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
@@ -4770,7 +4701,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                           <td className="px-2 py-4 border-r border-zinc-200">
                             <input 
                               type="number" 
-                              value={inputs.horasPerdidas}
+                              value={inputs.horasPerdidas ?? 0}
                               disabled={isProcessed}
                               onChange={(e) => updatePayrollInput(emp.id, 'horasPerdidas', Number(e.target.value))}
                               className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
@@ -4779,7 +4710,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                           <td className="px-2 py-4 border-r border-zinc-200">
                             <input 
                               type="number" 
-                              value={inputs.premios}
+                              value={inputs.premios ?? 0}
                               disabled={isProcessed}
                               onChange={(e) => updatePayrollInput(emp.id, 'premios', Number(e.target.value))}
                               className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
@@ -4788,7 +4719,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                           <td className="px-2 py-4 border-r border-zinc-200">
                             <input 
                               type="number" 
-                              value={inputs.gratificacoes}
+                              value={inputs.gratificacoes ?? 0}
                               disabled={isProcessed}
                               onChange={(e) => updatePayrollInput(emp.id, 'gratificacoes', Number(e.target.value))}
                               className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
@@ -4797,7 +4728,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                           <td className="px-2 py-4 border-r border-zinc-200">
                             <input 
                               type="number" 
-                              value={inputs.abonos}
+                              value={inputs.abonos ?? 0}
                               disabled={isProcessed}
                               onChange={(e) => updatePayrollInput(emp.id, 'abonos', Number(e.target.value))}
                               className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
@@ -4806,7 +4737,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                           <td className="px-2 py-4 border-r border-zinc-200">
                             <input 
                               type="number" 
-                              value={inputs.subsidioNatal}
+                              value={inputs.subsidioNatal ?? 0}
                               disabled={isProcessed}
                               onChange={(e) => updatePayrollInput(emp.id, 'subsidioNatal', Number(e.target.value))}
                               className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
@@ -4815,7 +4746,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                           <td className="px-2 py-4 border-r border-zinc-200">
                             <input 
                               type="number" 
-                              value={inputs.alojamento}
+                              value={inputs.alojamento ?? 0}
                               disabled={isProcessed}
                               onChange={(e) => updatePayrollInput(emp.id, 'alojamento', Number(e.target.value))}
                               className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
@@ -4824,7 +4755,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                           <td className="px-2 py-4 border-r border-zinc-200">
                             <input 
                               type="number" 
-                              value={inputs.subsidioTransporte}
+                              value={inputs.subsidioTransporte ?? 0}
                               disabled={isProcessed}
                               onChange={(e) => updatePayrollInput(emp.id, 'subsidioTransporte', Number(e.target.value))}
                               className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
@@ -4833,7 +4764,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                           <td className="px-2 py-4 border-r border-zinc-200">
                             <input 
                               type="number" 
-                              value={inputs.subsidioAlimentacao}
+                              value={inputs.subsidioAlimentacao ?? 0}
                               disabled={isProcessed}
                               onChange={(e) => updatePayrollInput(emp.id, 'subsidioAlimentacao', Number(e.target.value))}
                               className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
@@ -4842,7 +4773,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                           <td className="px-2 py-4 border-r border-zinc-200">
                             <input 
                               type="number" 
-                              value={inputs.outrosSubsidios}
+                              value={inputs.outrosSubsidios ?? 0}
                               disabled={isProcessed}
                               onChange={(e) => updatePayrollInput(emp.id, 'outrosSubsidios', Number(e.target.value))}
                               className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
@@ -4851,7 +4782,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                           <td className="px-2 py-4 border-r border-zinc-200">
                             <input 
                               type="number" 
-                              value={inputs.adiantamentos}
+                              value={inputs.adiantamentos ?? 0}
                               disabled={isProcessed}
                               onChange={(e) => updatePayrollInput(emp.id, 'adiantamentos', Number(e.target.value))}
                               className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
@@ -4860,21 +4791,29 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                           <td className="px-2 py-4 border-r border-zinc-200">
                             <input 
                               type="number" 
-                              value={inputs.acertos}
+                              value={inputs.acertos ?? 0}
                               disabled={isProcessed}
                               onChange={(e) => updatePayrollInput(emp.id, 'acertos', Number(e.target.value))}
                               className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
                             />
                           </td>
-                          <td className="px-4 py-4 border-r border-zinc-200 text-right sticky right-0 bg-white group-hover:bg-zinc-50 z-10">
+                          <td className="px-4 py-4 border-r border-zinc-200 text-right sticky right-0 bg-white group-hover:bg-zinc-50 z-10 font-mono text-xs">
                             <div className="flex flex-col items-end">
                               <div className="font-black text-[#16A34A] font-mono">
-                                {isProcessed ? formatCurrency(totalNet) : '---'}
+                                {isProcessed ? formatCurrency(totalNet) : formatCurrency(totalNet) + ' (Prev)'}
                               </div>
-                              {isProcessed && (
+                              {isProcessed ? (
+                                <span className={`inline-flex items-center gap-1 text-[8px] font-black px-2 py-0.5 mt-1 uppercase tracking-widest border ${
+                                  isPaid
+                                    ? 'bg-blue-100 text-blue-800 border-blue-200'
+                                    : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                                }`}>
+                                  ● {isPaid ? 'PAGO' : 'PROCESSADO'}
+                                </span>
+                              ) : (
                                 <button 
                                   onClick={() => setDraftReceipt(receipt)}
-                                  className="flex items-center gap-1 text-[8px] text-[#003366] hover:text-[#F27D26] mt-1 uppercase font-black"
+                                  className="flex items-center gap-1 text-[8px] text-[#003366] hover:text-[#F27D26] mt-1 uppercase font-black cursor-pointer"
                                 >
                                   <Eye size={10} /> Visualizar Recibo
                                 </button>
@@ -4900,10 +4839,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                               ) : (
                                 <button 
                                   onClick={() => {
-                                    if (!selectedEmployeesToProcess[emp.id]) {
-                                      alert('Selecione o funcionário primeiro.');
-                                      return;
-                                    }
+                                    setSelectedEmployeesToProcess(prev => ({ ...prev, [emp.id]: true }));
                                     setProcessedAttendance(prev => ({...prev, [`${emp.id}_${selectedMonth}`]: true}));
                                     setProcessedReceipts(prev => [...prev.filter(r => !(r.employee.id === emp.id && r.period === selectedMonth)), receipt]);
                                   }}
@@ -4922,46 +4858,46 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                     <tr className="bg-zinc-50 font-black text-[#003366] text-[10px] uppercase tracking-widest">
                       <td className="px-4 py-4 border-r border-zinc-200 sticky left-0 bg-zinc-50 z-10"></td>
                       <td className="px-4 py-4 border-r border-zinc-200 sticky left-10 bg-zinc-50 z-10">TOTAL GERAL</td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{(localEmployees || []).reduce((sum, emp) => sum + (payrollInputs[emp.id]?.diasTrabalho || 22), 0)}</td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{(localEmployees || []).reduce((sum, emp) => sum + (payrollInputs[emp.id]?.diasFolga || 8), 0)}</td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{(localEmployees || []).reduce((sum, emp) => sum + (payrollInputs[emp.id]?.faltasJustificadas || 0), 0)}</td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{(localEmployees || []).reduce((sum, emp) => sum + (payrollInputs[emp.id]?.faltasInjustificadas || 0), 0)}</td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{(localEmployees || []).reduce((sum, emp) => sum + (payrollInputs[emp.id]?.ferias || 0), 0)}</td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{(localEmployees || []).reduce((sum, emp) => sum + (payrollInputs[emp.id]?.horasExtras || 0), 0)}</td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{(localEmployees || []).reduce((sum, emp) => sum + (payrollInputs[emp.id]?.horasPerdidas || 0), 0)}</td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{(payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.diasTrabalho || 22), 0)}</td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{(payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.diasFolga || 8), 0)}</td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{(payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.faltasJustificadas || 0), 0)}</td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{(payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.faltasInjustificadas || 0), 0)}</td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{(payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.ferias || 0), 0)}</td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{(payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.horasExtras || 0), 0)}</td>
+                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{(payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.horasPerdidas || 0), 0)}</td>
                       <td className="px-2 py-4 border-r border-zinc-200 text-center">
-                        {formatCurrency((localEmployees || []).reduce((sum, emp) => sum + (payrollInputs[emp.id]?.premios || 0), 0)).replace('€', '')} Kz
+                        {formatCurrency((payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.premios || 0), 0)).replace('€', '')} Kz
                       </td>
                       <td className="px-2 py-4 border-r border-zinc-200 text-center">
-                        {formatCurrency((localEmployees || []).reduce((sum, emp) => sum + (payrollInputs[emp.id]?.gratificacoes || 0), 0)).replace('€', '')} Kz
+                        {formatCurrency((payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.gratificacoes || 0), 0)).replace('€', '')} Kz
                       </td>
                       <td className="px-2 py-4 border-r border-zinc-200 text-center">
-                        {formatCurrency((localEmployees || []).reduce((sum, emp) => sum + (payrollInputs[emp.id]?.abonos || 0), 0)).replace('€', '')} Kz
+                        {formatCurrency((payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.abonos || 0), 0)).replace('€', '')} Kz
                       </td>
                       <td className="px-2 py-4 border-r border-zinc-200 text-center">
-                        {formatCurrency((localEmployees || []).reduce((sum, emp) => sum + (payrollInputs[emp.id]?.subsidioNatal || 0), 0)).replace('€', '')} Kz
+                        {formatCurrency((payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.subsidioNatal || 0), 0)).replace('€', '')} Kz
                       </td>
                       <td className="px-2 py-4 border-r border-zinc-200 text-center">
-                        {formatCurrency((localEmployees || []).reduce((sum, emp) => sum + (payrollInputs[emp.id]?.alojamento || 0), 0)).replace('€', '')} Kz
+                        {formatCurrency((payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.alojamento || 0), 0)).replace('€', '')} Kz
                       </td>
                       <td className="px-2 py-4 border-r border-zinc-200 text-center">
-                        {formatCurrency((localEmployees || []).reduce((sum, emp) => sum + (payrollInputs[emp.id]?.subsidioTransporte || 0), 0)).replace('€', '')} Kz
+                        {formatCurrency((payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.subsidioTransporte || 0), 0)).replace('€', '')} Kz
                       </td>
                       <td className="px-2 py-4 border-r border-zinc-200 text-center">
-                        {formatCurrency((localEmployees || []).reduce((sum, emp) => sum + (payrollInputs[emp.id]?.subsidioAlimentacao || 0), 0)).replace('€', '')} Kz
+                        {formatCurrency((payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.subsidioAlimentacao || 0), 0)).replace('€', '')} Kz
                       </td>
                       <td className="px-2 py-4 border-r border-zinc-200 text-center">
-                        {formatCurrency((localEmployees || []).reduce((sum, emp) => sum + (payrollInputs[emp.id]?.outrosSubsidios || 0), 0))}
+                        {formatCurrency((payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.outrosSubsidios || 0), 0))}
                       </td>
                       <td className="px-2 py-4 border-r border-zinc-200 text-center">
-                        {formatCurrency((localEmployees || []).reduce((sum, emp) => sum + (payrollInputs[emp.id]?.adiantamentos || 0), 0))}
+                        {formatCurrency((payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.adiantamentos || 0), 0))}
                       </td>
                       <td className="px-2 py-4 border-r border-zinc-200 text-center">
-                        {formatCurrency((localEmployees || []).reduce((sum, emp) => sum + (payrollInputs[emp.id]?.acertos || 0), 0))}
+                        {formatCurrency((payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.acertos || 0), 0))}
                       </td>
                       <td className="px-4 py-4 border-r border-zinc-200 text-center text-[#F27D26] sticky right-0 bg-zinc-50 z-10">
-                        {formatCurrency((localEmployees || []).reduce((sum, emp) => {
-                          const inputs = payrollInputs[emp.id] || { 
+                        {formatCurrency((payrollFiltered || []).reduce((sum, emp) => {
+                          const inputs = payrollInputs[`${emp.id}_${selectedMonth}`] || { 
                             premios: 0, gratificacoes: 0, abonos: 0, subsidioNatal: 0, alojamento: 0, outrosSubsidios: 0,
                             faltasJustificadas: 0, faltasInjustificadas: 0, ferias: 0, horasExtras: 0, horasPerdidas: 0,
                             subsidioTransporte: 0, subsidioAlimentacao: 0, adiantamentos: 0, acertos: 0, diasTrabalho: 22, diasFolga: 8
@@ -4993,25 +4929,32 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
             </div>
 
             <div className="flex flex-col gap-4 mt-6">
-              <div className="text-sm font-bold text-zinc-700">Funcionários: {localEmployees.length}</div>
+              <div className="text-sm font-bold text-zinc-700">Funcionários na Lista: {payrollFiltered.length}</div>
               <div className="flex justify-between items-center border-t border-zinc-200 pt-4">
                 <div className="text-sm font-black text-[#003366] uppercase tracking-widest">
-                  Total Processado: <span className="text-lg">{formatCurrency((localEmployees || []).reduce((sum, emp) => {
-                    const inputs = payrollInputs[emp.id] || { 
+                  Total Processado na Lista: <span className="text-lg">{formatCurrency((payrollFiltered || []).reduce((sum, emp) => {
+                    const inputs = payrollInputs[`${emp.id}_${selectedMonth}`] || { 
                       premios: 0, gratificacoes: 0, abonos: 0, subsidioNatal: 0, alojamento: 0, outrosSubsidios: 0,
                       faltasJustificadas: 0, faltasInjustificadas: 0, ferias: 0, horasExtras: 0, horasPerdidas: 0,
-                      subsidioTransporte: 0, subsidioAlimentacao: 0, diasTrabalho: 22, diasFolga: 8
+                      subsidioTransporte: 0, subsidioAlimentacao: 0, adiantamentos: 0, acertos: 0, diasTrabalho: 22, diasFolga: 8
                     };
+                    const inss_worker = emp.subject_to_inss !== false ? emp.salary * 0.03 : 0;
+                    const base_taxable = emp.subject_to_irt !== false ? (emp.salary - inss_worker) : 0;
+                    const irt = emp.subject_to_irt !== false ? calculateIRT(base_taxable) : 0;
+                    
                     const dailyRate = emp.salary / 22;
-                    const overtimeRate = (emp.salary / 173.33) * 1.5;
+                    const hourlyRate = emp.salary / 173.33;
+                    const overtimeRate = hourlyRate * 1.5;
                     const absenceDeduction = inputs.faltasInjustificadas * dailyRate;
-                    const lostHoursDeduction = inputs.horasPerdidas * (emp.salary / 173.33);
+                    const lostHoursDeduction = inputs.horasPerdidas * hourlyRate;
                     const overtimePay = inputs.horasExtras * overtimeRate;
                     
-                    return sum + (emp.salary + inputs.premios + inputs.gratificacoes + inputs.abonos + 
-                                 inputs.subsidioNatal + inputs.alojamento + inputs.outrosSubsidios + 
-                                 inputs.subsidioTransporte + inputs.subsidioAlimentacao + overtimePay - 
-                                 absenceDeduction - lostHoursDeduction);
+                    const totalGross = emp.salary + inputs.premios + inputs.gratificacoes + inputs.abonos + 
+                                     inputs.subsidioNatal + inputs.alojamento + inputs.outrosSubsidios + 
+                                     inputs.subsidioTransporte + inputs.subsidioAlimentacao + overtimePay + inputs.acertos;
+                    
+                    const totalNet = totalGross - inss_worker - irt - absenceDeduction - lostHoursDeduction - inputs.adiantamentos;
+                    return sum + totalNet;
                   }, 0)).replace('€', '')} Kz</span>
                 </div>
               </div>
@@ -5761,7 +5704,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                 >
                   <ArrowLeft size={14} /> Voltar à Seleção
                 </button>
-                <FichaPessoal employee={appSelectedEmployee} />
+                <FichaPessoal employee={appSelectedEmployee} companyName={companyName} />
               </div>
             )}
           </div>
@@ -5798,7 +5741,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                 >
                   <ArrowLeft size={14} /> Voltar à Seleção
                 </button>
-                <DeclaracaoServico employee={appSelectedEmployee} />
+                <DeclaracaoServico employee={appSelectedEmployee} companyName={companyName} />
               </div>
             )}
           </div>
@@ -5835,7 +5778,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                 >
                   <ArrowLeft size={14} /> Voltar à Seleção
                 </button>
-                <AcordoConfidencialidade employee={appSelectedEmployee} />
+                <AcordoConfidencialidade employee={appSelectedEmployee} companyName={companyName} />
               </div>
             )}
           </div>
@@ -5843,42 +5786,893 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
 
         {activeTab === 'labor_extinction' && (
           <div className="space-y-6">
-            <div className="bg-[#003366] text-white p-4 flex justify-between items-center">
-              <h2 className="text-lg font-black uppercase tracking-widest">Extensão Laboral (Demitidos)</h2>
-              <button className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all">
-                <Printer size={14} /> Imprimir Lista
+            <div className="bg-white border border-zinc-200 shadow-sm p-8 max-w-4xl mx-auto">
+               <div className="flex items-center gap-4 border-b-2 border-red-600 pb-6 mb-8">
+                  <div className="w-12 h-12 bg-red-600 text-white flex items-center justify-center">
+                    <UserMinus size={24} />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-black text-zinc-900 uppercase tracking-tighter">Processo de Extinção de Vínculo Laboral</h2>
+                    <p className="text-[10px] font-bold text-red-600 uppercase tracking-widest mt-1">Cessação do contrato de trabalho</p>
+                  </div>
+               </div>
+
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="space-y-6">
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Motivo da Rescisão / Demissão:</label>
+                      <select className="w-full border border-zinc-200 px-4 py-2.5 text-xs font-black uppercase text-red-700 bg-red-50/30 outline-none">
+                        <option>Mútuo Acordo</option>
+                        <option>Caducidade de Contrato</option>
+                        <option>Rescisão por Iniciativa do Trabalhador</option>
+                        <option>Despedimento Disciplinar</option>
+                        <option>Aposentadoria</option>
+                        <option>Morte do Trabalhador</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Data da Última Presença:</label>
+                      <input type="date" className="w-full border border-zinc-200 px-4 py-2 text-xs font-bold focus:outline-none focus:border-red-600" />
+                    </div>
+                    <div className="bg-zinc-50 p-6 border border-zinc-200">
+                       <h4 className="text-[10px] font-black text-zinc-800 uppercase mb-4">Checklist de Saída</h4>
+                       <div className="space-y-3">
+                          {['Devolução de Ativos', 'Entrega de Chaves', 'Revogação de Acessos TI', 'Entrega de Cartão de Trabalho', 'Assinatura TRCT'].map(item => (
+                            <label key={item} className="flex items-center gap-3 cursor-pointer group">
+                               <input type="checkbox" className="w-4 h-4 rounded-none accent-red-600" />
+                               <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-tight group-hover:text-zinc-800 transition-colors">{item}</span>
+                            </label>
+                          ))}
+                       </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-6">
+                    <div className="bg-red-50 p-6 border border-red-100">
+                      <h4 className="text-[10px] font-black text-red-900 uppercase mb-4">Cálculo Estimado de Indemnização</h4>
+                      <div className="space-y-3">
+                         <div className="flex justify-between text-[10px] text-red-800/70 uppercase font-bold">
+                           <span>Mês Corrente (Proporcional):</span>
+                           <span>{formatCurrency(0)}</span>
+                         </div>
+                         <div className="flex justify-between text-[10px] text-red-800/70 uppercase font-bold">
+                           <span>Férias não Gozadas:</span>
+                           <span>{formatCurrency(0)}</span>
+                         </div>
+                         <div className="flex justify-between text-[10px] text-red-800/70 uppercase font-bold">
+                           <span>Subsídio Férias / Natal:</span>
+                           <span>{formatCurrency(0)}</span>
+                         </div>
+                         <div className="pt-3 border-t border-red-200 flex justify-between font-black text-red-900 text-sm">
+                           <span className="uppercase">Total Estimado Líquido:</span>
+                           <span>{formatCurrency(0)}</span>
+                         </div>
+                      </div>
+                    </div>
+                    <button className="w-full bg-zinc-900 text-white font-black py-4 uppercase tracking-widest text-[10px] hover:bg-black transition-all shadow-xl">
+                      Iniciar Processo de Extinção
+                    </button>
+                    <p className="text-[9px] text-zinc-400 italic text-center">Este processo é irreversível e exige validação jurídica.</p>
+                  </div>
+               </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'personal_registry' && (
+          <div className="space-y-6">
+            {!appSelectedEmployee ? (
+              <div className="bg-white border border-zinc-200 shadow-sm p-8 text-center max-w-4xl mx-auto space-y-6">
+                <div className="w-16 h-16 bg-blue-50 text-[#003366] flex items-center justify-center rounded-none mx-auto border border-blue-100">
+                  <UserIcon size={28} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-[#003366] uppercase tracking-widest">Cadastro de Colaborador</h3>
+                  <p className="text-xs text-zinc-500 font-bold uppercase mt-1">Por favor, selecione um funcionário abaixo para abrir a ficha de cadastro completa.</p>
+                </div>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-4 text-left pt-4">
+                  {localEmployees.map(emp => (
+                    <button
+                      key={emp.id}
+                      onClick={() => setAppSelectedEmployee(emp)}
+                      className="bg-zinc-50 border border-zinc-200 p-4 flex items-center gap-4 hover:border-[#003366] transition-all text-left group"
+                    >
+                      <div className="w-10 h-10 bg-zinc-200 rounded-none flex items-center justify-center overflow-hidden shrink-0 border border-zinc-300">
+                        {emp.image_url ? <img referrerPolicy="no-referrer" src={emp.image_url} alt={emp.name} className="w-full h-full object-cover" /> : <UserIcon size={20} className="text-zinc-400" />}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-extrabold text-[#003366] text-xs uppercase truncate">{emp.name}</p>
+                        <p className="text-[9px] text-zinc-500 uppercase truncate font-semibold">{emp.role}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="bg-white border border-zinc-200 shadow-sm overflow-hidden p-8">
+                <div className="mb-6 flex no-print">
+                  <button 
+                    onClick={() => setAppSelectedEmployee(null)}
+                    className="flex items-center gap-2 text-zinc-500 hover:text-[#003366] font-black text-[10px] uppercase tracking-widest transition-all"
+                  >
+                    <ArrowLeft size={14} /> Selecionar Outro Colaborador
+                  </button>
+                </div>
+
+                <div className="flex justify-between items-start mb-8 border-b-2 border-[#003366] pb-6">
+                  <div className="flex items-center gap-6">
+                    <div className="w-24 h-24 bg-zinc-100 border border-zinc-200 flex items-center justify-center">
+                      {appSelectedEmployee?.image_url ? (
+                        <img src={appSelectedEmployee.image_url} alt="Foto" className="w-full h-full object-cover" />
+                      ) : (
+                        <UserIcon size={48} className="text-zinc-300" />
+                      )}
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">
+                        {appSelectedEmployee?.name || 'Selecione um Colaborador'}
+                      </h2>
+                      <p className="text-sm font-bold text-zinc-500 uppercase">{appSelectedEmployee?.role || 'Cargo não definido'}</p>
+                      <p className="text-xs text-zinc-400 mt-2 font-bold">ID: {appSelectedEmployee ? String(appSelectedEmployee.id).padStart(4, '0') : '---'}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className={`px-4 py-1.5 text-[10px] font-black uppercase tracking-widest border ${
+                      appSelectedEmployee?.status === 'active' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-red-100 text-red-700 border-red-200'
+                    }`}>
+                      {appSelectedEmployee?.status === 'active' ? 'ATIVO NO QUADRO' : 'INATIVO'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                  <div className="space-y-6">
+                    <div className="bg-zinc-50 p-4 border border-zinc-200">
+                      <h3 className="text-[10px] font-black text-[#003366] uppercase tracking-widest mb-4 flex items-center gap-2">
+                         <UserIcon size={14} className="text-[#F27D26]" /> Informações Gerais
+                      </h3>
+                      <div className="space-y-3">
+                        <div className="flex justify-between border-b border-zinc-100 pb-1">
+                          <span className="text-[9px] font-bold text-zinc-400 uppercase">NIF</span>
+                          <span className="text-[10px] font-black">{appSelectedEmployee?.nif || '---'}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-zinc-100 pb-1">
+                          <span className="text-[9px] font-bold text-zinc-400 uppercase">Gênero</span>
+                          <span className="text-[10px] font-black uppercase">{appSelectedEmployee?.gender || '---'}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-zinc-100 pb-1">
+                          <span className="text-[9px] font-bold text-zinc-400 uppercase">Estado Civil</span>
+                          <span className="text-[10px] font-black uppercase">{appSelectedEmployee?.marital_status || '---'}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-zinc-100 pb-1">
+                          <span className="text-[9px] font-bold text-zinc-400 uppercase">Habilitações</span>
+                          <span className="text-[10px] font-black uppercase">{appSelectedEmployee?.academic_level || '---'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-6">
+                    <div className="bg-zinc-50 p-4 border border-zinc-200">
+                      <h3 className="text-[10px] font-black text-[#003366] uppercase tracking-widest mb-4 flex items-center gap-2">
+                         <MapPin size={14} className="text-[#F27D26]" /> Contacto e Morada
+                      </h3>
+                      <div className="space-y-3">
+                        <div className="flex justify-between border-b border-zinc-100 pb-1">
+                          <span className="text-[9px] font-bold text-zinc-400 uppercase">Telefone</span>
+                          <span className="text-[10px] font-black">{appSelectedEmployee?.phone || '---'}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-zinc-100 pb-1">
+                          <span className="text-[9px] font-bold text-zinc-400 uppercase">Email</span>
+                          <span className="text-[10px] font-black">{appSelectedEmployee?.email || '---'}</span>
+                        </div>
+                        <div className="space-y-1">
+                          <span className="text-[9px] font-bold text-zinc-400 uppercase block">Morada completa</span>
+                          <span className="text-[10px] font-black uppercase leading-tight block">{appSelectedEmployee?.address || 'Endereço não disponível'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-6">
+                    <div className="bg-zinc-50 p-4 border border-zinc-200">
+                      <h3 className="text-[10px] font-black text-[#003366] uppercase tracking-widest mb-4 flex items-center gap-2">
+                         <ShieldCheck size={14} className="text-[#F27D26]" /> Situação Laboral
+                      </h3>
+                      <div className="space-y-3">
+                        <div className="flex justify-between border-b border-zinc-100 pb-1">
+                          <span className="text-[9px] font-bold text-zinc-400 uppercase">Admissão</span>
+                          <span className="text-[10px] font-black">{appSelectedEmployee?.hired_at || '---'}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-zinc-100 pb-1">
+                          <span className="text-[9px] font-bold text-zinc-400 uppercase">Vencimento Base</span>
+                          <span className="text-[10px] font-black">{appSelectedEmployee ? formatCurrency(appSelectedEmployee.salary) : '---'}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-zinc-100 pb-1">
+                          <span className="text-[9px] font-bold text-zinc-400 uppercase">Tipo Contrato</span>
+                          <span className="text-[10px] font-black uppercase text-blue-600">{appSelectedEmployee?.contract_type || '---'}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-zinc-100 pb-1">
+                          <span className="text-[9px] font-bold text-zinc-400 uppercase">INSS Nº</span>
+                          <span className="text-[10px] font-black">{appSelectedEmployee?.inss_number || '---'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-12 flex justify-end gap-3 no-print">
+                  <button onClick={() => window.print()} className="px-6 py-2 bg-[#003366] text-white text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-[#002244] transition-all shadow-md">
+                    <Printer size={16} /> Imprimir Cadastro Completo
+                  </button>
+                  <button 
+                    onClick={() => {
+                      if (appSelectedEmployee) handleEditEmployee(appSelectedEmployee);
+                    }} 
+                    className="px-6 py-2 bg-zinc-100 text-zinc-600 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-zinc-200 transition-all border border-zinc-200"
+                  >
+                    <Edit size={16} /> Editar Dados
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'work_card' && (
+          <div className="space-y-8">
+            <div className="bg-white border border-zinc-200 p-6 flex flex-col md:flex-row justify-between items-center gap-4 no-print">
+               <div>
+                  <h3 className="text-xl font-black text-[#003366] uppercase tracking-tighter">Cartões de Colaborador</h3>
+                  <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-1">Identificação profissional e acesso operacional</p>
+               </div>
+               <div className="flex items-center gap-4 w-full md:w-auto">
+                 <div className="relative flex-1 md:w-64">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={14} />
+                    <input 
+                      type="text" 
+                      value={paySearch}
+                      onChange={(e) => setPaySearch(e.target.value)}
+                      placeholder="Pesquisar colaborador..." 
+                      className="w-full pl-10 pr-4 py-2 border border-zinc-200 text-xs focus:outline-none focus:border-[#003366]"
+                    />
+                 </div>
+                 <button onClick={() => window.print()} className="bg-[#003366] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 shadow-lg hover:bg-black transition-all">
+                    <Printer size={14} /> Imprimir Todos
+                 </button>
+               </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3 gap-12 pb-24 printable-cards">
+              {localEmployees
+                .filter(e => e.status !== 'dismissed' && (e.name.toLowerCase().includes(paySearch.toLowerCase()) || e.role.toLowerCase().includes(paySearch.toLowerCase())))
+                .map(emp => (
+                <div key={emp.id} className="relative w-[360px] h-[220px] mx-auto bg-white shadow-lg border border-zinc-200 overflow-hidden flex flex-col page-break-avoid hover:shadow-xl transition-all group scale-100 hover:scale-[1.01] duration-300">
+                  {/* Decorative modern background lines */}
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-zinc-50 rounded-full mix-blend-multiply filter blur-xl opacity-75 pointer-events-none group-hover:bg-[#003366]/5 transition-colors"></div>
+                  
+                  {/* Stripes Header */}
+                  <div className="h-1.5 w-full flex">
+                    <div className="w-2/3 bg-[#003366]"></div>
+                    <div className="w-1/3 bg-[#F27D26]"></div>
+                  </div>
+
+                  <div className="flex-1 flex p-4 gap-4 relative z-10">
+                    {/* Photo Area */}
+                    <div className="w-[100px] h-[130px] bg-zinc-100 border-2 border-zinc-200 overflow-hidden shadow-inner flex items-center justify-center shrink-0 relative group-hover:border-[#003366] transition-colors bg-gradient-to-b from-zinc-50 to-zinc-100">
+                       {emp.image_url ? (
+                         <img referrerPolicy="no-referrer" src={emp.image_url} alt="Foto" className="w-full h-full object-cover" />
+                       ) : (
+                         <div className="flex flex-col items-center gap-1 text-zinc-300">
+                           <UserIcon size={36} />
+                           <span className="text-[6px] tracking-widest uppercase font-black">SEM FOTO</span>
+                         </div>
+                       )}
+                       {/* Floating active chip */}
+                       <div className="absolute bottom-1 right-1 flex items-center gap-0.5 bg-emerald-500 text-white text-[6px] font-black tracking-widest px-1.5 py-0.5 rounded-none shadow-sm uppercase">
+                         <span className="w-1 h-1 bg-white rounded-full animate-pulse"></span>
+                         Ativo
+                       </div>
+                    </div>
+
+                    {/* Content Area */}
+                    <div className="flex-1 flex flex-col justify-between">
+                      <div>
+                        <div className="flex justify-between items-start mb-1">
+                           <div className="flex items-center gap-1">
+                              <span className="text-[7.5px] font-black text-[#003366] tracking-widest uppercase bg-[#003366]/5 px-1 py-0.5">TEC_SYS_ERP</span>
+                           </div>
+                           <span className="text-[8px] font-mono font-black text-[#F27D26]">Nº {1000 + emp.id}</span>
+                        </div>
+                        
+                        <div className="space-y-0.5">
+                          <h4 className="text-sm font-black text-[#003366] uppercase leading-tight tracking-tight line-clamp-1 group-hover:text-[#F27D26] transition-colors">{emp.name}</h4>
+                          <p className="text-[8.5px] font-extrabold text-[#F27D26] uppercase tracking-wide leading-none">{emp.role}</p>
+                          <p className="text-[7.5px] font-bold text-zinc-400 uppercase tracking-tight">{emp.department || 'DEPARTAMENTO GERAL'}</p>
+                        </div>
+                      </div>
+
+                      <div className="border-t border-zinc-150 pt-2 space-y-1 mt-2">
+                         <div className="grid grid-cols-2 gap-1 text-[7.5px]">
+                            <div>
+                               <span className="block text-[6.5px] font-extrabold text-zinc-400 uppercase leading-none mb-0.5">NIF</span>
+                               <span className="font-bold text-zinc-700 font-mono">{emp.nif || '---'}</span>
+                            </div>
+                            <div>
+                               <span className="block text-[6.5px] font-extrabold text-[#003366] uppercase leading-none mb-0.5">Telefone</span>
+                               <span className="font-bold text-zinc-700">{emp.phone || '---'}</span>
+                            </div>
+                         </div>
+                         <div className="grid grid-cols-2 gap-1 text-[7.5px]">
+                            <div>
+                               <span className="block text-[6.5px] font-extrabold text-zinc-400 uppercase leading-none mb-0.5">Admissão</span>
+                               <span className="font-bold text-zinc-650">{emp.hired_at || '---'}</span>
+                            </div>
+                            <div>
+                               <span className="block text-[6.5px] font-extrabold text-zinc-400 uppercase leading-none mb-0.5">Contrato</span>
+                               <span className="font-bold text-blue-600 uppercase truncate block">{emp.contract_type || '---'}</span>
+                            </div>
+                         </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Corporate Pattern Footer */}
+                  <div className="h-8 bg-[#003366] px-4 flex items-center justify-between mt-auto">
+                     <span className="text-[6.5px] text-white/75 font-black uppercase tracking-widest">Cartão de Identidade Profissional • GRUPO TECNOSYS</span>
+                     <button 
+                       onClick={() => {
+                         const printContents = document.getElementById(`employee-card-${emp.id}`)?.outerHTML;
+                         if (printContents) {
+                           const printWindow = window.open('', '_blank');
+                           if (printWindow) {
+                             printWindow.document.write(`
+                               <html>
+                                 <head>
+                                   <title>Imprimir Cartão - ${emp.name}</title>
+                                   <style>
+                                     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap');
+                                     body { 
+                                       font-family: 'Inter', sans-serif; 
+                                       display: flex; 
+                                       align-items: center; 
+                                       justify-content: center; 
+                                       height: 100vh; 
+                                       margin: 0;
+                                       background: #fff;
+                                     }
+                                     @media print {
+                                       body { margin: 0; background: #fff; }
+                                     }
+                                   </style>
+                                 </head>
+                                 <body onload="window.print(); window.close();">
+                                   <!-- External inline mini-styled clone -->
+                                   <div style="width: 360px; height: 220px; border: 1px solid #d4d4d8; display: flex; flex-direction: column; background: #fff; font-family: 'Inter', sans-serif; position: relative;">
+                                     <div style="height: 6px; display: flex;">
+                                       <div style="width: 66%; background-color: #003366;"></div>
+                                       <div style="width: 34%; background-color: #F27D26;"></div>
+                                     </div>
+                                     <div style="flex: 1; display: flex; padding: 16px; gap: 16px;">
+                                       <div style="width: 100px; height: 130px; border: 2px solid #e4e4e7; background: #f4f4f5; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                                         ${emp.image_url ? `<img src="${emp.image_url}" style="width: 100%; height: 100%; object-cover: cover;" />` : `
+                                           <div style="text-align: center; color: #a1a1aa; font-size: 8px;">SEM FOTO</div>
+                                         `}
+                                       </div>
+                                       <div style="flex: 1; display: flex; flex-direction: column; justify-content: space-between;">
+                                         <div>
+                                            <div style="display: flex; justify-content: space-between; font-size: 8px; margin-bottom: 4px;">
+                                               <span style="color: #003366; font-weight: 950; background-color: rgba(0,51,102,0.05); padding: 2px 4px;">TEC_SYS_ERP</span>
+                                               <span style="color: #F27D26; font-weight: 950; font-family: monospace;">Nº ${1000 + emp.id}</span>
+                                            </div>
+                                            <div style="margin-top: 4px;">
+                                               <div style="font-size: 14px; font-weight: 900; color: #003366; text-transform: uppercase;">${emp.name}</div>
+                                               <div style="font-size: 8.5px; font-weight: 800; color: #F27D26; text-transform: uppercase; margin-top: 2px;">${emp.role}</div>
+                                               <div style="font-size: 7.5px; font-weight: 500; color: #71717a; text-transform: uppercase;">${emp.department || 'DEPARTAMENTO GERAL'}</div>
+                                            </div>
+                                         </div>
+                                         <div style="border-top: 1px solid #e4e4e7; padding-top: 8px; margin-top: 8px;">
+                                            <table style="width: 100%; border-collapse: collapse; font-size: 7.5px;">
+                                               <tr>
+                                                  <td style="color: #a1a1aa; font-weight: 800; text-transform: uppercase;">NIF</td>
+                                                  <td style="color: #a1a1aa; font-weight: 800; text-transform: uppercase;">Telefone</td>
+                                               </tr>
+                                               <tr>
+                                                  <td style="font-weight: 700; color: #3f3f46; font-family: monospace;">${emp.nif || '---'}</td>
+                                                  <td style="font-weight: 700; color: #3f3f46;">${emp.phone || '---'}</td>
+                                               </tr>
+                                               <tr style="height: 4px;"></tr>
+                                               <tr>
+                                                  <td style="color: #a1a1aa; font-weight: 800; text-transform: uppercase;">Admissão</td>
+                                                  <td style="color: #a1a1aa; font-weight: 800; text-transform: uppercase;">Contrato</td>
+                                               </tr>
+                                               <tr>
+                                                  <td style="font-weight: 700; color: #3f3f46;">${emp.hired_at || '---'}</td>
+                                                  <td style="font-weight: 700; color: #003366; text-transform: uppercase;">${emp.contract_type || '---'}</td>
+                                               </tr>
+                                            </table>
+                                         </div>
+                                       </div>
+                                     </div>
+                                     <div style="height: 28px; background-color: #003366; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; margin-top: auto;">
+                                        <span style="color: rgba(255,255,255,0.75); font-size: 6.5px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px;">Cartão de Identidade Profissional • GRUPO TECNOSYS</span>
+                                        <div style="display: flex; gap: 4px;">
+                                           <div style="width: 6px; height: 6px; border-radius: 50%; background-color: #F27D26;"></div>
+                                           <div style="width: 6px; height: 6px; border-radius: 50%; background-color: #10b981;"></div>
+                                        </div>
+                                     </div>
+                                   </div>
+                                 </body>
+                               </html>
+                             `);
+                             printWindow.document.close();
+                           }
+                         }
+                       }}
+                       className="no-print bg-[#F27D26] hover:bg-orange-600 text-white font-black text-[7px] uppercase tracking-widest px-2.5 py-1 rounded-none flex items-center gap-1 transition-all h-[18px] self-center shrink-0 border-none cursor-pointer"
+                     >
+                       <Printer size={8} /> Imprimir
+                     </button>
+                  </div>
+
+                  {/* Hidden cloned printable block used during full collection print trigger */}
+                  <div className="hidden">
+                    <div id={`employee-card-${emp.id}`}>
+                       <div className="border border-zinc-200" style={{ width: '360px', height: '220px', display: 'flex', flexDirection: 'column', backgroundColor: '#fff', relative: 'true' }}>
+                         <div style={{ height: '6px', display: 'flex' }}>
+                           <div style={{ width: '66%', backgroundColor: '#003366' }}></div>
+                           <div style={{ width: '34%', backgroundColor: '#F27D26' }}></div>
+                         </div>
+                         <div style={{ flex: '1', display: 'flex', padding: '16px', gap: '16px' }}>
+                           <div style={{ width: '100px', height: '130px', border: '2px solid #e4e4e7', backgroundColor: '#f4f4f5', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                             {emp.image_url ? <img src={emp.image_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ fontSize: '8px', color: '#a1a1aa' }}>SEM FOTO</div>}
+                           </div>
+                           <div style={{ flex: '1', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                             <div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8px', marginBottom: '4px' }}>
+                                   <span style={{ color: '#003366', fontWeight: '950', backgroundColor: 'rgba(0,51,102,0.05)', padding: '2px 4px' }}>TEC_SYS_ERP</span>
+                                   <span style={{ color: '#F27D26', fontWeight: '950', fontFamily: 'monospace' }}>Nº {1000 + emp.id}</span>
+                                </div>
+                                <div style={{ marginTop: '4px' }}>
+                                   <div style={{ fontSize: '14px', fontWeight: '900', color: '#003366', textTransform: 'uppercase' }}>{emp.name}</div>
+                                   <div style={{ fontSize: '8.5px', fontWeight: '800', color: '#F27D26', textTransform: 'uppercase', marginTop: '2px' }}>{emp.role}</div>
+                                   <div style={{ fontSize: '7.5px', fontWeight: '500', color: '#71717a', textTransform: 'uppercase' }}>{emp.department || 'DEPARTAMENTO GERAL'}</div>
+                                </div>
+                             </div>
+                             <div style={{ borderTop: '1px solid #e4e4e7', paddingTop: '8px', marginTop: '8px' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '7.5px' }}>
+                                   <thead>
+                                     <tr>
+                                        <th style={{ color: '#a1a1aa', fontWeight: '800', textTransform: 'uppercase', textAlign: 'left' }}>NIF</th>
+                                        <th style={{ color: '#a1a1aa', fontWeight: '800', textTransform: 'uppercase', textAlign: 'left' }}>Telefone</th>
+                                     </tr>
+                                   </thead>
+                                   <tbody>
+                                     <tr>
+                                        <td style={{ fontWeight: '700', color: '#3f3f46', fontFamily: 'monospace' }}>{emp.nif || '---'}</td>
+                                        <td style={{ fontWeight: '700', color: '#3f3f46' }}>{emp.phone || '---'}</td>
+                                     </tr>
+                                     <tr style={{ height: '4px' }}></tr>
+                                     <tr>
+                                        <td style={{ color: '#a1a1aa', fontWeight: '800', textTransform: 'uppercase' }}>Admissão</td>
+                                        <td style={{ color: '#a1a1aa', fontWeight: '800', textTransform: 'uppercase' }}>Contrato</td>
+                                     </tr>
+                                     <tr>
+                                        <td style={{ fontWeight: '700', color: '#3f3f46' }}>{emp.hired_at || '---'}</td>
+                                        <td style={{ fontWeight: '700', color: '#003366', textTransform: 'uppercase' }}>{emp.contract_type || '---'}</td>
+                                     </tr>
+                                   </tbody>
+                                </table>
+                             </div>
+                           </div>
+                         </div>
+                         <div style={{ height: '28px', backgroundColor: '#003366', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', marginTop: 'auto' }}>
+                            <span style={{ color: 'rgba(255,255,255,0.75)', fontSize: '6.5px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Cartão de Identidade Profissional • GRUPO TECNOSYS</span>
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                               <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#F27D26' }}></div>
+                               <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981' }}></div>
+                            </div>
+                         </div>
+                       </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'labor_registration' && (
+          <div className="space-y-6">
+            <div className="bg-white border border-zinc-200 shadow-sm overflow-hidden p-8">
+              <div className="flex justify-between items-center mb-10">
+                <div>
+                  <h2 className="text-xl font-black text-[#003366] uppercase tracking-tighter">Registro e Inscrição Laboral</h2>
+                  <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mt-1">Conformidade com a Lei Geral do Trabalho de Angola</p>
+                </div>
+                <div className="flex gap-2">
+                  <button className="bg-emerald-600 text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest shadow-md flex items-center gap-2">
+                    <Plus size={14} /> Novo Registro
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+                <div className="border border-zinc-100 p-6 bg-zinc-50/50">
+                  <h3 className="text-xs font-black text-[#003366] uppercase mb-6 flex items-center gap-2 border-b border-zinc-200 pb-2">
+                    <div className="w-1.5 h-1.5 bg-[#F27D26]"></div> Segurança Social (INSS)
+                  </h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1.5">Número de Inscrição</label>
+                      <input 
+                        className="w-full bg-white border border-zinc-200 px-4 py-2 text-xs font-bold focus:outline-none" 
+                        defaultValue={appSelectedEmployee?.inss_number || ''}
+                        placeholder="Insira o nº de beneficiário"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1.5">Data de Inscrição</label>
+                      <input type="date" className="w-full bg-white border border-zinc-200 px-4 py-2 text-xs font-bold focus:outline-none" />
+                    </div>
+                    <div className="flex items-center gap-3 bg-white p-3 border border-zinc-100">
+                      <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center">
+                        <Check size={16} />
+                      </div>
+                      <span className="text-[10px] font-black uppercase tracking-tighter">Status: Inscrito Regularmente</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border border-zinc-100 p-6 bg-zinc-50/50">
+                  <h3 className="text-xs font-black text-[#003366] uppercase mb-6 flex items-center gap-2 border-b border-zinc-200 pb-2">
+                    <div className="w-1.5 h-1.5 bg-blue-600"></div> Centro de Emprego (MAPTSS)
+                  </h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1.5">Nº de Cadastro Laboral</label>
+                      <input 
+                        className="w-full bg-white border border-zinc-200 px-4 py-2 text-xs font-bold focus:outline-none" 
+                        placeholder="Nº de Registro no MAPTSS"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1.5">Guia de Encaminhamento</label>
+                      <input className="w-full bg-white border border-zinc-200 px-4 py-2 text-xs font-bold focus:outline-none" placeholder="Referência da Guia" />
+                    </div>
+                    <div className="flex items-center gap-3 bg-white p-3 border border-zinc-100">
+                      <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center">
+                        <FileText size={16} />
+                      </div>
+                      <span className="text-[10px] font-black uppercase tracking-tighter text-blue-800">Processo em Conformidade</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-zinc-50 border border-zinc-200 overflow-hidden">
+                <div className="p-4 bg-white border-b border-zinc-200 flex justify-between items-center">
+                  <h4 className="text-[10px] font-black text-[#003366] uppercase tracking-widest">Documentação Anexa</h4>
+                  <button className="text-[9px] font-black text-blue-600 uppercase">Ver Todos</button>
+                </div>
+                <div className="p-2 grid grid-cols-1 md:grid-cols-3 gap-2">
+                  {['BI / Passaporte', 'Cartão de Residência', 'Certificado Habilitações', 'Registo Criminal', 'Atestado Médico'].map(doc => (
+                    <div key={doc} className="flex items-center justify-between p-3 bg-white border border-zinc-100 hover:bg-zinc-50 cursor-pointer transition-colors group">
+                      <div className="flex items-center gap-3">
+                        <FileText size={14} className="text-zinc-300 group-hover:text-[#003366]" />
+                        <span className="text-[9px] font-bold text-zinc-600 uppercase tracking-tight">{doc}</span>
+                      </div>
+                      <Check size={12} className="text-emerald-500" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'performance_analysis' && (
+          <div className="space-y-6">
+            <div className="bg-white border border-zinc-200 shadow-sm p-8">
+              <div className="flex justify-between items-center mb-10 border-b border-zinc-100 pb-6">
+                <div>
+                   <h2 className="text-xl font-black text-[#003366] uppercase tracking-tighter">Análise de Desempenho e KPI</h2>
+                   <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mt-1">Métricas de produtividade e avaliação contínua</p>
+                </div>
+                <div className="flex gap-4">
+                  <select className="border border-zinc-200 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-[#003366] bg-zinc-50">
+                    <option>Trimestre 1 - 2026</option>
+                    <option>Trimestre 2 - 2026</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+                {[
+                  { label: 'Assiduidade', val: '98%', color: 'text-emerald-600', icon: Clock },
+                  { label: 'Pontualidade', val: '92%', color: 'text-blue-600', icon: CheckCircle },
+                  { label: 'Superação Metas', val: '105%', color: 'text-[#F27D26]', icon: TrendingUp },
+                  { label: 'Índice Avaliação', val: '4.8/5', color: 'text-purple-600', icon: Star }
+                ].map((stat, idx) => (
+                  <div key={idx} className="bg-zinc-50 p-6 border border-zinc-200 text-center space-y-2 group hover:bg-[#003366] transition-all duration-300 cursor-default">
+                    <stat.icon size={20} className="mx-auto text-zinc-300 group-hover:text-white/40" />
+                    <span className="block text-[9px] font-black text-zinc-400 uppercase tracking-widest group-hover:text-white/60">{stat.label}</span>
+                    <span className={`text-2xl font-black ${stat.color} group-hover:text-white`}>{stat.val}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-12 mt-12">
+                <div className="space-y-6">
+                  <h4 className="font-black text-[#003366] uppercase text-xs border-b border-zinc-100 pb-2">Evolução no Último Semestre</h4>
+                  <div className="h-64 flex items-end gap-3 px-4">
+                    {[65, 80, 75, 95, 85, 90].map((h, i) => (
+                      <div key={i} className="flex-1 flex flex-col items-center gap-2 group">
+                        <div className="w-full bg-[#003366]/10 group-hover:bg-[#003366]/20 transition-all flex items-end" style={{ height: '100%' }}>
+                           <motion.div 
+                             initial={{ height: 0 }}
+                             animate={{ height: `${h}%` }}
+                             className={`w-full ${i === 3 ? 'bg-[#F27D26]' : 'bg-[#003366]'}`}
+                           />
+                        </div>
+                        <span className="text-[8px] font-black text-zinc-400 uppercase">Mês {i+1}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-8">
+                  <h4 className="font-black text-[#003366] uppercase text-xs border-b border-zinc-100 pb-2">Feedback dos Supervisores</h4>
+                  <div className="space-y-4">
+                    {[
+                      { supervisor: 'Dr. Joaquim Silva', date: '12/03/2026', comment: 'Demonstra uma evolução notável na gestão de equipas e resolução de conflitos.' },
+                      { supervisor: 'Eng. Maria Antónia', date: '15/01/2026', comment: 'Capacidade técnica excelente, mantém os padrões de qualidade exigidos.' }
+                    ].map((f, i) => (
+                      <div key={i} className="bg-zinc-50 p-4 border-l-4 border-[#003366]">
+                        <div className="flex justify-between items-center mb-2">
+                           <span className="text-[10px] font-black text-[#003366] uppercase">{f.supervisor}</span>
+                           <span className="text-[9px] font-bold text-zinc-400">{f.date}</span>
+                        </div>
+                        <p className="text-[11px] text-zinc-600 italic">"{f.comment}"</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'workstation_management' && (
+          <div className="space-y-6">
+            <div className="bg-white border border-zinc-200 p-6 flex justify-between items-center">
+              <div>
+                <h3 className="text-lg font-black text-[#003366] uppercase tracking-wider">GESTÃO DE POSTO DE TRABALHO</h3>
+                <p className="text-xs text-zinc-400 font-bold uppercase mt-1">Controle de alocação de locais de trabalho</p>
+              </div>
+              <button className="bg-[#003366] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
+                <Plus size={14} /> Novo Posto
               </button>
             </div>
-            <div className="bg-white border border-zinc-200 shadow-sm overflow-hidden">
-              <table className="w-full text-left border-collapse">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+               {workSites.map(ws => (
+                 <div key={ws.id} className="bg-white border border-zinc-200 p-6 shadow-sm hover:border-[#003366] transition-all">
+                    <div className="flex items-center gap-4 mb-4">
+                      <div className="w-12 h-12 bg-[#003366]/10 text-[#003366] flex items-center justify-center">
+                        <Monitor size={24} />
+                      </div>
+                      <div>
+                        <h4 className="font-black text-[#003366] uppercase text-xs">{ws.title}</h4>
+                        <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">{ws.code || 'PT-100'}</p>
+                      </div>
+                    </div>
+                    <div className="space-y-3 text-[11px] font-medium text-zinc-600 mb-6">
+                      <div className="flex justify-between">
+                        <span className="uppercase text-zinc-400 font-black text-[9px]">Localização:</span>
+                        <span>{ws.location || 'Sede'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="uppercase text-zinc-400 font-black text-[9px]">Efetivo Atual:</span>
+                        <span className="font-black text-[#003366]">{localEmployees.filter(e => String(e.local_trabalho_id) === String(ws.id)).length} Colaboradores</span>
+                      </div>
+                    </div>
+                    <button className="w-full border border-zinc-200 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-zinc-50 transition-colors">Detalhes do Posto</button>
+                 </div>
+               ))}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'print_list' && (
+          <div className="bg-white border border-zinc-200 p-12 space-y-12">
+            <div className="flex justify-between items-center no-print">
+              <h3 className="font-black text-[#003366] uppercase tracking-widest">Relatório de Pessoal para Impressão</h3>
+              <button 
+                onClick={() => window.print()}
+                className="bg-[#003366] text-white px-6 py-2 text-xs font-black uppercase tracking-widest flex items-center gap-2 shadow-xl"
+              >
+                <Printer size={16} /> Emitir Documento
+              </button>
+            </div>
+
+            <div className="printable-area border-t-4 border-[#003366] pt-8">
+              <div className="flex justify-between items-start mb-8">
+                <div>
+                  <h2 className="text-2xl font-black text-[#003366] uppercase tracking-[0.1em]">{companyName}</h2>
+                  <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest">MAPA NOMINAL DE TRABALHADORES</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Emitido em:</p>
+                  <p className="text-xs font-bold font-mono">{new Date().toLocaleDateString('pt-AO')}</p>
+                </div>
+              </div>
+
+              <table className="w-full text-left border-collapse text-[10px]">
                 <thead>
-                  <tr className="bg-zinc-50 text-[10px] font-black uppercase tracking-widest text-zinc-400 border-b border-zinc-200">
-                    <th className="px-6 py-4">Funcionário</th>
-                    <th className="px-6 py-4">Cargo</th>
-                    <th className="px-6 py-4">Data Extinção</th>
-                    <th className="px-6 py-4">Motivo</th>
-                    <th className="px-6 py-4">Ordenado Por</th>
-                    <th className="px-6 py-4 text-right">Acções</th>
+                  <tr className="bg-zinc-100 uppercase tracking-widest font-black text-zinc-600 border-b-2 border-zinc-300">
+                    <th className="px-4 py-3 border-r border-zinc-200">ID</th>
+                    <th className="px-4 py-3 border-r border-zinc-200">Nome Completo</th>
+                    <th className="px-4 py-3 border-r border-zinc-200">Cargo</th>
+                    <th className="px-4 py-3 border-r border-zinc-200">NIF</th>
+                    <th className="px-4 py-3 border-r border-zinc-200">Data Adm.</th>
+                    <th className="px-4 py-3 text-right">Salário Base</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-100">
-                  {laborTerminations.map(lt => (
-                    <tr key={lt.id} className="hover:bg-zinc-50 transition-colors text-xs">
-                      <td className="px-6 py-4 font-black text-[#003366] uppercase">{lt.employee_name}</td>
-                      <td className="px-6 py-4 text-zinc-500 font-bold uppercase">{lt.employee_role}</td>
-                      <td className="px-6 py-4 font-mono text-zinc-600">{new Date(lt.dismissal_date).toLocaleDateString()}</td>
-                      <td className="px-6 py-4 text-zinc-600 italic">{lt.reason}</td>
-                      <td className="px-6 py-4 text-zinc-500 font-medium">{lt.ordered_by}</td>
-                      <td className="px-6 py-4 text-right">
-                        <button className="p-2 text-zinc-400 hover:text-[#003366]">
-                          <Eye size={14} />
+                <tbody className="divide-y divide-zinc-200">
+                  {localEmployees.map(emp => (
+                    <tr key={emp.id} className="font-bold text-zinc-700">
+                      <td className="px-4 py-3 border-r border-zinc-100 font-mono">#{emp.id}</td>
+                      <td className="px-4 py-3 border-r border-zinc-100 uppercase">{emp.name}</td>
+                      <td className="px-4 py-3 border-r border-zinc-100 uppercase text-zinc-500">{emp.role}</td>
+                      <td className="px-4 py-3 border-r border-zinc-100 font-mono text-zinc-500">{emp.nif || '---'}</td>
+                      <td className="px-4 py-3 border-r border-zinc-100">{emp.hired_at || '---'}</td>
+                      <td className="px-4 py-3 text-right font-black">{formatCurrency(emp.salary)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-zinc-50 font-black border-t-2 border-zinc-300">
+                    <td colSpan={5} className="px-4 py-3 text-right text-[#003366] uppercase tracking-widest">Total de Massa Salarial:</td>
+                    <td className="px-4 py-3 text-right font-black text-[#003366]">{formatCurrency(localEmployees.reduce((sum, e) => sum + e.salary, 0))}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'contracts' && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center bg-white border border-zinc-200 p-4">
+              <div className="flex gap-4 p-1 bg-zinc-100 w-fit">
+                <button 
+                  onClick={() => setContractView('emit')}
+                  className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest transition-all shadow-sm ${contractView === 'emit' ? 'bg-[#003366] text-white' : 'text-zinc-500 hover:text-zinc-800'}`}
+                >
+                  <Plus className="inline-block mr-2" size={14} /> Emitir Novo Contrato
+                </button>
+                <button 
+                  onClick={() => setContractView('list')}
+                  className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest transition-all shadow-sm ${contractView === 'list' ? 'bg-[#003366] text-white' : 'text-zinc-500 hover:text-zinc-800'}`}
+                >
+                  <FileText className="inline-block mr-2" size={14} /> Contratos Emitidos
+                </button>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="text-right">
+                   <h4 className="text-xs font-black text-[#003366] uppercase truncate max-w-[200px]">
+                     {user?.empresa_nome || 'TECNOSYS'}
+                   </h4>
+                   <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest">Módulo de Contratos</p>
+                </div>
+                <div className="w-10 h-10 bg-[#003366] flex items-center justify-center">
+                  <FileText size={20} className="text-white" />
+                </div>
+              </div>
+            </div>
+
+            {contractView === 'emit' ? (
+              <div className="bg-white border border-zinc-200 overflow-hidden shadow-sm">
+                <div className="p-6 bg-zinc-50 border-b border-zinc-200">
+                  <h3 className="text-sm font-black text-[#003366] uppercase tracking-tighter">Selecione o Colaborador para Emissão de Contrato</h3>
+                  <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mt-1">Lista nominal de trabalhadores ativos no quadro</p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse min-w-[1000px] text-[10px]">
+                    <thead>
+                      <tr className="bg-[#003366] text-white uppercase tracking-widest font-black">
+                        <th className="px-6 py-4 border-r border-white/10">ID</th>
+                        <th className="px-6 py-4 border-r border-white/10 min-w-[300px]">NOME COMPLETO</th>
+                        <th className="px-6 py-4 border-r border-white/10">CARGO / FUNÇÃO</th>
+                        <th className="px-6 py-4 border-r border-white/10">NIF</th>
+                        <th className="px-6 py-4 border-r border-white/10 text-right">SALÁRIO BASE</th>
+                        <th className="px-6 py-4 text-center">AÇÕES</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100">
+                      {localEmployees.filter(e => e.status !== 'dismissed').map((emp) => (
+                        <tr key={emp.id} className="hover:bg-zinc-50 transition-colors group">
+                          <td className="px-6 py-4 border-r border-zinc-100 font-bold text-zinc-400">#{String(emp.id).padStart(4, '0')}</td>
+                          <td className="px-6 py-4 border-r border-zinc-100">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 bg-zinc-200 overflow-hidden flex items-center justify-center">
+                                 {emp.image_url ? <img src={emp.image_url} className="w-full h-full object-cover" /> : <UserIcon size={16} className="text-zinc-400" />}
+                              </div>
+                              <span className="font-black text-[#003366] uppercase group-hover:text-[#F27D26] transition-colors">{emp.name}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 border-r border-zinc-100 uppercase font-bold text-zinc-500">{emp.role}</td>
+                          <td className="px-6 py-4 border-r border-zinc-100 font-mono italic text-zinc-400">{emp.nif || '---'}</td>
+                          <td className="px-6 py-4 border-r border-zinc-100 text-right font-mono font-black text-[#003366]">{formatCurrency(emp.salary)}</td>
+                          <td className="px-6 py-4 text-center">
+                            <button 
+                              onClick={() => { onSetEmployee(emp); onSetIsContractModalOpen(true); }}
+                              className="bg-[#003366] text-white px-4 py-2 text-[9px] font-black uppercase tracking-widest shadow-md hover:bg-[#F27D26] transition-all flex items-center gap-2 mx-auto"
+                            >
+                              <FilePlus size={14} /> Emitir Contrato
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-white border border-zinc-200 p-8 space-y-6 shadow-sm">
+                <ContratosList 
+                  employees={localEmployees} 
+                  onSetEmployee={onSetEmployee}
+                  onSetIsContractModalOpen={onSetIsContractModalOpen}
+                  onEditContract={(c) => {
+                    if (onSetSelectedContract) onSetSelectedContract(c);
+                    onSetIsContractModalOpen(true);
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'colaboradores_demitidos' && (
+          <div className="bg-white border border-zinc-200 p-8 space-y-6">
+             <div className="flex justify-between items-center border-b border-zinc-100 pb-4">
+              <h3 className="text-lg font-black text-[#003366] uppercase tracking-[0.1em]">Colaboradores Demitidos (Bloqueados)</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-[11px]">
+                <thead>
+                  <tr className="bg-zinc-50 font-black uppercase tracking-widest text-zinc-400">
+                    <th className="px-4 py-3 border-b">Funcionário</th>
+                    <th className="px-4 py-3 border-b">Cargo Anterior</th>
+                    <th className="px-4 py-3 border-b">Data Demissão</th>
+                    <th className="px-4 py-3 border-b">Estado</th>
+                    <th className="px-4 py-3 border-b text-center">Ação</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {localEmployees.filter(e => e.status === 'dismissed').map(emp => (
+                    <tr key={emp.id} className="border-b border-zinc-50 hover:bg-red-50/50 font-bold">
+                      <td className="px-4 py-4 uppercase text-red-600">{emp.name}</td>
+                      <td className="px-4 py-4 uppercase text-zinc-500">{emp.role}</td>
+                      <td className="px-4 py-4 font-mono text-zinc-400">{emp.dismissed_at ? new Date(emp.dismissed_at).toLocaleDateString() : '---'}</td>
+                      <td className="px-4 py-3">
+                        <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[9px] uppercase font-black tracking-widest">BLOQUEADO</span>
+                      </td>
+                      <td className="px-4 py-4 text-center">
+                        <button 
+                          onClick={() => handleReadmitEmployee(emp.id, new Date().toISOString().split('T')[0], 'Readmissão administrativa')}
+                          className="bg-emerald-600 text-white px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.1em] hover:bg-emerald-700"
+                        >
+                          Readmitir
                         </button>
                       </td>
                     </tr>
                   ))}
-                  {laborTerminations.length === 0 && (
+                  {localEmployees.filter(e => e.status === 'dismissed').length === 0 && (
                     <tr>
-                      <td colSpan={6} className="px-6 py-12 text-center text-zinc-400 italic">Nenhum registo de extinção laboral encontrado.</td>
+                      <td colSpan={5} className="px-4 py-12 text-center text-zinc-400 italic">Nenhum colaborador demitido.</td>
                     </tr>
                   )}
                 </tbody>
@@ -5887,20 +6681,41 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
           </div>
         )}
 
-        {activeTab === 'contracts' && (
-          <ContratosList 
-            employees={localEmployees}
-            onSetEmployee={onSetEmployee}
-            onSetIsContractModalOpen={onSetIsContractModalOpen}
-            onEditContract={(contract) => {
-              if (onSetSelectedContract) onSetSelectedContract(contract);
-              onSetIsContractModalOpen(true);
-            }}
-          />
-        )}
-
-        {activeTab === 'colaboradores_demitidos' && (
-          <ColaboradoresDemitidos employees={localEmployees} onReadmit={handleReadmitEmployee} />
+        {activeTab === 'irt_table' && (
+          <div className="bg-white border border-zinc-200 p-8 space-y-6">
+            <h3 className="text-lg font-black text-[#003366] uppercase tracking-[0.1em] border-b border-zinc-100 pb-4">Escalões de IRT (Imposto sobre o Rendimento de Trabalho)</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-[11px]">
+                <thead>
+                  <tr className="bg-zinc-50 font-black uppercase tracking-widest text-[#003366]">
+                    <th className="px-4 py-3 border-b">Escalão</th>
+                    <th className="px-4 py-3 border-b">Limite Mínimo</th>
+                    <th className="px-4 py-3 border-b">Limite Máximo</th>
+                    <th className="px-4 py-3 border-b">Taxa Fixa</th>
+                    <th className="px-4 py-3 border-b">Taxa Variável (%)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {[
+                    { e: '1', min: 0, max: 100000, fixed: 0, var: 0 },
+                    { e: '2', min: 100001, max: 150000, fixed: 0, var: 10 },
+                    { e: '3', min: 150001, max: 200000, fixed: 5000, var: 13 },
+                    { e: '4', min: 200001, max: 300000, fixed: 11500, var: 16 },
+                    { e: '5', min: 300001, max: 500000, fixed: 27500, var: 18 },
+                    { e: '6', min: 500001, max: Infinity, fixed: 63500, var: 25 },
+                  ].map((row, i) => (
+                    <tr key={i} className="hover:bg-zinc-50 font-bold">
+                      <td className="px-4 py-4">#{row.e}</td>
+                      <td className="px-4 py-4 font-mono">{formatCurrency(row.min)}</td>
+                      <td className="px-4 py-4 font-mono">{row.max === Infinity ? '---' : formatCurrency(row.max)}</td>
+                      <td className="px-4 py-4 font-mono text-zinc-500">{formatCurrency(row.fixed)}</td>
+                      <td className="px-4 py-4 font-mono text-[#F27D26]">{row.var}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         )}
 
         {activeTab === 'irt_inss_map' && (
@@ -5910,13 +6725,18 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
             setSelectedMonthForMap={setSelectedMonth}
             selectedMapSubTab={selectedMapSubTab}
             setSelectedMapSubTab={setSelectedMapSubTab}
-            onSetEmployee={onSetEmployee}
+            onSetEmployee={setAppSelectedEmployee}
             onSetIsContractModalOpen={onSetIsContractModalOpen}
           />
         )}
 
         {activeTab === 'pay_salary' && (() => {
-          const unpaidReceipts = processedReceipts.filter(rcpt => rcpt.period === selectedMonth && rcpt.status !== 'paid');
+          const unpaidReceipts = processedReceipts.filter(rcpt => 
+            rcpt.period === selectedMonth && 
+            rcpt.status !== 'paid' &&
+            (rcpt.employee.name.toLowerCase().includes(paySearch.toLowerCase()) || 
+             rcpt.employee.role.toLowerCase().includes(paySearch.toLowerCase()))
+          );
 
           const handlePayAllSelected = () => {
             const selectedReceiptsToPay = unpaidReceipts.filter(rcpt => !!selectedPayEmployees[rcpt.employee.id]);
@@ -5984,7 +6804,35 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
               </div>
 
               <div className="bg-white p-6 border border-zinc-200 flex flex-wrap items-end justify-between gap-6">
-                <div className="flex gap-6 flex-wrap">
+                <div className="flex gap-6 flex-wrap items-end">
+                  <div className="min-w-[150px]">
+                    <label className="block text-[10px] font-black uppercase tracking-widest text-[#003366] mb-2">Mês de Referência:</label>
+                    <select 
+                      value={selectedMonth}
+                      onChange={(e) => setSelectedMonth(e.target.value)}
+                      className="w-full border border-zinc-200 px-4 py-2 text-xs focus:outline-none focus:border-[#003366] font-bold text-[#003366]"
+                    >
+                      {[
+                        "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+                        "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+                      ].map(m => `${m} / ${fiscalYear}`).map(m => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="min-w-[250px]">
+                    <label className="block text-[10px] font-black uppercase tracking-widest text-[#003366] mb-2">Pesquisar Colaborador:</label>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={14} />
+                      <input 
+                        type="text" 
+                        placeholder="Nome ou cargo..."
+                        value={paySearch}
+                        onChange={(e) => setPaySearch(e.target.value)}
+                        className="w-full border border-zinc-200 pl-9 pr-4 py-2 text-xs focus:outline-none focus:border-[#003366] font-bold text-[#003366]"
+                      />
+                    </div>
+                  </div>
                   <div className="min-w-[250px]">
                     <label className="block text-[10px] font-black uppercase tracking-widest text-[#003366] mb-2">Caixa de Pagamento:</label>
                     <select 
@@ -6088,8 +6936,6 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
         })()}
 
         {activeTab === 'transfer_order' && (() => {
-          const [printingOrder, setPrintingOrder] = useState<any | null>(null);
-
           const handleEditOrder = (order: any) => {
             // Take back to the pay_salary page and roll back receipts of this order of this month back to active status (not paid)
             setProcessedReceipts(prev => prev.map(rcpt => {
@@ -6127,7 +6973,116 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
           };
 
           return (
-            <div className="space-y-6">
+            <div className="space-y-6 relative">
+              <style dangerouslySetInnerHTML={{ __html: `
+                @media print {
+                  .no-print { display: none !important; }
+                  body * { visibility: hidden; }
+                  .print-content, .print-content * { visibility: visible; }
+                  .print-content { position: absolute; left: 0; top: 0; width: 100%; }
+                }
+              `}} />
+              {printingOrder && (
+                <div className="fixed inset-0 z-[300] bg-zinc-900/50 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto no-print-backdrop">
+                  <div className="bg-white w-full max-w-4xl shadow-2xl relative p-8 font-sans print-content">
+                    <button 
+                      onClick={() => setPrintingOrder(null)} 
+                      className="absolute top-4 right-4 p-2 hover:bg-zinc-100 border border-zinc-200 no-print"
+                    >
+                      <X size={20} />
+                    </button>
+
+                    <div className="flex justify-between items-start border-b-2 border-[#003366] pb-6 mb-6">
+                      <div className="flex items-center gap-4">
+                        <div className="w-16 h-16 bg-[#003366] flex items-center justify-center">
+                          <Building2 size={32} className="text-white" />
+                        </div>
+                        <div>
+                          <h2 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">{companyName}</h2>
+                          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Recursos Humanos • Gestão de Pagamentos</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <h1 className="text-3xl font-black text-[#003366] leading-none uppercase tracking-tighter">ORDEM DE TRANSFERÊNCIA</h1>
+                        <p className="text-xs font-black text-[#F27D26] mt-1">{printingOrder.id}</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-8 mb-8 bg-zinc-50 p-6 border border-zinc-200">
+                      <div>
+                        <p className="text-[9px] font-black uppercase text-zinc-400 tracking-widest mb-1">Data de Emissão</p>
+                        <p className="font-bold text-[#003366]">{new Date(printingOrder.date).toLocaleDateString('pt-AO')}</p>
+                      </div>
+                      <div>
+                        <p className="text-[9px] font-black uppercase text-zinc-400 tracking-widest mb-1">Período de Referência</p>
+                        <p className="font-bold text-[#003366] uppercase">{printingOrder.month}</p>
+                      </div>
+                      <div>
+                        <p className="text-[9px] font-black uppercase text-zinc-400 tracking-widest mb-1">Caixa de Origem</p>
+                        <p className="font-bold text-[#003366] uppercase">{printingOrder.caixaName}</p>
+                      </div>
+                    </div>
+
+                    <div className="mb-8">
+                      <table className="w-full border-collapse border border-zinc-200">
+                        <thead>
+                          <tr className="bg-[#f8fafc] text-[10px] font-black text-[#003366] uppercase border-b border-zinc-200">
+                            <th className="px-4 py-3 border-r border-zinc-200 text-left">Nº</th>
+                            <th className="px-4 py-3 border-r border-zinc-200 text-left">COLABORADOR</th>
+                            <th className="px-4 py-3 border-r border-zinc-200 text-left">IBAN</th>
+                            <th className="px-4 py-3 border-r border-zinc-200 text-right">S. BASE</th>
+                            <th className="px-4 py-3 border-r border-zinc-200 text-right">DESC.</th>
+                            <th className="px-4 py-3 text-right">V. LÍQUIDO</th>
+                          </tr>
+                        </thead>
+                        <tbody className="text-[11px] font-medium text-zinc-700">
+                          {printingOrder.employees.map((emp: any, idx: number) => (
+                            <tr key={emp.id} className="border-b border-zinc-100">
+                              <td className="px-4 py-2 border-r border-zinc-200">{idx + 1}</td>
+                              <td className="px-4 py-2 border-r border-zinc-200 font-bold uppercase">{emp.name}</td>
+                              <td className="px-4 py-2 border-r border-zinc-200 font-mono text-[9px]">{emp.iban || '---'}</td>
+                              <td className="px-4 py-2 border-r border-zinc-200 text-right">{formatCurrency(emp.salary)}</td>
+                              <td className="px-4 py-2 border-r border-zinc-200 text-right text-red-500">-{formatCurrency(emp.inss + emp.irt)}</td>
+                              <td className="px-4 py-2 text-right font-black text-[#16A34A]">{formatCurrency(emp.net)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr className="bg-zinc-50 font-black text-[#003366] text-xs uppercase border-t-2 border-[#003366]">
+                            <td className="px-4 py-4 text-center" colSpan={4}>TOTAL DE PAGAMENTOS ({printingOrder.employeeCount} FUNCIONÁRIOS)</td>
+                            <td className="px-4 py-4 text-right" colSpan={2}>{formatCurrency(printingOrder.totalPaid)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-12 mt-16 pb-8">
+                      <div className="text-center space-y-4">
+                        <div className="border-t border-zinc-400 w-full pt-2">
+                          <p className="text-[10px] font-black uppercase text-[#003366]">Responsável pelos Recursos Humanos</p>
+                          <p className="text-[9px] text-zinc-400 uppercase tracking-widest mt-1">Assinatura e Carimbo</p>
+                        </div>
+                      </div>
+                      <div className="text-center space-y-4">
+                        <div className="border-t border-zinc-400 w-full pt-2">
+                          <p className="text-[10px] font-black uppercase text-[#003366]">Direcção Financeira / Administração</p>
+                          <p className="text-[9px] text-zinc-400 uppercase tracking-widest mt-1">Assinatura e Carimbo</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-center gap-4 mt-8 no-print">
+                      <button 
+                        onClick={() => window.print()} 
+                        className="bg-[#003366] text-white px-8 py-3 font-black uppercase tracking-widest text-xs flex items-center gap-2 shadow-xl"
+                      >
+                        <Printer size={16} /> Confirmar & Imprimir
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="flex justify-between items-center bg-white p-6 border border-zinc-200 shadow-sm">
                 <div>
                   <h3 className="text-lg font-black text-[#003366] uppercase tracking-wider">ORDEM DE TRANSFERÊNCIA BANCÁRIA</h3>
@@ -6673,6 +7628,30 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                 </div>
               </div>
 
+              {/* Attendance Summary Section */}
+              <div className="mb-8 bg-blue-50/30 p-4 border border-blue-100 grid grid-cols-5 gap-4 text-center">
+                 <div>
+                    <label className="block text-[8px] font-black text-[#003366] uppercase tracking-widest mb-1">Dias Trabalhados</label>
+                    <span className="text-xs font-black text-[#003366]">{draftReceipt.inputs.diasTrabalho || 0}</span>
+                 </div>
+                 <div>
+                    <label className="block text-[8px] font-black text-[#003366] uppercase tracking-widest mb-1">Dias Folga</label>
+                    <span className="text-xs font-black text-[#003366]">{draftReceipt.inputs.diasFolga || 0}</span>
+                 </div>
+                 <div>
+                    <label className="block text-[8px] font-black font-semibold text-emerald-600 uppercase tracking-widest mb-1">Faltas Just.</label>
+                    <span className="text-xs font-black text-emerald-600">{draftReceipt.inputs.faltasJustificadas || 0}</span>
+                 </div>
+                 <div>
+                    <label className="block text-[8px] font-black text-red-600 uppercase tracking-widest mb-1">Faltas Injust.</label>
+                    <span className="text-xs font-black text-red-600">{draftReceipt.inputs.faltasInjustificadas || 0}</span>
+                 </div>
+                 <div>
+                    <label className="block text-[8px] font-black text-purple-600 uppercase tracking-widest mb-1">Horas Extras</label>
+                    <span className="text-xs font-black text-purple-600">{draftReceipt.inputs.horasExtras || 0}h</span>
+                 </div>
+              </div>
+
               {/* Earnings & Deductions Table */}
               <div className="border border-zinc-200 mb-8">
                 <table className="w-full text-left border-collapse">
@@ -6711,7 +7690,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                         <td className="px-4 py-3 text-right">
                           <input 
                             type="number"
-                            value={draftReceipt.inputs[item.field]}
+                            value={draftReceipt.inputs[item.field] || 0}
                             onChange={(e) => {
                               const newVal = Number(e.target.value);
                               const updatedInputs = { ...draftReceipt.inputs, [item.field]: newVal };
@@ -6762,7 +7741,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                       <td className="px-4 py-3 text-center">
                         <input 
                           type="number"
-                          value={draftReceipt.inputs.horasExtras}
+                          value={draftReceipt.inputs.horasExtras || 0}
                           onChange={(e) => {
                             const newVal = Number(e.target.value);
                             const updatedInputs = { ...draftReceipt.inputs, horasExtras: newVal };
@@ -6824,7 +7803,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                       <td className="px-4 py-3 text-center">
                         <input 
                           type="number"
-                          value={draftReceipt.inputs.faltasInjustificadas}
+                          value={draftReceipt.inputs.faltasInjustificadas || 0}
                           onChange={(e) => {
                             const newVal = Number(e.target.value);
                             const updatedInputs = { ...draftReceipt.inputs, faltasInjustificadas: newVal };
@@ -6872,7 +7851,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                       <td className="px-4 py-3 text-center">
                         <input 
                           type="number"
-                          value={draftReceipt.inputs.horasPerdidas}
+                          value={draftReceipt.inputs.horasPerdidas || 0}
                           onChange={(e) => {
                             const newVal = Number(e.target.value);
                             const updatedInputs = { ...draftReceipt.inputs, horasPerdidas: newVal };
@@ -6922,7 +7901,7 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
                       <td className="px-4 py-3 text-right font-mono text-red-600">
                         <input 
                           type="number"
-                          value={draftReceipt.inputs.adiantamentos}
+                          value={draftReceipt.inputs.adiantamentos || 0}
                           onChange={(e) => {
                             const newVal = Number(e.target.value);
                             const updatedInputs = { ...draftReceipt.inputs, adiantamentos: newVal };
@@ -6991,6 +7970,13 @@ const HRModule = ({ onRefresh, onSetIsContractModalOpen, onSetEmployee, onSetSel
         <EmployeeOptionsMenu 
           employee={selectedEmployeeForOptions} 
           onClose={() => setShowOptionsMenu(false)} 
+          setActiveTab={setActiveTab}
+          setAppSelectedEmployee={setAppSelectedEmployee}
+          handleEditEmployee={handleEditEmployee}
+          handleDeleteEmployee={handleDeleteEmployee}
+          handleReadmitEmployee={handleReadmitEmployee}
+          onRefreshHRData={fetchHRData}
+          onSetIsContractModalOpen={onSetIsContractModalOpen}
         />
       )}
     </div>
@@ -7368,116 +8354,6 @@ const ProfitLossReport = ({ fiscalYear, empresa_id }: { fiscalYear: string, empr
           <div className="text-right pt-8">
             <p className="text-[9px] text-zinc-400">{new Date().toLocaleDateString('pt-PT')}</p>
           </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const PurchasesReport = ({ purchases, suppliers, onBack }: { purchases: any[], suppliers: any[], onBack?: () => void }) => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [dateFilter, setDateFilter] = useState({ start: '', end: '' });
-
-  const filtered = (purchases || []).filter(p => {
-    if (p.document_type === 'Pagamento') return false; 
-    const matchesSearch = (p.supplier_name || '').toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          (p.invoice_number || '').toString().toLowerCase().includes(searchTerm.toLowerCase());
-    const docDate = new Date(p.date || p.data_emissao || Date.now());
-    const matchesStart = !dateFilter.start || docDate >= new Date(dateFilter.start);
-    const matchesEnd = !dateFilter.end || docDate <= new Date(dateFilter.end);
-    return matchesSearch && matchesStart && matchesEnd;
-  });
-
-  const totalPurchases = filtered.filter(p => p.document_type !== 'Nota de Crédito').reduce((acc, p) => acc + (p.total || 0), 0);
-  const totalNC = filtered.filter(p => p.document_type === 'Nota de Crédito').reduce((acc, p) => acc + (p.total || 0), 0);
-  const totalVAT = filtered.reduce((acc, p) => acc + (p.vat_amount || 0), 0);
-
-  return (
-    <div className="space-y-8 animate-in fade-in duration-300 pb-12">
-      {onBack && (
-        <button onClick={onBack} className="flex items-center gap-2 text-[#003366] font-black text-xs uppercase hover:underline">
-          <ChevronLeft size={14} /> Voltar ao Menu
-        </button>
-      )}
-      
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-white border-l-4 border-[#003366] p-6 shadow-sm">
-          <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Compras Brutas</p>
-          <p className="text-2xl font-black text-[#003366]">{formatCurrency(totalPurchases)}</p>
-        </div>
-        <div className="bg-white border-l-4 border-amber-500 p-6 shadow-sm">
-          <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">IVA Deducível</p>
-          <p className="text-2xl font-black text-amber-600">{formatCurrency(totalVAT)}</p>
-        </div>
-        <div className="bg-white border-l-4 border-red-500 p-6 shadow-sm">
-          <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Créditos / Devoluções</p>
-          <p className="text-2xl font-black text-red-600">{formatCurrency(totalNC)}</p>
-        </div>
-        <div className="bg-white border-l-4 border-emerald-500 p-6 shadow-sm">
-          <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Valor Líquido</p>
-          <p className="text-2xl font-black text-emerald-600">{formatCurrency(totalPurchases - totalNC)}</p>
-        </div>
-      </div>
-
-      <div className="bg-white border border-zinc-200 p-6 shadow-sm flex flex-wrap gap-6 items-end">
-        <div className="flex-1 min-w-[300px] space-y-2">
-          <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Pesquisar por Fornecedor ou Doc</label>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
-            <input 
-              type="text" 
-              placeholder="Ex: Fornecedor ABC..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-zinc-50 border border-zinc-200 p-3 pl-10 text-xs font-bold focus:outline-none focus:border-[#003366] transition-all"
-            />
-          </div>
-        </div>
-        <div className="flex gap-4">
-          <div className="space-y-2">
-            <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Data Início</label>
-            <input type="date" value={dateFilter.start} onChange={e => setDateFilter({...dateFilter, start: e.target.value})} className="bg-zinc-50 border border-zinc-200 p-3 text-xs font-bold focus:outline-none" />
-          </div>
-          <div className="space-y-2">
-            <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Data Fim</label>
-            <input type="date" value={dateFilter.end} onChange={e => setDateFilter({...dateFilter, end: e.target.value})} className="bg-zinc-50 border border-zinc-200 p-3 text-xs font-bold focus:outline-none" />
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
-        <div className="p-4 bg-zinc-50 border-b border-zinc-200 flex justify-between items-center">
-           <h3 className="text-xs font-black text-[#003366] uppercase tracking-widest">Relatório Analítico de Compras</h3>
-           <button onClick={() => window.print()} className="text-[10px] font-black text-[#003366] border border-[#003366] px-4 py-2 hover:bg-[#003366] hover:text-white transition-all uppercase tracking-widest">Imprimir Mapa</button>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[1000px]">
-            <thead>
-              <tr className="bg-[#003366] text-white text-[10px] uppercase tracking-widest font-black">
-                <th className="px-6 py-4">Data</th>
-                <th className="px-6 py-4">Fornecedor</th>
-                <th className="px-6 py-4">Tipo Doc.</th>
-                <th className="px-6 py-4 text-right">Base</th>
-                <th className="px-6 py-4 text-right">IVA</th>
-                <th className="px-6 py-4 text-right">Total</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100">
-              {filtered.map((p, idx) => (
-                <tr key={idx} className="hover:bg-zinc-50 text-[11px] font-bold transition-colors">
-                  <td className="px-6 py-4 text-zinc-500 font-mono">{new Date(p.date || p.data_emissao || Date.now()).toLocaleDateString()}</td>
-                  <td className="px-6 py-4 text-zinc-900 uppercase">{p.supplier_name || 'Desconhecido'}</td>
-                  <td className="px-6 py-4 text-[#003366] uppercase">{p.document_type || 'Compra'}</td>
-                  <td className="px-6 py-4 text-right text-zinc-600">{formatCurrency((p.total || 0) - (p.vat_amount || 0))}</td>
-                  <td className="px-6 py-4 text-right text-amber-600">{formatCurrency(p.vat_amount || 0)}</td>
-                  <td className="px-6 py-4 text-right font-black text-[#003366]">{formatCurrency(p.total)}</td>
-                </tr>
-              ))}
-              {filtered.length === 0 && (
-                <tr><td colSpan={6} className="p-12 text-center text-zinc-400 font-bold uppercase">Nenhum movimento de compra encontrado.</td></tr>
-              )}
-            </tbody>
-          </table>
         </div>
       </div>
     </div>
@@ -9818,6 +10694,239 @@ const UsersSettings = () => {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+};
+
+const FichaPessoal = ({ employee, companyName }: { employee: Employee | null, companyName: string }) => {
+  if (!employee) return (
+    <div className="p-12 text-center text-zinc-400 font-bold uppercase tracking-widest bg-zinc-50 border-2 border-dashed border-zinc-200">
+      Selecione um funcionário no menu de opções para visualizar a ficha pessoal completa.
+    </div>
+  );
+
+  return (
+    <div className="bg-white border border-zinc-200 shadow-2xl max-w-5xl mx-auto overflow-hidden animate-fade-in printable-area">
+      <div className="bg-[#003366] text-white p-10 flex justify-between items-center relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-96 h-96 bg-white/5 rounded-full -mr-48 -mt-48 blur-3xl"></div>
+        <div className="flex items-center gap-8 relative z-10">
+          <div className="w-32 h-32 bg-white p-1 rounded-none shadow-2xl border-2 border-white/20 overflow-hidden shrink-0">
+            {employee.image_url ? <img src={employee.image_url} className="w-full h-full object-cover" /> : <UserIcon size={64} className="text-zinc-200" />}
+          </div>
+          <div>
+            <h2 className="text-3xl font-black uppercase tracking-widest leading-tight">{employee.name}</h2>
+            <div className="flex items-center gap-4 mt-2">
+              <span className="bg-[#F27D26] text-white px-3 py-1 text-[10px] font-black uppercase tracking-widest">ID: #{String(employee.id).padStart(4, '0')}</span>
+              <p className="text-xs text-white/60 uppercase tracking-[0.2em] font-bold">{employee.role} • {employee.department || 'Geral'}</p>
+            </div>
+          </div>
+        </div>
+        <div className="text-right no-print">
+          <button onClick={() => window.print()} className="bg-white/10 hover:bg-white/20 p-4 transition-all border border-white/20">
+            <Printer size={24} />
+          </button>
+        </div>
+      </div>
+
+      <div className="p-12 grid grid-cols-1 md:grid-cols-3 gap-12 bg-zinc-50/30">
+        <div className="space-y-8 md:col-span-2">
+          {/* Main Content */}
+          <div className="space-y-6">
+            <h3 className="text-xs font-black uppercase tracking-[0.3em] text-[#003366] border-b-2 border-[#003366]/20 pb-2">Informação Biográfica</h3>
+            <div className="grid grid-cols-2 gap-6">
+              {[
+                { label: 'Data de Nascimento', val: employee.birth_date || 'N/A' },
+                { label: 'Gênero', val: employee.gender || 'Masculino' },
+                { label: 'Estado Civil', val: employee.marital_status || 'Solteiro(a)' },
+                { label: 'Naturalidade', val: employee.naturalness || 'Angola' },
+                { label: 'Nacionalidade', val: employee.nationality || 'Angolana' },
+                { label: 'NIF Fiscal', val: employee.nif || '---' },
+              ].map((item, idx) => (
+                <div key={idx}>
+                  <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1">{item.label}</p>
+                  <p className="text-xs font-bold text-zinc-700 uppercase">{item.val}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            <h3 className="text-xs font-black uppercase tracking-[0.3em] text-[#003366] border-b-2 border-[#003366]/20 pb-2">Vínculo Laboral</h3>
+            <div className="grid grid-cols-2 gap-6">
+              {[
+                { label: 'Data Admissão', val: employee.hired_at || '01/01/2026' },
+                { label: 'Tipo Contrato', val: employee.contract_type || 'Indeterminado' },
+                { label: 'Vencimento Base', val: formatCurrency(employee.salary) },
+                { label: 'Subsídio Alim.', val: formatCurrency(employee.subsidy_food || 0) },
+                { label: 'Transporte', val: formatCurrency(employee.subsidy_transport || 0) },
+                { label: 'Nº Segurança Social', val: employee.inss_number || 'PENDENTE' },
+              ].map((item, idx) => (
+                <div key={idx}>
+                  <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1">{item.label}</p>
+                  <p className="text-xs font-bold text-[#003366] uppercase">{item.val}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-8">
+           <div className="bg-white border border-zinc-200 p-6 space-y-4 shadow-inner">
+             <h4 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 border-b border-zinc-100 pb-2">Contatos & Residência</h4>
+             <div className="space-y-4">
+                <div>
+                   <p className="text-[8px] font-black text-zinc-400 uppercase tracking-widest mb-1">Telemóvel</p>
+                   <p className="text-xs font-bold text-zinc-700">{employee.phone || '---'}</p>
+                </div>
+                <div>
+                   <p className="text-[8px] font-black text-zinc-400 uppercase tracking-widest mb-1">E-mail</p>
+                   <p className="text-xs font-bold text-zinc-700 break-all">{employee.email || 'N/A'}</p>
+                </div>
+                <div>
+                   <p className="text-[8px] font-black text-zinc-400 uppercase tracking-widest mb-1">Localidade (Morada)</p>
+                   <p className="text-xs font-bold text-zinc-700 uppercase">{employee.address || 'Luanda, Angola'}</p>
+                </div>
+             </div>
+           </div>
+
+           <div className="bg-[#003366]/5 border-l-4 border-[#003366] p-6 space-y-4">
+             <h4 className="text-[10px] font-black uppercase tracking-widest text-[#003366] border-b border-[#003366]/10 pb-2">Dados Bancários</h4>
+             <div className="space-y-4">
+                <div>
+                   <p className="text-[8px] font-black text-[#003366]/40 uppercase tracking-widest mb-1">Banco Destinatário</p>
+                   <p className="text-xs font-black text-[#003366] uppercase">{employee.bank_name || 'BANCO BFA'}</p>
+                </div>
+                <div>
+                   <p className="text-[8px] font-black text-[#003366]/40 uppercase tracking-widest mb-1">IBAN (Conta)</p>
+                   <p className="text-xs font-black text-[#003366] font-mono break-all leading-relaxed">{employee.iban || '---'}</p>
+                </div>
+             </div>
+           </div>
+        </div>
+      </div>
+
+      <div className="bg-zinc-100/50 p-10 border-t border-zinc-200 flex justify-between items-end">
+        <div className="max-w-xs space-y-2">
+           <p className="text-[9px] font-black uppercase tracking-widest text-zinc-400">Certifico a veracidade das informações supra citadas.</p>
+           <div className="h-px bg-zinc-300 w-full mt-8"></div>
+           <p className="text-[8px] font-bold text-zinc-500 uppercase text-center">Assinatura do Responsável de RH</p>
+        </div>
+        <div className="text-right">
+           <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[#003366] mb-1">{companyName}</p>
+           <p className="text-[8px] font-bold text-zinc-400 uppercase">Emitido em: {new Date().toLocaleDateString('pt-AO')}</p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const DeclaracaoServico = ({ employee, companyName }: { employee: Employee | null, companyName: string }) => {
+  if (!employee) return (
+    <div className="p-12 text-center text-zinc-400 font-bold uppercase tracking-widest bg-zinc-50 border-2 border-dashed border-zinc-200">
+      Selecione um funcionário no menu de opções para gerar a Declaração de Serviço.
+    </div>
+  );
+
+  return (
+    <div className="bg-white border border-zinc-200 shadow-2xl max-w-4xl mx-auto p-20 space-y-16 animate-fade-in printable-area font-serif leading-loose text-zinc-900">
+       <div className="text-center space-y-4">
+          <h1 className="text-2xl font-black uppercase tracking-[0.3em] font-sans text-[#003366]">Declaração de Serviço</h1>
+          <div className="w-24 h-1 bg-[#F27D26] mx-auto"></div>
+       </div>
+
+       <div className="space-y-8 text-lg font-medium">
+          <p>
+            A <strong>{companyName}</strong>, com sede em Luanda, neste acto representada pelos seus serviços de Recursos Humanos, 
+            declara para os devidos efeitos que o <strong>Sr. {employee.name}</strong>, de nacionalidade {employee.nationality || 'Angolana'}, 
+            titular do {employee.document_type || 'BI'} nº {employee.bi || '---'}, é funcionário desta instituição 
+            desde o dia {employee.hired_at || '---'}, exercendo as funções de <strong>{employee.role}</strong>.
+          </p>
+
+          <p>
+            Mais se declara que o referido colaborador aufere um vencimento base mensal de 
+            <strong> {formatCurrency(employee.salary)}</strong>, estando o seu vínculo laboral activo e em pleno exercício.
+          </p>
+
+          <p>
+            Por ser verdade e nos ter sido solicitado, mandamos passar a presente declaração que vai por nós assinada 
+            e autenticada com o carimbo a óleo em uso nesta instituição.
+          </p>
+       </div>
+
+       <div className="pt-24 flex flex-col items-center space-y-2">
+          <p className="font-sans text-xs font-black uppercase tracking-widest text-zinc-500 mb-12">Luanda, {new Date().toLocaleDateString('pt-AO', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+          <div className="w-64 h-px bg-zinc-400"></div>
+          <p className="font-sans text-[10px] font-black uppercase tracking-widest text-[#003366]">Direcção de Recursos Humanos</p>
+          <p className="font-sans text-[9px] font-bold text-zinc-400 uppercase tracking-tighter">{companyName.toUpperCase()}</p>
+       </div>
+       
+       <div className="pt-12 border-t border-zinc-100 flex justify-center no-print">
+         <button onClick={() => window.print()} className="bg-[#003366] text-white px-8 py-3 font-black uppercase tracking-widest text-xs flex items-center gap-3 hover:bg-[#002244] transition-all shadow-xl">
+           <Printer size={18} /> Imprimir Documento Oficial
+         </button>
+       </div>
+    </div>
+  );
+};
+
+const AcordoConfidencialidade = ({ employee, companyName }: { employee: Employee | null, companyName: string }) => {
+  if (!employee) return (
+    <div className="p-12 text-center text-zinc-400 font-bold uppercase tracking-widest bg-zinc-50 border-2 border-dashed border-zinc-200">
+      Selecione um funcionário no menu de opções para gerar o Acordo de Confidencialidade.
+    </div>
+  );
+
+  return (
+    <div className="bg-white border border-zinc-200 shadow-2xl max-w-4xl mx-auto p-16 space-y-12 animate-fade-in printable-area leading-relaxed text-sm">
+       <div className="text-center space-y-2 border-b-4 border-[#003366] pb-6">
+          <h1 className="text-xl font-black uppercase tracking-widest text-[#003366]">Acordo de Confidencialidade e Não Divulgação</h1>
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-[0.2em] italic">Termo de Compromisso e Sigilo Profissional</p>
+       </div>
+
+       <div className="space-y-6 text-zinc-700 text-justify">
+          <p>
+            Entre a <strong>{companyName}</strong>, doravante designada por "Empresa", e o colaborador 
+            <strong> {employee.name}</strong>, doravante designado por "Colaborador", é celebrado o presente acordo nos seguintes termos:
+          </p>
+
+          <div className="space-y-4">
+             <h4 className="font-black text-[#003366] uppercase text-[11px] tracking-widest border-l-4 border-[#F27D26] pl-3 py-1 bg-zinc-50">1. Objeto do Acordo</h4>
+             <p className="text-xs">
+               O Colaborador compromete-se a manter sigilo absoluto sobre toda e qualquer informação técnica, financeira, comercial ou estratégica de que venha a ter conhecimento por força do exercício das suas funções.
+             </p>
+
+             <h4 className="font-black text-[#003366] uppercase text-[11px] tracking-widest border-l-4 border-[#F27D26] pl-3 py-1 bg-zinc-50">2. Informação Confidencial</h4>
+             <p className="text-xs">
+               Considera-se confidencial toda a informação não pública, incluindo mas não se limitando a: segredos de negócio, bases de dados de clientes, códigos-fonte, planos de marketing e dados financeiros da Empresa.
+             </p>
+
+             <h4 className="font-black text-[#003366] uppercase text-[11px] tracking-widest border-l-4 border-[#F27D26] pl-3 py-1 bg-zinc-50">3. Incumprimento</h4>
+             <p className="text-xs">
+               A violação deste acordo constitui justa causa para despedimento imediato e sujeita o infrator a responsabilidade civil e criminal nos termos da Lei Geral do Trabalho de Angola em vigor.
+             </p>
+          </div>
+
+          <p className="pt-8 italic text-zinc-500">
+            Lido e aceite por ambas as partes em sinal de total compromisso e integridade.
+          </p>
+       </div>
+
+       <div className="grid grid-cols-2 gap-16 pt-20">
+          <div className="text-center space-y-2">
+             <div className="h-px bg-zinc-300 w-full mb-4"></div>
+             <p className="font-black uppercase tracking-widest text-[9px] text-zinc-400">Pela Empresa</p>
+          </div>
+          <div className="text-center space-y-2">
+             <div className="h-px bg-zinc-300 w-full mb-4"></div>
+             <p className="font-black uppercase tracking-widest text-[9px] text-zinc-400">{employee.name.toUpperCase()}</p>
+          </div>
+       </div>
+
+       <div className="flex justify-center pt-8 no-print">
+          <button onClick={() => window.print()} className="bg-zinc-900 text-white px-8 py-3 text-xs font-black uppercase tracking-widest hover:bg-black transition-all">
+            Imprimir Acordo via Papel Timbrado
+          </button>
+       </div>
     </div>
   );
 };
@@ -12482,11 +13591,43 @@ const WithholdingTaxModule = ({ sales, purchases }: { sales: IssuedDocument[], p
 };
 
 
-const ReportsModule = ({ sales, purchases, clients, products }: { sales: IssuedDocument[], purchases: any[], clients: any[], products: any[] }) => {
+const ReportsModule = ({ 
+  sales, 
+  purchases, 
+  clients, 
+  products, 
+  stockMovements = [], 
+  warehouses = [], 
+  caixaMovements = [], 
+  caixas = [],
+  suppliers = []
+}: { 
+  sales: IssuedDocument[], 
+  purchases: any[], 
+  clients: any[], 
+  products: any[],
+  stockMovements?: any[],
+  warehouses?: any[],
+  caixaMovements?: any[],
+  caixas?: any[],
+  suppliers?: any[]
+}) => {
   const [activeReport, setActiveReport] = useState<string | null>(null);
 
   if (activeReport === 'sales') {
-     return <SalesReport issuedDocuments={sales} onBack={() => setActiveReport(null)} />;
+     return <SalesReport issuedDocuments={sales} warehouses={warehouses} onBack={() => setActiveReport(null)} />;
+  }
+  
+  if (activeReport === 'purchases') {
+    return <PurchasesReport purchases={purchases} suppliers={suppliers} onBack={() => setActiveReport(null)} />;
+  }
+
+  if (activeReport === 'inventory') {
+    return <InventoryReport products={products} stockMovements={stockMovements} warehouses={warehouses} onBack={() => setActiveReport(null)} />;
+  }
+
+  if (activeReport === 'cash') {
+    return <CashFlowReport movements={caixaMovements} cashBoxes={caixas} onBack={() => setActiveReport(null)} />;
   }
 
   const reportCards = [
@@ -20920,153 +22061,6 @@ const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas
   );
 };
 
-const SalesReport = ({ issuedDocuments, onBack }: { issuedDocuments: IssuedDocument[], onBack?: () => void }) => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [dateFilter, setDateFilter] = useState({ start: '', end: '' });
-
-  const filteredDocs = issuedDocuments.filter(doc => {
-    const matchesSearch = (doc.client_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (doc.invoice_number || '').toLowerCase().includes(searchTerm.toLowerCase());
-    const docDate = new Date(doc.date || doc.data_emissao || '');
-    const matchesStart = !dateFilter.start || docDate >= new Date(dateFilter.start);
-    const matchesEnd = !dateFilter.end || docDate <= new Date(dateFilter.end);
-    return matchesSearch && matchesStart && matchesEnd;
-  });
-
-  const totalSold = filteredDocs.filter(d => d.status !== 'anulado').reduce((acc, doc) => acc + (doc.counter_value || doc.total || 0), 0);
-  const totalVat = filteredDocs.filter(d => d.status !== 'anulado').reduce((acc, doc) => acc + (doc.vat_amount || 0), 0);
-  const totalAnulados = filteredDocs.filter(d => d.status === 'anulado').reduce((acc, doc) => acc + (doc.counter_value || doc.total || 0), 0);
-  const totalNet = totalSold - totalVat;
-
-  return (
-    <div className="space-y-8">
-      {onBack && (
-        <button onClick={onBack} className="flex items-center gap-2 text-[#003366] font-bold text-xs uppercase hover:underline">
-          <ArrowLeft size={14} /> Voltar aos Relatórios
-        </button>
-      )}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-white border border-zinc-200 p-6 shadow-sm">
-          <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1">Faturamento Bruto</p>
-          <p className="text-2xl font-black text-[#003366]">{formatCurrency(totalSold)}</p>
-        </div>
-        <div className="bg-white border border-zinc-200 p-6 shadow-sm">
-          <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1">Base Tributável</p>
-          <p className="text-2xl font-black text-[#003366]">{formatCurrency(totalNet)}</p>
-        </div>
-        <div className="bg-white border border-zinc-200 p-6 shadow-sm">
-          <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1">IVA Total</p>
-          <p className="text-2xl font-black text-amber-600">{formatCurrency(totalVat)}</p>
-        </div>
-        <div className="bg-white border border-zinc-200 p-6 shadow-sm">
-          <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1">Valor Anulado</p>
-          <p className="text-2xl font-black text-red-600">{formatCurrency(totalAnulados)}</p>
-        </div>
-      </div>
-
-      <div className="bg-white border border-zinc-200 p-6 rounded-none shadow-sm flex flex-wrap gap-6 items-end">
-        <div className="flex-1 min-w-[300px] space-y-2">
-          <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Pesquisar Movimento</label>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
-            <input 
-              type="text" 
-              placeholder="Nome do cliente ou número do documento..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-zinc-50 border border-zinc-200 rounded-none pl-10 pr-4 py-3 text-xs font-bold focus:outline-none focus:border-[#003366] transition-all"
-            />
-          </div>
-        </div>
-        <div className="space-y-2">
-          <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Período</label>
-          <div className="flex items-center gap-2">
-            <input 
-              type="date" 
-              value={dateFilter.start}
-              onChange={(e) => setDateFilter(prev => ({ ...prev, start: e.target.value }))}
-              className="bg-zinc-50 border border-zinc-200 rounded-none px-4 py-3 text-xs font-bold focus:outline-none focus:border-[#003366]" 
-            />
-            <span className="text-zinc-300">/</span>
-            <input 
-              type="date" 
-              value={dateFilter.end}
-              onChange={(e) => setDateFilter(prev => ({ ...prev, end: e.target.value }))}
-              className="bg-zinc-50 border border-zinc-200 rounded-none px-4 py-3 text-xs font-bold focus:outline-none focus:border-[#003366]" 
-            />
-          </div>
-        </div>
-        <button className="bg-[#003366] text-white px-8 py-3.5 text-xs font-black uppercase tracking-widest hover:bg-[#002244] transition-all flex items-center gap-2 shadow-sm">
-          <Filter size={14} /> Filtrar
-        </button>
-      </div>
-
-      <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
-        <div className="p-6 border-b border-zinc-100 flex justify-between items-center bg-zinc-50/50">
-          <h3 className="text-xs font-black text-[#003366] uppercase tracking-widest">Listagem de Movimentos de Venda</h3>
-          <button className="text-[10px] font-black text-zinc-400 hover:text-[#003366] uppercase tracking-widest flex items-center gap-2 transition-colors">
-            <FileDown size={14} /> Exportar Excel
-          </button>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[1000px]">
-            <thead>
-              <tr className="bg-white text-[10px] uppercase tracking-widest font-black text-zinc-400 border-b border-zinc-100">
-                <th className="px-6 py-4">Data</th>
-                <th className="px-6 py-4">Documento</th>
-                <th className="px-6 py-4">Cliente</th>
-                <th className="px-6 py-4">Pagamento</th>
-                <th className="px-6 py-4 text-right">Base</th>
-                <th className="px-6 py-4 text-right">IVA</th>
-                <th className="px-6 py-4 text-center">Estado</th>
-                <th className="px-6 py-4 text-right">Total</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-50">
-              {filteredDocs.map((doc) => (
-                <tr key={doc.id} className="hover:bg-zinc-50 text-[11px] transition-colors group">
-                  <td className="px-6 py-4 text-zinc-500 font-bold">{new Date(doc.date || doc.data_emissao || '').toLocaleDateString()}</td>
-                  <td className="px-6 py-4">
-                    <div className="font-black text-[#003366] uppercase">{doc.document_type || doc.tipo_documento}</div>
-                    <div className="text-[9px] text-zinc-400 font-bold font-mono">{doc.invoice_number || doc.numero_documento}</div>
-                  </td>
-                  <td className="px-6 py-4 text-zinc-900 font-black uppercase">{doc.client_name || doc.cliente_id || 'Consumidor Final'}</td>
-                  <td className="px-6 py-4">
-                    <span className="px-2 py-0.5 bg-zinc-100 text-zinc-500 text-[9px] font-black uppercase tracking-widest border border-zinc-200">
-                      {doc.payment_method || 'N/A'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right text-zinc-600 font-bold">{formatCurrency((doc.counter_value || doc.total || 0) - (doc.vat_amount || 0))}</td>
-                  <td className="px-6 py-4 text-right text-amber-600 font-bold">{formatCurrency(doc.vat_amount || 0)}</td>
-                  <td className="px-6 py-4 text-center">
-                    <span className={`px-2 py-1 text-[9px] font-black uppercase ${
-                      doc.status === 'anulado' ? 'bg-red-50 text-red-600' : 
-                      doc.status === 'paid' ? 'bg-emerald-50 text-emerald-600' : 
-                      'bg-amber-50 text-amber-600'
-                    }`}>
-                      {doc.status || 'Ativo'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right font-black text-[#003366]">{formatCurrency(doc.counter_value || doc.total || 0)}</td>
-                </tr>
-              ))}
-              {filteredDocs.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="p-20 text-center">
-                    <BarChart3 size={48} className="mx-auto text-zinc-100 mb-4" />
-                    <p className="text-zinc-400 text-sm font-bold uppercase tracking-widest">Nenhum movimento encontrado para os filtros aplicados.</p>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-
 
 const ProductList = ({ products, setProducts, onRefresh, stockMovements, warehouses, metrics }: { 
   products: Product[],
@@ -22584,6 +23578,15 @@ export default function App() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [activeTaxes, setActiveTaxes] = useState<any[]>([]);
   const [metrics, setMetrics] = useState<Metric[]>([]);
+
+  // Core HR Global State (to persist during tab navigation)
+  const [hrProcessedReceipts, setHrProcessedReceipts] = useState<any[]>([]);
+  const [hrProcessedAttendance, setHrProcessedAttendance] = useState<Record<string, boolean>>({});
+  const [hrAttendanceDone, setHrAttendanceDone] = useState<Record<string, boolean>>({});
+  const [hrPayrollInputs, setHrPayrollInputs] = useState<Record<string, any>>({});
+  const [hrTransferOrders, setHrTransferOrders] = useState<any[]>([]);
+  const [hrLocalEmployees, setHrLocalEmployees] = useState<Employee[]>([]);
+
   const doLoadActiveTaxes = async (explicitId?: string) => {
     try {
       const companyId = explicitId || user?.empresa_id;
@@ -24104,6 +25107,20 @@ export default function App() {
                               workSiteMovements={workSiteMovements} 
                             />
                           );
+                        case 'contracts':
+                          return (
+                            <div className="space-y-6">
+                              <ContratosList 
+                                employees={employees} 
+                                onSetEmployee={setAppSelectedEmployee}
+                                onSetIsContractModalOpen={setIsContractModalOpen}
+                                onEditContract={(c) => {
+                                  setSelectedContract(c);
+                                  setIsContractModalOpen(true);
+                                }}
+                              />
+                            </div>
+                          );
                         case 'clients':
                           return (
                             <ClientList 
@@ -24146,13 +25163,26 @@ export default function App() {
                           );
                         case 'hr':
                           return <HRModule 
-                            onRefresh={fetchData} 
+                            onRefetch={fetchData} 
                             onSetIsContractModalOpen={setIsContractModalOpen} 
                             onSetEmployee={setAppSelectedEmployee} 
                             onSetSelectedContract={setSelectedContract}
                             caixas={caixas} 
                             companyName={companyName} 
                             fiscalYear={fiscalYear}
+                            // Persistent HR State
+                            processedReceipts={hrProcessedReceipts}
+                            setProcessedReceipts={setHrProcessedReceipts}
+                            processedAttendance={hrProcessedAttendance}
+                            setProcessedAttendance={setHrProcessedAttendance}
+                            attendanceDone={hrAttendanceDone}
+                            setAttendanceDone={setHrAttendanceDone}
+                            payrollInputs={hrPayrollInputs}
+                            setPayrollInputs={setHrPayrollInputs}
+                            transferOrders={hrTransferOrders}
+                            setTransferOrders={setHrTransferOrders}
+                            localEmployees={hrLocalEmployees}
+                            setLocalEmployees={setHrLocalEmployees}
                           />;
                         case 'accounting':
                           return <AccountingModule 
@@ -24166,8 +25196,20 @@ export default function App() {
                           />;
                         case 'withholding-tax':
                           return <WithholdingTaxModule sales={issuedDocuments} purchases={purchases} />;
-                        case 'reports':
-                          return <ReportsModule sales={issuedDocuments} purchases={purchases} clients={clients} products={products} />;
+  case 'reports':
+    return (
+      <ReportsModule 
+        sales={issuedDocuments} 
+        purchases={purchases} 
+        clients={clients} 
+        products={products} 
+        stockMovements={stockMovements}
+        warehouses={warehouses}
+        caixaMovements={caixaMovements}
+        caixas={caixas}
+        suppliers={suppliers}
+      />
+    );
                         case 'drafts':
                           const filteredDrafts = issuedDocuments.filter(d => {
                             const isDraft = !d.is_certified || (d.currency && d.currency !== 'AOA') || d.tipo_documento === 'PP' || d.document_type === 'Fatura Proforma';

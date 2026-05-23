@@ -362,7 +362,7 @@ const ContractModal = ({ employee, contract, companyData, onClose, onSuccess }: 
                   <span className="w-1.5 h-3 bg-[#003366] block"></span>
                   Selecção do Tipo de Contrato
                 </h3>
-                <div className="space-y-1.5 max-h-[380px] overflow-y-auto pr-2 divide-y divide-zinc-100">
+                <div className="space-y-1.5 max-h-[170px] overflow-y-auto pr-2 divide-y divide-zinc-100">
                   {CONTRACT_TYPES.map((type, idx) => (
                     <label key={idx} className="flex items-center gap-3 py-1.5 cursor-pointer hover:bg-zinc-50 select-none text-xs">
                       <input 
@@ -372,7 +372,6 @@ const ContractModal = ({ employee, contract, companyData, onClose, onSuccess }: 
                         checked={selectedType === type}
                         onChange={() => {
                           setSelectedType(type);
-                          // Automatic adjustments matching normal practices
                           if (type === "Contrato por Tempo Indeterminado") {
                             setDuration(0);
                           } else if (duration === 0) {
@@ -383,6 +382,32 @@ const ContractModal = ({ employee, contract, companyData, onClose, onSuccess }: 
                       <span className={`font-bold uppercase tracking-tight ${selectedType === type ? 'text-[#003366]' : 'text-zinc-600 font-bold'}`}>{type}</span>
                     </label>
                   ))}
+                </div>
+              </div>
+              
+              {/* DADOS DO FUNCIONÁRIO (READ-ONLY) */}
+              <div className="space-y-4 col-span-1 md:col-span-2 mt-4 pt-4 border-t border-zinc-200">
+                <h3 className="text-xs font-black uppercase tracking-wider text-zinc-500 flex items-center gap-2">
+                  <span className="w-1.5 h-3 bg-zinc-300 block"></span>
+                  Dados do Trabalhador
+                </h3>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-[10px] font-bold text-zinc-600 capitalize">
+                  <div>
+                    <span className="block text-[9px] text-zinc-400 uppercase tracking-widest font-black">Nome</span>
+                    {employee?.name || '---'}
+                  </div>
+                  <div>
+                    <span className="block text-[9px] text-zinc-400 uppercase tracking-widest font-black">Cargo</span>
+                    {employee?.role || '---'}
+                  </div>
+                  <div>
+                    <span className="block text-[9px] text-zinc-400 uppercase tracking-widest font-black">BI</span>
+                    {employee?.bi || '---'}
+                  </div>
+                  <div>
+                    <span className="block text-[9px] text-zinc-400 uppercase tracking-widest font-black">Estado Civil</span>
+                    {employee?.marital_status || '---'}
+                  </div>
                 </div>
               </div>
 

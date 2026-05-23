@@ -76,6 +76,7 @@ import {
   AlertCircle,
   Copy,
   LogOut,
+  Shuffle,
   XCircle,
   FileCode,
   Globe,
@@ -147,6 +148,8 @@ import * as XLSX from 'xlsx';
 import { validateAngolaNIF } from './utils/nifValidation';
 import { Client, Product, Invoice, DashboardStats, InvoiceItem, Employee, Profession, WorkSite, WorkSiteMovement, IssuedDocument, Warehouse, Supplier, FiscalSeries, CostCenter, POSPoint, CashSession, SystemUser, Purchase, PurchaseItem, POSArea, Caixa, CaixaMovement, LaborTermination, StockMovement, CompanyData } from './types';
 import ContractModal from './components/ContractModal';
+import { EmployeeDocumentsModal } from './components/EmployeeDocumentsModal';
+import { EmployeeFinesModal } from './components/EmployeeFinesModal';
 import ContratosList from './components/ContratosList';
 import ChurchModule from './components/ChurchModule';
 import AgrobusinessModule from './components/AgrobusinessModule';
@@ -178,7 +181,7 @@ import { MediaLibraryModule } from './components/MediaLibraryModule';
 
 // --- Helpers ---
 
-import { supabase } from './lib/supabase';
+import { supabase, supabaseStatus } from './lib/supabase';
 import { authService } from './services/authService';
 import { clienteService, Cliente as DbCliente } from './services/clienteService';
 import { localTrabalhoService, LocalTrabalho as DbLocalTrabalho } from './services/localTrabalhoService';
@@ -452,7 +455,9 @@ const WorkplaceModule = ({
   onDeleteWorkSite,
   clients, 
   issuedDocuments, 
-  workSiteMovements 
+  workSiteMovements,
+  employees = [],
+  allWorkSites = []
 }: { 
   workplaces: WorkSite[], 
   onRefresh: () => void, 
@@ -461,7 +466,9 @@ const WorkplaceModule = ({
   onDeleteWorkSite: (id: number) => void,
   clients: Client[], 
   issuedDocuments: IssuedDocument[], 
-  workSiteMovements: WorkSiteMovement[] 
+  workSiteMovements: WorkSiteMovement[],
+  employees?: Employee[],
+  allWorkSites?: WorkSite[]
 }) => {
   const { user } = useAuth();
   const [selectedWorkplace, setSelectedWorkplace] = useState<WorkSite | null>(null);
@@ -522,6 +529,9 @@ const WorkplaceModule = ({
         movements={workSiteMovements} 
         invoices={issuedDocuments} 
         onBack={() => setSelectedWorkplace(null)}
+        employees={employees}
+        allWorkSites={workplaces}
+        onRefreshEmployees={onRefresh}
       />
     );
   }
@@ -1406,9 +1416,12 @@ const HRModule = ({
   onRefetch, 
   onSetIsContractModalOpen, 
   onSetEmployee, 
-  onSetSelectedContract, 
+  onSetSelectedContract,
+  onOpenDocuments,
+  onOpenFines,
   caixas, 
   companyName, 
+  companyData,
   fiscalYear,
   processedReceipts,
   setProcessedReceipts,
@@ -1421,14 +1434,19 @@ const HRModule = ({
   transferOrders,
   setTransferOrders,
   localEmployees,
-  setLocalEmployees
+  setLocalEmployees,
+  penalties,
+  setPenalties
 }: { 
   onRefetch?: () => void, 
   onSetIsContractModalOpen: (b: boolean) => void, 
   onSetEmployee: (e: Employee | null) => void, 
-  onSetSelectedContract?: (val: any) => void, 
+  onSetSelectedContract?: (val: any) => void,
+  onOpenDocuments?: (e: Employee) => void,
+  onOpenFines?: (e: Employee) => void,
   caixas: Caixa[], 
   companyName: string, 
+  companyData?: any,
   fiscalYear: string,
   processedReceipts: any[],
   setProcessedReceipts: React.Dispatch<React.SetStateAction<any[]>>,
@@ -1441,7 +1459,9 @@ const HRModule = ({
   transferOrders: any[],
   setTransferOrders: React.Dispatch<React.SetStateAction<any[]>>,
   localEmployees: Employee[],
-  setLocalEmployees: React.Dispatch<React.SetStateAction<Employee[]>>
+  setLocalEmployees: React.Dispatch<React.SetStateAction<Employee[]>>,
+  penalties: any[],
+  setPenalties: React.Dispatch<React.SetStateAction<any[]>>
 }) => {
 
 
@@ -1478,6 +1498,7 @@ const HRModule = ({
   const [selectedPaymentCaixa, setSelectedPaymentCaixa] = useState('');
   const [isProcessingComplete, setIsProcessingComplete] = useState(false);
   const [workSites, setWorkSites] = useState<WorkSite[]>([]);
+  const companyNif = companyData?.nif || "5000922200";
 
   const [openDadosPessoais, setOpenDadosPessoais] = useState(true);
   const [openDadosFiscais, setOpenDadosFiscais] = useState(false);
@@ -1500,6 +1521,7 @@ const HRModule = ({
   const [selectedProcedure, setSelectedProcedure] = useState<any | null>(null);
   const [selectedReceipt, setSelectedReceipt] = useState<any | null>(null);
   const [draftReceipt, setDraftReceipt] = useState<any | null>(null);
+  const [selectedReceiptIds, setSelectedReceiptIds] = useState<number[]>([]);
   const [appSelectedEmployee, setAppSelectedEmployee] = useState<Employee | null>(null);
   const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
   const [absences, setAbsences] = useState<any[]>([]);
@@ -1509,6 +1531,9 @@ const HRModule = ({
   const [manualHP, setManualHP] = useState<Record<string, number>>({});
   
   const [laborTerminations, setLaborTerminations] = useState<any[]>([]);
+  const [selectedWorkstationId, setSelectedWorkstationId] = useState<number | null>(null);
+  const [workspaceStaffSearch, setWorkspaceStaffSearch] = useState('');
+  const [movingWorkspaceEmployee, setMovingWorkspaceEmployee] = useState<Employee | null>(null);
 
   const [showDismissForm, setShowDismissForm] = useState(false);
   const [dismissData, setDismissData] = useState({ date: new Date().toISOString().split('T')[0], reason: '', observations: '', orderedBy: '' });
@@ -1890,6 +1915,18 @@ const HRModule = ({
       setAttendance(Array.isArray(att) ? att : []);
       setAbsences(Array.isArray(abs) ? abs : []);
       setLaborTerminations(Array.isArray(lt) ? lt : []);
+
+      try {
+        if (supabaseStatus.configured) {
+          const { data: penaltiesData } = await supabase
+            .from('employee_penalties')
+            .select('*')
+            .eq('empresa_id', user?.empresa_id);
+          setPenalties(penaltiesData || []);
+        }
+      } catch (err) {
+        console.warn('Could not fetch penalties', err);
+      }
 
       try {
         if (user?.empresa_id) {
@@ -3411,8 +3448,165 @@ const HRModule = ({
                 <div className="p-6 border-b border-zinc-100 flex justify-between items-center bg-zinc-50/50">
                   <h3 className="font-bold text-[#003366] uppercase tracking-widest text-xs">Recibos de Salário Processados</h3>
                   <div className="flex gap-2">
-                    <button className="bg-[#003366] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
-                      <Printer size={14} /> Imprimir Todos
+                    <button 
+                      onClick={() => {
+                        const receiptsToPrint = selectedReceiptIds.length > 0 
+                            ? processedReceipts.filter(r => selectedReceiptIds.includes(r.id))
+                            : processedReceipts;
+
+                        if (receiptsToPrint.length === 0) return alert('Nenhum recibo disponível para impressão.');
+
+                        const win = window.open('', '_blank');
+                        if (!win) return;
+
+                        const fCurrency = (val: number) => Number(val || 0).toLocaleString('pt-AO', { style: 'currency', currency: 'AOA' });
+
+                        const htmlContent = receiptsToPrint.map(receipt => {
+                            const { employee, period, inputs, calculations } = receipt;
+                            
+                            const content = (tipo: 'ORIGINAL' | 'DUPLICADO') => `
+                                <div style="flex: 1; padding: 20px 30px; font-family: 'Inter', sans-serif; font-size: 10px; color: #111; ${tipo === 'ORIGINAL' ? 'border-right: 1px dashed #ccc;' : ''}">
+                                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
+                                        <div style="text-align: center; width: 100%;">
+                                            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                                               <div style="text-align: left;">
+                                                   <h2 style="margin: 0; font-size: 13px; text-transform: uppercase;">${companyName}</h2>
+                                                   <p style="margin: 0;">NIF: ${companyNif}</p>
+                                               </div>
+                                               <div style="text-align: right;">
+                                                   <p style="margin: 0;">${tipo}</p>
+                                                   <p style="margin: 0;">RECIBO DE VENCIMENTO</p>
+                                               </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #000; margin-bottom: 10px; padding-bottom: 5px;">
+                                        <div style="font-weight: bold; text-transform: uppercase;">${String(employee.id).padStart(4, '0')} ${employee.name}</div>
+                                        <div>${period}</div>
+                                    </div>
+
+                                    <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
+                                        <div>Profissão: ${employee.role || '---'}</div>
+                                        <div style="text-align: right;">
+                                            NIF Nº: ${employee.nif || '---'}<br/>
+                                            INSS Nº: ${employee.inss_number || '---'}
+                                        </div>
+                                    </div>
+
+                                    <table style="width: 100%; border-collapse: collapse; font-size: 9px; margin-bottom: 15px;">
+                                        <thead style="border-bottom: 1px solid #000; border-top: 1px solid #000;">
+                                            <tr>
+                                                <th style="text-align: left; padding: 4px 0;">COD</th>
+                                                <th style="text-align: left; padding: 4px 0;">Descrição</th>
+                                                <th style="text-align: center; padding: 4px 0;">QTD</th>
+                                                <th style="text-align: right; padding: 4px 0;">VALOR</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td style="padding: 2px 0;">01</td>
+                                                <td style="padding: 2px 0;">Vencimento Base para a Categoria Profissional</td>
+                                                <td style="text-align: center; padding: 2px 0;">30</td>
+                                                <td style="text-align: right; padding: 2px 0;">${fCurrency(employee.salary)}</td>
+                                            </tr>
+                                            ${inputs.premios ? `<tr><td style="padding: 2px 0;">02</td><td style="padding: 2px 0;">Prémios</td><td style="text-align: center; padding: 2px 0;">---</td><td style="text-align: right; padding: 2px 0;">${fCurrency(inputs.premios)}</td></tr>` : ''}
+                                            ${inputs.gratificacoes ? `<tr><td style="padding: 2px 0;">03</td><td style="padding: 2px 0;">Gratificações</td><td style="text-align: center; padding: 2px 0;">---</td><td style="text-align: right; padding: 2px 0;">${fCurrency(inputs.gratificacoes)}</td></tr>` : ''}
+                                            ${inputs.abonos ? `<tr><td style="padding: 2px 0;">04</td><td style="padding: 2px 0;">Abonos</td><td style="text-align: center; padding: 2px 0;">---</td><td style="text-align: right; padding: 2px 0;">${fCurrency(inputs.abonos)}</td></tr>` : ''}
+                                            <tr>
+                                                <td></td>
+                                                <td style="padding: 4px 0; font-weight: bold;">[01+02+03-04+05-06] Total de Vencimento</td>
+                                                <td></td>
+                                                <td style="text-align: right; padding: 4px 0; font-weight: bold;">${fCurrency(employee.salary + (inputs.premios||0) + (inputs.gratificacoes||0) + (inputs.abonos||0))}</td>
+                                            </tr>
+
+                                            <tr>
+                                                <td colspan="4" style="padding: 6px 0 2px 0; font-weight: bold;">Subsidios</td>
+                                            </tr>
+                                            ${inputs.subsidioAlimentacao ? `<tr><td style="padding: 2px 0;">10</td><td style="padding: 2px 0;">Subsídio de Alimentação</td><td style="text-align: center; padding: 2px 0;">---</td><td style="text-align: right; padding: 2px 0;">${fCurrency(inputs.subsidioAlimentacao)}</td></tr>` : ''}
+                                            ${inputs.subsidioTransporte ? `<tr><td style="padding: 2px 0;">11</td><td style="padding: 2px 0;">Subsídio de Transporte</td><td style="text-align: center; padding: 2px 0;">---</td><td style="text-align: right; padding: 2px 0;">${fCurrency(inputs.subsidioTransporte)}</td></tr>` : ''}
+                                            ${inputs.alojamento ? `<tr><td style="padding: 2px 0;">12</td><td style="padding: 2px 0;">Subsídio de Alojamento</td><td style="text-align: center; padding: 2px 0;">---</td><td style="text-align: right; padding: 2px 0;">${fCurrency(inputs.alojamento)}</td></tr>` : ''}
+                                            <tr>
+                                                <td></td>
+                                                <td style="padding: 4px 0; font-weight: bold;">[08+09+10+11+12+13+14] Total de Subsidios</td>
+                                                <td></td>
+                                                <td style="text-align: right; padding: 4px 0; font-weight: bold;">${fCurrency((inputs.subsidioAlimentacao||0) + (inputs.subsidioTransporte||0) + (inputs.alojamento||0))}</td>
+                                            </tr>
+
+                                            <tr>
+                                                <td></td>
+                                                <td style="padding: 8px 0; font-weight: bold;">[07+15+16-17] Total de Vencimento Antes de Impostos</td>
+                                                <td></td>
+                                                <td style="text-align: right; padding: 8px 0; font-weight: bold;">${fCurrency(calculations.totalGross)}</td>
+                                            </tr>
+
+                                            <tr>
+                                                <td colspan="4" style="padding: 6px 0 2px 0; font-weight: bold;">Impostos</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="padding: 2px 0;">19</td>
+                                                <td style="padding: 2px 0;">Segurança Social do Trabalhador x3%</td>
+                                                <td style="text-align: center; padding: 2px 0;">---</td>
+                                                <td style="text-align: right; padding: 2px 0;">${fCurrency(calculations.inss_worker)}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="padding: 2px 0;">20</td>
+                                                <td style="padding: 2px 0;">IRT</td>
+                                                <td style="text-align: center; padding: 2px 0;">---</td>
+                                                <td style="text-align: right; padding: 2px 0;">${fCurrency(calculations.irt)}</td>
+                                            </tr>
+                                            ${calculations.absenceDeduction > 0 ? `<tr><td style="padding: 2px 0;">21</td><td style="padding: 2px 0;">Desconto por Faltas</td><td style="text-align: center; padding: 2px 0;">${inputs.faltasInjustificadas}d</td><td style="text-align: right; padding: 2px 0;">${fCurrency(calculations.absenceDeduction)}</td></tr>` : ''}
+                                            
+                                            <tr>
+                                                <td></td>
+                                                <td style="padding: 8px 0; font-weight: bold;">[18-19-20] Vencimento liquido depois de impostos</td>
+                                                <td></td>
+                                                <td style="text-align: right; padding: 8px 0; font-weight: bold;">${fCurrency(calculations.totalNet)}</td>
+                                            </tr>
+                                            <tr>
+                                                <td></td>
+                                                <td style="padding: 4px 0; font-weight: bold;">VENCIMENTO LIQUIDO</td>
+                                                <td></td>
+                                                <td style="text-align: right; padding: 4px 0; font-weight: bold;">${fCurrency(calculations.totalNet)}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                    <div style="border-top: 1px dashed #000; margin-top: 30px; padding-top: 10px; display: flex; justify-content: space-between; font-weight: bold; font-size: 11px;">
+                                        <div>TOTAL A RECEBER [22-23]</div>
+                                        <div>${fCurrency(calculations.totalNet)}</div>
+                                    </div>
+                                </div>
+                            `;
+
+                            return `
+                                <div style="display: flex; width: 100%; height: 100vh; flex-direction: row; page-break-after: always; padding: 10px; box-sizing: border-box;">
+                                    ${content('ORIGINAL')}
+                                    ${content('DUPLICADO')}
+                                </div>
+                            `;
+                        }).join('');
+
+                        win.document.write(`
+                            <html>
+                                <head>
+                                    <title>Recibos de Vencimento</title>
+                                    <style>
+                                        body { margin: 0; padding: 0; font-family: sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                                        @media print {
+                                            @page { size: A4 landscape; margin: 0; }
+                                        }
+                                    </style>
+                                </head>
+                                <body onload="window.print(); window.close();">
+                                    ${htmlContent}
+                                </body>
+                            </html>
+                        `);
+                        win.document.close();
+                      }}
+                      className="bg-[#003366] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-[#002244] transition-colors"
+                    >
+                      <Printer size={14} /> Imprimir {selectedReceiptIds.length > 0 ? 'Selecionados' : 'Todos'}
                     </button>
                   </div>
                 </div>
@@ -3420,6 +3614,20 @@ const HRModule = ({
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="bg-[#1e293b] text-white text-[10px] uppercase tracking-widest font-black">
+                        <th className="px-6 py-4 w-12">
+                          <input 
+                            type="checkbox" 
+                            checked={selectedReceiptIds.length === processedReceipts.length && processedReceipts.length > 0}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedReceiptIds(processedReceipts.map(r => r.id));
+                              } else {
+                                setSelectedReceiptIds([]);
+                              }
+                            }}
+                            className="accent-[#003366]"
+                          />
+                        </th>
                         <th className="px-6 py-4">Funcionário</th>
                         <th className="px-6 py-4">Cargo</th>
                         <th className="px-6 py-4">Período</th>
@@ -3431,13 +3639,27 @@ const HRModule = ({
                     <tbody className="divide-y divide-zinc-100">
                       {processedReceipts.length === 0 ? (
                         <tr>
-                          <td colSpan={6} className="px-6 py-12 text-center text-zinc-400 text-xs uppercase font-bold">
+                          <td colSpan={7} className="px-6 py-12 text-center text-zinc-400 text-xs uppercase font-bold">
                             Nenhum recibo processado. Vá para a aba "PROCESSAMENTO" e clique em "EXECUTAR".
                           </td>
                         </tr>
                       ) : (
                         processedReceipts.map(receipt => (
                           <tr key={receipt.id} className="hover:bg-zinc-50 transition-colors text-xs font-bold text-zinc-600">
+                            <td className="px-6 py-4">
+                              <input 
+                                type="checkbox"
+                                checked={selectedReceiptIds.includes(receipt.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedReceiptIds(prev => [...prev, receipt.id]);
+                                  } else {
+                                    setSelectedReceiptIds(prev => prev.filter(id => id !== receipt.id));
+                                  }
+                                }}
+                                className="accent-[#003366]"
+                              />
+                            </td>
                             <td className="px-6 py-4 uppercase">{receipt.employee.name}</td>
                             <td className="px-6 py-4 uppercase text-zinc-400">{receipt.employee.role}</td>
                             <td className="px-6 py-4 uppercase">{receipt.period}</td>
@@ -3468,10 +3690,316 @@ const HRModule = ({
                 </button>
                 
                 <div className="flex justify-end gap-2 absolute top-6 right-6 no-print">
-                  <button className="bg-zinc-100 hover:bg-zinc-200 text-zinc-600 p-2 rounded-none transition-all">
+                  <button 
+                    onClick={() => {
+                      if (!selectedReceipt) return;
+                      const receiptsToPrint = [selectedReceipt];
+                      const win = window.open('', '_blank');
+                      if (!win) return;
+                      const fCurrency = (val: number) => Number(val || 0).toLocaleString('pt-AO', { style: 'currency', currency: 'AOA' });
+                      const htmlContent = receiptsToPrint.map(receipt => {
+                          const { employee, period, inputs, calculations } = receipt;
+                          const content = (tipo: 'ORIGINAL' | 'DUPLICADO') => `
+                              <div style="flex: 1; padding: 20px 30px; font-family: 'Inter', sans-serif; font-size: 10px; color: #111; ${tipo === 'ORIGINAL' ? 'border-right: 1px dashed #ccc;' : ''}">
+                                  <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
+                                      <div style="text-align: center; width: 100%;">
+                                          <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                                             <div style="text-align: left;">
+                                                 <h2 style="margin: 0; font-size: 13px; text-transform: uppercase;">${companyName}</h2>
+                                                 <p style="margin: 0;">NIF: ${companyNif}</p>
+                                             </div>
+                                             <div style="text-align: right;">
+                                                 <p style="margin: 0;">${tipo}</p>
+                                                 <p style="margin: 0;">RECIBO DE VENCIMENTO</p>
+                                             </div>
+                                          </div>
+                                      </div>
+                                  </div>
+                                  
+                                  <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #000; margin-bottom: 10px; padding-bottom: 5px;">
+                                      <div style="font-weight: bold; text-transform: uppercase;">${String(employee.id).padStart(4, '0')} ${employee.name}</div>
+                                      <div>${period}</div>
+                                  </div>
+
+                                  <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
+                                      <div>Profissão: ${employee.role || '---'}</div>
+                                      <div style="text-align: right;">
+                                          NIF Nº: ${employee.nif || '---'}<br/>
+                                          INSS Nº: ${employee.inss_number || '---'}
+                                      </div>
+                                  </div>
+
+                                  <table style="width: 100%; border-collapse: collapse; font-size: 9px; margin-bottom: 15px;">
+                                      <thead style="border-bottom: 1px solid #000; border-top: 1px solid #000;">
+                                          <tr>
+                                              <th style="text-align: left; padding: 4px 0;">COD</th>
+                                              <th style="text-align: left; padding: 4px 0;">Descrição</th>
+                                              <th style="text-align: center; padding: 4px 0;">QTD</th>
+                                              <th style="text-align: right; padding: 4px 0;">VALOR</th>
+                                          </tr>
+                                      </thead>
+                                      <tbody>
+                                          <tr>
+                                              <td style="padding: 2px 0;">01</td>
+                                              <td style="padding: 2px 0;">Vencimento Base para a Categoria Profissional</td>
+                                              <td style="text-align: center; padding: 2px 0;">30</td>
+                                              <td style="text-align: right; padding: 2px 0;">${fCurrency(employee.salary)}</td>
+                                          </tr>
+                                          ${inputs.premios ? `<tr><td style="padding: 2px 0;">02</td><td style="padding: 2px 0;">Prémios</td><td style="text-align: center; padding: 2px 0;">---</td><td style="text-align: right; padding: 2px 0;">${fCurrency(inputs.premios)}</td></tr>` : ''}
+                                          ${inputs.gratificacoes ? `<tr><td style="padding: 2px 0;">03</td><td style="padding: 2px 0;">Gratificações</td><td style="text-align: center; padding: 2px 0;">---</td><td style="text-align: right; padding: 2px 0;">${fCurrency(inputs.gratificacoes)}</td></tr>` : ''}
+                                          ${inputs.abonos ? `<tr><td style="padding: 2px 0;">04</td><td style="padding: 2px 0;">Abonos</td><td style="text-align: center; padding: 2px 0;">---</td><td style="text-align: right; padding: 2px 0;">${fCurrency(inputs.abonos)}</td></tr>` : ''}
+                                          <tr>
+                                              <td></td>
+                                              <td style="padding: 4px 0; font-weight: bold;">[01+02+03-04+05-06] Total de Vencimento</td>
+                                              <td></td>
+                                              <td style="text-align: right; padding: 4px 0; font-weight: bold;">${fCurrency(employee.salary + (inputs.premios||0) + (inputs.gratificacoes||0) + (inputs.abonos||0))}</td>
+                                          </tr>
+
+                                          <tr>
+                                              <td colspan="4" style="padding: 6px 0 2px 0; font-weight: bold;">Subsidios</td>
+                                          </tr>
+                                          ${inputs.subsidioAlimentacao ? `<tr><td style="padding: 2px 0;">10</td><td style="padding: 2px 0;">Subsídio de Alimentação</td><td style="text-align: center; padding: 2px 0;">---</td><td style="text-align: right; padding: 2px 0;">${fCurrency(inputs.subsidioAlimentacao)}</td></tr>` : ''}
+                                          ${inputs.subsidioTransporte ? `<tr><td style="padding: 2px 0;">11</td><td style="padding: 2px 0;">Subsídio de Transporte</td><td style="text-align: center; padding: 2px 0;">---</td><td style="text-align: right; padding: 2px 0;">${fCurrency(inputs.subsidioTransporte)}</td></tr>` : ''}
+                                          ${inputs.alojamento ? `<tr><td style="padding: 2px 0;">12</td><td style="padding: 2px 0;">Subsídio de Alojamento</td><td style="text-align: center; padding: 2px 0;">---</td><td style="text-align: right; padding: 2px 0;">${fCurrency(inputs.alojamento)}</td></tr>` : ''}
+                                          <tr>
+                                              <td></td>
+                                              <td style="padding: 4px 0; font-weight: bold;">[08+09+10+11+12+13+14] Total de Subsidios</td>
+                                              <td></td>
+                                              <td style="text-align: right; padding: 4px 0; font-weight: bold;">${fCurrency((inputs.subsidioAlimentacao||0) + (inputs.subsidioTransporte||0) + (inputs.alojamento||0))}</td>
+                                          </tr>
+
+                                          <tr>
+                                              <td></td>
+                                              <td style="padding: 8px 0; font-weight: bold;">[07+15+16-17] Total de Vencimento Antes de Impostos</td>
+                                              <td></td>
+                                              <td style="text-align: right; padding: 8px 0; font-weight: bold;">${fCurrency(calculations.totalGross)}</td>
+                                          </tr>
+
+                                          <tr>
+                                              <td colspan="4" style="padding: 6px 0 2px 0; font-weight: bold;">Impostos</td>
+                                          </tr>
+                                          <tr>
+                                              <td style="padding: 2px 0;">19</td>
+                                              <td style="padding: 2px 0;">Segurança Social do Trabalhador x3%</td>
+                                              <td style="text-align: center; padding: 2px 0;">---</td>
+                                              <td style="text-align: right; padding: 2px 0;">${fCurrency(calculations.inss_worker)}</td>
+                                          </tr>
+                                          <tr>
+                                              <td style="padding: 2px 0;">20</td>
+                                              <td style="padding: 2px 0;">IRT</td>
+                                              <td style="text-align: center; padding: 2px 0;">---</td>
+                                              <td style="text-align: right; padding: 2px 0;">${fCurrency(calculations.irt)}</td>
+                                          </tr>
+                                          ${calculations.absenceDeduction > 0 ? `<tr><td style="padding: 2px 0;">21</td><td style="padding: 2px 0;">Desconto por Faltas</td><td style="text-align: center; padding: 2px 0;">${inputs.faltasInjustificadas}d</td><td style="text-align: right; padding: 2px 0;">${fCurrency(calculations.absenceDeduction)}</td></tr>` : ''}
+                                          
+                                          <tr>
+                                              <td></td>
+                                              <td style="padding: 8px 0; font-weight: bold;">[18-19-20] Vencimento liquido depois de impostos</td>
+                                              <td></td>
+                                              <td style="text-align: right; padding: 8px 0; font-weight: bold;">${fCurrency(calculations.totalNet)}</td>
+                                          </tr>
+                                          <tr>
+                                              <td></td>
+                                              <td style="padding: 4px 0; font-weight: bold;">VENCIMENTO LIQUIDO</td>
+                                              <td></td>
+                                              <td style="text-align: right; padding: 4px 0; font-weight: bold;">${fCurrency(calculations.totalNet)}</td>
+                                          </tr>
+                                      </tbody>
+                                  </table>
+                                  <div style="border-top: 1px dashed #000; margin-top: 30px; padding-top: 10px; display: flex; justify-content: space-between; font-weight: bold; font-size: 11px;">
+                                      <div>TOTAL A RECEBER [22-23]</div>
+                                      <div>${fCurrency(calculations.totalNet)}</div>
+                                  </div>
+                              </div>
+                          `;
+
+                          return `
+                              <div style="display: flex; width: 100%; height: 100vh; flex-direction: row; page-break-after: always; padding: 10px; box-sizing: border-box;">
+                                  ${content('ORIGINAL')}
+                                  ${content('DUPLICADO')}
+                              </div>
+                          `;
+                      }).join('');
+
+                      win.document.write(`
+                          <html>
+                              <head>
+                                  <title>Recibo de Vencimento - ${selectedReceipt.employee.name}</title>
+                                  <style>
+                                      body { margin: 0; padding: 0; font-family: sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                                      @media print {
+                                          @page { size: A4 landscape; margin: 0; }
+                                      }
+                                  </style>
+                              </head>
+                              <body onload="window.print(); window.close();">
+                                  ${htmlContent}
+                              </body>
+                          </html>
+                      `);
+                      win.document.close();
+                    }}
+                    className="bg-zinc-100 hover:bg-zinc-200 text-zinc-600 p-2 rounded-none transition-all"
+                    title="Imprimir Duplicado"
+                  >
                     <Printer size={18} />
                   </button>
-                  <button className="bg-zinc-100 hover:bg-zinc-200 text-zinc-600 p-2 rounded-none transition-all">
+                  <button 
+                    onClick={() => {
+                      if (!selectedReceipt) return;
+                      const { employee, period, inputs, calculations } = selectedReceipt;
+                      const doc = new jsPDF('l', 'mm', 'a4');
+                      const fCurrency = (val: number) => Number(val || 0).toLocaleString('pt-AO', { style: 'currency', currency: 'AOA' });
+                      
+                      const drawReceipt = (xOffset: number, tipo: 'ORIGINAL' | 'DUPLICADO') => {
+                        doc.setFont("Helvetica", "bold");
+                        doc.setFontSize(12);
+                        doc.setTextColor(0, 51, 102);
+                        doc.text(companyName, xOffset + 10, 20);
+                        
+                        doc.setFont("Helvetica", "normal");
+                        doc.setFontSize(8);
+                        doc.setTextColor(100, 100, 100);
+                        doc.text(`NIF: ${companyNif}`, xOffset + 10, 25);
+                        
+                        doc.setFont("Helvetica", "bold");
+                        doc.setTextColor(50, 50, 50);
+                        doc.text(tipo, xOffset + 100, 20);
+                        doc.setFontSize(7);
+                        doc.text("RECIBO DE VENCIMENTO", xOffset + 80, 25);
+                        
+                        doc.setDrawColor(0, 0, 0);
+                        doc.setLineWidth(0.5);
+                        doc.line(xOffset + 10, 29, xOffset + 130, 29);
+                        
+                        doc.setFontSize(9);
+                        doc.text(`${String(employee.id).padStart(4, '0')} ${employee.name}`, xOffset + 10, 34);
+                        doc.text(period, xOffset + 100, 34);
+                        
+                        doc.setLineWidth(0.2);
+                        doc.line(xOffset + 10, 37, xOffset + 130, 37);
+                        
+                        doc.setFontSize(8);
+                        doc.text(`Profissao: ${employee.role || '---'}`, xOffset + 10, 42);
+                        doc.text(`NIF: ${employee.nif || '---'}`, xOffset + 85, 42);
+                        doc.text(`INSS: ${employee.inss_number || '---'}`, xOffset + 85, 46);
+                        
+                        doc.setFont("Helvetica", "bold");
+                        doc.text("COD", xOffset + 10, 55);
+                        doc.text("Descricao", xOffset + 25, 55);
+                        doc.text("Qtd", xOffset + 85, 55);
+                        doc.text("Valor", xOffset + 115, 55);
+                        doc.line(xOffset + 10, 57, xOffset + 130, 57);
+                        
+                        doc.setFont("Helvetica", "normal");
+                        let y = 62;
+                        doc.text("01", xOffset + 10, y);
+                        doc.text("Vencimento Base", xOffset + 25, y);
+                        doc.text("30", xOffset + 85, y);
+                        doc.text(fCurrency(employee.salary), xOffset + 110, y);
+                        y += 5;
+                        
+                        if (inputs.premios) {
+                          doc.text("02", xOffset + 10, y);
+                          doc.text("Premios", xOffset + 25, y);
+                          doc.text("---", xOffset + 85, y);
+                          doc.text(fCurrency(inputs.premios), xOffset + 110, y);
+                          y += 5;
+                        }
+                        if (inputs.gratificacoes) {
+                          doc.text("03", xOffset + 10, y);
+                          doc.text("Gratificacoes", xOffset + 25, y);
+                          doc.text("---", xOffset + 85, y);
+                          doc.text(fCurrency(inputs.gratificacoes), xOffset + 110, y);
+                          y += 5;
+                        }
+                        if (inputs.abonos) {
+                          doc.text("04", xOffset + 10, y);
+                          doc.text("Abonos", xOffset + 25, y);
+                          doc.text("---", xOffset + 85, y);
+                          doc.text(fCurrency(inputs.abonos), xOffset + 110, y);
+                          y += 5;
+                        }
+                        
+                        doc.setFont("Helvetica", "bold");
+                        doc.text("Total Vencimento", xOffset + 25, y);
+                        doc.text(fCurrency(employee.salary + (inputs.premios||0) + (inputs.gratificacoes||0) + (inputs.abonos||0)), xOffset + 110, y);
+                        y += 6;
+                        
+                        doc.text("Subsidios", xOffset + 25, y);
+                        y += 5;
+                        doc.setFont("Helvetica", "normal");
+                        if (inputs.subsidioAlimentacao) {
+                          doc.text("10", xOffset + 10, y);
+                          doc.text("Subsidio Alimentacao", xOffset + 25, y);
+                          doc.text(fCurrency(inputs.subsidioAlimentacao), xOffset + 110, y);
+                          y += 5;
+                        }
+                        if (inputs.subsidioTransporte) {
+                          doc.text("11", xOffset + 10, y);
+                          doc.text("Subsidio Transporte", xOffset + 25, y);
+                          doc.text(fCurrency(inputs.subsidioTransporte), xOffset + 110, y);
+                          y += 5;
+                        }
+                        if (inputs.alojamento) {
+                          doc.text("12", xOffset + 10, y);
+                          doc.text("Subsidio Alojamento", xOffset + 25, y);
+                          doc.text(fCurrency(inputs.alojamento), xOffset + 110, y);
+                          y += 5;
+                        }
+                        
+                        doc.setFont("Helvetica", "bold");
+                        doc.text("Total Subsidios", xOffset + 25, y);
+                        doc.text(fCurrency((inputs.subsidioAlimentacao||0) + (inputs.subsidioTransporte||0) + (inputs.alojamento||0)), xOffset + 110, y);
+                        y += 6;
+                        
+                        doc.text("Vencimento Antes Impostos", xOffset + 25, y);
+                        doc.text(fCurrency(calculations.totalGross), xOffset + 110, y);
+                        y += 6;
+                        
+                        doc.text("Impostos", xOffset + 25, y);
+                        y += 5;
+                        doc.setFont("Helvetica", "normal");
+                        doc.text("19", xOffset + 10, y);
+                        doc.text("Seguranca Social (3%)", xOffset + 25, y);
+                        doc.text(fCurrency(calculations.inss_worker), xOffset + 110, y);
+                        y += 5;
+                        
+                        doc.text("20", xOffset + 10, y);
+                        doc.text("IRT", xOffset + 25, y);
+                        doc.text(fCurrency(calculations.irt), xOffset + 110, y);
+                        y += 5;
+                        
+                        if (calculations.absenceDeduction) {
+                          doc.text("21", xOffset + 10, y);
+                          doc.text("Desconto de Faltas", xOffset + 25, y);
+                          doc.text(fCurrency(calculations.absenceDeduction), xOffset + 110, y);
+                          y += 5;
+                        }
+                        
+                        doc.setFont("Helvetica", "bold");
+                        doc.text("VENCIMENTO LIQUIDO", xOffset + 25, y);
+                        doc.text(fCurrency(calculations.totalNet), xOffset + 110, y);
+                        y += 10;
+                        
+                        doc.line(xOffset + 10, y, xOffset + 130, y);
+                        y += 5;
+                        doc.text("TOTAL A RECEBER", xOffset + 10, y);
+                        doc.text(fCurrency(calculations.totalNet), xOffset + 110, y);
+                      };
+                      
+                      drawReceipt(0, 'ORIGINAL');
+                      doc.setDrawColor(180, 180, 180);
+                      (doc as any).setLineDash([2, 2], 0);
+                      doc.line(148, 10, 148, 200);
+                      (doc as any).setLineDash([], 0);
+                      
+                      drawReceipt(148, 'DUPLICADO');
+                      doc.save(`Recibo_Duplicado_${employee.name.replace(/ /g, '_')}.pdf`);
+                    }}
+                    className="bg-zinc-100 hover:bg-zinc-200 text-zinc-600 p-2 rounded-none transition-all"
+                    title="Baixar PDF Duplicado"
+                  >
                     <FileDown size={18} />
                   </button>
                 </div>
@@ -3919,12 +4447,17 @@ const HRModule = ({
                   employee={selectedEmployeeForOptions} 
                   onClose={() => setShowOptionsMenu(false)} 
                   setActiveTab={setActiveTab}
-                  setAppSelectedEmployee={setAppSelectedEmployee}
+                  setAppSelectedEmployee={(e) => {
+                    setAppSelectedEmployee(e);
+                    if (onSetEmployee) onSetEmployee(e);
+                  }}
                   handleEditEmployee={handleEditEmployee}
                   handleDeleteEmployee={handleDeleteEmployee}
                   handleReadmitEmployee={handleReadmitEmployee}
                   onRefreshHRData={fetchHRData}
                   onSetIsContractModalOpen={onSetIsContractModalOpen}
+                  onOpenDocuments={onOpenDocuments}
+                  onOpenFines={onOpenFines}
                 />
               )}
             </AnimatePresence>
@@ -4042,10 +4575,10 @@ const HRModule = ({
                         const weekOfMonth = Math.ceil((day + new Date(yr, mIndex, 1).getDay()) / 7);
 
                         return (
-                          <th key={i} className="px-1 py-1.5 border-r border-white/10 text-center w-10">
-                            <div className="font-black text-xs leading-none">{day}</div>
-                            <div className="text-[7px] font-bold text-white/50 block tracking-normal uppercase mt-0.5 leading-none">{wDay}</div>
-                            <div className="text-[6px] font-black text-white/30 block tracking-tighter uppercase mt-0.5 leading-none">Sem. {weekOfMonth}</div>
+                          <th key={i} className="px-1.5 py-3 border-r border-white/10 text-center w-14 min-w-[50px] bg-[#002244]">
+                            <div className="font-black text-base text-white leading-none">{day}</div>
+                            <div className="text-xs font-black text-white block tracking-wider uppercase mt-1 leading-none">{wDay}</div>
+                            <div className="text-[10px] font-bold text-white/80 block tracking-tighter uppercase mt-1 leading-none">Sem. {weekOfMonth}</div>
                           </th>
                         );
                       })}
@@ -4243,14 +4776,38 @@ const HRModule = ({
                   </tfoot>
                 </table>
               </div>
-              <div className="p-4 bg-zinc-50 border-t border-zinc-200 flex gap-6 text-[9px] font-black uppercase tracking-widest text-zinc-400">
-                <div className="flex items-center gap-2"><div className="w-3 h-3 bg-emerald-500"></div> P: Presente</div>
-                <div className="flex items-center gap-2"><div className="w-3 h-3 bg-blue-400"></div> FJ: Justificada</div>
-                <div className="flex items-center gap-2"><div className="w-3 h-3 bg-red-500"></div> FI: Injustificada</div>
-                <div className="flex items-center gap-2"><div className="w-3 h-3 bg-indigo-500"></div> FE: Férias</div>
-                <div className="flex items-center gap-2"><div className="w-3 h-3 bg-amber-400"></div> HE: Hora Extra</div>
-                <div className="flex items-center gap-2"><div className="w-3 h-3 bg-zinc-400"></div> HP: Hora Perdida</div>
-                <div className="flex items-center gap-2"><div className="w-3 h-3 bg-orange-500"></div> D: Descanso</div>
+              <div className="p-8 bg-zinc-50 border-t border-zinc-200 flex flex-col items-center justify-center text-center w-full">
+                <h4 className="text-[#003366] text-xs font-black uppercase tracking-widest mb-4">Legenda de Assiduidade de Colaboradores</h4>
+                <div className="flex flex-wrap justify-center gap-x-8 gap-y-4 text-xs font-black uppercase tracking-wider text-zinc-700">
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 bg-blue-400 rounded-sm"></div> 
+                    <span>FJ - {companyName || "Grupo TecnoSys"}: Falta Justificada</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 bg-red-500 rounded-sm"></div> 
+                    <span>FI - {companyName || "Grupo TecnoSys"}: Falta Injustificada</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 bg-indigo-500 rounded-sm"></div> 
+                    <span>FE - {companyName || "Grupo TecnoSys"}: Férias</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 bg-orange-500 rounded-sm"></div> 
+                    <span>D - {companyName || "Grupo TecnoSys"}: Descanso / Folga</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 bg-amber-400 rounded-sm"></div> 
+                    <span>HE - {companyName || "Grupo TecnoSys"}: Hora Extra</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 bg-zinc-400 rounded-sm"></div> 
+                    <span>HP - {companyName || "Grupo TecnoSys"}: Hora Perdida</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 bg-emerald-500 rounded-sm"></div> 
+                    <span>P - {companyName || "Grupo TecnoSys"}: Presente</span>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -4442,7 +4999,12 @@ const HRModule = ({
                                      inputs.subsidioNatal + inputs.alojamento + inputs.outrosSubsidios + 
                                      inputs.subsidioTransporte + inputs.subsidioAlimentacao + overtimePay + inputs.acertos;
                     
-                    const totalNet = totalGross - inss_worker - irt - absenceDeduction - lostHoursDeduction - inputs.adiantamentos;
+                    const monthMap: Record<string, string> = { 'Janeiro': '01', 'Fevereiro': '02', 'Março': '03', 'Abril': '04', 'Maio': '05', 'Junho': '06', 'Julho': '07', 'Agosto': '08', 'Setembro': '09', 'Outubro': '10', 'Novembro': '11', 'Dezembro': '12' };
+                    const selMonthParts = selectedMonth.split(' / ');
+                    const penaltyMonthStr = (selMonthParts.length === 2 && monthMap[selMonthParts[0]]) ? `${monthMap[selMonthParts[0]]}/${selMonthParts[1]}` : selectedMonth;
+                    const appliedPenalties = penalties.filter(p => p.employee_id === emp.id && p.month === penaltyMonthStr).reduce((acc, p) => acc + Number(p.amount || 0), 0);
+                    
+                    const totalNet = totalGross - inss_worker - irt - absenceDeduction - lostHoursDeduction - inputs.adiantamentos - appliedPenalties;
 
                     return {
                       id: emp.id,
@@ -4565,6 +5127,12 @@ const HRModule = ({
                         ferias: attTotals.fe
                       };
                       
+                      const monthMap: Record<string, string> = { 'Janeiro': '01', 'Fevereiro': '02', 'Março': '03', 'Abril': '04', 'Maio': '05', 'Junho': '06', 'Julho': '07', 'Agosto': '08', 'Setembro': '09', 'Outubro': '10', 'Novembro': '11', 'Dezembro': '12' };
+                      const selMonthParts = selectedMonth.split(' / ');
+                      const penaltyMonthStr = (selMonthParts.length === 2 && monthMap[selMonthParts[0]]) ? `${monthMap[selMonthParts[0]]}/${selMonthParts[1]}` : selectedMonth;
+                      
+                      const appliedPenalties = penalties.filter(p => p.employee_id === emp.id && p.month === penaltyMonthStr).reduce((acc, p) => acc + Number(p.amount || 0), 0);
+
                       const inss_worker = emp.subject_to_inss !== false ? emp.salary * 0.03 : 0;
                       const base_taxable = emp.subject_to_irt !== false ? (emp.salary - inss_worker) : 0;
                       const irt = emp.subject_to_irt !== false ? calculateIRT(base_taxable) : 0;
@@ -4580,7 +5148,7 @@ const HRModule = ({
                                        inputs.subsidioNatal + inputs.alojamento + inputs.outrosSubsidios + 
                                        inputs.subsidioTransporte + inputs.subsidioAlimentacao + overtimePay + inputs.acertos;
                       
-                      const totalNet = totalGross - inss_worker - irt - absenceDeduction - lostHoursDeduction - inputs.adiantamentos;
+                      const totalNet = totalGross - inss_worker - irt - absenceDeduction - lostHoursDeduction - (inputs.adiantamentos || 0) - appliedPenalties;
 
                       const isProcessed = !!processedAttendance[`${emp.id}_${selectedMonth}`];
                       const isPaid = processedReceipts.find(r => r.employee.id === emp.id && r.period === selectedMonth)?.status === 'paid';
@@ -4917,7 +5485,12 @@ const HRModule = ({
                                            inputs.subsidioNatal + inputs.alojamento + inputs.outrosSubsidios + 
                                            inputs.subsidioTransporte + inputs.subsidioAlimentacao + overtimePay + inputs.acertos;
                           
-                          const totalNet = totalGross - inss_worker - irt - absenceDeduction - lostHoursDeduction - inputs.adiantamentos;
+                          const monthMap: Record<string, string> = { 'Janeiro': '01', 'Fevereiro': '02', 'Março': '03', 'Abril': '04', 'Maio': '05', 'Junho': '06', 'Julho': '07', 'Agosto': '08', 'Setembro': '09', 'Outubro': '10', 'Novembro': '11', 'Dezembro': '12' };
+                          const selMonthParts = selectedMonth.split(' / ');
+                          const penaltyMonthStr = (selMonthParts.length === 2 && monthMap[selMonthParts[0]]) ? `${monthMap[selMonthParts[0]]}/${selMonthParts[1]}` : selectedMonth;
+                          const appliedPenalties = penalties.filter(p => p.employee_id === emp.id && p.month === penaltyMonthStr).reduce((acc, p) => acc + Number(p.amount || 0), 0);
+                          
+                          const totalNet = totalGross - inss_worker - irt - absenceDeduction - lostHoursDeduction - inputs.adiantamentos - appliedPenalties;
                           return sum + totalNet;
                         }, 0))}
                       </td>
@@ -4953,7 +5526,12 @@ const HRModule = ({
                                      inputs.subsidioNatal + inputs.alojamento + inputs.outrosSubsidios + 
                                      inputs.subsidioTransporte + inputs.subsidioAlimentacao + overtimePay + inputs.acertos;
                     
-                    const totalNet = totalGross - inss_worker - irt - absenceDeduction - lostHoursDeduction - inputs.adiantamentos;
+                    const monthMap: Record<string, string> = { 'Janeiro': '01', 'Fevereiro': '02', 'Março': '03', 'Abril': '04', 'Maio': '05', 'Junho': '06', 'Julho': '07', 'Agosto': '08', 'Setembro': '09', 'Outubro': '10', 'Novembro': '11', 'Dezembro': '12' };
+                    const selMonthParts = selectedMonth.split(' / ');
+                    const penaltyMonthStr = (selMonthParts.length === 2 && monthMap[selMonthParts[0]]) ? `${monthMap[selMonthParts[0]]}/${selMonthParts[1]}` : selectedMonth;
+                    const appliedPenalties = penalties.filter(p => p.employee_id === emp.id && p.month === penaltyMonthStr).reduce((acc, p) => acc + Number(p.amount || 0), 0);
+                    
+                    const totalNet = totalGross - inss_worker - irt - absenceDeduction - lostHoursDeduction - inputs.adiantamentos - appliedPenalties;
                     return sum + totalNet;
                   }, 0)).replace('€', '')} Kz</span>
                 </div>
@@ -6446,41 +7024,592 @@ const HRModule = ({
 
         {activeTab === 'workstation_management' && (
           <div className="space-y-6">
-            <div className="bg-white border border-zinc-200 p-6 flex justify-between items-center">
+            <div className="bg-white border border-zinc-200 p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <div>
                 <h3 className="text-lg font-black text-[#003366] uppercase tracking-wider">GESTÃO DE POSTO DE TRABALHO</h3>
-                <p className="text-xs text-zinc-400 font-bold uppercase mt-1">Controle de alocação de locais de trabalho</p>
+                <p className="text-xs text-zinc-400 font-bold uppercase mt-1">Controle de alocação de locais de trabalho e colaboradores</p>
               </div>
-              <button className="bg-[#003366] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
-                <Plus size={14} /> Novo Posto
-              </button>
+              <div className="flex flex-wrap gap-2 w-full md:w-auto">
+                <button 
+                  onClick={() => {
+                    // Define print inline or call helper
+                    const win = window.open('', '_blank');
+                    if (!win) return;
+
+                    const sections = workSites.map(ws => {
+                      const wsEmployees = localEmployees.filter(e => String(e.local_trabalho_id) === String(ws.id));
+                      const empRows = wsEmployees.map(emp => `
+                        <tr style="border-bottom: 1px solid #f4f4f5; font-size: 10px;">
+                          <td style="padding: 6px; font-family: monospace;">#${String(emp.id).padStart(4, '0')}</td>
+                          <td style="padding: 6px; font-weight: bold; text-transform: uppercase;">${emp.name}</td>
+                          <td style="padding: 6px; text-transform: uppercase; color: #71717a;">${emp.role || '---'}</td>
+                          <td style="padding: 6px; font-family: monospace;">${emp.bi || emp.nif || '---'}</td>
+                          <td style="padding: 6px; text-align: right; font-weight: bold;">${Number(emp.salary || 0).toLocaleString('pt-AO')} AOA</td>
+                        </tr>
+                      `).join('');
+
+                      return `
+                        <div style="margin-bottom: 30px; border: 1px solid #e4e4e7; padding: 16px; page-break-inside: avoid; background-color: #fafafa;">
+                          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #003366; padding-bottom: 8px; margin-bottom: 12px;">
+                            <h3 style="margin: 0; color: #003366; font-size: 13px; text-transform: uppercase;">${ws.title}</h3>
+                            <span style="font-family: monospace; font-size: 10px; font-weight: bold; background-color: #003366; color: #ffffff; padding: 2px 6px;">${ws.code || 'PT-100'}</span>
+                          </div>
+                          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; font-size: 10px; margin-bottom: 12px; color: #4b5563;">
+                            <div><strong>Localização:</strong> ${ws.location || 'Sede'}</div>
+                            <div><strong>Efetivo Activo:</strong> ${wsEmployees.length} Colaboradores (Meta: ${ws.staff_per_day || 0})</div>
+                            <div><strong>Responsável:</strong> ${ws.client_name || '---'}</div>
+                          </div>
+                          <table style="width: 100%; border-collapse: collapse;">
+                            <thead>
+                              <tr style="background-color: #e4e4e7; color: #27272a; text-align: left; font-size: 9px; text-transform: uppercase; font-weight: bold;">
+                                <th style="padding: 6px;">ID</th>
+                                <th style="padding: 6px;">Nome</th>
+                                <th style="padding: 6px;">Cargo</th>
+                                <th style="padding: 6px;">BI/NIF</th>
+                                <th style="text-align: right; padding: 6px;">Salário</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              ${empRows.length ? empRows : '<tr><td colspan="5" style="padding: 10px; text-align: center; color: #a1a1aa; font-style: italic;">Nenhum colaborador alocado neste posto de trabalho.</td></tr>'}
+                            </tbody>
+                          </table>
+                        </div>
+                      `;
+                    }).join('');
+
+                    win.document.write(`
+                      <html>
+                        <head>
+                          <title>Relatório Geral dos Locais de Trabalho</title>
+                          <style>
+                            body { font-family: 'Inter', sans-serif; padding: 40px; color: #18181b; }
+                            .header { border-bottom: 4px solid #003366; padding-bottom: 16px; margin-bottom: 24px; }
+                            .footer { margin-top: 40px; border-top: 1px solid #e4e4e7; padding-top: 12px; font-size: 9px; color: #a1a1aa; text-transform: uppercase; text-align: center; }
+                          </style>
+                        </head>
+                        <body onload="window.print(); window.close();">
+                          <div class="header">
+                            <h1 style="margin: 0; color: #003366; font-size: 20px; text-transform: uppercase;">${companyName}</h1>
+                            <p style="margin: 4px 0 0 0; font-size: 11px; font-weight: bold; color: #4b5563; text-transform: uppercase; letter-spacing: 0.1em;">RELATÓRIO DE ALOCAÇÃO MULTI-POSTOS DE TRABALHO</p>
+                            <div style="margin-top: 10px; font-size: 11px; color: #52525b;">
+                              <strong>Total de Postos:</strong> ${workSites.length} <br/>
+                              <strong>Data de Emissão:</strong> ${new Date().toLocaleDateString('pt-AO')}
+                            </div>
+                          </div>
+                          ${sections}
+                          <div class="footer">
+                            Sistema Integrado de Recursos Humanos • ${companyName}
+                          </div>
+                        </body>
+                      </html>
+                    `);
+                    win.document.close();
+                  }}
+                  className="bg-zinc-800 text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-zinc-900 transition-colors"
+                >
+                  <Printer size={14} /> Imprimir Todos
+                </button>
+                <button 
+                  onClick={() => {
+                    const doc = new jsPDF('p', 'mm', 'a4');
+                    
+                    doc.setFontSize(16);
+                    doc.setFillColor(0, 51, 102);
+                    doc.setTextColor(0, 51, 102);
+                    doc.text(`RELATÓRIO GERAL DE ALOCAÇÃO POR POSTOS`, 14, 20);
+                    
+                    doc.setFontSize(10);
+                    doc.setTextColor(100, 100, 100);
+                    doc.text(`Empresa: ${companyName}  •  Data: ${new Date().toLocaleDateString('pt-AO')}`, 14, 26);
+                    doc.text(`Total de Postos: ${workSites.length}  •  Total de Colaboradores: ${localEmployees.length}`, 14, 32);
+                    
+                    let y = 40;
+                    
+                    workSites.forEach((ws, idx) => {
+                      const wsEmployees = localEmployees.filter(e => String(e.local_trabalho_id) === String(ws.id));
+                      
+                      if (y > 240) {
+                        doc.addPage();
+                        y = 20;
+                      }
+                      
+                      doc.setFillColor(245, 245, 247);
+                      doc.rect(14, y, 182, 10, 'F');
+                      doc.setDrawColor(200, 200, 200);
+                      doc.rect(14, y, 182, 10, 'S');
+                      
+                      doc.setFontSize(9);
+                      doc.setTextColor(0, 51, 102);
+                      doc.setFont(undefined, 'bold');
+                      doc.text(`${ws.title || 'POSTO SEM NOME'} [${ws.code || 'PT-100'}]`, 18, y + 6);
+                      
+                      doc.setFontSize(8);
+                      doc.setTextColor(80, 80, 80);
+                      doc.setFont(undefined, 'normal');
+                      const wsInfo = `Local: ${ws.location || 'Sede'} | Responsável: ${ws.client_name || '---'} | Alocação: ${wsEmployees.length} (Meta: ${ws.staff_per_day || 0})`;
+                      doc.text(wsInfo, 100, y + 6);
+                      
+                      y += 10;
+                      
+                      if (wsEmployees.length === 0) {
+                        doc.setTextColor(150, 150, 150);
+                        doc.text('Nenhum colaborador alocado neste posto.', 18, y + 5);
+                        y += 8;
+                      } else {
+                        wsEmployees.forEach(emp => {
+                          if (y > 275) {
+                            doc.addPage();
+                            y = 20;
+                          }
+                          doc.setTextColor(50, 50, 50);
+                          doc.text(`#${String(emp.id).padStart(4, '0')}`, 18, y + 5);
+                          doc.text(emp.name.substring(0, 30), 30, y + 5);
+                          doc.text((emp.role || '---').substring(0, 20), 85, y + 5);
+                          doc.text(emp.bi || emp.nif || '---', 125, y + 5);
+                          
+                          const valString = Number(emp.salary || 0).toLocaleString('pt-AO') + ' Kz';
+                          doc.text(valString, 160, y + 5);
+                          
+                          doc.setDrawColor(240, 240, 240);
+                          doc.line(14, y + 7, 196, y + 7);
+                          y += 7;
+                        });
+                      }
+                      
+                      y += 5;
+                    });
+                    
+                    doc.save(`relatorio_geral_postos.pdf`);
+                  }}
+                  className="bg-[#003366] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-[#002244] transition-colors"
+                >
+                  <Download size={14} /> PDF Geral
+                </button>
+                <button 
+                  onClick={() => {
+                    alert("Para cadastrar novos postos de trabalho, utilize o Módulo de Contabilidade / Local de Trabalho do menu principal.");
+                  }}
+                  className="bg-orange-500 text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-orange-600 transition-colors"
+                >
+                  <Plus size={14} /> Novo Posto
+                </button>
+              </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-               {workSites.map(ws => (
-                 <div key={ws.id} className="bg-white border border-zinc-200 p-6 shadow-sm hover:border-[#003366] transition-all">
-                    <div className="flex items-center gap-4 mb-4">
-                      <div className="w-12 h-12 bg-[#003366]/10 text-[#003366] flex items-center justify-center">
-                        <Monitor size={24} />
+
+            {workSites.length === 0 ? (
+              <div className="bg-white border border-zinc-200 p-12 text-center text-zinc-400 uppercase font-black tracking-widest text-xs">
+                Nenhum posto de trabalho cadastrado.
+              </div>
+            ) : (
+              (() => {
+                const activeWS = workSites.find(ws => ws.id === (selectedWorkstationId || workSites[0]?.id)) || workSites[0];
+                const activeWSId = activeWS?.id;
+                
+                // Filter employees inside this active workspace
+                const activeWSEmployees = localEmployees.filter(e => String(e.local_trabalho_id) === String(activeWSId));
+                const filteredWSEmployees = activeWSEmployees.filter(emp => {
+                  const s = workspaceStaffSearch.toLowerCase();
+                  return emp.name.toLowerCase().includes(s) || 
+                         (emp.role || '').toLowerCase().includes(s) || 
+                         String(emp.id).includes(s) || 
+                         (emp.nif || '').toLowerCase().includes(s) ||
+                         (emp.bi || '').toLowerCase().includes(s);
+                });
+
+                const handlePrintWorkSiteEmployees = (wsItem: WorkSite) => {
+                  const wsEmployees = localEmployees.filter(e => String(e.local_trabalho_id) === String(wsItem.id));
+                  const filteredWsEmployees = wsEmployees.filter(e => 
+                    e.name.toLowerCase().includes(workspaceStaffSearch.toLowerCase()) || 
+                    (e.role || '').toLowerCase().includes(workspaceStaffSearch.toLowerCase()) ||
+                    String(e.id).includes(workspaceStaffSearch)
+                  );
+
+                  const win = window.open('', '_blank');
+                  if (!win) return;
+                  
+                  const rows = filteredWsEmployees.map(emp => `
+                    <tr style="border-bottom: 1px solid #e4e4e7; font-size: 11px;">
+                      <td style="padding: 10px; font-family: monospace;">#${String(emp.id).padStart(4, '0')}</td>
+                      <td style="padding: 10px; font-weight: bold; text-transform: uppercase;">${emp.name}</td>
+                      <td style="padding: 10px; text-transform: uppercase; color: #4b5563;">${emp.role || '---'}</td>
+                      <td style="padding: 10px; font-family: monospace;">${emp.bi || emp.nif || '---'}</td>
+                      <td style="padding: 10px;">${emp.phone || emp.email || '---'}</td>
+                      <td style="padding: 10px; text-align: right; font-weight: bold;">${Number(emp.salary || 0).toLocaleString('pt-AO')} AOA</td>
+                    </tr>
+                  `).join('');
+
+                  win.document.write(`
+                    <html>
+                      <head>
+                        <title>Lista de Colaboradores - ${wsItem.title}</title>
+                        <style>
+                          body { font-family: 'Inter', sans-serif; padding: 40px; color: #18181b; }
+                          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                          th { background-color: #003366; color: #ffffff; text-align: left; padding: 12px 10px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+                          .header { border-bottom: 4px solid #003366; padding-bottom: 16px; margin-bottom: 24px; }
+                          .footer { margin-top: 40px; border-top: 1px solid #e4e4e7; padding-top: 12px; font-size: 9px; color: #a1a1aa; text-transform: uppercase; text-align: center; }
+                        </style>
+                      </head>
+                      <body onload="window.print(); window.close();">
+                        <div class="header">
+                          <h1 style="margin: 0; color: #003366; font-size: 20px; text-transform: uppercase;">${companyName}</h1>
+                          <p style="margin: 4px 0 0 0; font-size: 11px; font-weight: bold; color: #4b5563; text-transform: uppercase; letter-spacing: 0.1em;">RELAÇÃO NOMINAL DE COLABORADORES POR POSTO DE TRABALHO</p>
+                          <div style="margin-top: 14px; font-size: 11px; color: #52525b; line-height: 1.5;">
+                            <strong>Posto de Trabalho:</strong> ${wsItem.title} <br/>
+                            <strong>Código de Posto:</strong> ${wsItem.code || 'PT-100'} <br/>
+                            <strong>Localização:</strong> ${wsItem.location || 'Sede'} <br/>
+                            <strong>Efetivo Activo:</strong> ${filteredWsEmployees.length} colaboradores <br/>
+                            <strong>Data de Emissão:</strong> ${new Date().toLocaleDateString('pt-AO')}
+                          </div>
+                        </div>
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>ID</th>
+                              <th>Nome do Colaborador</th>
+                              <th>Cargo / Função</th>
+                              <th>NIF / BI</th>
+                              <th>Contacto</th>
+                              <th style="text-align: right;">Salário Base</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            ${rows.length ? rows : '<tr><td colspan="6" style="padding: 20px; text-align: center; color: #a1a1aa;">Nenhum colaborador alocado neste posto de trabalho sob estes critérios.</td></tr>'}
+                          </tbody>
+                        </table>
+                        <div class="footer">
+                          Sistema Integrado de Recursos Humanos • ${companyName}
+                        </div>
+                      </body>
+                    </html>
+                  `);
+                  win.document.close();
+                };
+
+                const handleDownloadWorkSiteEmployeePDF = (wsItem: WorkSite) => {
+                  const doc = new jsPDF('p', 'mm', 'a4');
+                  doc.setFontSize(16);
+                  doc.text(`Lista de Colaboradores - Posto: ${wsItem.title || 'S/ Nome'}`, 14, 20);
+                  doc.setFontSize(10);
+                  doc.text(`Código: ${wsItem.code || 'PT-100'}  •  Localização: ${wsItem.location || 'S/ Localização'}`, 14, 26);
+                  doc.text(`Data: ${new Date().toLocaleDateString('pt-AO')}`, 14, 32);
+                  
+                  let y = 42;
+                  doc.setFontSize(9);
+                  doc.setFillColor(0, 51, 102); // Navy theme
+                  doc.rect(14, y, 182, 8, 'F');
+                  doc.setTextColor(255, 255, 255);
+                  doc.text('ID', 16, y + 5);
+                  doc.text('Nome Completo', 32, y + 5);
+                  doc.text('Cargo / Função', 92, y + 5);
+                  doc.text('BI / NIF', 142, y + 5);
+                  doc.text('Salário Base', 172, y + 5);
+                  
+                  y += 8;
+                  doc.setTextColor(50, 50, 50);
+                  
+                  const wsEmployees = localEmployees.filter(e => String(e.local_trabalho_id) === String(wsItem.id));
+                  const filteredWsEmployees = wsEmployees.filter(e => 
+                    e.name.toLowerCase().includes(workspaceStaffSearch.toLowerCase()) || 
+                    (e.role || '').toLowerCase().includes(workspaceStaffSearch.toLowerCase()) ||
+                    String(e.id).includes(workspaceStaffSearch)
+                  );
+
+                  if (filteredWsEmployees.length === 0) {
+                    doc.text('Nenhum colaborador alocado nesta pesquisa.', 14, y + 6);
+                  } else {
+                    filteredWsEmployees.forEach((emp, index) => {
+                      if (y > 270) {
+                        doc.addPage();
+                        y = 20;
+                      }
+                      doc.text(String(emp.id).padStart(4, '0'), 16, y + 5);
+                      doc.text(emp.name.substring(0, 32), 32, y + 5);
+                      doc.text((emp.role || '---').substring(0, 25), 92, y + 5);
+                      doc.text(emp.bi || emp.nif || '---', 142, y + 5);
+                      
+                      const salStr = Number(emp.salary || 0).toLocaleString('pt-AO') + ' Kz';
+                      doc.text(salStr, 172, y + 5);
+                      
+                      doc.setDrawColor(230, 230, 230);
+                      doc.line(14, y + 8, 196, y + 8);
+                      y += 8;
+                    });
+                  }
+                  
+                  doc.save(`colaboradores_posto_${(wsItem.title || 'posto').replace(/ /g, '_')}.pdf`);
+                };
+
+                return (
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                    {/* Lateral (Sidebar) List of Worksites */}
+                    <div className="lg:col-span-4 space-y-3 max-h-[75vh] overflow-y-auto pr-2">
+                      <div className="text-[10px] font-black uppercase text-zinc-400 tracking-widest mb-1 px-1">Selecione o Local de Trabalho</div>
+                      {workSites.map(ws => {
+                        const isSelected = ws.id === activeWS?.id;
+                        const wsCount = localEmployees.filter(e => String(e.local_trabalho_id) === String(ws.id)).length;
+                        return (
+                          <div 
+                            key={ws.id}
+                            onClick={() => {
+                              setSelectedWorkstationId(ws.id);
+                              setWorkspaceStaffSearch('');
+                            }}
+                            className={`p-4 border transition-all cursor-pointer text-left ${
+                              isSelected 
+                                ? 'bg-[#003366] text-white border-[#003366] shadow-md' 
+                                : 'bg-white text-zinc-800 border-zinc-200 hover:border-[#003366] hover:bg-zinc-50'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-3 mb-2">
+                              <div className="font-black uppercase text-xs truncate max-w-[80%]">{ws.title}</div>
+                              <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded font-mono ${
+                                isSelected ? 'bg-orange-500 text-white' : 'bg-zinc-100 text-zinc-600'
+                              }`}>
+                                {ws.code || 'PT-100'}
+                              </span>
+                            </div>
+                            <div className="space-y-1 text-[10px] font-medium">
+                              <div className={`flex justify-between ${isSelected ? 'text-white/80' : 'text-zinc-500'}`}>
+                                <span className="uppercase text-[8px] tracking-widest font-black">Localização:</span>
+                                <span className="truncate">{ws.location || 'Sede'}</span>
+                              </div>
+                              <div className={`flex justify-between font-bold ${isSelected ? 'text-white/90' : 'text-[#003366]'}`}>
+                                <span className="uppercase text-[8px] tracking-widest font-black">Efetivo Alocado:</span>
+                                <span>{wsCount} Colaboradores</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Workplace Details and Nominal Employees List */}
+                    <div className="lg:col-span-8 bg-white border border-zinc-200 overflow-hidden shadow-sm">
+                      {/* HEADER - Workplace Details */}
+                      <div className="p-6 bg-zinc-50 border-b border-zinc-200 space-y-4">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 border border-white shadow-sm inline-block animate-pulse"></span>
+                              <h4 className="text-sm font-black text-[#003366] uppercase tracking-tighter">{activeWS.title}</h4>
+                            </div>
+                            <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest mt-1">
+                              Informações específicas e quadro nominal do posto
+                            </p>
+                          </div>
+                          
+                          {/* BUTTON ACTIONS */}
+                          <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                            <button 
+                              onClick={() => handlePrintWorkSiteEmployees(activeWS)}
+                              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 bg-zinc-800 text-white text-[9px] font-black uppercase tracking-widest hover:bg-zinc-900 transition-all shadow-sm"
+                            >
+                              <Printer size={12} /> Imprimir Lista
+                            </button>
+                            <button 
+                              onClick={() => handleDownloadWorkSiteEmployeePDF(activeWS)}
+                              className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 bg-[#003366] text-white text-[9px] font-black uppercase tracking-widest hover:bg-[#002244] transition-all shadow-sm"
+                            >
+                              <Download size={12} /> Baixar PDF
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* DETAILED SUMMARY CARDS */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-[10px] font-bold text-zinc-600 bg-white p-4 border border-zinc-200">
+                          <div>
+                            <span className="block text-[8px] text-zinc-400 uppercase tracking-widest font-black">Código do Posto</span>
+                            <span className="text-zinc-800 font-black">{activeWS.code || 'PT-100'}</span>
+                          </div>
+                          <div>
+                            <span className="block text-[8px] text-zinc-400 uppercase tracking-widest font-black">Localização</span>
+                            <span className="text-zinc-800 font-bold capitalize">{activeWS.location || 'Sede'}</span>
+                          </div>
+                          <div>
+                            <span className="block text-[8px] text-zinc-400 uppercase tracking-widest font-black">Efetivo Diário Meta</span>
+                            <span className="text-zinc-800 font-mono font-black">{activeWS.staff_per_day || 0} p/Dia</span>
+                          </div>
+                          <div>
+                            <span className="block text-[8px] text-zinc-400 uppercase tracking-widest font-black">Responsável</span>
+                            <span className="text-[#003366] font-black uppercase truncate block">{activeWS.client_name || '---'}</span>
+                          </div>
+                          
+                          {/* Extra block for description & observations */}
+                          <div className="col-span-2 pt-2 border-t border-zinc-100">
+                            <span className="block text-[8px] text-zinc-400 uppercase tracking-widest font-black">Contacto / Responsável</span>
+                            <span className="text-zinc-500 font-bold normal-case truncate block">{activeWS.contact || 'S/ Contacto registado'}</span>
+                          </div>
+                          <div className="col-span-2 pt-2 border-t border-zinc-100">
+                            <span className="block text-[8px] text-zinc-400 uppercase tracking-widest font-black">Observações</span>
+                            <span className="text-zinc-500 font-bold normal-case truncate block">{activeWS.observations || 'Nenhuma observação registada.'}</span>
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <h4 className="font-black text-[#003366] uppercase text-xs">{ws.title}</h4>
-                        <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">{ws.code || 'PT-100'}</p>
+
+                      {/* SEARCH BAR FOR EMPLOYEES */}
+                      <div className="p-4 bg-zinc-50/55 border-b border-zinc-200 flex flex-col sm:flex-row justify-between items-center gap-4">
+                        <div className="relative w-full sm:w-80">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={14} />
+                          <input 
+                            type="text"
+                            placeholder="Buscar colaboradores neste posto..."
+                            value={workspaceStaffSearch}
+                            onChange={(e) => setWorkspaceStaffSearch(e.target.value)}
+                            className="w-full bg-white border border-zinc-200 pl-9 pr-4 py-1.5 text-xs font-bold uppercase tracking-wide focus:border-[#003366] outline-none"
+                          />
+                        </div>
+                        <div className="text-[10px] font-extrabold uppercase text-zinc-400 font-mono">
+                          Listando: <span className="text-[#003366] font-black">{filteredWSEmployees.length}</span> / {activeWSEmployees.length} colaboradores
+                        </div>
+                      </div>
+
+                      {/* EMPLOYEES TABLE */}
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse min-w-[700px] text-[10px]/relaxed">
+                          <thead>
+                            <tr className="bg-zinc-100 border-b border-zinc-200 uppercase tracking-widest font-black text-zinc-500">
+                              <th className="px-4 py-3 border-r border-zinc-200">ID</th>
+                              <th className="px-4 py-3 border-r border-zinc-200">Nome / Foto</th>
+                              <th className="px-4 py-3 border-r border-zinc-200">Cargo</th>
+                              <th className="px-4 py-3 border-r border-zinc-200">BI / NIF</th>
+                              <th className="px-4 py-3 border-r border-zinc-200">Contacto</th>
+                              <th className="px-4 py-3 border-r border-zinc-200 text-right">Salário Base</th>
+                              <th className="px-4 py-3 text-center">Acções</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-zinc-100">
+                            {filteredWSEmployees.length === 0 ? (
+                              <tr>
+                                <td colSpan={7} className="px-4 py-8 text-center text-zinc-300 font-black uppercase text-[10px] tracking-wide">
+                                  Nenhum colaborador alocado nesta pesquisa.
+                                </td>
+                              </tr>
+                            ) : (
+                              filteredWSEmployees.map(emp => (
+                                <tr key={emp.id} className="hover:bg-zinc-50/50 transition-all font-bold group">
+                                  <td className="px-4 py-3.5 border-r border-zinc-100 font-mono text-[#003366] font-black">
+                                    #{String(emp.id).padStart(4, '0')}
+                                  </td>
+                                  <td className="px-4 py-3.5 border-r border-zinc-100">
+                                    <div className="flex items-center gap-2.5">
+                                      <div className="w-7 h-7 bg-zinc-200 flex items-center justify-center overflow-hidden border border-zinc-300/60 rounded">
+                                        {emp.image_url ? (
+                                          <img src={emp.image_url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                        ) : (
+                                          <UserIcon size={12} className="text-zinc-500" />
+                                        )}
+                                      </div>
+                                      <span className="text-zinc-800 uppercase font-black truncate max-w-[150px]">{emp.name}</span>
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-3.5 border-r border-zinc-100 uppercase text-zinc-500 truncate max-w-[120px]">{emp.role || '---'}</td>
+                                  <td className="px-4 py-3.5 border-r border-zinc-100 font-mono text-zinc-500">{emp.bi || emp.nif || '---'}</td>
+                                  <td className="px-4 py-3.5 border-r border-zinc-100 font-mono text-zinc-400">{emp.phone || emp.email || '---'}</td>
+                                  <td className="px-4 py-3.5 border-r border-zinc-100 text-right font-mono text-[#003366] font-black">
+                                    {formatCurrency(emp.salary)}
+                                  </td>
+                                  <td className="px-4 py-3.5 text-center">
+                                    <div className="flex justify-center items-center gap-1.5">
+                                      <button 
+                                        onClick={() => {
+                                          setMovingWorkspaceEmployee(emp);
+                                        }}
+                                        className="bg-[#003366] text-white px-2 py-1 text-[8px] font-black uppercase tracking-wider hover:bg-[#F27D26] transition-all flex items-center gap-1"
+                                        title="Transferir de Posto"
+                                      >
+                                        <Shuffle size={10} /> Transferir
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
                       </div>
                     </div>
-                    <div className="space-y-3 text-[11px] font-medium text-zinc-600 mb-6">
-                      <div className="flex justify-between">
-                        <span className="uppercase text-zinc-400 font-black text-[9px]">Localização:</span>
-                        <span>{ws.location || 'Sede'}</span>
+                  </div>
+                );
+              })()
+            )}
+
+            {/* Reallocation Overlay Modal */}
+            <AnimatePresence>
+              {movingWorkspaceEmployee && (
+                <div className="fixed inset-0 z-[250] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm no-print">
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className="bg-white w-full max-w-md border border-zinc-300 shadow-2xl p-6"
+                  >
+                    <div className="flex justify-between items-center border-b border-zinc-200 pb-3 mb-4">
+                      <div className="flex items-center gap-2">
+                        <Shuffle size={16} className="text-[#003366]" />
+                        <h4 className="text-xs font-black uppercase tracking-widest text-[#003366]">Transferir Colaborador</h4>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="uppercase text-zinc-400 font-black text-[9px]">Efetivo Atual:</span>
-                        <span className="font-black text-[#003366]">{localEmployees.filter(e => String(e.local_trabalho_id) === String(ws.id)).length} Colaboradores</span>
+                      <button 
+                        onClick={() => setMovingWorkspaceEmployee(null)}
+                        className="p-1 hover:bg-zinc-100 transition-colors"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+
+                    <div className="space-y-4 text-xs font-bold text-zinc-600 mb-6">
+                      <p>
+                        Selecione o novo posto de trabalho de destino para o colaborador{' '}
+                        <span className="text-zinc-800 font-black uppercase">{movingWorkspaceEmployee.name}</span>:
+                      </p>
+
+                      <div className="space-y-2 max-h-[220px] overflow-y-auto pr-2 divide-y divide-zinc-100">
+                        {workSites.map(ws => {
+                          const isCurrent = String(ws.id) === String(movingWorkspaceEmployee.local_trabalho_id);
+                          return (
+                            <div 
+                              key={ws.id}
+                              onClick={async () => {
+                                if (isCurrent) return;
+                                try {
+                                  const { error } = await supabase
+                                    .from('colaboradores')
+                                    .update({ local_trabalho_id: ws.id })
+                                    .eq('id', movingWorkspaceEmployee.id);
+                                  
+                                  if (error) throw error;
+                                  alert('Colaborador transferido com sucesso!');
+                                  
+                                  // Update local state right away
+                                  setLocalEmployees(prev => prev.map(e => e.id === movingWorkspaceEmployee.id ? { ...e, local_trabalho_id: ws.id } : e));
+                                  setMovingWorkspaceEmployee(null);
+                                  if (onRefetch) onRefetch();
+                                } catch (err) {
+                                  console.error('Error in transfer:', err);
+                                  alert('Erro ao transferir colaborador.');
+                                }
+                              }}
+                              className={`p-2.5 text-left cursor-pointer transition-all ${
+                                isCurrent 
+                                  ? 'bg-zinc-100 text-zinc-400 cursor-not-allowed' 
+                                  : 'bg-white hover:bg-zinc-50 hover:text-[#003366]'
+                              }`}
+                            >
+                              <div className="flex justify-between font-black uppercase text-[10px]">
+                                <span>{ws.title}</span>
+                                <span className="font-mono text-[9px] text-[#003366] font-black">{ws.code || 'PT-100'}</span>
+                              </div>
+                              <span className="text-[8px] font-bold text-zinc-400 block mt-0.5 uppercase tracking-wider">{ws.location || 'Sede'} {isCurrent && '(POSTO ATUAL)'}</span>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
-                    <button className="w-full border border-zinc-200 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-zinc-50 transition-colors">Detalhes do Posto</button>
-                 </div>
-               ))}
-            </div>
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
+
           </div>
         )}
 
@@ -7583,12 +8712,12 @@ const HRModule = ({
               <div className="flex justify-between items-start mb-8 border-b-2 border-[#003366] pb-6">
                 <div className="flex items-center gap-4">
                   <div className="w-16 h-16 bg-[#003366] flex items-center justify-center text-white font-black text-2xl">
-                    TS
+                    {(companyData?.name || companyData?.nome_empresa || companyName || "Grupo TecnoSys").substring(0, 2).toUpperCase()}
                   </div>
                   <div>
-                    <h1 className="text-xl font-black text-[#003366] uppercase tracking-tighter">Grupo TecnoSys</h1>
-                    <p className="text-[10px] text-zinc-500 uppercase font-bold">Soluções Tecnológicas Integradas</p>
-                    <p className="text-[9px] text-zinc-400 mt-1">Luanda, Angola • NIF: 5417283940</p>
+                    <h1 className="text-xl font-black text-[#003366] uppercase tracking-tighter">{companyData?.name || companyData?.nome_empresa || companyName || "Grupo TecnoSys"}</h1>
+                    <p className="text-[10px] text-zinc-500 uppercase font-bold">{companyData?.activity || companyData?.regime || "Soluções Tecnológicas Integradas"}</p>
+                    <p className="text-[9px] text-zinc-400 mt-1">{companyData?.address || companyData?.localizacao || "Luanda, Angola"} • NIF: {companyData?.nif || "5417283940"}</p>
                   </div>
                 </div>
                 <div className="text-right">
@@ -7971,12 +9100,17 @@ const HRModule = ({
           employee={selectedEmployeeForOptions} 
           onClose={() => setShowOptionsMenu(false)} 
           setActiveTab={setActiveTab}
-          setAppSelectedEmployee={setAppSelectedEmployee}
+          setAppSelectedEmployee={(e) => {
+            setAppSelectedEmployee(e);
+            if (onSetEmployee) onSetEmployee(e);
+          }}
           handleEditEmployee={handleEditEmployee}
           handleDeleteEmployee={handleDeleteEmployee}
           handleReadmitEmployee={handleReadmitEmployee}
           onRefreshHRData={fetchHRData}
           onSetIsContractModalOpen={onSetIsContractModalOpen}
+          onOpenDocuments={onOpenDocuments}
+          onOpenFines={onOpenFines}
         />
       )}
     </div>
@@ -14076,12 +15210,18 @@ const ClassifyMovementsModule = ({ invoices, purchases, onBack }: { invoices: In
   );
 };
 
-const StampTaxModule = ({ invoices, onBack }: { invoices: Invoice[], onBack: () => void }) => {
+const StampTaxModule = ({ invoices, onBack, companyData }: { invoices: Invoice[], onBack: () => void, companyData?: any }) => {
   const [selectedMonth, setSelectedMonth] = useState('05');
   const receipts = invoices.filter(inv => 
     (inv.document_type === 'Fatura Recibo' || inv.document_type === 'Recibo') && 
     inv.date.split('-')[1] === selectedMonth
   );
+
+  const nifStr = String(companyData?.nif || "5000922200").trim();
+  const digits = Array(19).fill(' ');
+  for (let i = 0; i < nifStr.length; i++) {
+    digits[19 - nifStr.length + i] = nifStr[i];
+  }
 
   return (
     <div className="space-y-4">
@@ -14141,9 +15281,9 @@ const StampTaxModule = ({ invoices, onBack }: { invoices: Invoice[], onBack: () 
                <p className="font-black text-[#003366] text-[10px] uppercase">REGIME DE NÃO SUJEIÇÃO</p>
             </div>
             <div className="col-span-4 p-4">
-               <p className="text-[10px] font-bold text-zinc-400 mb-1 uppercase tracking-widest text-right">NIF: 5000922200</p>
+               <p className="text-[10px] font-bold text-zinc-400 mb-1 uppercase tracking-widest text-right">NIF: {companyData?.nif || "5000922200"}</p>
                <div className="flex border border-zinc-200 bg-zinc-50 divide-x divide-zinc-200">
-                 {[' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', '5', '0', '0', '0', '9', '2', '2', '2', '0', '0'].map((digit, i) => (
+                 {digits.map((digit, i) => (
                     <div key={i} className="flex-1 h-8 flex items-center justify-center font-mono font-bold text-zinc-700">{digit}</div>
                  ))}
                </div>
@@ -14156,7 +15296,7 @@ const StampTaxModule = ({ invoices, onBack }: { invoices: Invoice[], onBack: () 
          <div className="p-4 grid grid-cols-12 gap-4">
             <div className="col-span-3 text-[10px] font-bold text-zinc-400">NOME/DESIGNAÇÃO</div>
             <div className="col-span-9 text-sm font-black text-[#003366] uppercase border-b border-zinc-400 pb-1">
-              ROYAL CARS - COMERCIO E PRESTAÇÃO DE SERVIÇOS, LDA
+              {companyData?.name || companyData?.nome_empresa || "ROYAL CARS - COMERCIO E PRESTAÇÃO DE SERVIÇOS, LDA"}
             </div>
          </div>
 
@@ -14212,7 +15352,7 @@ const StampTaxModule = ({ invoices, onBack }: { invoices: Invoice[], onBack: () 
   );
 };
 
-const IncomeTaxAdvanceModule = ({ invoices, onBack }: { invoices: Invoice[], onBack: () => void }) => {
+const IncomeTaxAdvanceModule = ({ invoices, onBack, companyData }: { invoices: Invoice[], onBack: () => void, companyData?: any }) => {
   const [selectedMonth, setSelectedMonth] = useState('08'); // Default to August as per law
   
   // Total of invoices for the first 6 months
@@ -14304,8 +15444,8 @@ const IncomeTaxAdvanceModule = ({ invoices, onBack }: { invoices: Invoice[], onB
             <span className="bg-white text-[#003366] px-2 py-0.5 mr-2">04-</span> IDENTIFICAÇÃO DO CONTRIBUINTE
          </div>
          <div className="p-4 bg-zinc-50 flex justify-between items-center px-10">
-            <p className="text-sm font-black text-[#003366] uppercase">ROYAL CARS - COMERCIO E PRESTAÇÃO DE SERVIÇOS, LDA</p>
-            <p className="text-sm font-black text-zinc-500 font-mono tracking-tighter">NIF: 5000922200</p>
+            <p className="text-sm font-black text-[#003366] uppercase">{companyData?.name || companyData?.nome_empresa || "ROYAL CARS - COMERCIO E PRESTAÇÃO DE SERVIÇOS, LDA"}</p>
+            <p className="text-sm font-black text-zinc-500 font-mono tracking-tighter">NIF: {companyData?.nif || "5000922200"}</p>
          </div>
 
          <div className="bg-[#003366] text-white p-1 text-[10px] font-bold uppercase border-t border-b border-white">
@@ -14360,7 +15500,7 @@ const IncomeTaxAdvanceModule = ({ invoices, onBack }: { invoices: Invoice[], onB
   );
 };
 
-const AccountingMapsModule = ({ onBack }: { onBack: () => void }) => {
+const AccountingMapsModule = ({ onBack, companyData }: { onBack: () => void, companyData?: any }) => {
   const { user } = useAuth();
   const [initialMonth, setInitialMonth] = useState('0'); // Jan
   const [finalMonth, setFinalMonth] = useState('11'); // Dec
@@ -14368,7 +15508,7 @@ const AccountingMapsModule = ({ onBack }: { onBack: () => void }) => {
   const [viewDetail, setViewDetail] = useState<any | null>(null);
 
   if (viewDetail) {
-    return <AccountMovementsPage account={viewDetail} onBack={() => setViewDetail(null)} />;
+    return <AccountMovementsPage account={viewDetail} onBack={() => setViewDetail(null)} companyData={companyData} />;
   }
 
   const months = [
@@ -14531,7 +15671,7 @@ const AccountingMapsModule = ({ onBack }: { onBack: () => void }) => {
   );
 };
 
-const AccountMovementsPage = ({ account, onBack }: { account: any, onBack: () => void }) => {
+const AccountMovementsPage = ({ account, onBack, companyData }: { account: any, onBack: () => void, companyData?: any }) => {
   const [initialMonth, setInitialMonth] = useState('Abertura');
   const [finalMonth, setFinalMonth] = useState('Dezembro');
   
@@ -14563,10 +15703,12 @@ const AccountMovementsPage = ({ account, onBack }: { account: any, onBack: () =>
            <div className="flex justify-between items-start">
               <div className="text-left">
                  <div className="bg-[#003366] p-2 inline-block mb-2">
-                    <div className="w-12 h-12 bg-white flex items-center justify-center font-bold text-red-600 border-2 border-red-600">RC</div>
+                    <div className="w-12 h-12 bg-white flex items-center justify-center font-bold text-red-600 border-2 border-red-600">
+                       {String(companyData?.name || "Royal Cars").substring(0, 2).toUpperCase()}
+                    </div>
                  </div>
-                 <div className="text-[11px] font-black text-[#003366] uppercase">Royal Cars - Comercio e Prestação de Serviços, LDA</div>
-                 <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest">Controlo de Movimentos Analíticos • Software ERP</p>
+                 <div className="text-[11px] font-black text-[#003366] uppercase">{companyData?.name || companyData?.nome_empresa || "Royal Cars - Comercio e Prestação de Serviços, LDA"}</div>
+                 <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest">NIF: {companyData?.nif || "5000922200"} • Controlo de Movimentos Analíticos • Software ERP</p>
               </div>
               <div className="text-right">
                  <h2 className="text-2xl font-black text-[#003366] tracking-tighter uppercase italic leading-none">Extrato de Conta</h2>
@@ -14953,14 +16095,15 @@ const PGCModule = ({ onBack }: { onBack: () => void }) => {
   );
 };
 
-const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employees, issuedDocuments, fiscalYear }: { 
+const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employees, issuedDocuments, fiscalYear, companyData }: { 
   invoices: Invoice[], 
   clients: Client[], 
   fiscalSeries: FiscalSeries[], 
   onRefresh: () => void, 
   employees: Employee[],
   issuedDocuments: IssuedDocument[],
-  fiscalYear: string
+  fiscalYear: string,
+  companyData?: any
 }) => {
   const { user } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState<string | null>(null);
@@ -15072,17 +16215,17 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
       case 'daily-movements':
         return <DailyMovementsModule onBack={() => setActiveSubTab(null)} />;
       case 'accounting-maps':
-        return <AccountingMapsModule onBack={() => setActiveSubTab(null)} />;
+        return <AccountingMapsModule onBack={() => setActiveSubTab(null)} companyData={companyData} />;
       case 'pgc':
         return <PGCModule onBack={() => setActiveSubTab(null)} />;
       case 'classify-movements':
         return <ClassifyMovementsModule invoices={invoices} purchases={purchases} onBack={() => setActiveSubTab(null)} />;
       case 'stamp-tax':
-        return <StampTaxModule invoices={invoices} onBack={() => setActiveSubTab(null)} />;
+        return <StampTaxModule invoices={invoices} onBack={() => setActiveSubTab(null)} companyData={companyData} />;
       case 'income-tax-advance':
-        return <IncomeTaxAdvanceModule invoices={invoices} onBack={() => setActiveSubTab(null)} />;
+        return <IncomeTaxAdvanceModule invoices={invoices} onBack={() => setActiveSubTab(null)} companyData={companyData} />;
       case 'simplified-regime':
-        return <RegimeSimplificadoForm invoices={invoices} purchases={purchases} />;
+        return <RegimeSimplificadoForm invoices={invoices} purchases={purchases} companyData={companyData} />;
       case 'retencao-pagar':
         return <RetencaoPagarForm purchases={purchases} suppliers={suppliers} />;
       case 'retencao-receber':
@@ -17836,13 +18979,74 @@ const WorkSiteRegistration = ({ workSite, onBack }: { workSite: WorkSite, onBack
   );
 };
 
-const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack }: { 
+const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack, employees = [], allWorkSites = [], onRefreshEmployees }: { 
   workSite: WorkSite, 
   movements: WorkSiteMovement[], 
   invoices?: IssuedDocument[],
-  onBack: () => void 
+  onBack: () => void,
+  employees?: Employee[],
+  allWorkSites?: WorkSite[],
+  onRefreshEmployees?: () => void
 }) => {
-  const [activeTab, setActiveTab] = useState<'finance' | 'invoices' | 'stock'>('finance');
+  const [activeTab, setActiveTab] = useState<'finance' | 'invoices' | 'stock' | 'employees'>('finance');
+  const [staffSearch, setStaffSearch] = useState('');
+  const [movingEmployee, setMovingEmployee] = useState<Employee | null>(null);
+
+  const siteEmployees = (employees ?? []).filter(emp => emp.local_trabalho_id?.toString() === workSite.id?.toString());
+  const filteredSiteEmployees = siteEmployees.filter(emp => 
+    emp.name.toLowerCase().includes(staffSearch.toLowerCase()) || 
+    emp.role.toLowerCase().includes(staffSearch.toLowerCase()) ||
+    String(emp.id).includes(staffSearch)
+  );
+
+  const handleMoveEmployee = async (employeeId: number, targetWorkplaceId: string) => {
+    try {
+      const { error } = await supabase
+        .from('colaboradores')
+        .update({ local_trabalho_id: targetWorkplaceId })
+        .eq('id', employeeId);
+
+      if (error) throw error;
+      alert('Colaborador transferido com sucesso!');
+      setMovingEmployee(null);
+      if (onRefreshEmployees) onRefreshEmployees();
+    } catch (err) {
+      console.error('Error moving employee:', err);
+      alert('Erro ao transferir colaborador.');
+    }
+  };
+
+  const handlePrintEmployeeList = () => {
+    window.print();
+  };
+
+  const handleDownloadEmployeePDF = () => {
+    const doc = new jsPDF('p', 'mm', 'a4');
+    doc.setFontSize(16);
+    doc.text(`Lista de Colaboradores - ${workSite?.title || 'Todos'}`, 14, 20);
+    doc.setFontSize(10);
+    
+    let y = 30;
+    doc.text('Nome', 14, y);
+    doc.text('Cargo', 80, y);
+    doc.text('Contacto', 140, y);
+    doc.text('Estado', 180, y);
+    y += 10;
+    
+    filteredSiteEmployees.forEach(emp => {
+      if (y > 270) {
+        doc.addPage();
+        y = 20;
+      }
+      doc.text(emp.name.substring(0, 30), 14, y);
+      doc.text((emp.role || '---').substring(0, 25), 80, y);
+      doc.text(emp.phone || emp.email || '---', 140, y);
+      doc.text(emp.status === 'active' ? 'Presente' : 'Ausente', 180, y);
+      y += 8;
+    });
+
+    doc.save(`colaboradores_${(workSite?.title || 'lista').replace(/ /g, '_')}.pdf`);
+  };
   
   const siteInvoices = (invoices ?? []).filter(inv => (inv.work_site_id?.toString() === workSite.id?.toString()));
   const totalInvoiced = (siteInvoices ?? []).reduce((sum, inv) => sum + (inv.contravalor || inv.total || 0), 0);
@@ -17988,6 +19192,15 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack }: {
           Entregas / Matérias Primas
           {activeTab === 'stock' && <motion.div layoutId="activeTabWork" className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#003366]" />}
         </button>
+        <button 
+          onClick={() => setActiveTab('employees')}
+          className={`pb-4 px-4 text-xs font-bold uppercase tracking-widest transition-all relative ${
+            activeTab === 'employees' ? 'text-[#003366]' : 'text-zinc-400 hover:text-zinc-600'
+          }`}
+        >
+          Gestão de Colaboradores
+          {activeTab === 'employees' && <motion.div layoutId="activeTabWork" className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#003366]" />}
+        </button>
       </div>
 
       {activeTab === 'finance' ? (
@@ -18102,6 +19315,135 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack }: {
                   </tbody>
                </table>
             </div>
+        </div>
+      ) : activeTab === 'employees' ? (
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 no-print bg-zinc-50 p-4 border border-zinc-200">
+              <div className="relative w-full sm:w-96">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
+                <input 
+                  type="text" 
+                  placeholder="Pesquisar colaborador neste local..." 
+                  value={staffSearch}
+                  onChange={(e) => setStaffSearch(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 bg-white border border-zinc-200 text-xs font-bold focus:outline-none focus:border-[#003366]"
+                />
+              </div>
+              <div className="flex gap-2 w-full sm:w-auto">
+                <button 
+                  onClick={handlePrintEmployeeList}
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2 bg-white border border-zinc-200 text-zinc-600 text-[10px] font-black uppercase tracking-widest hover:bg-zinc-50 transition-all shadow-sm"
+                >
+                  <Printer size={16} /> Imprimir Lista
+                </button>
+                <button 
+                  onClick={handleDownloadEmployeePDF}
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2 bg-[#003366] text-white text-[10px] font-black uppercase tracking-widest hover:bg-[#002244] transition-all shadow-md"
+                >
+                  <Download size={16} /> Baixar PDF
+                </button>
+              </div>
+           </div>
+
+           <div className="border border-zinc-200 shadow-sm overflow-hidden bg-white">
+              <table className="w-full text-left border-collapse">
+                 <thead>
+                    <tr className="bg-zinc-100 border-b border-zinc-200 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
+                       <th className="px-6 py-4 w-16">ID</th>
+                       <th className="px-6 py-4">Nome Completo</th>
+                       <th className="px-6 py-4">Cargo / Função</th>
+                       <th className="px-6 py-4">Contacto</th>
+                       <th className="px-6 py-4 text-center no-print">Estado</th>
+                       <th className="px-6 py-4 text-right no-print">Opções</th>
+                    </tr>
+                 </thead>
+                 <tbody className="divide-y divide-zinc-100 text-xs">
+                    {filteredSiteEmployees.length > 0 ? (
+                      filteredSiteEmployees.map(emp => (
+                        <tr key={emp.id} className="hover:bg-zinc-50 transition-colors group">
+                           <td className="px-6 py-4 font-mono text-[#003366]">{String(emp.id).padStart(4, '0')}</td>
+                           <td className="px-6 py-4">
+                              <div className="flex items-center gap-3">
+                                 <div className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center text-[#003366] font-black uppercase border-2 border-white shadow-sm overflow-hidden">
+                                    {emp.image_url ? <img src={emp.image_url} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" /> : emp.name.charAt(0)}
+                                 </div>
+                                 <span className="font-bold text-zinc-800 uppercase">{emp.name}</span>
+                              </div>
+                           </td>
+                           <td className="px-6 py-4 font-medium text-zinc-500">{emp.role}</td>
+                           <td className="px-6 py-4 font-medium text-zinc-500">{emp.phone || emp.email || '---'}</td>
+                           <td className="px-6 py-4 text-center no-print">
+                              <span className={`px-2 py-0.5 text-[9px] font-black uppercase border ${
+                                emp.status === 'active' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'
+                              }`}>
+                                {emp.status === 'active' ? 'Presente' : 'Ausente'}
+                              </span>
+                           </td>
+                           <td className="px-6 py-4 text-right no-print">
+                              <button 
+                                onClick={() => setMovingEmployee(emp)}
+                                className="inline-flex items-center gap-2 px-3 py-1.5 bg-[#003366] text-white text-[9px] font-black uppercase tracking-widest hover:bg-[#002244] transition-all"
+                              >
+                                <ArrowRightLeft size={12} /> Transferir
+                              </button>
+                           </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={6} className="px-6 py-20 text-center text-zinc-300 italic font-black uppercase tracking-widest opacity-50">
+                           {staffSearch ? 'Nenhum resultado para a pesquisa' : 'Nenhum funcionário alocado a este local de trabalho'}
+                        </td>
+                      </tr>
+                    )}
+                 </tbody>
+              </table>
+           </div>
+
+           {/* Transfer Modal */}
+           <AnimatePresence>
+              {movingEmployee && (
+                <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm">
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className="bg-white w-full max-w-md shadow-2xl p-8"
+                  >
+                    <header className="mb-6">
+                      <h3 className="text-xl font-black text-[#003366] uppercase tracking-tighter">Transferir Colaborador</h3>
+                      <p className="text-xs text-zinc-500 font-medium">Selecione o novo destino para <span className="font-bold text-[#003366] uppercase">{movingEmployee.name}</span></p>
+                    </header>
+
+                    <div className="space-y-4">
+                       <label className="block text-[10px] font-black text-zinc-400 uppercase tracking-widest text-[10px]">Novo Local de Trabalho</label>
+                       <div className="grid grid-cols-1 gap-2 max-h-60 overflow-y-auto pr-2">
+                          {allWorkSites.filter(ws => ws.id?.toString() !== workSite.id?.toString()).map(ws => (
+                            <button 
+                              key={ws.id}
+                              onClick={() => handleMoveEmployee(movingEmployee.id, ws.id.toString())}
+                              className="text-left p-4 border border-zinc-200 hover:border-[#003366] hover:bg-zinc-50 transition-all group flex items-center justify-between"
+                            >
+                               <div>
+                                  <p className="text-xs font-black text-zinc-800 uppercase">{ws.title}</p>
+                                  <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-tight">{ws.location}</p>
+                               </div>
+                               <ChevronRight size={16} className="text-zinc-300 group-hover:text-[#003366]" />
+                            </button>
+                          ))}
+                       </div>
+                    </div>
+
+                    <button 
+                      onClick={() => setMovingEmployee(null)}
+                      className="w-full mt-8 py-3 text-xs font-black text-zinc-400 uppercase tracking-widest border border-zinc-200 hover:bg-zinc-50 transition-all"
+                    >
+                      Cancelar Operação
+                    </button>
+                  </motion.div>
+                </div>
+              )}
+           </AnimatePresence>
         </div>
       ) : (
         <div className="space-y-4">
@@ -23341,6 +24683,10 @@ export default function App() {
   const [selectedDocument, setSelectedDocument] = useState<IssuedDocument | null>(null);
   const [fixedDocumentType, setFixedDocumentType] = useState<string | undefined>(undefined);
   const [authReady, setAuthReady] = useState(false);
+  const [penalties, setPenalties] = useState<any[]>([]);
+  const [isDocumentsModalOpen, setIsDocumentsModalOpen] = useState(false);
+  const [isFinesModalOpen, setIsFinesModalOpen] = useState(false);
+  const [modalEmployee, setModalEmployee] = useState<Employee | null>(null);
   const syncLockRef = useRef(false);
 
   useEffect(() => {
@@ -25105,6 +26451,8 @@ export default function App() {
                               clients={clients} 
                               issuedDocuments={issuedDocuments} 
                               workSiteMovements={workSiteMovements} 
+                              employees={employees}
+                              allWorkSites={workSites}
                             />
                           );
                         case 'contracts':
@@ -25161,14 +26509,23 @@ export default function App() {
                               transactions={invoices} // Overloading invoices as transactions for this module's logic if needed, or separate state
                             />
                           );
-                        case 'hr':
+                         case 'hr':
                           return <HRModule 
                             onRefetch={fetchData} 
                             onSetIsContractModalOpen={setIsContractModalOpen} 
                             onSetEmployee={setAppSelectedEmployee} 
                             onSetSelectedContract={setSelectedContract}
+                            onOpenDocuments={(e) => {
+                              setModalEmployee(e);
+                              setIsDocumentsModalOpen(true);
+                            }}
+                            onOpenFines={(e) => {
+                              setModalEmployee(e);
+                              setIsFinesModalOpen(true);
+                            }}
                             caixas={caixas} 
                             companyName={companyName} 
+                            companyData={companyData}
                             fiscalYear={fiscalYear}
                             // Persistent HR State
                             processedReceipts={hrProcessedReceipts}
@@ -25183,6 +26540,8 @@ export default function App() {
                             setTransferOrders={setHrTransferOrders}
                             localEmployees={hrLocalEmployees}
                             setLocalEmployees={setHrLocalEmployees}
+                            penalties={penalties}
+                            setPenalties={setPenalties}
                           />;
                         case 'accounting':
                           return <AccountingModule 
@@ -25193,6 +26552,7 @@ export default function App() {
                             employees={employees} 
                             issuedDocuments={issuedDocuments} 
                             fiscalYear={fiscalYear}
+                            companyData={companyData}
                           />;
                         case 'withholding-tax':
                           return <WithholdingTaxModule sales={issuedDocuments} purchases={purchases} />;
@@ -25483,6 +26843,22 @@ export default function App() {
           onSuccess={() => {
             fetchData();
           }}
+        />
+      )}
+
+      {isDocumentsModalOpen && modalEmployee && (
+        <EmployeeDocumentsModal 
+          employee={modalEmployee}
+          onClose={() => {setIsDocumentsModalOpen(false); setModalEmployee(null);}}
+          onRefresh={fetchData}
+        />
+      )}
+      
+      {isFinesModalOpen && modalEmployee && (
+        <EmployeeFinesModal 
+          employee={modalEmployee}
+          onClose={() => {setIsFinesModalOpen(false); setModalEmployee(null);}}
+          onRefresh={fetchData}
         />
       )}
 

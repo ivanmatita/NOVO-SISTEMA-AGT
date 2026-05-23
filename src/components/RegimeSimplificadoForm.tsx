@@ -117,7 +117,7 @@ const MapaFornecedor = ({ purchases, onBack }: { purchases: Purchase[], onBack: 
   );
 };
 
-const RegimeSimplificadoForm = ({ invoices, purchases }: { invoices: Invoice[], purchases: Purchase[] }) => {
+const RegimeSimplificadoForm = ({ invoices, purchases, companyData }: { invoices: Invoice[], purchases: Purchase[], companyData?: any }) => {
   const [showMapaFornecedor, setShowMapaFornecedor] = useState(false);
   const [ano, setAno] = useState('2025');
   const [mes, setMes] = useState('05');
@@ -128,6 +128,12 @@ const RegimeSimplificadoForm = ({ invoices, purchases }: { invoices: Invoice[], 
   const formatCurrencyValue = (value: number) => {
     return new Intl.NumberFormat('pt-AO', { minimumFractionDigits: 2 }).format(value);
   };
+
+  const nifStr = String(companyData?.nif || "5000922200").trim();
+  const digits = Array(19).fill(' ');
+  for (let i = 0; i < nifStr.length; i++) {
+    digits[19 - nifStr.length + i] = nifStr[i];
+  }
 
   if (showMapaFornecedor) {
     return <MapaFornecedor purchases={purchases} onBack={() => setShowMapaFornecedor(false)} />;
@@ -175,7 +181,7 @@ const RegimeSimplificadoForm = ({ invoices, purchases }: { invoices: Invoice[], 
            <div className="col-span-5 p-4">
               <p className="text-[10px] font-bold text-zinc-400 uppercase mb-2">03- NÚMERO DE IDENTIFICAÇÃO FISCAL</p>
               <div className="flex border border-zinc-200 bg-zinc-50 divide-x divide-zinc-200">
-                 {[' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', '5', '0', '0', '0', '9', '2', '2', '2', '0', '0'].map((digit, i) => (
+                 {digits.map((digit, i) => (
                     <div key={i} className="w-full h-8 flex items-center justify-center font-mono font-bold text-zinc-700">{digit}</div>
                  ))}
               </div>
@@ -190,7 +196,7 @@ const RegimeSimplificadoForm = ({ invoices, purchases }: { invoices: Invoice[], 
 
         <div className="p-4 bg-zinc-50/50">
            <p className="text-[9px] font-bold text-zinc-400 uppercase mb-1">1 - NOME OU DESIGNAÇÃO SOCIAL:</p>
-           <p className="text-sm font-black text-[#003366] uppercase tracking-tighter">ROYAL CARS - COMERCIO E PRESTAÇÃO DE SERVIÇOS, LDA</p>
+           <p className="text-sm font-black text-[#003366] uppercase tracking-tighter">{companyData?.name || companyData?.nome_empresa || "ROYAL CARS - COMERCIO E PRESTAÇÃO DE SERVIÇOS, LDA"}</p>
         </div>
 
         {/* Section 06 */}

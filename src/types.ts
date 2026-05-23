@@ -580,6 +580,31 @@ export interface LaborTermination {
   created_at: string;
 }
 
+export interface EmployeeDocument {
+  id: string | number;
+  employee_id: number | string;
+  type: string;
+  description: string;
+  file_url: string;
+  file_name: string;
+  file_size?: number;
+  status: 'active' | 'archived';
+  created_at: string;
+}
+
+export interface EmployeePenalty {
+  id: string | number;
+  employee_id: number | string;
+  type: 'multa' | 'penalizacao';
+  date: string;
+  reason: string;
+  observation?: string;
+  ordered_by: string;
+  amount: number;
+  month: string; // MM/YYYY
+  created_at: string;
+}
+
 export interface PurchaseItem {
   id: number;
   purchase_id: number;

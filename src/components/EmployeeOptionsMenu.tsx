@@ -28,7 +28,9 @@ export const EmployeeOptionsMenu = ({
   handleDeleteEmployee,
   handleReadmitEmployee,
   onRefreshHRData,
-  onSetIsContractModalOpen
+  onSetIsContractModalOpen,
+  onOpenDocuments,
+  onOpenFines
 }: {
   employee: Employee;
   onClose: () => void;
@@ -39,6 +41,8 @@ export const EmployeeOptionsMenu = ({
   handleReadmitEmployee: (id: number, date: string, reason?: string, orderedBy?: string, observations?: string) => Promise<void>;
   onRefreshHRData: () => void;
   onSetIsContractModalOpen?: (open: boolean) => void;
+  onOpenDocuments?: (e: Employee) => void;
+  onOpenFines?: (e: Employee) => void;
 }) => {
   const { user } = useAuth();
   const [currentView, setCurrentView] = useState<'options' | 'dismiss' | 'readmit'>('options');
@@ -349,8 +353,12 @@ export const EmployeeOptionsMenu = ({
                 {/* Multas / Penalização */}
                 <button
                   onClick={() => {
-                    setAppSelectedEmployee(employee);
-                    setActiveTab('payroll');
+                    if (onOpenFines) {
+                      onOpenFines(employee);
+                    } else {
+                      setAppSelectedEmployee(employee);
+                      setActiveTab('payroll');
+                    }
                     onClose();
                   }}
                   className="flex items-center gap-3 p-2 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 hover:border-[#003366] text-left transition-all group cursor-pointer"
@@ -367,11 +375,15 @@ export const EmployeeOptionsMenu = ({
                 {/* Upload Documentos */}
                 <button
                   onClick={() => {
-                    setAppSelectedEmployee(employee);
-                    setActiveTab('personal_registry');
+                    if (onOpenDocuments) {
+                      onOpenDocuments(employee);
+                    } else {
+                      setAppSelectedEmployee(employee);
+                      setActiveTab('personal_registry');
+                    }
                     onClose();
                   }}
-                  className="flex items-center gap-3 p-2 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 hover:border-[#003366] text-left transition-all group cursor-pointer"
+                  className="flex items-center gap-4 p-2 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 hover:border-[#003366] text-left transition-all group cursor-pointer"
                 >
                   <div className="p-1.5 bg-purple-50 text-purple-600 border border-purple-100 group-hover:bg-[#003366] group-hover:text-white transition-all">
                     <FolderUp size={14} />

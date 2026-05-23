@@ -1,6 +1,6 @@
 {
   "name": "FaturaPronta - Sistema de Faturação 3",
-  "description": "Sistema ERP/POS SaaS completo com certificação fiscal professional para Angola (LGT/AGT), gestão de multiempresa, sequenciamento automático, cadeamento de hash SHA-256 e assinatura digital.",
+  "description": "Sistema ERP/POS SaaS completo com módulo de Ponto de Venda (POS) profissional, certificação fiscal AGT, gestão de estoque em tempo real, abertura/fecho de caixa e relatórios detalhados.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

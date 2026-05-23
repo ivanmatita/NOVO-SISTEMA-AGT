@@ -188,6 +188,9 @@ import { authService } from './services/authService';
 import { clienteService, Cliente as DbCliente } from './services/clienteService';
 import { localTrabalhoService, LocalTrabalho as DbLocalTrabalho } from './services/localTrabalhoService';
 import { employeeService } from './services/employeeService';
+import { attendanceService } from './services/attendanceService';
+import { payrollService } from './services/payrollService';
+import { pagamentoService } from './services/pagamentoService';
 import { throttle } from './utils/throttle';
 
 const fetchWithAuth = async (url: string, options?: RequestInit) => {
@@ -1495,6 +1498,72 @@ const HRModule = ({
   const [manualHE, setManualHE] = useState<Record<string, number>>({});
   const [manualHP, setManualHP] = useState<Record<string, number>>({});
   
+  // Load attendance && payroll map from Supabase for the selected month
+  useEffect(() => {
+    const loadData = async () => {
+      if (user?.empresa_id && selectedMonth) {
+        try {
+          const data = await attendanceService.getAttendance(user.empresa_id, selectedMonth);
+          if (data) {
+            const map: Record<string, any> = {};
+            const done: Record<string, boolean> = {};
+            
+            Object.keys(data).forEach(empId => {
+               map[empId] = data[empId].mapa;
+               if (data[empId].is_processed) {
+                 done[`${empId}_${selectedMonth}`] = true;
+               }
+            });
+            
+            setAttendanceMap(map);
+            setAttendanceDone(prev => {
+              const cleaned = { ...prev };
+              Object.keys(cleaned).forEach(k => {
+                if (k.endsWith(`_${selectedMonth}`)) delete cleaned[k];
+              });
+              return { ...cleaned, ...done };
+            });
+          } else {
+            setAttendanceMap({});
+          }
+
+          // LOAD PAYROLL (ALL MONTHS TO POPULATE RECEIPTS PAGE)
+          const payData = await payrollService.getProcessedPayroll(user.empresa_id);
+          if (payData && payData.length > 0) {
+            const newReceipts: any[] = [];
+            const newProcessedAtt: Record<string, boolean> = {};
+            
+            for (const item of payData) {
+               // Only set attendance done for the currently selected month, but load ALL receipts
+               if (item.dados_processamento.period === selectedMonth) {
+                  newProcessedAtt[`${item.colaborador_id}_${selectedMonth}`] = true;
+               }
+               newReceipts.push(item.dados_processamento);
+            }
+
+            setProcessedAttendance(prev => ({
+               ...prev,
+               ...newProcessedAtt
+            }));
+
+            setProcessedReceipts(newReceipts); // Replace since we fetch all
+          } else {
+             setProcessedReceipts([]);
+             setProcessedAttendance({});
+          }
+
+          // LOAD ORDENS DE TRANSFERÊNCIA
+          const ordens = await pagamentoService.getOrdens(user.empresa_id);
+          if (ordens) {
+            setTransferOrders(ordens);
+          }
+        } catch (err) {
+          console.error('[HR] Error loading:', err);
+        }
+      }
+    };
+    loadData();
+  }, [user?.empresa_id, selectedMonth]);
   const [laborTerminations, setLaborTerminations] = useState<any[]>([]);
   const [selectedWorkstationId, setSelectedWorkstationId] = useState<number | null>(null);
   const [workspaceStaffSearch, setWorkspaceStaffSearch] = useState('');
@@ -4477,40 +4546,123 @@ const HRModule = ({
                   ].map(m => `${m} / ${fiscalYear}`).map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
               </div>
-              <button 
-                onClick={() => {
-                  const selectedEmpList = activeEmployees.filter(emp => selectedEmployeesToProcess[emp.id]);
-                  if (selectedEmpList.length === 0) {
-                    alert("Erro: Seleção de funcionário obrigatória! Por favor, selecione pelo menos um funcionário na lista abaixo (ou marque a opção 'Seldet' para selecionar todos).");
-                    return;
-                  }
-                  
-                  selectedEmpList.forEach(emp => {
-                    const totals = calculateAttendanceTotals(emp.id);
-                    setPayrollInputs(prev => ({
-                      ...prev,
-                      [`${emp.id}_${selectedMonth}`]: {
-                        ...(prev[`${emp.id}_${selectedMonth}`] || { 
-                          premios: 0, gratificacoes: 0, abonos: 0, subsidioNatal: 0, alojamento: 0, outrosSubsidios: 0,
-                          subsidioTransporte: 0, subsidioAlimentacao: 0, adiantamentos: 0, acertos: 0, diasTrabalho: 22, diasFolga: 8
-                        }),
-                        faltasJustificadas: totals.fj,
-                        faltasInjustificadas: totals.fi,
-                        ferias: totals.fe,
-                        horasExtras: totals.he,
-                        horasPerdidas: totals.hp,
-                        diasTrabalho: totals.p,
-                        diasFolga: totals.d
+              <div className="flex gap-2">
+                <button 
+                  onClick={async () => {
+                    const selectedEmpList = activeEmployees.filter(emp => selectedEmployeesToProcess[emp.id]);
+                    if (selectedEmpList.length === 0) {
+                      alert("Atenção: Selecione funcionários para apagar assiduidade.");
+                      return;
+                    }
+                    if (!confirm("Tem certeza que deseja apagar os dados de assiduidade dos selecionados?")) return;
+
+                    for (const emp of selectedEmpList) {
+                      if (attendanceDone[`${emp.id}_${selectedMonth}`]) {
+                         continue; // Ignora se processado
                       }
-                    }));
-                    setAttendanceDone(prev => ({ ...prev, [`${emp.id}_${selectedMonth}`]: true }));
-                  });
-                  setActiveTab('payroll');
-                }}
-                className="bg-[#F27D26] hover:bg-[#d96a1a] text-white px-8 py-2 text-xs font-black uppercase tracking-widest transition-all shadow-lg h-[38px]"
-              >
-                Processar Assiduidade
-              </button>
+                      setAttendanceMap(prev => {
+                        const copy = { ...prev };
+                        delete copy[emp.id];
+                        return copy;
+                      });
+                      if (user?.empresa_id) {
+                         try {
+                           await attendanceService.clearAttendance(user.empresa_id, String(emp.id), selectedMonth);
+                         } catch(e) {}
+                      }
+                    }
+                  }}
+                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 text-xs font-black uppercase tracking-widest transition-all shadow-lg h-[38px]"
+                >
+                  Apagar
+                </button>
+                <button 
+                  onClick={async () => {
+                    const selectedEmpList = activeEmployees.filter(emp => selectedEmployeesToProcess[emp.id]);
+                    if (selectedEmpList.length === 0) {
+                      alert("Atenção: Selecione funcionários para desprocessar assiduidade.");
+                      return;
+                    }
+                    
+                    for (const emp of selectedEmpList) {
+                      setAttendanceDone(prev => {
+                        const n = { ...prev };
+                        delete n[`${emp.id}_${selectedMonth}`];
+                        return n;
+                      });
+                      setPayrollInputs(prev => {
+                         const n = { ...prev };
+                         delete n[`${emp.id}_${selectedMonth}`];
+                         return n;
+                      });
+
+                      if (user?.empresa_id) {
+                         try {
+                           await attendanceService.setAttendanceProcessed(
+                             user.empresa_id,
+                             String(emp.id),
+                             selectedMonth,
+                             false
+                           );
+                         } catch (err) {}
+                      }
+                    }
+                  }}
+                  className="bg-zinc-600 hover:bg-zinc-700 text-white px-4 py-2 text-xs font-black uppercase tracking-widest transition-all shadow-lg h-[38px]"
+                >
+                  Desprocessar
+                </button>
+                <button 
+                  onClick={async () => {
+                    const selectedEmpList = activeEmployees.filter(emp => selectedEmployeesToProcess[emp.id]);
+                    if (selectedEmpList.length === 0) {
+                      alert("Erro: Seleção de funcionário obrigatória! Por favor, selecione pelo menos um funcionário na lista abaixo (ou marque a opção 'Seldet' para selecionar todos).");
+                      return;
+                    }
+                    
+                    for (const emp of selectedEmpList) {
+                      // Se já estiver processado, não processa novamente
+                      if (attendanceDone[`${emp.id}_${selectedMonth}`]) continue;
+
+                      const totals = calculateAttendanceTotals(emp.id);
+                      setPayrollInputs(prev => ({
+                        ...prev,
+                        [`${emp.id}_${selectedMonth}`]: {
+                          ...(prev[`${emp.id}_${selectedMonth}`] || { 
+                            premios: 0, gratificacoes: 0, abonos: 0, subsidioNatal: 0, alojamento: 0, outrosSubsidios: 0,
+                            subsidioTransporte: 0, subsidioAlimentacao: 0, adiantamentos: 0, acertos: 0, diasTrabalho: 22, diasFolga: 8
+                          }),
+                          faltasJustificadas: totals.fj,
+                          faltasInjustificadas: totals.fi,
+                          ferias: totals.fe,
+                          horasExtras: totals.he,
+                          horasPerdidas: totals.hp,
+                          diasTrabalho: totals.p,
+                          diasFolga: totals.d
+                        }
+                      }));
+                      setAttendanceDone(prev => ({ ...prev, [`${emp.id}_${selectedMonth}`]: true }));
+
+                      if (user?.empresa_id) {
+                        try {
+                           await attendanceService.setAttendanceProcessed(
+                             user.empresa_id,
+                             String(emp.id),
+                             selectedMonth,
+                             true
+                           );
+                        } catch (err) {
+                           console.error("[Attendance] Error locking attendance", err);
+                        }
+                      }
+                    }
+                    setActiveTab('payroll');
+                  }}
+                  className="bg-[#F27D26] hover:bg-[#d96a1a] text-white px-8 py-2 text-xs font-black uppercase tracking-widest transition-all shadow-lg h-[38px]"
+                >
+                  Processar Assiduidade
+                </button>
+              </div>
             </div>
 
             {/* Attendance Grid */}
@@ -4684,15 +4836,34 @@ const HRModule = ({
                             <td key={i} className="px-1 py-4 border-r border-zinc-200 text-center relative">
                               <select 
                                 value={status}
-                                onChange={(e) => {
+                                disabled={attendanceDone[`${emp.id}_${selectedMonth}`]}
+                                onChange={async (e) => {
                                   const nextStatus = e.target.value;
+                                  const currentEmpMap = attendanceMap[emp.id] || {};
+                                  const newEmpMap = {
+                                    ...currentEmpMap,
+                                    [day]: nextStatus
+                                  };
+
+                                  // Update local state for immediate feedback
                                   setAttendanceMap(prev => ({
                                     ...prev,
-                                    [emp.id]: {
-                                      ...(prev[emp.id] || {}),
-                                      [day]: nextStatus
-                                    }
+                                    [emp.id]: newEmpMap
                                   }));
+
+                                  // Persist to Supabase
+                                  if (user?.empresa_id) {
+                                    try {
+                                      await attendanceService.saveAttendanceMap(
+                                        user.empresa_id,
+                                        String(emp.id),
+                                        selectedMonth,
+                                        newEmpMap
+                                      );
+                                    } catch (err) {
+                                      console.error("[Attendance] Error saving:", err);
+                                    }
+                                  }
                                 }}
                                 className={`w-8 h-8 ${colors[status]} text-white text-[9px] font-black rounded-sm appearance-none text-center focus:outline-none cursor-pointer hover:scale-110 transition-transform`}
                               >
@@ -4998,14 +5169,57 @@ const HRModule = ({
                     nextProcessed[`${id}_${selectedMonth}`] = true;
                   });
                   setProcessedAttendance(nextProcessed);
-
                   setProcessedReceipts(prev => [...prev.filter(r => !selectedEmpIds.includes(r.employee.id) || r.period !== selectedMonth), ...receipts]);
                   setIsProcessingComplete(true);
+                  
+                  if (user?.empresa_id) {
+                     Promise.all(receipts.map(rec => payrollService.savePayroll(user.empresa_id, String(rec.id), selectedMonth, rec))).catch(err => {
+                        console.error('Failed to sync payrolls to supabase', err);
+                     });
+                  }
+
                   alert('Processamento concluído com sucesso para os funcionários selecionados.');
                 }}
                 className="px-8 py-2 text-xs font-black uppercase tracking-widest transition-all shadow-lg bg-[#F27D26] hover:bg-[#d96a1a] text-white"
               >
                 EXECUTAR PROCESSAMENTO
+              </button>
+              <button 
+                onClick={() => {
+                  const selectedEmpIds = Object.keys(selectedEmployeesToProcess)
+                    .filter(id => selectedEmployeesToProcess[Number(id)] === true)
+                    .map(Number)
+                    .filter(id => processedAttendance[`${id}_${selectedMonth}`]);
+                  
+                  if (selectedEmpIds.length === 0) {
+                    alert("Selecione funcionários já processados para desprocessar.");
+                    return;
+                  }
+
+                  if (!confirm("Tem certeza que deseja desprocessar os salários selecionados?")) return;
+
+                  const nextProcessed = { ...processedAttendance };
+                  selectedEmpIds.forEach(id => {
+                    delete nextProcessed[`${id}_${selectedMonth}`];
+                  });
+                  setProcessedAttendance(nextProcessed);
+                  setProcessedReceipts(prev => prev.filter(r => !selectedEmpIds.includes(r.employee.id) || r.period !== selectedMonth));
+                  
+                  if (user?.empresa_id) {
+                     Promise.all(selectedEmpIds.map(id => payrollService.desprocessarPayroll(user.empresa_id, String(id), selectedMonth))).catch(err => {
+                        console.error('Failed to unsync payrolls from supabase', err);
+                     });
+                  }
+                  
+                  // if none are left for this month, toggle isProcessingComplete false
+                  const stillProcessed = processedReceipts.filter(r => !selectedEmpIds.includes(r.employee.id) && r.period === selectedMonth);
+                  if (stillProcessed.length === 0) setIsProcessingComplete(false);
+
+                  alert('Salários desprocessados com sucesso.');
+                }}
+                className="px-4 py-2 text-xs font-black uppercase tracking-widest transition-all shadow-lg bg-zinc-600 hover:bg-zinc-700 text-white ml-2"
+              >
+                DESPROCESSAR SALÁRIOS
               </button>
               <div className="flex-1"></div>
               <button className="bg-[#2563EB] hover:bg-[#1d4ed8] text-white px-4 py-2 text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2">
@@ -7716,6 +7930,7 @@ const HRModule = ({
             ) : (
               <div className="bg-white border border-zinc-200 p-8 space-y-6 shadow-sm">
                 <ContratosList 
+                  user={user}
                   employees={localEmployees} 
                   onSetEmployee={onSetEmployee}
                   onSetIsContractModalOpen={onSetIsContractModalOpen}
@@ -7869,12 +8084,26 @@ const HRModule = ({
             setTransferOrders(prev => [...prev, nextOrder]);
 
             // Transition status in processedReceipts
+            const updatedReceipts: any[] = [];
             setProcessedReceipts(prev => prev.map(rcpt => {
               if (selectedReceiptsToPay.some(s => s.employee.id === rcpt.employee.id && s.period === rcpt.period)) {
-                return { ...rcpt, status: 'paid', paymentCaixaId: selectedPayCaixaId };
+                const updated = { ...rcpt, status: 'paid', paymentCaixaId: selectedPayCaixaId };
+                updatedReceipts.push(updated);
+                return updated;
               }
               return rcpt;
             }));
+
+            if (user?.empresa_id) {
+               pagamentoService.saveOrdem(user.empresa_id, nextOrder).then(savedOrder => {
+                 // Replace local with saved order to keep DB ID
+                 setTransferOrders(prev => prev.map(o => o.id === nextOrder.id ? savedOrder : o));
+               }).catch(err => console.error("Error saving nextOrder:", err));
+               
+               Promise.all(updatedReceipts.map(rec => 
+                 payrollService.savePayroll(user.empresa_id, String(rec.employee.id || rec.id), selectedMonth, rec)
+               )).catch(err => console.error('Error syncing paid receipts:', err));
+            }
 
             // Clear selected pays
             setSelectedPayEmployees({});
@@ -8030,11 +8259,14 @@ const HRModule = ({
         })()}
 
         {activeTab === 'transfer_order' && (() => {
-          const handleEditOrder = (order: any) => {
+          const handleEditOrder = async (order: any) => {
             // Take back to the pay_salary page and roll back receipts of this order of this month back to active status (not paid)
+            const revertingReceipts: any[] = [];
             setProcessedReceipts(prev => prev.map(rcpt => {
               if (order.employees.some((s: any) => String(s.id) === String(rcpt.employee.id)) && rcpt.period === order.month) {
-                return { ...rcpt, status: 'processed' };
+                const revert = { ...rcpt, status: 'processed' };
+                revertingReceipts.push(revert);
+                return revert;
               }
               return rcpt;
             }));
@@ -8050,18 +8282,41 @@ const HRModule = ({
             // Delete order from list
             setTransferOrders(prev => prev.filter(o => o.id !== order.id));
             setActiveTab('pay_salary');
+            
+            if (user?.empresa_id) {
+               if (order._db_id) {
+                  pagamentoService.deleteOrdem(order._db_id).catch(console.error);
+               }
+               Promise.all(revertingReceipts.map(rec => 
+                 payrollService.savePayroll(user.empresa_id, String(rec.employee.id || rec.id), selectedMonth, rec)
+               )).catch(err => console.error('Error reverting receipts:', err));
+            }
+            
             alert(`A Ordem ${order.id} foi reaberta. Pode corrigir as seleções e pagar novamente!`);
           };
 
-          const handleDeleteOrder = (order: any) => {
+          const handleDeleteOrder = async (order: any) => {
             if (confirm(`Tem certeza que deseja apagar a Ordem de Transferência ${order.id}?`)) {
+              const revertingReceipts: any[] = [];
               setProcessedReceipts(prev => prev.map(rcpt => {
                 if (order.employees.some((s: any) => String(s.id) === String(rcpt.employee.id)) && rcpt.period === order.month) {
-                  return { ...rcpt, status: 'processed' };
+                  const revert = { ...rcpt, status: 'processed' };
+                  revertingReceipts.push(revert);
+                  return revert;
                 }
                 return rcpt;
               }));
               setTransferOrders(prev => prev.filter(o => o.id !== order.id));
+              
+              if (user?.empresa_id) {
+                 if (order._db_id) {
+                    pagamentoService.deleteOrdem(order._db_id).catch(console.error);
+                 }
+                 Promise.all(revertingReceipts.map(rec => 
+                   payrollService.savePayroll(user.empresa_id, String(rec.employee.id || rec.id), selectedMonth, rec)
+                 )).catch(err => console.error('Error reverting receipts:', err));
+              }
+              
               alert(`Ordem ${order.id} excluída com sucesso e os vencimentos correspondentes foram redefinidos para pendentes.`);
             }
           };
@@ -25650,6 +25905,7 @@ export default function App() {
                           return (
                             <div className="space-y-6">
                               <ContratosList 
+                                user={user}
                                 employees={employees} 
                                 onSetEmployee={setAppSelectedEmployee}
                                 onSetIsContractModalOpen={setIsContractModalOpen}
@@ -26023,6 +26279,7 @@ export default function App() {
       </AnimatePresence>
       {isContractModalOpen && (appSelectedEmployee || selectedContract) && (
         <ContractModal 
+          user={user}
           employee={appSelectedEmployee || undefined} 
           contract={selectedContract || undefined}
           companyData={companyData}

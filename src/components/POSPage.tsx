@@ -6,7 +6,7 @@ import {
   AlertTriangle, X, BarChart3, Tag, ChevronLeft, LayoutDashboard, Search, 
   Plus, Minus, Trash2, Printer, Download, CreditCard, RotateCcw, Award, 
   Scan, Keyboard, Play, Lock, AlertCircle, FileText, Check, ArrowRight, Star, HelpCircle,
-  ArrowLeft, Users, Clock, ShoppingCart, User, Banknote, CircleCheck, Key
+  ArrowLeft, Users, Clock, ShoppingCart, User, Banknote, CircleCheck, Key, Layers
 } from 'lucide-react';
 import { exportToPDF, handlePrint } from '../lib/exportUtils';
 import { QRCodeSVG } from 'qrcode.react';
@@ -185,10 +185,20 @@ const POSPage = ({
   const [showReturnsView, setShowReturnsView] = useState(false);
   const [completedSales, setCompletedSales] = useState<any[]>([]);
 
-  // Sound preference
+  // Sound preference & Seller Selection
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [selectedVendedor, setSelectedVendedor] = useState<string>('');
+  const [showCheckoutModal, setShowCheckoutModal] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-focus search on load
+  useEffect(() => {
+    if (activeArea !== 'dashboard' && searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+  }, [activeArea]);
 
   const activeSession = Array.isArray(cashSessions) ? cashSessions.find(s => s.status === 'open') : null;
   const companyName = companyData?.name || companyData?.nome_empresa || "Grupo TecnoSys";
@@ -281,10 +291,15 @@ const POSPage = ({
         const nextMethod = methods[(currentIndex + 1) % methods.length];
         setPaymentMethod(nextMethod);
         triggerToast(`Meio de pagamento: ${nextMethod.toUpperCase()}`, 'info');
-      } else if (e.key === 'F5') {
+      } else if (e.key === 'F5' || e.key === 'F9') {
         e.preventDefault();
         if (cart.length > 0) {
-          handleCheckout();
+          if (!activeSession) {
+            triggerToast('Abra o Caixa antes de finalizar!', 'error');
+            setShowSessionModal(true);
+          } else {
+            setShowCheckoutModal(true);
+          }
         } else {
           triggerToast('Adicione produtos para finalizar!', 'error');
         }
@@ -574,6 +589,7 @@ const POSPage = ({
     }
 
     try {
+      setIsProcessing(true);
       // 1. Save local transaction in DB
       const clientName = selectedClient ? selectedClient.name : 'Consumidor Final';
       const clientNif = selectedClient ? selectedClient.contribuinte : '999999999';
@@ -670,8 +686,11 @@ const POSPage = ({
       playBeep('double');
 
       triggerToast('Venda finalizada e stock actualizado!', 'success');
+      setShowCheckoutModal(false);
+      setIsProcessing(false);
     } catch (err) {
       console.error(err);
+      setIsProcessing(false);
       triggerToast('Erro na finalização da venda POS', 'error');
     }
   };
@@ -1400,13 +1419,22 @@ const POSPage = ({
 
               {/* BIG EMIT LIQUIDATION BUTTON */}
               <button
-                onClick={handleCheckout}
+                onClick={() => {
+                  if (cart.length > 0) {
+                    if (!activeSession) {
+                      triggerToast('Abra o Caixa antes de finalizar!', 'error');
+                      setShowSessionModal(true);
+                    } else {
+                      setShowCheckoutModal(true);
+                    }
+                  }
+                }}
                 disabled={cart.length === 0}
                 className="w-full group relative overflow-hidden bg-[#F27D26] hover:bg-orange-600 text-white font-black py-5 rounded-2xl flex items-center justify-center gap-3 uppercase text-sm tracking-[0.2em] transition-all shadow-2xl active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <div className="absolute inset-0 w-1/2 h-full bg-white/10 -skew-x-[20deg] -translate-x-[200%] group-hover:translate-x-[300%] transition-transform duration-1000 ease-in-out" />
                 <CircleCheck size={20} />
-                FINALIZAR VENDA (F9)
+                CONFIRMAR PAGAMENTO (F5)
               </button>
             </div>
           </div>
@@ -1415,19 +1443,126 @@ const POSPage = ({
 
       {/* 3. FIXED BOTTOM SHORTCUTS HELPER */}
       <footer className="bg-zinc-950 border-t border-zinc-900 px-6 py-2.5 flex items-center justify-between z-10 text-[10px] text-zinc-400 font-extrabold uppercase tracking-widest gap-2">
-        <div className="flex gap-4 overflow-x-auto no-scrollbar py-0.5">
-          <span className="flex items-center gap-1"><span className="bg-zinc-900 px-1.5 py-0.5 border border-zinc-800 rounded text-amber-500">F1</span> NOVA VENDA</span>
-          <span className="flex items-center gap-1"><span className="bg-zinc-900 px-1.5 py-0.5 border border-zinc-800 rounded text-amber-500">F2</span> PESQUISAR PRODUTO</span>
-          <span className="flex items-center gap-1"><span className="bg-zinc-900 px-1.5 py-0.5 border border-zinc-800 rounded text-amber-500">F3</span> CLIENTE BALCÃO</span>
-          <span className="flex items-center gap-1"><span className="bg-zinc-900 px-1.5 py-0.5 border border-zinc-800 rounded text-amber-500">F4</span> ALTERNAR MÉTODOS</span>
-          <span className="flex items-center gap-1"><span className="bg-zinc-900 px-1.5 py-0.5 border border-zinc-800 rounded text-amber-500">F5</span> EXECUTAR VENDA</span>
-          <span className="flex items-center gap-1"><span className="bg-zinc-900 px-1.5 py-0.5 border border-zinc-800 rounded text-amber-500">ESC</span> CANCELAR CARRINHO</span>
-        </div>
+          <div className="flex gap-4 overflow-x-auto no-scrollbar py-0.5">
+            <span className="flex items-center gap-1"><span className="bg-zinc-900 px-1.5 py-0.5 border border-zinc-800 rounded text-amber-500 font-mono">F1</span> NOVO</span>
+            <span className="flex items-center gap-1"><span className="bg-zinc-900 px-1.5 py-0.5 border border-zinc-800 rounded text-amber-500 font-mono">F2</span> BUSCA</span>
+            <span className="flex items-center gap-1"><span className="bg-zinc-900 px-1.5 py-0.5 border border-zinc-800 rounded text-amber-500 font-mono">F3</span> CLIENTE</span>
+            <span className="flex items-center gap-1"><span className="bg-zinc-900 px-1.5 py-0.5 border border-zinc-800 rounded text-amber-500 font-mono">F4</span> PAGAM.</span>
+            <span className="flex items-center gap-1"><span className="bg-zinc-900 px-1.5 py-0.5 border border-zinc-800 rounded text-amber-500 font-mono">F5/F9</span> FINALIZAR</span>
+            <span className="flex items-center gap-1"><span className="bg-zinc-900 px-1.5 py-0.5 border border-zinc-800 rounded text-amber-500 font-mono">ESC</span> CANCELAR</span>
+          </div>
         <div className="text-zinc-500 font-mono hidden sm:inline">ANGOLAN ERP VER • 2026.5</div>
       </footer>
 
       {/* ==================================== MODALS ==================================== */}
 
+          {/* MODAL CHECKOUT: CONFIRMATION AND MULTIPLE PAYMENTS */}
+          {showCheckoutModal && (
+            <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4">
+              <div className="bg-zinc-950 border border-zinc-900 w-full max-w-2xl shadow-[0_40px_150px_rgba(0,0,0,1)] rounded-3xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-300">
+                <div className="p-8 bg-zinc-900/40 border-b border-zinc-900 flex justify-between items-center">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-[#F27D26]/10 border border-[#F27D26]/20 rounded-xl flex items-center justify-center">
+                      <Wallet size={24} className="text-[#F27D26]" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-black text-white uppercase tracking-tighter">Finalizar Transação</h3>
+                      <p className="text-[9px] text-zinc-500 font-black uppercase tracking-[0.3em] mt-1">Confirmação de Pagamento & Faturação</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setShowCheckoutModal(false)} className="p-2 text-zinc-500 hover:text-white transition-colors">
+                    <X size={28} />
+                  </button>
+                </div>
+
+                <div className="flex-1 p-10 overflow-y-auto custom-scrollbar flex flex-col gap-8">
+                  <div className="grid grid-cols-2 gap-8">
+                    <div className="space-y-6">
+                      <div className="space-y-3">
+                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest leading-none">Vendedor / Comissionista</label>
+                        <select 
+                          value={selectedVendedor}
+                          onChange={e => setSelectedVendedor(e.target.value)}
+                          className="w-full bg-zinc-900 border border-zinc-800 p-4 rounded-2xl text-sm font-bold text-white focus:outline-none focus:border-[#F27D26] transition-all appearance-none"
+                        >
+                          <option value="">Consumidor Final / Operador</option>
+                          <option value="MV001">Mateus Varela (Vendedor 1)</option>
+                          <option value="AI002">Ana Isabel (Vendedor 2)</option>
+                          <option value="JI003">João Igor (Vendedor 3)</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-3">
+                        <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest leading-none">Método de Pagamento</label>
+                        <div className="grid grid-cols-1 gap-2">
+                          {[
+                            { id: 'cash', label: 'Dinheiro', icon: Banknote },
+                            { id: 'card', label: 'Cartão / TPA', icon: CreditCard },
+                            { id: 'transfer', label: 'Transferência / MCX', icon: ArrowRightLeft },
+                            { id: 'mixed', label: 'Pagamento Misto', icon: Layers }
+                          ].map(m => (
+                            <button
+                              key={m.id}
+                              onClick={() => setPaymentMethod(m.id as any)}
+                              className={`flex items-center gap-4 p-4 rounded-2xl border transition-all ${paymentMethod === m.id ? 'bg-[#F27D26] border-[#F27D26] text-white' : 'bg-zinc-900/50 border-zinc-800 text-zinc-400 hover:bg-zinc-900'}`}
+                            >
+                              <m.icon size={18} />
+                              <span className="text-[11px] font-black uppercase tracking-widest">{m.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-zinc-900/20 p-8 rounded-3xl border border-zinc-900 flex flex-col justify-between">
+                      <div className="space-y-6">
+                        <div className="text-center">
+                          <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Valor Total</span>
+                          <h4 className="text-4xl font-black text-white mt-2 font-mono tracking-tighter">{formatCurrency(total)}</h4>
+                        </div>
+
+                        <div className="space-y-2 pt-6 border-t border-zinc-800">
+                          <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Valor Recebido</label>
+                          <input 
+                            type="number" 
+                            autoFocus
+                            value={amountPaid}
+                            onChange={e => setAmountPaid(e.target.value)}
+                            className="w-full bg-zinc-950 border border-zinc-800 p-6 rounded-2xl text-3xl font-black text-emerald-500 focus:outline-none focus:border-emerald-500 transition-all font-mono shadow-inner text-center"
+                            placeholder="0.00"
+                          />
+                        </div>
+
+                        {change > 0 && (
+                          <div className="p-4 bg-emerald-500/5 border border-emerald-500/20 rounded-2xl flex justify-between items-center">
+                            <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest italic">Troco</span>
+                            <span className="text-xl font-black text-emerald-500 font-mono tracking-tighter">{formatCurrency(change)}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="pt-6">
+                         <button 
+                           onClick={handleCheckout}
+                           disabled={isProcessing || (paymentMethod !== 'card' && parseFloat(amountPaid) < total && paymentMethod !== 'mixed')}
+                           className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-30 disabled:cursor-not-allowed text-white py-6 rounded-2xl font-black uppercase tracking-[0.2em] text-sm shadow-2xl transition-all active:scale-[0.98] flex items-center justify-center gap-3"
+                         >
+                            {isProcessing ? (
+                              <div className="w-5 h-5 border-3 border-white/20 border-t-white rounded-full animate-spin" />
+                            ) : (
+                              <>
+                                <Check size={20} />
+                                CONFIRMAR VENDA (ENTER)
+                              </>
+                            )}
+                         </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
       {/* MODAL 1: OPEN CASH SESSION */}
       {showSessionModal && (
         <div className="fixed inset-0 z-[120] bg-black/85 backdrop-blur-md flex items-center justify-center p-4">

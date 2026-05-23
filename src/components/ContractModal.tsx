@@ -4,8 +4,11 @@ import {
   Bold, Italic, AlignLeft, AlignCenter, AlignRight, AlignJustify, 
   Trash2, Edit, Check, Lock, FileText, Undo2, Redo2, List, ListOrdered, FileSignature, X
 } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+import { contractService } from '../services/contractService';
 
 interface ContractModalProps {
+  user?: any;
   employee?: Employee;
   contract?: any; // If editing
   companyData?: CompanyData | null;
@@ -29,7 +32,7 @@ const CONTRACT_TYPES = [
   "Contrato de Trabalho Temporário"
 ];
 
-const ContractModal = ({ employee, contract, companyData, onClose, onSuccess }: ContractModalProps) => {
+const ContractModal = ({ user, employee, contract, companyData, onClose, onSuccess }: ContractModalProps) => {
   const isEditing = !!contract;
   const editorRef = useRef<HTMLDivElement>(null);
   // Form Fields - Blank on emit unless editing
@@ -184,21 +187,13 @@ const ContractModal = ({ employee, contract, companyData, onClose, onSuccess }: 
     };
 
     try {
-      const url = isEditing ? `/api/contracts/${contract.id}` : '/api/contracts';
-      const method = isEditing ? 'PUT' : 'POST';
-
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (res.ok) {
-        if (onSuccess) onSuccess();
-        onClose();
-      } else {
-        alert('Erro ao guardar o contrato. Por favor, tente novamente.');
+      if (!user?.empresa_id) {
+        alert('Erro: Empresa não identificada.');
+        return;
       }
+      await contractService.saveContract(user.empresa_id, payload);
+      if (onSuccess) onSuccess();
+      onClose();
     } catch (e) {
       console.error('Error saving contract info:', e);
       alert('Erro de ligação ao servidor.');

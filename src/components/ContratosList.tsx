@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Printer, Calendar, FileText, Trash2, Edit, Award, UserPlus, FileCheck, Plus } from 'lucide-react';
+import { contractService } from '../services/contractService';
 
 interface ContratosListProps {
+  user?: any;
   employees: any[];
   onSetEmployee: (emp: any) => void;
   onSetIsContractModalOpen: (open: boolean) => void;
   onEditContract: (contract: any) => void;
 }
 
-const ContratosList = ({ employees, onSetEmployee, onSetIsContractModalOpen, onEditContract }: ContratosListProps) => {
+const ContratosList = ({ user, employees, onSetEmployee, onSetIsContractModalOpen, onEditContract }: ContratosListProps) => {
   const [contracts, setContracts] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
@@ -16,9 +18,8 @@ const ContratosList = ({ employees, onSetEmployee, onSetIsContractModalOpen, onE
   const fetchContracts = async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/contracts');
-      if (res.ok) {
-        const data = await res.json();
+      if (user?.empresa_id) {
+        const data = await contractService.getContracts(user.empresa_id);
         setContracts(data);
       }
     } catch (e) {
@@ -121,14 +122,9 @@ const ContratosList = ({ employees, onSetEmployee, onSetIsContractModalOpen, onE
   const handleDelete = async (id: number) => {
     if (!window.confirm('Tem a certeza que deseja revogar/apagar este contrato?')) return;
     try {
-      const res = await fetch(`/api/contracts/${id}`, {
-        method: 'DELETE',
-      });
-      if (res.ok) {
-        setContracts(contracts.filter(c => c.id !== id));
-      } else {
-        alert('Erro ao apagar contrato.');
-      }
+      if (!user?.empresa_id) return;
+      await contractService.deleteContract(user.empresa_id, String(id));
+      setContracts(contracts.filter(c => c.id !== id));
     } catch (e) {
       console.error('Error deleting contract:', e);
       alert('Erro de ligação.');

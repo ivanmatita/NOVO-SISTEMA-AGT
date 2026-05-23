@@ -1,6 +1,6 @@
 import React from 'react';
 import { Invoice } from '../types';
-import { QRCodeCanvas } from 'qrcode.react';
+import { QRCodeSVG } from 'qrcode.react';
 
 const formatCurrency = (value: number, currency: string = 'AOA') => {
   return new Intl.NumberFormat('pt-AO', { style: 'currency', currency: currency }).format(value);
@@ -263,7 +263,7 @@ const PrintA4 = ({ invoice, isDraft = false, companyData, graphicConfigs = [] }:
           </div>
           {!isProvisional && (
             <div className="mt-4 flex justify-end">
-              <QRCodeCanvas value={qrValue} size={90} level="H" />
+              <QRCodeSVG value={qrValue} size={90} level="H" />
             </div>
           )}
         </div>
@@ -493,13 +493,29 @@ const PrintA4 = ({ invoice, isDraft = false, companyData, graphicConfigs = [] }:
           )}
         </div>
 
+        {/* Signature Area */}
+        <div className="grid grid-cols-2 gap-16 mb-8 text-center uppercase font-bold text-[9px] tracking-widest text-zinc-400">
+          <div className="space-y-12">
+            <div className="border-b border-zinc-200 pb-2">Emitido por</div>
+            <div>{invoice.operator_name || 'Operador'}</div>
+          </div>
+          <div className="space-y-12">
+            <div className="border-b border-zinc-200 pb-2">Recebido por (Cliente)</div>
+            <div>&nbsp;</div>
+          </div>
+        </div>
+
         <div className="flex justify-between items-center mb-4">
           <div className="flex items-center gap-4">
-            <div className="font-bold text-zinc-500 uppercase text-[9px] tracking-widest">IVA - Regime Geral</div>
-            {isFinal && <div className="text-[8px] text-zinc-400 font-mono">{invoice.hash ? invoice.hash.slice(0,4) + '-' + invoice.hash.slice(-4) : ''}</div>}
+            <div className="font-bold text-zinc-500 uppercase text-[9px] tracking-widest">IVA - {companyData?.regime || 'Regime Geral'}</div>
+            {isFinal && (
+              <div className="text-[8px] text-zinc-400 font-mono">
+                {invoice.hash ? invoice.hash.slice(0,4) + '-' + invoice.hash.slice(-4) : ''}-AGT-RECON-S1
+              </div>
+            )}
           </div>
-          <div className="text-[8px] text-zinc-400 font-bold uppercase">
-             Original
+          <div className="text-[8px] text-zinc-400 font-bold uppercase border border-zinc-200 px-2 py-0.5 rounded">
+             {invoice.status === 'paid' ? 'Original - Documento Quitado' : 'Original'}
           </div>
         </div>
 
@@ -511,15 +527,16 @@ const PrintA4 = ({ invoice, isDraft = false, companyData, graphicConfigs = [] }:
            <div className="text-[9px] space-y-0.5 border-l border-zinc-200 pl-4 font-medium lowercase text-zinc-600">
               {companyData?.phone && <p><span className="font-black uppercase tracking-tight text-zinc-400">T.</span> {companyData.phone}</p>}
               {companyData?.email && <p><span className="font-black uppercase tracking-tight text-zinc-400">E.</span> {companyData.email}</p>}
+              <p className="uppercase text-[7px] text-zinc-400 font-black pt-1">Processado por Programa Certificado nº 330/AGT/2024</p>
            </div>
         </div>
 
         <div className="mt-8 pt-4 border-t border-zinc-100 flex justify-between items-center text-[9px]">
            <div className="italic text-zinc-400">
-             Software: <span className="text-zinc-900 font-bold">imatec</span> <span className="text-zinc-400">v1.0</span> | 
-             {(!footerSrc || !footerSrc.startsWith('data:image')) ? (footerSrc || companyData?.footer || ' Processado por programa validado') : ' Processado por programa validado'}
+             Software: <span className="text-zinc-900 font-bold">imatec</span> <span className="text-zinc-400">v1.2</span> | 
+             {(!footerSrc || !footerSrc.startsWith('data:image')) ? (footerSrc || companyData?.footer || ' Os bens e serviços foram colocados à disposição do adquirente na data e local deste documento.') : ' Os bens e serviços foram colocados à disposição do adquirente na data e local deste documento.'}
            </div>
-           <div className="text-zinc-400 font-bold uppercase tracking-widest">Página 1 / 1</div>
+           <div className="text-zinc-400 font-bold uppercase tracking-widest bg-zinc-50 px-3 py-1">Página 1 de 1</div>
         </div>
       </div>
     </div>

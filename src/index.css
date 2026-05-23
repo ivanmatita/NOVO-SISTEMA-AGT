@@ -36,18 +36,40 @@
 }
 
 @media print {
-  body > *:not(.fixed.inset-0.z-\[100\]) {
+  body {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    background: white !important;
+  }
+
+  .no-print {
     display: none !important;
   }
-  .fixed.inset-0.z-\[100\] {
-    position: absolute;
-    left: 0;
-    top: 0;
+
+  .print-area {
+    width: 210mm;
+    min-height: 297mm;
+    padding: 10mm;
+    margin: auto;
+    background: white !important;
+  }
+
+  .thermal-receipt-print {
+    width: 80mm !important;
+    min-height: 0 !important;
+    padding: 5mm !important;
+    margin: 0 !important;
+    font-size: 10px !important;
+    background: white !important;
+  }
+
+  table {
     width: 100%;
-    visibility: visible;
+    border-collapse: collapse;
   }
-  .fixed.inset-0.z-\[100\] button {
-    display: none !important;
+
+  img {
+    max-width: 100%;
   }
 }
 

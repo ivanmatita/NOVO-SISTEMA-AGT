@@ -3,8 +3,10 @@ import React, { useState, useMemo } from 'react';
 import { 
   Search, Filter, Package, ArrowLeft, Printer, Download, 
   TrendingUp, Activity, BarChart2, ShieldAlert, Warehouse,
-  Calendar, Info, ArrowUpRight, ArrowDownRight, ClipboardList
+  Calendar, Info, ArrowUpRight, ArrowDownRight, ClipboardList,
+  FileSpreadsheet
 } from 'lucide-react';
+import { exportToPDF, exportToExcel, handlePrint } from '../../lib/exportUtils';
 
 interface InventoryReportProps {
   products: any[];
@@ -46,8 +48,23 @@ export const InventoryReport = ({ products, stockMovements, warehouses, onBack }
     };
   }, [filteredProducts]);
 
+  const handleExcelExport = () => {
+    const data = filteredProducts.map(p => ({
+      'Produto': p.name,
+      'Barcode': p.barcode || '---',
+      'Armazém': p.warehouse_name || 'PADRÃO',
+      'Quantity': p.stock_quantity,
+      'Unit': p.unit || 'UN',
+      'Preço Custo': p.cost_price || 0,
+      'Preço Venda': p.sale_price || 0,
+      'Custo Total': p.stock_quantity * (p.cost_price || 0),
+      'Venda Total': p.stock_quantity * (p.sale_price || 0)
+    }));
+    exportToExcel(data, `Inventario_${selectedDate}.xlsx`, 'Stock');
+  };
+
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 pb-20">
+    <div id="inventory-report-content" className="space-y-8 animate-in fade-in duration-500 pb-20 print-area ring-0 border-0 outline-none">
       <div className="flex items-center justify-between no-print">
         <div className="flex items-center gap-4">
           {onBack && (
@@ -61,10 +78,13 @@ export const InventoryReport = ({ products, stockMovements, warehouses, onBack }
           </div>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => window.print()} className="bg-white border border-zinc-200 text-[#003366] px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-zinc-50 shadow-sm">
+          <button onClick={() => handlePrint('inventory-report-content')} className="bg-white border border-zinc-200 text-[#003366] px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-zinc-50 shadow-sm">
             <Printer size={14} /> Imprimir Inventário
           </button>
-          <button className="bg-[#003366] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-black shadow-md">
+          <button onClick={handleExcelExport} className="bg-emerald-600 text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-700 shadow-md">
+            <FileSpreadsheet size={14} /> Baixar Excel
+          </button>
+          <button onClick={() => exportToPDF('inventory-report-content', `Inventario_${selectedDate}.pdf`)} className="bg-[#003366] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-black shadow-md">
             <Download size={14} /> Baixar PDF
           </button>
         </div>

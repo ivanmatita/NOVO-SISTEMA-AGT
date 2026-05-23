@@ -4,8 +4,10 @@ import {
   Search, Filter, Wallet, ArrowLeft, Printer, Download, 
   TrendingUp, TrendingDown, ArrowUpCircle, ArrowDownCircle,
   Calendar, FileText, PieChart, Activity, CheckCircle2,
-  MoreVertical, ChevronDown, DollarSign, History, Info
+  MoreVertical, ChevronDown, DollarSign, History, Info,
+  FileSpreadsheet
 } from 'lucide-react';
+import { exportToPDF, exportToExcel, handlePrint } from '../../lib/exportUtils';
 
 interface CashFlowReportProps {
   movements: any[];
@@ -53,8 +55,24 @@ export const CashFlowReport = ({ movements, cashBoxes = [], onBack }: CashFlowRe
     };
   }, [filteredMovements]);
 
+  const handleExcelExport = () => {
+    const data = filteredMovements.map(m => ({
+      'Data': new Date(m.date || m.created_at).toLocaleDateString(),
+      'Hora': new Date(m.date || m.created_at).toLocaleTimeString(),
+      'Origem': m.cash_box_name || m.origin || 'CAIXA GERAL',
+      'Documento': m.document_no || '---',
+      'Tipo Doc': m.document_type || 'OUTROS',
+      'Descrição': m.description,
+      'Entrada': m.type === 'entry' ? m.amount : 0,
+      'Saída': m.type === 'exit' ? m.amount : 0,
+      'Saldo Resultante': m.resulting_balance || 0,
+      'Status': m.status === 'confirmed' ? 'CONCILIADO' : 'PENDENTE'
+    }));
+    exportToExcel(data, `FluxoCaixa_${new Date().toISOString().split('T')[0]}.xlsx`, 'Extrato');
+  };
+
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 pb-20">
+    <div id="cashflow-report-content" className="space-y-8 animate-in fade-in duration-500 pb-20 print-area">
       <div className="flex items-center justify-between no-print">
         <div className="flex items-center gap-4">
           {onBack && (
@@ -68,10 +86,13 @@ export const CashFlowReport = ({ movements, cashBoxes = [], onBack }: CashFlowRe
           </div>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => window.print()} className="bg-white border border-zinc-200 text-[#003366] px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-zinc-50 shadow-sm">
+          <button onClick={() => handlePrint('cashflow-report-content')} className="bg-white border border-zinc-200 text-[#003366] px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-zinc-50 shadow-sm">
             <Printer size={14} /> Imprimir Extrato
           </button>
-          <button className="bg-[#003366] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-black shadow-md">
+          <button onClick={handleExcelExport} className="bg-emerald-600 text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-700 shadow-md">
+            <FileSpreadsheet size={14} /> Baixar Excel
+          </button>
+          <button onClick={() => exportToPDF('cashflow-report-content', `Extrato_Caixa_${new Date().toISOString().split('T')[0]}.pdf`)} className="bg-[#003366] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-black shadow-md">
             <Download size={14} /> Baixar PDF
           </button>
         </div>

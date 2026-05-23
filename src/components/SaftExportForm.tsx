@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Invoice, Purchase } from '../types';
+import { exportToExcel } from '../lib/exportUtils';
 
 const SaftExportForm = ({ invoices = [], purchases = [] }: { invoices?: Invoice[], purchases?: Purchase[] }) => {
   const [startDate, setStartDate] = useState('');
@@ -23,6 +24,18 @@ const SaftExportForm = ({ invoices = [], purchases = [] }: { invoices?: Invoice[
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(value).replace('Kz', '').trim();
+  };
+
+  const handleExcelExport = () => {
+    const data = dataToDisplay.map((item: any) => ({
+      'Data': new Date(item.date || item.data_emissao).toLocaleDateString(),
+      'Número': item.invoice_number || item.numero_documento,
+      'Documento': item.document_type || (saftType === 'faturas' ? 'Factura' : 'Compra'),
+      'Total': item.total || item.counter_value || 0,
+      'IVA': item.vat_amount || 0,
+      'Status': item.status || 'Certificado'
+    }));
+    exportToExcel(data, `Exportacao_Detalhada_${saftType}_${new Date().toISOString().split('T')[0]}.xlsx`, 'Relatorio');
   };
 
   return (
@@ -86,7 +99,7 @@ const SaftExportForm = ({ invoices = [], purchases = [] }: { invoices?: Invoice[
          <button className="flex-1 bg-[#003366] text-white px-8 py-4 text-[10px] font-black uppercase tracking-[0.2em] shadow-xl hover:bg-[#002244] transition-all">
            Gerar XML SAF-T AO
          </button>
-         <button className="flex-1 border border-emerald-600 text-emerald-600 px-8 py-4 text-[10px] font-black uppercase tracking-[0.2em] hover:bg-emerald-50 transition-all">
+         <button onClick={handleExcelExport} className="flex-1 border border-emerald-600 text-emerald-600 px-8 py-4 text-[10px] font-black uppercase tracking-[0.2em] hover:bg-emerald-50 transition-all">
            Exportar Excel Detalhado
          </button>
       </div>

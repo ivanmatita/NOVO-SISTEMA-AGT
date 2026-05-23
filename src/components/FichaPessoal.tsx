@@ -1,28 +1,56 @@
 import React from 'react';
 import { Employee } from '../types';
-import { Printer, User, Mail, Phone, MapPin, CreditCard, Calendar, Briefcase, Building2, ShieldCheck, GraduationCap, Users as UsersIcon } from 'lucide-react';
+import { Printer, User, Mail, Phone, MapPin, CreditCard, Calendar, Briefcase, ShieldCheck, GraduationCap, Users as UsersIcon, Download, FileSpreadsheet } from 'lucide-react';
+import { exportToPDF, exportToExcel, handlePrint } from '../lib/exportUtils';
 
 const FichaPessoal = ({ employee }: { employee: Employee | null }) => {
-  const handlePrint = () => {
-    window.print();
-  };
-
   if (!employee) return <div className="p-8 text-center text-zinc-500">Selecione um funcionário para visualizar a ficha pessoal.</div>;
+
+  const handleExcelExport = () => {
+    const data = [{
+      'Nome': employee.name,
+      'ID': employee.id,
+      'Cargo': employee.role,
+      'Departamento': employee.department || 'Geral',
+      'Data Admissão': new Date(employee.hired_at).toLocaleDateString('pt-PT'),
+      'NIF': employee.nif || '---',
+      'BI': employee.bi || '---',
+      'Email': employee.email,
+      'Telefone': employee.phone,
+      'Salário Base': employee.salary,
+      'Banco': employee.bank_name || '---',
+      'IBAN': employee.iban || '---'
+    }];
+    exportToExcel(data, `Ficha_${employee.name.replace(/ /g, '_')}.xlsx`, 'Ficha');
+  };
 
   return (
     <div className="max-w-5xl mx-auto p-8">
       <div className="flex justify-between items-center mb-8 no-print">
         <h1 className="text-2xl font-bold text-[#003366]">Ficha Pessoal do Funcionário</h1>
-        <button 
-          onClick={handlePrint}
-          className="bg-[#003366] hover:bg-[#002244] text-white px-6 py-2 rounded-none flex items-center gap-2 transition-all shadow-sm font-bold text-sm uppercase tracking-widest"
-        >
-          <Printer size={18} />
-          Imprimir Ficha
-        </button>
+        <div className="flex gap-2">
+          <button 
+            onClick={() => handlePrint('employee-ficha-content')}
+            className="bg-white border border-zinc-200 text-[#003366] px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-zinc-50 shadow-sm"
+          >
+            <Printer size={14} /> Imprimir
+          </button>
+          <button 
+            onClick={handleExcelExport}
+            className="bg-emerald-600 text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-700 shadow-md"
+          >
+            <FileSpreadsheet size={14} /> Excel
+          </button>
+          <button 
+            onClick={() => exportToPDF('employee-ficha-content', `Ficha_${employee.name.replace(/ /g, '_')}.pdf`)}
+            className="bg-[#003366] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-black shadow-md"
+          >
+            <Download size={14} /> Baixar PDF
+          </button>
+        </div>
       </div>
 
-      <div className="bg-white p-[1.5cm] w-[210mm] min-h-[297mm] mx-auto text-zinc-900 font-sans shadow-2xl print:shadow-none print:m-0 print:w-full border border-zinc-100">
+      <div id="employee-ficha-content" className="bg-white p-[1.5cm] w-[210mm] min-h-[297mm] mx-auto text-zinc-900 font-sans shadow-2xl print:shadow-none print:m-0 print:w-full border border-zinc-100 print-area">
         {/* Header */}
         <div className="flex justify-between items-start border-b-2 border-[#003366] pb-8 mb-8">
           <div className="flex gap-6 items-center">

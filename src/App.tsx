@@ -3,12 +3,14 @@ import html2pdf from 'html2pdf.js';
 import { DocumentReportModal } from './components/DocumentReportModal';
 import { AnularModal } from './components/AnularModal';
 import PrintA4 from './components/PrintA4';
+import { exportToPDF, exportToExcel, handlePrint } from './lib/exportUtils';
 import SecurityModule from './components/SecurityModule';
 import BusinessOverview from './components/BusinessOverview';
 import FleetManagementModule from './components/FleetManagementModule';
 import ProjectManagementModule from './components/ProjectManagementModule';
 import LiteracyModule from './components/LiteracyModule';
 import ArchiveModule from './components/ArchiveModule';
+import POSPage from './components/POSPage';
 import { CartaForm } from './components/CartaForm';
 import { QRCodeCanvas } from 'qrcode.react';
 import { PurchasesReport } from './components/Reports/PurchasesReport';
@@ -1212,61 +1214,18 @@ const OrdemTransferencia = ({ employee, hasReceipts, processedReceipts, companyN
     : (employee ? (employee.salary - (employee.salary * 0.03) - calculateIRT(employee.salary - (employee.salary * 0.03))) : 0);
 
   const downloadPDF = () => {
-    const doc = new jsPDF('p', 'mm', 'a4');
-    doc.setFontSize(16);
-    
-    if (hasReceipts && processedReceipts.length > 0) {
-      doc.text('ORDEM DE TRANSFERÊNCIA COLECTIVA BANCÁRIA', 14, 20);
-      doc.setFontSize(10);
-      doc.text(`Data: ${new Date().toLocaleDateString('pt-AO')}`, 14, 28);
-      doc.text(`Entidade Ordenante: ${companyName}`, 14, 34);
-      doc.text(`NIF: 5000123456`, 14, 40);
-      doc.text(`Mês de Referência: ${selectedMonth}`, 14, 46);
-      
-      let y = 56;
-      doc.setFontSize(9);
-      doc.text('#', 14, y);
-      doc.text('Nome do Colaborador', 24, y);
-      doc.text('Banco', 90, y);
-      doc.text('IBAN', 120, y);
-      doc.text('Valor Líquido', 170, y);
-      
-      doc.line(14, y + 2, 196, y + 2);
-      y += 8;
-      
-      processedReceipts.forEach((rcpt, index) => {
-        if (y > 270) {
-          doc.addPage();
-          y = 20;
-        }
-        doc.text(String(index + 1), 14, y);
-        doc.text(rcpt.employee.name.substring(0, 32), 24, y);
-        doc.text((rcpt.employee.bank_name || 'BFA').substring(0, 15), 90, y);
-        doc.text(rcpt.employee.iban || '---', 120, y);
-        doc.text(formatCurrency(rcpt.calculations?.totalNet || 0).replace('€', '') + ' kzs', 170, y);
-        y += 6;
-      });
-      
-      doc.line(14, y + 2, 196, y + 2);
-      y += 10;
-      doc.setFontSize(10);
-      doc.text(`Total de Transferências: ${processedReceipts.length}`, 14, y);
-      doc.text(`Valor de Cobertura Total: ${formatCurrency(collectiveTransfersSum)}`, 120, y);
-      
-      doc.save(`ordem_transferencia_colectiva_${selectedMonth.replace(/ \/ /g, '_')}.pdf`);
-    } else {
-      if (!employee) return;
-      const net = employee.salary - (employee.salary * 0.03) - calculateIRT(employee.salary - (employee.salary * 0.03));
-      doc.text('ORDEM DE TRANSFERÊNCIA', 14, 22);
-      doc.setFontSize(10);
-      doc.text(`Data: ${new Date().toLocaleDateString('pt-AO')}`, 14, 30);
-      doc.text(`Entidade Ordenante: ${companyName}`, 14, 45);
-      doc.text(`Beneficiário: ${employee.name}`, 14, 52);
-      doc.text(`IBAN: ${employee.iban || '---'}`, 14, 59);
-      doc.text(`Valor: ${formatCurrency(net)}`, 14, 66);
-      doc.text('Solicitamos a transferência bancária correspondente ao pagamento de vencimentos.', 14, 80);
-      doc.save(`ordem_transferencia_${(employee.name || 'documento').toLowerCase().replace(/ /g, '_')}.pdf`);
-    }
+    exportToPDF('collective-order-area', `Ordem_Transferencia_${selectedMonth.replace(/\//g, '_')}.pdf`);
+  };
+
+  const downloadExcel = () => {
+    const data = processedReceipts.map((rcpt, index) => ({
+      '#': index + 1,
+      'Beneficiário': rcpt.employee.name,
+      'Banco': rcpt.employee.bank_name || 'BFA',
+      'IBAN': rcpt.employee.iban || '---',
+      'Valor Líquido': rcpt.calculations?.totalNet || 0
+    }));
+    exportToExcel(data, `Ordem_Transferencia_${selectedMonth.replace(/\//g, '_')}.xlsx`, 'Transferencias');
   };
 
   if (!hasReceipts && !employee) {
@@ -1295,7 +1254,7 @@ const OrdemTransferencia = ({ employee, hasReceipts, processedReceipts, companyN
         </div>
         <div className="flex gap-2">
           <button 
-            onClick={() => window.print()}
+            onClick={() => handlePrint('collective-order-area')}
             className="bg-white/10 hover:bg-white/20 px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all"
           >
             <Printer size={14} /> Imprimir
@@ -1306,10 +1265,16 @@ const OrdemTransferencia = ({ employee, hasReceipts, processedReceipts, companyN
           >
             <FileDown size={14} /> PDF
           </button>
+          <button 
+            onClick={downloadExcel}
+            className="bg-emerald-600 hover:bg-emerald-700 px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all"
+          >
+            <FileSpreadsheet size={14} /> Excel
+          </button>
         </div>
       </div>
 
-      <div className="p-12 space-y-12 printable-area">
+      <div id="collective-order-area" className="p-12 space-y-12 printable-area print-area">
         <div className="grid grid-cols-2 gap-12">
           <div className="space-y-4">
             <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 border-b border-zinc-100 pb-2">Entidade Ordenante</h3>
@@ -8298,10 +8263,35 @@ const HRModule = ({
                       </h4>
                       <div className="flex gap-2">
                         <button 
-                          onClick={() => window.print()}
+                          onClick={() => handlePrint('print-order-content')}
                           className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-1"
                         >
                           <Printer size={12} /> Confirmar Impressão
+                        </button>
+                        <button 
+                          onClick={() => exportToPDF('print-order-content', `Ordem_${printingOrder.id}.pdf`)}
+                          className="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-1"
+                        >
+                          <Download size={12} /> Baixar PDF
+                        </button>
+                        <button 
+                          onClick={() => {
+                            const data = printingOrder.employees.map((emp: any) => ({
+                              'ID': emp.id,
+                              'Colaborador': emp.name,
+                              'Cargo': emp.role,
+                              'Salário': emp.salary,
+                              'IRT': emp.irt,
+                              'INSS': emp.inss,
+                              'Banco': emp.bankName || 'BFA',
+                              'IBAN': emp.iban || '---',
+                              'Líquido': emp.net
+                            }));
+                            exportToExcel(data, `Ordem_${printingOrder.id}.xlsx`, 'Ordem');
+                          }}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-1"
+                        >
+                          <FileSpreadsheet size={12} /> Excel
                         </button>
                         <button 
                           onClick={() => setPrintingOrder(null)} 
@@ -10796,799 +10786,29 @@ const POSManagementView = ({
   );
 };
 
-const POSModule = ({ products, onRefresh, caixas, onSaveDocument, sessions, fiscalSeries, fiscalYear }: { 
+const POSModule = ({ products, onRefresh, caixas, onSaveDocument, sessions, fiscalSeries, fiscalYear, user, companyData }: { 
   products: Product[], 
   onRefresh: () => void, 
   caixas: Caixa[], 
   onSaveDocument: (doc: any) => Promise<void>, 
   sessions: CashSession[],
   fiscalSeries: FiscalSeries[],
-  fiscalYear: string
+  fiscalYear: string,
+  user: any,
+  companyData: any
 }) => {
-  const [activeArea, setActiveArea] = useState<POSArea | 'dashboard'>('dashboard');
-  const [cart, setCart] = useState<{product: Product, qty: number, discount: number}[]>([]);
-  const [search, setSearch] = useState('');
-  const [series, setSeries] = useState<FiscalSeries[]>(fiscalSeries || []);
-  const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
-  const [posPoints, setPosPoints] = useState<POSPoint[]>([]);
-
-  useEffect(() => {
-    const loadPOSData = async () => {
-      try {
-        const [cc, pp] = await Promise.all([
-          fetchJson('/api/cost-centers'),
-          fetchJson('/api/pos-points')
-        ]);
-        setCostCenters(cc);
-        setPosPoints(pp);
-        if (pp.length > 0 && !selectedPOS) setSelectedPOS(pp[0].id.toString());
-      } catch (err) {
-        console.error('Error loading POS data:', err);
-      }
-    };
-    loadPOSData();
-  }, []);
-
-  useEffect(() => {
-    setSeries(fiscalSeries || []);
-  }, [fiscalSeries]);
-  
-  const [selectedSeries, setSelectedSeries] = useState('');
-  const [selectedCostCenter, setSelectedCostCenter] = useState('');
-  const [selectedPOS, setSelectedPOS] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('');
-  const [amountPaid, setAmountPaid] = useState('');
-  const [globalDiscount, setGlobalDiscount] = useState(0);
-  
-  const [showSessionModal, setShowSessionModal] = useState(false);
-  const [showPOSModal, setShowPOSModal] = useState(false);
-  const [showReportModal, setShowReportModal] = useState(false);
-  const [showDiscountModal, setShowDiscountModal] = useState<{index: number} | null>(null);
-  const [initialBalance, setInitialBalance] = useState('');
-  const [lastSale, setLastSale] = useState<any>(null);
-  const [lastSaleClientName, setLastSaleClientName] = useState<string>('');
-
-  const safeProducts = Array.isArray(products) ? products : [];
-  const activeSession = Array.isArray(sessions) ? sessions.find(s => s.status === 'open') : null;
-
-  const addToCart = (product: Product) => {
-    const existing = cart.find(item => item.product.id === product.id);
-    if (existing) {
-      setCart(cart.map(item => item.product.id === product.id ? {...item, qty: item.qty + 1} : item));
-    } else {
-      setCart([...cart, { product, qty: 1, discount: 0 }]);
-    }
-  };
-
-  const subtotal = (cart ?? []).reduce((sum, item) => sum + (item.product.price * item.qty), 0);
-  const itemDiscounts = (cart ?? []).reduce((sum, item) => sum + (item.discount), 0);
-  const total = subtotal - itemDiscounts - globalDiscount;
-  const change = parseFloat(amountPaid) > total ? parseFloat(amountPaid) - total : 0;
-
-  const handleCheckout = async (clientId: number = 1, clientName: string = 'Consumidor Final') => {
-    if (cart.length === 0) return;
-    if (!activeSession) {
-      alert('Por favor, abra o caixa primeiro.');
-      return;
-    }
-    
-    try {
-      // 1. Create POS Sale
-      const posRes = await fetchWithAuth('/api/pos/sales', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          total, 
-          items: cart,
-          series_id: selectedSeries,
-          cost_center_id: selectedCostCenter,
-          pos_point_id: selectedPOS,
-          session_id: activeSession.id,
-          discount: globalDiscount + itemDiscounts,
-          payment_method: paymentMethod
-        })
-      });
-      
-      if (!posRes.ok) throw new Error('Erro ao registrar venda POS');
-      const posData = await posRes.json();
-
-      // 2. Create Invoice (Integration)
-      const invRes = await fetchWithAuth('/api/invoices', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          client_id: clientId,
-          date: new Date().toISOString().split('T')[0],
-          due_date: new Date().toISOString().split('T')[0],
-          document_type: 'Fatura Recibo',
-          series_id: selectedSeries,
-          payment_method: paymentMethod,
-          total: total,
-          items: cart.map(item => ({
-            product_id: item.product.id,
-            description: item.product.name,
-            quantity: item.qty,
-            unit_price: item.product.price,
-            discount: item.discount / item.qty,
-            tax_rate: 14 // Default IVA
-          }))
-        })
-      });
-
-      if (invRes.ok) {
-        const invoiceData = await invRes.json();
-        // Persistir no Supabase
-        await onSaveDocument(invoiceData);
-
-        setLastSale({
-          id: posData.id,
-          date: new Date().toLocaleString(),
-          items: cart,
-          total,
-          payment_method: paymentMethod,
-          change
-        });
-        setLastSaleClientName(clientName);
-        setCart([]);
-        setAmountPaid('');
-        setGlobalDiscount(0);
-        onRefresh();
-        // Auto-print logic would go here
-      }
-    } catch (err) {
-      console.error(err);
-      alert('Erro ao processar checkout');
-    }
-  };
-
-  const handleOpenSession = async () => {
-    const res = await fetchWithAuth('/api/cash/open', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        initial_balance: parseFloat(initialBalance) || 0,
-        pos_point_id: selectedPOS
-      })
-    });
-    if (res.ok) {
-      setShowSessionModal(false);
-      onRefresh();
-    }
-  };
-
-  const handleCloseSession = async () => {
-    if (!activeSession) return;
-    const res = await fetchWithAuth(`/api/cash/close/${activeSession.id}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ final_balance: total }) // Simplified
-    });
-    if (res.ok) {
-      onRefresh();
-      alert('Caixa fechado com sucesso!');
-    }
-  };
-
-  const handleAddPOS = async (name: string, location: string) => {
-    const res = await fetchWithAuth('/api/pos-points', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, location })
-    });
-    if (res.ok) {
-      setShowPOSModal(false);
-      onRefresh();
-    }
-  };
-
-  if (activeArea !== 'dashboard' && activeArea !== 'vendas normal' && activeArea !== 'lojas' && activeArea !== 'restaurante' && activeArea !== 'bar') {
-    const item = [
-      { id: 'stock', label: 'Ver Stock', icon: Package },
-      { id: 'fechos', label: 'Ver Fechos', icon: History },
-      { id: 'utilizador', label: 'Perfil Utilizador', icon: UserCheck },
-      { id: 'caixas', label: 'Caixas Movimento', icon: Wallet },
-      { id: 'ocorrencia', label: 'Adicionar Ocorrência', icon: AlertTriangle },
-      { id: 'transferir', label: 'Transferir Vendas', icon: ArrowRightLeft },
-    ].find(i => i.id === activeArea);
-
-    if (item) {
-      return <POSManagementView title={item.label} icon={item.icon} onBack={() => setActiveArea('dashboard')} caixas={caixas} invoices={[]} issuedDocuments={[]} clients={[]} workSites={[]} employees={[]} onNew={() => {}} onView={() => {}} onRegisterClient={() => {}} onAddWorkSite={() => {}} onUpdateWorkSite={() => {}} onAction={(action, doc) => {}} onCertify={() => {}} />;
-    }
-  }
-
-  if (activeArea === 'dashboard') {
-    const dashboardItems = [
-      { id: 'vendas normal', label: 'Venda Normal', icon: ShoppingBag, color: 'bg-blue-500' },
-      { id: 'lojas', label: 'Lojas', icon: Store, color: 'bg-emerald-500' },
-      { id: 'restaurante', label: 'Restaurante', icon: Utensils, color: 'bg-orange-500' },
-      { id: 'bar', label: 'Bar', icon: Wine, color: 'bg-purple-500' },
-      { id: 'abertura', label: 'Abertura de Caixa', icon: CheckCircle, color: 'bg-teal-500', action: () => setShowSessionModal(true) },
-      { id: 'movimento', label: 'Movimento Diário', icon: TrendingUp, color: 'bg-indigo-500', action: () => setShowReportModal(true) },
-      { id: 'adicionar_pos', label: 'Adicionar POS', icon: PlusCircle, color: 'bg-pink-500', action: () => setShowPOSModal(true) },
-      { id: 'transferir', label: 'Transferir Vendas', icon: ArrowRightLeft, color: 'bg-amber-500' },
-      { id: 'fecho', label: 'Fecho de Caixa', icon: XCircle, color: 'bg-red-500', action: handleCloseSession },
-      { id: 'stock', label: 'Ver Stock', icon: Package, color: 'bg-slate-500' },
-      { id: 'fechos', label: 'Ver Fechos', icon: History, color: 'bg-cyan-500' },
-      { id: 'utilizador', label: 'Perfil Utilizador', icon: UserCheck, color: 'bg-violet-500' },
-      { id: 'caixas', label: 'Caixas Movimento', icon: Wallet, color: 'bg-lime-500' },
-      { id: 'ocorrencia', label: 'Adicionar Ocorrência', icon: AlertTriangle, color: 'bg-rose-500' },
-    ];
-
-    return (
-      <div className="p-8 bg-[#f8fafc] min-h-[calc(100vh-120px)] -mt-12 -mx-12">
-        <div className="max-w-6xl mx-auto">
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h1 className="text-3xl font-black text-[#003366] tracking-tight">Terminal de Vendas</h1>
-              <p className="text-zinc-500 font-medium">Selecione uma área ou funcionalidade para começar</p>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className={`px-4 py-2 rounded-none font-bold text-sm ${activeSession ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
-                {activeSession ? `Caixa Aberto: ${activeSession.pos_point_name || 'Geral'}` : 'Caixa Fechado'}
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-            {dashboardItems.map((item) => (
-              <motion.button
-                key={item.id}
-                whileHover={{ scale: 1.02, translateY: -4 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => item.action ? item.action() : setActiveArea(item.id as POSArea)}
-                className="bg-white p-6 shadow-sm border border-zinc-200 flex flex-col items-center justify-center gap-4 group transition-all hover:shadow-md hover:border-[#003366]/20"
-              >
-                <div className={`${item.color} p-4 text-white shadow-lg group-hover:scale-110 transition-transform`}>
-                  <item.icon size={32} />
-                </div>
-                <span className="font-black text-zinc-800 uppercase text-xs tracking-wider">{item.label}</span>
-              </motion.button>
-            ))}
-          </div>
-        </div>
-
-        {/* Modals */}
-        <AnimatePresence>
-          {lastSale && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 overflow-y-auto">
-              <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white shadow-2xl p-8 max-w-sm w-full relative">
-                <button onClick={() => setLastSale(null)} className="absolute top-4 right-4 text-zinc-400 hover:text-zinc-600"><X size={24} /></button>
-                <div className="flex flex-col items-center">
-                  <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-4">
-                    <CheckCircle size={32} />
-                  </div>
-                  <h3 className="text-xl font-black text-[#003366] mb-2">Venda Concluída!</h3>
-                  <p className="text-zinc-500 text-sm mb-6">O documento foi emitido e registrado.</p>
-                  
-                  <div className="w-full bg-zinc-50 p-4 border border-zinc-200 mb-6">
-                    <PrintP89 sale={lastSale} clientName={lastSaleClientName} />
-                  </div>
-
-                  <div className="flex gap-3 w-full">
-                    <button 
-                      onClick={() => { window.print(); }}
-                      className="flex-1 bg-[#003366] text-white p-3 font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2"
-                    >
-                      <Printer size={16} /> Imprimir
-                    </button>
-                    <button 
-                      onClick={() => setLastSale(null)}
-                      className="flex-1 bg-zinc-100 text-zinc-700 p-3 font-bold text-xs uppercase tracking-widest"
-                    >
-                      Fechar
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
-            </div>
-          )}
-
-          {showSessionModal && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-              <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white w-full max-w-md shadow-2xl">
-                <div className="bg-[#003366] p-6 text-white flex justify-between items-center">
-                  <h3 className="font-black uppercase tracking-widest text-sm">Abertura de Caixa</h3>
-                  <button onClick={() => setShowSessionModal(false)}><X size={20} /></button>
-                </div>
-                <div className="p-8 space-y-6">
-                  <div>
-                    <label className="block text-[10px] font-black uppercase text-zinc-400 mb-2">Ponto de Venda</label>
-                    <select value={selectedPOS} onChange={e => setSelectedPOS(e.target.value)} className="w-full bg-zinc-50 border-2 border-zinc-100 p-4 font-bold focus:border-[#003366] outline-none transition-all">
-                      {posPoints.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black uppercase text-zinc-400 mb-2">Saldo Inicial (Kz)</label>
-                    <input type="number" value={initialBalance} onChange={e => setInitialBalance(e.target.value)} className="w-full bg-zinc-50 border-2 border-zinc-100 p-4 font-bold focus:border-[#003366] outline-none transition-all" placeholder="0.00" />
-                  </div>
-                  <button onClick={handleOpenSession} className="w-full bg-[#003366] text-white p-4 font-black uppercase tracking-widest hover:bg-[#004080] transition-all shadow-lg">Confirmar Abertura</button>
-                </div>
-              </motion.div>
-            </div>
-          )}
-
-          {showPOSModal && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-              <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white w-full max-w-md shadow-2xl">
-                <div className="bg-[#003366] p-6 text-white flex justify-between items-center">
-                  <h3 className="font-black uppercase tracking-widest text-sm">Novo Ponto de Venda</h3>
-                  <button onClick={() => setShowPOSModal(false)}><X size={20} /></button>
-                </div>
-                <form onSubmit={(e) => {
-                  e.preventDefault();
-                  const formData = new FormData(e.currentTarget);
-                  handleAddPOS(formData.get('name') as string, formData.get('location') as string);
-                }} className="p-8 space-y-6">
-                  <div>
-                    <label className="block text-[10px] font-black uppercase text-zinc-400 mb-2">Nome do Ponto</label>
-                    <input name="name" required className="w-full bg-zinc-50 border-2 border-zinc-100 p-4 font-bold focus:border-[#003366] outline-none transition-all" placeholder="Ex: Caixa Central" />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black uppercase text-zinc-400 mb-2">Localização</label>
-                    <input name="location" className="w-full bg-zinc-50 border-2 border-zinc-100 p-4 font-bold focus:border-[#003366] outline-none transition-all" placeholder="Ex: Piso 1" />
-                  </div>
-                  <button type="submit" className="w-full bg-[#003366] text-white p-4 font-black uppercase tracking-widest hover:bg-[#004080] transition-all shadow-lg">Salvar Ponto de Venda</button>
-                </form>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col h-[calc(100vh-120px)] -mt-12 -mx-12">
-      {/* POS Header/Toolbar */}
-      <div className="bg-[#003366] text-white p-4 flex items-center justify-between shadow-md">
-        <div className="flex items-center gap-6">
-          <button onClick={() => setActiveArea('dashboard')} className="flex items-center gap-2 hover:text-blue-300 transition-colors">
-            <ArrowLeft size={18} />
-            <span className="font-bold uppercase text-xs tracking-widest">Voltar</span>
-          </button>
-          
-          <div className="h-6 w-px bg-white/10" />
-          
-          <div className="flex items-center gap-2">
-            <LayoutDashboard size={18} className="text-blue-300" />
-            <h2 className="font-bold tracking-tight uppercase text-sm">{activeArea}</h2>
-          </div>
-          
-          <div className="h-6 w-px bg-white/10 hidden md:block" />
-          
-          <div className="hidden md:flex items-center gap-4 text-xs">
-            <div className="flex flex-col">
-              <span className="text-blue-300 font-bold uppercase text-[9px]">Série</span>
-              <select 
-                value={selectedSeries} 
-                onChange={e => setSelectedSeries(e.target.value)}
-                className="bg-transparent border-none focus:ring-0 font-bold p-0 cursor-pointer"
-              >
-                {series.map(s => <option key={s.id} value={s.id} className="text-zinc-800">{s.description}</option>)}
-              </select>
-            </div>
-            
-            <div className="flex flex-col">
-              <span className="text-blue-300 font-bold uppercase text-[9px]">Centro de Custo</span>
-              <select 
-                value={selectedCostCenter} 
-                onChange={e => setSelectedCostCenter(e.target.value)}
-                className="bg-transparent border-none focus:ring-0 font-bold p-0 cursor-pointer"
-              >
-                <option value="" className="text-zinc-800">Geral</option>
-                {costCenters.map(cc => <option key={cc.id} value={cc.id} className="text-zinc-800">{cc.name}</option>)}
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <div className="hidden sm:flex flex-col items-end mr-4">
-            <span className="text-[10px] text-blue-300 font-bold uppercase tracking-widest">Operador</span>
-            <span className="text-xs font-black">Admin</span>
-          </div>
-          
-          <button 
-            onClick={() => setShowReportModal(true)}
-            className="bg-white/10 hover:bg-white/20 px-3 py-1.5 text-xs font-bold flex items-center gap-2 transition-all"
-          >
-            <BarChart3 size={14} /> Relatório
-          </button>
-          
-          {activeSession ? (
-            <button 
-              onClick={handleCloseSession}
-              className="bg-red-500 hover:bg-red-600 px-4 py-1.5 text-xs font-bold flex items-center gap-2 transition-all shadow-lg"
-            >
-              <X size={14} /> Fechar Caixa
-            </button>
-          ) : (
-            <button 
-              onClick={() => setShowSessionModal(true)}
-              className="bg-emerald-500 hover:bg-emerald-600 px-4 py-1.5 text-xs font-bold flex items-center gap-2 transition-all shadow-lg"
-            >
-              <CheckCircle size={14} /> Abrir Caixa
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 overflow-hidden">
-        {/* Products Section */}
-        <div className="lg:col-span-2 flex flex-col bg-[#f8fafc] border-r border-zinc-200">
-          <div className="p-6 space-y-4">
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={20} />
-              <input 
-                type="text" placeholder="Pesquisar por nome ou código de barras..." 
-                value={search} onChange={e => setSearch(e.target.value)}
-                className="w-full bg-white border border-zinc-200 rounded-none pl-12 pr-4 py-4 text-lg focus:outline-none focus:border-[#003366] shadow-sm"
-              />
-            </div>
-
-            <div className="flex gap-2 overflow-x-auto pb-2">
-              {['Todos', 'Mercadoria', 'Serviços', 'Produtos'].map(cat => (
-                <button key={cat} className="px-4 py-2 bg-white border border-zinc-200 text-xs font-bold text-zinc-600 hover:bg-zinc-50 whitespace-nowrap">
-                  {cat}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-6 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 content-start">
-            {safeProducts.filter(p => (p.name || '').toLowerCase().includes((search || '').toLowerCase())).map(product => (
-              <button 
-                key={product.id}
-                onClick={() => addToCart(product)}
-                className="bg-white border border-zinc-200 p-0 rounded-none text-left hover:border-[#003366] hover:shadow-md transition-all group relative overflow-hidden flex flex-col"
-              >
-                <div className="aspect-square w-full bg-zinc-100 relative overflow-hidden">
-                  {product.image ? (
-                    <img 
-                      src={product.image} 
-                      alt={product.name} 
-                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-zinc-300">
-                      <Package size={40} />
-                    </div>
-                  )}
-                  <div className="absolute top-2 right-2 bg-[#003366] text-white px-2 py-0.5 text-[10px] font-bold shadow-lg">
-                    {formatCurrency(product.price)}
-                  </div>
-                </div>
-                <div className="p-3 flex-1 flex flex-col justify-between">
-                  <div>
-                    <p className="font-bold text-[#003366] text-xs line-clamp-2 uppercase tracking-tight leading-tight">{product.name}</p>
-                    <p className="text-[9px] text-zinc-400 font-bold mt-1 uppercase tracking-widest">{product.tipologia || 'Geral'}</p>
-                  </div>
-                  <div className="mt-2 flex items-center justify-between">
-                    <span className="text-[9px] font-bold text-zinc-500 bg-zinc-100 px-1.5 py-0.5">UN: {product.unit}</span>
-                    <div className="w-6 h-6 bg-[#003366] text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all">
-                      <Plus size={14} />
-                    </div>
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Cart/Checkout Section */}
-        <div className="flex flex-col bg-white shadow-xl">
-          <div className="p-4 border-b border-zinc-100 bg-zinc-50 flex justify-between items-center">
-            <h3 className="font-bold text-[#003366] text-sm flex items-center gap-2">
-              <ClipboardList size={16} /> Detalhes da Venda
-            </h3>
-            <button onClick={() => setCart([])} className="text-red-500 hover:text-red-700 text-[10px] font-bold uppercase">Limpar</button>
-          </div>
-
-          <div className="flex-1 overflow-y-auto">
-            {cart.map((item, i) => (
-              <div key={i} className="p-4 border-b border-zinc-50 hover:bg-zinc-50 transition-colors group">
-                <div className="flex justify-between items-start mb-2">
-                  <div className="flex-1">
-                    <p className="font-bold text-zinc-800 text-sm">{item.product.name}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <button 
-                        onClick={() => {
-                          const newQty = Math.max(1, item.qty - 1);
-                          setCart(cart.map((c, idx) => idx === i ? { ...c, qty: newQty } : c));
-                        }}
-                        className="w-6 h-6 border border-zinc-200 flex items-center justify-center hover:bg-white"
-                      >-</button>
-                      <span className="text-xs font-bold w-8 text-center">{item.qty}</span>
-                      <button 
-                        onClick={() => {
-                          setCart(cart.map((c, idx) => idx === i ? { ...c, qty: item.qty + 1 } : c));
-                        }}
-                        className="w-6 h-6 border border-zinc-200 flex items-center justify-center hover:bg-white"
-                      >+</button>
-                      <span className="text-zinc-400 text-[10px] ml-2">x {formatCurrency(item.product.price)}</span>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-bold text-[#003366]">{formatCurrency(item.product.price * item.qty)}</p>
-                    <div className="flex items-center gap-2 justify-end">
-                      <button 
-                        onClick={() => setShowDiscountModal({ index: i })}
-                        className="text-emerald-500 hover:text-emerald-700 text-[10px] font-bold"
-                      >
-                        {item.discount > 0 ? `-${formatCurrency(item.discount)}` : 'Desconto'}
-                      </button>
-                      <button 
-                        onClick={() => setCart(cart.filter((_, idx) => idx !== i))}
-                        className="text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-            {cart.length === 0 && (
-              <div className="h-full flex flex-col items-center justify-center text-zinc-300 p-12 text-center space-y-4">
-                <div className="w-20 h-20 bg-zinc-50 rounded-full flex items-center justify-center">
-                  <Package size={40} />
-                </div>
-                <p className="text-sm font-medium">Selecione produtos para começar a venda</p>
-              </div>
-            )}
-          </div>
-
-          <div className="p-6 bg-zinc-50 border-t border-zinc-200 space-y-4">
-            <div className="space-y-2">
-              <div className="flex justify-between text-xs text-zinc-500">
-                <span>Subtotal</span>
-                <span>{formatCurrency(subtotal)}</span>
-              </div>
-              <div className="flex justify-between items-center text-xs text-zinc-500">
-                <span>Desconto Global</span>
-                <div className="flex items-center gap-2">
-                  <input 
-                    type="number" 
-                    value={globalDiscount}
-                    onChange={e => setGlobalDiscount(parseFloat(e.target.value) || 0)}
-                    className="w-20 bg-white border border-zinc-200 px-2 py-1 text-right focus:outline-none focus:border-[#003366]"
-                  />
-                </div>
-              </div>
-              <div className="flex justify-between font-black text-xl text-[#003366] pt-2 border-t border-zinc-200">
-                <span>TOTAL</span>
-                <span>{formatCurrency(total)}</span>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="space-y-1">
-                <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Caixa / Meio de Pagamento</label>
-                <select 
-                  value={paymentMethod}
-                  onChange={e => setPaymentMethod(e.target.value)}
-                  className="w-full bg-white border border-zinc-200 px-3 py-2 font-bold text-[#003366] focus:outline-none focus:border-[#003366] text-xs"
-                >
-                  <option value="">Selecionar...</option>
-                  {caixas.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                  <option value="TPA">TPA</option>
-                  <option value="Transferência">Transferência</option>
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Valor Pago</label>
-                  <input 
-                    type="number" 
-                    placeholder="0.00"
-                    value={amountPaid}
-                    onChange={e => setAmountPaid(e.target.value)}
-                    className="w-full bg-white border border-zinc-200 px-3 py-2 font-bold text-[#003366] focus:outline-none focus:border-[#003366]"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Troco</label>
-                  <div className="w-full bg-zinc-100 border border-zinc-200 px-3 py-2 font-bold text-emerald-600">
-                    {formatCurrency(change)}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <button 
-                onClick={() => handleCheckout()}
-                disabled={cart.length === 0}
-                className="col-span-2 bg-[#003366] hover:bg-[#002244] disabled:bg-zinc-300 text-white font-bold py-4 rounded-none transition-all shadow-lg flex items-center justify-center gap-2 text-lg"
-              >
-                <CheckCircle size={24} /> Emitir Documento
-              </button>
-              <button className="bg-white border border-zinc-200 text-zinc-600 font-bold py-2 text-xs flex items-center justify-center gap-2 hover:bg-zinc-50">
-                <Printer size={14} /> Imprimir
-              </button>
-              <button className="bg-white border border-zinc-200 text-zinc-600 font-bold py-2 text-xs flex items-center justify-center gap-2 hover:bg-zinc-50">
-                <Download size={14} /> Baixar PDF
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Modals */}
-      {showSessionModal && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-zinc-900/80 backdrop-blur-sm">
-          <div className="bg-white rounded-none shadow-2xl w-full max-w-sm overflow-hidden">
-            <div className="p-6 border-b border-zinc-100 bg-zinc-50 flex justify-between items-center">
-              <h3 className="font-bold text-[#003366]">Abertura de Caixa</h3>
-              <button onClick={() => setShowSessionModal(false)}><X size={20} /></button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Fundo de Maneio Inicial</label>
-                <input 
-                  type="number" 
-                  value={initialBalance}
-                  onChange={e => setInitialBalance(e.target.value)}
-                  className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-lg font-bold text-[#003366] focus:outline-none focus:border-[#003366]"
-                  placeholder="0.00"
-                />
-              </div>
-              <button 
-                onClick={handleOpenSession}
-                className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 shadow-lg"
-              >
-                Confirmar Abertura
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showPOSModal && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-zinc-900/80 backdrop-blur-sm">
-          <div className="bg-white rounded-none shadow-2xl w-full max-w-sm overflow-hidden">
-            <div className="p-6 border-b border-zinc-100 bg-zinc-50 flex justify-between items-center">
-              <h3 className="font-bold text-[#003366]">Novo Ponto de Venda</h3>
-              <button onClick={() => setShowPOSModal(false)}><X size={20} /></button>
-            </div>
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              const target = e.target as any;
-              handleAddPOS(target.name.value, target.location.value);
-            }} className="p-6 space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Nome do Terminal</label>
-                <input name="name" required className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Localização</label>
-                <input name="location" required className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
-              </div>
-              <button type="submit" className="w-full bg-[#003366] text-white font-bold py-3 shadow-lg">Registar Terminal</button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {showDiscountModal && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-zinc-900/80 backdrop-blur-sm">
-          <div className="bg-white rounded-none shadow-2xl w-full max-w-sm overflow-hidden">
-            <div className="p-6 border-b border-zinc-100 bg-zinc-50 flex justify-between items-center">
-              <h3 className="font-bold text-[#003366]">Aplicar Desconto no Item</h3>
-              <button onClick={() => setShowDiscountModal(null)}><X size={20} /></button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Valor do Desconto</label>
-                <input 
-                  type="number" 
-                  autoFocus
-                  className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-lg font-bold text-[#003366] focus:outline-none focus:border-[#003366]"
-                  placeholder="0.00"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      const val = parseFloat((e.target as HTMLInputElement).value) || 0;
-                      setCart(cart.map((c, idx) => idx === showDiscountModal.index ? { ...c, discount: val } : c));
-                      setShowDiscountModal(null);
-                    }
-                  }}
-                />
-              </div>
-              <p className="text-[10px] text-zinc-400">Pressione Enter para confirmar</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showReportModal && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-zinc-900/80 backdrop-blur-sm">
-          <div className="bg-white rounded-none shadow-2xl w-full max-w-2xl overflow-hidden">
-            <div className="p-6 border-b border-zinc-100 bg-zinc-50 flex justify-between items-center">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-[#003366] text-white flex items-center justify-center">
-                  <BarChart3 size={20} />
-                </div>
-                <div>
-                  <h3 className="font-bold text-[#003366]">Relatório de Vendas POS</h3>
-                  <p className="text-[10px] text-zinc-400 uppercase font-bold tracking-wider">Sessão: {activeSession?.id || 'N/A'}</p>
-                </div>
-              </div>
-              <button onClick={() => setShowReportModal(false)} className="p-2 hover:bg-zinc-100 rounded-full transition-colors"><X size={20} /></button>
-            </div>
-            <div className="p-6 space-y-8">
-              <div className="grid grid-cols-3 gap-6">
-                <div className="bg-zinc-50 p-5 border border-zinc-100 relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 p-2 opacity-5 group-hover:opacity-10 transition-opacity">
-                    <TrendingUp size={48} />
-                  </div>
-                  <p className="text-[10px] font-bold text-zinc-400 uppercase mb-1">Total Vendas</p>
-                  <p className="text-2xl font-black text-[#003366]">{formatCurrency(activeSession?.total_sales || 0)}</p>
-                </div>
-                <div className="bg-zinc-50 p-5 border border-zinc-100 relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 p-2 opacity-5 group-hover:opacity-10 transition-opacity">
-                    <Tag size={48} />
-                  </div>
-                  <p className="text-[10px] font-bold text-zinc-400 uppercase mb-1">Total Descontos</p>
-                  <p className="text-2xl font-black text-red-500">{formatCurrency(activeSession?.total_discounts || 0)}</p>
-                </div>
-                <div className="bg-zinc-50 p-5 border border-zinc-100 relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 p-2 opacity-5 group-hover:opacity-10 transition-opacity">
-                    <Wallet size={48} />
-                  </div>
-                  <p className="text-[10px] font-bold text-zinc-400 uppercase mb-1">Saldo Atual</p>
-                  <p className="text-2xl font-black text-emerald-600">{formatCurrency((activeSession?.initial_balance || 0) + (activeSession?.total_sales || 0))}</p>
-                </div>
-              </div>
-              
-              <div className="space-y-4">
-                <div className="flex items-center justify-between border-b border-zinc-100 pb-2">
-                  <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Histórico de Sessões</p>
-                  <span className="text-[10px] font-bold text-[#003366] bg-[#003366]/5 px-2 py-0.5">Últimas 5 sessões</span>
-                </div>
-                <div className="border border-zinc-100 divide-y divide-zinc-100">
-                  {sessions.slice(0, 5).map(s => (
-                    <div key={s.id} className="p-4 flex justify-between items-center hover:bg-zinc-50 transition-colors">
-                      <div className="flex items-center gap-4">
-                        <div className={`w-2 h-2 rounded-full ${s.status === 'open' ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-300'}`} />
-                        <div>
-                          <p className="font-bold text-zinc-700 text-sm">{new Date(s.opened_at).toLocaleString('pt-PT')}</p>
-                          <p className="text-[10px] text-zinc-400 font-medium">
-                            Status: <span className={s.status === 'open' ? 'text-emerald-600 font-bold' : 'text-zinc-500'}>
-                              {s.status === 'open' ? 'Aberta' : 'Fechada'}
-                            </span>
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-black text-[#003366]">{formatCurrency(s.total_sales)}</p>
-                        <p className="text-[9px] text-zinc-400 font-bold uppercase">Total Bruto</p>
-                      </div>
-                    </div>
-                  ))}
-                  {sessions.length === 0 && (
-                    <div className="p-8 text-center text-zinc-400 text-sm italic">Nenhuma sessão anterior encontrada.</div>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex justify-end pt-4">
-                <button 
-                  onClick={() => window.print()}
-                  className="flex items-center gap-2 px-6 py-2.5 bg-[#003366] text-white text-xs font-bold uppercase tracking-widest hover:bg-[#002244] transition-all shadow-lg"
-                >
-                  <Printer size={14} /> Imprimir Relatório
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+  return <POSPage 
+    products={products} 
+    onRefresh={onRefresh} 
+    onSaveDocument={onSaveDocument}
+    caixas={caixas}
+    sessions={sessions}
+    fiscalSeries={fiscalSeries}
+    fiscalYear={fiscalYear}
+    user={user}
+    companyData={companyData}
+    onNavigate={() => {}}
+  />;
 };
 
 const SpecializedManagementModule = () => {
@@ -12351,27 +11571,12 @@ const MapaSalarios = ({ localEmployees, selectedMonthForMap, setSelectedMonthFor
   };
 
   const downloadPDF = () => {
-    const doc = new jsPDF('l', 'mm', 'a4');
     const title = mapTabs.find(t => t.id === selectedMapSubTab)?.label || 'MAPA';
-    doc.setFontSize(18);
-    doc.text(title, 14, 22);
-    doc.setFontSize(10);
-    doc.text(`Período: ${selectedMonthForMap}`, 14, 30);
-    
-    const table = document.querySelector('.printable-area table');
-    if (table) {
-      autoTable(doc, { 
-        html: table as HTMLTableElement,
-        startY: 35,
-        styles: { fontSize: 7, cellPadding: 1 },
-        headStyles: { fillColor: [0, 51, 102] }
-      });
-      doc.save(`${(title || '').toLowerCase().replace(/ /g, '_')}_${selectedMonthForMap}.pdf`);
-    }
+    exportToPDF('salary-map-area', `${(title || '').toLowerCase().replace(/ /g, '_')}_${selectedMonthForMap}.pdf`);
   };
 
   const downloadExcel = () => {
-    const table = document.querySelector('.printable-area table');
+    const table = document.querySelector('#salary-map-area table');
     if (table) {
       const wb = XLSX.utils.table_to_book(table);
       const title = mapTabs.find(t => t.id === selectedMapSubTab)?.label || 'MAPA';
@@ -12450,7 +11655,7 @@ const MapaSalarios = ({ localEmployees, selectedMonthForMap, setSelectedMonthFor
           ))}
         </div>
 
-        <div className="printable-area overflow-x-auto">
+        <div id="salary-map-area" className="printable-area overflow-x-auto print-area">
           {renderMapContent()}
         </div>
       </div>
@@ -18809,27 +18014,11 @@ const WorkSiteMovementForm = ({ onBack, onSuccess, movements = [] }: { onBack: (
 
 const WorkSiteRegistration = ({ workSite, onBack }: { workSite: WorkSite, onBack: () => void }) => {
   const handleDownloadPDF = () => {
-    const doc = new jsPDF();
-    doc.setFontSize(20);
-    doc.text('Ficha de Cadastro de Obra', 105, 20, { align: 'center' });
-    doc.setFontSize(12);
-    doc.text(`REF: ${workSite.code}`, 20, 40);
-    doc.text(`Título: ${workSite.title}`, 20, 50);
-    doc.text(`Cliente: ${workSite.client_name}`, 20, 60);
-    doc.text(`Localização: ${workSite.location}`, 20, 70);
-    doc.text(`Data Início: ${new Date(workSite.start_date).toLocaleDateString('pt-PT')}`, 20, 80);
-    doc.text(`Data Fim: ${new Date(workSite.end_date).toLocaleDateString('pt-PT')}`, 20, 90);
-    doc.text(`Total Efectivos: ${workSite.total_staff}`, 20, 100);
-    doc.text(`Descrição:`, 20, 110);
-    doc.setFontSize(10);
-    const splitDescription = doc.splitTextToSize(workSite.description || 'N/A', 170);
-    doc.text(splitDescription, 20, 120);
-    
-    doc.save(`cadastro_obra_${workSite.code}.pdf`);
+    exportToPDF('worksite-registration-area', `cadastro_obra_${workSite.code}.pdf`);
   };
 
   return (
-    <div className="bg-white min-h-screen p-8 sm:p-12 space-y-10 max-w-5xl mx-auto shadow-2xl border border-zinc-100">
+    <div id="worksite-registration-area" className="bg-white min-h-screen p-8 sm:p-12 space-y-10 max-w-5xl mx-auto shadow-2xl border border-zinc-100 print-area">
       {/* Document Header */}
       <div className="flex justify-between items-start border-b-4 border-[#003366] pb-8">
         <div className="flex items-center gap-6">
@@ -26332,6 +25521,8 @@ export default function App() {
                             sessions={sessions}
                             fiscalSeries={fiscalSeries}
                             fiscalYear={fiscalYear}
+                            user={user}
+                            companyData={companyData}
                           />;
                         case 'electronic_invoices':
                         case 'invoices':

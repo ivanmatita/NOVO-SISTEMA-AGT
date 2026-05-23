@@ -2,8 +2,10 @@
 import React, { useState } from 'react';
 import { 
   Search, Filter, FileText, Download, Printer, ArrowLeft, 
-  ShoppingCart, Calendar, TrendingUp, ChevronDown, MoreHorizontal
+  ShoppingCart, Calendar, TrendingUp, ChevronDown, MoreHorizontal,
+  FileSpreadsheet
 } from 'lucide-react';
+import { exportToPDF, exportToExcel, handlePrint } from '../../lib/exportUtils';
 
 interface PurchasesReportProps {
   purchases: any[];
@@ -32,12 +34,22 @@ export const PurchasesReport = ({ purchases, suppliers, onBack }: PurchasesRepor
   const totalItems = filteredPurchases.reduce((acc, p) => acc + (p.items_count || 0), 0);
   const averageTicket = filteredPurchases.length > 0 ? totalPurchased / filteredPurchases.length : 0;
 
-  const handlePrint = () => {
-    window.print();
+  const handleExcelExport = () => {
+    const data = filteredPurchases.map(p => ({
+      'Data': new Date(p.date || p.data_emissao || Date.now()).toLocaleDateString(),
+      'Fornecedor': p.supplier_name || 'Fornecedor s/ Nome',
+      'NIF': p.supplier_nif || '---',
+      'Documento': p.invoice_number || 'N/A',
+      'Tipo': p.document_type || 'FACTURA',
+      'Itens': p.items_count || 0,
+      'Base': p.base_value || 0,
+      'Total': p.total || 0
+    }));
+    exportToExcel(data, `Compras_${new Date().toISOString().split('T')[0]}.xlsx`, 'Compras');
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
+    <div id="purchases-report-content" className="space-y-6 animate-in fade-in duration-500 print-area">
       <div className="flex items-center justify-between no-print">
         <div className="flex items-center gap-4">
           {onBack && (
@@ -51,10 +63,13 @@ export const PurchasesReport = ({ purchases, suppliers, onBack }: PurchasesRepor
           </div>
         </div>
         <div className="flex gap-2">
-          <button onClick={handlePrint} className="bg-white border border-zinc-200 text-[#003366] px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-zinc-50 transition-all shadow-sm">
+          <button onClick={() => handlePrint('purchases-report-content')} className="bg-white border border-zinc-200 text-[#003366] px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-zinc-50 transition-all shadow-sm">
             <Printer size={14} /> Imprimir
           </button>
-          <button className="bg-[#003366] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-black transition-all shadow-md">
+          <button onClick={handleExcelExport} className="bg-emerald-600 text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-700 shadow-md">
+            <FileSpreadsheet size={14} /> Baixar Excel
+          </button>
+          <button onClick={() => exportToPDF('purchases-report-content', `Relatorio_Compras_${new Date().toISOString().split('T')[0]}.pdf`)} className="bg-[#003366] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-black transition-all shadow-md">
             <Download size={14} /> Baixar PDF
           </button>
         </div>

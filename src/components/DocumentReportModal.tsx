@@ -1,8 +1,7 @@
 import React from 'react';
 import { X, Printer, Download, BarChart2, FileText, User, MapPin, Calendar, CreditCard, ShieldCheck, History, FileMinus2, Trash2, Edit, Copy, Mail, MessageCircle, RefreshCw, FileSignature, Receipt, Truck } from 'lucide-react';
 import { IssuedDocument } from '../types';
-import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import { exportToPDF, exportToExcel, handlePrint } from '../lib/exportUtils';
 import { numberToWords } from '../lib/numberToWords';
 
 interface DocumentReportModalProps {
@@ -25,52 +24,19 @@ export const DocumentReportModal: React.FC<DocumentReportModalProps> = ({ docume
   const displayId = document.supplier_id || document.client_id || document.cliente_id || 'N/A';
   const displayAddress = document.supplier_address || document.client_address || 'Endereço não informado';
 
-  const handlePrint = () => window.print();
+  const triggerPrintArea = () => {
+    handlePrint('document-report-area');
+  };
   
-  const handleDownloadPDF = () => {
-    const doc = new jsPDF();
-    
-    doc.setFontSize(18);
-    doc.text('ANÁLISE DETALHADA DO DOCUMENTO', 10, 20);
-    
-    doc.setFontSize(10);
-    doc.text(`Empresa: ${companyName}`, 10, 30);
-    doc.text(`NIF: ${companyNif}`, 10, 35);
-    doc.text(`Documento: ${document.numero_documento || document.invoice_number}`, 10, 45);
-    doc.text(`Tipo: ${document.tipo_documento || document.document_type}`, 10, 50);
-    doc.text(`Data Emissão: ${new Date(document.date || document.data_emissao).toLocaleDateString()}`, 10, 55);
-    doc.text(`${document.supplier_name ? 'Fornecedor' : 'Cliente'}: ${displayName}`, 10, 60);
-    doc.text(`Estado: ${document.status || document.estado_documento || 'Ativo'}`, 10, 65);
-
-    const itemsData = (document.items || []).map(item => [
-      item.description,
-      item.quantity,
-      formatCurrency(item.unit_price),
-      item.tax || '14%',
-      formatCurrency(item.total)
-    ]);
-
-    autoTable(doc, {
-      startY: 75,
-      head: [['Descrição', 'Qtd', 'P. Unitário', 'Imposto', 'Total']],
-      body: itemsData,
-      theme: 'grid',
-      headStyles: { fillColor: [0, 51, 102] }
-    });
-
-    const finalTableY = (doc as any).lastAutoTable.finalY + 10;
-    doc.text(`Total Ilíquido: ${formatCurrency(document.total || document.counter_value)}`, 140, finalTableY);
-    doc.text(`IVA Total: ${formatCurrency(document.vat_amount || 0)}`, 140, finalTableY + 5);
-    doc.text(`Desconto: ${formatCurrency(document.global_discount || 0)}`, 140, finalTableY + 10);
-    doc.setFont(undefined, 'bold');
-    doc.text(`Total Líquido: ${formatCurrency(totalValue)}`, 140, finalTableY + 15);
-    
-    doc.setFont(undefined, 'normal');
-    doc.text('Valor por Extenso:', 10, finalTableY + 25);
-    const splitExtenso = doc.splitTextToSize(numberToWords(totalValue), 180);
-    doc.text(splitExtenso, 10, finalTableY + 30);
-    
-    doc.save(`Relatorio_${document.numero_documento || document.invoice_number || 'doc'}.pdf`);
+  const handleDownloadExcel = () => {
+    const excelData = (document.items || []).map(item => ({
+      'Descrição': item.description,
+      'Quantidade': item.quantity,
+      'Preço Unitário': item.unit_price,
+      'Imposto': item.tax || '14%',
+      'Total': item.total
+    }));
+    exportToExcel(excelData, `Relatorio_${document.numero_documento || document.invoice_number || 'doc'}.xlsx`, 'Itens do Documento');
   };
 
   const filteredItems = (document.items || []).filter(item => 
@@ -91,10 +57,13 @@ export const DocumentReportModal: React.FC<DocumentReportModalProps> = ({ docume
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={handleDownloadPDF} className="p-2.5 hover:bg-zinc-100 text-[#003366] rounded-full transition-all" title="Baixar PDF">
+            <button onClick={() => exportToPDF('document-report-area', `Relatorio_${document.numero_documento || document.invoice_number || 'doc'}.pdf`)} className="p-2.5 hover:bg-zinc-100 text-[#003366] rounded-full transition-all" title="Baixar PDF">
               <Download size={22} />
             </button>
-            <button onClick={handlePrint} className="p-2.5 hover:bg-zinc-100 text-[#003366] rounded-full transition-all" title="Imprimir">
+            <button onClick={handleDownloadExcel} className="p-2.5 hover:bg-zinc-100 text-emerald-600 rounded-full transition-all" title="Baixar Excel">
+              <BarChart2 size={22} />
+            </button>
+            <button onClick={() => handlePrint('document-report-area')} className="p-2.5 hover:bg-zinc-100 text-[#003366] rounded-full transition-all" title="Imprimir">
               <Printer size={22} />
             </button>
             <div className="w-px h-8 bg-zinc-200 mx-2"></div>
@@ -104,7 +73,7 @@ export const DocumentReportModal: React.FC<DocumentReportModalProps> = ({ docume
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-8 space-y-10 bg-white custom-scrollbar">
+        <div id="document-report-area" className="flex-1 overflow-y-auto p-8 space-y-10 bg-white custom-scrollbar print-area">
           {/* Main Document Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
             <div className="lg:col-span-3 space-y-8">
@@ -198,6 +167,18 @@ export const DocumentReportModal: React.FC<DocumentReportModalProps> = ({ docume
 
                 <div className="bg-zinc-50/50 p-4 border border-zinc-100 italic text-[11px] text-zinc-500 font-medium">
                   <strong>Valor por Extenso:</strong> {numberToWords(totalValue)}
+                </div>
+
+                {/* Professional Signature & Stamp Area for Print */}
+                <div className="pt-20 grid grid-cols-2 gap-20 text-center text-zinc-400 uppercase font-bold text-[9px] tracking-[0.2em]">
+                  <div className="space-y-16">
+                    <div className="border-b border-zinc-200 pb-2">O Emissor (Assinatura e Carimbo)</div>
+                    <div className="text-zinc-300 font-normal italic">_________________________________</div>
+                  </div>
+                  <div className="space-y-16">
+                    <div className="border-b border-zinc-200 pb-2">O Cliente (Recebido em Conformidade)</div>
+                    <div className="text-zinc-300 font-normal italic">_________________________________</div>
+                  </div>
                 </div>
               </div>
             </div>

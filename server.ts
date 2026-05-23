@@ -69,6 +69,7 @@ let costCenters: any[] = savedData?.costCenters || [];
 let posPoints: any[] = savedData?.posPoints || [{ id: 1, name: 'POS Principal', is_active: true }];
 let sessions: any[] = savedData?.sessions || [];
 let posSales: any[] = savedData?.posSales || [];
+let posSuspendedSales: any[] = savedData?.posSuspendedSales || [];
 let caixaMovements: any[] = savedData?.caixaMovements || [];
 let warehouses: any[] = savedData?.warehouses || [];
 let systemUsers: any[] = savedData?.systemUsers || [];
@@ -249,7 +250,7 @@ const saveData = () => {
             stockMovements, securityOccurrences, securityArmory, securityRoster,
             transactions, receipts, suppliers, purchases, professions,
             attendance, absences, laborTerminations, contracts,
-            costCenters, posPoints, sessions, posSales,
+            costCenters, posPoints, sessions, posSales, posSuspendedSales,
             accountingJournals, accountingMovements, pgcAccounts
         };
         
@@ -1663,8 +1664,102 @@ app.post("/api/exec-sql", express.json(), async (req, res) => {
       created_at: new Date().toISOString()
     };
     posSales.push(newSale);
+    
+    // Automatic Inventory Reduction on Sale (Backend security)
+    if (req.body.items && Array.isArray(req.body.items)) {
+      req.body.items.forEach((item: any) => {
+        const product = products.find(p => Number(p.id) === Number(item.product_id));
+        if (product) {
+          product.stock_quantity = Math.max(0, (Number(product.stock_quantity) || 0) - Number(item.quantity));
+          // Record stock movement
+          stockMovements.push({
+            id: generateId(),
+            product_id: product.id,
+            type: 'exit',
+            quantity: Number(item.quantity),
+            unit_price: Number(item.unit_price),
+            description: `Venda POS Doc: ${req.body.invoice_number || 'N/A'}`,
+            created_at: new Date().toISOString(),
+            empresa_id: req.body.empresa_id
+          });
+        }
+      });
+    }
+
     saveData();
     res.json(newSale);
+  });
+
+  app.get("/api/pos/suspended", (req, res) => {
+    const { empresa_id } = req.query;
+    if (empresa_id) return res.json(posSuspendedSales.filter(s => String(s.empresa_id) === String(empresa_id)));
+    res.json([]);
+  });
+
+  app.post("/api/pos/suspended", (req, res) => {
+    const newSuspended = { ...req.body, id: `SUSP-${generateId().toString().slice(-4)}`, created_at: new Date().toISOString() };
+    posSuspendedSales.push(newSuspended);
+    saveData();
+    res.json(newSuspended);
+  });
+
+  app.delete("/api/pos/suspended/:id", (req, res) => {
+    const { id } = req.params;
+    const index = posSuspendedSales.findIndex(s => s.id === id);
+    if (index !== -1) {
+      posSuspendedSales.splice(index, 1);
+      saveData();
+      res.json({ success: true });
+    } else {
+      res.status(404).json({ error: "Suspended sale not found" });
+    }
+  });
+
+  app.get("/api/pos/stats", (req, res) => {
+    const { empresa_id } = req.query;
+    const today = new Date().toISOString().split('T')[0];
+    
+    const companySales = posSales.filter(s => String(s.empresa_id) === String(empresa_id));
+    const todaySales = companySales.filter(s => String(s.date || s.created_at).startsWith(today));
+    
+    const stats = {
+      todayCount: todaySales.length,
+      todayTotal: todaySales.reduce((acc, s) => acc + (Number(s.total) || 0), 0),
+      activeOperators: Array.from(new Set(sessions.filter(s => s.status === 'open' && String(s.empresa_id) === String(empresa_id)).map(s => s.user_id))).length,
+      topProducts: [] // Simplified for now
+    };
+    
+    res.json(stats);
+  });
+
+  app.post("/api/pos/refund", (req, res) => {
+    const { sale_id, items, empresa_id } = req.body;
+    
+    // Restore Stock
+    if (items && Array.isArray(items)) {
+        items.forEach((item: any) => {
+            const product = products.find(p => Number(p.id) === Number(item.product.id || item.product_id));
+            if (product) {
+                product.stock_quantity = (Number(product.stock_quantity) || 0) + Number(item.qty || item.quantity);
+                // Record stock movement
+                stockMovements.push({
+                    id: generateId(),
+                    product_id: product.id,
+                    type: 'entry',
+                    quantity: Number(item.qty || item.quantity),
+                    description: `Devolução POS Sale ID: ${sale_id}`,
+                    created_at: new Date().toISOString(),
+                    empresa_id: empresa_id
+                });
+            }
+        });
+    }
+
+    // Mark sale as refunded or remove it
+    // For this mock, we'll just remove it from completed sales if we track it that way
+    
+    saveData();
+    res.json({ success: true });
   });
 
   // System Users
@@ -2303,6 +2398,27 @@ app.post("/api/exec-sql", express.json(), async (req, res) => {
     const year = Number(req.query.year) || new Date().getFullYear();
     if (empresa_id) return res.json(caixaMovements.filter(m => String(m.empresa_id) === String(empresa_id) && (!m.date || new Date(m.date).getFullYear() === year || !m.created_at || new Date(m.created_at).getFullYear() === year)));
     res.json([]);
+  });
+  app.post("/api/caixa-movements", (req, res) => {
+    const newMovement = { 
+        ...req.body, 
+        id: generateId(), 
+        created_at: new Date().toISOString() 
+    };
+    caixaMovements.push(newMovement);
+    
+    // Update the corresponding Caixa balance
+    const caixa = caixas.find(c => String(c.id) === String(req.body.caixa_id));
+    if (caixa) {
+        if (req.body.type === 'entrada') {
+            caixa.currentBalance = (Number(caixa.currentBalance) || 0) + Number(req.body.amount);
+        } else {
+            caixa.currentBalance = (Number(caixa.currentBalance) || 0) - Number(req.body.amount);
+        }
+    }
+
+    saveData();
+    res.json(newMovement);
   });
   app.get("/api/stock/movements", (req, res) => {
     const { empresa_id } = req.query;

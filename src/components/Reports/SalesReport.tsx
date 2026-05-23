@@ -4,9 +4,10 @@ import {
   Search, Filter, FileText, Download, Printer, ArrowLeft, 
   TrendingUp, TrendingDown, Package, Layers, Calendar, 
   FileCheck, ShieldCheck, Warehouse, History, MoreHorizontal,
-  ChevronDown, RotateCcw, BarChart3, PieChart
+  ChevronDown, RotateCcw, BarChart3, PieChart, FileSpreadsheet
 } from 'lucide-react';
 import { IssuedDocument } from '../../types';
+import { exportToPDF, exportToExcel, handlePrint } from '../../lib/exportUtils';
 
 interface SalesReportProps {
   issuedDocuments: IssuedDocument[];
@@ -90,10 +91,23 @@ export const SalesReport = ({ issuedDocuments, onBack, warehouses = [] }: SalesR
     };
   }, [filteredDocs]);
 
-  const handlePrint = () => window.print();
+  const handleExcelExport = () => {
+    const data = filteredDocs.map(doc => ({
+      'Data': new Date(doc.date || doc.data_emissao || Date.now()).toLocaleDateString(),
+      'Número': doc.invoice_number || doc.numero_documento,
+      'Cliente': doc.client_name || 'Consumidor Final',
+      'Tipo': doc.document_type || 'VENDA',
+      'Incidência': (doc.counter_value || doc.total || 0) - (doc.vat_amount || 0),
+      'IVA': doc.vat_amount || 0,
+      'Desconto': doc.global_discount || 0,
+      'Total': doc.counter_value || doc.total || 0,
+      'Estado': doc.status || 'Ativo'
+    }));
+    exportToExcel(data, `Vendas_${new Date().toISOString().split('T')[0]}.xlsx`, 'Vendas');
+  };
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 pb-20">
+    <div id="sales-report-content" className="space-y-8 animate-in fade-in duration-500 pb-20 print-area">
       <div className="flex items-center justify-between no-print">
         <div className="flex items-center gap-4">
           {onBack && (
@@ -107,10 +121,13 @@ export const SalesReport = ({ issuedDocuments, onBack, warehouses = [] }: SalesR
           </div>
         </div>
         <div className="flex gap-2">
-          <button onClick={handlePrint} className="bg-white border border-zinc-200 text-[#003366] px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-zinc-50 shadow-sm">
+          <button onClick={() => handlePrint('sales-report-content')} className="bg-white border border-zinc-200 text-[#003366] px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-zinc-50 shadow-sm">
             <Printer size={14} /> Imprimir Relatório
           </button>
-          <button className="bg-[#003366] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-black shadow-md">
+          <button onClick={handleExcelExport} className="bg-emerald-600 text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-700 shadow-md">
+            <FileSpreadsheet size={14} /> Baixar Excel
+          </button>
+          <button onClick={() => exportToPDF('sales-report-content', `Relatorio_Vendas_${new Date().toISOString().split('T')[0]}.pdf`)} className="bg-[#003366] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-black shadow-md">
             <Download size={14} /> Exportar Completo
           </button>
         </div>

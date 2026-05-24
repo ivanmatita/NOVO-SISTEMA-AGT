@@ -33,6 +33,9 @@ export interface User {
   role: string;
   created_at?: string;
   company?: any;
+  permission_areas?: string[];
+  nome_empresa?: string;
+  empresa_nome?: string;
 }
 
 export interface AuthContextType {
@@ -124,6 +127,7 @@ export interface InvoiceItem {
   unit_price: number;
   total: number;
   tax_id?: number | string | null;
+  tax_type?: string;
   retencao_fonte?: number;
   tipologia?: string;
   desconto?: number;
@@ -146,19 +150,26 @@ export interface Invoice {
   client_id: number;
   client_name: string;
   invoice_number: string;
+  numero_documento?: string;
   date: string;
+  data_emissao?: string;
   due_date: string;
-  status: 'ativo' | 'anulado' | 'pending' | 'paid';
+  data_vencimento?: string;
+  status: 'ativo' | 'anulado' | 'pending' | 'paid' | 'RASCUNHO';
+  estado_documento?: string;
   total: number;
+  contravalor?: number;
   items?: InvoiceItem[];
   client_email?: string;
   client_nif?: string;
   client_address?: string;
   document_type?: string;
+  tipo_documento?: string;
   country_code?: string;
   service_date?: string;
   service_location?: string;
   series_id?: number;
+  serie?: string;
   currency?: string;
   hash?: string;
   signature?: string;
@@ -166,6 +177,8 @@ export interface Invoice {
   payment_status?: 'pending' | 'partial' | 'paid';
   is_anulado?: boolean;
   work_site_id?: number;
+  work_site_title?: string;
+  local_trabalho?: string;
   cash_box?: string;
   payment_method?: string;
   operator_name?: string;
@@ -173,6 +186,10 @@ export interface Invoice {
   retencao_fonte_total?: number;
   global_discount?: number;
   vat_withholding?: number;
+  vat_withholding_amount?: number;
+  codigo_validacao?: string;
+  imposto?: number;
+  detalhes?: string;
 }
 
 export interface DashboardStats {
@@ -237,7 +254,7 @@ export interface Employee {
   sab_hours?: string;
   dom_hours?: string;
   complemento_salarial?: number;
-  local_trabalho_id?: string;
+  local_trabalho_id?: string | number;
   naturalness?: string;
   nationality?: string;
   subsidy_food?: number;
@@ -434,6 +451,7 @@ export interface IssuedDocument {
   cliente_id: number;
   client_id?: number | string;
   client_name?: string;
+  cliente_nome?: string;
   local_trabalho: string;
   work_site_id?: string;
   work_site_title?: string;
@@ -461,6 +479,7 @@ export interface IssuedDocument {
   total_in_words?: string;
   items?: InvoiceItem[];
   is_anulado?: boolean;
+  is_certified?: boolean;
   payment_status?: 'pending' | 'partial' | 'paid';
   paid_amount?: number;
   paid_at?: string;
@@ -477,7 +496,6 @@ export interface IssuedDocument {
   numero_sequencial?: number;
   serie?: string;
   ano?: number;
-  is_certified?: boolean;
   estado_certificacao?: string;
 }
 
@@ -533,39 +551,53 @@ export interface Supplier {
 export interface SystemUser {
   id: string;
   name: string;
+  email: string;
   profession: string;
   date: string;
-  permission_area: string;
+  permission_areas: string[];
   contact: string;
   morada: string;
   empresa_id: string;
   created_at: string;
+  username?: string;
+  level?: number;
+  is_admin?: boolean;
+  validade?: string;
+  is_active?: boolean;
+  role?: string;
 }
 
 export interface Purchase {
   id: number;
   supplier_id: number;
   supplier_name?: string;
+  client_name?: string;
   document_type?: string;
   purchase_number: string;
+  numero_documento?: string;
   invoice_number?: string;
   date: string;
+  data_emissao?: string;
   due_date?: string;
   payment_method?: string;
-  status: 'pending' | 'completed' | 'cancelled';
+  status: 'pending' | 'completed' | 'cancelled' | 'pendente' | 'paga' | 'cancelada';
   total: number;
   items?: PurchaseItem[];
   document_url?: string;
+  document_path?: string;
   hash?: string;
   codigo?: string;
   work_site?: string;
-  work_site_id?: number;
+  work_site_id?: number | string;
+  work_site_name?: string;
   caixa?: string;
   cash_box?: string;
   data_valor?: string;
   series_id?: number;
   currency?: string;
   reference_purchase_number?: string;
+  reference_document?: string;
+  observations?: string;
 }
 
 export interface LaborTermination {
@@ -606,12 +638,13 @@ export interface EmployeePenalty {
 }
 
 export interface PurchaseItem {
-  id: number;
+  id: number | string;
   purchase_id: number;
   product_id: number;
   description: string;
   quantity: number;
   unit_price: number;
+  tax_rate?: number;
   total: number;
   referencia?: string;
   desconto_linha?: number;

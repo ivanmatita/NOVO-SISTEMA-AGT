@@ -389,7 +389,7 @@ export default function ChurchModule() {
                 <span>Lançar Dízimo / Oferta</span>
                 <button onClick={() => setShowForm(null)} className="text-white/70 hover:text-white">✕</button>
               </div>
-              <form onSubmit={e => { e.preventDefault(); setContributions([...contributions, {...contribForm, id: Date.now()}]); setShowForm(null); }} className="p-6 space-y-4">
+              <form onSubmit={e => { e.preventDefault(); setContributions([...contributions, {...contribForm, id: Date.now(), amount: Number(contribForm.amount)}]); setShowForm(null); }} className="p-6 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="col-span-2">
                     <label className="text-xs font-bold text-zinc-500 uppercase">Tipo de Entrada</label>

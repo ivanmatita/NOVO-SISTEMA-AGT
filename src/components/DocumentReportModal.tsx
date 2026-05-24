@@ -20,9 +20,10 @@ export const DocumentReportModal: React.FC<DocumentReportModalProps> = ({ docume
 
   const totalValue = (document.total || document.counter_value || 0) + (document.vat_amount || 0) - (document.global_discount || 0);
 
-  const displayName = document.supplier_name || document.client_name || 'N/A';
-  const displayId = document.supplier_id || document.client_id || document.cliente_id || 'N/A';
-  const displayAddress = document.supplier_address || document.client_address || 'Endereço não informado';
+  const docAny = document as any;
+  const displayName = docAny.supplier_name || document.client_name || 'N/A';
+  const displayId = docAny.supplier_id || document.client_id || docAny.cliente_id || 'N/A';
+  const displayAddress = docAny.supplier_address || docAny.client_address || docAny.morada_cliente || 'Endereço não informado';
 
   const triggerPrintArea = () => {
     handlePrint('document-report-area');
@@ -95,7 +96,7 @@ export const DocumentReportModal: React.FC<DocumentReportModalProps> = ({ docume
                 <div className="space-y-4">
                   <div className="flex items-center gap-2 mb-1">
                     <User size={14} className="text-[#003366]" />
-                    <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">{document.supplier_name ? 'Fornecedor' : 'Cliente'} / Destinatário</p>
+                    <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">{docAny.supplier_name ? 'Fornecedor' : 'Cliente'} / Destinatário</p>
                   </div>
                   <div>
                     <p className="font-black text-zinc-900 uppercase text-sm leading-tight">{displayName}</p>

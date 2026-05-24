@@ -325,7 +325,7 @@ export default function SchoolModule() {
                 <span>Registar Mensalidade</span>
                 <button onClick={() => setShowForm(null)} className="text-white/70 hover:text-white">✕</button>
               </div>
-              <form onSubmit={e => { e.preventDefault(); setPropinas([...propinas, {...formPropina, id: Date.now()}]); setShowForm(null); }} className="p-6 space-y-4">
+              <form onSubmit={e => { e.preventDefault(); setPropinas([...propinas, {...formPropina, id: Date.now(), valor: Number(formPropina.valor)}]); setShowForm(null); }} className="p-6 space-y-4">
                 <div><label className="text-xs font-bold text-zinc-500 uppercase">Nome do Aluno</label><input required className="w-full bg-zinc-50 border border-zinc-300 p-2 mt-1" onChange={e => setFormPropina({...formPropina, aluno: e.target.value})} /></div>
                 <div className="grid grid-cols-2 gap-4">
                   <div><label className="text-xs font-bold text-zinc-500 uppercase">Mês de Referência</label><input required className="w-full bg-zinc-50 border border-zinc-300 p-2 mt-1" onChange={e => setFormPropina({...formPropina, mes: e.target.value})} /></div>

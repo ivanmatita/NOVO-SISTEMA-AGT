@@ -42,7 +42,7 @@ export const payrollService = {
           is_processed: true,
           updated_at: new Date().toISOString()
         }, {
-          onConflict: 'colaborador_id,mes_referencia'
+          onConflict: 'empresa_id,colaborador_id,mes_referencia'
         });
 
       if (error) {

@@ -140,7 +140,10 @@ import {
   CheckSquare,
   PackageCheck,
   Lock,
-  Star
+  Star,
+  Shield,
+  KeyRound,
+  Pencil
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
@@ -2109,7 +2112,7 @@ const HRModule = ({
     setSabHours(emp.sab_hours || '4');
     setDomHours(emp.dom_hours || '0');
     setComplementoSalarial(String(emp.complemento_salarial || '0'));
-    setLocalTrabalhoId(emp.local_trabalho_id || '');
+    setLocalTrabalhoId(String(emp.local_trabalho_id || ''));
     setSolicitanteAdmissao(emp.solicitante_admissao || '');
     setMotivoAdmissao(emp.motivo_admissao || '');
     setReparticaoFiscal(emp.reparticao_fiscal || '');
@@ -3464,7 +3467,7 @@ const HRModule = ({
                 className="bg-white border border-zinc-200 p-6 flex flex-col items-start gap-4 hover:border-[#003366] hover:shadow-md transition-all group text-left h-full"
               >
                 <div className="w-12 h-12 bg-zinc-50 rounded-none flex items-center justify-center group-hover:bg-[#003366] group-hover:text-white transition-colors">
-                  {React.cloneElement(tab.icon as React.ReactElement, { size: 24 })}
+                  {React.cloneElement(tab.icon as any, { size: 24 })}
                 </div>
                 <div>
                   <h4 className="font-black text-[#003366] text-xs uppercase tracking-widest mb-1">{tab.label}</h4>
@@ -3700,12 +3703,41 @@ const HRModule = ({
                             <td className="px-6 py-4 text-right font-mono">{Number(receipt.employee.salary).toLocaleString('pt-AO', { style: 'currency', currency: 'AOA' })}</td>
                             <td className="px-6 py-4 text-right font-mono text-[#16A34A]">{receipt.calculations.totalNet.toLocaleString('pt-AO', { style: 'currency', currency: 'AOA' })}</td>
                             <td className="px-6 py-4 text-center">
-                              <button 
-                                onClick={() => setSelectedReceipt(receipt)}
-                                className="text-[#003366] hover:text-[#F27D26] transition-colors uppercase text-[10px] font-black tracking-widest flex items-center gap-1 mx-auto"
-                              >
-                                <Eye size={14} /> Ver Recibo
-                              </button>
+                              <div className="flex items-center justify-center gap-4">
+                                <button 
+                                  onClick={() => setSelectedReceipt(receipt)}
+                                  className="text-[#003366] hover:text-[#002244] transition-colors uppercase text-[10px] font-black tracking-widest flex items-center gap-1"
+                                >
+                                  <Eye size={14} /> Ver Recibo
+                                </button>
+                                <button
+                                  onClick={async () => {
+                                    if (window.confirm(`Tem a certeza que pretende desprocessar o salário de ${receipt.employee.name} para o período ${receipt.period}?`)) {
+                                      try {
+                                        if (user?.empresa_id) {
+                                           await payrollService.desprocessarPayroll(user.empresa_id, String(receipt.employee.id), receipt.period);
+                                        }
+                                        setProcessedReceipts(prev => prev.filter(r => r.id !== receipt.id));
+                                        
+                                        const attendanceKey = `${receipt.employee.id}_${receipt.period}`;
+                                        setProcessedAttendance(prev => {
+                                          const newState = { ...prev };
+                                          delete newState[attendanceKey];
+                                          return newState;
+                                        });
+                                        
+                                        alert(`Salário de ${receipt.employee.name} desprocessado com sucesso!`);
+                                      } catch (err) {
+                                        console.error('Erro ao desprocessar:', err);
+                                        alert('Erro de ligação ao servidor.');
+                                      }
+                                    }
+                                  }}
+                                  className="text-red-500 hover:text-red-700 transition-colors uppercase text-[10px] font-black tracking-widest flex items-center gap-1"
+                                >
+                                  <Trash2 size={14} /> Desprocessar
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))
@@ -5173,7 +5205,7 @@ const HRModule = ({
                   setIsProcessingComplete(true);
                   
                   if (user?.empresa_id) {
-                     Promise.all(receipts.map(rec => payrollService.savePayroll(user.empresa_id, String(rec.id), selectedMonth, rec))).catch(err => {
+                     Promise.all(receipts.map(rec => payrollService.savePayroll(user.empresa_id, String(rec.employee.id), selectedMonth, rec))).catch(err => {
                         console.error('Failed to sync payrolls to supabase', err);
                      });
                   }
@@ -6976,7 +7008,7 @@ const HRModule = ({
                   {/* Hidden cloned printable block used during full collection print trigger */}
                   <div className="hidden">
                     <div id={`employee-card-${emp.id}`}>
-                       <div className="border border-zinc-200" style={{ width: '360px', height: '220px', display: 'flex', flexDirection: 'column', backgroundColor: '#fff', relative: 'true' }}>
+                       <div className="border border-zinc-200" style={{ width: '360px', height: '220px', display: 'flex', flexDirection: 'column', backgroundColor: '#fff', position: 'relative' }}>
                          <div style={{ height: '6px', display: 'flex' }}>
                            <div style={{ width: '66%', backgroundColor: '#003366' }}></div>
                            <div style={{ width: '34%', backgroundColor: '#F27D26' }}></div>
@@ -8940,10 +8972,21 @@ const HRModule = ({
                   Cancelar
                 </button>
                 <button 
-                  onClick={() => {
-                    setProcessedReceipts(prev => [...prev, draftReceipt]);
-                    setDraftReceipt(null);
-                    setActiveTab('salary_receipts');
+                  onClick={async () => {
+                    try {
+                      if (user?.empresa_id && draftReceipt) {
+                        await payrollService.savePayroll(user.empresa_id, String(draftReceipt.employee.id), draftReceipt.period, draftReceipt);
+                      }
+                      setProcessedReceipts(prev => [...prev, draftReceipt]);
+                      const attendanceKey = `${draftReceipt.employee.id}_${draftReceipt.period}`;
+                      setProcessedAttendance(prev => ({...prev, [attendanceKey]: true}));
+                      setDraftReceipt(null);
+                      setActiveTab('salary_receipts');
+                      alert('Recibo criado e gravado com sucesso!');
+                    } catch (err) {
+                      console.error('Erro ao gravar recibo:', err);
+                      alert('Erro ao gravar recibo.');
+                    }
                   }}
                   className="px-6 py-2 text-[10px] font-black uppercase tracking-widest bg-[#16A34A] text-white hover:bg-[#15803d] transition-all shadow-lg"
                 >
@@ -11066,7 +11109,7 @@ const POSModule = ({ products, onRefresh, caixas, onSaveDocument, sessions, fisc
   />;
 };
 
-const SpecializedManagementModule = () => {
+const SpecializedManagementModule = ({ activeTab, setActiveTab }: { activeTab?: string, setActiveTab?: (x: string) => void }) => {
   const [activeModule, setActiveModule] = useState<string | null>(null);
 
   if (activeModule === 'literacy') return (
@@ -11158,19 +11201,56 @@ const UsersSettings = () => {
   const { user } = useAuth();
   const [users, setUsers] = useState<SystemUser[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [editingUser, setEditingUser] = useState<any | null>(null);
+  
+  // States for system user forms
   const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [profession, setProfession] = useState('');
   const [date, setDate] = useState('');
-  const [permissionArea, setPermissionArea] = useState('');
+  const [permissionAreas, setPermissionAreas] = useState<string[]>([]);
   const [contact, setContact] = useState('');
   const [morada, setMorada] = useState('');
+  
+  // New States requested by custom columns
+  const [usernameState, setUsernameState] = useState('');
+  const [levelState, setLevelState] = useState(1);
+  const [isAdminState, setIsAdminState] = useState(false);
+  const [validadeState, setValidadeState] = useState('');
+  
+  // Quick submodals states
+  const [permissionModalUser, setPermissionModalUser] = useState<SystemUser | null>(null);
+  const [resetPasswordUser, setResetPasswordUser] = useState<SystemUser | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+
+  const workspaceOptions = [
+    { id: 'dashboard', label: 'DASHBOARD' },
+    { id: 'attendance_map', label: 'ASSIDUIDADE' },
+    { id: 'professions', label: 'PROFISSÕES' },
+    { id: 'list', label: 'COLABORADORES' },
+    { id: 'salary_procedures', label: 'PROCEDIMENTOS DE SALÁRIO' },
+    { id: 'payroll', label: 'PROCESSAMENTO' },
+    { id: 'pay_salary', label: 'PAGAR SALÁRIO' },
+    { id: 'salary_receipts', label: 'RECIBOS DE SALÁRIO' },
+    { id: 'contracts', label: 'GESTÃO DE CONTRATOS' },
+  ];
 
   const fetchUsers = async () => {
+    if (!user?.empresa_id) {
+      console.warn("User empresa_id is missing, skipping fetchUsers");
+      return;
+    }
     try {
-      const res = await fetchWithAuth(`/api/system-users?empresa_id=${user?.empresa_id}`);
+      const res = await fetchWithAuth(`/api/system-users?empresa_id=${user.empresa_id}`);
       if (res.ok) {
         const data = await res.json();
         setUsers(data);
+      } else {
+        const text = await res.text();
+        console.error('Error fetching users:', text);
       }
     } catch (error) {
       console.error('Error fetching users:', error);
@@ -11183,121 +11263,688 @@ const UsersSettings = () => {
     }
   }, [user?.empresa_id]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleEditUser = (u: any) => {
+    setEditingUser(u);
+    setName(u.name || '');
+    setEmail(u.email || '');
+    setPassword('');
+    setConfirmPassword('');
+    setProfession(u.profession || '');
+    setDate(u.date || '');
+    setPermissionAreas(u.permission_areas || (u.permission_area ? [u.permission_area] : []));
+    setContact(u.contact || '');
+    setMorada(u.morada || '');
+    setUsernameState(u.username || u.email?.split('@')[0] || '');
+    setLevelState(u.level !== undefined ? Number(u.level) : (u.role === 'admin' ? 5 : 1));
+    setIsAdminState(u.is_admin || u.role === 'admin' || false);
+    setValidadeState(u.validade || u.date || '');
+    setShowForm(true);
+  };
+
+  const handleDeleteUser = async (id: string) => {
+    if (!confirm("Tem a certeza que deseja eliminar este utilizador do sistema? Esta ação também irá deletar a respetiva conta de autenticação.")) return;
     try {
-      const res = await fetchWithAuth('/api/system-users', {
+      const res = await fetchWithAuth(`/api/system-users/${id}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        alert("Utilizador removido com sucesso!");
+        fetchUsers();
+      } else {
+        const errorData = await res.json();
+        alert(`Erro ao eliminar utilizador: ${errorData.error || 'Erro desconhecido'}`);
+      }
+    } catch (err) {
+      console.error('Error deleting user:', err);
+    }
+  };
+
+  const handleToggleStatus = async (userToToggle: SystemUser) => {
+    const nextStatus = userToToggle.is_active === false ? true : false;
+    try {
+      const res = await fetchWithAuth(`/api/system-users/${userToToggle.id}/toggle-status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: nextStatus })
+      });
+      if (res.ok) {
+        // Toggle in local memory quickly for extreme performance and instantaneous responsiveness
+        setUsers(prevUsers => 
+          prevUsers.map(u => u.id === userToToggle.id ? { ...u, is_active: nextStatus } : u)
+        );
+      } else {
+        const errorData = await res.json();
+        alert(`Erro ao alterar estado: ${errorData.error || 'Erro desconhecido'}`);
+      }
+    } catch (err) {
+      console.error('Error toggling status:', err);
+    }
+  };
+
+  const handleOpenQuickPermissions = (u: SystemUser) => {
+    setPermissionModalUser(u);
+    setPermissionAreas(u.permission_areas || []);
+  };
+
+  const handleSaveQuickPermissions = async () => {
+    if (!permissionModalUser) return;
+    try {
+      const res = await fetchWithAuth(`/api/system-users/${permissionModalUser.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name,
-          profession,
-          date,
-          permission_area: permissionArea,
-          contact,
-          morada,
-          empresa_id: user?.empresa_id
+          ...permissionModalUser,
+          permission_areas: permissionAreas
         })
       });
       if (res.ok) {
+        alert("Permissões atualizadas com sucesso!");
+        setPermissionModalUser(null);
         fetchUsers();
-        setShowForm(false);
-        setName(''); setProfession(''); setDate(''); setPermissionArea(''); setContact(''); setMorada('');
+      } else {
+        const err = await res.json();
+        alert(`Erro ao salvar permissões: ${err.error || 'Erro desconhecido'}`);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleOpenResetPassword = (u: SystemUser) => {
+    setResetPasswordUser(u);
+    setNewPassword('');
+    setConfirmNewPassword('');
+  };
+
+  const handleResetPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetPasswordUser) return;
+    if (!newPassword || newPassword !== confirmNewPassword) {
+      alert("As senhas não coincidem ou estão vazias!");
+      return;
+    }
+    try {
+      const res = await fetchWithAuth(`/api/system-users/${resetPasswordUser.id}/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: newPassword })
+      });
+      if (res.ok) {
+        alert("Senha redefinida com sucesso!");
+        setResetPasswordUser(null);
+        setNewPassword('');
+        setConfirmNewPassword('');
+      } else {
+        const err = await res.json();
+        alert(`Erro ao redefinir senha: ${err.error || 'Erro desconhecido'}`);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    console.log("handleSubmit called");
+    if (password && password !== confirmPassword) {
+      alert("As senhas não coincidem!");
+      return;
+    }
+    if (permissionAreas.length === 0) {
+      alert("Selecione pelo menos uma área de permissão!");
+      return;
+    }
+
+    const payload: any = {
+      name,
+      email,
+      profession,
+      date: validadeState || date || null,
+      permission_areas: permissionAreas,
+      contact,
+      morada,
+      username: usernameState || email.split('@')[0],
+      level: Number(levelState),
+      is_admin: isAdminState,
+      validade: validadeState || null
+    };
+    if (password) {
+      payload.password = password;
+    }
+
+    try {
+      if (editingUser) {
+        console.log(`Attempting to PUT to /api/system-users/${editingUser.id}`);
+        const res = await fetchWithAuth(`/api/system-users/${editingUser.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          console.log("Success updating user");
+          fetchUsers();
+          setShowForm(false);
+          setEditingUser(null);
+          setName(''); setEmail(''); setPassword(''); setConfirmPassword(''); setProfession(''); setDate(''); setPermissionAreas([]); setContact(''); setMorada('');
+          setUsernameState(''); setLevelState(1); setIsAdminState(false); setValidadeState('');
+        } else {
+          let errorData;
+          const rawBody = await res.text();
+          try {
+            errorData = JSON.parse(rawBody);
+          } catch (jsonErr) {
+            console.error('Non-JSON error from server (PUT):', rawBody);
+            errorData = { error: `Server error ${res.status}: ${rawBody.substring(0, 100)}...` };
+          }
+          alert(`Erro ao editar utilizador: ${errorData.error || 'Erro desconhecido'}`);
+        }
+      } else {
+        if (!password) {
+          alert("Defina uma senha para poder registar o novo utilizador!");
+          return;
+        }
+        console.log("Attempting to POST to /api/system-users");
+        const res = await fetchWithAuth('/api/system-users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...payload,
+            password,
+            empresa_id: user?.empresa_id,
+            company_name: user?.company?.nome_empresa || user?.username || null,
+            created_by: user?.id
+          })
+        });
+        console.log("POST res status:", res.status);
+        if (res.ok) {
+          console.log("Success creating user");
+          fetchUsers();
+          setShowForm(false);
+          setName(''); setEmail(''); setPassword(''); setConfirmPassword(''); setProfession(''); setDate(''); setPermissionAreas([]); setContact(''); setMorada('');
+          setUsernameState(''); setLevelState(1); setIsAdminState(false); setValidadeState('');
+        } else {
+          let errorData;
+          const rawBody = await res.text();
+          try {
+            errorData = JSON.parse(rawBody);
+          } catch (jsonErr) {
+            console.error('Non-JSON error from server (POST):', rawBody);
+            errorData = { error: `Server error ${res.status}: ${rawBody.substring(0, 100)}...` };
+          }
+          console.error('Error response creating user:', errorData);
+          alert(`Erro ao criar utilizador: ${errorData.error || 'Erro desconhecido'}`);
+        }
       }
     } catch (error) {
-      console.error('Error creating user:', error);
+      console.error('Error saving user:', error);
+      alert('Erro capturado ao tentar salvar utilizador');
     }
   };
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h3 className="text-lg font-bold text-[#003366]">Utilizadores do Sistema</h3>
+        <div>
+          <h3 className="text-xl font-bold text-[#003366] tracking-tight">Utilizadores do Sistema</h3>
+          <p className="text-xs text-zinc-500 mt-1">Gerencie os acessos, permissões específicas e status dos utilizadores autorizados pela empresa.</p>
+        </div>
         <button 
-          onClick={() => setShowForm(true)}
-          className="bg-[#003366] text-white px-4 py-2 text-sm font-bold rounded-none hover:bg-[#002244]"
+          onClick={() => {
+            setEditingUser(null);
+            setName(''); setEmail(''); setPassword(''); setConfirmPassword(''); setProfession(''); setDate(''); setPermissionAreas([]); setContact(''); setMorada('');
+            setUsernameState(''); setLevelState(1); setIsAdminState(false); setValidadeState('');
+            setShowForm(true);
+          }}
+          className="bg-[#003366] text-white px-5 py-2.5 text-xs font-black uppercase tracking-wider rounded-none hover:bg-[#002244] transition-all flex items-center gap-2 border border-[#003366]"
         >
-          Criar Utilizador
+          <PlusCircle size={14} /> Novo Utilizador
         </button>
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 overflow-y-auto">
           <div className="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm" onClick={() => setShowForm(false)} />
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="relative w-full max-w-2xl bg-white p-8 rounded-none shadow-2xl"
+            className="relative w-full max-w-3xl bg-white p-8 rounded-none shadow-2xl border-t-4 border-[#003366] max-h-[90vh] overflow-y-auto"
           >
-            <h3 className="font-bold text-[#003366] mb-6 text-xl">Novo Utilizador</h3>
+            <h3 className="font-bold text-[#003366] mb-6 text-xl tracking-tight uppercase">
+              {editingUser ? 'Alterar Utilizador' : 'Registar Novo Utilizador'}
+            </h3>
+            
             <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Nome</label>
-                <input type="text" value={name} onChange={e => setName(e.target.value)} required className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" />
+              <div className="space-y-1 md:col-span-2 bg-[#003366]/5 p-4 border-l-2 border-[#003366]">
+                <p className="text-xs font-bold text-[#003366] uppercase tracking-wider">Identificação do Utilizador</p>
+                <p className="text-[10px] text-zinc-500">Insira as credenciais básicas que dão acesso e identificam a pessoa no sistema.</p>
               </div>
+
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Profissão</label>
-                <input type="text" value={profession} onChange={e => setProfession(e.target.value)} className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" />
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Nome do Utilizador</label>
+                <input 
+                  type="text" 
+                  value={name} 
+                  onChange={e => setName(e.target.value)} 
+                  required 
+                  className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-[#003366] focus:outline-none focus:border-[#003366] text-sm" 
+                  placeholder="Nome Completo"
+                />
               </div>
+
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data</label>
-                <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" />
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">UserName (Login secundário)</label>
+                <input 
+                  type="text" 
+                  value={usernameState} 
+                  onChange={e => setUsernameState(e.target.value)} 
+                  className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" 
+                  placeholder="Ex: joao.silva"
+                />
               </div>
+
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Área de Permissão</label>
-                <select value={permissionArea} onChange={e => setPermissionArea(e.target.value)} className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm">
-                  <option value="">Selecionar Área</option>
-                  <option value="admin">Administrador</option>
-                  <option value="faturacao">Faturação</option>
-                  <option value="rh">Recursos Humanos</option>
-                  <option value="financeiro">Financeiro</option>
-                </select>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Email (Utilizado para login)</label>
+                <input 
+                  type="email" 
+                  value={email} 
+                  onChange={e => {
+                    setEmail(e.target.value);
+                    if (!usernameState) setUsernameState(e.target.value.split('@')[0]);
+                  }} 
+                  required 
+                  className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" 
+                  placeholder="email@empresa.com"
+                />
               </div>
+
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Contacto</label>
-                <input type="text" value={contact} onChange={e => setContact(e.target.value)} className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" />
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Contacto Telefónico</label>
+                <input 
+                  type="text" 
+                  value={contact} 
+                  onChange={e => setContact(e.target.value)} 
+                  className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" 
+                  placeholder="Nº de Telefone"
+                />
               </div>
+
+              <div className="space-y-1 bg-amber-50/50 p-4 border border-amber-200/60 rounded-none md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-amber-700 uppercase tracking-wider block">Nível de Acesso (Level)</label>
+                  <select 
+                    value={levelState} 
+                    onChange={e => setLevelState(Number(e.target.value))} 
+                    className="w-full bg-white border border-amber-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-amber-500 text-sm"
+                  >
+                    <option value={1}>1 - Operador Padrão</option>
+                    <option value={3}>3 - Supervisor</option>
+                    <option value={5}>5 - Administrador</option>
+                    <option value={8}>8 - Diretor Geral</option>
+                    <option value={10}>10 - Sócio / Multi-Admin</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-amber-700 uppercase tracking-wider block">Validade / Expiração</label>
+                  <input 
+                    type="date" 
+                    value={validadeState} 
+                    onChange={e => setValidadeState(e.target.value)} 
+                    className="w-full bg-white border border-amber-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-amber-500 text-sm"
+                  />
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsAdminState(!isAdminState)}
+                    className={`h-9 w-20 flex items-center justify-center border font-black uppercase text-[10px] tracking-wider transition-all mt-4 ${isAdminState ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-zinc-100 text-zinc-500 border-zinc-300'}`}
+                  >
+                    {isAdminState ? 'ADMIN' : 'USER'}
+                  </button>
+                  <div className="mt-4">
+                    <p className="text-[10px] font-bold text-zinc-600">Cargo de Administrador</p>
+                    <p className="text-[8px] text-zinc-400 font-bold uppercase">Acesso irrestrito a configurações</p>
+                  </div>
+                </div>
+              </div>
+
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Morada</label>
-                <input type="text" value={morada} onChange={e => setMorada(e.target.value)} className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" />
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Senha {editingUser && '(Deixe em branco para não alterar)'}</label>
+                <input 
+                  type="password" 
+                  value={password} 
+                  onChange={e => setPassword(e.target.value)} 
+                  required={!editingUser} 
+                  className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" 
+                  placeholder="••••••••"
+                />
               </div>
-              <div className="md:col-span-2 flex justify-end gap-3 mt-6">
-                <button type="button" onClick={() => setShowForm(false)} className="text-zinc-500 hover:text-zinc-700 text-sm font-medium">Cancelar</button>
-                <button type="submit" className="bg-[#003366] text-white font-bold px-6 py-2 rounded-none hover:bg-[#002244] transition-all text-sm">Registar</button>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Confirmar Senha</label>
+                <input 
+                  type="password" 
+                  value={confirmPassword} 
+                  onChange={e => setConfirmPassword(e.target.value)} 
+                  required={!!password} 
+                  className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" 
+                  placeholder="••••••••"
+                />
+              </div>
+
+              <div className="space-y-1 md:col-span-2">
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-1">Módulos e Áreas de Permissão</label>
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 p-3 bg-zinc-50 border border-zinc-300">
+                  {workspaceOptions.map(opt => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        setPermissionAreas(prev => 
+                          prev.includes(opt.id) ? prev.filter(a => a !== opt.id) : [...prev, opt.id]
+                        );
+                      }}
+                      className={`flex items-center gap-2 px-3 py-2 text-left text-[10px] font-black uppercase border transition-all ${permissionAreas.includes(opt.id) ? 'bg-[#003366] text-white border-[#003366]' : 'bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-100'}`}
+                    >
+                      <span className={`w-2 h-2 rounded-full inline-block ${permissionAreas.includes(opt.id) ? 'bg-white' : 'bg-[#003366]'}`} />
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Cargo / Profissão</label>
+                <input type="text" value={profession} onChange={e => setProfession(e.target.value)} className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" placeholder="Ex: Contabilista" />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Morada</label>
+                <input type="text" value={morada} onChange={e => setMorada(e.target.value)} className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" placeholder="Ex: Luanda" />
+              </div>                
+
+              <div className="md:col-span-2 flex justify-end gap-3 mt-6 pt-6 border-t border-zinc-100">
+                <button 
+                  type="button" 
+                  onClick={() => setShowForm(false)} 
+                  className="bg-zinc-100 text-zinc-600 hover:bg-zinc-200 font-bold uppercase text-xs px-5 py-2.5 rounded-none transition-all"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit" 
+                  className="bg-[#003366] text-white hover:bg-[#002244] font-black uppercase text-xs px-6 py-2.5 rounded-none transition-all border border-[#003366]"
+                >
+                  {editingUser ? 'Salvar Alterações' : 'Registar Utilizador'}
+                </button>
               </div>
             </form>
           </motion.div>
         </div>
       )}
 
-      <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
-        <table className="w-full text-left border-collapse">
+      {/* Quick Permission Modal */}
+      {permissionModalUser && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm" onClick={() => setPermissionModalUser(null)} />
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="relative w-full max-w-lg bg-white p-8 rounded-none shadow-2xl border-t-4 border-amber-500"
+          >
+            <h3 className="font-bold text-[#003366] text-lg uppercase mb-2">Permissões Específicas</h3>
+            <p className="text-xs text-zinc-500 mb-6 font-medium">Controlar as permissões de acesso do utilizador: <span className="font-bold text-[#003366]">{permissionModalUser.name}</span></p>
+            
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-2 p-1 max-h-60 overflow-y-auto">
+                {workspaceOptions.map(opt => {
+                  const active = permissionAreas.includes(opt.id);
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        setPermissionAreas(prev => 
+                          prev.includes(opt.id) ? prev.filter(a => a !== opt.id) : [...prev, opt.id]
+                        );
+                      }}
+                      className={`flex items-center justify-between px-4 py-3 border text-xs font-bold uppercase transition-all ${active ? 'bg-[#003366] text-white border-[#003366]' : 'bg-zinc-50 text-zinc-600 border-zinc-200'}`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${active ? 'bg-emerald-400' : 'bg-zinc-400'}`} />
+                        {opt.label}
+                      </span>
+                      <span>{active ? 'ATIVO' : 'DESATIVADO'}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4 border-t border-zinc-100">
+                <button 
+                  onClick={() => setPermissionModalUser(null)} 
+                  className="bg-zinc-100 hover:bg-zinc-200 text-zinc-600 text-xs font-bold uppercase px-4 py-2"
+                >
+                  Fechar
+                </button>
+                <button 
+                  onClick={handleSaveQuickPermissions} 
+                  className="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold uppercase px-4 py-2"
+                >
+                  Salvar Permissões
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Reset Password Modal */}
+      {resetPasswordUser && (
+        <form onSubmit={handleResetPasswordSubmit} className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm" onClick={() => setResetPasswordUser(null)} />
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="relative w-full max-w-sm bg-white p-8 rounded-none shadow-2xl border-t-4 border-amber-500"
+          >
+            <h3 className="font-bold text-[#003366] text-lg uppercase mb-1">Redefinir Senha</h3>
+            <p className="text-xs text-zinc-500 mb-6 font-medium">Insira a nova senha para o utilizador: <span className="font-bold text-[#003366]">{resetPasswordUser.name}</span></p>
+            
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">Nova Senha</label>
+                <input 
+                  type="password"
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]"
+                  placeholder="Mínimo 6 caracteres"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">Confirmar Nova Senha</label>
+                <input 
+                  type="password"
+                  value={confirmNewPassword}
+                  onChange={e => setConfirmNewPassword(e.target.value)}
+                  className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]"
+                  placeholder="Repita a senha"
+                  required
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4 border-t border-zinc-100">
+                <button 
+                  type="button"
+                  onClick={() => setResetPasswordUser(null)} 
+                  className="bg-zinc-100 hover:bg-zinc-200 text-zinc-600 text-xs font-bold uppercase px-4 py-2"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit"
+                  className="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold uppercase px-4 py-2"
+                >
+                  Redefinir
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </form>
+      )}
+
+      {/* Main Table View */}
+      <div className="bg-white border border-zinc-200 rounded-none overflow-x-auto shadow-sm">
+        <table className="w-full text-left border-collapse min-w-[1100px]">
           <thead>
-            <tr className="bg-[#003366] text-white text-[11px] uppercase tracking-wider font-bold">
-              <th className="px-6 py-4">Nome</th>
-              <th className="px-6 py-4">Profissão</th>
-              <th className="px-6 py-4">Área</th>
-              <th className="px-6 py-4">Contacto</th>
-              <th className="px-6 py-4">Data</th>
+            <tr className="bg-[#003366] text-white text-[10px] uppercase tracking-wider font-bold">
+              <th className="px-3 py-4 text-center">Ln</th>
+              <th className="px-4 py-4">Utilizador</th>
+              <th className="px-4 py-4">UserName</th>
+              <th className="px-4 py-4">Validade</th>
+              <th className="px-3 py-4 text-center">Admin</th>
+              <th className="px-3 py-4 text-center">Level</th>
+              <th className="px-4 py-4">Email</th>
+              <th className="px-4 py-4">Contacto</th>
+              <th className="px-4 py-4 text-center">Status</th>
+              <th className="px-3 py-4 text-center">MFA</th>
+              <th className="px-3 py-4 text-center">Log</th>
+              <th className="px-4 py-4 text-center">OPC</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-zinc-100">
-            {users.map((user) => (
-              <tr key={user.id} className="hover:bg-zinc-50 text-sm">
-                <td className="px-6 py-4 font-bold text-[#003366]">{user.name}</td>
-                <td className="px-6 py-4 text-zinc-600">{user.profession}</td>
-                <td className="px-6 py-4">
-                  <span className="px-2 py-1 bg-zinc-100 text-zinc-600 text-[10px] font-bold uppercase rounded-none">
-                    {user.permission_area}
-                  </span>
-                </td>
-                <td className="px-6 py-4 text-zinc-500">{user.contact}</td>
-                <td className="px-6 py-4 text-zinc-400">{user.date}</td>
-              </tr>
-            ))}
+          <tbody className="divide-y divide-zinc-200">
+            {users.map((u, idx) => {
+              const isAdmin = u.is_admin || u.role === 'admin';
+              const userActiveStatus = u.is_active !== false; // Active by default if not false
+              return (
+                <tr key={u.id} className="hover:bg-zinc-50 text-xs align-middle">
+                  {/* Ln column */}
+                  <td className="px-3 py-4 font-mono text-zinc-500 text-center font-bold bg-zinc-50/50">{idx + 1}</td>
+                  
+                  {/* Utilizador column */}
+                  <td className="px-4 py-4 font-bold text-[#003366] text-[13px]">{u.name}</td>
+                  
+                  {/* UserName column */}
+                  <td className="px-4 py-4">
+                    <span className="font-mono bg-zinc-100 text-[#003366] px-2 py-0.5 rounded-none border border-zinc-200">
+                      {u.username || u.email?.split('@')[0]}
+                    </span>
+                  </td>
+                  
+                  {/* Validade column */}
+                  <td className="px-4 py-4 font-medium text-zinc-600 font-mono">
+                    {u.validade || u.date || <span className="text-zinc-400">Pendente</span>}
+                  </td>
+                  
+                  {/* Admin column */}
+                  <td className="px-3 py-4 text-center">
+                    {isAdmin ? (
+                      <span className="inline-flex items-center justify-center w-6 h-6 bg-emerald-100 text-emerald-800 rounded-full font-black text-xs" title="Administrador">✓</span>
+                    ) : (
+                      <span className="text-zinc-300 font-bold">—</span>
+                    )}
+                  </td>
+                  
+                  {/* Level column */}
+                  <td className="px-3 py-4 text-center">
+                    <span className={`px-2 py-0.5 text-[9px] font-black uppercase rounded-none border ${
+                      (u.level || 0) >= 8 ? 'bg-[#003366] text-white border-[#003366]' :
+                      (u.level || 0) >= 5 ? 'bg-amber-100 text-amber-800 border-amber-300' :
+                      'bg-zinc-100 text-zinc-600 border-zinc-300'
+                    }`}>
+                      {u.level || (isAdmin ? 5 : 1)}
+                    </span>
+                  </td>
+                  
+                  {/* Email column */}
+                  <td className="px-4 py-4 text-zinc-600 font-mono">{u.email}</td>
+                  
+                  {/* Contacto column */}
+                  <td className="px-4 py-4 text-zinc-600 font-mono">{u.contact || 'N/D'}</td>
+                  
+                  {/* Status column (ON/OFF Toggle) */}
+                  <td className="px-4 py-4">
+                    <div className="flex items-center justify-center">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleStatus(u)}
+                        className={`relative inline-flex h-6 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${userActiveStatus ? 'bg-emerald-500' : 'bg-zinc-300'}`}
+                        title={userActiveStatus ? "Clique para Bloquear Utilizador" : "Clique para Ativar Utilizador"}
+                      >
+                        <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${userActiveStatus ? 'translate-x-6' : 'translate-x-0'}`} />
+                      </button>
+                    </div>
+                  </td>
+                  
+                  {/* MFA column */}
+                  <td className="px-3 py-4 text-center font-mono">
+                    <span className="text-[10px] font-black text-zinc-400 block tracking-wide uppercase">OFF</span>
+                  </td>
+                  
+                  {/* Log column */}
+                  <td className="px-3 py-4 text-center">
+                    <div className="flex justify-center items-center">
+                      {userActiveStatus ? (
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" title="Ativo / Online"></span>
+                        </span>
+                      ) : (
+                        <span className="h-2 w-2 rounded-full bg-zinc-300 inline-block" title="Bloqueado / Inativo"></span>
+                      )}
+                    </div>
+                  </td>
+                  
+                  {/* OPC Actions column */}
+                  <td className="px-4 py-4">
+                    <div className="flex items-center justify-center gap-1">
+                      {/* Editar Action */}
+                      <button 
+                        onClick={() => handleEditUser(u)} 
+                        className="p-1 px-1.5 bg-[#003366]/5 hover:bg-[#003366] text-[#003366] hover:text-white border border-[#003366]/10 transition-all font-bold rounded-none flex items-center justify-center"
+                        title="Editar Utilizador"
+                      >
+                        <Pencil size={11} />
+                      </button>
+                      
+                      {/* Permissão Action */}
+                      <button 
+                        onClick={() => handleOpenQuickPermissions(u)} 
+                        className="p-1 px-1.5 bg-amber-500/5 hover:bg-amber-500 text-amber-700 hover:text-white border border-amber-500/10 transition-all font-bold rounded-none flex items-center justify-center"
+                        title="Permissões Rápidas"
+                      >
+                        <Shield size={11} />
+                      </button>
+                      
+                      {/* Reset Pass Action */}
+                      <button 
+                        onClick={() => handleOpenResetPassword(u)} 
+                        className="p-1 px-1.5 bg-zinc-100 hover:bg-zinc-800 text-zinc-700 hover:text-white border border-zinc-200 transition-all font-bold rounded-none flex items-center justify-center"
+                        title="Redefinir Senha do Utilizador"
+                      >
+                        <KeyRound size={11} />
+                      </button>
+
+                      {/* Delete Action option */}
+                      <button 
+                        onClick={() => handleDeleteUser(u.id)} 
+                        className="p-1 px-1.5 bg-red-100/5 hover:bg-red-600 text-red-600 hover:text-white border border-red-200/10 transition-all font-bold rounded-none flex items-center justify-center"
+                        title="Eliminar Utilizador do Sistema"
+                      >
+                        <Trash2 size={11} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
             {users.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-6 py-12 text-center text-zinc-400 italic">Nenhum utilizador registado.</td>
+                <td colSpan={12} className="px-6 py-12 text-center text-zinc-400 italic">Nenhum utilizador registado nesta empresa.</td>
               </tr>
             )}
           </tbody>
@@ -13450,6 +14097,12 @@ const SettingsModule = ({ companyData, onRefreshData, alerts, setAlerts, onEditA
         >
           Utilizadores
         </button>
+        <button 
+          onClick={() => setActiveTab('actividades')}
+          className={`pb-2 text-sm font-bold ${activeTab === 'actividades' ? 'text-[#003366] border-b-2 border-[#003366]' : 'text-zinc-500 hover:text-zinc-800'}`}
+        >
+          Gestão de Atividades
+        </button>
       </div>
 
       {activeTab === 'geral' && (
@@ -13521,6 +14174,7 @@ const SettingsModule = ({ companyData, onRefreshData, alerts, setAlerts, onEditA
       {activeTab === 'metrica' && <MetricsModule onRefreshData={onRefreshData} />}
       {activeTab === 'impostos' && <TaxesModule onRefreshData={onRefreshData} />}
       {activeTab === 'utilizadores' && <UsersSettings />}
+      {activeTab === 'actividades' && <ActivitiesManagementModule />}
     </div>
   );
 };
@@ -19986,7 +20640,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
   const [counterValue, setCounterValue] = useState<string>('0');
   const [globalDiscount, setGlobalDiscount] = useState<string>('0');
   const [serviceDate, setServiceDate] = useState(new Date().toISOString().split('T')[0]);
-  const [items, setItems] = useState<Partial<InvoiceItem>[]>(
+  const [items, setItems] = useState<any[]>(
     initialData?.items && fixedDocumentType !== 'Pagamento' ? initialData.items.map(i => ({...i})) : []
   );
   const [cashBox, setCashBox] = useState(initialData?.caixa || '');
@@ -22395,7 +23049,7 @@ const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas
     }
   };
 
-  const handleDeleteSupplier = async (id: string) => {
+  const handleDeleteSupplier = async (id: number | string) => {
     if (!confirm('Tem a certeza que deseja apagar este fornecedor?')) return;
     try {
       if (!user?.empresa_id) return;
@@ -22407,7 +23061,7 @@ const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas
         .eq('empresa_id', user.empresa_id);
 
       if (error) throw error;
-      setSuppliers(suppliers.filter(s => s.id !== id));
+      setSuppliers(suppliers.filter(s => String(s.id) !== String(id)));
     } catch (err) {
       console.error('Error deleting supplier:', err);
       alert('Erro ao apagar fornecedor.');
@@ -22506,14 +23160,14 @@ const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas
                             setPhone(s.phone || '');
                             setAddress(s.address || '');
                             setLocalidade(s.localidade || '');
-                            setCodigoPostal(s.codigoPostal || '');
+                            setCodigoPostal(s.codigo_postal || '');
                             setProvincia(s.provincia || '');
                             setMunicipio(s.municipio || '');
                             setPais(s.pais || 'Angola');
                             setWebpage(s.webpage || '');
-                            setSiglasBanco(s.siglasBanco || '');
+                            setSiglasBanco(s.siglas_banco || '');
                             setIban(s.iban || '');
-                            setTipoCliente(s.tipo || 'normal');
+                            setTipoCliente(s.tipo_cliente || 'normal');
                             setShowForm(true);
                           }} className="text-zinc-400 hover:text-[#003366] p-1.5 hover:bg-zinc-100 transition-all">
                             <Edit size={18} />
@@ -24071,6 +24725,7 @@ const ConvertDocumentModal = ({ document, onClose, onSuccess }: {
 };
 
 export default function App() {
+  console.log("[App] Rendering initial state...");
   const { user, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showMenu, setShowMenu] = useState(true);
@@ -24146,166 +24801,10 @@ export default function App() {
 
   useEffect(() => {
     if (isExportingPdf && printingInvoice) {
-      // Helper function to dynamically patch oklch colors before pdf generation
-      const tempPatchOklch = () => {
-        const oklchRegex = /oklch\(\s*([\d.%]+)\s+([\d.%]+)\s+([\d.%]+(?:\w+)?)(?:\s*\/\s*([\d.%]+))?\s*\)/gi;
-
-        function oklchToRgb(oklchStr: string): string {
-          try {
-            const match = oklchStr.match(/oklch\(\s*([\d.%]+)\s+([\d.%]+)\s+([\d.%]+(?:\w+)?)(?:\s*\/\s*([\d.%]+))?\s*\)/i);
-            if (!match) return '#000000';
-            
-            const parseValHelper = (str: string, max: number) => {
-              if (str.endsWith('%')) {
-                return (parseFloat(str) / 100) * max;
-              }
-              let suffixMultiplier = 1;
-              if (str.endsWith('turn')) {
-                suffixMultiplier = 360;
-              } else if (str.endsWith('rad')) {
-                suffixMultiplier = 180 / Math.PI;
-              }
-              let cleaned = str.replace(/[^\d.-]/g, '');
-              return parseFloat(cleaned) * suffixMultiplier;
-            };
-
-            let L = parseValHelper(match[1], 1);
-            let C = parseValHelper(match[2], 0.4);
-            let H = parseValHelper(match[3], 360);
-            let alpha = match[4] !== undefined ? parseValHelper(match[4], 1) : 1;
-
-            // Convert OKLCH to OKLAB
-            const hRad = (H * Math.PI) / 180;
-            const a = C * Math.cos(hRad);
-            const b = C * Math.sin(hRad);
-
-            // OKLAB to LMS
-            const l_ = L + 0.3963377774 * a + 0.2158037573 * b;
-            const m_ = L - 0.1055613458 * a - 0.0638541728 * b;
-            const s_ = L - 0.0894841775 * a - 1.2914855480 * b;
-
-            // LMS to Linear RGB
-            const l = l_ * l_ * l_;
-            const m = m_ * m_ * m_;
-            const s = s_ * s_ * s_;
-
-            let r = 4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s;
-            let g = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s;
-            let bChan = -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s;
-
-            // Linear to sRGB gamma correction
-            const f = (c: number) => (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);
-            r = Math.min(255, Math.max(0, Math.round(f(r) * 255)));
-            g = Math.min(255, Math.max(0, Math.round(f(g) * 255)));
-            bChan = Math.min(255, Math.max(0, Math.round(f(bChan) * 255)));
-
-            if (alpha === 1) {
-              return `rgb(${r}, ${g}, ${bChan})`;
-            } else {
-              return `rgba(${r}, ${g}, ${bChan}, ${alpha})`;
-            }
-          } catch (e) {
-            console.error('Error converting oklch:', e);
-            return '#000000';
-          }
-        }
-
-        // 1. Back up and patch inline <style> tags
-        const styleElements = Array.from(document.querySelectorAll('style'));
-        const originalStyleHTMLs = styleElements.map(el => ({
-          el,
-          html: el.innerHTML
-        }));
-
-        for (const styleEl of styleElements) {
-          if (styleEl.innerHTML && styleEl.innerHTML.includes('oklch')) {
-            styleEl.innerHTML = styleEl.innerHTML.replace(oklchRegex, (m) => oklchToRgb(m));
-          }
-        }
-
-        // 2. Backup and patch document.styleSheets CSSOM rules where possible
-        const modifiedRules: { sheet: CSSStyleSheet; index: number; oText: string }[] = [];
-        try {
-          for (const sheet of Array.from(document.styleSheets)) {
-            try {
-              if (!sheet.cssRules) continue;
-              for (let i = 0; i < sheet.cssRules.length; i++) {
-                const r = sheet.cssRules[i];
-                if (r.cssText && r.cssText.includes('oklch')) {
-                  const originalText = r.cssText;
-                  const patched = originalText.replace(oklchRegex, (m) => oklchToRgb(m));
-                  try {
-                    sheet.deleteRule(i);
-                    sheet.insertRule(patched, i);
-                    modifiedRules.push({ sheet, index: i, oText: originalText });
-                  } catch (e) {
-                    // Ignore rule insertion failures
-                  }
-                }
-              }
-            } catch (e) {
-              // Ignore cross-origin stylesheet limitations
-            }
-          }
-        } catch (err) {
-          console.warn('CSSOM scanning failed', err);
-        }
-
-        // 3. Intercept window.getComputedStyle to bypass oklch return values
-        const originalGetComputedStyle = window.getComputedStyle;
-        window.getComputedStyle = function (element, pseudoElt) {
-          const originalStyle = originalGetComputedStyle(element, pseudoElt);
-          return new Proxy(originalStyle, {
-            get(target, prop) {
-              const value = target[prop as keyof CSSStyleDeclaration];
-              if (typeof value === 'string' && value.includes('oklch')) {
-                return value.replace(oklchRegex, (m) => oklchToRgb(m)) as any;
-              }
-              if (typeof value === 'function') {
-                if (prop === 'getPropertyValue') {
-                  return function (property: string) {
-                    const val = target.getPropertyValue(property);
-                    if (typeof val === 'string' && val.includes('oklch')) {
-                      return val.replace(oklchRegex, (m) => oklchToRgb(m));
-                    }
-                    return val;
-                  };
-                }
-                return value.bind(target);
-              }
-              return value;
-            }
-          });
-        };
-
-        return () => {
-          // Restore inline style tags
-          for (const { el, html } of originalStyleHTMLs) {
-            try {
-              el.innerHTML = html;
-            } catch (e) {
-              console.error('Failed to restore style innerHTML', e);
-            }
-          }
-          // Restore CSSOM Rules
-          for (const rule of modifiedRules) {
-            try {
-              rule.sheet.deleteRule(rule.index);
-              rule.sheet.insertRule(rule.oText, rule.index);
-            } catch (err) {
-              console.error('Failed to restore CSSOM rule', err);
-            }
-          }
-          // Restore window.getComputedStyle
-          window.getComputedStyle = originalGetComputedStyle;
-        };
-      };
-
       setIsPdfProcessing(true);
       setTimeout(() => {
         const element = document.getElementById('pdf-export-container');
         if (element) {
-          const restoreStyles = tempPatchOklch();
           const opt = {
             margin: [2, 2, 2, 2] as [number, number, number, number],
             filename: `${printingInvoice.numero_documento || printingInvoice.invoice_number || 'documento'}.pdf`,
@@ -24323,13 +24822,11 @@ export default function App() {
           
           html2pdf().from(element).set(opt).save()
             .then(() => {
-              restoreStyles();
               setIsExportingPdf(false);
               setPrintingInvoice(null);
               setIsPdfProcessing(false);
             })
             .catch((err: any) => {
-              restoreStyles();
               console.error('PDF Export Error:', err);
               setIsExportingPdf(false);
               setIsPdfProcessing(false);
@@ -26381,7 +26878,428 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {/* Global Real-Time User Activity Tracking Tracker */}
+      <UserActivityTracker />
     </div>
     </ProtectedRoute>
   );
 }
+
+// =========================================================================
+// RASTREADOR EM TEMPO REAL DE SESSÕES, MOVIMENTOS E DESEMPENHO DO UTILIZADOR
+// =========================================================================
+const UserActivityTracker = () => {
+  const { user } = useAuth();
+  const sessionIdRef = useRef<string>('');
+  const activeSecondsRef = useRef<number>(0);
+  const movementsRef = useRef<number>(0);
+  const insertsRef = useRef<number>(0);
+  const tasksRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (!user) return;
+
+    // Generate a secure session ID for this instance
+    const generateId = () => {
+      try {
+        if (window.crypto && window.crypto.randomUUID) {
+          return window.crypto.randomUUID();
+        }
+      } catch (e) {}
+      return 'sess_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now().toString(36);
+    };
+
+    sessionIdRef.current = generateId();
+    activeSecondsRef.current = 0;
+    movementsRef.current = 0;
+    insertsRef.current = 0;
+    tasksRef.current = 0;
+
+    const reportHeartbeat = async (isLogout = false) => {
+      if (!sessionIdRef.current || !user) return;
+      try {
+        await fetchWithAuth('/api/user-activities/heartbeat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          keepalive: isLogout,
+          body: JSON.stringify({
+            sessionId: sessionIdRef.current,
+            tempo_ativo_segundos: activeSecondsRef.current,
+            movements: movementsRef.current,
+            insercoes: insertsRef.current,
+            tarefas_concluidas: tasksRef.current,
+            isLogout
+          })
+        });
+      } catch (err: any) {
+        if (err.name !== 'AbortError' && err.message !== 'Failed to fetch') {
+          console.error('[ACTIVITIES TRACKER] Fail sending batimento heartbeat:', err);
+        }
+      }
+    };
+
+    // Incrementor of active elapsed seconds (only when page is visible)
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        activeSecondsRef.current += 1;
+      }
+    }, 1000);
+
+    // Batimento rate: report values to server every 12 seconds
+    const heartbeatTimer = setInterval(() => {
+      reportHeartbeat(false);
+    }, 12000);
+
+    // Global click action sniffer
+    const handleGlobalClick = (e: MouseEvent) => {
+      movementsRef.current += 1;
+      
+      const target = e.target as HTMLElement;
+      if (!target) return;
+
+      const text = (target.textContent || '').toLowerCase();
+      const className = target.getAttribute('class') || '';
+
+      // Identify registrations/database inserts
+      const isInsert = 
+        text.includes('salvar') || 
+        text.includes('guardar') || 
+        text.includes('registar') || 
+        text.includes('criar') || 
+        text.includes('gravar') || 
+        text.includes('emitir') ||
+        text.includes('confirmar') ||
+        className.includes('btn-save');
+
+      if (isInsert) {
+        insertsRef.current += 1;
+      }
+
+      // Identify completion tasks / operations
+      const isTask = 
+        text.includes('concluir') || 
+        text.includes('processar') || 
+        text.includes('pagar') || 
+        text.includes('receber') || 
+        text.includes('faturar') ||
+        text.includes('anular');
+
+      if (isTask) {
+        tasksRef.current += 1;
+      }
+    };
+
+    // Global mouse movements (throttled)
+    let lastMouseTrack = 0;
+    const handleGlobalMouseMove = () => {
+      const now = Date.now();
+      if (now - lastMouseTrack > 4000) {
+        movementsRef.current += 1;
+        lastMouseTrack = now;
+      }
+    };
+
+    // Capturing submission activities
+    const handleGlobalSubmit = () => {
+      insertsRef.current += 1;
+    };
+
+    window.addEventListener('click', handleGlobalClick, true);
+    window.addEventListener('mousemove', handleGlobalMouseMove, { passive: true });
+    window.addEventListener('submit', handleGlobalSubmit, true);
+
+    const handleBeforeUnload = () => {
+      reportHeartbeat(true);
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    // Initial session start log pulse
+    reportHeartbeat(false);
+
+    return () => {
+      clearInterval(interval);
+      clearInterval(heartbeatTimer);
+      window.removeEventListener('click', handleGlobalClick, true);
+      window.removeEventListener('mousemove', handleGlobalMouseMove);
+      window.removeEventListener('submit', handleGlobalSubmit, true);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      // Final logout pulse
+      reportHeartbeat(true);
+    };
+  }, [user]);
+
+  return null;
+};
+
+// =========================================================================
+// PAINEL DE GESTÃO DE ATIVIDADES E ESTATÍSTICAS DE DESEMPENHO (MÓDULO CONFIG)
+// =========================================================================
+const ActivitiesManagementModule = () => {
+  const { user } = useAuth();
+  const [history, setHistory] = useState<any[]>([]);
+  const [stats, setStats] = useState<any>({
+    totalLogins: 0,
+    totalTempoSegundos: 0,
+    totalMovimentos: 0,
+    totalInsercoes: 0,
+    totalTarefas: 0,
+    topPerformers: []
+  });
+  const [loading, setLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const loadActivitiesData = async () => {
+    setLoading(true);
+    try {
+      // 1. Fetch History
+      const histRes = await fetchWithAuth('/api/user-activities/history');
+      if (histRes.ok) {
+        const histData = await histRes.json();
+        setHistory(histData || []);
+      }
+
+      // 2. Fetch Stats Summary
+      const statsRes = await fetchWithAuth('/api/user-activities/stats');
+      if (statsRes.ok) {
+        const statsData = await statsRes.json();
+        setStats(statsData || {
+          totalLogins: 0,
+          totalTempoSegundos: 0,
+          totalMovimentos: 0,
+          totalInsercoes: 0,
+          totalTarefas: 0,
+          topPerformers: []
+        });
+      }
+    } catch (e) {
+      console.error('[ACTIVITIES MODULE] Error downloading analytics logs:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadActivitiesData();
+  }, []);
+
+  // Format second counts to clean visual Portuguese duration representation
+  const formatDuration = (sec: number) => {
+    if (!sec) return '0m';
+    const hours = Math.floor(sec / 3600);
+    const minutes = Math.floor((sec % 3600) / 60);
+    const seconds = sec % 60;
+
+    let text = '';
+    if (hours > 0) text += `${hours}h `;
+    if (minutes > 0 || hours > 0) text += `${minutes}m `;
+    text += `${seconds}s`;
+    return text;
+  };
+
+  const filteredHistory = history.filter(h => 
+    (h.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (h.status || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (h.ip || '').toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h3 className="text-xl font-bold text-[#003366] uppercase tracking-tight">Gestão de Atividades</h3>
+          <p className="text-zinc-500 text-xs">Monitorização em tempo real de sessões, comportamentos, inserções e tempo ativo</p>
+        </div>
+        <button
+          onClick={loadActivitiesData}
+          disabled={loading}
+          className="bg-[#003366] text-white px-5 py-2 text-xs font-bold uppercase tracking-wider hover:bg-[#002244] shadow-sm flex items-center gap-2 transition-all disabled:opacity-50"
+        >
+          {loading ? 'A Sincronizar...' : 'Atualizar Dados'}
+        </button>
+      </div>
+
+      {/* METRICAS DE SUPORTE - CARDS */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="bg-white p-5 border border-zinc-200 shadow-sm flex flex-col justify-between">
+          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Total de Logins</span>
+          <span className="text-2xl font-black text-[#003366] mt-1">{stats.totalLogins || 0}</span>
+          <p className="text-[10px] text-zinc-400 mt-2">Sessões iniciadas no sistema</p>
+        </div>
+
+        <div className="bg-white p-5 border border-zinc-200 shadow-sm flex flex-col justify-between">
+          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tempo de Ligação</span>
+          <span className="text-lg font-black text-[#003366] mt-1 truncate">
+            {formatDuration(stats.totalTempoSegundos || 0)}
+          </span>
+          <p className="text-[10px] text-zinc-400 mt-2">Permanência ativa monitorizada</p>
+        </div>
+
+        <div className="bg-white p-5 border border-zinc-200 shadow-sm flex flex-col justify-between">
+          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Movimentos / Cliques</span>
+          <span className="text-2xl font-black text-[#003366] mt-1">{stats.totalMovimentos || 0}</span>
+          <p className="text-[10px] text-zinc-400 mt-2">Cliques de navegação no ecrã</p>
+        </div>
+
+        <div className="bg-white p-5 border border-zinc-200 shadow-sm flex flex-col justify-between">
+          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Registos / Inserções</span>
+          <span className="text-2xl font-black text-emerald-600 mt-1">{stats.totalInsercoes || 0}</span>
+          <p className="text-[10px] text-zinc-400 mt-2">Guardas e criações de formulário</p>
+        </div>
+
+        <div className="bg-white p-5 border border-zinc-200 shadow-sm flex flex-col justify-between">
+          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tarefas Concluídas</span>
+          <span className="text-2xl font-black text-amber-600 mt-1">{stats.totalTarefas || 0}</span>
+          <p className="text-[10px] text-zinc-400 mt-2">Ações de negócio despachadas</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* LEADERBOARD DESEMPENHO */}
+        <div className="bg-white border border-zinc-200 shadow-sm p-6 lg:col-span-1">
+          <h4 className="font-bold text-[#003366] text-sm uppercase tracking-wide border-b border-zinc-100 pb-3 mb-4">
+            Estatísticas de Desempenho (Top Utilizadores)
+          </h4>
+          
+          {stats.topPerformers && stats.topPerformers.length > 0 ? (
+            <div className="space-y-4 max-h-[460px] overflow-y-auto pr-1">
+              {stats.topPerformers.map((perf: any, idx: number) => {
+                const maxScore = Math.max(...stats.topPerformers.map((p: any) => p.score || 1));
+                const percentage = Math.round(((perf.score || 0) / maxScore) * 100);
+                
+                return (
+                  <div key={idx} className="space-y-1.5 p-3.5 bg-zinc-50/50 hover:bg-zinc-100/50 transition-colors">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="font-bold text-[#003366] truncate max-w-[170px]" title={perf.email}>
+                        {perf.email.split('@')[0]}
+                      </span>
+                      <span className="text-[10px] font-mono font-bold text-zinc-500">
+                        Score: {perf.score || 0} pts
+                      </span>
+                    </div>
+
+                    <div className="w-full bg-zinc-200 h-2 rounded-none overflow-hidden">
+                      <div 
+                        className="bg-[#003366] h-full transition-all duration-300"
+                        style={{ width: `${Math.max(percentage, 5)}%` }}
+                      ></div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-1 text-[9px] font-mono text-zinc-500 pt-1 border-t border-zinc-100/50">
+                      <div>💡 Mov: <span className="font-bold text-[#003366]">{perf.movimentos}</span></div>
+                      <div>✍️ Ins: <span className="font-bold text-emerald-600">{perf.insercoes}</span></div>
+                      <div>🏆 Tar: <span className="font-bold text-amber-600">{perf.tarefas}</span></div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-zinc-400 text-xs">
+              Nenhuma estatística de desempenho calculada ainda.
+            </div>
+          )}
+        </div>
+
+        {/* LOGS HISTÓRICOS */}
+        <div className="bg-white border border-zinc-200 shadow-sm p-6 lg:col-span-2 space-y-4">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-zinc-100 pb-3 mb-2">
+            <h4 className="font-bold text-[#003366] text-sm uppercase tracking-wide">
+              Filas e Registos de Comportamento
+            </h4>
+            <div className="w-full sm:w-auto">
+              <input
+                type="text"
+                placeholder="Pesquisar por email..."
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="border border-zinc-200 px-3 py-1 text-xs focus:outline-none focus:border-[#003366] w-full sm:w-48 placeholder:text-zinc-400"
+              />
+            </div>
+          </div>
+
+          <div className="overflow-x-auto text-xs max-h-[460px]">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-zinc-50 text-[10px] font-bold text-zinc-400 uppercase tracking-wider border-b border-zinc-200">
+                  <th className="px-3 py-2">Utilizador</th>
+                  <th className="px-3 py-2">Data Entrada</th>
+                  <th className="px-3 py-2 text-center">Tempo Ativo</th>
+                  <th className="px-3 py-2 text-center">Registos</th>
+                  <th className="px-3 py-2 text-center">Controles</th>
+                  <th className="px-3 py-2">Estado</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100 font-mono">
+                {filteredHistory.length > 0 ? (
+                  filteredHistory.map((h: any, i: number) => {
+                    const isSessionActive = h.status === 'ativo';
+                    const lastBeatSecs = (Date.now() - new Date(h.ultimo_clique).getTime()) / 1000;
+                    const isTrulyOnline = isSessionActive && lastBeatSecs < 35;
+
+                    return (
+                      <tr key={i} className="hover:bg-zinc-50/50">
+                        <td className="px-3 py-2.5 max-w-[140px] truncate" title={h.email}>
+                          {h.email}
+                          <div className="text-[9px] text-zinc-400 mt-0.5 font-sans">
+                            IP: {h.ip || 'Local'}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-nowrap text-[10px] text-zinc-500">
+                          {new Date(h.data_entrada).toLocaleString('pt-PT', { 
+                            hour: '2-digit', 
+                            minute: '2-digit',
+                            day: '2-digit',
+                            month: '2-digit'
+                          })}
+                        </td>
+                        <td className="px-3 py-2.5 text-center text-zinc-700 font-bold">
+                          {formatDuration(h.tempo_ativo_segundos)}
+                        </td>
+                        <td className="px-3 py-2.5 text-center">
+                          <span className="font-bold text-emerald-600">{h.insercoes}</span>
+                          <span className="text-zinc-300 mx-1">/</span>
+                          <span className="font-bold text-blue-600">{h.movimentos}</span>
+                        </td>
+                        <td className="px-3 py-2.5 text-center font-bold text-amber-600">
+                          {h.tarefas_concluidas}
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          {isTrulyOnline ? (
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-none text-[9px] font-bold bg-emerald-50 text-emerald-700 animate-pulse uppercase">
+                              ● Online
+                            </span>
+                          ) : isSessionActive ? (
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-none text-[9px] font-bold bg-amber-50 text-amber-700 uppercase">
+                              ● Em Pausa
+                            </span>
+                          ) : (
+                            <div className="space-y-0.5 text-left">
+                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-none text-[9px] font-bold bg-zinc-100 text-zinc-600 uppercase">
+                                Saída
+                              </span>
+                              {h.data_saida && (
+                                <div className="text-[8px] text-zinc-400 leading-none">
+                                  {new Date(h.data_saida).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="text-center py-6 text-zinc-400 text-xs font-sans">
+                      Nenhum registo de atividade ou login encontrado...
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};

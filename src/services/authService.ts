@@ -231,6 +231,18 @@ export const authService = {
           }
         });
         
+        if (res.status === 403) {
+          const errData = await res.json().catch(() => ({}));
+          if (errData.error === 'CONTA_BLOQUEADA') {
+            console.warn('[AuthService] Utilizador bloqueado detetado via API. Efetuando logout...');
+            await supabase.auth.signOut();
+            sessionCache = null;
+            alert("A sua conta foi bloqueada pelo administrador. O acesso ao sistema foi revogado.");
+            window.location.reload();
+            return null;
+          }
+        }
+
         if (res.ok) {
           const { user: userAuth, perfil, empresa } = await res.json();
           if (perfil && empresa) {
@@ -242,7 +254,8 @@ export const authService = {
               empresa_id: perfil.empresa_id,
               role: perfil.role || 'admin',
               created_at: empresa.created_at || userAuth.created_at,
-              company: empresa
+              company: empresa,
+              permission_areas: perfil.permission_areas || []
             };
           }
         }

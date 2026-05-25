@@ -35,155 +35,43 @@ if (!supabaseAdmin) {
   console.warn("⚠️ SUPABASE_SERVICE_ROLE_KEY não detetada ou inválida. O bypass de Rate Limit do Registo não funcionará.");
 } else {
   // Ensure logs_auditoria, user_activities_sessions tables exist and alter columns
-  const rpcPromise: any = supabaseAdmin.rpc('query_exec', {
-      query: `
-          CREATE TABLE IF NOT EXISTS public.logs_auditoria (
-              id SERIAL PRIMARY KEY,
-              utilizador_id UUID,
-              email TEXT,
-              acao TEXT NOT NULL,
-              empresa_id UUID,
-              ip TEXT,
-              navegador TEXT,
-              data_hora TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-          );
-          ALTER TABLE public.logs_auditoria ENABLE ROW LEVEL SECURITY;
-          DO $$
-          BEGIN
-              IF NOT EXISTS (
-                  SELECT 1 FROM pg_policies 
-                  WHERE tablename = 'logs_auditoria' AND policyname = 'Superadmins can read logs'
-              ) THEN
-                  CREATE POLICY "Superadmins can read logs" ON public.logs_auditoria FOR SELECT TO authenticated USING (true);
-              END IF;
-              IF NOT EXISTS (
-                  SELECT 1 FROM pg_policies 
-                  WHERE tablename = 'logs_auditoria' AND policyname = 'Anyone can insert logs'
-              ) THEN
-                  CREATE POLICY "Anyone can insert logs" ON public.logs_auditoria FOR INSERT TO authenticated WITH CHECK (true);
-              END IF;
-          END
-          $$;
+  const sqlMigrations = `
+          ALTER TABLE public.system_users ADD COLUMN IF NOT EXISTS created_by UUID;
+          ALTER TABLE public.system_users ADD COLUMN IF NOT EXISTS company_name TEXT;
+          ALTER TABLE public.system_users ADD COLUMN IF NOT EXISTS level INTEGER DEFAULT 1;
+          ALTER TABLE public.system_users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT false;
+          ALTER TABLE public.system_users ADD COLUMN IF NOT EXISTS profession TEXT;
+          ALTER TABLE public.system_users ADD COLUMN IF NOT EXISTS date DATE;
+          ALTER TABLE public.system_users ADD COLUMN IF NOT EXISTS permission_areas TEXT[] DEFAULT '{}';
+          ALTER TABLE public.system_users ADD COLUMN IF NOT EXISTS contact TEXT;
+          ALTER TABLE public.system_users ADD COLUMN IF NOT EXISTS morada TEXT;
+          ALTER TABLE public.system_users ADD COLUMN IF NOT EXISTS username TEXT;
+          ALTER TABLE public.system_users ADD COLUMN IF NOT EXISTS validade DATE;
+          ALTER TABLE public.system_users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
+          ALTER TABLE public.system_users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
 
-          -- Atividades de Utilizadores / Sessões
-          CREATE TABLE IF NOT EXISTS public.user_activities_sessions (
-              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-              utilizador_id UUID NOT NULL,
-              email TEXT NOT NULL,
-              empresa_id UUID NOT NULL,
-              data_entrada TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
-              data_saida TIMESTAMP WITH TIME ZONE,
-              tempo_ativo_segundos INTEGER DEFAULT 0 NOT NULL,
-              movimentos INTEGER DEFAULT 0 NOT NULL,
-              insercoes INTEGER DEFAULT 0 NOT NULL,
-              tarefas_concluidas INTEGER DEFAULT 0 NOT NULL,
-              ip TEXT,
-              navegador TEXT,
-              ultimo_clique TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
-              status TEXT DEFAULT 'ativo' NOT NULL
-          );
-          -- Ensure system_users exists with all required columns
-          -- Perfis table creation for legacy/sync compatibility
+          ALTER TABLE public.logs_auditoria ADD COLUMN IF NOT EXISTS email TEXT;
+          ALTER TABLE public.logs_auditoria ADD COLUMN IF NOT EXISTS navegador TEXT;
 
-          -- Ensure all system_users columns exist
-          DO $$
-          BEGIN
-              IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='system_users' AND column_name='profession') THEN
-                  ALTER TABLE public.system_users ADD COLUMN profession TEXT;
-              END IF;
-              IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='system_users' AND column_name='date') THEN
-                  ALTER TABLE public.system_users ADD COLUMN date DATE;
-              END IF;
-              IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='system_users' AND column_name='permission_areas') THEN
-                  ALTER TABLE public.system_users ADD COLUMN permission_areas TEXT[] DEFAULT '{}';
-              END IF;
-              IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='system_users' AND column_name='contact') THEN
-                  ALTER TABLE public.system_users ADD COLUMN contact TEXT;
-              END IF;
-              IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='system_users' AND column_name='morada') THEN
-                  ALTER TABLE public.system_users ADD COLUMN morada TEXT;
-              END IF;
-              IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='system_users' AND column_name='username') THEN
-                  ALTER TABLE public.system_users ADD COLUMN username TEXT;
-              END IF;
-              IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='system_users' AND column_name='level') THEN
-                  ALTER TABLE public.system_users ADD COLUMN level INTEGER DEFAULT 1;
-              END IF;
-              IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='system_users' AND column_name='is_admin') THEN
-                  ALTER TABLE public.system_users ADD COLUMN is_admin BOOLEAN DEFAULT false;
-              END IF;
-              IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='system_users' AND column_name='validade') THEN
-                  ALTER TABLE public.system_users ADD COLUMN validade DATE;
-              END IF;
-              IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='system_users' AND column_name='company_name') THEN
-                  ALTER TABLE public.system_users ADD COLUMN company_name TEXT;
-              END IF;
-              IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='system_users' AND column_name='created_by') THEN
-                  ALTER TABLE public.system_users ADD COLUMN created_by UUID;
-              END IF;
-              IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='system_users' AND column_name='created_at') THEN
-                  ALTER TABLE public.system_users ADD COLUMN created_at TIMESTAMPTZ DEFAULT now();
-              END IF;
-              IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='system_users' AND column_name='updated_at') THEN
-                  ALTER TABLE public.system_users ADD COLUMN updated_at TIMESTAMPTZ DEFAULT now();
-              END IF;
-              IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='hr_contratos') AND 
-                 NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='hr_contratos' AND column_name='dados_contrato') THEN
-                  ALTER TABLE public.hr_contratos ADD COLUMN dados_contrato JSONB;
-              END IF;
-              IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='profiles') AND 
-                 NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='profiles' AND column_name='company_id') THEN
-                  ALTER TABLE public.profiles ADD COLUMN company_id UUID REFERENCES public.empresas(id);
-              END IF;
-              IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='perfis') AND 
-                 NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='perfis' AND column_name='company_id') THEN
-                  ALTER TABLE public.perfis ADD COLUMN company_id UUID REFERENCES public.empresas(id);
-              END IF;
-              IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='perfis') AND 
-                 NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='perfis' AND column_name='updated_at') THEN
-                  ALTER TABLE public.perfis ADD COLUMN updated_at TIMESTAMPTZ DEFAULT now();
-              END IF;
-              IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='profiles') AND 
-                 NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='profiles' AND column_name='updated_at') THEN
-                  ALTER TABLE public.profiles ADD COLUMN updated_at TIMESTAMPTZ DEFAULT now();
-              END IF;
-              EXECUTE 'NOTIFY pgrst, ''reload schema''';
-          END
-          $$;
+          ALTER TABLE public.perfis ADD COLUMN IF NOT EXISTS company_id UUID;
+          ALTER TABLE public.perfis ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+          ALTER TABLE public.perfis ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
 
-          ALTER TABLE public.user_activities_sessions ENABLE ROW LEVEL SECURITY;
-          DO $$
-          BEGIN
-              IF NOT EXISTS (
-                  SELECT 1 FROM pg_policies 
-                  WHERE tablename = 'user_activities_sessions' AND policyname = 'Empresas can read their own activities'
-              ) THEN
-                  CREATE POLICY "Empresas can read their own activities" ON public.user_activities_sessions
-                  FOR SELECT TO authenticated USING (empresa_id::text = (current_setting('request.jwt.claims', true)::jsonb->>'empresa_id'));
-              END IF;
-              IF NOT EXISTS (
-                  SELECT 1 FROM pg_policies 
-                  WHERE tablename = 'user_activities_sessions' AND policyname = 'Anyone can manage their own activities'
-              ) THEN
-                  CREATE POLICY "Anyone can manage their own activities" ON public.user_activities_sessions
-                  FOR ALL TO authenticated USING (empresa_id::text = (current_setting('request.jwt.claims', true)::jsonb->>'empresa_id'))
-                  WITH CHECK (empresa_id::text = (current_setting('request.jwt.claims', true)::jsonb->>'empresa_id'));
-              END IF;
-          END
-          $$;
+          NOTIFY pgrst, 'reload schema';
+  `;
 
-      `
-  }).then(({ error }) => {
+  supabaseAdmin.rpc('query_exec', { query: sqlMigrations })
+    .then(({ error }) => {
       if (error) {
-          if (error.code === 'PGRST202') {
-              console.warn("⚠️ [STARTUP] SQL Migration skipped: RPC 'query_exec' not found in database.");
-          } else {
-              console.error("❌ [STARTUP] SQL Migration failed:", error);
-          }
+        if (error.code === 'PGRST202') {
+            console.warn("⚠️ [STARTUP] SQL Migration skipped: RPC 'query_exec' not found. Run MASTER_PRODUCTION_FIX.sql manually.");
+        } else {
+            console.error("❌ [STARTUP] SQL Migration failed:", error);
+        }
       } else {
           console.log("✅ [STARTUP] SQL Migrations completed successfully.");
       }
-  });
+    });
 
 }
 
@@ -197,28 +85,33 @@ async function getAuthUserContext(req: express.Request) {
     if (!supabaseAdmin) return null;
 
     try {
-        const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
-        if (error || !user) return null;
+        const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+        if (authError || !user) return null;
 
-        // Fetch user system profile first
-        const { data: sysUser } = await supabaseAdmin
+        // Fetch user system profile first with robust selection
+        let sysUser = null;
+        const { data, error: sysError } = await supabaseAdmin
             .from('system_users')
-            .select('company_id, role, is_active')
+            .select('*')
             .eq('id', user.id)
             .maybeSingle();
+        
+        if (!sysError && data) {
+            sysUser = data;
+        }
 
         if (sysUser) {
             return {
                 userId: user.id,
                 email: user.email,
-                empresaId: sysUser.company_id,
+                empresaId: sysUser.company_id || sysUser.empresa_id,
                 role: sysUser.role || 'user',
                 isBlocked: sysUser.is_active === false
             };
         }
 
-        // Fetch fallback profile
-        const { data: perfil } = await supabaseAdmin
+        // Fetch fallback profile record
+        const { data: perfil, error: perfilError } = await supabaseAdmin
             .from('perfis')
             .select('*')
             .eq('id', user.id)
@@ -228,13 +121,13 @@ async function getAuthUserContext(req: express.Request) {
             return {
                 userId: user.id,
                 email: user.email,
-                empresaId: perfil.empresa_id,
+                empresaId: perfil.empresa_id || perfil.company_id,
                 role: perfil.role || 'user',
-                isBlocked: false
+                isBlocked: perfil.is_active === false
             };
         }
 
-        // Fallback to legacy check
+        // Legacy check for owners
         const { data: legacyEmpresa } = await supabaseAdmin
             .from('empresas')
             .select('id')
@@ -246,7 +139,8 @@ async function getAuthUserContext(req: express.Request) {
                 userId: user.id,
                 email: user.email,
                 empresaId: legacyEmpresa.id,
-                role: 'admin'
+                role: 'admin',
+                isBlocked: false
             };
         }
     } catch (err: any) {
@@ -258,23 +152,37 @@ async function getAuthUserContext(req: express.Request) {
 // Thread-safe and graceful Audit Log writing
 async function addAuditLog(userId: string | null, email: string | null, action: string, empresaId: string | null, ip: string, browser: string) {
     const timestamp = new Date().toISOString();
-    console.log(`[AUDITLOG] [${timestamp}] User: ${email || 'unknown'} (${userId || 'null'}), Action: ${action}, Company: ${empresaId || 'null'}, IP: ${ip}, Browser: ${browser}`);
+    console.log(`[AUDITLOG] [${timestamp}] User: ${email || 'unknown'} (${userId || 'null'}), Action: ${action}, Company: ${empresaId || 'null'}, IP: ${ip}`);
     
     if (supabaseAdmin) {
         try {
-            const { error } = await supabaseAdmin.from('logs_auditoria').insert([{
-                utilizador_id: userId,
+            const logObj: any = {
                 acao: action,
-                empresa_id: empresaId,
-                ip: ip,
-                navegador: browser,
                 data_hora: timestamp
-            }]);
+            };
+            
+            if (userId) logObj.utilizador_id = userId;
+            if (email) logObj.email = email;
+            if (empresaId) logObj.empresa_id = empresaId;
+            if (ip) logObj.ip = ip;
+            if (browser) logObj.navegador = browser;
+
+            const { error } = await supabaseAdmin.from('logs_auditoria').insert([logObj]);
+            
             if (error) {
-                console.log("[AUDITLOG] Warning inserting log to DB (table might be missing the expected columns):", error.message);
+                console.warn("[AUDITLOG] Primary log insert fail. Retrying simplified log...", error.message);
+                
+                // Retry with only core fields
+                const minimalLog = {
+                    acao: action,
+                    data_hora: timestamp,
+                    utilizador_id: userId || null
+                };
+                
+                await supabaseAdmin.from('logs_auditoria').insert([minimalLog]);
             }
         } catch (err: any) {
-            console.log("[AUDITLOG] Database logging fallback caught error:", err.message);
+            console.warn("[AUDITLOG] Log capture suppressed due to DB error:", err.message);
         }
     }
 }
@@ -1146,71 +1054,93 @@ async function startServer() {
           is_admin: !!is_admin,
           validade: validade || null,
           role: targetRole,
-          is_active: true,
-          created_by: authCtx.userId
+          is_active: true
       };
+
+      // Add created_by only if it exists in schema (optimistic)
+      if (authCtx.userId) {
+          insertObj.created_by = authCtx.userId;
+      }
 
       let { error: dbError } = await supabaseAdmin
           .from('system_users')
           .upsert([insertObj]);
 
       if (dbError) {
-          console.warn("[SERVER] PostgREST insert fail. Trying query_exec direct SQL fallback...", dbError);
-          try {
-              const areasSql = permission_areas && Array.isArray(permission_areas) && permission_areas.length > 0
-                  ? `ARRAY[${permission_areas.map(p => `'${p.replace(/'/g, "''")}'`).join(',')}]::text[]`
-                  : `'{}'::text[]`;
-              const queryInsert = `
-                  INSERT INTO public.system_users (
-                      id, company_id, name, profession, date, 
-                      permission_areas, contact, morada, email, role, username, level, is_admin, validade, is_active, 
-                      created_by
-                  ) VALUES (
-                      '${userId}',
-                      '${empresa_id}',
-                      '${name.replace(/'/g, "''")}',
-                      ${profession ? `'${profession.replace(/'/g, "''")}'` : 'NULL'},
-                      ${validade || date ? `'${(validade || date)}'` : 'NULL'},
-                      ${areasSql},
-                      ${contact ? `'${contact.replace(/'/g, "''")}'` : 'NULL'},
-                      ${morada ? `'${morada.replace(/'/g, "''")}'` : 'NULL'},
-                      '${email.replace(/'/g, "''")}',
-                      '${targetRole}',
-                      '${(username || email.split('@')[0]).replace(/'/g, "''")}',
-                      ${level !== undefined && level !== null ? Number(level) : (is_admin ? 5 : 1)},
-                      ${is_admin ? 'true' : 'false'},
-                      ${validade ? `'${validade}'` : 'NULL'},
-                      true,
-                      '${authCtx.userId}'
-                  ) ON CONFLICT (id) DO UPDATE SET 
-                      company_id = EXCLUDED.company_id,
-                      name = EXCLUDED.name,
-                      profession = EXCLUDED.profession,
-                      date = EXCLUDED.date,
-                      permission_areas = EXCLUDED.permission_areas,
-                      contact = EXCLUDED.contact,
-                      morada = EXCLUDED.morada,
-                      email = EXCLUDED.email,
-                      username = EXCLUDED.username,
-                      level = EXCLUDED.level,
-                      is_admin = EXCLUDED.is_admin,
-                      validade = EXCLUDED.validade,
-                      role = EXCLUDED.role;
-              `;
-              const { error: rawError } = await supabaseAdmin.rpc('query_exec', { query: queryInsert });
-              if (rawError) {
-                  if (rawError.code === 'PGRST202') {
-                      console.warn("[SERVER] Fallback query_exec skipped: RPC not found.");
-                  } else {
-                      throw new Error("Raw Insert Error: " + rawError.message);
-                  }
-              } else {
+          console.warn("[SERVER] PostgREST insert fail. Checking for column mismatch...", dbError.message);
+          
+          // Fallback: If created_by is missing, try without it
+          if (dbError.message?.includes('created_by') || dbError.message?.includes('PostgREST schema cache')) {
+              console.log("[SERVER] Retrying insert without created_by...");
+              const { created_by, ...insertWithoutCreatedBy } = insertObj;
+              const { error: retryError } = await supabaseAdmin
+                  .from('system_users')
+                  .upsert([insertWithoutCreatedBy]);
+              
+              if (!retryError) {
                   dbError = null;
+                  console.log("[SERVER] Insert successful without created_by.");
+              } else {
+                  dbError = retryError;
               }
-          } catch (retryErr: any) {
-              if (retryErr.code !== 'PGRST202') {
-                  console.error("[SERVER] Fallback query_exec failed:", retryErr);
-                  throw retryErr;
+          }
+
+          if (dbError) {
+              console.warn("[SERVER] PostgREST final fail. Trying query_exec direct SQL fallback...", dbError.message);
+              try {
+                  const areasSql = permission_areas && Array.isArray(permission_areas) && permission_areas.length > 0
+                      ? `ARRAY[${permission_areas.map(p => `'${p.replace(/'/g, "''")}'`).join(',')}]::text[]`
+                      : `'{}'::text[]`;
+                  const queryInsert = `
+                      INSERT INTO public.system_users (
+                          id, company_id, name, profession, date, 
+                          permission_areas, contact, morada, email, role, username, level, is_admin, validade, is_active
+                      ) VALUES (
+                          '${userId}',
+                          '${empresa_id}',
+                          '${name.replace(/'/g, "''")}',
+                          ${profession ? `'${profession.replace(/'/g, "''")}'` : 'NULL'},
+                          ${validade || date ? `'${(validade || date)}'` : 'NULL'},
+                          ${areasSql},
+                          ${contact ? `'${contact.replace(/'/g, "''")}'` : 'NULL'},
+                          ${morada ? `'${morada.replace(/'/g, "''")}'` : 'NULL'},
+                          '${email.replace(/'/g, "''")}',
+                          '${targetRole}',
+                          '${(username || email.split('@')[0]).replace(/'/g, "''")}',
+                          ${level !== undefined && level !== null ? Number(level) : (is_admin ? 5 : 1)},
+                          ${is_admin ? 'true' : 'false'},
+                          ${validade ? `'${validade}'` : 'NULL'},
+                          true
+                      ) ON CONFLICT (id) DO UPDATE SET 
+                          company_id = EXCLUDED.company_id,
+                          name = EXCLUDED.name,
+                          profession = EXCLUDED.profession,
+                          date = EXCLUDED.date,
+                          permission_areas = EXCLUDED.permission_areas,
+                          contact = EXCLUDED.contact,
+                          morada = EXCLUDED.morada,
+                          email = EXCLUDED.email,
+                          username = EXCLUDED.username,
+                          level = EXCLUDED.level,
+                          is_admin = EXCLUDED.is_admin,
+                          validade = EXCLUDED.validade,
+                          role = EXCLUDED.role;
+                  `;
+                  const { error: rawError } = await supabaseAdmin.rpc('query_exec', { query: queryInsert });
+                  if (rawError) {
+                      if (rawError.code === 'PGRST202') {
+                          console.warn("[SERVER] Fallback query_exec skipped: RPC not found.");
+                      } else {
+                          throw new Error("Raw Insert Error: " + rawError.message);
+                      }
+                  } else {
+                      dbError = null;
+                  }
+              } catch (retryErr: any) {
+                  if (retryErr.code !== 'PGRST202') {
+                      console.error("[SERVER] Fallback query_exec failed:", retryErr);
+                      throw retryErr;
+                  }
               }
           }
       }
@@ -1279,7 +1209,7 @@ async function startServer() {
           console.log("[SERVER] System user and profile records created successfully");
           res.status(201).json({ success: true });
       } catch (e: any) {
-          console.error("[SERVER] Final error catch:", e);
+          console.error("[SERVER] Final error catch in POST /system-users:", e);
           res.status(400).json({ error: e.message });
       }
   });
@@ -1541,24 +1471,48 @@ async function startServer() {
       }
 
       try {
-          const { data, error: getTargetError } = await supabaseAdmin
+          let { data, error: getTargetError } = await supabaseAdmin
               .from('system_users')
               .select('company_id, email, is_active')
               .eq('id', userId)
               .maybeSingle();
 
-          const targetUser = data as any;
+          let targetUser = data as any;
+          
+          if (!targetUser && !getTargetError) {
+              console.log(`[SERVER] User ${userId} not found in system_users. checking perfis fallback...`);
+              const { data: pData } = await supabaseAdmin
+                  .from('perfis')
+                  .select('company_id, empresa_id, email, is_active')
+                  .eq('id', userId)
+                  .maybeSingle();
+              if (pData) {
+                  targetUser = {
+                      ...pData,
+                      company_id: pData.company_id || pData.empresa_id,
+                      is_active: pData.is_active !== false
+                  };
+              }
+          }
+
           if (getTargetError || !targetUser) {
-              return res.status(404).json({ error: "Utilizador não encontrado" });
+              console.error(`[SERVER] User ${userId} NOT FOUND. getTargetError:`, getTargetError, "targetUser (system_users+perfis):", targetUser);
+              return res.status(404).json({ 
+                  error: "Utilizador não encontrado",
+                  debug: { userId, authEmpresaId: authCtx.empresaId }
+              });
           }
 
           if (authCtx.role !== 'superadmin' && String(authCtx.empresaId) !== String(targetUser.company_id)) {
+              console.warn(`[SERVER] Permission denied for ${authCtx.email} toggling user ${userId}. Company mismatch.`);
               return res.status(403).json({ error: "Utilizador sem permissão" });
           }
 
           const nextActiveStatus = is_active !== undefined ? !!is_active : !targetUser.is_active;
 
-          let { error: dbError } = await supabaseAdmin
+          let updateResults = [];
+          
+          const { error: dbError } = await supabaseAdmin
               .from('system_users')
               .update({ is_active: nextActiveStatus })
               .eq('id', userId);
@@ -1569,26 +1523,13 @@ async function startServer() {
                   const { error: rawError } = await supabaseAdmin.rpc('query_exec', {
                       query: `UPDATE public.system_users SET is_active = ${nextActiveStatus} WHERE id = '${userId}';`
                   });
-                  if (rawError) {
-                      if (rawError.code === 'PGRST202') {
-                          console.warn("[SERVER] Fallback query_exec skipped: RPC not found.");
-                      } else {
-                          throw rawError;
-                      }
-                  } else {
-                      dbError = null;
-                  }
+                  if (rawError && rawError.code !== 'PGRST202') throw rawError;
               } catch (retryErr: any) {
-                  if (retryErr.code !== 'PGRST202') {
-                      console.error("[SERVER] toggle-status SQL fallback failure:", retryErr);
-                      throw retryErr;
-                  }
+                  console.error("[SERVER] toggle-status SQL fallback failure:", retryErr);
               }
           }
 
-          if (dbError) throw dbError;
-
-          // Update perfis as well
+          // Also update perfis
           await supabaseAdmin
               .from('perfis')
               .update({ is_active: nextActiveStatus })
@@ -3982,6 +3923,27 @@ app.post("/api/exec-sql", express.json(), async (req, res) => {
     app.use(express.static(distPath));
     app.get('*', (req, res) => res.sendFile(path.join(distPath, 'index.html')));
   }
+
+  // Utility to reload PostgREST schema cache
+  app.post("/api/admin/reload-schema", async (req, res) => {
+      const authCtx = await getAuthUserContext(req);
+      if (!authCtx || authCtx.role !== 'superadmin') {
+          return res.status(403).json({ error: "Apenas superadmins podem recarregar o schema cache" });
+      }
+
+      if (!supabaseAdmin) return res.status(500).json({ error: "supabaseAdmin missing" });
+
+      try {
+          const { error } = await supabaseAdmin.rpc('query_exec', {
+              query: "NOTIFY pgrst, 'reload schema';"
+          });
+          if (error) throw error;
+          res.json({ success: true, message: "Schema cache reload notified successfully" });
+      } catch (err: any) {
+          console.error("[ADMIN] Reload schema error:", err);
+          res.status(500).json({ error: err.message });
+      }
+  });
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`ERP Server running on port ${PORT}`);

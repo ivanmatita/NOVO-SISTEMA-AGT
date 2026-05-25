@@ -11338,7 +11338,9 @@ const UsersSettings = () => {
   };
 
   const handleToggleStatus = async (userToToggle: SystemUser) => {
-    if (!user?.empresa_id) return;
+    if (!user?.empresa_id || togglingUserId === userToToggle.id) return;
+    
+    console.log(`[FRONTEND] Toggling status for user: ${userToToggle.id} (${userToToggle.email})`);
     const nextStatus = userToToggle.is_active === false ? true : false;
     
     setTogglingUserId(userToToggle.id);

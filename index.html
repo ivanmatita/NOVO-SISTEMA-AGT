@@ -4,6 +4,82 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>My Google AI Studio App</title>
+    <script>
+      // Global fail-safe error catcher for diagnosing blank screen issues
+      window.addEventListener('error', function(event) {
+        showErrorBanner('Erro Uncaught (Script/Runtime)', event.message + ' em ' + event.filename + ':' + event.lineno);
+      });
+      
+      window.addEventListener('unhandledrejection', function(event) {
+        showErrorBanner('Unhandled Promise Rejection', event.reason ? (event.reason.message || String(event.reason)) : 'Erro de Promessa');
+      });
+
+      function showErrorBanner(type, details) {
+        console.error('Diagnostic error:', type, details);
+        var container = document.getElementById('error-diagnostic-banner');
+        if (!container) {
+          container = document.createElement('div');
+          container.id = 'error-diagnostic-banner';
+          container.style.position = 'fixed';
+          container.style.top = '10px';
+          container.style.left = '10px';
+          container.style.right = '10px';
+          container.style.zIndex = '999999';
+          container.style.padding = '16px';
+          container.style.background = '#fee2e2';
+          container.style.border = '2px solid #ef4444';
+          container.style.borderRadius = '8px';
+          container.style.color = '#991b1b';
+          container.style.fontFamily = 'monospace';
+          container.style.fontSize = '12px';
+          container.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
+          container.style.maxHeight = '80vh';
+          container.style.overflowY = 'auto';
+          
+          var title = document.createElement('h3');
+          title.style.margin = '0 0 8px 0';
+          title.style.fontSize = '14px';
+          title.style.fontWeight = 'bold';
+          title.innerText = '⚠️ Instabilidade Detetada: ' + type;
+          container.appendChild(title);
+
+          var desc = document.createElement('p');
+          desc.style.margin = '0 0 12px 0';
+          desc.innerText = 'Ocorreu um erro ao carregar os recursos do sistema. Veja os detalhes abaixo:';
+          container.appendChild(desc);
+
+          var codeBlock = document.createElement('pre');
+          codeBlock.style.background = '#fecaca';
+          codeBlock.style.padding = '8px';
+          codeBlock.style.borderRadius = '4px';
+          codeBlock.style.margin = '0 0 12px 0';
+          codeBlock.style.whiteSpace = 'pre-wrap';
+          codeBlock.style.wordBreak = 'break-all';
+          codeBlock.id = 'error-diagnostic-details';
+          container.appendChild(codeBlock);
+
+          var btn = document.createElement('button');
+          btn.style.background = '#dc2626';
+          btn.style.color = '#ffffff';
+          btn.style.border = 'none';
+          btn.style.padding = '6px 12px';
+          btn.style.borderRadius = '4px';
+          btn.style.cursor = 'pointer';
+          btn.style.fontWeight = 'bold';
+          btn.innerText = 'Forçar Recarregamento Completo';
+          btn.onclick = function() {
+            window.location.reload(true);
+          };
+          container.appendChild(btn);
+
+          document.body.appendChild(container);
+        }
+        var detailsBlock = document.getElementById('error-diagnostic-details');
+        if (detailsBlock) {
+          detailsBlock.innerText += '\n[' + new Date().toLocaleTimeString() + '] ' + details;
+        }
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

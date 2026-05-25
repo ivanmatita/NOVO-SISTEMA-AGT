@@ -194,6 +194,7 @@ import { employeeService } from './services/employeeService';
 import { attendanceService } from './services/attendanceService';
 import { payrollService } from './services/payrollService';
 import { pagamentoService } from './services/pagamentoService';
+import { systemUsersService } from './services/systemUsersService';
 import { throttle } from './utils/throttle';
 
 const fetchWithAuth = async (url: string, options?: RequestInit) => {
@@ -11197,12 +11198,21 @@ const SpecializedManagementModule = ({ activeTab, setActiveTab }: { activeTab?: 
     </div>
   );
 };
+
 const UsersSettings = () => {
   const { user } = useAuth();
   const [users, setUsers] = useState<SystemUser[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingUser, setEditingUser] = useState<any | null>(null);
   
+  // Custom toast state
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
+  };
+
   // States for system user forms
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -11226,6 +11236,13 @@ const UsersSettings = () => {
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
 
+  // Loading and Confirmation Modal States to bypass window.confirm and show beautiful feedback in sandboxed environments
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [togglingUserId, setTogglingUserId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const workspaceOptions = [
     { id: 'dashboard', label: 'DASHBOARD' },
     { id: 'attendance_map', label: 'ASSIDUIDADE' },
@@ -11238,29 +11255,48 @@ const UsersSettings = () => {
     { id: 'contracts', label: 'GESTÃO DE CONTRATOS' },
   ];
 
-  const fetchUsers = async () => {
+  const fetchUsers = async (silent = false) => {
     if (!user?.empresa_id) {
       console.warn("User empresa_id is missing, skipping fetchUsers");
       return;
     }
+    if (!silent) setIsLoading(true);
     try {
-      const res = await fetchWithAuth(`/api/system-users?empresa_id=${user.empresa_id}`);
-      if (res.ok) {
-        const data = await res.json();
-        setUsers(data);
-      } else {
-        const text = await res.text();
-        console.error('Error fetching users:', text);
-      }
-    } catch (error) {
+      const data = await systemUsersService.getUsers(user.empresa_id);
+      setUsers(data);
+    } catch (error: any) {
       console.error('Error fetching users:', error);
+      showToast('Erro ao carregar utilizadores: ' + (error.message || error), 'error');
+    } finally {
+      if (!silent) setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    if (user?.empresa_id) {
-      fetchUsers();
-    }
+    if (!user?.empresa_id) return;
+    
+    fetchUsers();
+
+    // Set up Realtime sync directly via Supabase
+    const channel = supabase
+      .channel(`system-users-realtime-${user.empresa_id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'system_users',
+          filter: `company_id=eq.${user.empresa_id}`
+        },
+        () => {
+          fetchUsers(true);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [user?.empresa_id]);
 
   const handleEditUser = (u: any) => {
@@ -11281,43 +11317,48 @@ const UsersSettings = () => {
     setShowForm(true);
   };
 
-  const handleDeleteUser = async (id: string) => {
-    if (!confirm("Tem a certeza que deseja eliminar este utilizador do sistema? Esta ação também irá deletar a respetiva conta de autenticação.")) return;
+  const handleDeleteUser = (id: string) => {
+    setConfirmDeleteId(id);
+  };
+
+  const confirmDeletion = async () => {
+    if (!confirmDeleteId || !user?.empresa_id) return;
+    setIsDeleting(true);
     try {
-      const res = await fetchWithAuth(`/api/system-users/${id}`, {
-        method: 'DELETE'
-      });
-      if (res.ok) {
-        alert("Utilizador removido com sucesso!");
-        fetchUsers();
-      } else {
-        const errorData = await res.json();
-        alert(`Erro ao eliminar utilizador: ${errorData.error || 'Erro desconhecido'}`);
-      }
-    } catch (err) {
+      await systemUsersService.deleteUser(user.empresa_id, confirmDeleteId);
+      setConfirmDeleteId(null);
+      showToast("Utilizador removido com sucesso!");
+      fetchUsers();
+    } catch (err: any) {
       console.error('Error deleting user:', err);
+      showToast(`Erro ao eliminar utilizador: ${err.message || 'Erro desconhecido'}`, 'error');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
   const handleToggleStatus = async (userToToggle: SystemUser) => {
+    if (!user?.empresa_id) return;
     const nextStatus = userToToggle.is_active === false ? true : false;
+    
+    setTogglingUserId(userToToggle.id);
+    
+    // Optimistic Update for extreme responsiveness
+    const originalUsers = [...users];
+    setUsers(prevUsers => 
+      prevUsers.map(u => u.id === userToToggle.id ? { ...u, is_active: nextStatus } : u)
+    );
+
     try {
-      const res = await fetchWithAuth(`/api/system-users/${userToToggle.id}/toggle-status`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_active: nextStatus })
-      });
-      if (res.ok) {
-        // Toggle in local memory quickly for extreme performance and instantaneous responsiveness
-        setUsers(prevUsers => 
-          prevUsers.map(u => u.id === userToToggle.id ? { ...u, is_active: nextStatus } : u)
-        );
-      } else {
-        const errorData = await res.json();
-        alert(`Erro ao alterar estado: ${errorData.error || 'Erro desconhecido'}`);
-      }
-    } catch (err) {
+      await systemUsersService.toggleUserStatus(user.empresa_id, userToToggle.id, !nextStatus);
+      showToast(`Estado de ${userToToggle.name} atualizado com sucesso!`);
+    } catch (err: any) {
       console.error('Error toggling status:', err);
+      // Rollback on failure
+      setUsers(originalUsers);
+      showToast(`Erro ao alterar estado do utilizador: ${err.message || 'Erro de rede'}`, 'error');
+    } finally {
+      setTogglingUserId(null);
     }
   };
 
@@ -11327,26 +11368,21 @@ const UsersSettings = () => {
   };
 
   const handleSaveQuickPermissions = async () => {
-    if (!permissionModalUser) return;
+    if (!permissionModalUser || !user?.empresa_id) return;
+    setIsSaving(true);
     try {
-      const res = await fetchWithAuth(`/api/system-users/${permissionModalUser.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...permissionModalUser,
-          permission_areas: permissionAreas
-        })
+      await systemUsersService.updateUser(user.empresa_id, permissionModalUser.id, {
+        ...permissionModalUser,
+        permission_areas: permissionAreas
       });
-      if (res.ok) {
-        alert("Permissões atualizadas com sucesso!");
-        setPermissionModalUser(null);
-        fetchUsers();
-      } else {
-        const err = await res.json();
-        alert(`Erro ao salvar permissões: ${err.error || 'Erro desconhecido'}`);
-      }
-    } catch (err) {
+      showToast("Permissões atualizadas com sucesso!");
+      setPermissionModalUser(null);
+      fetchUsers();
+    } catch (err: any) {
       console.error(err);
+      showToast(`Erro ao salvar permissões: ${err.message || 'Erro desconhecido'}`, 'error');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -11358,42 +11394,52 @@ const UsersSettings = () => {
 
   const handleResetPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!resetPasswordUser) return;
+    if (!resetPasswordUser || !user?.empresa_id) return;
     if (!newPassword || newPassword !== confirmNewPassword) {
-      alert("As senhas não coincidem ou estão vazias!");
+      showToast("As senhas não coincidem ou estão vazias!", 'error');
       return;
     }
+    setIsSaving(true);
     try {
-      const res = await fetchWithAuth(`/api/system-users/${resetPasswordUser.id}/reset-password`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: newPassword })
+      const { error } = await supabase.rpc('admin_reset_user_password', {
+        target_user_id: resetPasswordUser.id,
+        new_password: newPassword
       });
-      if (res.ok) {
-        alert("Senha redefinida com sucesso!");
-        setResetPasswordUser(null);
-        setNewPassword('');
-        setConfirmNewPassword('');
-      } else {
-        const err = await res.json();
-        alert(`Erro ao redefinir senha: ${err.error || 'Erro desconhecido'}`);
+
+      if (error) {
+        console.warn("[ResetPassword] RPC failed, trying general service update...", error.message);
+        throw error;
       }
-    } catch (err) {
+
+      showToast("Senha redefinida com sucesso!");
+      setResetPasswordUser(null);
+      setNewPassword('');
+      setConfirmNewPassword('');
+    } catch (err: any) {
       console.error(err);
+      showToast(`Para redefinir a senha do utilizador por completo, por favor use o fluxo padrão de recuperação ou configure a função RPC no Supabase.`, 'error');
+    } finally {
+      setIsSaving(false);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     console.log("handleSubmit called");
+    if (!user?.empresa_id) {
+      showToast("Companhia não identificada.", 'error');
+      return;
+    }
     if (password && password !== confirmPassword) {
-      alert("As senhas não coincidem!");
+      showToast("As senhas não coincidem!", 'error');
       return;
     }
     if (permissionAreas.length === 0) {
-      alert("Selecione pelo menos uma área de permissão!");
+      showToast("Selecione pelo menos uma área de permissão!", 'error');
       return;
     }
+
+    setIsSaving(true);
 
     const payload: any = {
       name,
@@ -11408,76 +11454,44 @@ const UsersSettings = () => {
       is_admin: isAdminState,
       validade: validadeState || null
     };
+
     if (password) {
       payload.password = password;
     }
 
     try {
       if (editingUser) {
-        console.log(`Attempting to PUT to /api/system-users/${editingUser.id}`);
-        const res = await fetchWithAuth(`/api/system-users/${editingUser.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        if (res.ok) {
-          console.log("Success updating user");
-          fetchUsers();
-          setShowForm(false);
-          setEditingUser(null);
-          setName(''); setEmail(''); setPassword(''); setConfirmPassword(''); setProfession(''); setDate(''); setPermissionAreas([]); setContact(''); setMorada('');
-          setUsernameState(''); setLevelState(1); setIsAdminState(false); setValidadeState('');
-        } else {
-          let errorData;
-          const rawBody = await res.text();
-          try {
-            errorData = JSON.parse(rawBody);
-          } catch (jsonErr) {
-            console.error('Non-JSON error from server (PUT):', rawBody);
-            errorData = { error: `Server error ${res.status}: ${rawBody.substring(0, 100)}...` };
-          }
-          alert(`Erro ao editar utilizador: ${errorData.error || 'Erro desconhecido'}`);
-        }
+        console.log(`Editing user ${editingUser.id}`);
+        await systemUsersService.updateUser(user.empresa_id, editingUser.id, payload);
+        showToast("Utilizador alterado com sucesso!");
+        fetchUsers();
+        setShowForm(false);
+        setEditingUser(null);
+        setName(''); setEmail(''); setPassword(''); setConfirmPassword(''); setProfession(''); setDate(''); setPermissionAreas([]); setContact(''); setMorada('');
+        setUsernameState(''); setLevelState(1); setIsAdminState(false); setValidadeState('');
       } else {
         if (!password) {
-          alert("Defina uma senha para poder registar o novo utilizador!");
+          showToast("Defina uma senha para poder registar o novo utilizador!", 'error');
+          setIsSaving(false);
           return;
         }
-        console.log("Attempting to POST to /api/system-users");
-        const res = await fetchWithAuth('/api/system-users', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ...payload,
-            password,
-            empresa_id: user?.empresa_id,
-            company_name: user?.company?.nome_empresa || user?.username || null,
-            created_by: user?.id
-          })
+        console.log("Creating new user...");
+        await systemUsersService.createUser(user.empresa_id, {
+          ...payload,
+          password,
+          created_by: user.id
         });
-        console.log("POST res status:", res.status);
-        if (res.ok) {
-          console.log("Success creating user");
-          fetchUsers();
-          setShowForm(false);
-          setName(''); setEmail(''); setPassword(''); setConfirmPassword(''); setProfession(''); setDate(''); setPermissionAreas([]); setContact(''); setMorada('');
-          setUsernameState(''); setLevelState(1); setIsAdminState(false); setValidadeState('');
-        } else {
-          let errorData;
-          const rawBody = await res.text();
-          try {
-            errorData = JSON.parse(rawBody);
-          } catch (jsonErr) {
-            console.error('Non-JSON error from server (POST):', rawBody);
-            errorData = { error: `Server error ${res.status}: ${rawBody.substring(0, 100)}...` };
-          }
-          console.error('Error response creating user:', errorData);
-          alert(`Erro ao criar utilizador: ${errorData.error || 'Erro desconhecido'}`);
-        }
+        showToast("Novo utilizador registado com sucesso!");
+        fetchUsers();
+        setShowForm(false);
+        setName(''); setEmail(''); setPassword(''); setConfirmPassword(''); setProfession(''); setDate(''); setPermissionAreas([]); setContact(''); setMorada('');
+        setUsernameState(''); setLevelState(1); setIsAdminState(false); setValidadeState('');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving user:', error);
-      alert('Erro capturado ao tentar salvar utilizador');
+      showToast('Erro ao tentar salvar utilizador: ' + (error.message || 'Erro de rede ou permissão duplicada. Verifique se o e-mail inserido já existe.'), 'error');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -11674,9 +11688,10 @@ const UsersSettings = () => {
                 </button>
                 <button 
                   type="submit" 
-                  className="bg-[#003366] text-white hover:bg-[#002244] font-black uppercase text-xs px-6 py-2.5 rounded-none transition-all border border-[#003366]"
+                  disabled={isSaving}
+                  className="bg-[#003366] text-white hover:bg-[#002244] font-black uppercase text-xs px-6 py-2.5 rounded-none transition-all border border-[#003366] disabled:opacity-50"
                 >
-                  {editingUser ? 'Salvar Alterações' : 'Registar Utilizador'}
+                  {isSaving ? 'A guardar...' : editingUser ? 'Salvar Alterações' : 'Registar Utilizador'}
                 </button>
               </div>
             </form>
@@ -11704,6 +11719,7 @@ const UsersSettings = () => {
                     <button
                       key={opt.id}
                       type="button"
+                      disabled={isSaving}
                       onClick={() => {
                         setPermissionAreas(prev => 
                           prev.includes(opt.id) ? prev.filter(a => a !== opt.id) : [...prev, opt.id]
@@ -11730,9 +11746,10 @@ const UsersSettings = () => {
                 </button>
                 <button 
                   onClick={handleSaveQuickPermissions} 
-                  className="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold uppercase px-4 py-2"
+                  disabled={isSaving}
+                  className="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold uppercase px-4 py-2 disabled:opacity-50"
                 >
-                  Salvar Permissões
+                  {isSaving ? 'A guardar...' : 'Salvar Permissões'}
                 </button>
               </div>
             </div>
@@ -11787,9 +11804,10 @@ const UsersSettings = () => {
                 </button>
                 <button 
                   type="submit"
-                  className="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold uppercase px-4 py-2"
+                  disabled={isSaving}
+                  className="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold uppercase px-4 py-2 disabled:opacity-50"
                 >
-                  Redefinir
+                  {isSaving ? 'A enviar...' : 'Redefinir'}
                 </button>
               </div>
             </div>
@@ -11817,139 +11835,201 @@ const UsersSettings = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-200">
-            {users.map((u, idx) => {
-              const isAdmin = u.is_admin || u.role === 'admin';
-              const userActiveStatus = u.is_active !== false; // Active by default if not false
-              return (
-                <tr key={u.id} className="hover:bg-zinc-50 text-xs align-middle">
-                  {/* Ln column */}
-                  <td className="px-3 py-4 font-mono text-zinc-500 text-center font-bold bg-zinc-50/50">{idx + 1}</td>
-                  
-                  {/* Utilizador column */}
-                  <td className="px-4 py-4 font-bold text-[#003366] text-[13px]">{u.name}</td>
-                  
-                  {/* UserName column */}
-                  <td className="px-4 py-4">
-                    <span className="font-mono bg-zinc-100 text-[#003366] px-2 py-0.5 rounded-none border border-zinc-200">
-                      {u.username || u.email?.split('@')[0]}
-                    </span>
-                  </td>
-                  
-                  {/* Validade column */}
-                  <td className="px-4 py-4 font-medium text-zinc-600 font-mono">
-                    {u.validade || u.date || <span className="text-zinc-400">Pendente</span>}
-                  </td>
-                  
-                  {/* Admin column */}
-                  <td className="px-3 py-4 text-center">
-                    {isAdmin ? (
-                      <span className="inline-flex items-center justify-center w-6 h-6 bg-emerald-100 text-emerald-800 rounded-full font-black text-xs" title="Administrador">✓</span>
-                    ) : (
-                      <span className="text-zinc-300 font-bold">—</span>
-                    )}
-                  </td>
-                  
-                  {/* Level column */}
-                  <td className="px-3 py-4 text-center">
-                    <span className={`px-2 py-0.5 text-[9px] font-black uppercase rounded-none border ${
-                      (u.level || 0) >= 8 ? 'bg-[#003366] text-white border-[#003366]' :
-                      (u.level || 0) >= 5 ? 'bg-amber-100 text-amber-800 border-amber-300' :
-                      'bg-zinc-100 text-zinc-600 border-zinc-300'
-                    }`}>
-                      {u.level || (isAdmin ? 5 : 1)}
-                    </span>
-                  </td>
-                  
-                  {/* Email column */}
-                  <td className="px-4 py-4 text-zinc-600 font-mono">{u.email}</td>
-                  
-                  {/* Contacto column */}
-                  <td className="px-4 py-4 text-zinc-600 font-mono">{u.contact || 'N/D'}</td>
-                  
-                  {/* Status column (ON/OFF Toggle) */}
-                  <td className="px-4 py-4">
-                    <div className="flex items-center justify-center">
-                      <button
-                        type="button"
-                        onClick={() => handleToggleStatus(u)}
-                        className={`relative inline-flex h-6 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${userActiveStatus ? 'bg-emerald-500' : 'bg-zinc-300'}`}
-                        title={userActiveStatus ? "Clique para Bloquear Utilizador" : "Clique para Ativar Utilizador"}
-                      >
-                        <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${userActiveStatus ? 'translate-x-6' : 'translate-x-0'}`} />
-                      </button>
-                    </div>
-                  </td>
-                  
-                  {/* MFA column */}
-                  <td className="px-3 py-4 text-center font-mono">
-                    <span className="text-[10px] font-black text-zinc-400 block tracking-wide uppercase">OFF</span>
-                  </td>
-                  
-                  {/* Log column */}
-                  <td className="px-3 py-4 text-center">
-                    <div className="flex justify-center items-center">
-                      {userActiveStatus ? (
-                        <span className="relative flex h-2 w-2">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" title="Ativo / Online"></span>
-                        </span>
-                      ) : (
-                        <span className="h-2 w-2 rounded-full bg-zinc-300 inline-block" title="Bloqueado / Inativo"></span>
-                      )}
-                    </div>
-                  </td>
-                  
-                  {/* OPC Actions column */}
-                  <td className="px-4 py-4">
-                    <div className="flex items-center justify-center gap-1">
-                      {/* Editar Action */}
-                      <button 
-                        onClick={() => handleEditUser(u)} 
-                        className="p-1 px-1.5 bg-[#003366]/5 hover:bg-[#003366] text-[#003366] hover:text-white border border-[#003366]/10 transition-all font-bold rounded-none flex items-center justify-center"
-                        title="Editar Utilizador"
-                      >
-                        <Pencil size={11} />
-                      </button>
-                      
-                      {/* Permissão Action */}
-                      <button 
-                        onClick={() => handleOpenQuickPermissions(u)} 
-                        className="p-1 px-1.5 bg-amber-500/5 hover:bg-amber-500 text-amber-700 hover:text-white border border-amber-500/10 transition-all font-bold rounded-none flex items-center justify-center"
-                        title="Permissões Rápidas"
-                      >
-                        <Shield size={11} />
-                      </button>
-                      
-                      {/* Reset Pass Action */}
-                      <button 
-                        onClick={() => handleOpenResetPassword(u)} 
-                        className="p-1 px-1.5 bg-zinc-100 hover:bg-zinc-800 text-zinc-700 hover:text-white border border-zinc-200 transition-all font-bold rounded-none flex items-center justify-center"
-                        title="Redefinir Senha do Utilizador"
-                      >
-                        <KeyRound size={11} />
-                      </button>
-
-                      {/* Delete Action option */}
-                      <button 
-                        onClick={() => handleDeleteUser(u.id)} 
-                        className="p-1 px-1.5 bg-red-100/5 hover:bg-red-600 text-red-600 hover:text-white border border-red-200/10 transition-all font-bold rounded-none flex items-center justify-center"
-                        title="Eliminar Utilizador do Sistema"
-                      >
-                        <Trash2 size={11} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-            {users.length === 0 && (
+            {isLoading ? (
+              <tr>
+                <td colSpan={12} className="px-6 py-12 text-center text-zinc-500 font-bold uppercase tracking-wider">
+                  <span className="inline-block animate-spin mr-2">⚙️</span> Carregando utilizadores do Supabase...
+                </td>
+              </tr>
+            ) : users.length === 0 ? (
               <tr>
                 <td colSpan={12} className="px-6 py-12 text-center text-zinc-400 italic">Nenhum utilizador registado nesta empresa.</td>
               </tr>
+            ) : (
+              users.map((u, idx) => {
+                const isAdmin = u.is_admin || u.role === 'admin';
+                const userActiveStatus = u.is_active !== false; // Active by default if not false
+                const isCurrentlyToggling = togglingUserId === u.id;
+                
+                return (
+                  <tr key={u.id} className="hover:bg-zinc-50 text-xs align-middle">
+                    {/* Ln column */}
+                    <td className="px-3 py-4 font-mono text-zinc-500 text-center font-bold bg-zinc-50/50">{idx + 1}</td>
+                    
+                    {/* Utilizador column */}
+                    <td className="px-4 py-4 font-bold text-[#003366] text-[13px]">{u.name}</td>
+                    
+                    {/* UserName column */}
+                    <td className="px-4 py-4">
+                      <span className="font-mono bg-zinc-100 text-[#003366] px-2 py-0.5 rounded-none border border-zinc-200">
+                        {u.username || u.email?.split('@')[0]}
+                      </span>
+                    </td>
+                    
+                    {/* Validade column */}
+                    <td className="px-4 py-4 font-medium text-zinc-600 font-mono">
+                      {u.validade || u.date || <span className="text-zinc-400">Pendente</span>}
+                    </td>
+                    
+                    {/* Admin column */}
+                    <td className="px-3 py-4 text-center">
+                      {isAdmin ? (
+                        <span className="inline-flex items-center justify-center w-6 h-6 bg-emerald-100 text-emerald-800 rounded-full font-black text-xs" title="Administrador">✓</span>
+                      ) : (
+                        <span className="text-zinc-300 font-bold">—</span>
+                      )}
+                    </td>
+                    
+                    {/* Level column */}
+                    <td className="px-3 py-4 text-center">
+                      <span className={`px-2 py-0.5 text-[9px] font-black uppercase rounded-none border ${
+                        (u.level || 0) >= 8 ? 'bg-[#003366] text-white border-[#003366]' :
+                        (u.level || 0) >= 5 ? 'bg-amber-100 text-amber-800 border-amber-300' :
+                        'bg-zinc-100 text-zinc-600 border-zinc-300'
+                      }`}>
+                        {u.level || (isAdmin ? 5 : 1)}
+                      </span>
+                    </td>
+                    
+                    {/* Email column */}
+                    <td className="px-4 py-4 text-zinc-600 font-mono">{u.email}</td>
+                    
+                    {/* Contacto column */}
+                    <td className="px-4 py-4 text-zinc-600 font-mono">{u.contact || 'N/D'}</td>
+                    
+                    {/* Status column (ON/OFF Toggle) */}
+                    <td className="px-4 py-4">
+                      <div className="flex items-center justify-center">
+                        <button
+                          type="button"
+                          disabled={togglingUserId !== null || isSaving}
+                          onClick={() => handleToggleStatus(u)}
+                          className={`relative inline-flex h-6 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                            isCurrentlyToggling ? 'opacity-50 cursor-wait' : ''
+                          } ${userActiveStatus ? 'bg-emerald-500' : 'bg-zinc-300'}`}
+                          title={userActiveStatus ? "Clique para Bloquear Utilizador" : "Clique para Ativar Utilizador"}
+                        >
+                          <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                            isCurrentlyToggling ? 'animate-pulse bg-zinc-100' : ''
+                          } ${userActiveStatus ? 'translate-x-6' : 'translate-x-0'}`} />
+                        </button>
+                      </div>
+                    </td>
+                    
+                    {/* MFA column */}
+                    <td className="px-3 py-4 text-center font-mono">
+                      <span className="text-[10px] font-black text-zinc-400 block tracking-wide uppercase">OFF</span>
+                    </td>
+                    
+                    {/* Log column */}
+                    <td className="px-3 py-4 text-center">
+                      <div className="flex justify-center items-center">
+                        {userActiveStatus ? (
+                          <span className="relative flex h-2 w-2">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" title="Ativo / Online"></span>
+                          </span>
+                        ) : (
+                          <span className="h-2 w-2 rounded-full bg-zinc-300 inline-block" title="Bloqueado / Inativo"></span>
+                        )}
+                      </div>
+                    </td>
+                    
+                    {/* OPC Actions column */}
+                    <td className="px-4 py-4">
+                      <div className="flex items-center justify-center gap-1">
+                        {/* Editar Action */}
+                        <button 
+                          disabled={togglingUserId !== null || isSaving}
+                          onClick={() => handleEditUser(u)} 
+                          className="p-1 px-1.5 bg-[#003366]/5 hover:bg-[#003366] text-[#003366] hover:text-white border border-[#003366]/10 transition-all font-bold rounded-none flex items-center justify-center disabled:opacity-50"
+                          title="Editar Utilizador"
+                        >
+                          <Pencil size={11} />
+                        </button>
+                        
+                        {/* Permissão Action */}
+                        <button 
+                          disabled={togglingUserId !== null || isSaving}
+                          onClick={() => handleOpenQuickPermissions(u)} 
+                          className="p-1 px-1.5 bg-amber-500/5 hover:bg-amber-500 text-amber-700 hover:text-white border border-amber-500/10 transition-all font-bold rounded-none flex items-center justify-center disabled:opacity-50"
+                          title="Permissões Rápidas"
+                        >
+                          <Shield size={11} />
+                        </button>
+                        
+                        {/* Reset Pass Action */}
+                        <button 
+                          disabled={togglingUserId !== null || isSaving}
+                          onClick={() => handleOpenResetPassword(u)} 
+                          className="p-1 px-1.5 bg-zinc-100 hover:bg-zinc-800 text-zinc-700 hover:text-white border border-zinc-200 transition-all font-bold rounded-none flex items-center justify-center disabled:opacity-50"
+                          title="Redefinir Senha do Utilizador"
+                        >
+                          <KeyRound size={11} />
+                        </button>
+  
+                        {/* Delete Action option */}
+                        <button 
+                          disabled={togglingUserId !== null || isSaving}
+                          onClick={() => handleDeleteUser(u.id)} 
+                          className="p-1 px-1.5 bg-red-100/5 hover:bg-red-600 text-red-600 hover:text-white border border-red-200/10 transition-all font-bold rounded-none flex items-center justify-center disabled:opacity-50"
+                          title="Eliminar Utilizador do Sistema"
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
       </div>
+
+      {/* Custom and Safe Multi-tenant Deletion Confirmation Modal */}
+      {confirmDeleteId && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm" onClick={() => setConfirmDeleteId(null)} />
+          <div className="relative w-full max-w-md bg-white p-6 shadow-2xl border-t-4 border-red-600 rounded-none animate-fade-in">
+            <h3 className="font-bold text-[#003366] text-lg uppercase mb-2">Eliminar Utilizador</h3>
+            <p className="text-zinc-600 text-sm mb-6">
+              Tem a certeza absoluta de que deseja eliminar este utilizador do sistema? 
+              Esta ação é definitiva, removerá todos os seus dados e acessos e não pode ser desfeita.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button 
+                onClick={() => setConfirmDeleteId(null)}
+                disabled={isDeleting}
+                className="bg-zinc-100 hover:bg-zinc-200 text-zinc-600 text-xs font-bold uppercase px-4 py-2 transition-all"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={confirmDeletion}
+                disabled={isDeleting}
+                className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold uppercase px-4 py-2 transition-all flex items-center gap-1"
+              >
+                {isDeleting ? 'A eliminar...' : 'Eliminar Definitivamente'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom absolute Toast Notification component */}
+      {toast && (
+        <div className={`fixed bottom-6 right-6 z-[100] px-6 py-4 shadow-2xl flex items-center gap-3 border ${
+          toast.type === 'success' 
+            ? 'bg-[#003366] text-white border-[#004488]' 
+            : 'bg-red-600 text-white border-red-700 font-bold'
+        }`}>
+          <div className={`p-1 rounded-full ${toast.type === 'success' ? 'bg-emerald-500' : 'bg-white text-red-600'}`}>
+            <Check size={14} className={toast.type === 'success' ? 'text-white' : 'text-red-600'} />
+          </div>
+          <p className="text-xs font-bold uppercase tracking-wider">{toast.message}</p>
+        </div>
+      )}
     </div>
   );
 };

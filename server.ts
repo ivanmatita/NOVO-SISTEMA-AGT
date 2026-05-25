@@ -121,6 +121,33 @@ if (!supabaseAdmin) {
               IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='system_users' AND column_name='created_by') THEN
                   ALTER TABLE public.system_users ADD COLUMN created_by UUID;
               END IF;
+              IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='system_users' AND column_name='created_at') THEN
+                  ALTER TABLE public.system_users ADD COLUMN created_at TIMESTAMPTZ DEFAULT now();
+              END IF;
+              IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='system_users' AND column_name='updated_at') THEN
+                  ALTER TABLE public.system_users ADD COLUMN updated_at TIMESTAMPTZ DEFAULT now();
+              END IF;
+              IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='hr_contratos') AND 
+                 NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='hr_contratos' AND column_name='dados_contrato') THEN
+                  ALTER TABLE public.hr_contratos ADD COLUMN dados_contrato JSONB;
+              END IF;
+              IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='profiles') AND 
+                 NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='profiles' AND column_name='company_id') THEN
+                  ALTER TABLE public.profiles ADD COLUMN company_id UUID REFERENCES public.empresas(id);
+              END IF;
+              IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='perfis') AND 
+                 NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='perfis' AND column_name='company_id') THEN
+                  ALTER TABLE public.perfis ADD COLUMN company_id UUID REFERENCES public.empresas(id);
+              END IF;
+              IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='perfis') AND 
+                 NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='perfis' AND column_name='updated_at') THEN
+                  ALTER TABLE public.perfis ADD COLUMN updated_at TIMESTAMPTZ DEFAULT now();
+              END IF;
+              IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='profiles') AND 
+                 NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='profiles' AND column_name='updated_at') THEN
+                  ALTER TABLE public.profiles ADD COLUMN updated_at TIMESTAMPTZ DEFAULT now();
+              END IF;
+              EXECUTE 'NOTIFY pgrst, ''reload schema''';
           END
           $$;
 
@@ -145,8 +172,6 @@ if (!supabaseAdmin) {
           END
           $$;
 
-          -- Notify PostgREST to reload its schema cache immediately so new columns are identified
-          NOTIFY pgrst, 'reload schema';
       `
   }).then(({ error }) => {
       if (error) {
@@ -239,7 +264,6 @@ async function addAuditLog(userId: string | null, email: string | null, action: 
         try {
             const { error } = await supabaseAdmin.from('logs_auditoria').insert([{
                 utilizador_id: userId,
-                email: email,
                 acao: action,
                 empresa_id: empresaId,
                 ip: ip,
@@ -871,6 +895,7 @@ async function startServer() {
         .upsert({
           id: userId,
           empresa_id: company.id,
+          company_id: company.id, // Inclusão obrigatória para compatibilidade com constraint NOT NULL
           email: email,
           nome: formData.nome_administrador || formData.nome_empresa,
           role: 'admin'
@@ -971,12 +996,33 @@ async function startServer() {
                  }
              }
              
-             res.json(data ? data.map((u: any) => ({ ...u, empresa_id: u.company_id || u.empresa_id })) : []);
+             const mappedList = data ? data.map((u: any) => ({ ...u, empresa_id: u.company_id || u.empresa_id })) : [];
+             
+             // Deduplicate by ID
+             const seenIds = new Set();
+             const uniqueUsers: any[] = [];
+             for (const u of mappedList) {
+                 if (u && u.id && !seenIds.has(u.id)) {
+                     seenIds.add(u.id);
+                     uniqueUsers.push(u);
+                 }
+             }
+
+             res.json(uniqueUsers);
          } catch (e: any) {
              res.status(500).json({ error: e.message });
          }
      } else {
-         res.json(systemUsers.filter(u => String(u.empresa_id) === String(empresa_id)));
+         const rawLocal = systemUsers.filter(u => String(u.empresa_id) === String(empresa_id));
+         const seenIds = new Set();
+         const uniqueUsers: any[] = [];
+         for (const u of rawLocal) {
+             if (u && u.id && !seenIds.has(u.id)) {
+                 seenIds.add(u.id);
+                 uniqueUsers.push(u);
+             }
+         }
+         res.json(uniqueUsers);
      }
   });
 
@@ -1087,8 +1133,7 @@ async function startServer() {
       
       const insertObj: any = {
           id: userId,
-          company_id: authCtx.empresaId, // FORÇAR EMPRESA ORIGINAL DA SESSÃO AQUI
-          company_name: req.body.company_name || null,
+          company_id: empresa_id,
           name,
           profession: profession || null,
           date: validade || date || null,
@@ -1107,7 +1152,7 @@ async function startServer() {
 
       let { error: dbError } = await supabaseAdmin
           .from('system_users')
-          .insert([insertObj]);
+          .upsert([insertObj]);
 
       if (dbError) {
           console.warn("[SERVER] PostgREST insert fail. Trying query_exec direct SQL fallback...", dbError);
@@ -1117,13 +1162,12 @@ async function startServer() {
                   : `'{}'::text[]`;
               const queryInsert = `
                   INSERT INTO public.system_users (
-                      id, company_id, company_name, name, profession, date, 
+                      id, company_id, name, profession, date, 
                       permission_areas, contact, morada, email, role, username, level, is_admin, validade, is_active, 
                       created_by
                   ) VALUES (
                       '${userId}',
-                      '${authCtx.empresaId}',
-                      ${req.body.company_name ? `'${req.body.company_name.replace(/'/g, "''")}'` : 'NULL'},
+                      '${empresa_id}',
                       '${name.replace(/'/g, "''")}',
                       ${profession ? `'${profession.replace(/'/g, "''")}'` : 'NULL'},
                       ${validade || date ? `'${(validade || date)}'` : 'NULL'},
@@ -1140,7 +1184,6 @@ async function startServer() {
                       '${authCtx.userId}'
                   ) ON CONFLICT (id) DO UPDATE SET 
                       company_id = EXCLUDED.company_id,
-                      company_name = EXCLUDED.company_name,
                       name = EXCLUDED.name,
                       profession = EXCLUDED.profession,
                       date = EXCLUDED.date,
@@ -1190,6 +1233,7 @@ async function startServer() {
           const perfilObj = {
               id: userId,
               empresa_id: empresa_id,
+              company_id: empresa_id, // Forçar inclusão de company_id para evitar erro de NOT NULL
               nome: name,
               email: email,
               role: targetRole
@@ -1197,16 +1241,17 @@ async function startServer() {
           
           let { error: profileError } = await supabaseAdmin
               .from('perfis')
-              .insert([perfilObj]);
+              .upsert([perfilObj]);
 
           if (profileError) {
               console.warn("[SERVER] Profile sync via PostgREST failed. Trying SQL fallback...");
               try {
                   const queryProfile = `
-                      INSERT INTO public.perfis (id, empresa_id, nome, email, role)
-                      VALUES ('${userId}', '${empresa_id}', '${name.replace(/'/g, "''")}', '${email.replace(/'/g, "''")}', '${targetRole}')
+                      INSERT INTO public.perfis (id, empresa_id, company_id, nome, email, role)
+                      VALUES ('${userId}', '${empresa_id}', '${empresa_id}', '${name.replace(/'/g, "''")}', '${email.replace(/'/g, "''")}', '${targetRole}')
                       ON CONFLICT (id) DO UPDATE SET 
                         empresa_id = EXCLUDED.empresa_id,
+                        company_id = EXCLUDED.company_id,
                         nome = EXCLUDED.nome,
                         email = EXCLUDED.email,
                         role = EXCLUDED.role;
@@ -3471,57 +3516,292 @@ app.post("/api/exec-sql", express.json(), async (req, res) => {
     if (empresa_id) return res.json(laborTerminations.filter(l => String(l.empresa_id) === String(empresa_id)));
     res.json(laborTerminations);
   });
-  app.get("/api/contracts", (req, res) => {
-    res.json(contracts);
-  });
-  app.post("/api/contracts", (req, res) => {
-    const newContract = { 
-      ...req.body, 
-      id: generateId(), 
-      created_at: new Date().toISOString() 
-    };
-    contracts.push(newContract);
+  app.get("/api/contracts", async (req, res) => {
+    let { empresa_id, colaborador_id } = req.query;
     
-    // Also update the employee state in employees if they exist
-    const empId = Number(newContract.employee_id);
-    const empIndex = employees.findIndex(e => e.id === empId);
-    if (empIndex !== -1) {
-      employees[empIndex].contract_type = newContract.contract_type === "Contrato por Tempo Indeterminado" ? "efetivo" : "temporario";
-      employees[empIndex].salary = Number(newContract.salary);
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) {
+       return res.status(401).json({ error: "Sessão inválida" });
     }
-    
+    if (authCtx.role !== 'superadmin') {
+       empresa_id = authCtx.empresaId;
+    }
+
+    if (!empresa_id) {
+       return res.status(400).json({ error: "empresa_id is required" });
+    }
+
+    let listToReturn: any[] = [];
+
+    if (supabaseAdmin) {
+       try {
+          let query = supabaseAdmin.from('hr_contratos').select('*').eq('empresa_id', empresa_id);
+          if (colaborador_id) {
+             query = query.eq('colaborador_id', colaborador_id);
+          }
+          const { data, error } = await query;
+          if (error) {
+             console.warn("[SERVER] PostgREST contracts fetch failed. Falling back to local/memory...", error.message);
+             // fallback to memory
+             let localList = contracts.filter(c => String(c.empresa_id || c.company_id) === String(empresa_id));
+             if (colaborador_id) {
+                localList = localList.filter(c => String(c.employee_id || c.colaborador_id) === String(colaborador_id));
+             }
+             listToReturn = localList;
+          } else if (data) {
+             listToReturn = data.map((row: any) => ({
+                id: row.id,
+                employee_id: row.colaborador_id,
+                employee_name: row.dados_contrato?.employee_name || '',
+                employee_role: row.dados_contrato?.employee_role || '',
+                contract_type: row.tipo_contrato,
+                start_date: row.data_inicio,
+                duration_months: row.dados_contrato?.duration_months || 12,
+                experimental_days: row.dados_contrato?.experimental_days || 15,
+                notice_days: row.dados_contrato?.notice_days || 30,
+                salary: row.dados_contrato?.salary || row.salario_base || 0,
+                representative_name: row.dados_contrato?.representative_name || '',
+                representative_doc_type: row.dados_contrato?.representative_doc_type || 'BI',
+                representative_doc_number: row.dados_contrato?.representative_doc_number || '',
+                representative_nationality: row.dados_contrato?.representative_nationality || 'Angolana',
+                representative_role: row.dados_contrato?.representative_role || 'Administrador',
+                content: row.documento_html || '',
+                status: row.status || 'ativo',
+                empresa_id: row.empresa_id
+             }));
+          }
+       } catch (e: any) {
+          console.warn("[SERVER] Error querying DB contracts: ", e.message);
+          let localList = contracts.filter(c => String(c.empresa_id || c.company_id) === String(empresa_id));
+          if (colaborador_id) {
+             localList = localList.filter(c => String(c.employee_id || c.colaborador_id) === String(colaborador_id));
+          }
+          listToReturn = localList;
+       }
+    } else {
+       let localList = contracts.filter(c => String(c.empresa_id || c.company_id) === String(empresa_id));
+       if (colaborador_id) {
+          localList = localList.filter(c => String(c.employee_id || c.colaborador_id) === String(colaborador_id));
+       }
+       listToReturn = localList;
+    }
+
+    // Dedup returned contracts by ID to avoid React duplicate key warnings!
+    const seen = new Set();
+    const uniqueList: any[] = [];
+    for (const c of listToReturn) {
+       if (c && c.id && !seen.has(c.id)) {
+          seen.add(c.id);
+          uniqueList.push(c);
+       }
+    }
+
+    res.json(uniqueList);
+  });
+
+  app.post("/api/contracts", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) {
+       return res.status(401).json({ error: "Sessão inválida" });
+    }
+
+    let payload = req.body;
+    let empresa_id = payload.empresa_id;
+
+    if (authCtx.role !== 'superadmin') {
+       empresa_id = authCtx.empresaId;
+    }
+
+    if (!empresa_id) {
+       return res.status(400).json({ error: "empresa_id is required" });
+    }
+
+    const payloadId = payload.id || crypto.randomUUID();
+
+    const newContract = {
+       ...payload,
+       id: payloadId,
+       empresa_id,
+       created_at: new Date().toISOString()
+    };
+
+    // Push/Update in-memory state fallback
+    const existingIndex = contracts.findIndex(c => String(c.id) === String(newContract.id));
+    if (existingIndex !== -1) {
+       contracts[existingIndex] = newContract;
+    } else {
+       contracts.push(newContract);
+    }
+
+    // Try DB Sync
+    if (supabaseAdmin) {
+       try {
+          const dataToSave = {
+             empresa_id,
+             colaborador_id: payload.employee_id,
+             tipo_contrato: payload.contract_type,
+             data_inicio: payload.start_date || null,
+             documento_html: payload.content,
+             status: payload.status,
+             dados_contrato: {
+                employee_name: payload.employee_name,
+                employee_role: payload.employee_role,
+                duration_months: payload.duration_months,
+                experimental_days: payload.experimental_days,
+                notice_days: payload.notice_days,
+                salary: payload.salary,
+                representative_name: payload.representative_name,
+                representative_doc_type: payload.representative_doc_type,
+                representative_doc_number: payload.representative_doc_number,
+                representative_nationality: payload.representative_nationality,
+                representative_role: payload.representative_role
+             },
+             updated_at: new Date().toISOString()
+          };
+
+          // Try standard insert/update to protect against missing table error, wrapping securely
+          const { error } = await supabaseAdmin.from('hr_contratos').upsert({
+             id: payloadId,
+             ...dataToSave
+          }, { onConflict: 'id' });
+          if (error) {
+             console.warn("[SERVER] PostgREST contracts save failed (might be missing table):", error.message);
+          }
+       } catch (e: any) {
+          console.warn("[SERVER] Contracts Sync DB insertion crashed:", e.message);
+       }
+    }
+
+    // Update employees state
+    const empId = Number(newContract.employee_id) || newContract.employee_id;
+    if (empId) {
+       const empIndex = employees.findIndex(e => String(e.id) === String(empId));
+       if (empIndex !== -1) {
+          employees[empIndex].contract_type = newContract.contract_type === "Contrato por Tempo Indeterminado" ? "efetivo" : "temporario";
+          employees[empIndex].salary = Number(newContract.salary) || 0;
+       }
+    }
+
     saveData();
     res.json(newContract);
   });
-  app.put("/api/contracts/:id", (req, res) => {
-    const id = Number(req.params.id);
-    const index = contracts.findIndex(c => c.id === id);
-    if (index !== -1) {
-      contracts[index] = { ...contracts[index], ...req.body };
-      
-      const empId = Number(contracts[index].employee_id);
-      const empIndex = employees.findIndex(e => e.id === empId);
-      if (empIndex !== -1) {
-        employees[empIndex].contract_type = contracts[index].contract_type === "Contrato por Tempo Indeterminado" ? "efetivo" : "temporario";
-        employees[empIndex].salary = Number(contracts[index].salary);
-      }
-      
-      saveData();
-      res.json(contracts[index]);
-    } else {
-      res.status(404).json({ error: "Contrato não encontrado" });
+
+  app.put("/api/contracts/:id", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) {
+       return res.status(401).json({ error: "Sessão inválida" });
     }
+
+    const { id } = req.params;
+    let payload = req.body;
+    let empresa_id = payload.empresa_id;
+
+    if (authCtx.role !== 'superadmin') {
+       empresa_id = authCtx.empresaId;
+    }
+
+    const updatedContract = {
+       ...payload,
+       id,
+       empresa_id,
+       updated_at: new Date().toISOString()
+    };
+
+    // Update in-memory state
+    const index = contracts.findIndex(c => String(c.id) === String(id));
+    if (index !== -1) {
+       contracts[index] = { ...contracts[index], ...updatedContract };
+    } else {
+       contracts.push(updatedContract);
+    }
+
+    // Try DB Sync
+    if (supabaseAdmin) {
+       try {
+          const dataToSave = {
+             empresa_id,
+             colaborador_id: payload.employee_id,
+             tipo_contrato: payload.contract_type,
+             data_inicio: payload.start_date || null,
+             documento_html: payload.content,
+             status: payload.status,
+             dados_contrato: {
+                employee_name: payload.employee_name,
+                employee_role: payload.employee_role,
+                duration_months: payload.duration_months,
+                experimental_days: payload.experimental_days,
+                notice_days: payload.notice_days,
+                salary: payload.salary,
+                representative_name: payload.representative_name,
+                representative_doc_type: payload.representative_doc_type,
+                representative_doc_number: payload.representative_doc_number,
+                representative_nationality: payload.representative_nationality,
+                representative_role: payload.representative_role
+             },
+             updated_at: new Date().toISOString()
+          };
+
+          const { error } = await supabaseAdmin
+             .from('hr_contratos')
+             .update(dataToSave)
+             .eq('id', id)
+             .eq('empresa_id', empresa_id);
+          if (error) {
+             console.warn("[SERVER] PostgREST contracts update failed:", error.message);
+          }
+       } catch (e: any) {
+          console.warn("[SERVER] Contracts Sync DB update crashed:", e.message);
+       }
+    }
+
+    // Update employees state
+    const empId = Number(updatedContract.employee_id) || updatedContract.employee_id;
+    if (empId) {
+       const empIndex = employees.findIndex(e => String(e.id) === String(empId));
+       if (empIndex !== -1) {
+          employees[empIndex].contract_type = updatedContract.contract_type === "Contrato por Tempo Indeterminado" ? "efetivo" : "temporario";
+          employees[empIndex].salary = Number(updatedContract.salary) || 0;
+       }
+    }
+
+    saveData();
+    res.json(updatedContract);
   });
-  app.delete("/api/contracts/:id", (req, res) => {
-    const id = Number(req.params.id);
-    const index = contracts.findIndex(c => c.id === id);
-    if (index !== -1) {
-      contracts.splice(index, 1);
-      saveData();
-      res.json({ success: true });
-    } else {
-      res.status(404).json({ error: "Contrato não encontrado" });
+
+  app.delete("/api/contracts/:id", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) {
+       return res.status(401).json({ error: "Sessão inválida" });
     }
+
+    const { id } = req.params;
+    let empresa_id = authCtx.empresaId;
+
+    // Delete in-memory state
+    const index = contracts.findIndex(c => String(c.id) === String(id));
+    if (index !== -1) {
+       contracts.splice(index, 1);
+    }
+
+    // Try DB Sync
+    if (supabaseAdmin) {
+       try {
+          // If superadmin, bypass empresa validation on deletion
+          const query = supabaseAdmin.from('hr_contratos').delete().eq('id', id);
+          if (authCtx.role !== 'superadmin') {
+             query.eq('empresa_id', empresa_id);
+          }
+          const { error } = await query;
+          if (error) {
+             console.warn("[SERVER] PostgREST contracts deletion failed:", error.message);
+          }
+       } catch (e: any) {
+          console.warn("[SERVER] Contracts Sync DB deletion crashed:", e.message);
+       }
+    }
+
+    saveData();
+    res.json({ success: true });
   });
 
   // Handle employee dismissal with automatic labor termination registration

@@ -165,6 +165,7 @@ export const authService = {
           .upsert({
             id: authData.user.id,
             empresa_id: targetCompany.id,
+            company_id: targetCompany.id,
             email: authData.user.email,
             role: 'admin',
             nome: authData.user.user_metadata?.full_name || targetCompany.nome_empresa || authData.user.email?.split('@')[0]
@@ -180,6 +181,7 @@ export const authService = {
              .insert([{
                id: authData.user.id,
                empresa_id: targetCompany.id,
+               company_id: targetCompany.id,
                email: authData.user.email,
                role: 'admin',
                nome: authData.user.user_metadata?.full_name || targetCompany.nome_empresa || authData.user.email?.split('@')[0]

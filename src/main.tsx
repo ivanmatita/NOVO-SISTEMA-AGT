@@ -71,12 +71,8 @@ if (typeof window !== 'undefined') {
     // Intercept with clean logs. Suppress noise or trace.
     console.warn('[SafeSystem] Intercepted Unhandled promise rejection:', event.reason);
     
-    // Check if the reason is a fetch-failed signature
-    const reasonStr = event.reason?.message || String(event.reason || '');
-    if (reasonStr.includes('Failed to fetch') || reasonStr.includes('WebSocket')) {
-      // Gracefully prevent default browser reporting
-      event.preventDefault();
-    }
+    // Gracefully prevent default browser reporting
+    event.preventDefault();
   });
 
   window.addEventListener('error', (event) => {

@@ -27153,8 +27153,11 @@ const ActivitiesManagementModule = () => {
           topPerformers: []
         });
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('[ACTIVITIES MODULE] Error downloading analytics logs:', e);
+      if (e.message && e.message.includes('Failed to fetch')) {
+        console.warn('[ACTIVITIES MODULE] Network error or Server unreachable. Check if the backend is running and reachable.');
+      }
     } finally {
       setLoading(false);
     }

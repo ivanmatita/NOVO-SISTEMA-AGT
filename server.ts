@@ -36,6 +36,48 @@ if (!supabaseAdmin) {
 } else {
   // Ensure logs_auditoria, user_activities_sessions tables exist and alter columns
   const sqlMigrations = `
+          -- Core Tables (Ensure they exist)
+          CREATE TABLE IF NOT EXISTS public.system_users (
+              id UUID PRIMARY KEY,
+              company_id UUID NOT NULL,
+              name TEXT NOT NULL,
+              email TEXT UNIQUE NOT NULL,
+              role TEXT DEFAULT 'user',
+              is_active BOOLEAN DEFAULT true,
+              created_by UUID,
+              created_at TIMESTAMPTZ DEFAULT now(),
+              updated_at TIMESTAMPTZ DEFAULT now()
+          );
+
+          CREATE TABLE IF NOT EXISTS public.logs_auditoria (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              company_id UUID,
+              user_id UUID,
+              email TEXT,
+              acao TEXT NOT NULL,
+              ip TEXT,
+              navegador TEXT,
+              created_at TIMESTAMPTZ DEFAULT now()
+          );
+
+          CREATE TABLE IF NOT EXISTS public.user_activities_sessions (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              utilizador_id UUID NOT NULL,
+              email TEXT NOT NULL,
+              empresa_id UUID NOT NULL,
+              data_entrada TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+              data_saida TIMESTAMP WITH TIME ZONE,
+              tempo_ativo_segundos INTEGER DEFAULT 0 NOT NULL,
+              movimentos INTEGER DEFAULT 0 NOT NULL,
+              insercoes INTEGER DEFAULT 0 NOT NULL,
+              tarefas_concluidas INTEGER DEFAULT 0 NOT NULL,
+              ip TEXT,
+              navegador TEXT,
+              ultimo_clique TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+              status TEXT DEFAULT 'ativo' NOT NULL
+          );
+
+          -- Migrations (Add missing columns)
           ALTER TABLE public.system_users ADD COLUMN IF NOT EXISTS created_by UUID;
           ALTER TABLE public.system_users ADD COLUMN IF NOT EXISTS company_name TEXT;
           ALTER TABLE public.system_users ADD COLUMN IF NOT EXISTS level INTEGER DEFAULT 1;
@@ -47,29 +89,61 @@ if (!supabaseAdmin) {
           ALTER TABLE public.system_users ADD COLUMN IF NOT EXISTS morada TEXT;
           ALTER TABLE public.system_users ADD COLUMN IF NOT EXISTS username TEXT;
           ALTER TABLE public.system_users ADD COLUMN IF NOT EXISTS validade DATE;
-          ALTER TABLE public.system_users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
-          ALTER TABLE public.system_users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
 
+          -- Logs auditoria consistency
+          ALTER TABLE public.logs_auditoria ADD COLUMN IF NOT EXISTS company_id UUID;
+          ALTER TABLE public.logs_auditoria ADD COLUMN IF NOT EXISTS user_id UUID;
           ALTER TABLE public.logs_auditoria ADD COLUMN IF NOT EXISTS email TEXT;
           ALTER TABLE public.logs_auditoria ADD COLUMN IF NOT EXISTS navegador TEXT;
 
           ALTER TABLE public.perfis ADD COLUMN IF NOT EXISTS company_id UUID;
           ALTER TABLE public.perfis ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
           ALTER TABLE public.perfis ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
+          ALTER TABLE public.perfis ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
 
+          -- Ensure user_activities_sessions has all columns if it existed previously
+          ALTER TABLE public.user_activities_sessions ADD COLUMN IF NOT EXISTS email TEXT;
+          ALTER TABLE public.user_activities_sessions ADD COLUMN IF NOT EXISTS empresa_id UUID;
+          ALTER TABLE public.user_activities_sessions ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'ativo';
+
+          -- Schema Cache Reload
           NOTIFY pgrst, 'reload schema';
-  `;
+
+          -- RLS Initialization
+          ALTER TABLE public.system_users ENABLE ROW LEVEL SECURITY;
+          ALTER TABLE public.perfis ENABLE ROW LEVEL SECURITY;
+          ALTER TABLE public.logs_auditoria ENABLE ROW LEVEL SECURITY;
+          ALTER TABLE public.user_activities_sessions ENABLE ROW LEVEL SECURITY;
+
+          DO $$ 
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'company_isolation_system_users') THEN
+              CREATE POLICY "company_isolation_system_users" ON public.system_users FOR ALL USING (company_id::text = (auth.jwt() ->> 'company_id'));
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'company_isolation_perfis') THEN
+              CREATE POLICY "company_isolation_perfis" ON public.perfis FOR ALL USING (company_id::text = (auth.jwt() ->> 'company_id'));
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'company_isolation_logs') THEN
+              CREATE POLICY "company_isolation_logs" ON public.logs_auditoria FOR SELECT USING (company_id::text = (auth.jwt() ->> 'company_id'));
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'company_isolation_activities') THEN
+              CREATE POLICY "company_isolation_activities" ON public.user_activities_sessions FOR ALL USING (empresa_id::text = (auth.jwt() ->> 'company_id'));
+            END IF;
+          EXCEPTION WHEN OTHERS THEN
+            RAISE NOTICE 'RLS Policy creation encountered an expected minor error: %', SQLERRM;
+          END $$;
+  `; // Final SQL migrations
 
   supabaseAdmin.rpc('query_exec', { query: sqlMigrations })
     .then(({ error }) => {
       if (error) {
         if (error.code === 'PGRST202') {
-            console.warn("⚠️ [STARTUP] SQL Migration skipped: RPC 'query_exec' not found. Run MASTER_PRODUCTION_FIX.sql manually.");
+            console.warn("⚠️ [STARTUP] SQL Migration skipped: RPC 'query_exec' not found. This is expected if masterpiece SQL was not run yet.");
         } else {
             console.error("❌ [STARTUP] SQL Migration failed:", error);
         }
       } else {
-          console.log("✅ [STARTUP] SQL Migrations completed successfully.");
+          console.log("✅ [STARTUP] SQL Migrations completed with NOTIFY reload.");
       }
     });
 
@@ -150,40 +224,48 @@ async function getAuthUserContext(req: express.Request) {
 }
 
 // Thread-safe and graceful Audit Log writing
+let isLoggingInternal = false;
 async function addAuditLog(userId: string | null, email: string | null, action: string, empresaId: string | null, ip: string, browser: string) {
-    const timestamp = new Date().toISOString();
-    console.log(`[AUDITLOG] [${timestamp}] User: ${email || 'unknown'} (${userId || 'null'}), Action: ${action}, Company: ${empresaId || 'null'}, IP: ${ip}`);
-    
-    if (supabaseAdmin) {
-        try {
-            const logObj: any = {
-                acao: action,
-                data_hora: timestamp
-            };
-            
-            if (userId) logObj.utilizador_id = userId;
-            if (email) logObj.email = email;
-            if (empresaId) logObj.empresa_id = empresaId;
-            if (ip) logObj.ip = ip;
-            if (browser) logObj.navegador = browser;
+    if (isLoggingInternal) return;
+    isLoggingInternal = true;
 
-            const { error } = await supabaseAdmin.from('logs_auditoria').insert([logObj]);
-            
-            if (error) {
-                console.warn("[AUDITLOG] Primary log insert fail. Retrying simplified log...", error.message);
-                
-                // Retry with only core fields
-                const minimalLog = {
+    try {
+        const timestamp = new Date().toISOString();
+        console.log(`[AUDITLOG] [${timestamp}] User: ${email || 'unknown'} (${userId || 'null'}), Action: ${action}, Company: ${empresaId || 'null'}, IP: ${ip}`);
+        
+        if (supabaseAdmin) {
+            try {
+                const logObj: any = {
                     acao: action,
-                    data_hora: timestamp,
-                    utilizador_id: userId || null
+                    created_at: timestamp
                 };
                 
-                await supabaseAdmin.from('logs_auditoria').insert([minimalLog]);
+                if (userId) logObj.user_id = userId;
+                if (email) logObj.email = email;
+                if (empresaId) logObj.company_id = empresaId;
+                if (ip) logObj.ip = ip;
+                if (browser) logObj.navegador = browser;
+
+                const { error } = await supabaseAdmin.from('logs_auditoria').insert([logObj]);
+                
+                if (error) {
+                    console.warn("[AUDITLOG] Primary log insert fail. Retrying simplified log...", error.message);
+                    
+                    // Retry with only core fields
+                    const minimalLog = {
+                        acao: action,
+                        created_at: timestamp,
+                        user_id: userId || null
+                    };
+                    
+                    await supabaseAdmin.from('logs_auditoria').insert([minimalLog]);
+                }
+            } catch (err: any) {
+                console.warn("[AUDITLOG] Log capture suppressed due to DB error:", err.message);
             }
-        } catch (err: any) {
-            console.warn("[AUDITLOG] Log capture suppressed due to DB error:", err.message);
         }
+    } finally {
+        isLoggingInternal = false;
     }
 }
 
@@ -1150,52 +1232,58 @@ async function startServer() {
       systemUsers.push(userForMemory);
       saveData();
 
-      if (dbError && dbError.code !== 'PGRST202') {
-          // If we had a schema cache error, we don't treat it as a fatal error since we have memory fallback
-          if (dbError.message?.includes('schema cache')) {
-              console.warn("[SERVER] PostgREST schema cache is stale. Data saved to memory and SQL fallback attempted.");
-          } else {
-              console.warn("[SERVER] Database insert failed, but continuing with memory persistence.", dbError.message);
-          }
+      // Check for success: both must succeed or at least have a non-fatal schema cache error
+      if (dbError && !dbError.message?.includes('schema cache')) {
+           console.error("[SERVER] Primary DB insert FAILED:", dbError.message);
       }
 
-          // 3. Create Profile Synchronization Record to link login correctly and prevent orphan statuses
+
+          // 3. Sync to perfis (Synchronization Record)
           const perfilObj = {
               id: userId,
               empresa_id: empresa_id,
-              company_id: empresa_id, // Forçar inclusão de company_id para evitar erro de NOT NULL
+              company_id: empresa_id,
               nome: name,
               email: email,
-              role: targetRole
+              role: targetRole,
+              is_active: true
           };
           
-          let { error: profileError } = await supabaseAdmin
-              .from('perfis')
-              .upsert([perfilObj]);
+          let { error: profileError } = await supabaseAdmin.from('perfis').upsert([perfilObj]);
 
           if (profileError) {
               console.warn("[SERVER] Profile sync via PostgREST failed. Trying SQL fallback...");
               try {
                   const queryProfile = `
-                      INSERT INTO public.perfis (id, empresa_id, company_id, nome, email, role)
-                      VALUES ('${userId}', '${empresa_id}', '${empresa_id}', '${name.replace(/'/g, "''")}', '${email.replace(/'/g, "''")}', '${targetRole}')
+                      INSERT INTO public.perfis (id, empresa_id, company_id, nome, email, role, is_active)
+                      VALUES ('${userId}', '${empresa_id}', '${empresa_id}', '${name.replace(/'/g, "''")}', '${email.replace(/'/g, "''")}', '${targetRole}', true)
                       ON CONFLICT (id) DO UPDATE SET 
                         empresa_id = EXCLUDED.empresa_id,
                         company_id = EXCLUDED.company_id,
                         nome = EXCLUDED.nome,
                         email = EXCLUDED.email,
-                        role = EXCLUDED.role;
+                        role = EXCLUDED.role,
+                        is_active = EXCLUDED.is_active;
                   `;
                   const { error: profileRawError } = await supabaseAdmin.rpc('query_exec', { query: queryProfile });
                   if (!profileRawError) profileError = null;
-              } catch (e) {
-                  // Ignore fallback failure
-              }
+              } catch (e) {}
           }
 
-          if (profileError && profileError.code !== 'PGRST202') {
-              console.error("[SERVER] Profile sync error details:", JSON.stringify(profileError, null, 2));
+          if (dbError && profileError && !dbError.message?.includes('schema cache')) {
+              console.error("[SERVER] FINAL ERROR: Both system_users and perfis insert failed.");
+              return res.status(400).json({ error: "Falha ao gravar utilizador.", details: dbError.message });
           }
+
+          if (dbError && !dbError.message?.includes('schema cache')) {
+              console.error("[SERVER] system_users record insertion failed while perfis worked.");
+              return res.status(400).json({ error: "Falha ao gravar registro principal do utilizador.", details: dbError.message });
+          }
+
+          if (profileError && !profileError.message?.includes('schema cache')) {
+              console.warn("[SERVER] perfis record insertion failed while system_users worked (Partial Success).");
+          }
+
 
           await addAuditLog(
               authCtx.userId,
@@ -1206,11 +1294,11 @@ async function startServer() {
               (req.headers['user-agent'] || '').toString()
           );
 
-          console.log("[SERVER] System user and profile records created successfully");
-          res.status(201).json({ success: true });
+          console.log("[SERVER] System user created successfully with ID:", userId);
+          res.status(201).json({ success: true, message: "Utilizador criado com sucesso" });
       } catch (e: any) {
-          console.error("[SERVER] Final error catch in POST /system-users:", e);
-          res.status(400).json({ error: e.message });
+          console.error("[SERVER] Creation Fatal Error:", e);
+          res.status(500).json({ error: e.message || "Erro interno na criação de utilizador" });
       }
   });
 
@@ -1510,9 +1598,8 @@ async function startServer() {
 
           const nextActiveStatus = is_active !== undefined ? !!is_active : !targetUser.is_active;
 
-          let updateResults = [];
-          
-          const { error: dbError } = await supabaseAdmin
+          // 1. Update system_users
+          let { error: dbError } = await supabaseAdmin
               .from('system_users')
               .update({ is_active: nextActiveStatus })
               .eq('id', userId);
@@ -1523,17 +1610,32 @@ async function startServer() {
                   const { error: rawError } = await supabaseAdmin.rpc('query_exec', {
                       query: `UPDATE public.system_users SET is_active = ${nextActiveStatus} WHERE id = '${userId}';`
                   });
-                  if (rawError && rawError.code !== 'PGRST202') throw rawError;
+                  if (!rawError) dbError = null;
               } catch (retryErr: any) {
                   console.error("[SERVER] toggle-status SQL fallback failure:", retryErr);
               }
           }
 
-          // Also update perfis
+          // 2. Sync to perfis (secondary)
           await supabaseAdmin
               .from('perfis')
               .update({ is_active: nextActiveStatus })
               .eq('id', userId);
+
+          // 3. Sync to memory if exists
+          const memoryIdx = systemUsers.findIndex(u => String(u.id) === String(userId));
+          if (memoryIdx !== -1) {
+              systemUsers[memoryIdx].is_active = nextActiveStatus;
+              saveData();
+          }
+
+          if (dbError && dbError.code !== 'PGRST202') {
+              // If it failed and it wasn't just a missing RPC, we should probably report it if we want strict mode.
+              // But if it's a schema cache error, maybe we don't block.
+              if (!dbError.message?.includes('schema cache')) {
+                   return res.status(500).json({ error: "Erro ao atualizar estado na base de dados", details: dbError.message });
+              }
+          }
 
           await addAuditLog(
               authCtx.userId,
@@ -1546,7 +1648,7 @@ async function startServer() {
 
           res.json({ success: true, is_active: nextActiveStatus });
       } catch (e: any) {
-          console.error("[SERVER] Toggle status error:", e);
+          console.error("[SERVER] Toggle status fatal error:", e);
           res.status(500).json({ error: e.message });
       }
   });
@@ -1709,6 +1811,11 @@ async function startServer() {
           return res.status(401).json({ error: "Utilizador não autenticado" });
       }
 
+      const companyId = authCtx.empresaId;
+      if (!companyId) {
+          return res.status(400).json({ error: "Identificação da empresa não encontrada no contexto" });
+      }
+
       if (!supabaseAdmin) {
           return res.status(500).json({ error: "Supabase connection is not available" });
       }
@@ -1727,7 +1834,7 @@ async function startServer() {
           let query = supabaseAdmin
               .from('user_activities_sessions')
               .select('*')
-              .eq('empresa_id', authCtx.empresaId);
+              .eq('empresa_id', companyId);
 
           if (!isManagerAndAdmin) {
               query = query.eq('utilizador_id', authCtx.userId);
@@ -1741,7 +1848,7 @@ async function startServer() {
               console.warn("[ACTIVITIES] PostgREST history list error. Checking fallback with direct SQL selection...", error.message);
               try {
                   const filterUser = isManagerAndAdmin ? "" : `AND utilizador_id = '${authCtx.userId}'`;
-                  const queryHistory = `SELECT * FROM public.user_activities_sessions WHERE empresa_id = '${authCtx.empresaId}' ${filterUser} ORDER BY data_entrada DESC LIMIT 400;`;
+                  const queryHistory = `SELECT * FROM public.user_activities_sessions WHERE empresa_id = '${companyId}' ${filterUser} ORDER BY data_entrada DESC LIMIT 400;`;
                   const { data: rawData, error: rawError } = await supabaseAdmin.rpc('query_exec', { query: queryHistory });
                   if (rawError) {
                       if (rawError.code !== 'PGRST202') throw rawError;
@@ -1766,6 +1873,11 @@ async function startServer() {
           return res.status(401).json({ error: "Utilizador não autenticado" });
       }
 
+      const companyId = authCtx.empresaId;
+      if (!companyId) {
+          return res.status(400).json({ error: "Identificação da empresa não encontrada no contexto" });
+      }
+
       if (!supabaseAdmin) {
           return res.json({
               totalLogins: 0,
@@ -1783,13 +1895,13 @@ async function startServer() {
           let { data: list, error } = await supabaseAdmin
               .from('user_activities_sessions')
               .select('*')
-              .eq('empresa_id', authCtx.empresaId);
+              .eq('empresa_id', companyId);
 
           if (error) {
               console.warn("[ACTIVITIES] PostgREST stats list error. Checking fallback with direct SQL selection...", error.message);
               try {
                   const { data: rawData, error: rawError } = await supabaseAdmin.rpc('query_exec', {
-                      query: `SELECT * FROM public.user_activities_sessions WHERE empresa_id = '${authCtx.empresaId}';`
+                      query: `SELECT * FROM public.user_activities_sessions WHERE empresa_id = '${companyId}';`
                   });
                   if (rawError) {
                       if (rawError.code !== 'PGRST202') throw rawError;

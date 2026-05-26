@@ -715,16 +715,16 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
         
         const { data: profile } = await supabase
           .from('perfis')
-          .select('empresa_id')
+          .select('company_id')
           .eq('id', user.id)
           .single();
           
-        if (profile?.empresa_id) {
+        if (profile?.company_id) {
           // Fetch avatar
           const { data: avatarData } = await supabase
             .from('media_arquivos')
             .select('url_publica')
-            .eq('empresa_id', profile.empresa_id)
+            .eq('empresa_id', profile.company_id)
             .eq('utilizador_id', user.id)
             .eq('tipo', 'avatar')
             .eq('ativo', true)
@@ -790,11 +790,11 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
         
         const { data: profile } = await supabase
           .from('perfis')
-          .select('empresa_id')
+          .select('company_id')
           .eq('id', user.id)
           .single();
           
-        const empresaId = profile?.empresa_id;
+        const empresaId = profile?.company_id;
         if (!empresaId) return;
         
         const fileExt = file.name.split('.').pop();
@@ -11277,7 +11277,7 @@ const UsersSettings = () => {
     
     fetchUsers();
 
-    // Set up Realtime sync directly via Supabase
+    // Set up Realtime sync directly via Supabase on 'perfis'
     const channel = supabase
       .channel(`system-users-realtime-${user.empresa_id}`)
       .on(
@@ -11285,7 +11285,7 @@ const UsersSettings = () => {
         {
           event: '*',
           schema: 'public',
-          table: 'system_users',
+          table: 'perfis',
           filter: `company_id=eq.${user.empresa_id}`
         },
         () => {
@@ -13678,11 +13678,11 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
 
         const { data: profile } = await supabase
           .from('perfis')
-          .select('empresa_id')
+          .select('company_id')
           .eq('id', authUser.id)
           .single();
           
-        const empresaId = profile?.empresa_id;
+        const empresaId = profile?.company_id;
         if (!empresaId) throw new Error('Empresa não identificada');
 
         const fileExt = file.name.split('.').pop();
@@ -25675,12 +25675,12 @@ export default function App() {
         console.log('[DEBUG-SYNC] Ainda sem empresa_id. Buscando no DB (perfis)...');
         const { data: profileCheck, error: profileErr } = await supabase
           .from('perfis')
-          .select('empresa_id')
+          .select('company_id')
           .eq('id', session?.user?.id)
           .maybeSingle();
         
         if (profileErr) console.error('[DEBUG-SYNC] Erro ao buscar perfil:', profileErr);
-        targetCompanyId = profileCheck?.empresa_id;
+        targetCompanyId = profileCheck?.company_id;
       }
 
       if (!targetCompanyId && session?.user?.id) {

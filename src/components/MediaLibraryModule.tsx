@@ -92,8 +92,8 @@ export const MediaLibraryModule = ({ onRefreshData }: { onRefreshData?: () => vo
         // Sync with empresas table if it's a structural image
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-          const { data: profile } = await supabase.from('perfis').select('empresa_id').eq('id', user.id).single();
-          const empresaId = profile?.empresa_id;
+          const { data: profile } = await supabase.from('perfis').select('company_id').eq('id', user.id).single();
+          const empresaId = profile?.company_id;
           
           if (empresaId) {
             if (tipo === 'menu_logo') {

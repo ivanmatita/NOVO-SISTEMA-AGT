@@ -114,23 +114,78 @@ if (!supabaseAdmin) {
           ALTER TABLE public.perfis ENABLE ROW LEVEL SECURITY;
           ALTER TABLE public.logs_auditoria ENABLE ROW LEVEL SECURITY;
           ALTER TABLE public.user_activities_sessions ENABLE ROW LEVEL SECURITY;
+          ALTER TABLE public.empresas ENABLE ROW LEVEL SECURITY;
+
+          -- Secure Helper Functions to resolve Tenant ID and Role securely bypassing RLS recursion
+          CREATE OR REPLACE FUNCTION public.get_user_company_id()
+          RETURNS UUID AS $$
+            SELECT COALESCE(company_id, empresa_id)
+            FROM public.perfis 
+            WHERE id = auth.uid()
+            LIMIT 1;
+          $$ LANGUAGE sql SECURITY DEFINER;
+
+          CREATE OR REPLACE FUNCTION public.get_user_role()
+          RETURNS TEXT AS $$
+            SELECT COALESCE(role, 'user')
+            FROM public.perfis 
+            WHERE id = auth.uid()
+            LIMIT 1;
+          $$ LANGUAGE sql SECURITY DEFINER;
 
           DO $$ 
+          DECLARE
+            pol RECORD;
           BEGIN
-            IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'company_isolation_system_users') THEN
-              CREATE POLICY "company_isolation_system_users" ON public.system_users FOR ALL USING (company_id::text = (auth.jwt() ->> 'company_id'));
-            END IF;
-            IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'company_isolation_perfis') THEN
-              CREATE POLICY "company_isolation_perfis" ON public.perfis FOR ALL USING (company_id::text = (auth.jwt() ->> 'company_id'));
-            END IF;
-            IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'company_isolation_logs') THEN
-              CREATE POLICY "company_isolation_logs" ON public.logs_auditoria FOR SELECT USING (company_id::text = (auth.jwt() ->> 'company_id'));
-            END IF;
-            IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'company_isolation_activities') THEN
-              CREATE POLICY "company_isolation_activities" ON public.user_activities_sessions FOR ALL USING (empresa_id::text = (auth.jwt() ->> 'company_id'));
-            END IF;
+            -- Dynamically drop ALL conflicting legacy RLS policies on our core tables
+            FOR pol IN 
+              SELECT policyname, tablename 
+              FROM pg_policies 
+              WHERE schemaname = 'public' 
+                AND tablename IN ('system_users', 'perfis', 'logs_auditoria', 'user_activities_sessions', 'empresas')
+            LOOP
+              EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', pol.policyname, pol.tablename);
+            END LOOP;
+            
+            -- Re-create canonical, highly resilient, recursive-free policies
+            -- system_users
+            EXECUTE 'CREATE POLICY "company_isolation_system_users" ON public.system_users FOR ALL TO authenticated 
+              USING (id = auth.uid() OR company_id = public.get_user_company_id())
+              WITH CHECK (id = auth.uid() OR company_id = public.get_user_company_id())';
+              
+            -- perfis
+            EXECUTE 'CREATE POLICY "company_isolation_perfis" ON public.perfis FOR ALL TO authenticated 
+              USING (id = auth.uid() OR company_id = public.get_user_company_id() OR empresa_id = public.get_user_company_id())
+              WITH CHECK (id = auth.uid() OR company_id = public.get_user_company_id() OR empresa_id = public.get_user_company_id())';
+              
+            -- logs_auditoria
+            EXECUTE 'CREATE POLICY "company_isolation_logs" ON public.logs_auditoria FOR SELECT TO authenticated 
+              USING (user_id = auth.uid() OR company_id = public.get_user_company_id())';
+              
+            EXECUTE 'CREATE POLICY "company_isolation_logs_insert" ON public.logs_auditoria FOR INSERT TO authenticated 
+              WITH CHECK (user_id = auth.uid() OR auth.uid() IS NOT NULL)';
+              
+            -- user_activities_sessions
+            EXECUTE 'CREATE POLICY "company_isolation_activities" ON public.user_activities_sessions FOR ALL TO authenticated 
+              USING (utilizador_id = auth.uid() OR empresa_id = public.get_user_company_id())
+              WITH CHECK (utilizador_id = auth.uid() OR empresa_id = public.get_user_company_id())';
+              
+            -- empresas
+            EXECUTE 'CREATE POLICY "empresas_select_policy" ON public.empresas FOR SELECT TO authenticated 
+              USING (auth_user_id = auth.uid() OR id = public.get_user_company_id())';
+              
+            EXECUTE 'CREATE POLICY "empresas_insert_policy" ON public.empresas FOR INSERT TO authenticated 
+              WITH CHECK (auth_user_id = auth.uid() OR auth.uid() IS NOT NULL)';
+              
+            EXECUTE 'CREATE POLICY "empresas_update_policy" ON public.empresas FOR UPDATE TO authenticated 
+              USING (auth_user_id = auth.uid() OR id = public.get_user_company_id())
+              WITH CHECK (auth_user_id = auth.uid() OR id = public.get_user_company_id())';
+              
+            EXECUTE 'CREATE POLICY "empresas_delete_policy" ON public.empresas FOR DELETE TO authenticated 
+              USING (auth_user_id = auth.uid())';
+              
           EXCEPTION WHEN OTHERS THEN
-            RAISE NOTICE 'RLS Policy creation encountered an expected minor error: %', SQLERRM;
+            RAISE NOTICE 'RLS Policy creation encountered a minor error: %', SQLERRM;
           END $$;
   `; // Final SQL migrations
 
@@ -162,57 +217,47 @@ async function getAuthUserContext(req: express.Request) {
         const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
         if (authError || !user) return null;
 
-        // Fetch user system profile first with robust selection
-        let sysUser = null;
-        const { data, error: sysError } = await supabaseAdmin
-            .from('system_users')
-            .select('*')
-            .eq('id', user.id)
-            .maybeSingle();
-        
-        if (!sysError && data) {
-            sysUser = data;
-        }
-
-        if (sysUser) {
-            return {
-                userId: user.id,
-                email: user.email,
-                empresaId: sysUser.company_id || sysUser.empresa_id,
-                role: sysUser.role || 'user',
-                isBlocked: sysUser.is_active === false
-            };
-        }
-
-        // Fetch fallback profile record
-        const { data: perfil, error: perfilError } = await supabaseAdmin
+        // 1. Prioritize active context inside the 'perfis' table
+        const { data: perfil } = await supabaseAdmin
             .from('perfis')
             .select('*')
             .eq('id', user.id)
             .maybeSingle();
 
+        // 2. Load direct owner information from 'empresas'
+        const { data: ownedCompany } = await supabaseAdmin
+            .from('empresas')
+            .select('*')
+            .eq('auth_user_id', user.id)
+            .maybeSingle();
+
         if (perfil) {
+            const activeCompanyId = perfil.empresa_id || perfil.company_id;
+            let resolvedRole = perfil.role || 'user';
+
+            // If operating in the company they directly own, they are ALWAYS the absolute admin
+            if (ownedCompany && String(ownedCompany.id) === String(activeCompanyId)) {
+                resolvedRole = 'admin';
+            }
+
+            const normRole = (resolvedRole || 'user').toLowerCase();
+
             return {
                 userId: user.id,
                 email: user.email,
-                empresaId: perfil.empresa_id || perfil.company_id,
-                role: perfil.role || 'user',
+                empresaId: activeCompanyId,
+                role: normRole,
                 isBlocked: perfil.is_active === false
             };
         }
 
-        // Legacy check for owners
-        const { data: legacyEmpresa } = await supabaseAdmin
-            .from('empresas')
-            .select('id')
-            .eq('auth_user_id', user.id)
-            .maybeSingle();
-
-        if (legacyEmpresa) {
+        // 3. Fallback: If no profile exists but owns a company, log them into their owned company as direct admin
+        if (ownedCompany) {
+            console.log(`[SERVER-AUTH] User ${user.email} verified as company OWNER. Granting role 'admin'.`);
             return {
                 userId: user.id,
                 email: user.email,
-                empresaId: legacyEmpresa.id,
+                empresaId: ownedCompany.id,
                 role: 'admin',
                 isBlocked: false
             };
@@ -605,11 +650,11 @@ async function startServer() {
           // Se não for dono, verificar se está num perfil
           const { data: profile } = await supabaseAdmin
             .from('perfis')
-            .select('empresa_id')
+            .select('company_id')
             .eq('id', authUser.id)
             .maybeSingle();
           
-          companyId = profile?.empresa_id;
+          companyId = profile?.company_id;
         }
 
         // Se ainda não tiver empresa, criar uma Empresa Padrão (Auto-Onboarding)
@@ -641,7 +686,7 @@ async function startServer() {
           .from('perfis')
           .upsert({
             id: authUser.id,
-            empresa_id: companyId,
+            company_id: companyId,
             email: authUser.email,
             role: 'admin',
             nome: authUser.user_metadata?.full_name || authUser.email?.split('@')[0]
@@ -692,11 +737,13 @@ async function startServer() {
         .eq('id', user.id)
         .maybeSingle();
 
-      if (perfil?.empresa_id) {
+      const companyId = perfil?.company_id || perfil?.empresa_id;
+
+      if (companyId) {
         const { data: empresa } = await supabaseAdmin
           .from('empresas')
           .select('*')
-          .eq('id', perfil.empresa_id)
+          .eq('id', companyId)
           .maybeSingle();
           
         // Load permission_areas from system_users for normal user restriction
@@ -712,6 +759,8 @@ async function startServer() {
 
         const enrichedPerfil = {
           ...perfil,
+          empresa_id: companyId,
+          company_id: companyId,
           permission_areas: sysUser?.permission_areas || []
         };
 
@@ -719,7 +768,7 @@ async function startServer() {
           user.id,
           user.email || null,
           "Login efetuado / Sessão validada",
-          perfil.empresa_id,
+          companyId,
           (req.ip || req.headers['x-forwarded-for'] || '').toString(),
           (req.headers['user-agent'] || '').toString()
         );
@@ -758,6 +807,124 @@ async function startServer() {
       return res.status(404).json({ error: "Profile not found" });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Safe server-side auto-repair endpoint for onboarding (Bypass RLS completely on critical startup)
+  app.post("/api/auth/repair-onboarding", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: "Falta o cabeçalho de autenticação (token JWT)." });
+      }
+
+      if (!supabaseAdmin) {
+        return res.status(500).json({ error: "Cliente administrativo do Supabase não configurado." });
+      }
+
+      const token = authHeader.split(' ')[1];
+      const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
+
+      if (userError || !user) {
+        console.error("[SERVER-AUTH] Token inválido na reparação:", userError?.message);
+        return res.status(401).json({ error: "Sessão expirada ou token de acesso inválido." });
+      }
+
+      console.log(`[SERVER-AUTH] Reparando Onboarding para o Utilizador: ${user.email} (${user.id})`);
+
+      // 1. Verificar se existe Perfil
+      const { data: perfil } = await supabaseAdmin
+        .from('perfis')
+        .select('*')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (perfil) {
+        console.log("[SERVER-AUTH] Perfil já existe, retornando sucesso.");
+        return res.json({ success: true, message: "Perfil já existente e associado.", companyId: perfil.company_id || perfil.empresa_id });
+      }
+
+      // 2. Verificar se existe Empresa proprietária do utilizador
+      let { data: empresa } = await supabaseAdmin
+        .from('empresas')
+        .select('*')
+        .eq('auth_user_id', user.id)
+        .maybeSingle();
+
+      if (!empresa) {
+        console.warn("[SERVER-AUTH] Nenhuma empresa encontrada. Criando nova empresa segura...");
+        const newComId = crypto.randomUUID();
+        const { data: newEmpresa, error: empErr } = await supabaseAdmin
+          .from('empresas')
+          .insert([{
+            id: newComId,
+            auth_user_id: user.id,
+            nome_empresa: `Empresa de ${user.email?.split('@')[0]}`,
+            email: user.email,
+            plano: 'trial'
+          }])
+          .select('*')
+          .single();
+
+        if (empErr) {
+          console.error("[SERVER-AUTH] Erro ao criar empresa segura:", empErr);
+          return res.status(400).json({ error: `Falha ao criar empresa segura: ${empErr.message}` });
+        }
+        empresa = newEmpresa;
+      }
+
+      // 3. Vincular Perfil (using existing columns of perfis in DB)
+      const { error: perfErr } = await supabaseAdmin
+        .from('perfis')
+        .upsert({
+          id: user.id,
+          company_id: empresa.id,
+          email: user.email,
+          nome: user.user_metadata?.full_name || empresa.nome_empresa || user.email?.split('@')[0],
+          role: 'admin'
+        }, {
+          onConflict: 'id'
+        });
+
+      if (perfErr) {
+        console.error("[SERVER-AUTH] Erro ao criar perfil seguro:", perfErr);
+        return res.status(400).json({ error: `Falha ao vincular perfil seguro: ${perfErr.message}` });
+      }
+
+      // 4. Inserir também na tabela system_users para total consistência
+      const { error: sysError } = await supabaseAdmin
+        .from('system_users')
+        .upsert({
+          id: user.id,
+          company_id: empresa.id,
+          company_name: empresa.nome_empresa,
+          name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário',
+          email: user.email || '',
+          role: 'admin',
+          is_active: true,
+          is_admin: true
+        }, {
+          onConflict: 'id'
+        });
+
+      if (sysError) {
+        console.warn("[SERVER-AUTH] Alerta menor de system_users ao reparar onboarding:", sysError.message);
+      }
+
+      await addAuditLog(
+        user.id,
+        user.email || null,
+        "Auto-Reparação concluída via API de Onboarding",
+        empresa.id,
+        (req.ip || req.headers['x-forwarded-for'] || '').toString(),
+        (req.headers['user-agent'] || '').toString()
+      );
+
+      console.log(`[SERVER-AUTH] Onboarding reparado com sucesso para ${user.email}`);
+      return res.json({ success: true, message: "Onboarding auto-reparado com sucesso.", companyId: empresa.id });
+    } catch (e: any) {
+      console.error("[SERVER-AUTH] Exceção crítica na reparação de Onboarding:", e);
+      return res.status(500).json({ error: e.message || "Erro desconhecido de processamento." });
     }
   });
 
@@ -879,13 +1046,12 @@ async function startServer() {
         return res.status(400).json({ error: `Erro na Tabela Empresas: ${companyError.message}` });
       }
 
-      // 3. Criar Perfil
+      // 3. Criar Perfil (using physical columns of perfis in DB)
       const { error: profileError } = await supabaseAdmin
         .from('perfis')
         .upsert({
           id: userId,
-          empresa_id: company.id,
-          company_id: company.id, // Inclusão obrigatória para compatibilidade com constraint NOT NULL
+          company_id: company.id, // Inclusão obrigatória para compatibilidade com o banco
           email: email,
           nome: formData.nome_administrador || formData.nome_empresa,
           role: 'admin'
@@ -957,26 +1123,11 @@ async function startServer() {
      if (supabaseAdmin) {
          try {
              let { data, error } = await supabaseAdmin
-                 .from('system_users')
+                 .from('perfis')
                  .select('*')
                  .eq('company_id', empresa_id);
              if (error) {
-                 console.warn("[SERVER] PostgREST GET fail. Falling back to query_exec direct SQL...", error.message || error);
-                 try {
-                     const { data: rawData, error: rawError } = await supabaseAdmin.rpc('query_exec', {
-                         query: `SELECT * FROM public.system_users WHERE company_id = '${empresa_id}';`
-                     });
-                     if (rawError) {
-                         if (rawError.code === 'PGRST202') {
-                             console.warn("[SERVER] Fallback query_exec skipped (function missing). Using memory state.");
-                         } else {
-                             throw rawError;
-                         }
-                     }
-                     data = Array.isArray(rawData) ? rawData : null;
-                 } catch (fallbackErr: any) {
-                     console.warn("[SERVER] Database fallback failed:", fallbackErr.message);
-                 }
+                 console.warn("[SERVER] PostgREST GET perfis fail. Using memory fallback...", error.message || error);
              }
              if (!data || data.length === 0) {
                  // Fallback to memory if database is completely unavailable or empty (safeguard)
@@ -986,7 +1137,12 @@ async function startServer() {
                  }
              }
              
-             const mappedList = data ? data.map((u: any) => ({ ...u, empresa_id: u.company_id || u.empresa_id })) : [];
+             const mappedList = data ? data.map((u: any) => ({ 
+                 ...u, 
+                 name: u.nome || u.name,
+                 company_id: u.company_id,
+                 empresa_id: u.company_id 
+             })) : [];
              
              // Deduplicate by ID
              const seenIds = new Set();
@@ -1046,7 +1202,7 @@ async function startServer() {
       console.log("[SERVER] Debug request empresa_id:", empresa_id, typeof empresa_id);
       
       // If superadmin, they can access any empresa_id.
-      if (authCtx.role === 'superadmin') {
+      if (authCtx.role === 'superadmin' || authCtx.role === 'super_admin') {
           console.log("[SERVER] Access granted as superadmin");
       } else {
           // If not superadmin, empresa_id must match their own.
@@ -1057,9 +1213,11 @@ async function startServer() {
                   debug: { userEmpresaId: authCtx.empresaId, requestedEmpresaId: empresa_id }
               });
           }
-          if (authCtx.role === 'user') {
-              console.log("[SERVER] 403 triggered because role is 'user'");
-              return res.status(403).json({ error: "Nível de acesso insuficiente para criar utilizadores" });
+          const currentRole = (authCtx.role || 'user').toLowerCase();
+          const allowedRoles = ['admin', 'admin_empresa', 'gerente', 'superadmin', 'super_admin'];
+          if (!allowedRoles.includes(currentRole)) {
+              console.log(`[SERVER] 403 triggered because role is '${authCtx.role}'`);
+              return res.status(403).json({ error: "Nível de acesso insuficiente para criar utilizadores. Apenas administradores e gerentes podem gerir a equipa." });
           }
       }
 
@@ -1121,6 +1279,28 @@ async function startServer() {
           is_active: true
       });
       
+      // 2. Create Profile Record primarily (using existing columns of perfis)
+      const perfilObj = {
+          id: userId,
+          company_id: empresa_id,
+          nome: name,
+          email,
+          role: targetRole,
+          is_active: true,
+          is_admin: !!is_admin
+      };
+
+      console.log("[SERVER] Inserting into perfis with data:", perfilObj);
+      const { error: profileError } = await supabaseAdmin
+          .from('perfis')
+          .upsert([perfilObj]);
+
+      if (profileError) {
+          console.error("[SERVER] Primary profile insertion failed:", profileError.message);
+          return res.status(400).json({ error: "Falha ao gravar registro do utilizador.", details: profileError.message });
+      }
+
+      // Safe optimistic fallback update to system_users
       const insertObj: any = {
           id: userId,
           company_id: empresa_id,
@@ -1138,93 +1318,14 @@ async function startServer() {
           role: targetRole,
           is_active: true
       };
-
-      // Add created_by only if it exists in schema (optimistic)
       if (authCtx.userId) {
           insertObj.created_by = authCtx.userId;
       }
 
-      let { error: dbError } = await supabaseAdmin
-          .from('system_users')
-          .upsert([insertObj]);
-
-      if (dbError) {
-          console.warn("[SERVER] PostgREST insert fail. Checking for column mismatch...", dbError.message);
-          
-          // Fallback: If created_by is missing, try without it
-          if (dbError.message?.includes('created_by') || dbError.message?.includes('PostgREST schema cache')) {
-              console.log("[SERVER] Retrying insert without created_by...");
-              const { created_by, ...insertWithoutCreatedBy } = insertObj;
-              const { error: retryError } = await supabaseAdmin
-                  .from('system_users')
-                  .upsert([insertWithoutCreatedBy]);
-              
-              if (!retryError) {
-                  dbError = null;
-                  console.log("[SERVER] Insert successful without created_by.");
-              } else {
-                  dbError = retryError;
-              }
-          }
-
-          if (dbError) {
-              console.warn("[SERVER] PostgREST final fail. Trying query_exec direct SQL fallback...", dbError.message);
-              try {
-                  const areasSql = permission_areas && Array.isArray(permission_areas) && permission_areas.length > 0
-                      ? `ARRAY[${permission_areas.map(p => `'${p.replace(/'/g, "''")}'`).join(',')}]::text[]`
-                      : `'{}'::text[]`;
-                  const queryInsert = `
-                      INSERT INTO public.system_users (
-                          id, company_id, name, profession, date, 
-                          permission_areas, contact, morada, email, role, username, level, is_admin, validade, is_active
-                      ) VALUES (
-                          '${userId}',
-                          '${empresa_id}',
-                          '${name.replace(/'/g, "''")}',
-                          ${profession ? `'${profession.replace(/'/g, "''")}'` : 'NULL'},
-                          ${validade || date ? `'${(validade || date)}'` : 'NULL'},
-                          ${areasSql},
-                          ${contact ? `'${contact.replace(/'/g, "''")}'` : 'NULL'},
-                          ${morada ? `'${morada.replace(/'/g, "''")}'` : 'NULL'},
-                          '${email.replace(/'/g, "''")}',
-                          '${targetRole}',
-                          '${(username || email.split('@')[0]).replace(/'/g, "''")}',
-                          ${level !== undefined && level !== null ? Number(level) : (is_admin ? 5 : 1)},
-                          ${is_admin ? 'true' : 'false'},
-                          ${validade ? `'${validade}'` : 'NULL'},
-                          true
-                      ) ON CONFLICT (id) DO UPDATE SET 
-                          company_id = EXCLUDED.company_id,
-                          name = EXCLUDED.name,
-                          profession = EXCLUDED.profession,
-                          date = EXCLUDED.date,
-                          permission_areas = EXCLUDED.permission_areas,
-                          contact = EXCLUDED.contact,
-                          morada = EXCLUDED.morada,
-                          email = EXCLUDED.email,
-                          username = EXCLUDED.username,
-                          level = EXCLUDED.level,
-                          is_admin = EXCLUDED.is_admin,
-                          validade = EXCLUDED.validade,
-                          role = EXCLUDED.role;
-                  `;
-                  const { error: rawError } = await supabaseAdmin.rpc('query_exec', { query: queryInsert });
-                  if (rawError) {
-                      if (rawError.code === 'PGRST202') {
-                          console.warn("[SERVER] Fallback query_exec skipped: RPC not found.");
-                      } else {
-                          throw new Error("Raw Insert Error: " + rawError.message);
-                      }
-                  } else {
-                      dbError = null;
-                  }
-              } catch (retryErr: any) {
-                  if (retryErr.code !== 'PGRST202') {
-                      console.error("[SERVER] Fallback query_exec failed:", retryErr);
-                      throw retryErr;
-                  }
-              }
-          }
+      try {
+          await supabaseAdmin.from('system_users').upsert([insertObj]);
+      } catch (e) {
+          // Ignore table/relation missing errors silently since perfis worked!
       }
 
       // Sync to memory array for instantaneous fallback matching
@@ -1232,75 +1333,22 @@ async function startServer() {
       systemUsers.push(userForMemory);
       saveData();
 
-      // Check for success: both must succeed or at least have a non-fatal schema cache error
-      if (dbError && !dbError.message?.includes('schema cache')) {
-           console.error("[SERVER] Primary DB insert FAILED:", dbError.message);
-      }
+      await addAuditLog(
+          authCtx.userId,
+          null,
+          `Adicionado utilizador: ${email}`,
+          authCtx.empresaId,
+          (req.ip || req.headers['x-forwarded-for'] || '').toString(),
+          (req.headers['user-agent'] || '').toString()
+      );
 
-
-          // 3. Sync to perfis (Synchronization Record)
-          const perfilObj = {
-              id: userId,
-              empresa_id: empresa_id,
-              company_id: empresa_id,
-              nome: name,
-              email: email,
-              role: targetRole,
-              is_active: true
-          };
-          
-          let { error: profileError } = await supabaseAdmin.from('perfis').upsert([perfilObj]);
-
-          if (profileError) {
-              console.warn("[SERVER] Profile sync via PostgREST failed. Trying SQL fallback...");
-              try {
-                  const queryProfile = `
-                      INSERT INTO public.perfis (id, empresa_id, company_id, nome, email, role, is_active)
-                      VALUES ('${userId}', '${empresa_id}', '${empresa_id}', '${name.replace(/'/g, "''")}', '${email.replace(/'/g, "''")}', '${targetRole}', true)
-                      ON CONFLICT (id) DO UPDATE SET 
-                        empresa_id = EXCLUDED.empresa_id,
-                        company_id = EXCLUDED.company_id,
-                        nome = EXCLUDED.nome,
-                        email = EXCLUDED.email,
-                        role = EXCLUDED.role,
-                        is_active = EXCLUDED.is_active;
-                  `;
-                  const { error: profileRawError } = await supabaseAdmin.rpc('query_exec', { query: queryProfile });
-                  if (!profileRawError) profileError = null;
-              } catch (e) {}
-          }
-
-          if (dbError && profileError && !dbError.message?.includes('schema cache')) {
-              console.error("[SERVER] FINAL ERROR: Both system_users and perfis insert failed.");
-              return res.status(400).json({ error: "Falha ao gravar utilizador.", details: dbError.message });
-          }
-
-          if (dbError && !dbError.message?.includes('schema cache')) {
-              console.error("[SERVER] system_users record insertion failed while perfis worked.");
-              return res.status(400).json({ error: "Falha ao gravar registro principal do utilizador.", details: dbError.message });
-          }
-
-          if (profileError && !profileError.message?.includes('schema cache')) {
-              console.warn("[SERVER] perfis record insertion failed while system_users worked (Partial Success).");
-          }
-
-
-          await addAuditLog(
-              authCtx.userId,
-              null,
-              `Adicionado utilizador: ${email}`,
-              authCtx.empresaId,
-              (req.ip || req.headers['x-forwarded-for'] || '').toString(),
-              (req.headers['user-agent'] || '').toString()
-          );
-
-          console.log("[SERVER] System user created successfully with ID:", userId);
-          res.status(201).json({ success: true, message: "Utilizador criado com sucesso" });
-      } catch (e: any) {
-          console.error("[SERVER] Creation Fatal Error:", e);
-          res.status(500).json({ error: e.message || "Erro interno na criação de utilizador" });
-      }
-  });
+      console.log("[SERVER] System user created successfully with ID:", userId);
+      res.status(201).json({ success: true, message: "Utilizador criado com sucesso" });
+  } catch (e: any) {
+      console.error("[SERVER] Creation Fatal Error:", e);
+      res.status(500).json({ error: e.message || "Erro interno na criação de utilizador" });
+  }
+});
 
   app.put("/api/system-users/:id", async (req, res) => {
       console.log("[SERVER] PUT /api/system-users received for ID:", req.params.id, req.body);
@@ -1317,19 +1365,50 @@ async function startServer() {
       }
 
       try {
-          const { data, error: getTargetError } = await supabaseAdmin
-              .from('system_users')
-              .select('company_id, email')
+          // 1. Resolve Profile primarily
+          const { data: perfilData, error: profileGetError } = await supabaseAdmin
+              .from('perfis')
+              .select('id, company_id, email, role, nome')
               .eq('id', userId)
               .maybeSingle();
 
-          const targetUser = data as any;
-          if (getTargetError || !targetUser) {
+          let targetUser = perfilData ? {
+              id: perfilData.id,
+              company_id: perfilData.company_id,
+              email: perfilData.email,
+              role: perfilData.role,
+              name: perfilData.nome
+          } : null;
+
+          if (!targetUser) {
+              // Try system_users fallback
+              try {
+                  const { data } = await supabaseAdmin
+                      .from('system_users')
+                      .select('company_id, email, name, role')
+                      .eq('id', userId)
+                      .maybeSingle();
+                  if (data) {
+                      targetUser = data as any;
+                  }
+              } catch (e) {}
+          }
+
+          if (!targetUser) {
               return res.status(404).json({ error: "Utilizador não encontrado" });
           }
 
-          if (authCtx.role !== 'superadmin' && String(authCtx.empresaId) !== String(targetUser.company_id)) {
-              return res.status(403).json({ error: "Utilizador sem permissão para editar utilizadores desta empresa" });
+          const currentRole = (authCtx.role || 'user').toLowerCase();
+          const allowedRoles = ['admin', 'admin_empresa', 'gerente', 'superadmin', 'super_admin'];
+          const isSuper = currentRole === 'superadmin' || currentRole === 'super_admin';
+
+          if (!isSuper) {
+              if (!allowedRoles.includes(currentRole)) {
+                  return res.status(403).json({ error: "Nível de acesso insuficiente para editar utilizadores. Apenas administradores e gerentes podem gerir a equipa." });
+              }
+              if (String(authCtx.empresaId) !== String(targetUser.company_id)) {
+                  return res.status(403).json({ error: "Acesso negado: utilizador pertence a outra empresa" });
+              }
           }
 
           const updateData: any = {};
@@ -1350,6 +1429,21 @@ async function startServer() {
 
           const targetRole = is_admin === true ? 'admin' : 'user';
           
+          const profileUpdateObj = {
+              nome: name,
+              email,
+              role: targetRole,
+              is_admin: !!is_admin
+          };
+
+          const { error: dbError } = await supabaseAdmin
+              .from('perfis')
+              .update(profileUpdateObj)
+              .eq('id', userId);
+
+          if (dbError) throw dbError;
+
+          // Safe fallback write to system_users
           const updateObj: any = {
               name,
               email,
@@ -1365,52 +1459,9 @@ async function startServer() {
               role: targetRole
           };
 
-          let { error: dbError } = await supabaseAdmin
-              .from('system_users')
-              .update(updateObj)
-              .eq('id', userId);
-
-          if (dbError) {
-              console.warn("[SERVER] PostgREST schema cache is stale for update. Trying direct query_exec SQL fallback...", dbError);
-              try {
-                  const areasSql = permission_areas && Array.isArray(permission_areas) && permission_areas.length > 0
-                      ? `ARRAY[${permission_areas.map(p => `'${p.replace(/'/g, "''")}'`).join(',')}]::text[]`
-                      : `'{}'::text[]`;
-                  const queryUpdate = `
-                      UPDATE public.system_users SET 
-                          name = '${name.replace(/'/g, "''")}',
-                          email = '${email.replace(/'/g, "''")}',
-                          username = '${(username || email.split('@')[0]).replace(/'/g, "''")}',
-                          level = ${level !== undefined && level !== null ? Number(level) : (is_admin ? 5 : 1)},
-                          is_admin = ${is_admin ? 'true' : 'false'},
-                          validade = ${validade ? `'${validade}'` : 'NULL'},
-                          profession = ${profession ? `'${profession.replace(/'/g, "''")}'` : 'NULL'},
-                          date = ${validade || date ? `'${(validade || date)}'` : 'NULL'},
-                          permission_areas = ${areasSql},
-                          contact = ${contact ? `'${contact.replace(/'/g, "''")}'` : 'NULL'},
-                          morada = ${morada ? `'${morada.replace(/'/g, "''")}'` : 'NULL'},
-                          role = '${targetRole}'
-                      WHERE id = '${userId}';
-                  `;
-                  const { error: rawError } = await supabaseAdmin.rpc('query_exec', { query: queryUpdate });
-                  if (rawError) {
-                      if (rawError.code === 'PGRST202') {
-                          console.warn("[SERVER] Fallback query_exec skipped: RPC not found.");
-                      } else {
-                          throw new Error("Raw Update Error: " + rawError.message);
-                      }
-                  } else {
-                      dbError = null;
-                  }
-              } catch (retryErr: any) {
-                  if (retryErr.code !== 'PGRST202') {
-                      console.error("[SERVER] Fallback query_exec exception:", retryErr);
-                      throw retryErr;
-                  }
-              }
-          }
-
-          if (dbError) throw dbError;
+          try {
+              await supabaseAdmin.from('system_users').update(updateObj).eq('id', userId);
+          } catch(e) {}
 
           // Update memory array for consistency
           const memoryIdx = systemUsers.findIndex(u => String(u.id) === String(userId));
@@ -1418,15 +1469,6 @@ async function startServer() {
               systemUsers[memoryIdx] = { ...systemUsers[memoryIdx], ...updateObj };
               saveData();
           }
-
-          await supabaseAdmin
-              .from('perfis')
-              .update({
-                  nome: name,
-                  email: email,
-                  role: targetRole
-              })
-              .eq('id', userId);
 
           await addAuditLog(
               authCtx.userId,
@@ -1458,23 +1500,54 @@ async function startServer() {
       }
 
       try {
-          const { data, error: getTargetError } = await supabaseAdmin
-              .from('system_users')
-              .select('company_id, email')
+          // 1. Resolve Profile primarily
+          const { data: perfilData } = await supabaseAdmin
+              .from('perfis')
+              .select('id, company_id, email, role')
               .eq('id', userId)
               .maybeSingle();
 
-          const targetUser = data as any;
-          if (getTargetError || !targetUser) {
+          let targetUser = perfilData ? {
+              id: perfilData.id,
+              company_id: perfilData.company_id,
+              email: perfilData.email
+          } : null;
+
+          if (!targetUser) {
+              // Try system_users fallback
+              try {
+                  const { data } = await supabaseAdmin
+                      .from('system_users')
+                      .select('company_id, email')
+                      .eq('id', userId)
+                      .maybeSingle();
+                  if (data) {
+                      targetUser = data as any;
+                  }
+              } catch (e) {}
+          }
+
+          if (!targetUser) {
               return res.status(404).json({ error: "Utilizador não encontrado" });
           }
 
-          if (authCtx.role !== 'superadmin' && String(authCtx.empresaId) !== String(targetUser.company_id)) {
-              return res.status(403).json({ error: "Utilizador sem permissão para deletar utilizadores desta empresa" });
+          const currentRole = (authCtx.role || 'user').toLowerCase();
+          const allowedRoles = ['admin', 'admin_empresa', 'gerente', 'superadmin', 'super_admin'];
+          const isSuper = currentRole === 'superadmin' || currentRole === 'super_admin';
+
+          if (!isSuper) {
+              if (!allowedRoles.includes(currentRole)) {
+                  return res.status(403).json({ error: "Nível de acesso insuficiente para eliminar utilizadores. Apenas administradores e gerentes podem gerir a equipa." });
+              }
+              if (String(authCtx.empresaId) !== String(targetUser.company_id)) {
+                  return res.status(403).json({ error: "Acesso negado: utilizador pertence a outra empresa" });
+              }
           }
 
           await supabaseAdmin.from('perfis').delete().eq('id', userId);
-          await supabaseAdmin.from('system_users').delete().eq('id', userId);
+          try {
+              await supabaseAdmin.from('system_users').delete().eq('id', userId);
+          } catch (e) {}
           await supabaseAdmin.auth.admin.deleteUser(userId);
 
           await addAuditLog(
@@ -1507,14 +1580,33 @@ async function startServer() {
       }
 
       try {
-          const { data, error: getTargetError } = await supabaseAdmin
-              .from('system_users')
-              .select('company_id, email')
+          // 1. Resolve Profile primarily
+          const { data: perfilData } = await supabaseAdmin
+              .from('perfis')
+              .select('id, company_id, email')
               .eq('id', userId)
               .maybeSingle();
 
-          const targetUser = data as any;
-          if (getTargetError || !targetUser) {
+          let targetUser = perfilData ? {
+              company_id: perfilData.company_id,
+              email: perfilData.email
+          } : null;
+
+          if (!targetUser) {
+              // Try system_users fallback
+              try {
+                  const { data } = await supabaseAdmin
+                      .from('system_users')
+                      .select('company_id, email')
+                      .eq('id', userId)
+                      .maybeSingle();
+                  if (data) {
+                      targetUser = data as any;
+                  }
+              } catch (e) {}
+          }
+
+          if (!targetUser) {
               return res.status(404).json({ error: "Utilizador não encontrado" });
           }
 
@@ -1559,36 +1651,35 @@ async function startServer() {
       }
 
       try {
-          let { data, error: getTargetError } = await supabaseAdmin
-              .from('system_users')
-              .select('company_id, email, is_active')
+          // 1. Resolve Profile primarily
+          const { data: perfilData } = await supabaseAdmin
+              .from('perfis')
+              .select('id, company_id, email, is_active')
               .eq('id', userId)
               .maybeSingle();
 
-          let targetUser = data as any;
-          
-          if (!targetUser && !getTargetError) {
-              console.log(`[SERVER] User ${userId} not found in system_users. checking perfis fallback...`);
-              const { data: pData } = await supabaseAdmin
-                  .from('perfis')
-                  .select('company_id, empresa_id, email, is_active')
-                  .eq('id', userId)
-                  .maybeSingle();
-              if (pData) {
-                  targetUser = {
-                      ...pData,
-                      company_id: pData.company_id || pData.empresa_id,
-                      is_active: pData.is_active !== false
-                  };
-              }
+          let targetUser = perfilData ? {
+              company_id: perfilData.company_id,
+              email: perfilData.email,
+              is_active: perfilData.is_active !== false
+          } : null;
+
+          if (!targetUser) {
+              // Try system_users fallback
+              try {
+                  const { data } = await supabaseAdmin
+                      .from('system_users')
+                      .select('company_id, email, is_active')
+                      .eq('id', userId)
+                      .maybeSingle();
+                  if (data) {
+                      targetUser = data as any;
+                  }
+              } catch (e) {}
           }
 
-          if (getTargetError || !targetUser) {
-              console.error(`[SERVER] User ${userId} NOT FOUND. getTargetError:`, getTargetError, "targetUser (system_users+perfis):", targetUser);
-              return res.status(404).json({ 
-                  error: "Utilizador não encontrado",
-                  debug: { userId, authEmpresaId: authCtx.empresaId }
-              });
+          if (!targetUser) {
+              return res.status(404).json({ error: "Utilizador não encontrado" });
           }
 
           if (authCtx.role !== 'superadmin' && String(authCtx.empresaId) !== String(targetUser.company_id)) {
@@ -1598,43 +1689,24 @@ async function startServer() {
 
           const nextActiveStatus = is_active !== undefined ? !!is_active : !targetUser.is_active;
 
-          // 1. Update system_users
-          let { error: dbError } = await supabaseAdmin
-              .from('system_users')
-              .update({ is_active: nextActiveStatus })
-              .eq('id', userId);
-
-          if (dbError) {
-              console.warn("[SERVER] PostgREST update failed for toggle-status. Trying raw SQL fallback...", dbError.message);
-              try {
-                  const { error: rawError } = await supabaseAdmin.rpc('query_exec', {
-                      query: `UPDATE public.system_users SET is_active = ${nextActiveStatus} WHERE id = '${userId}';`
-                  });
-                  if (!rawError) dbError = null;
-              } catch (retryErr: any) {
-                  console.error("[SERVER] toggle-status SQL fallback failure:", retryErr);
-              }
-          }
-
-          // 2. Sync to perfis (secondary)
-          await supabaseAdmin
+          // 1. Update perfis primarily
+          const { error: dbError } = await supabaseAdmin
               .from('perfis')
               .update({ is_active: nextActiveStatus })
               .eq('id', userId);
+
+          if (dbError) throw dbError;
+
+          // 2. Safe fallback write to system_users
+          try {
+              await supabaseAdmin.from('system_users').update({ is_active: nextActiveStatus }).eq('id', userId);
+          } catch(e) {}
 
           // 3. Sync to memory if exists
           const memoryIdx = systemUsers.findIndex(u => String(u.id) === String(userId));
           if (memoryIdx !== -1) {
               systemUsers[memoryIdx].is_active = nextActiveStatus;
               saveData();
-          }
-
-          if (dbError && dbError.code !== 'PGRST202') {
-              // If it failed and it wasn't just a missing RPC, we should probably report it if we want strict mode.
-              // But if it's a schema cache error, maybe we don't block.
-              if (!dbError.message?.includes('schema cache')) {
-                   return res.status(500).json({ error: "Erro ao atualizar estado na base de dados", details: dbError.message });
-              }
           }
 
           await addAuditLog(

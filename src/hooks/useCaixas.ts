@@ -16,11 +16,11 @@ export const useCaixas = () => {
 
       const { data: profile } = await supabase
         .from('perfis')
-        .select('empresa_id')
+        .select('company_id')
         .eq('id', user.id)
         .single();
 
-      const fetchEmpresaId = profile?.empresa_id;
+      const fetchEmpresaId = profile?.company_id;
       setEmpresaId(fetchEmpresaId);
 
       if (!fetchEmpresaId) return;
@@ -129,10 +129,10 @@ export const useCaixas = () => {
 
       const { data: profile } = await supabase
         .from('perfis')
-        .select('empresa_id')
+        .select('company_id')
         .eq('id', user.id)
         .single();
-      const currentEmpresaId = profile?.empresa_id;
+      const currentEmpresaId = profile?.company_id;
       if (!currentEmpresaId) throw new Error('Empresa não identificada');
 
       const { data, error } = await supabase
@@ -167,10 +167,10 @@ export const useCaixas = () => {
 
       const { data: profile } = await supabase
         .from('perfis')
-        .select('empresa_id')
+        .select('company_id')
         .eq('id', user.id)
         .single();
-      const currentEmpresaId = profile?.empresa_id;
+      const currentEmpresaId = profile?.company_id;
       if (!currentEmpresaId) throw new Error('Empresa não identificada');
 
       // Ensure we only update matching DB fields
@@ -200,10 +200,10 @@ export const useCaixas = () => {
 
       const { data: profile } = await supabase
         .from('perfis')
-        .select('empresa_id')
+        .select('company_id')
         .eq('id', user.id)
         .single();
-      const currentEmpresaId = profile?.empresa_id;
+      const currentEmpresaId = profile?.company_id;
       if (!currentEmpresaId) throw new Error('Empresa não identificada');
 
       const { error } = await supabase
@@ -226,10 +226,10 @@ export const useCaixas = () => {
 
       const { data: profile } = await supabase
         .from('perfis')
-        .select('empresa_id')
+        .select('company_id')
         .eq('id', user.id)
         .single();
-      const currentEmpresaId = profile?.empresa_id;
+      const currentEmpresaId = profile?.company_id;
       if (!currentEmpresaId) throw new Error('Empresa não identificada');
 
       const { error: movError } = await supabase

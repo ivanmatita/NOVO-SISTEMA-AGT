@@ -26,100 +26,132 @@ export interface Cliente {
 
 export const clienteService = {
   async getClientes(empresa_id: string): Promise<Cliente[]> {
-    if (!empresa_id) {
-      console.warn('[ClienteService] empresa_id ausente ao tentar listar clientes.');
-      return [];
-    }
-    
     try {
-      console.log(`[ClienteService] Buscando clientes para empresa: ${empresa_id}`);
-      const { data, error } = await supabase
-        .from('clientes')
-        .select('*')
-        .eq('empresa_id', empresa_id)
-        .order('nome', { ascending: true });
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
 
-      if (error) {
-        console.error('[ClienteService] Erro ao buscar:', error);
-        await handleSupabaseError(error, OperationType.LIST, 'clientes');
+      if (!token) {
+        console.warn('[ClienteService] Usuário não autenticado ao tentar listar clientes.');
+        return [];
       }
-      
-      console.log(`[ClienteService] ${data?.length || 0} clientes encontrados para a empresa ${empresa_id}.`);
+
+      console.log('[ClienteService] Buscando clientes via API segura...');
+      const response = await fetch('/api/secure-clientes', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || "Falha ao carregar clientes.");
+      }
+
+      const data = await response.json();
+      console.log(`[ClienteService] ${data?.length || 0} clientes carregados com sucesso.`);
       return data || [];
-    } catch (err) {
-      console.error('[ClienteService] Falha crítica ao buscar:', err);
-      // Fallback para evitar crash
+    } catch (err: any) {
+      console.error('[ClienteService] Erro ao obter lista de clientes:', err);
       return [];
     }
   },
 
   async createCliente(cliente: Omit<Cliente, 'id'>): Promise<Cliente> {
     try {
-      if (!cliente.empresa_id) throw new Error("empresa_id é obrigatório para criar um cliente.");
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
 
-      // Garantir que campos legados sejam mapeados
+      if (!token) {
+        throw new Error("Sessão inválida ou expirada. Inicie sessão novamente.");
+      }
+
+      // Garantir mapeamento correto de campos legados
       const payload = {
         ...cliente,
         nome: cliente.nome,
         nif: cliente.contribuinte || cliente.nif,
         contribuinte: cliente.contribuinte || cliente.nif,
-        endereco: cliente.endereco,
-        updated_at: new Date().toISOString()
+        endereco: cliente.endereco
       };
 
-      console.log('[ClienteService] Inserindo cliente:', payload.nome);
+      console.log('[ClienteService] Criando cliente via API segura:', payload.nome);
+      const response = await fetch('/api/secure-clientes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      });
 
-      const { data, error } = await supabase
-        .from('clientes')
-        .insert([payload])
-        .select()
-        .single();
-
-      if (error) {
-        console.error('[ClienteService] Erro no INSERT:', error);
-        await handleSupabaseError(error, OperationType.CREATE, 'clientes');
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || "Não foi possível registar o cliente.");
       }
+
+      const data = await response.json();
       return data;
-    } catch (err) {
-      console.error('[ClienteService] Erro ao criar cliente:', err);
+    } catch (err: any) {
+      console.error('[ClienteService] Falha ao registar cliente:', err);
       throw err;
     }
   },
 
   async updateCliente(id: number | string, cliente: Partial<Cliente>): Promise<Cliente> {
     try {
-      const payload = {
-        ...cliente,
-        updated_at: new Date().toISOString()
-      };
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
 
-      const { data, error } = await supabase
-        .from('clientes')
-        .update(payload)
-        .eq('id', id)
-        .eq('empresa_id', cliente.empresa_id)
-        .select()
-        .single();
+      if (!token) {
+        throw new Error("Sessão inválida ou expirada. Inicie sessão novamente.");
+      }
 
-      if (error) await handleSupabaseError(error, OperationType.UPDATE, 'clientes');
+      console.log(`[ClienteService] Atualizando cliente ID: ${id} via API segura`);
+      const response = await fetch(`/api/secure-clientes/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(cliente)
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || "Não foi possível atualizar o cliente.");
+      }
+
+      const data = await response.json();
       return data;
-    } catch (err) {
-      console.error('[ClienteService] Erro ao atualizar cliente:', err);
+    } catch (err: any) {
+      console.error('[ClienteService] Falha ao atualizar cliente:', err);
       throw err;
     }
   },
 
   async deleteCliente(id: number | string, empresa_id: string): Promise<void> {
     try {
-      const { error } = await supabase
-        .from('clientes')
-        .delete()
-        .eq('id', id)
-        .eq('empresa_id', empresa_id);
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
 
-      if (error) await handleSupabaseError(error, OperationType.DELETE, 'clientes');
-    } catch (err) {
-      console.error('[ClienteService] Erro ao remover cliente:', err);
+      if (!token) {
+        throw new Error("Sessão inválida ou expirada. Inicie sessão novamente.");
+      }
+
+      console.log(`[ClienteService] Apagando cliente ID: ${id} via API segura`);
+      const response = await fetch(`/api/secure-clientes/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || "Não foi possível remover o cliente.");
+      }
+    } catch (err: any) {
+      console.error('[ClienteService] Falha ao remover cliente:', err);
       throw err;
     }
   }

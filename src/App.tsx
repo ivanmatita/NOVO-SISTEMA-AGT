@@ -25239,14 +25239,8 @@ export default function App() {
       const companyId = explicitId || user?.empresa_id;
       if (!companyId) return;
 
-      console.log(`[App] Buscando Clientes para ${companyId}...`);
-      const { data, error } = await supabase
-        .from('clientes')
-        .select('*')
-        .eq('empresa_id', companyId)
-        .order('nome');
-
-      if (error) throw error;
+      console.log(`[App] Buscando Clientes para ${companyId} via clienteService...`);
+      const data = await clienteService.getClientes(companyId);
 
       setClients(data.map((cl: any) => ({
         ...cl,

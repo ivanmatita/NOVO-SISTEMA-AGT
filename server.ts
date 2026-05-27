@@ -2426,6 +2426,136 @@ async function startServer() {
     });
   });
 
+  // Secure Clients Endpoint with server-side company isolation bypassing broken RLS
+  app.get("/api/secure-clientes", async (req, res) => {
+    const ctx = await getAuthUserContext(req);
+    if (!ctx) return res.status(401).json({ error: "Sessão expirada ou inválida. Por favor volte a iniciar sessão." });
+    if (ctx.isBlocked) return res.status(403).json({ error: "Conta suspensa ou revogada pelo administrador." });
+
+    try {
+      if (!supabaseAdmin) return res.status(500).json({ error: "Database admin client is not initialized on server." });
+      
+      console.log(`[SERVER-CLIENTES] Buscando clientes para a empresa (JWT autenticada): ${ctx.empresaId}`);
+      const { data, error } = await supabaseAdmin
+        .from('clientes')
+        .select('*')
+        .eq('empresa_id', ctx.empresaId)
+        .order('nome', { ascending: true });
+
+      if (error) {
+        console.error("[SERVER-CLIENTES] Erro ao carregar clientes do banco:", error);
+        return res.status(500).json({ error: error.message });
+      }
+      return res.json(data || []);
+    } catch (err: any) {
+      console.error("[SERVER-CLIENTES] Erro na busca de clientes:", err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/secure-clientes", express.json(), async (req, res) => {
+    const ctx = await getAuthUserContext(req);
+    if (!ctx) return res.status(401).json({ error: "Sessão expirada ou inválida. Por favor volte a iniciar sessão." });
+    if (ctx.isBlocked) return res.status(403).json({ error: "Conta suspensa ou revogada." });
+
+    try {
+      if (!supabaseAdmin) return res.status(500).json({ error: "Database admin client is not initialized on server." });
+
+      const clientData = req.body;
+      const payload = {
+        ...clientData,
+        empresa_id: ctx.empresaId,
+        updated_at: new Date().toISOString()
+      };
+
+      console.log(`[SERVER-CLIENTES] Criando cliente "${payload.nome}" na empresa "${ctx.empresaId}"`);
+
+      const { data, error } = await supabaseAdmin
+        .from('clientes')
+        .insert([payload])
+        .select()
+        .single();
+
+      if (error) {
+        console.error("[SERVER-CLIENTES] Erro no INSERT de cliente:", error);
+        return res.status(500).json({ error: error.message });
+      }
+      return res.status(201).json(data);
+    } catch (err: any) {
+      console.error("[SERVER-CLIENTES] Erro ao guardar cliente:", err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.put("/api/secure-clientes/:id", express.json(), async (req, res) => {
+    const ctx = await getAuthUserContext(req);
+    if (!ctx) return res.status(401).json({ error: "Sessão expirada ou inválida. Por favor volte a iniciar sessão." });
+    if (ctx.isBlocked) return res.status(403).json({ error: "Conta suspensa ou revogada." });
+
+    const clientId = req.params.id;
+
+    try {
+      if (!supabaseAdmin) return res.status(500).json({ error: "Database admin client is not initialized on server." });
+
+      const updateData = req.body;
+      delete updateData.id;
+      
+      const payload = {
+        ...updateData,
+        empresa_id: ctx.empresaId,
+        updated_at: new Date().toISOString()
+      };
+
+      console.log(`[SERVER-CLIENTES] Atualizando cliente ID "${clientId}" na empresa "${ctx.empresaId}"`);
+
+      const { data, error } = await supabaseAdmin
+        .from('clientes')
+        .update(payload)
+        .eq('id', clientId)
+        .eq('empresa_id', ctx.empresaId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error("[SERVER-CLIENTES] Erro no UPDATE de cliente:", error);
+        return res.status(500).json({ error: error.message });
+      }
+      return res.json(data);
+    } catch (err: any) {
+      console.error("[SERVER-CLIENTES] Erro ao atualizar cliente:", err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/secure-clientes/:id", async (req, res) => {
+    const ctx = await getAuthUserContext(req);
+    if (!ctx) return res.status(401).json({ error: "Sessão expirada ou inválida. Por favor volte a iniciar sessão." });
+    if (ctx.isBlocked) return res.status(403).json({ error: "Conta suspensa ou revogada." });
+
+    const clientId = req.params.id;
+
+    try {
+      if (!supabaseAdmin) return res.status(500).json({ error: "Database admin client is not initialized on server." });
+
+      console.log(`[SERVER-CLIENTES] Removendo cliente ID "${clientId}" na empresa "${ctx.empresaId}"`);
+
+      const { error } = await supabaseAdmin
+        .from('clientes')
+        .delete()
+        .eq('id', clientId)
+        .eq('empresa_id', ctx.empresaId);
+
+      if (error) {
+        console.error("[SERVER-CLIENTES] Erro no DELETE de cliente:", error);
+        return res.status(500).json({ error: error.message });
+      }
+      return res.json({ success: true });
+    } catch (err: any) {
+      console.error("[SERVER-CLIENTES] Erro ao remover cliente:", err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
   // Clients are now exclusively handled by Supabase via ClienteService.
 app.post("/api/exec-sql", express.json(), async (req, res) => {
   try {

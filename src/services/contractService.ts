@@ -1,22 +1,24 @@
-import { fetchWithAuth } from '../lib/fetchWithAuth';
+import { supabase } from '../lib/supabase';
 
 export const contractService = {
   async getContracts(empresa_id: string, colaborador_id?: string) {
     if (!empresa_id) return [];
     try {
-      let url = `/api/contracts?empresa_id=${empresa_id}`;
+      let query = supabase
+        .from('hr_contratos')
+        .select('*')
+        .eq('empresa_id', empresa_id);
+      
       if (colaborador_id) {
-         url += `&colaborador_id=${colaborador_id}`;
+        query = query.eq('colaborador_id', colaborador_id);
       }
-      const res = await fetchWithAuth(url);
-      if (!res.ok) {
-         console.error('[ContractService] Erro ao buscar:', res.statusText);
-         return [];
-      }
-      const data = await res.json();
-      return data;
+      
+      const { data, error } = await query.order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return (data || []).map(d => this.mapFromDb(d));
     } catch (err) {
-      console.error('[ContractService] Erro crítico:', err);
+      console.error('[ContractService] Erro ao buscar contratos:', err);
       return [];
     }
   },
@@ -24,33 +26,96 @@ export const contractService = {
   async saveContract(empresa_id: string, payload: any) {
     if (!empresa_id || !payload) return;
     try {
-      const url = payload.id ? `/api/contracts/${payload.id}` : `/api/contracts`;
-      const method = payload.id ? 'PUT' : 'POST';
-      const res = await fetchWithAuth(url, {
-         method,
-         headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify({ ...payload, empresa_id }),
-      });
-      if (!res.ok) {
-         throw new Error(`Erro ao salvar contrato: ${res.statusText}`);
+      const { id, ...dataToSave } = payload;
+      
+      // Map frontend fields to database columns
+      const finalPayload = {
+        empresa_id,
+        colaborador_id: dataToSave.employee_id,
+        tipo_contrato: dataToSave.contract_type,
+        data_inicio: dataToSave.start_date || null,
+        fim_contrato: dataToSave.end_date || null,
+        salario_base: dataToSave.salary || 0,
+        content: dataToSave.content || '',
+        status: dataToSave.status || 'ativo',
+        representative_name: dataToSave.representative_name,
+        representative_role: dataToSave.representative_role,
+        duration_months: dataToSave.duration_months || 0,
+        experimental_days: dataToSave.experimental_days || 0,
+        notice_days: dataToSave.notice_days || 0,
+        metadata: {
+          employee_name: dataToSave.employee_name,
+          employee_role: dataToSave.employee_role,
+          representative_doc_type: dataToSave.representative_doc_type,
+          representative_doc_number: dataToSave.representative_doc_number,
+          representative_nationality: dataToSave.representative_nationality
+        },
+        updated_at: new Date().toISOString()
+      };
+
+      if (id) {
+        // UPDATE
+        const { data, error } = await supabase
+          .from('hr_contratos')
+          .update(finalPayload)
+          .eq('id', id)
+          .select()
+          .single();
+        
+        if (error) throw error;
+        return this.mapFromDb(data);
+      } else {
+        // INSERT
+        const { data, error } = await supabase
+          .from('hr_contratos')
+          .insert([finalPayload])
+          .select()
+          .single();
+        
+        if (error) throw error;
+        return this.mapFromDb(data);
       }
-      const saved = await res.json();
-      return saved;
     } catch (err) {
       console.error('[ContractService] Erro ao salvar contrato:', err);
       throw err;
     }
   },
 
+  // Helper to map DB record back to frontend format
+  mapFromDb(dbRecord: any) {
+    if (!dbRecord) return null;
+    return {
+      id: dbRecord.id,
+      employee_id: dbRecord.colaborador_id,
+      employee_name: dbRecord.metadata?.employee_name,
+      employee_role: dbRecord.metadata?.employee_role,
+      contract_type: dbRecord.tipo_contrato,
+      start_date: dbRecord.data_inicio,
+      salary: dbRecord.salario_base,
+      content: dbRecord.content,
+      status: dbRecord.status,
+      representative_name: dbRecord.representative_name,
+      representative_role: dbRecord.representative_role,
+      duration_months: dbRecord.duration_months,
+      experimental_days: dbRecord.experimental_days,
+      notice_days: dbRecord.notice_days,
+      representative_doc_type: dbRecord.metadata?.representative_doc_type,
+      representative_doc_number: dbRecord.metadata?.representative_doc_number,
+      representative_nationality: dbRecord.metadata?.representative_nationality,
+      created_at: dbRecord.created_at
+    };
+  },
+
   async deleteContract(empresa_id: string, id: string) {
     if (!empresa_id || !id) return;
     try {
-      const res = await fetchWithAuth(`/api/contracts/${id}`, {
-         method: 'DELETE',
-      });
-      if (!res.ok) {
-         throw new Error(`Erro ao apagar contrato: ${res.statusText}`);
-      }
+      const { error } = await supabase
+        .from('hr_contratos')
+        .delete()
+        .eq('id', id)
+        .eq('empresa_id', empresa_id); // Double check isolation
+      
+      if (error) throw error;
       return true;
     } catch (err) {
       console.error('[ContractService] Erro ao apagar contrato:', err);

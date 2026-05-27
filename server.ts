@@ -119,77 +119,205 @@ if (!supabaseAdmin) {
           -- Secure Helper Functions to resolve Tenant ID and Role securely bypassing RLS recursion
           CREATE OR REPLACE FUNCTION public.get_user_company_id()
           RETURNS UUID AS $$
-            SELECT COALESCE(company_id, empresa_id)
-            FROM public.perfis 
-            WHERE id = auth.uid()
-            LIMIT 1;
-          $$ LANGUAGE sql SECURITY DEFINER;
+          DECLARE
+            v_company_id UUID;
+            v_uid UUID := auth.uid();
+          BEGIN
+            -- 1. Try perfis (fastest)
+            SELECT COALESCE(company_id, empresa_id) INTO v_company_id FROM public.perfis WHERE id = v_uid LIMIT 1;
+            IF v_company_id IS NOT NULL THEN RETURN v_company_id; END IF;
+
+            -- 2. Try system_users
+            SELECT company_id INTO v_company_id FROM public.system_users WHERE id = v_uid LIMIT 1;
+            IF v_company_id IS NOT NULL THEN RETURN v_company_id; END IF;
+
+            -- 3. Try direct ownership
+            SELECT id INTO v_company_id FROM public.empresas WHERE auth_user_id = v_uid LIMIT 1;
+            RETURN v_company_id;
+          END;
+          $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+          CREATE OR REPLACE FUNCTION public.get_auth_empresa_id() RETURNS UUID AS $$ 
+          BEGIN RETURN public.get_user_company_id(); END; 
+          $$ LANGUAGE plpgsql SECURITY DEFINER;
 
           CREATE OR REPLACE FUNCTION public.get_user_role()
           RETURNS TEXT AS $$
-            SELECT COALESCE(role, 'user')
-            FROM public.perfis 
-            WHERE id = auth.uid()
-            LIMIT 1;
-          $$ LANGUAGE sql SECURITY DEFINER;
+          DECLARE
+            v_role TEXT;
+            v_uid UUID := auth.uid();
+          BEGIN
+            SELECT role INTO v_role FROM public.perfis WHERE id = v_uid LIMIT 1;
+            IF v_role IS NOT NULL THEN RETURN v_role; END IF;
+
+            SELECT role INTO v_role FROM public.system_users WHERE id = v_uid LIMIT 1;
+            IF v_role IS NOT NULL THEN RETURN v_role; END IF;
+
+            IF EXISTS (SELECT 1 FROM public.empresas WHERE auth_user_id = v_uid) THEN
+              RETURN 'admin';
+            END IF;
+
+            RETURN 'user';
+          END;
+          $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+          CREATE OR REPLACE FUNCTION public.is_system_admin()
+          RETURNS BOOLEAN AS $$
+          DECLARE
+            v_uid UUID := auth.uid();
+            v_is BOOLEAN;
+            v_role TEXT;
+            v_lvl INT;
+          BEGIN
+            -- 1. Check system_users
+            SELECT is_admin, role, level INTO v_is, v_role, v_lvl 
+            FROM public.system_users WHERE id = v_uid LIMIT 1;
+            IF v_is = true OR v_role IN ('super_admin', 'admin') OR v_lvl >= 10 THEN 
+              RETURN true; 
+            END IF;
+
+            -- 2. Check perfis
+            SELECT role INTO v_role FROM public.perfis WHERE id = v_uid LIMIT 1;
+            IF v_role IN ('super_admin', 'admin', 'admin_empresa', 'proprietario') THEN 
+              RETURN true; 
+            END IF;
+
+            -- 3. Check if company owner
+            IF EXISTS (SELECT 1 FROM public.empresas WHERE auth_user_id = v_uid) THEN
+              RETURN true;
+            END IF;
+
+            RETURN false;
+          END;
+          $$ LANGUAGE plpgsql SECURITY DEFINER;
 
           DO $$ 
           DECLARE
             pol RECORD;
+            t text;
           BEGIN
-            -- Dynamically drop ALL conflicting legacy RLS policies on our core tables
+            -- 1. ENSURE DATA TABLES EXIST
+            CREATE TABLE IF NOT EXISTS public.hr_contratos (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                empresa_id UUID,
+                colaborador_id UUID,
+                tipo_contrato TEXT,
+                data_inicio DATE,
+                fim_contrato DATE,
+                salario_base NUMERIC(15,2),
+                documento_url TEXT,
+                content TEXT,
+                status TEXT DEFAULT 'ativo',
+                representative_name TEXT,
+                representative_role TEXT,
+                duration_months INTEGER,
+                experimental_days INTEGER,
+                notice_days INTEGER,
+                metadata JSONB DEFAULT '{}',
+                created_at TIMESTAMPTZ DEFAULT now(),
+                updated_at TIMESTAMPTZ DEFAULT now()
+            );
+
+            CREATE TABLE IF NOT EXISTS public.professions (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                empresa_id UUID,
+                name TEXT NOT NULL,
+                inss_profession TEXT,
+                base_salary NUMERIC(15,2),
+                acerto_salarial NUMERIC(15,2),
+                created_at TIMESTAMPTZ DEFAULT now(),
+                updated_at TIMESTAMPTZ DEFAULT now()
+            );
+
+            -- 2. DROP ALL LEGACY POLICIES
             FOR pol IN 
               SELECT policyname, tablename 
               FROM pg_policies 
               WHERE schemaname = 'public' 
-                AND tablename IN ('system_users', 'perfis', 'logs_auditoria', 'user_activities_sessions', 'empresas')
+                AND tablename IN ('system_users', 'perfis', 'logs_auditoria', 'user_activities_sessions', 'empresas', 'clientes', 'products', 'produtos', 'documentos_emitidos', 'caixas', 'fornecedores', 'compras', 'transacoes', 'recibos', 'hr_contratos', 'professions')
             LOOP
               EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', pol.policyname, pol.tablename);
             END LOOP;
             
-            -- Re-create canonical, highly resilient, recursive-free policies
-            -- system_users
-            EXECUTE 'CREATE POLICY "company_isolation_system_users" ON public.system_users FOR ALL TO authenticated 
-              USING (id = auth.uid() OR company_id = public.get_user_company_id())
-              WITH CHECK (id = auth.uid() OR company_id = public.get_user_company_id())';
+            -- 3. CORE ISOLATION POLICIES WITH COLUMN CHECKS
+            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = ''public'' AND table_name = ''system_users'' AND column_name = ''company_id'') THEN
+              EXECUTE ''CREATE POLICY "company_isolation_system_users" ON public.system_users FOR ALL TO authenticated 
+                USING (public.is_system_admin() OR id = auth.uid() OR company_id = public.get_user_company_id())
+                WITH CHECK (public.is_system_admin() OR id = auth.uid() OR company_id = public.get_user_company_id())'';
+            ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = ''public'' AND table_name = ''system_users'' AND column_name = ''empresa_id'') THEN
+              EXECUTE ''CREATE POLICY "company_isolation_system_users" ON public.system_users FOR ALL TO authenticated 
+                USING (public.is_system_admin() OR id = auth.uid() OR empresa_id = public.get_user_company_id())
+                WITH CHECK (public.is_system_admin() OR id = auth.uid() OR empresa_id = public.get_user_company_id())'';
+            END IF;
               
-            -- perfis
-            EXECUTE 'CREATE POLICY "company_isolation_perfis" ON public.perfis FOR ALL TO authenticated 
-              USING (id = auth.uid() OR company_id = public.get_user_company_id() OR empresa_id = public.get_user_company_id())
-              WITH CHECK (id = auth.uid() OR company_id = public.get_user_company_id() OR empresa_id = public.get_user_company_id())';
+            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = ''public'' AND table_name = ''perfis'' AND column_name = ''company_id'') THEN
+              EXECUTE ''CREATE POLICY "company_isolation_perfis" ON public.perfis FOR ALL TO authenticated 
+                USING (public.is_system_admin() OR id = auth.uid() OR company_id = public.get_user_company_id())
+                WITH CHECK (public.is_system_admin() OR id = auth.uid() OR company_id = public.get_user_company_id())'';
+            ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = ''public'' AND table_name = ''perfis'' AND column_name = ''empresa_id'') THEN
+              EXECUTE ''CREATE POLICY "company_isolation_perfis" ON public.perfis FOR ALL TO authenticated 
+                USING (public.is_system_admin() OR id = auth.uid() OR empresa_id = public.get_user_company_id())
+                WITH CHECK (public.is_system_admin() OR id = auth.uid() OR empresa_id = public.get_user_company_id())'';
+            END IF;
               
-            -- logs_auditoria
-            EXECUTE 'CREATE POLICY "company_isolation_logs" ON public.logs_auditoria FOR SELECT TO authenticated 
-              USING (user_id = auth.uid() OR company_id = public.get_user_company_id())';
+            EXECUTE ''CREATE POLICY "company_isolation_logs" ON public.logs_auditoria FOR SELECT TO authenticated 
+              USING (public.is_system_admin() OR user_id = auth.uid() OR company_id = public.get_user_company_id())'';
               
-            EXECUTE 'CREATE POLICY "company_isolation_logs_insert" ON public.logs_auditoria FOR INSERT TO authenticated 
-              WITH CHECK (user_id = auth.uid() OR auth.uid() IS NOT NULL)';
+            EXECUTE ''CREATE POLICY "company_isolation_logs_insert" ON public.logs_auditoria FOR INSERT TO authenticated 
+              WITH CHECK (auth.uid() IS NOT NULL)'';
               
-            -- user_activities_sessions
-            EXECUTE 'CREATE POLICY "company_isolation_activities" ON public.user_activities_sessions FOR ALL TO authenticated 
-              USING (utilizador_id = auth.uid() OR empresa_id = public.get_user_company_id())
-              WITH CHECK (utilizador_id = auth.uid() OR empresa_id = public.get_user_company_id())';
+            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = ''public'' AND table_name = ''user_activities_sessions'' AND column_name = ''empresa_id'') THEN
+              EXECUTE ''CREATE POLICY "company_isolation_activities" ON public.user_activities_sessions FOR ALL TO authenticated 
+                USING (public.is_system_admin() OR utilizador_id = auth.uid() OR empresa_id = public.get_user_company_id())
+                WITH CHECK (public.is_system_admin() OR utilizador_id = auth.uid() OR empresa_id = public.get_user_company_id())'';
+            ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = ''public'' AND table_name = ''user_activities_sessions'' AND column_name = ''company_id'') THEN
+              EXECUTE ''CREATE POLICY "company_isolation_activities" ON public.user_activities_sessions FOR ALL TO authenticated 
+                USING (public.is_system_admin() OR utilizador_id = auth.uid() OR company_id = public.get_user_company_id())
+                WITH CHECK (public.is_system_admin() OR utilizador_id = auth.uid() OR company_id = public.get_user_company_id())'';
+            END IF;
               
-            -- empresas
             EXECUTE 'CREATE POLICY "empresas_select_policy" ON public.empresas FOR SELECT TO authenticated 
-              USING (auth_user_id = auth.uid() OR id = public.get_user_company_id())';
+              USING (public.is_system_admin() OR auth_user_id = auth.uid() OR id = public.get_user_company_id())';
               
             EXECUTE 'CREATE POLICY "empresas_insert_policy" ON public.empresas FOR INSERT TO authenticated 
-              WITH CHECK (auth_user_id = auth.uid() OR auth.uid() IS NOT NULL)';
+              WITH CHECK (auth.uid() IS NOT NULL)';
               
             EXECUTE 'CREATE POLICY "empresas_update_policy" ON public.empresas FOR UPDATE TO authenticated 
-              USING (auth_user_id = auth.uid() OR id = public.get_user_company_id())
-              WITH CHECK (auth_user_id = auth.uid() OR id = public.get_user_company_id())';
+              USING (public.is_system_admin() OR auth_user_id = auth.uid() OR id = public.get_user_company_id())
+              WITH CHECK (public.is_system_admin() OR auth_user_id = auth.uid() OR id = public.get_user_company_id())';
               
             EXECUTE 'CREATE POLICY "empresas_delete_policy" ON public.empresas FOR DELETE TO authenticated 
-              USING (auth_user_id = auth.uid())';
+              USING (public.is_system_admin() OR auth_user_id = auth.uid())';
+
+            -- 4. GENERIC Isolation for data tables
+            FOR t IN SELECT unnest(ARRAY['clientes', 'products', 'produtos', 'documentos_emitidos', 'caixas', 'fornecedores', 'compras', 'transacoes', 'recibos', 'hr_contratos', 'professions']) LOOP
+                EXECUTE format('ALTER TABLE IF EXISTS public.%I ENABLE ROW LEVEL SECURITY', t);
+                
+                IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = t AND column_name = 'company_id') THEN
+                    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = t AND column_name = 'empresa_id') THEN
+                        EXECUTE format('CREATE POLICY %I_isolation ON public.%I FOR ALL TO authenticated 
+                            USING (public.is_system_admin() OR empresa_id = public.get_user_company_id() OR company_id = public.get_user_company_id())
+                            WITH CHECK (public.is_system_admin() OR empresa_id = public.get_user_company_id() OR company_id = public.get_user_company_id())', t, t);
+                    ELSE
+                        EXECUTE format('CREATE POLICY %I_isolation ON public.%I FOR ALL TO authenticated 
+                            USING (public.is_system_admin() OR company_id = public.get_user_company_id())
+                            WITH CHECK (public.is_system_admin() OR company_id = public.get_user_company_id())', t, t);
+                    END IF;
+                ELSE
+                    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = t AND column_name = 'empresa_id') THEN
+                        EXECUTE format('CREATE POLICY %I_isolation ON public.%I FOR ALL TO authenticated 
+                            USING (public.is_system_admin() OR empresa_id = public.get_user_company_id())
+                            WITH CHECK (public.is_system_admin() OR empresa_id = public.get_user_company_id())', t, t);
+                    END IF;
+                END IF;
+            END LOOP;
               
           EXCEPTION WHEN OTHERS THEN
             RAISE NOTICE 'RLS Policy creation encountered a minor error: %', SQLERRM;
           END $$;
-  `; // Final SQL migrations
+   `; // Final SQL migrations
 
-  supabaseAdmin.rpc('query_exec', { query: sqlMigrations })
+  Promise.resolve(supabaseAdmin.rpc('query_exec', { query: sqlMigrations }))
     .then(({ error }) => {
       if (error) {
         if (error.code === 'PGRST202') {
@@ -200,6 +328,9 @@ if (!supabaseAdmin) {
       } else {
           console.log("✅ [STARTUP] SQL Migrations completed with NOTIFY reload.");
       }
+    })
+    .catch(err => {
+      console.error("❌ [STARTUP] Critical RPC migration error:", err);
     });
 
 }
@@ -749,11 +880,11 @@ async function startServer() {
         // Load permission_areas from system_users for normal user restriction
         const { data: sysUser } = await supabaseAdmin
           .from('system_users')
-          .select('permission_areas, is_active')
+          .select('permission_areas, is_active, is_admin, level')
           .eq('id', user.id)
           .maybeSingle();
 
-        if (sysUser && sysUser.is_active === false) {
+        if ((sysUser && sysUser.is_active === false) || (perfil && perfil.is_active === false)) {
           return res.status(403).json({ error: "CONTA_BLOQUEADA", message: "Esta conta foi desativada pelo administrador." });
         }
 
@@ -761,7 +892,9 @@ async function startServer() {
           ...perfil,
           empresa_id: companyId,
           company_id: companyId,
-          permission_areas: sysUser?.permission_areas || []
+          permission_areas: sysUser?.permission_areas || [],
+          is_admin: perfil.role === 'admin' || sysUser?.is_admin || false,
+          level: perfil.level || sysUser?.level || (perfil.role === 'admin' ? 10 : 1)
         };
 
         await addAuditLog(
@@ -799,7 +932,14 @@ async function startServer() {
 
         return res.json({
           user: user,
-          perfil: { id: user.id, empresa_id: legacyEmpresa.id, role: 'admin', permission_areas: [] },
+          perfil: { 
+            id: user.id, 
+            empresa_id: legacyEmpresa.id, 
+            role: 'admin', 
+            permission_areas: [],
+            is_admin: true,
+            level: 10
+          },
           empresa: legacyEmpresa
         });
       }
@@ -1122,27 +1262,76 @@ async function startServer() {
      
      if (supabaseAdmin) {
          try {
-             let { data, error } = await supabaseAdmin
+             let { data: perfisList, error: errorPerfis } = await supabaseAdmin
                  .from('perfis')
                  .select('*')
                  .eq('company_id', empresa_id);
-             if (error) {
-                 console.warn("[SERVER] PostgREST GET perfis fail. Using memory fallback...", error.message || error);
+             if (errorPerfis) {
+                 console.warn("[SERVER] PostgREST GET perfis fail...", errorPerfis.message || errorPerfis);
              }
-             if (!data || data.length === 0) {
+
+             let { data: sysUsersList, error: errorSys } = await supabaseAdmin
+                 .from('system_users')
+                 .select('*')
+                 .eq('company_id', empresa_id);
+             if (errorSys) {
+                 console.warn("[SERVER] PostgREST GET system_users fail:", errorSys.message || errorSys);
+             }
+             let finalPerfisList = perfisList;
+             if (!finalPerfisList || finalPerfisList.length === 0) {
                  // Fallback to memory if database is completely unavailable or empty (safeguard)
                  const localUsers = systemUsers.filter((u: any) => String(u.empresa_id || u.company_id) === String(empresa_id));
                  if (localUsers.length > 0) {
-                     data = localUsers;
+                     finalPerfisList = localUsers;
                  }
              }
              
-             const mappedList = data ? data.map((u: any) => ({ 
-                 ...u, 
-                 name: u.nome || u.name,
-                 company_id: u.company_id,
-                 empresa_id: u.company_id 
-             })) : [];
+             const sysUsersDataMap = new Map();
+             if (sysUsersList) {
+                 sysUsersList.forEach((su: any) => {
+                     sysUsersDataMap.set(String(su.id), su);
+                 });
+             }
+
+             const mappedList = finalPerfisList ? finalPerfisList.map((p: any) => {
+                 const su = sysUsersDataMap.get(String(p.id)) || {};
+                 return {
+                     ...su,
+                     ...p, 
+                     name: p.nome || su.name || p.name,
+                     company_id: p.company_id || su.company_id,
+                     empresa_id: p.company_id || su.company_id,
+                     permission_areas: su.permission_areas || p.permission_areas || [],
+                     level: p.level !== undefined ? p.level : (su.level !== undefined ? su.level : (p.role === 'admin' ? 10 : 1)),
+                     contact: su.contact || p.contact || '',
+                     morada: su.morada || p.morada || '',
+                     validade: su.validade || su.date || p.validade || '',
+                     profession: su.profession || p.profession || '',
+                     username: su.username || p.username || ''
+                 };
+             }) : [];
+
+             // Include any system_users that might not be in the perfis list yet
+             if (sysUsersList) {
+                 const perfisIds = new Set((finalPerfisList || []).map((p: any) => String(p.id)));
+                 sysUsersList.forEach((su: any) => {
+                     if (!perfisIds.has(String(su.id))) {
+                         mappedList.push({
+                             ...su,
+                             name: su.name,
+                             company_id: su.company_id,
+                             empresa_id: su.company_id,
+                             permission_areas: su.permission_areas || [],
+                             level: su.level || 1,
+                             contact: su.contact || '',
+                             morada: su.morada || '',
+                             validade: su.validade || su.date || '',
+                             profession: su.profession || '',
+                             username: su.username || ''
+                         });
+                     }
+                 });
+             }
              
              // Deduplicate by ID
              const seenIds = new Set();
@@ -1353,7 +1542,7 @@ async function startServer() {
   app.put("/api/system-users/:id", async (req, res) => {
       console.log("[SERVER] PUT /api/system-users received for ID:", req.params.id, req.body);
       const userId = req.params.id;
-      const { email, password, name, profession, date, permission_areas, contact, morada, username, level, is_admin, validade } = req.body;
+      const { email, password, name, profession, date, permission_areas, contact, morada, username, level, is_admin, validade, is_active } = req.body;
       
       if (!supabaseAdmin) {
           return res.status(500).json({ error: "Supabase Service Role Key missing" });
@@ -1433,7 +1622,9 @@ async function startServer() {
               nome: name,
               email,
               role: targetRole,
-              is_admin: !!is_admin
+              is_admin: !!is_admin,
+              permission_areas: permission_areas || [],
+              is_active: is_active !== undefined ? !!is_active : true
           };
 
           const { error: dbError } = await supabaseAdmin
@@ -1456,12 +1647,16 @@ async function startServer() {
               permission_areas: permission_areas || [],
               contact: contact || null,
               morada: morada || null,
-              role: targetRole
+              role: targetRole,
+              is_active: is_active !== undefined ? !!is_active : true
           };
 
           try {
-              await supabaseAdmin.from('system_users').update(updateObj).eq('id', userId);
-          } catch(e) {}
+              const { error: sysErr } = await supabaseAdmin.from('system_users').update(updateObj).eq('id', userId);
+              if (sysErr) console.error("[SERVER] Fallback update system_users error:", sysErr);
+          } catch(e) {
+              console.error("[SERVER] Exception during system_users update:", e);
+          }
 
           // Update memory array for consistency
           const memoryIdx = systemUsers.findIndex(u => String(u.id) === String(userId));
@@ -4134,6 +4329,9 @@ app.post("/api/exec-sql", express.json(), async (req, res) => {
     console.log("[STARTUP] Server is ready to receive connections.");
   });
 }
-startServer();
+startServer().catch(err => {
+  console.error("❌ CRITICAL SERVER STARTUP ERROR:", err);
+  process.exit(1);
+});
 
 export default app;

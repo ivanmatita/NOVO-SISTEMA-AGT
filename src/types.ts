@@ -36,6 +36,8 @@ export interface User {
   permission_areas?: string[];
   nome_empresa?: string;
   empresa_nome?: string;
+  is_admin?: boolean;
+  level?: number;
 }
 
 export interface AuthContextType {
@@ -47,6 +49,7 @@ export interface AuthContextType {
   forgotPassword: (email: string) => Promise<void>;
   updatePassword: (password: string) => Promise<void>;
   error: string | null;
+  refreshUser: () => Promise<void>;
 }
 
 export interface Caixa {

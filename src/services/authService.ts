@@ -287,7 +287,9 @@ export const authService = {
               role: perfil.role || 'admin',
               created_at: empresa.created_at || userAuth.created_at,
               company: empresa,
-              permission_areas: perfil.permission_areas || []
+              permission_areas: perfil.permission_areas || [],
+              is_admin: perfil.is_admin || perfil.role === 'admin' || false,
+              level: perfil.level || (perfil.role === 'admin' ? 10 : 1)
             };
           }
         }
@@ -304,7 +306,7 @@ export const authService = {
       const startTime = Date.now();
       const perfilQuery = supabase
         .from('perfis')
-        .select('company_id, role')
+        .select('company_id, role, permission_areas')
         .eq('id', session?.user?.id)
         .maybeSingle();
 
@@ -402,7 +404,8 @@ export const authService = {
         empresa_id: parsedCompanyId,
         role: perfil.role || 'admin',
         created_at: empresa.created_at || session?.user?.created_at,
-        company: empresa
+        company: empresa,
+        permission_areas: perfil.permission_areas || []
       };
     } catch (err) {
       console.error('[AuthService] Falha crítica em getCurrentUser:', err);

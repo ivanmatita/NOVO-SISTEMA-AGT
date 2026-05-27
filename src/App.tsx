@@ -21,6 +21,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
   BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area 
 } from 'recharts';
+import { professionService } from './services/professionService';
 import { useAuth } from './contexts/AuthContext';
 import { useMedia } from './hooks/useMedia';
 import { useCaixas } from './hooks/useCaixas';
@@ -76,6 +77,7 @@ import {
   X,
   Check,
   AlertCircle,
+  ShieldAlert,
   Copy,
   LogOut,
   Shuffle,
@@ -96,6 +98,7 @@ import {
   Calculator,
   Receipt,
   Settings,
+  Lock,
   Home,
   CreditCard,
   FileCheck,
@@ -139,7 +142,6 @@ import {
   LayoutList,
   CheckSquare,
   PackageCheck,
-  Lock,
   Star,
   Shield,
   KeyRound,
@@ -682,6 +684,30 @@ const WorkplaceModule = ({
   );
 };
 
+const SIDEBAR_MENU_ITEMS = [
+  { id: 'dashboard', label: 'Painel de Bordo', icon: LayoutDashboard },
+  { id: 'clients', label: 'Clientes', icon: Users },
+  { id: 'workplaces', label: 'Locais de Trabalho', icon: Briefcase },
+  { id: 'secretary', label: 'Secretaria Beta', icon: Paperclip },
+  { id: 'pos', label: 'Ponto de Venda', icon: Monitor, hasChevron: true },
+  { id: 'contracts', label: 'Contratos', icon: FileText },
+  { id: 'electronic_invoices', label: 'Faturação Electrónica', icon: FileCheck },
+  { id: 'security', label: 'Segurança Gestão privada', icon: ShieldCheck },
+  { id: 'specialized', label: 'Gestão Especializada', icon: Briefcase, hasChevron: true },
+  { id: 'archive', label: 'Arquivo', icon: Archive },
+  { id: 'invoices', label: 'Vendas', icon: FileText, hasChevron: true },
+  { id: 'drafts', label: 'Rascunhos (Drafts)', icon: FileSignature },
+  { id: 'suppliers', label: 'Compras', icon: ShoppingBag, hasChevron: true },
+  { id: 'products', label: 'Stocks & Inventário', icon: Package, hasChevron: true },
+  { id: 'financial', label: 'Finanças', icon: CreditCard, hasChevron: true },
+  { id: 'accounting', label: 'Contabilidade', icon: Calculator, hasChevron: true },
+  { id: 'hr', label: 'Recursos Humanos', icon: Users, hasChevron: true },
+  { id: 'reports', label: 'Relatórios', icon: FileSpreadsheet, hasChevron: true },
+  { id: 'agrobusiness', label: 'Agronegócio', icon: TrendingUp },
+  { id: 'church', label: 'Gestão de Igreja', icon: Building2 }, 
+  { id: 'settings', label: 'Definições', icon: Settings },
+];
+
 const Sidebar = ({ activeTab, setActiveTab, companyData }: { 
   activeTab: string, 
   setActiveTab: (t: string) => void,
@@ -690,6 +716,9 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
   const { user } = useAuth();
   const [profileImg, setProfileImg] = useState<string | null>(null);
   const [companyLogo, setCompanyLogo] = useState<string | null>(null);
+
+  // Check if user is a main administrator with full access
+  const isGlobalAdmin = user?.is_admin || user?.level === 10 || user?.role === 'admin' || user?.role === 'admin_empresa' || user?.role === 'super_admin' || user?.role === 'proprietario';
 
   useEffect(() => {
     // Priority: 1. Props (companyData), 2. Local State from DB, 3. LocalStorage
@@ -710,13 +739,13 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
     // Try to load user profile picture from media_arquivos
     const loadProfilePic = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+        const { data: { user: supabaseUser } } = await supabase.auth.getUser();
+        if (!supabaseUser) return;
         
         const { data: profile } = await supabase
           .from('perfis')
           .select('company_id')
-          .eq('id', user.id)
+          .eq('id', supabaseUser.id)
           .single();
           
         if (profile?.company_id) {
@@ -725,7 +754,7 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
             .from('media_arquivos')
             .select('url_publica')
             .eq('empresa_id', profile.company_id)
-            .eq('utilizador_id', user.id)
+            .eq('utilizador_id', supabaseUser.id)
             .eq('tipo', 'avatar')
             .eq('ativo', true)
             .order('created_at', { ascending: false })
@@ -740,7 +769,7 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
           const { data: logoData } = await supabase
             .from('media_arquivos')
             .select('url_publica')
-            .eq('empresa_id', profile.empresa_id)
+            .eq('empresa_id', profile.company_id)
             .eq('tipo', 'menu_logo')
             .eq('ativo', true)
             .order('created_at', { ascending: false })
@@ -767,12 +796,6 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
     };
     
     loadProfilePic();
-
-    const handleLogoUpdate = (e: any) => {
-      if (e.detail) setCompanyLogo(e.detail);
-    };
-    window.addEventListener('companyLogoUpdated', handleLogoUpdate);
-    return () => window.removeEventListener('companyLogoUpdated', handleLogoUpdate);
   }, [user?.id, user?.empresa_id]);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -785,20 +808,20 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
       localStorage.setItem('profileImg', objectUrl);
       
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+        const { data: { user: supabaseUser } } = await supabase.auth.getUser();
+        if (!supabaseUser) return;
         
         const { data: profile } = await supabase
           .from('perfis')
           .select('company_id')
-          .eq('id', user.id)
+          .eq('id', supabaseUser.id)
           .single();
           
         const empresaId = profile?.company_id;
         if (!empresaId) return;
         
         const fileExt = file.name.split('.').pop();
-        const fileName = `${empresaId}/avatar-${user.id}-${Date.now()}-${file.name.replace(/\s+/g, '_')}`;
+        const fileName = `${empresaId}/avatar-${supabaseUser.id}-${Date.now()}-${file.name.replace(/\s+/g, '_')}`;
         
         // 1. Upload Storage
         const { data: uploadData, error: uploadError } = await supabase.storage
@@ -822,7 +845,7 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
           // 3. Insert media_arquivos
           await supabase.from('media_arquivos').insert({
             empresa_id: empresaId,
-            utilizador_id: user.id,
+            utilizador_id: supabaseUser.id,
             tipo: 'avatar',
             nome_arquivo: fileName,
             nome_original: file.name,
@@ -833,7 +856,7 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
             tamanho_bytes: file.size,
             extensao: fileExt,
             entidade: 'ui',
-            entidade_id: user.id,
+            entidade_id: supabaseUser.id,
             observacao: 'Upload de avatar do utilizador',
             ativo: true
           });
@@ -844,30 +867,6 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
       }
     }
   };
-
-  const menuItems = [
-    { id: 'dashboard', label: 'Painel de Bordo', icon: LayoutDashboard },
-    { id: 'clients', label: 'Clientes', icon: Users },
-    { id: 'workplaces', label: 'Locais de Trabalho', icon: Briefcase },
-    { id: 'secretary', label: 'Secretaria Beta', icon: Paperclip },
-    { id: 'pos', label: 'Ponto de Venda', icon: Monitor, hasChevron: true },
-    { id: 'contracts', label: 'Contratos', icon: FileText },
-    { id: 'electronic_invoices', label: 'Faturação Electrónica', icon: FileCheck },
-    { id: 'security', label: 'Segurança Gestão privada', icon: ShieldCheck },
-    { id: 'specialized', label: 'Gestão Especializada', icon: Briefcase, hasChevron: true },
-    { id: 'archive', label: 'Arquivo', icon: Archive },
-    { id: 'invoices', label: 'Vendas', icon: FileText, hasChevron: true },
-    { id: 'drafts', label: 'Rascunhos (Drafts)', icon: FileSignature },
-    { id: 'suppliers', label: 'Compras', icon: ShoppingBag, hasChevron: true },
-    { id: 'products', label: 'Stocks & Inventário', icon: Package, hasChevron: true },
-    { id: 'financial', label: 'Finanças', icon: CreditCard, hasChevron: true },
-    { id: 'accounting', label: 'Contabilidade', icon: Calculator, hasChevron: true },
-    { id: 'hr', label: 'Recursos Humanos', icon: Users, hasChevron: true },
-    { id: 'reports', label: 'Relatórios', icon: FileSpreadsheet, hasChevron: true },
-    { id: 'agrobusiness', label: 'Agronegócio', icon: TrendingUp },
-    { id: 'church', label: 'Gestão de Igreja', icon: Building2 }, 
-    { id: 'settings', label: 'Definições', icon: Settings },
-  ];
 
   return (
     <div className="w-64 bg-[#0a0e1c] text-zinc-300 h-screen sticky top-0 flex flex-col overflow-y-auto shrink-0 z-20">
@@ -895,25 +894,60 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
       <div className="flex-1 px-3 py-4 space-y-1 pb-8">
         <h3 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-3 px-2">Menu Principal</h3>
         <nav className="space-y-1">
-          {menuItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-none transition-all duration-200 mb-0.5 ${
-                activeTab === item.id 
-                  ? 'bg-[#1a4da6] text-white font-semibold shadow-md border-l-4 border-white' 
-                  : 'bg-[#123375] text-zinc-300 hover:bg-[#1a4da6] hover:text-white'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <item.icon size={18} className={activeTab === item.id ? 'text-white' : 'text-zinc-400'} />
-                <span className="text-sm">{item.label}</span>
-              </div>
-              {item.hasChevron && (
-                <ChevronRight size={14} className={activeTab === item.id ? 'text-white/70' : 'text-zinc-500'} />
-              )}
-            </button>
-          ))}
+          {SIDEBAR_MENU_ITEMS.map((item) => {
+            const isAdmin = 
+              user?.is_admin === true || 
+              user?.role === 'admin' || 
+              user?.role === 'admin_empresa' || 
+              user?.role === 'super_admin' || 
+              user?.role === 'proprietario' || 
+              (user?.level && user.level >= 10);
+            
+            const permissions = user?.permission_areas ?? [];
+            
+            const canAccess = (module: string) => {
+              if (isAdmin) return true;
+              if (module === 'dashboard') return true;
+              return Array.isArray(permissions) && permissions.includes(module);
+            };
+
+            const isRestricted = !canAccess(item.id);
+            
+            return (
+              <button
+                key={item.id}
+                disabled={isRestricted}
+                onClick={() => !isRestricted && setActiveTab(item.id)}
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-none transition-all duration-200 mb-0.5 relative group ${
+                  isRestricted 
+                    ? 'bg-zinc-200 text-zinc-500 cursor-not-allowed opacity-60' 
+                    : activeTab === item.id 
+                      ? 'bg-[#1a4da6] text-white font-semibold shadow-md border-l-4 border-white' 
+                      : 'bg-[#123375] text-zinc-300 hover:bg-[#1a4da6] hover:text-white'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <item.icon size={18} className={isRestricted ? 'text-zinc-500' : activeTab === item.id ? 'text-white' : 'text-zinc-400'} />
+                    {isRestricted && (
+                      <div className="absolute -bottom-1 -right-1 bg-zinc-500 rounded-full p-0.5 flex items-center justify-center">
+                        <Lock size={7} className="text-white" />
+                      </div>
+                    )}
+                  </div>
+                  <span className={`text-sm ${isRestricted ? 'text-zinc-500 font-medium' : ''}`}>{item.label}</span>
+                </div>
+                {item.hasChevron && !isRestricted && (
+                  <ChevronRight size={14} className={activeTab === item.id ? 'text-white/70' : 'text-zinc-500'} />
+                )}
+                {isRestricted && (
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <span className="text-[7px] font-black bg-red-600 text-white px-1 py-0.5 rounded uppercase">Bloqueado</span>
+                  </div>
+                )}
+              </button>
+            );
+          })}
         </nav>
       </div>
     </div>
@@ -1903,16 +1937,8 @@ const HRModule = ({
     try {
       let pList: Profession[] = [];
       try {
-        const { data: supaProfessions, error: supaError } = await supabase
-          .from('professions')
-          .select('*')
-          .eq('empresa_id', user?.empresa_id);
-        
-        if (supaError) {
-          console.warn('Supabase professions load failed (possibly table does not exist yet). Falling back to local Express database. Error:', supaError.message);
-          pList = await fetchJson(`/api/professions?empresa_id=${user?.empresa_id}`);
-        } else {
-          pList = supaProfessions || [];
+        if (user?.empresa_id) {
+          pList = await professionService.getProfessions(user.empresa_id);
         }
       } catch (err) {
         console.warn('DB client error during professions fetch. Falling back to local Express database.', err);
@@ -1997,6 +2023,35 @@ const HRModule = ({
 
   useEffect(() => { fetchHRData(); }, [attendanceDate]);
 
+  useEffect(() => {
+    if (!user?.empresa_id) return;
+
+    const channel = supabase
+      .channel('professions-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'professions',
+          filter: `empresa_id=eq.${user.empresa_id}`
+        },
+        async () => {
+          const { data } = await supabase
+            .from('professions')
+            .select('*')
+            .eq('empresa_id', user.empresa_id)
+            .order('name', { ascending: true });
+          if (data) setProfessions(data);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.empresa_id]);
+
   const handleMarkAttendance = async (employeeId: number, status: 'present' | 'absent' | 'late') => {
     try {
       await fetchWithAuth('/api/employees/attendance', {
@@ -2026,20 +2081,13 @@ const HRModule = ({
   const handleDeleteProfession = async (id: any) => {
     if (!confirm('Tem a certeza que deseja eliminar esta profissão?')) return;
     try {
-      try {
-        const { error: supaError } = await supabase
-          .from('professions')
-          .delete()
-          .eq('id', id)
-          .eq('empresa_id', user?.empresa_id);
-        
-        if (supaError) {
-          console.warn('Supabase delete failed, trying Express database fallback:', supaError.message);
+      if (user?.empresa_id) {
+        const success = await professionService.deleteProfession(user.empresa_id, String(id));
+        if (!success) {
+          // Fallback if needed, though service already handles errors
+          console.warn('Supabase delete failed, trying Express database fallback');
           await fetchWithAuth(`/api/professions/${id}`, { method: 'DELETE' });
         }
-      } catch (err) {
-        console.warn('DB client error during delete, trying Express database fallback.', err);
-        await fetchWithAuth(`/api/professions/${id}`, { method: 'DELETE' });
       }
       fetchHRData();
     } catch (err) {
@@ -5952,19 +6000,19 @@ const HRModule = ({
 
                         if (editingProfession) {
                           try {
-                            const { error: supaError } = await supabase
-                              .from('professions')
-                              .update(payload)
-                              .eq('id', editingProfession.id)
-                              .eq('empresa_id', user?.empresa_id);
-                            
-                            if (supaError) {
-                              console.warn('Supabase update failed, trying Express database fallback:', supaError.message);
-                              await fetchWithAuth(`/api/professions/${editingProfession.id}`, {
-                                method: 'PUT',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify(payload)
+                            if (user?.empresa_id) {
+                              const saved = await professionService.saveProfession(user.empresa_id, {
+                                ...payload,
+                                id: editingProfession.id
                               });
+                              if (!saved) {
+                                console.warn('Supabase update failed, trying Express database fallback');
+                                await fetchWithAuth(`/api/professions/${editingProfession.id}`, {
+                                  method: 'PUT',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify(payload)
+                                });
+                              }
                             }
                           } catch (err) {
                             console.warn('DB client error during update, trying Express database fallback.', err);
@@ -5976,17 +6024,16 @@ const HRModule = ({
                           }
                         } else {
                           try {
-                            const { error: supaError } = await supabase
-                              .from('professions')
-                              .insert([payload]);
-                            
-                            if (supaError) {
-                              console.warn('Supabase insert failed, trying Express database fallback:', supaError.message);
-                              await fetchWithAuth('/api/professions', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify(payload)
-                              });
+                            if (user?.empresa_id) {
+                              const saved = await professionService.saveProfession(user.empresa_id, payload);
+                              if (!saved) {
+                                console.warn('Supabase insert failed, trying Express database fallback');
+                                await fetchWithAuth('/api/professions', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify(payload)
+                                });
+                              }
                             }
                           } catch (err) {
                             console.warn('DB client error during insert, trying Express database fallback.', err);
@@ -9791,7 +9838,13 @@ const RetencaoFonteModule = ({ issuedDocuments }: { issuedDocuments: IssuedDocum
   const [purchases, setPurchases] = useState<Purchase[]>([]);
 
   useEffect(() => {
-    fetchWithAuth('/api/purchases').then(r => r.json()).then(setPurchases).catch(console.error);
+    fetchWithAuth('/api/purchases')
+      .then(r => {
+        if (!r.ok) throw new Error(`Server error: ${r.status}`);
+        return r.json();
+      })
+      .then(setPurchases)
+      .catch(err => console.error('Error fetching purchases:', err));
   }, []);
 
   const filterData = (data: any[], dateField: string, isPurchase: boolean) => {
@@ -11243,17 +11296,7 @@ const UsersSettings = () => {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const workspaceOptions = [
-    { id: 'dashboard', label: 'DASHBOARD' },
-    { id: 'attendance_map', label: 'ASSIDUIDADE' },
-    { id: 'professions', label: 'PROFISSÕES' },
-    { id: 'list', label: 'COLABORADORES' },
-    { id: 'salary_procedures', label: 'PROCEDIMENTOS DE SALÁRIO' },
-    { id: 'payroll', label: 'PROCESSAMENTO' },
-    { id: 'pay_salary', label: 'PAGAR SALÁRIO' },
-    { id: 'salary_receipts', label: 'RECIBOS DE SALÁRIO' },
-    { id: 'contracts', label: 'GESTÃO DE CONTRATOS' },
-  ];
+  const workspaceOptions = SIDEBAR_MENU_ITEMS.map(item => ({ id: item.id, label: item.label, icon: item.icon }));
 
   const fetchUsers = async (silent = false) => {
     if (!user?.empresa_id) {
@@ -11307,12 +11350,21 @@ const UsersSettings = () => {
     setConfirmPassword('');
     setProfession(u.profession || '');
     setDate(u.date || '');
-    setPermissionAreas(u.permission_areas || (u.permission_area ? [u.permission_area] : []));
+    
+    const isAdmin = u.is_admin || u.role === 'admin' || u.role === 'admin_empresa' || u.role === 'super_admin' || u.role === 'proprietario' || (u.level && Number(u.level) >= 10);
+    
+    // If admin, auto-select all areas as requested by user
+    if (isAdmin) {
+      setPermissionAreas(SIDEBAR_MENU_ITEMS.map(m => m.id));
+    } else {
+      setPermissionAreas(u.permission_areas || (u.permission_area ? [u.permission_area] : []));
+    }
+    
     setContact(u.contact || '');
     setMorada(u.morada || '');
     setUsernameState(u.username || u.email?.split('@')[0] || '');
-    setLevelState(u.level !== undefined ? Number(u.level) : (u.role === 'admin' ? 5 : 1));
-    setIsAdminState(u.is_admin || u.role === 'admin' || false);
+    setLevelState(u.level !== undefined ? Number(u.level) : (isAdmin ? 10 : 1));
+    setIsAdminState(isAdmin);
     setValidadeState(u.validade || u.date || '');
     setShowForm(true);
   };
@@ -11366,7 +11418,12 @@ const UsersSettings = () => {
 
   const handleOpenQuickPermissions = (u: SystemUser) => {
     setPermissionModalUser(u);
-    setPermissionAreas(u.permission_areas || []);
+    const isAdmin = u.is_admin || u.role === 'admin' || u.role === 'super_admin' || u.role === 'admin_empresa' || u.role === 'proprietario' || (u.level && Number(u.level) >= 10);
+    if (isAdmin) {
+      setPermissionAreas(SIDEBAR_MENU_ITEMS.map(m => m.id));
+    } else {
+      setPermissionAreas(u.permission_areas || []);
+    }
   };
 
   const handleSaveQuickPermissions = async () => {
@@ -11378,6 +11435,12 @@ const UsersSettings = () => {
         permission_areas: permissionAreas
       });
       showToast("Permissões atualizadas com sucesso!");
+      
+      // If the current user's permissions were updated, refresh auth state
+      if (permissionModalUser.id === user.id) {
+        await refreshUser();
+      }
+      
       setPermissionModalUser(null);
       fetchUsers();
     } catch (err: any) {
@@ -11436,7 +11499,7 @@ const UsersSettings = () => {
       showToast("As senhas não coincidem!", 'error');
       return;
     }
-    if (permissionAreas.length === 0) {
+    if (!isAdminState && permissionAreas.length === 0) {
       showToast("Selecione pelo menos uma área de permissão!", 'error');
       return;
     }
@@ -11448,11 +11511,11 @@ const UsersSettings = () => {
       email,
       profession,
       date: validadeState || date || null,
-      permission_areas: permissionAreas,
+      permission_areas: isAdminState ? SIDEBAR_MENU_ITEMS.map(m => m.id) : permissionAreas,
       contact,
       morada,
       username: usernameState || email.split('@')[0],
-      level: Number(levelState),
+      level: isAdminState ? 10 : Number(levelState),
       is_admin: isAdminState,
       validade: validadeState || null
     };
@@ -11465,6 +11528,12 @@ const UsersSettings = () => {
       if (editingUser) {
         console.log(`Editing user ${editingUser.id}`);
         await systemUsersService.updateUser(user.empresa_id, editingUser.id, payload);
+        
+        // If the current user's permissions were updated, refresh auth state
+        if (editingUser.id === user.id) {
+            await refreshUser();
+        }
+        
         showToast("Utilizador alterado com sucesso!");
         fetchUsers();
         setShowForm(false);
@@ -11613,7 +11682,14 @@ const UsersSettings = () => {
                 <div className="flex items-center gap-3">
                   <button
                     type="button"
-                    onClick={() => setIsAdminState(!isAdminState)}
+                    onClick={() => {
+                      const next = !isAdminState;
+                      setIsAdminState(next);
+                      if (next) {
+                        setPermissionAreas(SIDEBAR_MENU_ITEMS.map(m => m.id));
+                        setLevelState(10);
+                      }
+                    }}
                     className={`h-9 w-20 flex items-center justify-center border font-black uppercase text-[10px] tracking-wider transition-all mt-4 ${isAdminState ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-zinc-100 text-zinc-500 border-zinc-300'}`}
                   >
                     {isAdminState ? 'ADMIN' : 'USER'}
@@ -11650,23 +11726,35 @@ const UsersSettings = () => {
               </div>
 
               <div className="space-y-1 md:col-span-2">
-                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-1">Módulos e Áreas de Permissão</label>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-1">Módulos e Áreas de Permissão (Exatamente conforme Menu Lateral)</label>
                 <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 p-3 bg-zinc-50 border border-zinc-300">
-                  {workspaceOptions.map(opt => (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() => {
-                        setPermissionAreas(prev => 
-                          prev.includes(opt.id) ? prev.filter(a => a !== opt.id) : [...prev, opt.id]
-                        );
-                      }}
-                      className={`flex items-center gap-2 px-3 py-2 text-left text-[10px] font-black uppercase border transition-all ${permissionAreas.includes(opt.id) ? 'bg-[#003366] text-white border-[#003366]' : 'bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-100'}`}
-                    >
-                      <span className={`w-2 h-2 rounded-full inline-block ${permissionAreas.includes(opt.id) ? 'bg-white' : 'bg-[#003366]'}`} />
-                      {opt.label}
-                    </button>
-                  ))}
+                  {workspaceOptions.map(opt => {
+                    const isSelected = permissionAreas.includes(opt.id) || isAdminState;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        disabled={isAdminState}
+                        onClick={() => {
+                          setPermissionAreas(prev => 
+                            prev.includes(opt.id) ? prev.filter(a => a !== opt.id) : [...prev, opt.id]
+                          );
+                        }}
+                        className={`flex items-center gap-3 px-3 py-3 text-left text-[11px] font-black uppercase border transition-all shadow-sm relative ${isSelected ? 'bg-emerald-50 text-emerald-900 border-emerald-600 ring-1 ring-emerald-600/20' : 'bg-white text-zinc-400 border-zinc-200 hover:bg-zinc-100'} ${isAdminState ? 'cursor-default opacity-80' : 'hover:scale-[1.01]'}`}
+                      >
+                        <opt.icon size={18} className={isSelected ? 'text-emerald-600' : 'text-zinc-300'} />
+                        <div className="flex-1 flex flex-col min-w-0">
+                          <span className="truncate">{opt.label}</span>
+                          {isSelected && (
+                            <span className="text-[8px] text-emerald-600 font-bold tracking-widest mt-0.5">● ÁREA PERMITIDA {isAdminState && '(MODO ADMIN)'}</span>
+                          )}
+                        </div>
+                        <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${isSelected ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-zinc-300 bg-zinc-50 text-transparent'}`}>
+                          <Check size={10} strokeWidth={4} />
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -15211,7 +15299,9 @@ const ClassifyMovementsModule = ({ invoices, purchases, onBack }: { invoices: In
   const [showPgcList, setShowPgcList] = useState(false);
 
   useEffect(() => {
-    fetchJson(`/api/accounting/pgc?empresa_id=${user?.empresa_id}`).then(setPgcAccounts);
+    fetchJson(`/api/accounting/pgc?empresa_id=${user?.empresa_id}`)
+      .then(setPgcAccounts)
+      .catch(err => console.error('Error fetching PGC accounts:', err));
   }, []);
 
   const handleClassify = () => {
@@ -19715,8 +19805,15 @@ const InvoiceDetail = ({
 
   useEffect(() => {
     fetch(`/api/invoices/${id}`)
-      .then(res => res.json())
-      .then(data => setInvoice(data));
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+        return res.json();
+      })
+      .then(data => setInvoice(data))
+      .catch(err => {
+        console.error('Error fetching invoice detail:', err);
+        // We could set an error state here if we had one
+      });
   }, [id]);
 
   if (!invoice) return <div className="p-8">Carregando...</div>;
@@ -22644,7 +22741,7 @@ const PurchasesModule = ({ suppliers, products, activeTaxes, workSites, fiscalSe
                   fetchWithAuth(`/api/purchases/${p.id}`, { method: 'DELETE' }).then(() => {
                     fetchPurchases();
                     setSelectedPurchase(null);
-                  });
+                  }).catch(err => console.error('Error deleting purchase:', err));
                 }
              } else if (action === 'receipt') {
                 const draft = { ...p, id: undefined, purchase_number: '' };
@@ -22707,7 +22804,7 @@ const PurchasesModule = ({ suppliers, products, activeTaxes, workSites, fiscalSe
                 }).then(() => {
                   fetchPurchases();
                   setSelectedPurchase(null);
-                });
+                }).catch(err => console.error('Error deleting doc:', err));
               }
             } else if (action === 'pay') {
                alert('Funcionalidade de registo de pagamento de compra em desenvolvimento.');
@@ -22747,7 +22844,7 @@ const PurchasesModule = ({ suppliers, products, activeTaxes, workSites, fiscalSe
                   }).then(() => {
                     fetchPurchases();
                     setShowHashModal(null);
-                  });
+                  }).catch(err => console.error('Error updating hash:', err));
                 }}
                 className="px-4 py-2 bg-[#003366] text-white font-bold text-xs uppercase"
               >
@@ -24808,7 +24905,7 @@ const ConvertDocumentModal = ({ document, onClose, onSuccess }: {
 
 export default function App() {
   console.log("[App] Rendering initial state...");
-  const { user, logout } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showMenu, setShowMenu] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -25756,7 +25853,12 @@ export default function App() {
         Promise.resolve(null), // cm
         Promise.resolve(null), // sm
         fetchJson(`/api/work-site-movements?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
-        supabase.from('armazens').select('*').eq('empresa_id', targetCompanyId).then(res => res.data),
+        supabase.from('armazens').select('*').eq('empresa_id', targetCompanyId)
+          .then(res => res.data)
+          .catch(err => {
+            console.error("Error fetching warehouses (Global):", err);
+            return [];
+          }),
         fetchJson(`/api/security/occurrences?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
         fetchJson(`/api/security/armory?empresa_id=${targetCompanyId}`),
         fetchJson(`/api/security/roster?empresa_id=${targetCompanyId}`),
@@ -26343,357 +26445,384 @@ export default function App() {
                           />
                         );
                       }
+                      
                       switch (activeTab) {
                         case 'dashboard':
                           return <EcosystemDashboard stats={stats} issuedDocuments={issuedDocuments} setActiveTab={setActiveTab} />;
-                        case 'pos':
-                          return <POSModule 
-                            products={products} 
-                            onRefresh={fetchData} 
-                            caixas={caixas} 
-                            onSaveDocument={saveDocumentoEmitido} 
-                            sessions={sessions}
-                            fiscalSeries={fiscalSeries}
-                            fiscalYear={fiscalYear}
-                            user={user}
-                            companyData={companyData}
-                          />;
-                        case 'electronic_invoices':
-                        case 'invoices':
-                        case 'vendas':
-                          return (
-                            <InvoiceList 
-                              invoices={invoices} 
-                              issuedDocuments={issuedDocuments}
-                              clients={clients} 
-                              workSites={workSites}
-                              employees={employees}
-                              onNew={() => { setSelectedDocument(null); setFixedDocumentType(undefined); setIsCreatingInvoice(true); }} 
-                              onView={setViewingInvoiceId}
-                              onRegisterClient={() => setIsClientModalOpen(true)}
-                              onAddWorkSite={handleAddWorkSite}
-                              onUpdateWorkSite={handleUpdateWorkSite}
-                              onDeleteWorkSite={handleDeleteWorkSite}
-                              onAction={handleDocumentAction}
-                              onCertify={(doc) => {
-                                const emissionDate = new Date(doc.data_emissao || doc.date || '');
-                                const today = new Date();
-                                const diffTime = Math.abs(today.getTime() - emissionDate.getTime());
-                                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                                if (diffDays > 5) {
-                                  alert("Caro utilizador de acordo com lei deve anular este documento e emitir no com a nova data porque ultrapassou o tempo determinado por lei de 5 dias");
-                                  return;
-                                }
-                                setSelectedDocument(doc);
-                                setShowCertifyModal(true);
-                              }}
-                              onViewDetail={(doc) => setViewingInvoiceId(doc.id)}
-                              onViewBusinessOverview={() => setActiveTab('business_overview')}
-                              setActiveTab={setActiveTab}
-                              caixas={caixas}
-                              mode={activeTab === 'electronic_invoices' ? 'electronic' : 'standard'}
-                              fiscalSeries={fiscalSeries}
-                              onRefresh={fetchData}
-                            />
-                          );
-                        case 'tax-settings':
-                          return <TaxSeriesModule />;
-                        case 'issued-documents':
-                          return (
-                            <IssuedDocumentsList 
-                              documents={issuedDocuments} 
-                              onAction={handleDocumentAction}
-                              onCertify={(doc) => {
-                                const emissionDate = new Date(doc.data_emissao || doc.date || '');
-                                const today = new Date();
-                                const diffTime = Math.abs(today.getTime() - emissionDate.getTime());
-                                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                                if (diffDays > 5) {
-                                  alert("Caro utilizador de acordo com lei deve anular este documento e emitir no com a nova data porque ultrapassou o tempo determinado por lei de 5 dias");
-                                  return;
-                                }
-                                setSelectedDocument(doc);
-                                setShowCertifyModal(true);
-                              }}
-                              onViewDetail={(doc) => setViewingInvoiceId(doc.id)}
-                            />
-                          );
-                        case 'client-account':
-                          return selectedClientForAccount ? (
-                            <ClientAccount 
-                              client={selectedClientForAccount} 
-                              documents={issuedDocuments
-                                .filter(d => Number(d.cliente_id) === Number(selectedClientForAccount.id))
-                                .map(d => ({
-                                  ...d,
-                                  tipo_documento: d.document_type || 'Fatura',
-                                  data_emissao: d.date,
-                                  numero_documento: d.invoice_number,
-                                  contravalor: d.total
-                                })) as any}
-                              onBack={() => setActiveTab('clients')}
-                            />
-                          ) : (
-                            <EcosystemDashboard stats={stats} issuedDocuments={issuedDocuments} setActiveTab={setActiveTab} />
-                          );
-                        case 'cashier':
-                          return <CashierModule issuedDocuments={issuedDocuments} />;
-                        case 'caixa':
-                          return <CaixaModule />;
-                        case 'security':
-                          return (
-                            <SecurityModule 
-                              occurrences={securityOccurrences}
-                              armory={securityArmory}
-                              roster={securityRoster}
-                              employees={employees}
-                              workSites={workSites}
-                              onRefresh={fetchData}
-                            />
-                          );
-                        case 'fleet':
-                          return <FleetManagementModule />;
-                        case 'projects':
-                          return <ProjectManagementModule />;
-                        case 'business_overview':
-                        case 'cost-revenue':
-                          return (
-                            <BusinessOverview 
-                              invoices={issuedDocuments} 
-                              products={products} 
-                              clients={clients} 
-                              transactions={transactions} 
-                            />
-                          );
-                        case 'workplaces':
-                          return (
-                            <WorkplaceModule 
-                              workplaces={workSites}
-                              onRefresh={fetchData} 
-                              onAddWorkSite={handleAddWorkSite}
-                              onUpdateWorkSite={handleUpdateWorkSite}
-                              onDeleteWorkSite={handleDeleteWorkSite}
-                              clients={clients} 
-                              issuedDocuments={issuedDocuments} 
-                              workSiteMovements={workSiteMovements} 
-                              employees={employees}
-                              allWorkSites={workSites}
-                            />
-                          );
-                        case 'contracts':
-                          return (
-                            <div className="space-y-6">
-                              <ContratosList 
+                        default:
+                          // Permission Guard for other modules
+                          const isGlobalAdmin = user?.is_admin || user?.level === 10 || user?.role === 'admin' || user?.role === 'admin_empresa' || user?.role === 'super_admin' || user?.role === 'proprietario';
+                          const isMainModule = SIDEBAR_MENU_ITEMS.some(item => item.id === activeTab);
+                          const hasTabPermission = isGlobalAdmin || user?.permission_areas?.includes(activeTab);
+
+                          if (isMainModule && !hasTabPermission) {
+                            return (
+                              <div className="flex flex-col items-center justify-center p-20 text-center space-y-4">
+                                <div className="w-20 h-20 bg-red-50 text-red-600 rounded-full flex items-center justify-center">
+                                  <ShieldAlert size={40} />
+                                </div>
+                                <h2 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">Acesso Restrito</h2>
+                                <p className="text-zinc-500 max-w-md">O seu utilizador não tem permissão para aceder a esta área. Contacte o administrador da empresa para solicitar acesso.</p>
+                                <button 
+                                  onClick={() => setActiveTab('dashboard')}
+                                  className="mt-4 px-8 py-3 bg-[#003366] text-white text-xs font-black uppercase tracking-widest hover:bg-[#002244] transition-all"
+                                >
+                                  Voltar ao Painel Principal
+                                </button>
+                              </div>
+                            );
+                          }
+
+                          switch (activeTab) {
+                            case 'pos':
+                              return <POSModule 
+                                products={products} 
+                                onRefresh={fetchData} 
+                                caixas={caixas} 
+                                onSaveDocument={saveDocumentoEmitido} 
+                                sessions={sessions}
+                                fiscalSeries={fiscalSeries}
+                                fiscalYear={fiscalYear}
                                 user={user}
-                                employees={employees} 
-                                onSetEmployee={setAppSelectedEmployee}
-                                onSetIsContractModalOpen={setIsContractModalOpen}
-                                onEditContract={(c) => {
-                                  setSelectedContract(c);
-                                  setIsContractModalOpen(true);
-                                }}
-                              />
-                            </div>
-                          );
-                        case 'clients':
-                          return (
-                            <ClientList 
-                              clients={clients} 
-                              issuedDocuments={issuedDocuments}
-                              onRefresh={fetchData} 
-                              onViewAccount={(client) => {
-                                setSelectedClientForAccount(client);
-                                setActiveTab('client-account');
-                              }}
-                            />
-                          );
-                        case 'suppliers':
-                          return <SupplierModule products={products} activeTaxes={activeTaxes} workSites={workSites} fiscalSeries={fiscalSeries} caixas={caixas} companyData={companyData} addMovement={doAddCaixaMovement} />;
-                        case 'products':
-                          return (
-                            <ProductList 
-                              products={products} 
-                              setProducts={setProducts}
-                              onRefresh={fetchData} 
-                              stockMovements={stockMovements}
-                              warehouses={warehouses}
-                              metrics={metrics}
-                            />
-                          );
-                        case 'financial':
-                          return (
-                            <FinancialModule 
-                              caixas={caixas} 
-                              setCaixas={setCaixas} 
-                              caixaMovements={caixaMovements} 
-                              setCaixaMovements={setCaixaMovements} 
-                              employees={employees}
-                              user={user}
-                              refreshCaixas={loadCaixas}
-                              refreshMovements={loadCaixaMovements}
-                              issuedDocuments={issuedDocuments}
-                              transactions={invoices} // Overloading invoices as transactions for this module's logic if needed, or separate state
-                            />
-                          );
-                         case 'hr':
-                          return <HRModule 
-                            onRefetch={fetchData} 
-                            onSetIsContractModalOpen={setIsContractModalOpen} 
-                            onSetEmployee={setAppSelectedEmployee} 
-                            onSetSelectedContract={setSelectedContract}
-                            onOpenDocuments={(e) => {
-                              setModalEmployee(e);
-                              setIsDocumentsModalOpen(true);
-                            }}
-                            onOpenFines={(e) => {
-                              setModalEmployee(e);
-                              setIsFinesModalOpen(true);
-                            }}
-                            caixas={caixas} 
-                            companyName={companyName} 
-                            companyData={companyData}
-                            fiscalYear={fiscalYear}
-                            // Persistent HR State
-                            processedReceipts={hrProcessedReceipts}
-                            setProcessedReceipts={setHrProcessedReceipts}
-                            processedAttendance={hrProcessedAttendance}
-                            setProcessedAttendance={setHrProcessedAttendance}
-                            attendanceDone={hrAttendanceDone}
-                            setAttendanceDone={setHrAttendanceDone}
-                            payrollInputs={hrPayrollInputs}
-                            setPayrollInputs={setHrPayrollInputs}
-                            transferOrders={hrTransferOrders}
-                            setTransferOrders={setHrTransferOrders}
-                            localEmployees={hrLocalEmployees}
-                            setLocalEmployees={setHrLocalEmployees}
-                            penalties={penalties}
-                            setPenalties={setPenalties}
-                          />;
-                        case 'accounting':
-                          return <AccountingModule 
-                            invoices={invoices} 
-                            clients={clients} 
-                            fiscalSeries={fiscalSeries} 
-                            onRefresh={fetchData} 
-                            employees={employees} 
-                            issuedDocuments={issuedDocuments} 
-                            fiscalYear={fiscalYear}
-                            companyData={companyData}
-                          />;
-                        case 'withholding-tax':
-                          return <WithholdingTaxModule sales={issuedDocuments} purchases={purchases} />;
-  case 'reports':
-    return (
-      <ReportsModule 
-        sales={issuedDocuments} 
-        purchases={purchases} 
-        clients={clients} 
-        products={products} 
-        stockMovements={stockMovements}
-        warehouses={warehouses}
-        caixaMovements={caixaMovements}
-        caixas={caixas}
-        suppliers={suppliers}
-      />
-    );
-                        case 'drafts':
-                          const filteredDrafts = issuedDocuments.filter(d => {
-                            const isDraft = !d.is_certified || (d.currency && d.currency !== 'AOA') || d.tipo_documento === 'PP' || d.document_type === 'Fatura Proforma';
-                            const matchesCurrency = draftCurrency === 'Todas' || 
-                                                 (draftCurrency === 'Kwanza' && d.currency === 'Kwanza') ||
-                                                 (draftCurrency === 'USD' && d.currency === 'USD') ||
-                                                 (draftCurrency === 'EUR' && (d.currency === 'EUR' || d.currency === 'EURO'));
-                            return isDraft && matchesCurrency;
-                          });
-                          return (
-                            <div className="space-y-6">
-                              <header className="flex justify-between items-center bg-white p-6 border-b border-zinc-200">
-                                <div>
-                                  <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Provisórios / Documento de Suporte (Draft)</h2>
-                                  <p className="text-zinc-500 text-sm font-medium">Gestão de documentos provisórios e rascunhos emitidos.</p>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Filtrar Moeda:</label>
-                                  <div className="flex bg-zinc-100 p-1 rounded-none border border-zinc-200 shadow-inner">
-                                    {['Todas', 'Kwanza', 'USD', 'EUR'].map((m) => (
-                                      <button 
-                                        key={m}
-                                        onClick={() => setDraftCurrency(m)}
-                                        className={`px-4 py-1.5 text-[10px] font-black uppercase tracking-tighter transition-all ${draftCurrency === m ? 'bg-white text-[#003366] shadow-sm' : 'text-zinc-400 hover:text-zinc-600'}`}
-                                      >
-                                        {m === 'Kwanza' ? 'KZ' : m}
-                                      </button>
-                                    ))}
-                                  </div>
-                                </div>
-                              </header>
-                              <div className="px-12">
-                                <IssuedDocumentsList 
-                                  documents={filteredDrafts} 
+                                companyData={companyData}
+                              />;
+                            case 'electronic_invoices':
+                            case 'invoices':
+                            case 'vendas':
+                              return (
+                                <InvoiceList 
+                                  invoices={invoices} 
+                                  issuedDocuments={issuedDocuments}
+                                  clients={clients} 
+                                  workSites={workSites}
+                                  employees={employees}
+                                  onNew={() => { setSelectedDocument(null); setFixedDocumentType(undefined); setIsCreatingInvoice(true); }} 
+                                  onView={setViewingInvoiceId}
+                                  onRegisterClient={() => setIsClientModalOpen(true)}
+                                  onAddWorkSite={handleAddWorkSite}
+                                  onUpdateWorkSite={handleUpdateWorkSite}
+                                  onDeleteWorkSite={handleDeleteWorkSite}
                                   onAction={handleDocumentAction}
-                                  isDraftsPage={true}
                                   onCertify={(doc) => {
+                                    const emissionDate = new Date(doc.data_emissao || doc.date || '');
+                                    const today = new Date();
+                                    const diffTime = Math.abs(today.getTime() - emissionDate.getTime());
+                                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                    if (diffDays > 5) {
+                                      alert("Caro utilizador de acordo com lei deve anular este documento e emitir no com a nova data porque ultrapassou o tempo determinado por lei de 5 dias");
+                                      return;
+                                    }
+                                    setSelectedDocument(doc);
+                                    setShowCertifyModal(true);
+                                  }}
+                                  onViewDetail={(doc) => setViewingInvoiceId(doc.id)}
+                                  onViewBusinessOverview={() => setActiveTab('business_overview')}
+                                  setActiveTab={setActiveTab}
+                                  caixas={caixas}
+                                  mode={activeTab === 'electronic_invoices' ? 'electronic' : 'standard'}
+                                  fiscalSeries={fiscalSeries}
+                                  onRefresh={fetchData}
+                                />
+                              );
+                            case 'tax-settings':
+                              return <TaxSeriesModule />;
+                            case 'issued-documents':
+                              return (
+                                <IssuedDocumentsList 
+                                  documents={issuedDocuments} 
+                                  onAction={handleDocumentAction}
+                                  onCertify={(doc) => {
+                                    const emissionDate = new Date(doc.data_emissao || doc.date || '');
+                                    const today = new Date();
+                                    const diffTime = Math.abs(today.getTime() - emissionDate.getTime());
+                                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                    if (diffDays > 5) {
+                                      alert("Caro utilizador de acordo com lei deve anular este documento e emitir no com a nova data porque ultrapassou o tempo determinado por lei de 5 dias");
+                                      return;
+                                    }
                                     setSelectedDocument(doc);
                                     setShowCertifyModal(true);
                                   }}
                                   onViewDetail={(doc) => setViewingInvoiceId(doc.id)}
                                 />
-                              </div>
-                            </div>
-                          );
-                        case 'specialized':
-                          return <SpecializedManagementModule activeTab={activeTab} setActiveTab={setActiveTab} />;
-                        case 'archive':
-                          return <ArchiveModule fiscalYear={fiscalYear} />;
-                        case 'church':
-                          return <ChurchModule />;
-                        case 'agrobusiness':
-                          return <AgrobusinessModule />;
-                        case 'tax-series':
-                          return (
-                            <FiscalSeriesModule 
-                              series={fiscalSeries} 
-                              onRefresh={fetchData} 
-                              users={employees} 
-                              onConfigGraphic={(s) => setConfiguringGraphicSerie(s)}
-                            />
-                          );
-                        case 'profit-loss-report':
-                          return <ProfitLossReport fiscalYear={fiscalYear} empresa_id={user?.empresa_id} />;
-                        case 'settings':
-                          return (
-                            <div className="space-y-6">
-                              <SettingsModule 
+                              );
+                            case 'client-account':
+                              return selectedClientForAccount ? (
+                                <ClientAccount 
+                                  client={selectedClientForAccount} 
+                                  documents={issuedDocuments
+                                    .filter(d => Number(d.cliente_id) === Number(selectedClientForAccount.id))
+                                    .map(d => ({
+                                      ...d,
+                                      tipo_documento: d.document_type || 'Fatura',
+                                      data_emissao: d.date,
+                                      numero_documento: d.invoice_number,
+                                      contravalor: d.total
+                                    })) as any}
+                                  onBack={() => setActiveTab('clients')}
+                                />
+                              ) : (
+                                <EcosystemDashboard stats={stats} issuedDocuments={issuedDocuments} setActiveTab={setActiveTab} />
+                              );
+                            case 'cashier':
+                              return <CashierModule issuedDocuments={issuedDocuments} />;
+                            case 'caixa':
+                              return <CaixaModule />;
+                            case 'security':
+                              return (
+                                <SecurityModule 
+                                  occurrences={securityOccurrences}
+                                  armory={securityArmory}
+                                  roster={securityRoster}
+                                  employees={employees}
+                                  workSites={workSites}
+                                  onRefresh={fetchData}
+                                />
+                              );
+                            case 'fleet':
+                              return <FleetManagementModule />;
+                            case 'projects':
+                              return <ProjectManagementModule />;
+                            case 'business_overview':
+                            case 'cost-revenue':
+                              return (
+                                <BusinessOverview 
+                                  invoices={issuedDocuments} 
+                                  products={products} 
+                                  clients={clients} 
+                                  transactions={transactions} 
+                                />
+                              );
+                            case 'workplaces':
+                              return (
+                                <WorkplaceModule 
+                                  workplaces={workSites}
+                                  onRefresh={fetchData} 
+                                  onAddWorkSite={handleAddWorkSite}
+                                  onUpdateWorkSite={handleUpdateWorkSite}
+                                  onDeleteWorkSite={handleDeleteWorkSite}
+                                  clients={clients} 
+                                  issuedDocuments={issuedDocuments} 
+                                  workSiteMovements={workSiteMovements} 
+                                  employees={employees}
+                                  allWorkSites={workSites}
+                                />
+                              );
+                            case 'contracts':
+                              return (
+                                <div className="space-y-6">
+                                  <ContratosList 
+                                    user={user}
+                                    employees={employees} 
+                                    onSetEmployee={setAppSelectedEmployee}
+                                    onSetIsContractModalOpen={setIsContractModalOpen}
+                                    onEditContract={(c) => {
+                                      setSelectedContract(c);
+                                      setIsContractModalOpen(true);
+                                    }}
+                                  />
+                                </div>
+                              );
+                            case 'clients':
+                              return (
+                                <ClientList 
+                                  clients={clients} 
+                                  issuedDocuments={issuedDocuments}
+                                  onRefresh={fetchData} 
+                                  onViewAccount={(client) => {
+                                    setSelectedClientForAccount(client);
+                                    setActiveTab('client-account');
+                                  }}
+                                />
+                              );
+                            case 'suppliers':
+                              return <SupplierModule products={products} activeTaxes={activeTaxes} workSites={workSites} fiscalSeries={fiscalSeries} caixas={caixas} companyData={companyData} addMovement={doAddCaixaMovement} />;
+                            case 'products':
+                              return (
+                                <ProductList 
+                                  products={products} 
+                                  setProducts={setProducts}
+                                  onRefresh={fetchData} 
+                                  stockMovements={stockMovements}
+                                  warehouses={warehouses}
+                                  metrics={metrics}
+                                />
+                              );
+                            case 'financial':
+                              return (
+                                <FinancialModule 
+                                  caixas={caixas} 
+                                  setCaixas={setCaixas} 
+                                  caixaMovements={caixaMovements} 
+                                  setCaixaMovements={setCaixaMovements} 
+                                  employees={employees}
+                                  user={user}
+                                  refreshCaixas={loadCaixas}
+                                  refreshMovements={loadCaixaMovements}
+                                  issuedDocuments={issuedDocuments}
+                                  transactions={invoices} // Overloading invoices as transactions for this module's logic if needed, or separate state
+                                />
+                              );
+                             case 'hr':
+                              return <HRModule 
+                                onRefetch={fetchData} 
+                                onSetIsContractModalOpen={setIsContractModalOpen} 
+                                onSetEmployee={setAppSelectedEmployee} 
+                                onSetSelectedContract={setSelectedContract}
+                                onOpenDocuments={(e) => {
+                                  setModalEmployee(e);
+                                  setIsDocumentsModalOpen(true);
+                                }}
+                                onOpenFines={(e) => {
+                                  setModalEmployee(e);
+                                  setIsFinesModalOpen(true);
+                                }}
+                                caixas={caixas} 
+                                companyName={companyName} 
                                 companyData={companyData}
-                                onRefreshData={fetchData}
-                                alerts={alerts}
-                                setAlerts={setAlerts}
-                                onEditAlert={(alert) => {
-                                  setTaskFormData({
-                                    name: alert.name,
-                                    type: alert.type,
-                                    description: alert.description,
-                                    responsible: alert.responsible,
-                                    startDate: alert.startDate,
-                                    endDate: alert.endDate,
-                                    advanceTime: alert.advanceTime,
-                                    obs: alert.obs || ''
-                                  });
-                                  setEditingAlertId(alert.id);
-                                  setIsTaskModalOpen(true);
-                                }}
-                                onNewAlert={() => {
-                                  setEditingAlertId(null);
-                                  setTaskFormData({ name: '', type: 'imposto', description: '', responsible: '', startDate: '', endDate: '', advanceTime: '', obs: '' });
-                                  setIsTaskModalOpen(true);
-                                }}
-                              />
-                            </div>
-                          );
-                        case 'secretary':
-                          return <SecretaryModule appSelectedEmployee={appSelectedEmployee} />;
-                        default:
-                          return <EcosystemDashboard stats={stats} issuedDocuments={issuedDocuments} setActiveTab={setActiveTab} />;
+                                fiscalYear={fiscalYear}
+                                // Persistent HR State
+                                processedReceipts={hrProcessedReceipts}
+                                setProcessedReceipts={setHrProcessedReceipts}
+                                processedAttendance={hrProcessedAttendance}
+                                setProcessedAttendance={setHrProcessedAttendance}
+                                attendanceDone={hrAttendanceDone}
+                                setAttendanceDone={setHrAttendanceDone}
+                                payrollInputs={hrPayrollInputs}
+                                setPayrollInputs={setHrPayrollInputs}
+                                transferOrders={hrTransferOrders}
+                                setTransferOrders={setHrTransferOrders}
+                                localEmployees={hrLocalEmployees}
+                                setLocalEmployees={setHrLocalEmployees}
+                                penalties={penalties}
+                                setPenalties={setPenalties}
+                              />;
+                            case 'accounting':
+                              return <AccountingModule 
+                                invoices={invoices} 
+                                clients={clients} 
+                                fiscalSeries={fiscalSeries} 
+                                onRefresh={fetchData} 
+                                employees={employees} 
+                                issuedDocuments={issuedDocuments} 
+                                fiscalYear={fiscalYear}
+                                companyData={companyData}
+                              />;
+                            case 'withholding-tax':
+                              return <WithholdingTaxModule sales={issuedDocuments} purchases={purchases} />;
+                            case 'reports':
+                              return (
+                                <ReportsModule 
+                                  sales={issuedDocuments} 
+                                  purchases={purchases} 
+                                  clients={clients} 
+                                  products={products} 
+                                  stockMovements={stockMovements}
+                                  warehouses={warehouses}
+                                  caixaMovements={caixaMovements}
+                                  caixas={caixas}
+                                  suppliers={suppliers}
+                                />
+                              );
+                            case 'drafts':
+                              const filteredDrafts = issuedDocuments.filter(d => {
+                                const isDraft = !d.is_certified || (d.currency && d.currency !== 'AOA') || d.tipo_documento === 'PP' || d.document_type === 'Fatura Proforma';
+                                const matchesCurrency = draftCurrency === 'Todas' || 
+                                                     (draftCurrency === 'Kwanza' && d.currency === 'Kwanza') ||
+                                                     (draftCurrency === 'USD' && d.currency === 'USD') ||
+                                                     (draftCurrency === 'EUR' && (d.currency === 'EUR' || d.currency === 'EURO'));
+                                return isDraft && matchesCurrency;
+                              });
+                              return (
+                                <div className="space-y-6">
+                                  <header className="flex justify-between items-center bg-white p-6 border-b border-zinc-200">
+                                    <div>
+                                      <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Provisórios / Documento de Suporte (Draft)</h2>
+                                      <p className="text-zinc-500 text-sm font-medium">Gestão de documentos provisórios e rascunhos emitidos.</p>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Filtrar Moeda:</label>
+                                      <div className="flex bg-zinc-100 p-1 rounded-none border border-zinc-200 shadow-inner">
+                                        {['Todas', 'Kwanza', 'USD', 'EUR'].map((m) => (
+                                          <button 
+                                            key={m}
+                                            onClick={() => setDraftCurrency(m)}
+                                            className={`px-4 py-1.5 text-[10px] font-black uppercase tracking-widest transition-all ${draftCurrency === m ? 'bg-white text-[#003366] shadow-sm' : 'text-zinc-400 hover:text-zinc-600'}`}
+                                          >
+                                            {m === 'Kwanza' ? 'KZ' : m}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </header>
+                                  <div className="px-12">
+                                    <IssuedDocumentsList 
+                                      documents={filteredDrafts} 
+                                      onAction={handleDocumentAction}
+                                      isDraftsPage={true}
+                                      onCertify={(doc) => {
+                                        setSelectedDocument(doc);
+                                        setShowCertifyModal(true);
+                                      }}
+                                      onViewDetail={(doc) => setViewingInvoiceId(doc.id)}
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            case 'specialized':
+                              return <SpecializedManagementModule activeTab={activeTab} setActiveTab={setActiveTab} />;
+                            case 'archive':
+                              return <ArchiveModule fiscalYear={fiscalYear} />;
+                            case 'church':
+                              return <ChurchModule />;
+                            case 'agrobusiness':
+                              return <AgrobusinessModule />;
+                            case 'tax-series':
+                              return (
+                                <FiscalSeriesModule 
+                                  series={fiscalSeries} 
+                                  onRefresh={fetchData} 
+                                  users={employees} 
+                                  onConfigGraphic={(s) => setConfiguringGraphicSerie(s)}
+                                />
+                              );
+                            case 'profit-loss-report':
+                              return <ProfitLossReport fiscalYear={fiscalYear} empresa_id={user?.empresa_id} />;
+                            case 'settings':
+                              return (
+                                <div className="space-y-6">
+                                  <SettingsModule 
+                                    companyData={companyData}
+                                    onRefreshData={fetchData}
+                                    alerts={alerts}
+                                    setAlerts={setAlerts}
+                                    onEditAlert={(alert) => {
+                                      setTaskFormData({
+                                        name: alert.name,
+                                        type: alert.type,
+                                        description: alert.description,
+                                        responsible: alert.responsible,
+                                        startDate: alert.startDate,
+                                        endDate: alert.endDate,
+                                        advanceTime: alert.advanceTime,
+                                        obs: alert.obs || ''
+                                      });
+                                      setEditingAlertId(alert.id);
+                                      setIsTaskModalOpen(true);
+                                    }}
+                                    onNewAlert={() => {
+                                      setEditingAlertId(null);
+                                      setTaskFormData({ name: '', type: 'imposto', description: '', responsible: '', startDate: '', endDate: '', advanceTime: '', obs: '' });
+                                      setIsTaskModalOpen(true);
+                                    }}
+                                  />
+                                </div>
+                              );
+                            case 'secretary':
+                              return <SecretaryModule appSelectedEmployee={appSelectedEmployee} />;
+                            default:
+                              return <EcosystemDashboard stats={stats} issuedDocuments={issuedDocuments} setActiveTab={setActiveTab} />;
+                          }
                       }
                     })()}
                   </>

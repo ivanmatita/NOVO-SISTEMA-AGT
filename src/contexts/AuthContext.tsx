@@ -119,8 +119,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const refreshUser = async () => {
+    try {
+      const curr = await authService.getCurrentUser();
+      setUser(curr);
+    } catch (err) {
+      console.error('Erro ao atualizar usuário:', err);
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, forgotPassword, updatePassword, error }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, forgotPassword, updatePassword, error, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

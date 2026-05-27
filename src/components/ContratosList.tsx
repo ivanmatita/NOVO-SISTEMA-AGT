@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Printer, Calendar, FileText, Trash2, Edit, Award, UserPlus, FileCheck, Plus } from 'lucide-react';
 import { contractService } from '../services/contractService';
+import { supabase } from '../lib/supabase';
 
 interface ContratosListProps {
   user?: any;
@@ -117,7 +118,32 @@ const ContratosList = ({ user, employees, onSetEmployee, onSetIsContractModalOpe
 
   useEffect(() => {
     fetchContracts();
-  }, []);
+
+    // Sincronização em tempo real (Supabase Realtime)
+    if (!user?.empresa_id) return;
+    
+    const channel = supabase
+      .channel('hr_contratos_changes')
+      .on(
+        'postgres_changes',
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'hr_contratos', 
+          filter: `empresa_id=eq.${user.empresa_id}` 
+        },
+        async () => {
+          // Re-fetch to ensure data is mapped correctly
+          const data = await contractService.getContracts(user.empresa_id);
+          setContracts(data);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.empresa_id]);
 
   const handleDelete = async (id: number) => {
     if (!window.confirm('Tem a certeza que deseja revogar/apagar este contrato?')) return;

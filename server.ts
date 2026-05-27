@@ -1117,10 +1117,14 @@ async function startServer() {
 
       const client = supabaseAdmin || createClient(supabaseUrl, process.env.VITE_SUPABASE_ANON_KEY || "");
       
+      // Try searching in username, then nome, then email prefix
+      // We use ilike for case-insensitive matching
       const { data, error } = await client
         .from("perfis")
         .select("email")
-        .ilike("username", username)
+        .or(`username.ilike."${username}",nome.ilike."${username}",email.ilike."${username}@%"`)
+        .order('username', { ascending: false, nullsFirst: false }) // Prioritize matches with username set
+        .limit(1)
         .maybeSingle();
 
       if (error) {
@@ -1226,9 +1230,9 @@ async function startServer() {
           id: userId,
           company_id: company.id, // Inclusão obrigatória para compatibilidade com o banco
           email: email,
-          nome: formData.nome_administrador || formData.nome_empresa,
+          nome: (formData.nome_administrador || formData.nome_empresa || '').trim(),
           role: 'admin',
-          username: email.split('@')[0]
+          username: (email.split('@')[0] || '').trim()
         });
 
       if (profileError) {
@@ -1506,7 +1510,7 @@ async function startServer() {
       const perfilObj = {
           id: userId,
           company_id: empresa_id,
-          nome: name,
+          nome: (name || '').trim(),
           email,
           role: targetRole,
           is_active: true,
@@ -1515,7 +1519,7 @@ async function startServer() {
           profession: profession || null,
           contact: contact || null,
           morada: morada || null,
-          username: username || email.split('@')[0],
+          username: (username || email.split('@')[0] || '').trim(),
           level: level !== undefined && level !== null ? Number(level) : (is_admin ? 10 : 1),
           date: date || null,
           validade: validade || null
@@ -1661,7 +1665,7 @@ async function startServer() {
           const targetRole = is_admin === true ? 'admin' : 'user';
           
           const profileUpdateObj = {
-              nome: name,
+              nome: (name || '').trim(),
               email,
               role: targetRole,
               is_admin: !!is_admin,
@@ -1670,7 +1674,7 @@ async function startServer() {
               profession: profession || null,
               contact: contact || null,
               morada: morada || null,
-              username: username || email.split('@')[0],
+              username: (username || email.split('@')[0] || '').trim(),
               level: level !== undefined && level !== null ? Number(level) : (is_admin ? 10 : 1),
               date: date || null,
               validade: validade || null
@@ -2552,6 +2556,136 @@ async function startServer() {
       return res.json({ success: true });
     } catch (err: any) {
       console.error("[SERVER-CLIENTES] Erro ao remover cliente:", err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Secure Locais de Trabalho Endpoints with server-side company isolation
+  app.get("/api/secure-locais-trabalho", async (req, res) => {
+    const ctx = await getAuthUserContext(req);
+    if (!ctx) return res.status(401).json({ error: "Sessão expirada ou inválida. Por favor volte a iniciar sessão." });
+    if (ctx.isBlocked) return res.status(403).json({ error: "Conta suspensa ou revogada pelo administrador." });
+
+    try {
+      if (!supabaseAdmin) return res.status(500).json({ error: "Database admin client is not initialized on server." });
+      
+      console.log(`[SERVER-LOCAIS] Buscando locais de trabalho para a empresa: ${ctx.empresaId}`);
+      const { data, error } = await supabaseAdmin
+        .from('locais_trabalho')
+        .select('*')
+        .eq('empresa_id', ctx.empresaId)
+        .order('nome', { ascending: true });
+
+      if (error) {
+        console.error("[SERVER-LOCAIS] Erro ao carregar locais de trabalho do banco:", error);
+        return res.status(500).json({ error: error.message });
+      }
+      return res.json(data || []);
+    } catch (err: any) {
+      console.error("[SERVER-LOCAIS] Erro na busca de locais de trabalho:", err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/secure-locais-trabalho", express.json(), async (req, res) => {
+    const ctx = await getAuthUserContext(req);
+    if (!ctx) return res.status(401).json({ error: "Sessão expirada ou inválida. Por favor volte a iniciar sessão." });
+    if (ctx.isBlocked) return res.status(403).json({ error: "Conta suspensa ou revogada." });
+
+    try {
+      if (!supabaseAdmin) return res.status(500).json({ error: "Database admin client is not initialized on server." });
+
+      const localData = req.body;
+      const payload = {
+        ...localData,
+        empresa_id: ctx.empresaId,
+        updated_at: new Date().toISOString()
+      };
+
+      console.log(`[SERVER-LOCAIS] Criando local de trabalho "${payload.nome}" na empresa "${ctx.empresaId}"`);
+
+      const { data, error } = await supabaseAdmin
+        .from('locais_trabalho')
+        .insert([payload])
+        .select()
+        .single();
+
+      if (error) {
+        console.error("[SERVER-LOCAIS] Erro no INSERT de local de trabalho:", error);
+        return res.status(500).json({ error: error.message });
+      }
+      return res.status(201).json(data);
+    } catch (err: any) {
+      console.error("[SERVER-LOCAIS] Erro ao guardar local de trabalho:", err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.put("/api/secure-locais-trabalho/:id", express.json(), async (req, res) => {
+    const ctx = await getAuthUserContext(req);
+    if (!ctx) return res.status(401).json({ error: "Sessão expirada ou inválida. Por favor volte a iniciar sessão." });
+    if (ctx.isBlocked) return res.status(403).json({ error: "Conta suspensa ou revogada." });
+
+    const localId = req.params.id;
+
+    try {
+      if (!supabaseAdmin) return res.status(500).json({ error: "Database admin client is not initialized on server." });
+
+      const updateData = req.body;
+      delete updateData.id;
+      
+      const payload = {
+        ...updateData,
+        empresa_id: ctx.empresaId,
+        updated_at: new Date().toISOString()
+      };
+
+      console.log(`[SERVER-LOCAIS] Atualizando local de trabalho ID "${localId}" na empresa "${ctx.empresaId}"`);
+
+      const { data, error } = await supabaseAdmin
+        .from('locais_trabalho')
+        .update(payload)
+        .eq('id', localId)
+        .eq('empresa_id', ctx.empresaId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error("[SERVER-LOCAIS] Erro no UPDATE de local de trabalho:", error);
+        return res.status(500).json({ error: error.message });
+      }
+      return res.json(data);
+    } catch (err: any) {
+      console.error("[SERVER-LOCAIS] Erro ao atualizar local de trabalho:", err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/secure-locais-trabalho/:id", async (req, res) => {
+    const ctx = await getAuthUserContext(req);
+    if (!ctx) return res.status(401).json({ error: "Sessão expirada ou inválida. Por favor volte a iniciar sessão." });
+    if (ctx.isBlocked) return res.status(403).json({ error: "Conta suspensa ou revogada." });
+
+    const localId = req.params.id;
+
+    try {
+      if (!supabaseAdmin) return res.status(500).json({ error: "Database admin client is not initialized on server." });
+
+      console.log(`[SERVER-LOCAIS] Removendo local de trabalho ID "${localId}" na empresa "${ctx.empresaId}"`);
+
+      const { error } = await supabaseAdmin
+        .from('locais_trabalho')
+        .delete()
+        .eq('id', localId)
+        .eq('empresa_id', ctx.empresaId);
+
+      if (error) {
+        console.error("[SERVER-LOCAIS] Erro no DELETE de local de trabalho:", error);
+        return res.status(500).json({ error: error.message });
+      }
+      return res.json({ success: true });
+    } catch (err: any) {
+      console.error("[SERVER-LOCAIS] Erro ao remover local de trabalho:", err);
       return res.status(500).json({ error: err.message });
     }
   });

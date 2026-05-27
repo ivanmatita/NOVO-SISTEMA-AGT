@@ -26,83 +26,123 @@ export interface LocalTrabalho {
 
 export const localTrabalhoService = {
   async getLocaisTrabalho(empresa_id: string): Promise<LocalTrabalho[]> {
-    if (!empresa_id) throw new Error("empresa_id é obrigatório para listar locais.");
-    
     try {
-      console.log(`[LocalTrabalhoService] Buscando locais para empresa: ${empresa_id}`);
-      const { data, error } = await supabase
-        .from('locais_trabalho')
-        .select('*')
-        .eq('empresa_id', empresa_id)
-        .order('nome', { ascending: true });
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
 
-      if (error) {
-        await handleSupabaseError(error, OperationType.LIST, 'locais_trabalho');
+      if (!token) {
+        console.warn('[LocalTrabalhoService] Usuário não autenticado ao tentar listar locais.');
+        return [];
       }
-      
-      console.log(`[LocalTrabalhoService] ${data?.length || 0} locais encontrados.`);
+
+      console.log('[LocalTrabalhoService] Buscando locais de trabalho via API segura...');
+      const response = await fetch('/api/secure-locais-trabalho', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || "Falha ao carregar locais de trabalho.");
+      }
+
+      const data = await response.json();
+      console.log(`[LocalTrabalhoService] ${data?.length || 0} locais de trabalho carregados com sucesso.`);
       return data || [];
-    } catch (err) {
-      console.error('[LocalTrabalhoService] Falha crítica ao buscar:', err);
-      throw err;
+    } catch (err: any) {
+      console.error('[LocalTrabalhoService] Erro ao obter locais de trabalho:', err);
+      return [];
     }
   },
 
   async createLocalTrabalho(local: Omit<LocalTrabalho, 'id'>): Promise<LocalTrabalho> {
     try {
-      const payload = {
-        ...local,
-        updated_at: new Date().toISOString()
-      };
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
 
-      const { data, error } = await supabase
-        .from('locais_trabalho')
-        .insert([payload])
-        .select()
-        .single();
+      if (!token) {
+        throw new Error("Sessão inválida ou expirada. Inicie sessão novamente.");
+      }
 
-      if (error) await handleSupabaseError(error, OperationType.CREATE, 'locais_trabalho');
+      console.log('[LocalTrabalhoService] Criando local de trabalho via API segura:', local.nome);
+      const response = await fetch('/api/secure-locais-trabalho', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(local)
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || "Não foi possível registar o local de trabalho.");
+      }
+
+      const data = await response.json();
       return data;
-    } catch (err) {
-      console.error('[LocalTrabalhoService] Erro ao criar local:', err);
+    } catch (err: any) {
+      console.error('[LocalTrabalhoService] Falha ao registar local de trabalho:', err);
       throw err;
     }
   },
 
   async updateLocalTrabalho(id: number | string, local: Partial<LocalTrabalho>, empresa_id: string): Promise<LocalTrabalho> {
     try {
-      const payload = {
-        ...local,
-        updated_at: new Date().toISOString()
-      };
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
 
-      const { data, error } = await supabase
-        .from('locais_trabalho')
-        .update(payload)
-        .eq('id', id)
-        .eq('empresa_id', empresa_id)
-        .select()
-        .single();
+      if (!token) {
+        throw new Error("Sessão inválida ou expirada. Inicie sessão novamente.");
+      }
 
-      if (error) await handleSupabaseError(error, OperationType.UPDATE, 'locais_trabalho');
+      console.log(`[LocalTrabalhoService] Atualizando local de trabalho ID: ${id} via API segura`);
+      const response = await fetch(`/api/secure-locais-trabalho/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(local)
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || "Não foi possível atualizar o local de trabalho.");
+      }
+
+      const data = await response.json();
       return data;
-    } catch (err) {
-      console.error('[LocalTrabalhoService] Erro ao atualizar local:', err);
+    } catch (err: any) {
+      console.error('[LocalTrabalhoService] Falha ao atualizar local de trabalho:', err);
       throw err;
     }
   },
 
   async deleteLocalTrabalho(id: number | string, empresa_id: string): Promise<void> {
     try {
-      const { error } = await supabase
-        .from('locais_trabalho')
-        .delete()
-        .eq('id', id)
-        .eq('empresa_id', empresa_id);
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
 
-      if (error) await handleSupabaseError(error, OperationType.DELETE, 'locais_trabalho');
-    } catch (err) {
-      console.error('[LocalTrabalhoService] Erro ao remover local:', err);
+      if (!token) {
+        throw new Error("Sessão inválida ou expirada. Inicie sessão novamente.");
+      }
+
+      console.log(`[LocalTrabalhoService] Apagando local de trabalho ID: ${id} via API segura`);
+      const response = await fetch(`/api/secure-locais-trabalho/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || "Não foi possível remover o local de trabalho.");
+      }
+    } catch (err: any) {
+      console.error('[LocalTrabalhoService] Falha ao remover local de trabalho:', err);
       throw err;
     }
   }

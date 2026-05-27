@@ -473,8 +473,8 @@ const WorkplaceModule = ({
   workplaces: WorkSite[], 
   onRefresh: () => void, 
   onAddWorkSite: (site: Omit<WorkSite, 'id'>) => void,
-  onUpdateWorkSite: (id: number, site: Omit<WorkSite, 'id'>) => void,
-  onDeleteWorkSite: (id: number) => void,
+  onUpdateWorkSite: (id: any, site: Omit<WorkSite, 'id'>) => void,
+  onDeleteWorkSite: (id: any) => void,
   clients: Client[], 
   issuedDocuments: IssuedDocument[], 
   workSiteMovements: WorkSiteMovement[],
@@ -484,6 +484,7 @@ const WorkplaceModule = ({
   const { user } = useAuth();
   const [selectedWorkplace, setSelectedWorkplace] = useState<WorkSite | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [editingWorkplace, setEditingWorkplace] = useState<WorkSite | null>(null);
   
   const [clientId, setClientId] = useState('');
   const [name, setName] = useState('');
@@ -497,13 +498,42 @@ const WorkplaceModule = ({
   const [contact, setContact] = useState('');
   const [observations, setObservations] = useState('');
 
+  // Sync edit mode fields
+  useEffect(() => {
+    if (editingWorkplace) {
+      setClientId(String(editingWorkplace.client_id || ''));
+      setName(editingWorkplace.title || editingWorkplace.name || '');
+      setLocation(editingWorkplace.location || '');
+      setCode(editingWorkplace.code || '');
+      setStartDate(editingWorkplace.start_date ? editingWorkplace.start_date.substring(0, 10) : '');
+      setEndDate(editingWorkplace.end_date ? editingWorkplace.end_date.substring(0, 10) : '');
+      setStaffPerDay(Number(editingWorkplace.staff_per_day || 0));
+      setTotalStaff(Number(editingWorkplace.total_staff || 0));
+      setDescription(editingWorkplace.description || '');
+      setContact(editingWorkplace.contact || '');
+      setObservations(editingWorkplace.observations || '');
+    } else {
+      setClientId('');
+      setName('');
+      setLocation('');
+      setCode('');
+      setStartDate('');
+      setEndDate('');
+      setStaffPerDay(0);
+      setTotalStaff(0);
+      setDescription('');
+      setContact('');
+      setObservations('');
+    }
+  }, [editingWorkplace]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
     
     const client = clients?.find(c => String(c.id) === String(clientId));
     
-    onAddWorkSite({
+    const payload = {
       client_id: clientId,
       client_name: client?.name || '',
       title: name,
@@ -516,21 +546,21 @@ const WorkplaceModule = ({
       end_date: endDate,
       staff_per_day: staffPerDay,
       total_staff: totalStaff
-    });
+    };
+
+    if (editingWorkplace && editingWorkplace.id) {
+      onUpdateWorkSite(editingWorkplace.id, payload);
+    } else {
+      onAddWorkSite(payload);
+    }
     
     setShowForm(false);
-    // Reset
-    setClientId('');
-    setName('');
-    setLocation('');
-    setCode('');
-    setStartDate('');
-    setEndDate('');
-    setStaffPerDay(0);
-    setTotalStaff(0);
-    setDescription('');
-    setContact('');
-    setObservations('');
+    setEditingWorkplace(null);
+  };
+
+  const handleEditClick = (w: WorkSite) => {
+    setEditingWorkplace(w);
+    setShowForm(true);
   };
 
   if (selectedWorkplace) {
@@ -558,7 +588,7 @@ const WorkplaceModule = ({
           <p className="text-zinc-500 text-sm">Gestão de obras e locais de prestação de serviços da empresa.</p>
         </div>
         <button 
-          onClick={() => setShowForm(true)}
+          onClick={() => { setEditingWorkplace(null); setShowForm(true); }}
           className="bg-[#003366] text-white px-6 py-2.5 font-bold text-xs uppercase tracking-widest flex items-center gap-2"
         >
           <Plus size={18} /> Novo Local
@@ -578,7 +608,7 @@ const WorkplaceModule = ({
           </thead>
           <tbody className="divide-y divide-zinc-100">
             {workplaces.length === 0 ? (
-              <tr><td colSpan={5} className="p-12 text-center text-zinc-400 italic">Nenhum local de trabalho registado.</td></tr>
+               <tr><td colSpan={5} className="p-12 text-center text-zinc-400 italic">Nenhum local de trabalho registado.</td></tr>
             ) : workplaces.map((w) => (
               <tr key={w.id} className="hover:bg-zinc-50 transition-colors text-sm">
                 <td className="px-6 py-4 font-mono text-xs font-bold text-[#003366]">{w.code || 'N/A'}</td>
@@ -591,6 +621,12 @@ const WorkplaceModule = ({
                     className="bg-zinc-50 text-[#003366] px-3 py-1 text-[10px] font-black uppercase tracking-widest border border-zinc-200 hover:bg-zinc-100 transition-all mr-2"
                   >
                     Ver Relatório
+                  </button>
+                  <button 
+                    onClick={() => handleEditClick(w)}
+                    className="bg-amber-50 text-amber-700 px-3 py-1 text-[10px] font-black uppercase tracking-widest border border-amber-100 hover:bg-amber-100 transition-all mr-2"
+                  >
+                    Editar
                   </button>
                   <button 
                     onClick={() => onDeleteWorkSite(w.id)}
@@ -614,8 +650,10 @@ const WorkplaceModule = ({
             className="w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-white p-8 rounded-none shadow-2xl"
           >
             <div className="flex justify-between items-center mb-6 border-b border-zinc-100 pb-4">
-              <h3 className="font-bold text-[#003366] text-xl uppercase tracking-tight text-center w-full">Novo Local de Trabalho</h3>
-              <button type="button" onClick={() => setShowForm(false)} className="text-zinc-400 hover:text-zinc-600 absolute right-8">
+              <h3 className="font-bold text-[#003366] text-xl uppercase tracking-tight text-center w-full">
+                {editingWorkplace ? 'Atualizar Local de Trabalho' : 'Novo Local de Trabalho'}
+              </h3>
+              <button type="button" onClick={() => { setShowForm(false); setEditingWorkplace(null); }} className="text-zinc-400 hover:text-zinc-600 absolute right-8">
                 <X size={24} />
               </button>
             </div>
@@ -673,8 +711,10 @@ const WorkplaceModule = ({
                 </div>
               </div>
               <div className="flex justify-end gap-4 mt-6 border-t border-zinc-100 pt-6">
-                <button type="button" onClick={() => setShowForm(false)} className="px-6 py-2.5 font-bold text-sm tracking-widest bg-zinc-100 text-zinc-500 hover:bg-zinc-200 uppercase">Cancelar</button>
-                <button type="submit" className="bg-[#003366] text-white font-bold py-2.5 px-8 uppercase text-xs tracking-widest hover:bg-[#002244]">Registar Local</button>
+                <button type="button" onClick={() => { setShowForm(false); setEditingWorkplace(null); }} className="px-6 py-2.5 font-bold text-sm tracking-widest bg-zinc-100 text-zinc-500 hover:bg-zinc-200 uppercase">Cancelar</button>
+                <button type="submit" className="bg-[#003366] text-white font-bold py-2.5 px-8 uppercase text-xs tracking-widest hover:bg-[#002244]">
+                  {editingWorkplace ? 'Salvar Alterações' : 'Registar Local'}
+                </button>
               </div>
             </form>
           </motion.div>

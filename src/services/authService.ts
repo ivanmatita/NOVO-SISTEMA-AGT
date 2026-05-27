@@ -90,10 +90,29 @@ export const authService = {
     }
   },
 
-  async login(email: string, password: string): Promise<User> {
+  async login(emailOrUsername: string, password: string): Promise<User> {
     try {
-      const emailToLogin = email?.trim()?.toLowerCase() || '';
+      let emailToLogin = emailOrUsername?.trim() || '';
       console.log('[AuthService] Tentativa de login:', emailToLogin);
+
+      // If it is a username instead of an email, look up the email first
+      if (emailToLogin && !emailToLogin.includes('@')) {
+        console.log('[AuthService] Input is not an email. Attempting username lookup for:', emailToLogin);
+        const res = await fetch(`/api/auth/email-by-username?username=${encodeURIComponent(emailToLogin)}`);
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || 'Username não encontrado no sistema. Por favor introduza o seu e-mail de registo ou verifique o username.');
+        }
+        const data = await res.json();
+        if (data.email) {
+          console.log('[AuthService] Username resolved to email:', data.email);
+          emailToLogin = data.email;
+        } else {
+          throw new Error('Não foi possível obter o e-mail correspondente ao username fornecido.');
+        }
+      }
+
+      emailToLogin = emailToLogin.toLowerCase();
       
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: emailToLogin,
@@ -289,7 +308,7 @@ export const authService = {
             console.log('[AuthService] Recuperado via API (Bypass RLS):', empresa.nome_empresa);
             return {
               id: userAuth.id,
-              username: empresa.nome_empresa || userAuth.email?.split('@')[0] || 'Usuário',
+              username: perfil.nome || perfil.username || empresa.nome_empresa || userAuth.email?.split('@')[0] || 'Usuário',
               email: userAuth.email || '',
               empresa_id: perfil.empresa_id,
               role: perfil.role || 'admin',
@@ -407,7 +426,7 @@ export const authService = {
            if (companyOnly) {
               return {
                 id: session?.user?.id,
-                username: companyOnly.nome_empresa || session?.user?.email?.split('@')[0] || 'Usuário',
+                username: profileOnly.nome || profileOnly.username || companyOnly.nome_empresa || session?.user?.email?.split('@')[0] || 'Usuário',
                 email: session?.user?.email || '',
                 empresa_id: companyOnly.id,
                 role: profileOnly.role || 'user',
@@ -419,14 +438,14 @@ export const authService = {
               };
            }
         }
-
+        
         console.error('[AuthService] Falha total na identificação da empresa para o user:', session?.user?.id);
         return null; // Don't return a half-baked user if we can't find their company
       }
 
       return {
         id: session?.user?.id,
-        username: empresa.nome_empresa || session?.user?.email?.split('@')[0] || 'Usuário',
+        username: perfil.nome || perfil.username || empresa.nome_empresa || session?.user?.email?.split('@')[0] || 'Usuário',
         email: session?.user?.email || '',
         empresa_id: parsedCompanyId,
         role: perfil.role || 'user',

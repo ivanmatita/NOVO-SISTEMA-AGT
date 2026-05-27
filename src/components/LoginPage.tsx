@@ -45,6 +45,7 @@ export const LoginPage: React.FC = () => {
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotStatus, setForgotStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [forgotError, setForgotError] = useState<string | null>(null);
 
   // Registration state
   const [regStep, setRegStep] = useState(1);
@@ -215,11 +216,13 @@ export const LoginPage: React.FC = () => {
     e.preventDefault();
     setForgotLoading(true);
     setForgotStatus('idle');
+    setForgotError(null);
     try {
       await forgotPassword(forgotEmail);
       setForgotStatus('success');
-    } catch (err) {
+    } catch (err: any) {
       setForgotStatus('error');
+      setForgotError(err.message || 'Erro ao enviar email de redefinição. Tente novamente.');
     } finally {
       setForgotLoading(false);
     }
@@ -1085,7 +1088,7 @@ export const LoginPage: React.FC = () => {
                       />
                     </div>
                     {forgotStatus === 'error' && (
-                        <p className="text-[10px] font-bold text-red-500 uppercase tracking-widest">Erro ao enviar email. Tente novamente.</p>
+                        <p className="text-[10px] font-bold text-red-500 uppercase tracking-widest">{forgotError || 'Erro ao enviar email. Tente novamente.'}</p>
                     )}
                     <button 
                       type="submit" 

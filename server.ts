@@ -892,9 +892,9 @@ async function startServer() {
           ...perfil,
           empresa_id: companyId,
           company_id: companyId,
-          permission_areas: sysUser?.permission_areas || [],
-          is_admin: perfil.role === 'admin' || sysUser?.is_admin || false,
-          level: perfil.level || sysUser?.level || (perfil.role === 'admin' ? 10 : 1)
+          permission_areas: perfil?.permission_areas || sysUser?.permission_areas || [],
+          is_admin: perfil?.is_admin || perfil?.role === 'admin' || sysUser?.is_admin || false,
+          level: perfil?.level || sysUser?.level || (perfil?.role === 'admin' ? 10 : 1)
         };
 
         await addAuditLog(
@@ -1021,7 +1021,8 @@ async function startServer() {
           company_id: empresa.id,
           email: user.email,
           nome: user.user_metadata?.full_name || empresa.nome_empresa || user.email?.split('@')[0],
-          role: 'admin'
+          role: 'admin',
+          username: user.email?.split('@')[0]
         }, {
           onConflict: 'id'
         });
@@ -1103,6 +1104,38 @@ async function startServer() {
       res.json({ status: "done", error: errorStr });
     } catch (e: any) {
       res.json({ error: e.message });
+    }
+  });
+
+  // Resolves a username to its corresponding email address by querying the 'perfis' table
+  app.get("/api/auth/email-by-username", async (req, res) => {
+    try {
+      const username = String(req.query.username || "").trim();
+      if (!username) {
+        return res.status(400).json({ error: "Username is required" });
+      }
+
+      const client = supabaseAdmin || createClient(supabaseUrl, process.env.VITE_SUPABASE_ANON_KEY || "");
+      
+      const { data, error } = await client
+        .from("perfis")
+        .select("email")
+        .ilike("username", username)
+        .maybeSingle();
+
+      if (error) {
+        console.error("[SERVER] Error looking up username:", error);
+        return res.status(500).json({ error: "Error looking up username" });
+      }
+
+      if (!data || !data.email) {
+        return res.status(404).json({ error: "Usuário com este username não encontrado" });
+      }
+
+      return res.json({ email: data.email });
+    } catch (e: any) {
+      console.error("[SERVER] critical exception in lookup:", e);
+      return res.status(500).json({ error: e.message });
     }
   });
 
@@ -1194,7 +1227,8 @@ async function startServer() {
           company_id: company.id, // Inclusão obrigatória para compatibilidade com o banco
           email: email,
           nome: formData.nome_administrador || formData.nome_empresa,
-          role: 'admin'
+          role: 'admin',
+          username: email.split('@')[0]
         });
 
       if (profileError) {
@@ -1301,13 +1335,13 @@ async function startServer() {
                      name: p.nome || su.name || p.name,
                      company_id: p.company_id || su.company_id,
                      empresa_id: p.company_id || su.company_id,
-                     permission_areas: su.permission_areas || p.permission_areas || [],
+                     permission_areas: p.permission_areas || su.permission_areas || [],
                      level: p.level !== undefined ? p.level : (su.level !== undefined ? su.level : (p.role === 'admin' ? 10 : 1)),
-                     contact: su.contact || p.contact || '',
-                     morada: su.morada || p.morada || '',
-                     validade: su.validade || su.date || p.validade || '',
-                     profession: su.profession || p.profession || '',
-                     username: su.username || p.username || ''
+                     contact: p.contact || su.contact || '',
+                     morada: p.morada || su.morada || '',
+                     validade: p.validade || su.validade || su.date || '',
+                     profession: p.profession || su.profession || '',
+                     username: p.username || su.username || ''
                  };
              }) : [];
 
@@ -1477,7 +1511,14 @@ async function startServer() {
           role: targetRole,
           is_active: true,
           is_admin: !!is_admin,
-          permission_areas: permission_areas || []
+          permission_areas: permission_areas || [],
+          profession: profession || null,
+          contact: contact || null,
+          morada: morada || null,
+          username: username || email.split('@')[0],
+          level: level !== undefined && level !== null ? Number(level) : (is_admin ? 10 : 1),
+          date: date || null,
+          validade: validade || null
       };
 
       console.log("[SERVER] Inserting into perfis with data:", perfilObj);
@@ -1625,7 +1666,14 @@ async function startServer() {
               role: targetRole,
               is_admin: !!is_admin,
               permission_areas: permission_areas || [],
-              is_active: is_active !== undefined ? !!is_active : true
+              is_active: is_active !== undefined ? !!is_active : true,
+              profession: profession || null,
+              contact: contact || null,
+              morada: morada || null,
+              username: username || email.split('@')[0],
+              level: level !== undefined && level !== null ? Number(level) : (is_admin ? 10 : 1),
+              date: date || null,
+              validade: validade || null
           };
 
           const { error: dbError } = await supabaseAdmin

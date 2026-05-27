@@ -684,6 +684,80 @@ const WorkplaceModule = ({
   );
 };
 
+const PERMISSION_EQUIVALENTS: Record<string, string[]> = {
+  dashboard: ['dashboard', 'painel', 'painel_de_bordo', 'painel de bordo'],
+  clients: ['clients', 'clientes'],
+  workplaces: ['workplaces', 'locais_trabalho', 'locais de trabalho'],
+  secretary: ['secretary', 'secretaria', 'secretaria beta', 'secretaria_beta'],
+  pos: ['pos', 'ponto_venda', 'ponto de venda'],
+  contracts: ['contracts', 'contratos'],
+  electronic_invoices: ['electronic_invoices', 'faturacao_electronica', 'faturação electrónica', 'faturação eletrónica', 'faturacao electronica'],
+  security: ['security', 'seguranca', 'segurança', 'segurança gestão privada', 'segurança gestão', 'seguranca gestao privada'],
+  specialized: ['specialized', 'gestao_especializada', 'gestão especializada'],
+  archive: ['archive', 'arquivo'],
+  invoices: ['invoices', 'vendas'],
+  drafts: ['drafts', 'rascunhos', 'rascunhos (drafts)'],
+  suppliers: ['suppliers', 'compras'],
+  products: ['products', 'produtos', 'stocks', 'inventário', 'stocks & inventário'],
+  financial: ['financial', 'financas', 'finanças'],
+  accounting: ['accounting', 'contabilidade'],
+  hr: ['hr', 'rh', 'recursos_humanos', 'recursos humanos'],
+  reports: ['reports', 'relatorios', 'relatórios'],
+  agrobusiness: ['agrobusiness', 'agronegocio', 'agronegócio'],
+  church: ['church', 'igreja', 'gestao_de_igreja', 'gestão de igreja'],
+  settings: ['settings', 'definicoes', 'definições']
+};
+
+const mapPermissionAreasFromDB = (dbAreas: string[]): string[] => {
+  const result = new Set<string>();
+  const areas = (dbAreas || []).map(a => String(a).trim().toLowerCase());
+  
+  Object.keys(PERMISSION_EQUIVALENTS).forEach(moduleId => {
+    const possibleKeys = (PERMISSION_EQUIVALENTS[moduleId] || []).map(k => k.trim().toLowerCase());
+    if (possibleKeys.some(key => areas.includes(key))) {
+      result.add(moduleId);
+    }
+  });
+
+  return Array.from(result);
+};
+
+const mapPermissionAreasForDB = (selectedIds: string[]): string[] => {
+  const result = new Set<string>();
+  
+  (selectedIds || []).forEach(id => {
+    result.add(id);
+    const equivalentsList = PERMISSION_EQUIVALENTS[id];
+    if (equivalentsList) {
+      equivalentsList.forEach(eq => result.add(eq.trim().toLowerCase()));
+    }
+  });
+  
+  return Array.from(result).map(a => a.toLowerCase());
+};
+
+const hasModulePermission = (user: any, moduleId: string): boolean => {
+  const isGlobalAdmin = user?.is_admin === true || 
+                        user?.role === 'admin' || 
+                        user?.role === 'admin_empresa' || 
+                        user?.role === 'super_admin' || 
+                        user?.role === 'proprietario' || 
+                        (user?.level !== undefined && Number(user.level) >= 10);
+  
+  if (isGlobalAdmin) return true;
+  if (moduleId === 'dashboard') return true;
+  
+  const rawPermissions = user?.permission_areas;
+  const permissions = Array.isArray(rawPermissions) 
+    ? rawPermissions.map(p => String(p).trim().toLowerCase()) 
+    : [];
+    
+  if (permissions.length === 0) return false;
+  
+  const possibleKeys = (PERMISSION_EQUIVALENTS[moduleId] || [moduleId]).map(k => k.trim().toLowerCase());
+  return possibleKeys.some(key => permissions.includes(key));
+};
+
 const SIDEBAR_MENU_ITEMS = [
   { id: 'dashboard', label: 'Painel de Bordo', icon: LayoutDashboard },
   { id: 'clients', label: 'Clientes', icon: Users },
@@ -895,21 +969,9 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
         <h3 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-3 px-2">Menu Principal</h3>
         <nav className="space-y-1">
           {SIDEBAR_MENU_ITEMS.map((item) => {
-            const isAdmin = 
-              user?.is_admin === true || 
-              user?.role === 'admin' || 
-              user?.role === 'admin_empresa' || 
-              user?.role === 'super_admin' || 
-              user?.role === 'proprietario' || 
-              (user?.level && user.level >= 10);
-            
-            const permissions = user?.permission_areas ?? [];
-            
             const canAccess = (module: string) => {
-              if (isAdmin) return true;
-              if (module === 'dashboard') return true;
-              const hasAccess = Array.isArray(permissions) && permissions.includes(module);
-              console.log(`[MENU-DEBUG] Module: ${module}, HasAccess: ${hasAccess}, Permissions:`, permissions);
+              const hasAccess = hasModulePermission(user, module);
+              console.log(`[MENU-DEBUG] Module: ${module}, HasAccess: ${hasAccess}, Permissions:`, user?.permission_areas);
               return hasAccess;
             };
 
@@ -11255,7 +11317,7 @@ const SpecializedManagementModule = ({ activeTab, setActiveTab }: { activeTab?: 
 };
 
 const UsersSettings = () => {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const [users, setUsers] = useState<SystemUser[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingUser, setEditingUser] = useState<any | null>(null);
@@ -11359,7 +11421,7 @@ const UsersSettings = () => {
     if (isAdmin) {
       setPermissionAreas(SIDEBAR_MENU_ITEMS.map(m => m.id));
     } else {
-      setPermissionAreas(u.permission_areas || (u.permission_area ? [u.permission_area] : []));
+      setPermissionAreas(mapPermissionAreasFromDB(u.permission_areas || (u.permission_area ? [u.permission_area] : [])));
     }
     
     setContact(u.contact || '');
@@ -11424,7 +11486,7 @@ const UsersSettings = () => {
     if (isAdmin) {
       setPermissionAreas(SIDEBAR_MENU_ITEMS.map(m => m.id));
     } else {
-      setPermissionAreas(u.permission_areas || []);
+      setPermissionAreas(mapPermissionAreasFromDB(u.permission_areas || []));
     }
   };
 
@@ -11434,7 +11496,7 @@ const UsersSettings = () => {
     try {
       await systemUsersService.updateUser(user.empresa_id, permissionModalUser.id, {
         ...permissionModalUser,
-        permission_areas: permissionAreas
+        permission_areas: mapPermissionAreasForDB(permissionAreas)
       });
       showToast("Permissões atualizadas com sucesso!");
       
@@ -11468,14 +11530,17 @@ const UsersSettings = () => {
     }
     setIsSaving(true);
     try {
-      const { error } = await supabase.rpc('admin_reset_user_password', {
-        target_user_id: resetPasswordUser.id,
-        new_password: newPassword
+      const response = await fetchWithAuth(`/api/system-users/${resetPasswordUser.id}/reset-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ password: newPassword })
       });
 
-      if (error) {
-        console.warn("[ResetPassword] RPC failed, trying general service update...", error.message);
-        throw error;
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `Erro do servidor (status ${response.status})`);
       }
 
       showToast("Senha redefinida com sucesso!");
@@ -11484,7 +11549,7 @@ const UsersSettings = () => {
       setConfirmNewPassword('');
     } catch (err: any) {
       console.error(err);
-      showToast(`Para redefinir a senha do utilizador por completo, por favor use o fluxo padrão de recuperação ou configure a função RPC no Supabase.`, 'error');
+      showToast(`Erro ao redefinir senha: ${err.message || 'Erro desconhecido'}`, 'error');
     } finally {
       setIsSaving(false);
     }
@@ -11513,7 +11578,7 @@ const UsersSettings = () => {
       email,
       profession,
       date: validadeState || date || null,
-      permission_areas: isAdminState ? SIDEBAR_MENU_ITEMS.map(m => m.id) : permissionAreas,
+      permission_areas: isAdminState ? mapPermissionAreasForDB(SIDEBAR_MENU_ITEMS.map(m => m.id)) : mapPermissionAreasForDB(permissionAreas),
       contact,
       morada,
       username: usernameState || email.split('@')[0],
@@ -26455,7 +26520,7 @@ export default function App() {
                           // Permission Guard for other modules
                           const isGlobalAdmin = user?.is_admin || user?.level === 10 || user?.role === 'admin' || user?.role === 'admin_empresa' || user?.role === 'super_admin' || user?.role === 'proprietario';
                           const isMainModule = SIDEBAR_MENU_ITEMS.some(item => item.id === activeTab);
-                          const hasTabPermission = isGlobalAdmin || user?.permission_areas?.includes(activeTab);
+                          const hasTabPermission = hasModulePermission(user, activeTab);
 
                           if (isMainModule && !hasTabPermission) {
                             return (

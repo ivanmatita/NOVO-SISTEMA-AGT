@@ -11,11 +11,19 @@ export const authService = {
 
     sessionLoading = true;
     try {
-      // Add timeout to prevent hanging forever
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout on getSession')), 15000));
+      let timeoutId: any;
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('Timeout on getSession')), 15000);
+      });
       const getSessionPromise = supabase.auth.getSession();
       
-      const res = await Promise.race([getSessionPromise, timeoutPromise]) as any;
+      const res = await Promise.race([
+        getSessionPromise.then(res => {
+          clearTimeout(timeoutId);
+          return res;
+        }), 
+        timeoutPromise
+      ]) as any;
       if (res.error) {
         console.error('Error getting session:', res.error);
         return null;
@@ -297,25 +305,33 @@ export const authService = {
         console.warn('[AuthService] Fallback to direct supabase query, API failed:', e);
       }
 
-      // Promise de timeout comum para as queries
-      let timer: any;
-      const queryTimeout = new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new Error('Timeout DB Query')), 30000);
-      });
+      const createTimeout = (ms: number) => {
+        let timer: any;
+        const p = new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error('Timeout DB Query')), ms);
+        });
+        // append catch to prevent unhandled promise rejection if it fires late
+        p.catch(() => {});
+        return { promise: p, clear: () => clearTimeout(timer) };
+      };
 
       const startTime = Date.now();
       const perfilQuery = supabase
         .from('perfis')
-        .select('company_id, role, permission_areas')
+        .select('company_id, role, permission_areas, is_admin, level')
         .eq('id', session?.user?.id)
         .maybeSingle();
 
+      const pt1 = createTimeout(30000);
       const { data: perfil, error } = await Promise.race([
         perfilQuery.then(res => {
-          clearTimeout(timer);
+          pt1.clear();
           return res;
+        }).catch(err => {
+          pt1.clear();
+          throw err;
         }), 
-        queryTimeout
+        pt1.promise
       ]) as any;
       console.log(`[AuthService] perfilQuery levou ${Date.now() - startTime}ms`);
 
@@ -327,6 +343,7 @@ export const authService = {
       const parsedCompanyId = perfil?.company_id;
 
       if (parsedCompanyId) {
+        const pt2 = createTimeout(30000);
         const companyQuery = supabase
           .from('empresas')
           .select('*')
@@ -334,10 +351,13 @@ export const authService = {
           .maybeSingle();
         const { data } = await Promise.race([
           companyQuery.then(res => {
-            clearTimeout(timer);
+            pt2.clear();
             return res;
+          }).catch(err => {
+            pt2.clear();
+            throw err;
           }),
-          queryTimeout
+          pt2.promise
         ]) as any;
         empresa = data;
       }
@@ -346,6 +366,7 @@ export const authService = {
         console.warn('[AuthService] Perfil ou empresa não encontrados via lookup simples. Tentando via lookup direto em empresas...');
         
         // Tentativa 1: Buscar empresa onde o utilizador é o dono
+        const pt3 = createTimeout(30000);
         const legacyQuery = supabase
           .from('empresas')
           .select('*')
@@ -354,10 +375,13 @@ export const authService = {
           
         const { data: legacyEmpresa, error: legacyError } = await Promise.race([
           legacyQuery.then(res => {
-            clearTimeout(timer);
+            pt3.clear();
             return res;
+          }).catch(err => {
+            pt3.clear();
+            throw err;
           }),
-          queryTimeout
+          pt3.promise
         ]) as any;
 
         if (legacyError) console.error('[AuthService] Erro no fallback legacy query:', legacyError);
@@ -376,7 +400,7 @@ export const authService = {
         }
 
         // Tentativa 2: Buscar QUALQUER perfil deste utilizador (caso o lookup anterior tenha falhado)
-        const { data: profileOnly } = await supabase.from('perfis').select('company_id, role').eq('id', session?.user?.id).maybeSingle();
+        const { data: profileOnly } = await supabase.from('perfis').select('company_id, role, permission_areas, is_admin, level').eq('id', session?.user?.id).maybeSingle();
         const fallbackCompanyId = profileOnly?.company_id;
         if (fallbackCompanyId) {
            const { data: companyOnly } = await supabase.from('empresas').select('*').eq('id', fallbackCompanyId).maybeSingle();
@@ -386,9 +410,12 @@ export const authService = {
                 username: companyOnly.nome_empresa || session?.user?.email?.split('@')[0] || 'Usuário',
                 email: session?.user?.email || '',
                 empresa_id: companyOnly.id,
-                role: profileOnly.role || 'admin',
+                role: profileOnly.role || 'user',
+                is_admin: profileOnly.is_admin || false,
+                level: profileOnly.level || 1,
                 created_at: companyOnly.created_at || session?.user?.created_at,
-                company: companyOnly
+                company: companyOnly,
+                permission_areas: profileOnly.permission_areas || []
               };
            }
         }
@@ -402,7 +429,9 @@ export const authService = {
         username: empresa.nome_empresa || session?.user?.email?.split('@')[0] || 'Usuário',
         email: session?.user?.email || '',
         empresa_id: parsedCompanyId,
-        role: perfil.role || 'admin',
+        role: perfil.role || 'user',
+        is_admin: perfil.is_admin || false,
+        level: perfil.level || 1,
         created_at: empresa.created_at || session?.user?.created_at,
         company: empresa,
         permission_areas: perfil.permission_areas || []

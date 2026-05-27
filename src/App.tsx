@@ -908,7 +908,9 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
             const canAccess = (module: string) => {
               if (isAdmin) return true;
               if (module === 'dashboard') return true;
-              return Array.isArray(permissions) && permissions.includes(module);
+              const hasAccess = Array.isArray(permissions) && permissions.includes(module);
+              console.log(`[MENU-DEBUG] Module: ${module}, HasAccess: ${hasAccess}, Permissions:`, permissions);
+              return hasAccess;
             };
 
             const isRestricted = !canAccess(item.id);
@@ -18118,7 +18120,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
 
   useEffect(() => {
     if (user?.empresa_id) {
-      supabase.from('armazens').select('*').eq('empresa_id', user.empresa_id).then(({data}) => setWarehouses(data || []));
+      supabase.from('armazens').select('*').eq('empresa_id', user.empresa_id).then(({data}) => setWarehouses(data || [])).catch(console.error);
     }
   }, [user?.empresa_id]);
 
@@ -20831,7 +20833,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
 
   useEffect(() => {
     if (user?.empresa_id) {
-      supabase.from('armazens').select('*').eq('empresa_id', user.empresa_id).then(({data}) => setWarehouses(data || []));
+      supabase.from('armazens').select('*').eq('empresa_id', user.empresa_id).then(({data}) => setWarehouses(data || [])).catch(console.error);
     }
   }, [user?.empresa_id]);
 

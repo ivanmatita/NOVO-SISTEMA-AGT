@@ -1476,7 +1476,8 @@ async function startServer() {
           email,
           role: targetRole,
           is_active: true,
-          is_admin: !!is_admin
+          is_admin: !!is_admin,
+          permission_areas: permission_areas || []
       };
 
       console.log("[SERVER] Inserting into perfis with data:", perfilObj);

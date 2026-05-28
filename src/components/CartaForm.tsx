@@ -174,7 +174,7 @@ export const CartaForm = ({ onBack, onSuccess, editingCarta }: { onBack: () => v
             area_sector: formData.areaSector,
             serie: formData.serie,
             tipo_documento: formData.tipoDocumento,
-            conteudo: formData.conteudo,
+            conteudo: editorRef.current?.innerHTML || formData.conteudo || '',
             imagem_url: finalImageUrl,
             imagem_path: finalImagePath,
             imagem_nome: finalImageName

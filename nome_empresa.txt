@@ -1,0 +1,16 @@
+1004:          {companyData?.nome_empresa || companyData?.name || 'Admin'}
+9161:                    {(companyData?.name || companyData?.nome_empresa || companyName || "Grupo TecnoSys").substring(0, 2).toUpperCase()}
+9164:                    <h1 className="text-xl font-black text-[#003366] uppercase tracking-tighter">{companyData?.name || companyData?.nome_empresa || companyName || "Grupo TecnoSys"}</h1>
+13549:                          <div className="text-xl font-bold tracking-tight text-[#003366]">{companySettings?.nome_empresa || user?.nome_empresa || 'Empresa Logada'}</div>
+13555:                        <div className="font-extrabold text-zinc-800 uppercase tracking-tight">{companySettings?.nome_empresa || 'Secretaria Digital'}</div>
+13642:                      Emitido eletronicamente pela secretaria da empresa {companySettings?.nome_empresa || 'registada'}. 
+13816:    nome_empresa: initialData?.nome_empresa || initialData?.name || '',
+13861:              nome_empresa: data.nome_empresa || prev.nome_empresa,
+14012:                  <input readOnly type="text" name="nome_empresa" value={formData.nome_empresa || ''} className="w-full bg-zinc-100 border border-zinc-300 px-4 py-2 text-sm focus:outline-none cursor-not-allowed text-zinc-500 font-bold" />
+14453:                      <td className="px-6 py-4 font-bold text-[#003366]">{companyData?.nome_empresa || companyData?.name || 'Sem nome registado'}</td>
+15739:              {companyData?.name || companyData?.nome_empresa || "ROYAL CARS - COMERCIO E PRESTAÇÃO DE SERVIÇOS, LDA"}
+15887:            <p className="text-sm font-black text-[#003366] uppercase">{companyData?.name || companyData?.nome_empresa || "ROYAL CARS - COMERCIO E PRESTAÇÃO DE SERVIÇOS, LDA"}</p>
+16150:                 <div className="text-[11px] font-black text-[#003366] uppercase">{companyData?.name || companyData?.nome_empresa || "Royal Cars - Comercio e Prestação de Serviços, LDA"}</div>
+23066:          companyName={companyData?.name || companyData?.nome_empresa}
+25975:        setCompanyName(compSupabase.nome_empresa || 'Minha Empresa');
+26053:        setCompanyName(comp.nome_empresa || comp.name || 'Empresa');

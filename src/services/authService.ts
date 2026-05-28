@@ -193,24 +193,24 @@ export const authService = {
           console.warn('[AuthService] Conta Órfã detetada. Criando Empresa Padrão...');
           
           const newCompanyId = crypto.randomUUID();
-          const targetNomeEmpresa = `Empresa de ${authData.user.email?.split('@')[0]}`;
-          
-          const { error: createError } = await supabase
+          const { data: newCompany, error: createError } = await supabase
             .from('empresas')
             .insert([{
               id: newCompanyId,
               auth_user_id: authData.user.id,
-              nome_empresa: targetNomeEmpresa,
+              nome_empresa: `Empresa de ${authData.user.email?.split('@')[0]}`,
               email: authData.user.email,
               plano: 'trial'
-            }]);
+            }])
+            .select('id, nome_empresa')
+            .single();
 
           if (createError) {
-             console.error('[AuthService] Falha ao criar empresa base:', createError);
-             throw new Error(`Erro de Onboarding: Autenticação ativa, mas não foi possível criar a sua empresa base. Detalhe: ${createError.message}`);
+            console.error('[AuthService] Falha ao criar empresa base:', createError);
+            throw new Error(`Erro de Onboarding: Autenticação ativa, mas não foi possível criar a sua empresa base. Detalhe: ${createError.message}`);
           }
           
-          targetCompany = { id: newCompanyId, nome_empresa: targetNomeEmpresa };
+          targetCompany = newCompany;
         } else {
           targetCompany = company;
         }
@@ -340,12 +340,12 @@ export const authService = {
         .eq('id', session?.user?.id)
         .maybeSingle();
 
-      const pt1 = createTimeout(5000);
+      const pt1 = createTimeout(30000);
       const { data: perfil, error } = await Promise.race([
-        perfilQuery.then((res: any) => {
+        perfilQuery.then(res => {
           pt1.clear();
           return res;
-        }).catch((err: any) => {
+        }).catch(err => {
           pt1.clear();
           throw err;
         }), 
@@ -361,17 +361,17 @@ export const authService = {
       const parsedCompanyId = perfil?.company_id;
 
       if (parsedCompanyId) {
-        const pt2 = createTimeout(5000);
+        const pt2 = createTimeout(30000);
         const companyQuery = supabase
           .from('empresas')
           .select('*')
           .eq('id', parsedCompanyId)
           .maybeSingle();
         const { data } = await Promise.race([
-          companyQuery.then((res: any) => {
+          companyQuery.then(res => {
             pt2.clear();
             return res;
-          }).catch((err: any) => {
+          }).catch(err => {
             pt2.clear();
             throw err;
           }),
@@ -384,7 +384,7 @@ export const authService = {
         console.warn('[AuthService] Perfil ou empresa não encontrados via lookup simples. Tentando via lookup direto em empresas...');
         
         // Tentativa 1: Buscar empresa onde o utilizador é o dono
-        const pt3 = createTimeout(5000);
+        const pt3 = createTimeout(30000);
         const legacyQuery = supabase
           .from('empresas')
           .select('*')
@@ -392,10 +392,10 @@ export const authService = {
           .maybeSingle();
           
         const { data: legacyEmpresa, error: legacyError } = await Promise.race([
-          legacyQuery.then((res: any) => {
+          legacyQuery.then(res => {
             pt3.clear();
             return res;
-          }).catch((err: any) => {
+          }).catch(err => {
             pt3.clear();
             throw err;
           }),

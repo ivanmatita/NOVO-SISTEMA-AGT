@@ -28,6 +28,7 @@ import { useCaixas } from './hooks/useCaixas';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { 
   FileSearch,
+  Key,
   Archive,
   LayoutDashboard, 
   Users, 
@@ -185,6 +186,8 @@ import { ClientForm } from './components/ClientForm';
 import TaxesModule from './components/TaxesModule';
 import { MetricsModule, fetchMetrics, Metric } from './components/MetricsModule';
 import { MediaLibraryModule } from './components/MediaLibraryModule';
+import LicencasModule from './components/LicencasModule';
+import { EmpresaModule } from './components/EmpresaModule';
 
 // --- Helpers ---
 
@@ -817,6 +820,8 @@ const SIDEBAR_MENU_ITEMS = [
   { id: 'accounting', label: 'Contabilidade', icon: Calculator, hasChevron: true },
   { id: 'hr', label: 'Recursos Humanos', icon: Users, hasChevron: true },
   { id: 'reports', label: 'Relatórios', icon: FileSpreadsheet, hasChevron: true },
+  { id: 'licencas', label: 'Licenças', icon: Key },
+  { id: 'empresa', label: 'Documento da Empresa', icon: Building2 },
   { id: 'agrobusiness', label: 'Agronegócio', icon: TrendingUp },
   { id: 'church', label: 'Gestão de Igreja', icon: Building2 }, 
   { id: 'settings', label: 'Definições', icon: Settings },
@@ -997,12 +1002,15 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
           </div>
           <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
         </label>
-        <h2 className="text-white font-bold text-lg leading-tight text-center px-4 line-clamp-1">
+        <h2 className="text-white font-black text-lg leading-tight text-center px-4 line-clamp-2 mt-2 uppercase tracking-tight">
           {companyData?.nome_empresa || companyData?.name || 'Admin'}
         </h2>
-        <p className="text-[10px] text-zinc-500 font-bold tracking-widest uppercase mt-1">
-          {companyData?.nif ? `NIF: ${companyData.nif}` : 'ADMIN'}
-        </p>
+        <div className="flex flex-col items-center gap-0.5 mt-2">
+          <p className="text-[11px] text-white font-black tracking-widest uppercase bg-[#1a4da6] px-3 py-0.5 shadow-sm">
+            {companyData?.nif ? `NIF: ${companyData.nif}` : 'ADMIN'}
+          </p>
+          <p className="text-[8px] text-zinc-500 font-bold tracking-[0.2em] uppercase">Conta Registada</p>
+        </div>
       </div>
       
       <div className="flex-1 px-3 py-4 space-y-1 pb-8">
@@ -12907,7 +12915,8 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
            .order('created_at', { ascending: false });
 
          if (error) throw error;
-         setRecords(data || []);
+         const visible = (data || []).filter((r: any) => r.is_deleted !== true);
+         setRecords(visible);
       } else if (activeSection === 'attachments') {
          // Fetch union of files from secretaria_digital and cartas
          const { data: secData, error: secError } = await supabase
@@ -12925,7 +12934,10 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
 
          const combined: any[] = [];
          
-         (secData || []).forEach(r => {
+         const secFiltered = (secData || []).filter((r: any) => r.is_deleted !== true);
+         const cartasFiltered = (cartasData || []).filter((r: any) => r.is_deleted !== true);
+
+         secFiltered.forEach(r => {
            if (r.anexo_url) {
              combined.push({
                id: r.id,
@@ -12941,7 +12953,7 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
            }
          });
 
-         (cartasData || []).forEach(c => {
+         cartasFiltered.forEach(c => {
            if (c.imagem_url) {
              combined.push({
                id: c.id,
@@ -12969,7 +12981,8 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
            .order('created_at', { ascending: false });
 
          if (error) throw error;
-         setRecords(data || []);
+         const visible = (data || []).filter((r: any) => r.is_deleted !== true);
+         setRecords(visible);
       }
     } catch (error) {
       console.error('Error loading secretaria data:', error);
@@ -13079,10 +13092,7 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
     if (!confirm('Deseja eliminar este registro?')) return;
     
     try {
-      if (path) {
-        await supabase.storage.from('documentos').remove([path]);
-      }
-      const { error } = await supabase.from('secretaria_digital').delete().eq('id', id).eq('empresa_id', user.empresa_id);
+      const { error } = await supabase.from('secretaria_digital').update({ is_deleted: true }).eq('id', id).eq('empresa_id', user.empresa_id);
       if (error) throw error;
       loadData();
       alert('Registro eliminado com sucesso!');
@@ -13291,12 +13301,9 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
                                 </button>
                                 <button 
                                   onClick={async () => {
-                                    if (confirm('Deseja eliminar esta carta definitivamente?')) {
+                                    if (confirm('Deseja eliminar esta carta?')) {
                                       try {
-                                        if (record.imagem_path) {
-                                          await supabase.storage.from('documentos').remove([record.imagem_path]);
-                                        }
-                                        const { error } = await supabase.from('cartas').delete().eq('id', record.id);
+                                        const { error } = await supabase.from('cartas').update({ is_deleted: true }).eq('id', record.id);
                                         if (error) throw error;
                                         loadData();
                                         alert('Carta eliminada com sucesso!');
@@ -13836,37 +13843,38 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
     footer_size: initialData?.footer_size || 100
   });
 
+  // Carregar dados reais da tabela config_empresa via API
   useEffect(() => {
-    if (initialData) {
-      setFormData({
-        nome_empresa: initialData.nome_empresa || initialData.name || '',
-        nif: initialData.nif || '',
-        matricula: initialData.matricula || '',
-        alvara: initialData.alvara || '',
-        endereco: initialData.endereco || initialData.address || initialData.localizacao || '',
-        provincia: initialData.provincia || '',
-        municipio: initialData.municipio || '',
-        codigo_postal: initialData.codigo_postal || '',
-        pais: initialData.pais || 'Angola',
-        inss: initialData.inss || '',
-        telefone: initialData.telefone || initialData.contacto || initialData.contact || '',
-        responsavel: initialData.responsavel || initialData.nome_administrador || '',
-        email: initialData.email || '',
-        regime: initialData.regime || 'Regime geral',
-        tipo_empresa: initialData.tipo_empresa || 'Serviços',
-        coordenadas_bancarias: initialData.coordenadas_bancarias || '',
-        plano: initialData.plano || 'trial',
-        pacote_licenca: initialData.pacote_licenca || 'Gratuito',
-        valor_licenca: initialData.valor_licenca || '0',
-        logo_url: initialData.logo_url || initialData.logo || '',
-        logo_size: initialData.logo_size || 100,
-        watermark_url: initialData.watermark_url || initialData.marca_agua || '',
-        watermark_size: initialData.watermark_size || 100,
-        footer_image_url: initialData.footer_image_url || initialData.footer || '',
-        footer_size: initialData.footer_size || 100
-      });
+    if (isOpen) {
+      const fetchConfig = async () => {
+        setLoading(true);
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const res = await fetch('/api/config-empresa', {
+            headers: { 'Authorization': `Bearer ${session?.access_token}` }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setFormData(prev => ({
+              ...prev,
+              ...data,
+              // Garantir mapeamento de campos legados se necessário
+              nome_empresa: data.nome_empresa || prev.nome_empresa,
+              nif: data.nif || prev.nif,
+              telefone: data.telefone || prev.telefone,
+              responsavel: data.responsavel || data.nome_administrador || prev.responsavel
+            }));
+          }
+        } catch (err) {
+          console.error("Erro ao carregar configurações da empresa:", err);
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchConfig();
     }
-  }, [initialData]);
+  }, [isOpen]);
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: string) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -13949,46 +13957,26 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
     try {
       if (!user?.empresa_id) throw new Error("Sessão expirada");
 
-      const payload = {
-        id: user.empresa_id,
-        nome_empresa: formData.nome_empresa,
-        nif: formData.nif,
-        matricula: formData.matricula,
-        alvara: formData.alvara,
-        endereco: formData.endereco,
-        localizacao: formData.endereco, // Sync
-        provincia: formData.provincia,
-        municipio: formData.municipio,
-        codigo_postal: formData.codigo_postal,
-        pais: formData.pais,
-        inss: formData.inss,
-        telefone: formData.telefone,
-        contacto: formData.telefone, // Sync
-        responsavel: formData.responsavel,
-        nome_administrador: formData.responsavel, // Sync
-        email: formData.email,
-        regime: formData.regime,
-        tipo_empresa: formData.tipo_empresa,
-        coordenadas_bancarias: formData.coordenadas_bancarias,
-        logo_url: formData.logo_url,
-        logo_size: formData.logo_size,
-        watermark_url: formData.watermark_url,
-        watermark_size: formData.watermark_size,
-        footer_image_url: formData.footer_image_url,
-        footer_size: formData.footer_size,
-        updated_at: new Date().toISOString()
-      };
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch('/api/config-empresa', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`
+        },
+        body: JSON.stringify({
+          ...formData,
+          empresa_id: user.empresa_id
+        })
+      });
 
-      const { error } = await supabase
-        .from('empresas')
-        .upsert(payload, { onConflict: 'id' });
-
-      if (!error) {
+      if (res.ok) {
         alert('Dados da empresa atualizados com sucesso!');
         onSave();
         onClose();
       } else {
-        alert('Erro ao atualizar: ' + error.message);
+        const errData = await res.json();
+        alert('Erro ao atualizar: ' + (errData.error || 'Erro desconhecido'));
       }
     } catch (error) {
       console.error('Error saving company:', error);
@@ -14021,12 +14009,12 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
               <h3 className="text-sm font-bold text-[#003366] uppercase tracking-wider mb-4 border-b border-zinc-200 pb-2">Informações Gerais</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Nome da Empresa *</label>
-                  <input readOnly required type="text" name="nome_empresa" value={formData.nome_empresa} className="w-full bg-zinc-100 border border-zinc-200 px-4 py-2 text-sm text-zinc-500 cursor-not-allowed" title="O nome da empresa não pode ser alterado" />
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Nome da Empresa (Inalterável)</label>
+                  <input readOnly type="text" name="nome_empresa" value={formData.nome_empresa || ''} className="w-full bg-zinc-100 border border-zinc-300 px-4 py-2 text-sm focus:outline-none cursor-not-allowed text-zinc-500 font-bold" />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">NIF da Empresa *</label>
-                  <input readOnly required type="text" name="nif" value={formData.nif} className="w-full bg-zinc-100 border border-zinc-200 px-4 py-2 text-sm text-zinc-500 cursor-not-allowed" title="O NIF da empresa não pode ser alterado" />
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">NIF da Empresa (Inalterável)</label>
+                  <input readOnly type="text" name="nif" value={formData.nif || ''} className="w-full bg-zinc-100 border border-zinc-300 px-4 py-2 text-sm focus:outline-none cursor-not-allowed text-zinc-500 font-bold" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Número de Matrícula</label>
@@ -14373,7 +14361,7 @@ const VisualIdentityModule = ({ companyData, onRefreshData }: { companyData: any
   );
 };
 
-const SettingsModule = ({ companyData, onRefreshData, alerts, setAlerts, onEditAlert, onNewAlert }: { companyData: any, onRefreshData: () => void, alerts: any[], setAlerts: (a: any[]) => void, onEditAlert: (alert: any) => void, onNewAlert: () => void }) => {
+const SettingsModule = ({ user, companyData, onRefreshData, alerts, setAlerts, onEditAlert, onNewAlert }: { user: any, companyData: any, onRefreshData: () => void, alerts: any[], setAlerts: (a: any[]) => void, onEditAlert: (alert: any) => void, onNewAlert: () => void }) => {
   const [activeTab, setActiveTab] = useState('geral');
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -14433,6 +14421,12 @@ const SettingsModule = ({ companyData, onRefreshData, alerts, setAlerts, onEditA
         >
           Gestão de Atividades
         </button>
+        <button 
+          onClick={() => setActiveTab('licencas')}
+          className={`pb-2 text-sm font-bold ${activeTab === 'licencas' ? 'text-[#003366] border-b-2 border-[#003366]' : 'text-zinc-500 hover:text-zinc-800'}`}
+        >
+          Licenças
+        </button>
       </div>
 
       {activeTab === 'geral' && (
@@ -14457,11 +14451,11 @@ const SettingsModule = ({ companyData, onRefreshData, alerts, setAlerts, onEditA
                 <tbody className="divide-y divide-zinc-200">
                    <tr className="hover:bg-zinc-50">
                       <th className="px-6 py-4 text-zinc-500 font-medium bg-zinc-50/50 border-r border-zinc-100">Designação Social</th>
-                      <td className="px-6 py-4 font-bold text-[#003366]">{companyData?.name || companyData?.nome_empresa}</td>
+                      <td className="px-6 py-4 font-bold text-[#003366]">{companyData?.nome_empresa || companyData?.name || 'Sem nome registado'}</td>
                    </tr>
                    <tr className="hover:bg-zinc-50">
                       <th className="px-6 py-4 text-zinc-500 font-medium bg-zinc-50/50 border-r border-zinc-100">NIF / Contribuinte</th>
-                      <td className="px-6 py-4 text-zinc-800">{companyData?.nif || '---'}</td>
+                      <td className="px-6 py-4 text-zinc-800">{companyData?.nif || 'Sem NIF registado'}</td>
                    </tr>
                    <tr className="hover:bg-zinc-50">
                       <th className="px-6 py-4 text-zinc-500 font-medium bg-zinc-50/50 border-r border-zinc-100">Sede / Morada Fiscal</th>
@@ -14505,6 +14499,7 @@ const SettingsModule = ({ companyData, onRefreshData, alerts, setAlerts, onEditA
       {activeTab === 'impostos' && <TaxesModule onRefreshData={onRefreshData} />}
       {activeTab === 'utilizadores' && <UsersSettings />}
       {activeTab === 'actividades' && <ActivitiesManagementModule />}
+      {activeTab === 'licencas' && <LicencasModule user={user} userProfile={user} />}
     </div>
   );
 };
@@ -26015,7 +26010,7 @@ export default function App() {
           }),
         fetchJson(`/api/security/occurrences?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
         fetchJson(`/api/security/armory?empresa_id=${targetCompanyId}`),
-        fetchJson(`/api/security/roster?empresa_id=${targetCompanyId}`),
+        (targetCompanyId ? fetchJson(`/api/security/roster?empresa_id=${targetCompanyId}`) : Promise.resolve(null)),
         !compSupabase ? fetchJson(`/api/company/${targetCompanyId}`) : Promise.resolve(null),
         Promise.resolve(null) // pur
       ]);
@@ -26628,6 +26623,8 @@ export default function App() {
                           }
 
                           switch (activeTab) {
+                            case 'empresa':
+                              return <EmpresaModule onUpdate={fetchData} />;
                             case 'pos':
                               return <POSModule 
                                 products={products} 
@@ -26862,6 +26859,8 @@ export default function App() {
                                 fiscalYear={fiscalYear}
                                 companyData={companyData}
                               />;
+                            case 'licencas':
+                              return <LicencasModule user={user} userProfile={user} />;
                             case 'withholding-tax':
                               return <WithholdingTaxModule sales={issuedDocuments} purchases={purchases} />;
                             case 'reports':
@@ -26946,6 +26945,7 @@ export default function App() {
                               return (
                                 <div className="space-y-6">
                                   <SettingsModule 
+                                    user={user}
                                     companyData={companyData}
                                     onRefreshData={fetchData}
                                     alerts={alerts}

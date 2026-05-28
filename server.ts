@@ -36,6 +36,81 @@ if (!supabaseAdmin) {
 } else {
   // Ensure logs_auditoria, user_activities_sessions tables exist and alter columns
   const sqlMigrations = `
+          CREATE TABLE IF NOT EXISTS public.config_empresa (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              empresa_id UUID UNIQUE NOT NULL,
+              nome_empresa TEXT,
+              nif TEXT,
+              matricula TEXT,
+              alvara TEXT,
+              endereco TEXT,
+              provincia TEXT,
+              municipio TEXT,
+              codigo_postal TEXT,
+              pais TEXT,
+              inss TEXT,
+              telefone TEXT,
+              responsavel TEXT,
+              email TEXT,
+              regime TEXT,
+              tipo_empresa TEXT,
+              coordenadas_bancarias TEXT,
+              logo_url TEXT,
+              watermark_url TEXT,
+              footer_image_url TEXT,
+              logo_size INTEGER DEFAULT 100,
+              watermark_size INTEGER DEFAULT 100,
+              footer_size INTEGER DEFAULT 100,
+              plano TEXT DEFAULT 'trial',
+              pacote_licenca TEXT DEFAULT 'Gratuito',
+              valor_licenca NUMERIC(15,2) DEFAULT 0,
+              settings JSONB DEFAULT '{}',
+              created_at TIMESTAMPTZ DEFAULT now(),
+              updated_at TIMESTAMPTZ DEFAULT now()
+          );
+
+          -- Novo Módulo de Licenças
+          CREATE TABLE IF NOT EXISTS public.licencas_empresas (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              empresa_id UUID NOT NULL,
+              tipo_licenca TEXT DEFAULT 'Básico', -- Básico, Standard, Profissional, Enterprise, Premium, Personalizado
+              plano TEXT DEFAULT 'Mensal', -- Mensal, Trimestral, Semestral, Anual, Vitalícia
+              status_licenca TEXT DEFAULT 'teste', -- activa, pendente, vencida, bloqueada, cancelada, teste, suspensa
+              periodo_meses INTEGER DEFAULT 1,
+              data_inicio TIMESTAMPTZ DEFAULT now(),
+              data_fim TIMESTAMPTZ,
+              data_registro_empresa TIMESTAMPTZ DEFAULT now(),
+              valor_licenca NUMERIC(15,2) DEFAULT 0,
+              moeda TEXT DEFAULT 'AOA',
+              comprovativo_url TEXT,
+              observacao TEXT,
+              ocorrencia TEXT,
+              usuario_solicitante TEXT,
+              activada_por TEXT,
+              bloqueada_por TEXT,
+              motivo_bloqueio TEXT,
+              upgrade_de TEXT,
+              downgrade_de TEXT,
+              licenca_anterior UUID,
+              limite_usuarios INTEGER DEFAULT 5,
+              limite_armazenamento_gb INTEGER DEFAULT 2,
+              modulos_permitidos JSONB DEFAULT '[]',
+              created_at TIMESTAMPTZ DEFAULT now(),
+              updated_at TIMESTAMPTZ DEFAULT now()
+          );
+
+          CREATE TABLE IF NOT EXISTS public.historico_licencas (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              empresa_id UUID NOT NULL,
+              licenca_id UUID REFERENCES public.licencas_empresas(id),
+              acao TEXT NOT NULL, -- Upgrade, Downgrade, Ativação, Bloqueio, Renovação, Cancelamento, Alteração
+              descricao TEXT,
+              usuario TEXT,
+              ip_address TEXT,
+              metadata JSONB DEFAULT '{}',
+              data_evento TIMESTAMPTZ DEFAULT now()
+          );
+
           -- Core Tables (Ensure they exist)
           CREATE TABLE IF NOT EXISTS public.system_users (
               id UUID PRIMARY KEY,
@@ -229,7 +304,7 @@ if (!supabaseAdmin) {
               SELECT policyname, tablename 
               FROM pg_policies 
               WHERE schemaname = 'public' 
-                AND tablename IN ('system_users', 'perfis', 'logs_auditoria', 'user_activities_sessions', 'empresas', 'clientes', 'products', 'produtos', 'documentos_emitidos', 'caixas', 'caixa_movimentacoes', 'fornecedores', 'compras', 'transacoes', 'recibos', 'hr_contratos', 'professions', 'locais_trabalho', 'inventario', 'vendas', 'items_transacao', 'items_documento', 'series_fiscais', 'tabela_impostos', 'armazens')
+                AND tablename IN ('system_users', 'perfis', 'logs_auditoria', 'user_activities_sessions', 'empresas', 'clientes', 'products', 'produtos', 'documentos_emitidos', 'caixas', 'caixa_movimentacoes', 'fornecedores', 'compras', 'transacoes', 'recibos', 'hr_contratos', 'professions', 'locais_trabalho', 'inventario', 'vendas', 'items_transacao', 'items_documento', 'series_fiscais', 'tabela_impostos', 'armazens', 'config_empresa', 'licencas_empresas', 'historico_licencas')
             LOOP
               EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', pol.policyname, pol.tablename);
             END LOOP;
@@ -285,7 +360,7 @@ if (!supabaseAdmin) {
               USING (public.is_system_admin() OR auth_user_id = auth.uid())';
 
             -- 4. GENERIC Isolation for data tables
-            FOR t IN SELECT unnest(ARRAY['clientes', 'products', 'produtos', 'documentos_emitidos', 'caixas', 'caixa_movimentacoes', 'fornecedores', 'compras', 'transacoes', 'recibos', 'hr_contratos', 'professions', 'locais_trabalho', 'inventario', 'vendas', 'items_transacao', 'items_documento', 'user_activities_sessions', 'series_fiscais', 'tabela_impostos', 'armazens']) LOOP
+            FOR t IN SELECT unnest(ARRAY['clientes', 'products', 'produtos', 'documentos_emitidos', 'caixas', 'caixa_movimentacoes', 'fornecedores', 'compras', 'transacoes', 'recibos', 'hr_contratos', 'professions', 'locais_trabalho', 'inventario', 'vendas', 'items_transacao', 'items_documento', 'user_activities_sessions', 'series_fiscais', 'tabela_impostos', 'armazens', 'licencas_empresas', 'historico_licencas']) LOOP
                 EXECUTE format('ALTER TABLE IF EXISTS public.%I ENABLE ROW LEVEL SECURITY', t);
                 
                 IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = t AND column_name = 'company_id') THEN
@@ -307,6 +382,13 @@ if (!supabaseAdmin) {
                 END IF;
             END LOOP;
               
+            -- 5. SPECIFIC Isolation for Config Empresa (NO DELETE)
+            ALTER TABLE IF EXISTS public.config_empresa ENABLE ROW LEVEL SECURITY;
+            EXECUTE 'CREATE POLICY config_empresa_select ON public.config_empresa FOR SELECT TO authenticated USING (public.is_system_admin() OR empresa_id = public.get_user_company_id())';
+            EXECUTE 'CREATE POLICY config_empresa_insert ON public.config_empresa FOR INSERT TO authenticated WITH CHECK (auth.uid() IS NOT NULL)';
+            EXECUTE 'CREATE POLICY config_empresa_update ON public.config_empresa FOR UPDATE TO authenticated USING (public.is_system_admin() OR empresa_id = public.get_user_company_id()) WITH CHECK (public.is_system_admin() OR empresa_id = public.get_user_company_id())';
+            -- Observe: No DELETE policy means DELETE is forbidden by default for authenticated users.
+
           EXCEPTION WHEN OTHERS THEN
             RAISE NOTICE 'RLS Policy creation encountered a minor error: %', SQLERRM;
           END $$;
@@ -4625,6 +4707,195 @@ app.post("/api/exec-sql", express.json(), async (req, res) => {
     } else {
       res.status(404).json({ error: "Compra não encontrada" });
     }
+  });
+
+  // --- Configuração da Empresa ---
+  app.get("/api/config-empresa", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão inválida" });
+
+    const empresa_id = authCtx.empresaId;
+    if (!empresa_id) return res.status(400).json({ error: "ID da empresa não encontrado no perfil" });
+
+    if (supabaseAdmin) {
+      const { data, error } = await supabaseAdmin
+        .from('config_empresa')
+        .select('*')
+        .eq('empresa_id', empresa_id)
+        .maybeSingle();
+      
+      if (error) return res.status(500).json({ error: error.message });
+      if (data) return res.json(data);
+      
+      // Se não existir, tenta buscar da tabela empresas (registo inicial)
+      const { data: companyBasic } = await supabaseAdmin
+        .from('empresas')
+        .select('*')
+        .eq('id', empresa_id)
+        .maybeSingle();
+
+      return res.json({ 
+        empresa_id, 
+        nome_empresa: companyBasic?.nome_empresa || '',
+        nif: companyBasic?.nif || '',
+        email: companyBasic?.email || ''
+      });
+    }
+    res.json({ empresa_id });
+  });
+
+  app.post("/api/config-empresa", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão inválida" });
+
+    const empresa_id = authCtx.empresaId;
+    if (!empresa_id) return res.status(400).json({ error: "ID da empresa não encontrado" });
+
+    const payload = { ...req.body, empresa_id, updated_at: new Date().toISOString() };
+    delete payload.id; // Gerido pelo DB ou UPSERT
+
+    if (supabaseAdmin) {
+      const { data, error } = await supabaseAdmin
+        .from('config_empresa')
+        .upsert(payload, { onConflict: 'empresa_id' })
+        .select()
+        .single();
+      
+      if (error) return res.status(500).json({ error: error.message });
+
+      // Opcional: Sincronizar dados básicos de volta para a tabela empresas
+      await supabaseAdmin.from('empresas').update({
+        nome_empresa: payload.nome_empresa,
+        nif: payload.nif,
+        email: payload.email
+      }).eq('id', empresa_id);
+
+      return res.json(data);
+    }
+    res.json(payload);
+  });
+
+  // --- Módulo de Licenças Profissional ---
+  app.get("/api/licencas", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão inválida" });
+
+    if (!supabaseAdmin) return res.status(500).json({ error: "Supabase not configured" });
+
+    let query = supabaseAdmin.from('licencas_empresas').select('*, historico_licencas(*)');
+    
+    // Se não for admin do sistema, filtra pela empresa dele
+    if (authCtx.role !== 'super_admin' && authCtx.role !== 'superadmin') {
+      query = query.eq('empresa_id', authCtx.empresaId);
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  });
+
+  app.post("/api/licencas/solicitar", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão inválida" });
+    if (!supabaseAdmin) return res.status(500).json({ error: "Supabase not configured" });
+
+    const { tipo_licenca, plano, periodo_meses, valor_licenca, comprovativo_url, observacao } = req.body;
+    const empresa_id = authCtx.empresaId;
+
+    const newLicense = {
+      empresa_id,
+      tipo_licenca,
+      plano,
+      periodo_meses,
+      valor_licenca,
+      comprovativo_url,
+      observacao,
+      status_licenca: 'pendente',
+      usuario_solicitante: authCtx.email,
+      created_at: new Date().toISOString()
+    };
+
+    const { data, error } = await supabaseAdmin.from('licencas_empresas').insert(newLicense).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+
+    // Log Histórico
+    await supabaseAdmin.from('historico_licencas').insert({
+      empresa_id,
+      licenca_id: data.id,
+      acao: 'Solicitação',
+      descricao: `Solicitação de licença ${tipo_licenca} (${plano})`,
+      usuario: authCtx.email,
+      ip_address: req.ip
+    });
+
+    res.json(data);
+  });
+
+  app.post("/api/licencas/acao", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: "Sessão inválida" });
+    
+    // Apenas super admins podem gerir estados de licença
+    if (authCtx.role !== 'super_admin' && authCtx.role !== 'superadmin') {
+      return res.status(403).json({ error: "Acesso negado. Apenas administradores do sistema." });
+    }
+
+    if (!supabaseAdmin) return res.status(500).json({ error: "Supabase not configured" });
+
+    const { id, acao, motivo, data_vencimento_override } = req.body;
+    
+    // Buscar licença atual
+    const { data: license } = await supabaseAdmin.from('licencas_empresas').select('*').eq('id', id).single();
+    if (!license) return res.status(404).json({ error: "Licença não encontrada" });
+
+    const updateData: any = { updated_at: new Date().toISOString() };
+    let logDesc = "";
+
+    if (acao === 'activar') {
+      updateData.status_licenca = 'activa';
+      updateData.activada_por = authCtx.email;
+      updateData.data_inicio = new Date().toISOString();
+      const periodMonths = license.periodo_meses || 12;
+      const expiry = new Date();
+      expiry.setMonth(expiry.getMonth() + periodMonths);
+      updateData.data_fim = data_vencimento_override || expiry.toISOString();
+      logDesc = `Licença activada com validade até ${updateData.data_fim}`;
+      
+      // Update global company settings
+      await supabaseAdmin.from('config_empresa').upsert({
+        empresa_id: license.empresa_id,
+        plano: 'active',
+        pacote_licenca: license.tipo_licenca,
+        valor_licenca: license.valor_licenca
+      }, { onConflict: 'empresa_id' });
+
+    } else if (acao === 'bloquear') {
+      updateData.status_licenca = 'bloqueada';
+      updateData.bloqueada_por = authCtx.email;
+      updateData.motivo_bloqueio = motivo;
+      logDesc = `Licença bloqueada: ${motivo}`;
+
+      await supabaseAdmin.from('config_empresa').update({ plano: 'blocked' }).eq('empresa_id', license.empresa_id);
+
+    } else if (acao === 'cancelar') {
+      updateData.status_licenca = 'cancelada';
+      logDesc = `Licença cancelada.`;
+    }
+
+    const { data, error } = await supabaseAdmin.from('licencas_empresas').update(updateData).eq('id', id).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+
+    // Histórico
+    await supabaseAdmin.from('historico_licencas').insert({
+      empresa_id: license.empresa_id,
+      licenca_id: id,
+      acao: acao.charAt(0).toUpperCase() + acao.slice(1),
+      descricao: logDesc,
+      usuario: authCtx.email,
+      ip_address: req.ip
+    });
+
+    res.json(data);
   });
 
   app.get("/api/receipts", (req, res) => res.json(receipts));

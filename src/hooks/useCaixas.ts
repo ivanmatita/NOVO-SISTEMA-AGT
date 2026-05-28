@@ -36,7 +36,8 @@ export const useCaixas = () => {
         return;
       }
 
-      const mappedData = (data || []).map(item => ({
+      const visible = (data || []).filter(item => item.is_deleted !== true);
+      const mappedData = visible.map(item => ({
         id: item.id,
         name: item.nome_caixa,
         initialBalance: Number(item.valor_inicial) || 0,
@@ -44,8 +45,10 @@ export const useCaixas = () => {
         responsible: item.responsavel || '',
         user: item.utilizador_id || '',
         obs: item.observacao || '',
-        status: 'aberto', // Default fallback
+        status: item.status || 'aberto',
         empresa_id: item.empresa_id,
+        account: item.account || '',
+        moeda: item.moeda || 'AOA'
       })) as Caixa[];
       
       setCaixas(mappedData);
@@ -144,7 +147,10 @@ export const useCaixas = () => {
           current_balance: caixa.initialBalance || 0,
           responsavel: caixa.responsible || '',
           utilizador_id: user.id, // Assigning explicitly from authenticated user
-          observacao: caixa.obs || ''
+          observacao: caixa.obs || '',
+          account: (caixa as any).account || '',
+          moeda: (caixa as any).moeda || 'AOA',
+          status: (caixa as any).status || 'aberto'
         })
         .select()
         .single();
@@ -179,6 +185,8 @@ export const useCaixas = () => {
       if (updates.currentBalance !== undefined) payload.current_balance = updates.currentBalance;
       if (updates.responsible !== undefined) payload.responsavel = updates.responsible;
       if (updates.obs !== undefined) payload.observacao = updates.obs;
+      if ((updates as any).account !== undefined) payload.account = (updates as any).account;
+      if (updates.status !== undefined) payload.status = updates.status;
 
       const { error } = await supabase
         .from('caixas')
@@ -208,7 +216,7 @@ export const useCaixas = () => {
 
       const { error } = await supabase
         .from('caixas')
-        .delete()
+        .update({ is_deleted: true })
         .eq('id', id)
         .eq('empresa_id', currentEmpresaId);
 

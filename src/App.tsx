@@ -12900,6 +12900,44 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
     }
   };
 
+  const getFilePathFromUrl = (url: string, bucketName: string = 'empresa-documentos') => {
+    if (!url) return null;
+    const parts = url.split(`/public/${bucketName}/`);
+    if (parts.length > 1) {
+      return decodeURIComponent(parts[1]);
+    }
+    return null;
+  };
+
+  const uploadCompanyDocument = async (file: File, companyId: string) => {
+    try {
+      const fileExt = file.name.split('.').pop() || '';
+      const cleanFileName = file.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
+      const uniquePath = `${companyId}/${Date.now()}_${Math.random().toString(36).substring(2, 7)}_${cleanFileName}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('empresa-documentos')
+        .upload(uniquePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage
+        .from('empresa-documentos')
+        .getPublicUrl(uniquePath);
+
+      return {
+        path: uniquePath,
+        url: data.publicUrl,
+        name: file.name,
+        type: file.type || 'application/octet-stream',
+        size: file.size
+      };
+    } catch (error) {
+      console.error('Upload error in empresa-documentos:', error);
+      throw error;
+    }
+  };
+
   const loadData = async () => {
     if (!user) return;
     setLoading(true);
@@ -12923,14 +12961,21 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
            .from('secretaria_digital')
            .select('*')
            .eq('empresa_id', companyId);
-           
+            
          const { data: cartasData, error: cartasError } = await supabase
            .from('cartas')
            .select('*')
            .eq('empresa_id', companyId);
 
+         // Also fetch from media_arquivos for synced files list
+         const { data: mediaData, error: mediaError } = await supabase
+           .from('media_arquivos')
+           .select('*')
+           .eq('empresa_id', companyId);
+
          if (secError) throw secError;
          if (cartasError) throw cartasError;
+         if (mediaError) throw mediaError;
 
          const combined: any[] = [];
          
@@ -12969,10 +13014,30 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
            }
          });
 
+         (mediaData || []).forEach(m => {
+           if (m.url_arquivo) {
+             combined.push({
+               id: m.id,
+               source: 'media_arquivos',
+               titulo: m.nome_arquivo || 'Arquivo de Média',
+               data_inicio: m.created_at || new Date().toISOString(),
+               descricao: m.tipo_arquivo || 'Anexo de mídia',
+               anexo_nome: m.nome_arquivo || 'Arquivo',
+               anexo_url: m.url_arquivo,
+               anexo_path: m.url_arquivo,
+               referencia: 'media_arquivos'
+             });
+           }
+         });
+
          combined.sort((a, b) => new Date(b.data_inicio).getTime() - new Date(a.data_inicio).getTime());
          setRecords(combined);
+      } else if (activeSection === 'docs') {
+         // Load via custom bypass API
+         const data = await fetchJson(`/api/company-documents?empresa_id=${companyId}`);
+         setRecords(data || []);
       } else {
-         // Default logic for docs/others
+         // Default logic for other sections
          const { data, error } = await supabase
            .from('secretaria_digital')
            .select('*')
@@ -13028,44 +13093,102 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
     setLoading(true);
 
     try {
-      let anexoData = null;
-      if (selectedFile) {
-        anexoData = await uploadFile(selectedFile, user.empresa_id);
-      } else if (editingDoc) {
-        anexoData = {
-          name: editingDoc.anexo_nome || '',
-          url: editingDoc.anexo_url || '',
-          path: editingDoc.anexo_path || ''
+      const companyId = user.empresa_id || user.id;
+
+      if (activeSection === 'docs') {
+        let fileInfo = null;
+        let mediaId = null;
+
+        if (selectedFile) {
+          // Dynamic upload to the correct bucket
+          fileInfo = await uploadCompanyDocument(selectedFile, companyId);
+        } else if (editingDoc) {
+          fileInfo = {
+            name: editingDoc.nome_arquivo || editingDoc.anexo_nome || '',
+            url: editingDoc.arquivo_url || editingDoc.anexo_url || '',
+            type: editingDoc.tipo_arquivo || '',
+            size: editingDoc.tamanho_arquivo || 0,
+            path: getFilePathFromUrl(editingDoc.arquivo_url || editingDoc.anexo_url || '', 'empresa-documentos') || ''
+          };
+          mediaId = editingDoc.arquivo_id || null;
+        }
+
+        const payload: any = {
+          empresa_id: companyId,
+          titulo_documento: formData.titulo,
+          descricao: formData.descricao,
+          data_emissao: formData.data_inicio,
+          prioridade: formData.prioridade,
+          observacoes: formData.observacoes,
+          nome_arquivo: fileInfo?.name || null,
+          arquivo_url: fileInfo?.url || null,
+          tipo_arquivo: fileInfo?.type || null,
+          tamanho_arquivo: fileInfo?.size || null,
+          arquivo_id: mediaId || null,
+          ativo: true
         };
-      }
 
-      const payload = {
-        empresa_id: user.empresa_id,
-        titulo: formData.titulo,
-        descricao: formData.descricao,
-        categoria: activeSection,
-        prioridade: formData.prioridade,
-        status: formData.status,
-        data_inicio: formData.data_inicio,
-        observacoes: formData.observacoes,
-        anexo_nome: anexoData?.name || '',
-        anexo_url: anexoData?.url || '',
-        anexo_path: anexoData?.path || ''
-      };
-
-      if (editingDoc) {
-        const { error } = await supabase
-          .from('secretaria_digital')
-          .update(payload)
-          .eq('id', editingDoc.id);
-        if (error) throw error;
-        alert('Registo atualizado com sucesso!');
+        if (editingDoc) {
+          await fetchJson(`/api/company-documents/${editingDoc.id}`, {
+            method: 'PUT',
+            body: JSON.stringify({
+              ...payload,
+              updated_by: user.id
+            })
+          });
+          alert('Documento atualizado com sucesso!');
+        } else {
+          await fetchJson('/api/company-documents', {
+            method: 'POST',
+            body: JSON.stringify({
+              ...payload,
+              criado_por: user.id,
+              updated_by: user.id
+            })
+          });
+          alert('Documento guardado com sucesso!');
+        }
       } else {
-        const { error } = await supabase
-          .from('secretaria_digital')
-          .insert([payload]);
-        if (error) throw error;
-        alert('Registo guardado com sucesso!');
+        // Fallback or letters/other categories
+        let anexoData = null;
+        if (selectedFile) {
+          anexoData = await uploadFile(selectedFile, companyId);
+        } else if (editingDoc) {
+          anexoData = {
+            name: editingDoc.anexo_nome || '',
+            url: editingDoc.anexo_url || '',
+            path: editingDoc.anexo_path || ''
+          };
+        }
+
+        const payload = {
+          empresa_id: companyId,
+          titulo: formData.titulo,
+          descricao: formData.descricao,
+          categoria: activeSection,
+          prioridade: formData.prioridade,
+          status: formData.status,
+          data_inicio: formData.data_inicio,
+          observacoes: formData.observacoes,
+          anexo_nome: anexoData?.name || '',
+          anexo_url: anexoData?.url || '',
+          anexo_path: anexoData?.path || ''
+        };
+
+        if (editingDoc) {
+          const { error } = await supabase
+            .from('secretaria_digital')
+            .update(payload)
+            .eq('id', editingDoc.id);
+          if (error) throw error;
+          alert('Registo atualizado com sucesso!');
+        } else {
+          const { error } = await supabase
+            .from('secretaria_digital')
+            .insert([payload]);
+          if (error) throw error;
+          alert('Registo guardado com sucesso!');
+        }
       }
 
       setShowForm(false);
@@ -13083,6 +13206,40 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
       loadData();
     } catch (error: any) {
       alert('Erro ao guardar: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteDoc = async (record: any) => {
+    if (!confirm('Deseja eliminar este documento?')) return;
+    
+    try {
+      setLoading(true);
+      const companyId = user?.empresa_id || user?.id;
+
+      // 1. Delete from bucket (handled client side safely)
+      const url = record.arquivo_url || record.anexo_url;
+      if (url) {
+        const filePath = getFilePathFromUrl(url, 'empresa-documentos');
+        if (filePath) {
+          try {
+            await supabase.storage.from('empresa-documentos').remove([filePath]);
+          } catch (storageErr) {
+            console.warn('Erro ao remover arquivo do bucket:', storageErr);
+          }
+        }
+      }
+
+      // 2. Clear from database securely bypassing RLS
+      await fetchJson(`/api/company-documents/${record.id}?empresa_id=${companyId}`, {
+        method: 'DELETE'
+      });
+
+      alert('Documento eliminado com sucesso!');
+      loadData();
+    } catch (error: any) {
+      alert('Erro ao eliminar documento: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -13374,29 +13531,35 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
                         );
                       } else {
                         // 'docs' (Documentos da empresa)
+                        const tituloDoc = record.titulo_documento || record.titulo || 'Sem título';
+                        const descricaoDoc = record.descricao || '';
+                        const dataEmissaoDoc = record.data_emissao || record.data_inicio || record.created_at;
+                        const urlDoc = record.arquivo_url || record.anexo_url;
+                        const nomeDoc = record.nome_arquivo || record.anexo_name || 'Visualizar';
+
                         return (
                           <tr key={record.id} className="text-sm hover:bg-zinc-50 transition-colors group">
-                            <td className="px-6 py-4 font-bold text-[#003366]">{record.titulo}</td>
-                            <td className="px-6 py-4 text-zinc-500">{new Date(record.data_inicio).toLocaleDateString('pt-PT')}</td>
-                            <td className="px-6 py-4 text-zinc-600 truncate max-w-xs">{record.descricao}</td>
+                            <td className="px-6 py-4 font-bold text-[#003366]">{tituloDoc}</td>
+                            <td className="px-6 py-4 text-zinc-500">{dataEmissaoDoc ? new Date(dataEmissaoDoc).toLocaleDateString('pt-PT') : '-'}</td>
+                            <td className="px-6 py-4 text-zinc-600 truncate max-w-xs">{descricaoDoc}</td>
                             <td className="px-6 py-4">
-                              {record.anexo_url ? (
+                              {urlDoc ? (
                                 <div className="flex items-center gap-2">
-                                  {/\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i.test(record.anexo_url) ? (
+                                  {/\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i.test(urlDoc) ? (
                                     <div className="relative group/thumb">
                                       <img 
-                                        src={record.anexo_url} 
-                                        alt={record.anexo_nome || "Anexo"} 
+                                        src={urlDoc} 
+                                        alt={nomeDoc} 
                                         className="w-10 h-10 object-cover border border-zinc-200 rounded shadow-sm bg-white cursor-zoom-in hover:scale-110 active:scale-95 transition-transform" 
-                                        onClick={() => window.open(record.anexo_url)}
+                                        onClick={() => window.open(urlDoc)}
                                         referrerPolicy="no-referrer"
                                         title="Clique para ampliar"
                                       />
                                     </div>
                                   ) : (
-                                    <a href={record.anexo_url} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-blue-600 hover:text-blue-800 hover:underline font-semibold bg-blue-50/50 hover:bg-blue-50 px-2 py-1 rounded border border-blue-100 transition-colors">
+                                    <a href={urlDoc} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-blue-600 hover:text-blue-800 hover:underline font-semibold bg-blue-50/50 hover:bg-blue-50 px-2 py-1 rounded border border-blue-100 transition-colors">
                                       <Paperclip size={13} className="shrink-0 text-blue-500" /> 
-                                      <span className="text-xs truncate max-w-[120px]">{record.anexo_nome || 'Visualizar'}</span>
+                                      <span className="text-xs truncate max-w-[120px]">{nomeDoc}</span>
                                     </a>
                                   )}
                                 </div>
@@ -13406,9 +13569,9 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
                             </td>
                             <td className="px-6 py-4 text-right">
                               <div className="flex justify-end gap-2 flex-wrap items-center">
-                                {record.anexo_url && (
+                                {urlDoc && (
                                   <button 
-                                    onClick={() => window.open(record.anexo_url)} 
+                                    onClick={() => window.open(urlDoc)} 
                                     className="bg-zinc-50 hover:bg-blue-600 text-blue-600 hover:text-white p-1.5 transition-colors border border-zinc-200 hover:border-blue-600 flex items-center gap-1 text-xs px-2.5 font-semibold cursor-pointer rounded" 
                                     title="Descarregar"
                                   >
@@ -13420,9 +13583,9 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
                                   onClick={() => {
                                     setEditingDoc(record);
                                     setTaskFormData({
-                                      titulo: record.titulo || '',
+                                      titulo: record.titulo_documento || record.titulo || '',
                                       descricao: record.descricao || '',
-                                      data_inicio: record.data_inicio ? new Date(record.data_inicio).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+                                      data_inicio: record.data_emissao ? new Date(record.data_emissao).toISOString().split('T')[0] : (record.data_inicio ? new Date(record.data_inicio).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]),
                                       observacoes: record.observacoes || '',
                                       prioridade: record.prioridade || 'normal',
                                       status: record.status || 'trabalhando',
@@ -13437,7 +13600,7 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
                                   <span>Editar</span>
                                 </button>
                                 <button 
-                                  onClick={() => handleDelete(record.id, record.anexo_path)} 
+                                  onClick={() => handleDeleteDoc(record)} 
                                   className="bg-zinc-50 hover:bg-red-500 text-zinc-650 hover:text-white p-1.5 transition-colors border border-zinc-200 hover:border-red-500 flex items-center gap-1 text-xs px-2.5 font-semibold cursor-pointer rounded" 
                                   title="Apagar"
                                 >
@@ -25628,7 +25791,8 @@ export default function App() {
         .eq('empresa_id', companyId);
 
       if (error) throw error;
-      setCaixas(data?.map(c => ({
+      const visible = (data || []).filter((c: any) => c.is_deleted !== true);
+      setCaixas(visible.map(c => ({
         ...c,
         id: c.id,
         name: c.nome_caixa,
@@ -25636,10 +25800,11 @@ export default function App() {
         currentBalance: Number(c.current_balance || 0),
         initialBalance: Number(c.valor_inicial || 0),
         responsible: c.responsavel,
-        obs: c.observacao,
+         obs: c.observacao,
         user: c.utilizador_id,
-        status: c.status || 'aberto'
-      })) || []);
+        status: c.status || 'aberto',
+        moeda: c.moeda || 'AOA'
+      })));
     } catch (err) {
       console.error('Erro ao carregar caixas:', err);
     }

@@ -1,31 +1,25 @@
 import { createClient } from '@supabase/supabase-js';
 import * as dotenv from 'dotenv';
-
 dotenv.config();
 
 const rawUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').trim();
 const url = rawUrl
-  .replace(/\/rest\/v1\/?$/, '')
-  .replace(/\/auth\/v1\/?$/, '')
-  .replace(/\/$/, '');
-const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  .replace(/\/rest\/v1\/?$/, "")
+  .replace(/\/auth\/v1\/?$/, "")
+  .replace(/\/$/, "");
+const serviceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
 
-const supabase = createClient(url, key);
+const supabase = createClient(url, serviceKey);
 
-async function inspectPerfis() {
-  const { data, error } = await supabase
-    .from('perfis')
-    .select('id, email, username, nome, role')
-    .limit(100);
-
+async function run() {
+  const { data, error } = await supabase.from('perfis').select('*').limit(1);
   if (error) {
-    console.error("Error:", error);
+    console.error("Error fetching perfis sample:", error);
+  } else if (data && data[0]) {
+    console.log("Keys in perfis row:", Object.keys(data[0]));
   } else {
-    console.log("Perfis with potential issues:");
-    data.forEach(p => {
-      console.log(`- ID: ${p.id}, Email: ${p.email}, Username: [${p.username}], Nome: [${p.nome}], Role: [${p.role}]`);
-    });
+    console.log("No data returned or empty table.");
   }
 }
 
-inspectPerfis();
+run();

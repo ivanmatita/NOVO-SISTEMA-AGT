@@ -13,7 +13,8 @@ export const caixaService = {
 
       if (error) throw error;
 
-      return (data || []).map(item => ({
+      const visible = (data || []).filter(item => item.is_deleted !== true);
+      return visible.map(item => ({
         id: item.id,
         name: item.nome_caixa,
         account: item.account,
@@ -121,7 +122,7 @@ export const caixaService = {
     try {
       const { error } = await supabase
         .from('caixas')
-        .delete()
+        .update({ is_deleted: true })
         .eq('id', id)
         .eq('empresa_id', empresaId);
 

@@ -2804,12 +2804,265 @@ app.post("/api/exec-sql", express.json(), async (req, res) => {
   try {
     const { sql } = req.body;
     if (!sql) return res.status(400).json({ error: "Missing SQL" });
-    
-    // We already have supabaseAdmin from earlier in server.ts (I will check if there is one, otherwise use REST or pg)
-    // Actually, Supabase postgREST doesn't support exec_sql without rpc. Let me just use `pg` module.
-    // wait, server.ts has standard pg/pool?
   } catch(e) { }
 });
+
+  // ===================================================
+  // ENDPOINTS PARA DOCUMENTOS DA EMPRESA (BYPASS RLS)
+  // ===================================================
+
+  // 1. Listar documentos
+  app.get("/api/company-documents", async (req, res) => {
+    try {
+      const userCtx = await getAuthUserContext(req);
+      if (!userCtx) return res.status(401).json({ error: "Sessão inválida ou expirada." });
+
+      const targetEmpresaId = req.query.empresa_id || userCtx.empresaId;
+      if (targetEmpresaId !== userCtx.empresaId) {
+        return res.status(403).json({ error: "Acesso não autorizado aos dados de outra empresa." });
+      }
+
+      if (!supabaseAdmin) {
+        return res.status(500).json({ error: "Supabase Admin não configurado no servidor" });
+      }
+
+      const { data, error } = await supabaseAdmin
+        .from('documentos_empresa')
+        .select('*')
+        .eq('empresa_id', targetEmpresaId)
+        .eq('ativo', true)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error("[SERVER] Erro ao selecionar documentos_empresa:", error);
+        return res.status(500).json({ error: error.message });
+      }
+
+      return res.json(data || []);
+    } catch (err: any) {
+      console.error("[SERVER] Exceção em GET /api/company-documents:", err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 2. Criar documento
+  app.post("/api/company-documents", async (req, res) => {
+    try {
+      const userCtx = await getAuthUserContext(req);
+      if (!userCtx) return res.status(401).json({ error: "Sessão inválida ou expirada." });
+
+      const payload = req.body;
+      const targetEmpresaId = payload.empresa_id || userCtx.empresaId;
+      if (targetEmpresaId !== userCtx.empresaId) {
+        return res.status(403).json({ error: "Acesso não autorizado para inserir dados noutra empresa." });
+      }
+
+      if (!supabaseAdmin) {
+        return res.status(500).json({ error: "Supabase Admin não configurado no servidor" });
+      }
+
+      // Se houver arquivo anexado, primeiro registar opcionalmente na tabela media_arquivos
+      let mediaId = payload.arquivo_id;
+      if (payload.nome_arquivo && payload.arquivo_url && !mediaId) {
+        const { data: mediaData, error: mediaError } = await supabaseAdmin
+          .from('media_arquivos')
+          .insert([{
+            empresa_id: targetEmpresaId,
+            nome_arquivo: payload.nome_arquivo,
+            url_arquivo: payload.arquivo_url,
+            tipo_arquivo: payload.tipo_arquivo || 'application/octet-stream',
+            tamanho_arquivo: payload.tamanho_arquivo || 0,
+            bucket: 'empresa-documentos',
+            criado_por: userCtx.userId
+          }])
+          .select()
+          .single();
+
+        if (mediaError) {
+          console.warn("[SERVER] Erro não crítico a sincronizar tabelas media_arquivos:", mediaError);
+        } else if (mediaData) {
+          mediaId = mediaData.id;
+        }
+      }
+
+      const docPayload = {
+        empresa_id: targetEmpresaId,
+        titulo_documento: payload.titulo_documento || 'Sem título',
+        descricao: payload.descricao || '',
+        data_emissao: payload.data_emissao || new Date().toISOString().split('T')[0],
+        prioridade: payload.prioridade || 'normal',
+        observacoes: payload.observacoes || '',
+        nome_arquivo: payload.nome_arquivo || null,
+        arquivo_url: payload.arquivo_url || null,
+        tipo_arquivo: payload.tipo_arquivo || null,
+        tamanho_arquivo: payload.tamanho_arquivo || null,
+        arquivo_id: mediaId || null,
+        criado_por: userCtx.userId,
+        updated_by: userCtx.userId,
+        ativo: true
+      };
+
+      const { data, error } = await supabaseAdmin
+        .from('documentos_empresa')
+        .insert([docPayload])
+        .select()
+        .single();
+
+      if (error) {
+        console.error("[SERVER] Erro inserir documentos_empresa:", error);
+        return res.status(500).json({ error: error.message });
+      }
+
+      // Adicionar log de auditoria
+      await addAuditLog(
+        userCtx.userId, 
+        userCtx.email, 
+        `Criação de Documento da Empresa: ${payload.titulo_documento}`, 
+        targetEmpresaId, 
+        req.ip || '127.0.0.1', 
+        req.headers['user-agent'] || 'Desconhecido'
+      );
+
+      return res.status(201).json(data);
+    } catch (err: any) {
+      console.error("[SERVER] Exceção em POST /api/company-documents:", err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 3. Atualizar documento
+  app.put("/api/company-documents/:id", async (req, res) => {
+    try {
+      const userCtx = await getAuthUserContext(req);
+      if (!userCtx) return res.status(401).json({ error: "Sessão inválida ou expirada." });
+
+      const docId = req.params.id;
+      const payload = req.body;
+      const targetEmpresaId = payload.empresa_id || userCtx.empresaId;
+      if (targetEmpresaId !== userCtx.empresaId) {
+        return res.status(403).json({ error: "Acesso não autorizado para alterar dados noutra empresa." });
+      }
+
+      if (!supabaseAdmin) {
+        return res.status(500).json({ error: "Supabase Admin não configurado no servidor" });
+      }
+
+      // Se houver arquivo anexado novo e não tiver arquivo_id, sincronizar com media_arquivos
+      let mediaId = payload.arquivo_id;
+      if (payload.nome_arquivo && payload.arquivo_url && !mediaId) {
+        const { data: mediaData, error: mediaError } = await supabaseAdmin
+          .from('media_arquivos')
+          .insert([{
+            empresa_id: targetEmpresaId,
+            nome_arquivo: payload.nome_arquivo,
+            url_arquivo: payload.arquivo_url,
+            tipo_arquivo: payload.tipo_arquivo || 'application/octet-stream',
+            tamanho_arquivo: payload.tamanho_arquivo || 0,
+            bucket: 'empresa-documentos',
+            criado_por: userCtx.userId
+          }])
+          .select()
+          .single();
+
+        if (mediaError) {
+          console.warn("[SERVER] Erro não crítico a sincronizar tabelas media_arquivos:", mediaError);
+        } else if (mediaData) {
+          mediaId = mediaData.id;
+        }
+      }
+
+      const updatePayload = {
+        titulo_documento: payload.titulo_documento,
+        descricao: payload.descricao,
+        data_emissao: payload.data_emissao,
+        prioridade: payload.prioridade,
+        observacoes: payload.observacoes,
+        nome_arquivo: payload.nome_arquivo,
+        arquivo_url: payload.arquivo_url,
+        tipo_arquivo: payload.tipo_arquivo,
+        tamanho_arquivo: payload.tamanho_arquivo,
+        arquivo_id: mediaId,
+        updated_by: userCtx.userId,
+        updated_at: new Date().toISOString()
+      };
+
+      const { data, error } = await supabaseAdmin
+        .from('documentos_empresa')
+        .update(updatePayload)
+        .eq('id', docId)
+        .eq('empresa_id', targetEmpresaId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error("[SERVER] Erro ao actualizar documentos_empresa:", error);
+        return res.status(500).json({ error: error.message });
+      }
+
+      // Adicionar log de auditoria
+      await addAuditLog(
+        userCtx.userId, 
+        userCtx.email, 
+        `Atualização de Documento da Empresa ID ${docId}: ${payload.titulo_documento}`, 
+        targetEmpresaId, 
+        req.ip || '127.0.0.1', 
+        req.headers['user-agent'] || 'Desconhecido'
+      );
+
+      return res.json(data);
+    } catch (err: any) {
+      console.error("[SERVER] Exceção em PUT /api/company-documents:", err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 4. Eliminar documento
+  app.delete("/api/company-documents/:id", async (req, res) => {
+    try {
+      const userCtx = await getAuthUserContext(req);
+      if (!userCtx) return res.status(401).json({ error: "Sessão inválida ou expirada." });
+
+      const docId = req.params.id;
+      const { empresa_id } = req.query;
+      const targetEmpresaId = (empresa_id as string) || userCtx.empresaId;
+      if (targetEmpresaId !== userCtx.empresaId) {
+        return res.status(403).json({ error: "Acesso não autorizado para eliminar dados noutra empresa." });
+      }
+
+      if (!supabaseAdmin) {
+        return res.status(500).json({ error: "Supabase Admin não configurado no servidor" });
+      }
+
+      // Remover ou desativar o registro da tabela documentos_empresa
+      const { data, error } = await supabaseAdmin
+        .from('documentos_empresa')
+        .delete()
+        .eq('id', docId)
+        .eq('empresa_id', targetEmpresaId)
+        .select()
+        .maybeSingle();
+
+      if (error) {
+        console.error("[SERVER] Erro ao remover de documentos_empresa:", error);
+        return res.status(500).json({ error: error.message });
+      }
+
+      // Adicionar log de auditoria
+      await addAuditLog(
+        userCtx.userId, 
+        userCtx.email, 
+        `Eliminação de Documento da Empresa ID ${docId}`, 
+        targetEmpresaId, 
+        req.ip || '127.0.0.1', 
+        req.headers['user-agent'] || 'Desconhecido'
+      );
+
+      return res.json({ success: true, data });
+    } catch (err: any) {
+      console.error("[SERVER] Exceção em DELETE /api/company-documents:", err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
   // but they will not store or leak data in memory.
   app.get("/api/clients", (req, res) => {
     res.json([]);

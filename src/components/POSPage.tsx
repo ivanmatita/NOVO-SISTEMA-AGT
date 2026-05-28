@@ -10,6 +10,16 @@ import {
 } from 'lucide-react';
 import { exportToPDF, handlePrint } from '../lib/exportUtils';
 import { QRCodeSVG } from 'qrcode.react';
+import { authService } from '../services/authService';
+
+const fetchJson = async (url: string, options?: RequestInit) => {
+  const response = await fetch(url, options);
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+  }
+  return response.json();
+};
 
 // Web Audio API Sound Effects Synthesizer for hardware-like feeling
 const playBeep = (type: 'success' | 'error' | 'double' | 'click' = 'success') => {
@@ -56,13 +66,6 @@ const playBeep = (type: 'success' | 'error' | 'double' | 'click' = 'success') =>
 
 const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA', minimumFractionDigits: 2 }).format(value);
-};
-
-// Simple fetcher wrapper
-const fetchJson = async (url: string) => {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
-  return response.json();
 };
 
 interface CartItem {
@@ -201,8 +204,8 @@ const POSPage = ({
   }, [activeArea]);
 
   const activeSession = Array.isArray(cashSessions) ? cashSessions.find(s => s.status === 'open') : null;
-  const companyName = companyData?.name || companyData?.nome_empresa || "Grupo TecnoSys";
-  const clientEmpresaId = user?.empresa_id || companyData?.empresa_id || '1';
+  const companyName = companyData?.nome_empresa || companyData?.name || "Minha Empresa";
+  const clientEmpresaId = companyData?.id || user?.empresa_id || '1';
 
   // Categories extracted from products
   const categories = ['Todos', ...Array.from(new Set(products.map(p => p.category || p.tipologia).filter(Boolean)))];
@@ -211,11 +214,11 @@ const POSPage = ({
   useEffect(() => {
     const loadInfrastructure = async () => {
       try {
-        const empresaId = companyData?.id || '1';
+        const empresaId = companyData?.id || user?.empresa_id || '1';
         const [cc, pp, cl, sl, stats, suspended, movements] = await Promise.all([
           fetchJson(`/api/cost-centers?empresa_id=${empresaId}`),
           fetchJson(`/api/pos-points?empresa_id=${empresaId}`),
-          fetchJson(`/api/clients?empresa_id=${empresaId}`),
+          fetchJson(`/api/secure-clientes`), // Use secure-clientes instead of deprecated /api/clients
           fetchJson(`/api/pos/sales?empresa_id=${empresaId}`).catch(() => []),
           fetchJson(`/api/pos/stats?empresa_id=${empresaId}`).catch(() => ({ todayCount: 0, todayTotal: 0, activeOperators: 0, topProducts: [] })),
           fetchJson(`/api/pos/suspended?empresa_id=${empresaId}`).catch(() => []),
@@ -440,14 +443,18 @@ const POSPage = ({
     }
 
     try {
-      const response = await fetch('/api/clients', {
+      const response = await fetch('/api/secure-clientes', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${(await authService.getSessionSafe())?.access_token}`
+        },
         body: JSON.stringify({
-          name: newClientName,
+          nome: newClientName,
           contribuinte: newClientNif || '999999999',
+          nif: newClientNif || '999999999',
           telefone: newClientPhone,
-          morada: newClientAddress || 'Luanda, Angola',
+          endereco: newClientAddress || 'Luanda, Angola',
           empresa_id: clientEmpresaId
         })
       });
@@ -2104,9 +2111,9 @@ const POSPage = ({
             <div id="pos-receipt" className="bg-white text-zinc-900 p-4 rounded-none border border-zinc-200 text-[10px] uppercase font-mono leading-tight space-y-4 max-h-[45vh] overflow-y-auto shadow-inner select-text thermal-receipt-print">
               <div className="text-center font-bold">
                 <span className="text-xs tracking-tight block">{companyName}</span>
-                <span className="text-[8px] block font-medium">NIF: {companyData?.nif || "5000922200"}</span>
-                <span className="text-[8px] block font-medium">{companyData?.address || "Luanda, Angola"}</span>
-                <span className="text-[8px] block font-medium">T: {companyData?.contact || "923 000 000"}</span>
+                <span className="text-[8px] block font-medium">NIF: {companyData?.nif || "---"}</span>
+                <span className="text-[8px] block font-medium">{companyData?.endereco || companyData?.localizacao || companyData?.address || "---"}</span>
+                <span className="text-[8px] block font-medium">T: {companyData?.telefone || companyData?.contact || "---"}</span>
               </div>
 
               <div className="border-t border-dashed border-zinc-400 pt-2 text-[8px]">

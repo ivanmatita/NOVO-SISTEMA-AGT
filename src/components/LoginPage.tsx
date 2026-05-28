@@ -57,7 +57,7 @@ export const LoginPage: React.FC = () => {
   const [regAddress, setRegAddress] = useState('');
   const [regTipoEmpresa, setRegTipoEmpresa] = useState('');
   const [regNomeAdmin, setRegNomeAdmin] = useState('');
-  const [regEmailAdmin, setRegEmailAdmin] = useState('');
+  const [regUsernameAdmin, setRegUsernameAdmin] = useState('');
   const [regSelectedPlan, setRegSelectedPlan] = useState('mensal');
   const [regAcceptTerms, setRegAcceptTerms] = useState(false);
   
@@ -131,7 +131,7 @@ export const LoginPage: React.FC = () => {
           nome_empresa: regCompanyName.trim(),
           tipo_empresa: regTipoEmpresa,
           nome_administrador: regNomeAdmin.trim(),
-          email_admin: (regEmailAdmin || regEmail).trim(),
+          username: regUsernameAdmin.trim(),
           email: regEmail.trim().toLowerCase(),
           password: regPassword,
           nif: regNif.trim(),
@@ -156,10 +156,12 @@ export const LoginPage: React.FC = () => {
           setRegCompanyName('');
           setRegNif('');
           setRegNomeAdmin('');
+          setRegUsernameAdmin('');
           setRegEmail('');
           setRegPassword('');
           setRegConfirmPassword('');
-        }, 3000);
+          setRegLoading(false);
+        }, 5000);
       } catch (err: any) {
         console.error('[LoginPage] Erro no registo:', err);
         // Se for erro de rate limit, sugerimos que o user tente fazer login
@@ -785,9 +787,14 @@ export const LoginPage: React.FC = () => {
                     >
                       <Check size={48} />
                     </motion.div>
-                    <div className="space-y-2">
-                      <h3 className="text-2xl font-black text-[#003366] uppercase tracking-tight">Registo Concluído!</h3>
-                      <p className="text-zinc-500 font-medium">A sua empresa foi registada com sucesso. Estamos a preparar o seu acesso...</p>
+                    <div className="space-y-4">
+                      <h3 className="text-2xl font-black text-[#003366] uppercase tracking-tight">Registo efectuado com sucesso!</h3>
+                      <p className="text-zinc-500 font-medium">A sua conta foi criada com sucesso. Por favor, utilize as suas credenciais no formulário de login para entrar no sistema.</p>
+                      <div className="pt-4">
+                         <div className="inline-block px-4 py-2 bg-[#003366] text-white text-[10px] font-black uppercase tracking-widest rounded animate-pulse">
+                           Janela fechará em breve...
+                         </div>
+                      </div>
                     </div>
                   </div>
                 ) : (
@@ -855,8 +862,8 @@ export const LoginPage: React.FC = () => {
                                 <input type="text" value={regNomeAdmin} onChange={e => setRegNomeAdmin(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-colors" placeholder="Nome do Admin" required />
                               </div>
                               <div className="space-y-1.5">
-                                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Email do Administrador *</label>
-                                <input type="email" value={regEmailAdmin} onChange={e => setRegEmailAdmin(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-colors" placeholder="admin@empresa.ao" required />
+                                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Username Administrador *</label>
+                                <input type="text" value={regUsernameAdmin} onChange={e => setRegUsernameAdmin(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 px-4 py-3 text-sm focus:outline-none focus:border-[#003366] transition-colors" placeholder="Ex: admin.imatec" required />
                               </div>
                               <div className="space-y-1.5">
                                 <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Telefone Comercial</label>
@@ -944,10 +951,10 @@ export const LoginPage: React.FC = () => {
                           
                           <div className="space-y-4">
                             <div className="space-y-1.5">
-                              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider ml-1">Email de Administrador *</label>
+                              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider ml-1">Email Principal *</label>
                               <div className="relative">
                                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
-                                <input type="email" value={regEmail} onChange={e => setRegEmail(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 pl-12 pr-4 py-4 text-sm focus:outline-none focus:border-[#003366] transition-all font-medium" placeholder="admin@empresa.ao" required />
+                                <input type="email" value={regEmail} onChange={e => setRegEmail(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 pl-12 pr-4 py-4 text-sm focus:outline-none focus:border-[#003366] transition-all font-medium" placeholder="geral@empresa.ao" required />
                               </div>
                             </div>
                             

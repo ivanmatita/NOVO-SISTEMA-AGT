@@ -102,6 +102,11 @@ interface PrintA4Props {
     watermark_url?: string;
     watermark_size?: number;
     regime?: string;
+    nome_empresa?: string;
+    endereco?: string;
+    localizacao?: string;
+    telefone?: string;
+    regime_fiscal?: string;
   };
   graphicConfigs?: {
     tipo: 'logotipo' | 'cabecalho' | 'rodape' | 'marca_dagua';
@@ -239,13 +244,13 @@ const PrintA4 = ({ invoice, isDraft = false, companyData, graphicConfigs = [] }:
                 </div>
               )}
               <div>
-                <h1 className="text-xl font-black text-[#003366] mb-1 uppercase tracking-tighter">{companyData?.name || 'FaturaPronta Lda'}</h1>
+                <h1 className="text-xl font-black text-[#003366] mb-1 uppercase tracking-tighter">{companyData?.nome_empresa || companyData?.name || 'Minha Empresa'}</h1>
                 <div className="text-[10px] space-y-0.5 text-zinc-600 font-bold uppercase break-words max-w-[250px]">
-                  <p>{companyData?.address || 'Rua da Inovação, 123'}</p>
-                  <p>NIF: {companyData?.nif || '500 000 000'}</p>
-                  {companyData?.phone && <p>Tel: {companyData.phone}</p>}
+                  <p>{companyData?.endereco || companyData?.localizacao || companyData?.address || '---'}</p>
+                  <p>NIF: {companyData?.nif || '---'}</p>
+                  {(companyData?.telefone || companyData?.phone) && <p>Tel: {companyData?.telefone || companyData?.phone}</p>}
                   {companyData?.email && <p className="lowercase break-all">Email: {companyData.email}</p>}
-                  {companyData?.regime && <p>{companyData.regime}</p>}
+                  {(companyData?.regime_fiscal || companyData?.regime) && <p>{companyData?.regime_fiscal || companyData?.regime}</p>}
                 </div>
               </div>
             </div>
@@ -507,7 +512,7 @@ const PrintA4 = ({ invoice, isDraft = false, companyData, graphicConfigs = [] }:
 
         <div className="flex justify-between items-center mb-4">
           <div className="flex items-center gap-4">
-            <div className="font-bold text-zinc-500 uppercase text-[9px] tracking-widest">IVA - {companyData?.regime || 'Regime Geral'}</div>
+            <div className="font-bold text-zinc-500 uppercase text-[9px] tracking-widest">IVA - {companyData?.regime_fiscal || companyData?.regime || 'Regime Geral'}</div>
             {isFinal && (
               <div className="text-[8px] text-zinc-400 font-mono">
                 {invoice.hash ? invoice.hash.slice(0,4) + '-' + invoice.hash.slice(-4) : ''}-AGT-RECON-S1
@@ -521,11 +526,11 @@ const PrintA4 = ({ invoice, isDraft = false, companyData, graphicConfigs = [] }:
 
         <div className="grid grid-cols-2 gap-8 pt-4 border-t border-zinc-100">
            <div className="text-[9px] space-y-0.5 font-medium uppercase tracking-tight text-zinc-600">
-              <p><span className="font-black text-zinc-400 uppercase">Sede :</span> {companyData?.address || '---'}</p>
+              <p><span className="font-black text-zinc-400 uppercase">Sede :</span> {companyData?.endereco || companyData?.localizacao || companyData?.address || '---'}</p>
               <p><span className="font-black text-zinc-400 uppercase">NIF :</span> {companyData?.nif || '---'}</p>
            </div>
            <div className="text-[9px] space-y-0.5 border-l border-zinc-200 pl-4 font-medium lowercase text-zinc-600">
-              {companyData?.phone && <p><span className="font-black uppercase tracking-tight text-zinc-400">T.</span> {companyData.phone}</p>}
+              {(companyData?.telefone || companyData?.phone) && <p><span className="font-black uppercase tracking-tight text-zinc-400">T.</span> {companyData?.telefone || companyData?.phone}</p>}
               {companyData?.email && <p><span className="font-black uppercase tracking-tight text-zinc-400">E.</span> {companyData.email}</p>}
               <p className="uppercase text-[7px] text-zinc-400 font-black pt-1">Processado por Programa Certificado nº 330/AGT/2024</p>
            </div>

@@ -78,7 +78,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setError(null);
     try {
       const newUser = await authService.registerCompany(formData);
-      setUser(newUser);
+      if (newUser) {
+        setUser(newUser);
+      }
     } catch (err: any) {
       setError(err.message || 'Erro ao registrar');
       throw err;

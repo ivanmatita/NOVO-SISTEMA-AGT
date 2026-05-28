@@ -15,7 +15,7 @@ const supabase = createClient(url, key);
 async function inspectPerfis() {
   const { data, error } = await supabase
     .from('perfis')
-    .select('id, email, username, nome')
+    .select('id, email, username, nome, role')
     .limit(100);
 
   if (error) {
@@ -23,11 +23,7 @@ async function inspectPerfis() {
   } else {
     console.log("Perfis with potential issues:");
     data.forEach(p => {
-      const hasSpaceU = p.username && p.username !== p.username.trim();
-      const hasSpaceN = p.nome && p.nome !== p.nome.trim();
-      if (hasSpaceU || hasSpaceN || !p.username) {
-        console.log(`- ID: ${p.id}, Email: ${p.email}, Username: [${p.username}], Nome: [${p.nome}]`);
-      }
+      console.log(`- ID: ${p.id}, Email: ${p.email}, Username: [${p.username}], Nome: [${p.nome}], Role: [${p.role}]`);
     });
   }
 }

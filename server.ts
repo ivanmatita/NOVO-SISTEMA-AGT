@@ -123,15 +123,19 @@ if (!supabaseAdmin) {
             v_company_id UUID;
             v_uid UUID := auth.uid();
           BEGIN
-            -- 1. Try perfis (fastest)
+            IF v_uid IS NULL THEN RETURN NULL; END IF;
+
+            -- 1. Try JWT metadata first (highly reliable in SaaS context)
+            BEGIN
+              v_company_id := (auth.jwt() -> 'user_metadata' ->> 'empresa_id')::UUID;
+              IF v_company_id IS NOT NULL THEN RETURN v_company_id; END IF;
+            EXCEPTION WHEN OTHERS THEN END;
+
+            -- 2. Try perfis (fastest table lookup)
             SELECT COALESCE(company_id, empresa_id) INTO v_company_id FROM public.perfis WHERE id = v_uid LIMIT 1;
             IF v_company_id IS NOT NULL THEN RETURN v_company_id; END IF;
 
-            -- 2. Try system_users
-            SELECT company_id INTO v_company_id FROM public.system_users WHERE id = v_uid LIMIT 1;
-            IF v_company_id IS NOT NULL THEN RETURN v_company_id; END IF;
-
-            -- 3. Try direct ownership
+            -- 3. Try direct ownership fallback
             SELECT id INTO v_company_id FROM public.empresas WHERE auth_user_id = v_uid LIMIT 1;
             RETURN v_company_id;
           END;
@@ -165,28 +169,19 @@ if (!supabaseAdmin) {
           RETURNS BOOLEAN AS $$
           DECLARE
             v_uid UUID := auth.uid();
-            v_is BOOLEAN;
             v_role TEXT;
-            v_lvl INT;
           BEGIN
-            -- 1. Check system_users
-            SELECT is_admin, role, level INTO v_is, v_role, v_lvl 
-            FROM public.system_users WHERE id = v_uid LIMIT 1;
-            IF v_is = true OR v_role IN ('super_admin', 'admin') OR v_lvl >= 10 THEN 
-              RETURN true; 
+            -- Try to get from JWT metadata first to avoid recursion/table lookups
+            v_role := (auth.jwt() -> 'user_metadata' ->> 'role');
+            IF v_role IN ('super_admin', 'superadmin', 'suporte_tecnico') THEN
+               RETURN true;
             END IF;
 
-            -- 2. Check perfis
+            -- Fallback to table lookup (SECURITY DEFINER bypasses RLS)
             SELECT role INTO v_role FROM public.perfis WHERE id = v_uid LIMIT 1;
-            IF v_role IN ('super_admin', 'admin', 'admin_empresa', 'proprietario') THEN 
+            IF v_role IN ('super_admin', 'superadmin', 'suporte_tecnico') THEN 
               RETURN true; 
             END IF;
-
-            -- 3. Check if company owner
-            IF EXISTS (SELECT 1 FROM public.empresas WHERE auth_user_id = v_uid) THEN
-              RETURN true;
-            END IF;
-
             RETURN false;
           END;
           $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -234,7 +229,7 @@ if (!supabaseAdmin) {
               SELECT policyname, tablename 
               FROM pg_policies 
               WHERE schemaname = 'public' 
-                AND tablename IN ('system_users', 'perfis', 'logs_auditoria', 'user_activities_sessions', 'empresas', 'clientes', 'products', 'produtos', 'documentos_emitidos', 'caixas', 'fornecedores', 'compras', 'transacoes', 'recibos', 'hr_contratos', 'professions')
+                AND tablename IN ('system_users', 'perfis', 'logs_auditoria', 'user_activities_sessions', 'empresas', 'clientes', 'products', 'produtos', 'documentos_emitidos', 'caixas', 'caixa_movimentacoes', 'fornecedores', 'compras', 'transacoes', 'recibos', 'hr_contratos', 'professions', 'locais_trabalho', 'inventario', 'vendas', 'items_transacao', 'items_documento', 'series_fiscais', 'tabela_impostos', 'armazens')
             LOOP
               EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', pol.policyname, pol.tablename);
             END LOOP;
@@ -290,7 +285,7 @@ if (!supabaseAdmin) {
               USING (public.is_system_admin() OR auth_user_id = auth.uid())';
 
             -- 4. GENERIC Isolation for data tables
-            FOR t IN SELECT unnest(ARRAY['clientes', 'products', 'produtos', 'documentos_emitidos', 'caixas', 'fornecedores', 'compras', 'transacoes', 'recibos', 'hr_contratos', 'professions']) LOOP
+            FOR t IN SELECT unnest(ARRAY['clientes', 'products', 'produtos', 'documentos_emitidos', 'caixas', 'caixa_movimentacoes', 'fornecedores', 'compras', 'transacoes', 'recibos', 'hr_contratos', 'professions', 'locais_trabalho', 'inventario', 'vendas', 'items_transacao', 'items_documento', 'user_activities_sessions', 'series_fiscais', 'tabela_impostos', 'armazens']) LOOP
                 EXECUTE format('ALTER TABLE IF EXISTS public.%I ENABLE ROW LEVEL SECURITY', t);
                 
                 IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = t AND column_name = 'company_id') THEN
@@ -714,6 +709,15 @@ const saveData = () => {
     });
 };
 
+// Global Error Handlers for robust SaaS startup
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('CRITICAL: Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('CRITICAL: Uncaught Exception:', err);
+});
+
 const app = express();
 const PORT = 3000;
 
@@ -1122,7 +1126,7 @@ async function startServer() {
       const { data, error } = await client
         .from("perfis")
         .select("email")
-        .or(`username.ilike."${username}",nome.ilike."${username}",email.ilike."${username}@%"`)
+        .or(`username.ilike.${username},nome.ilike.${username},email.ilike.${username}@%`)
         .order('username', { ascending: false, nullsFirst: false }) // Prioritize matches with username set
         .limit(1)
         .maybeSingle();
@@ -1167,12 +1171,35 @@ async function startServer() {
     }
 
     const { email, password, formData } = req.body;
+    const requestedUsername = (formData.username || email.split('@')[0] || '').trim();
 
     try {
-      console.log(`[SERVER-AUTH] Iniciando registo via Admin para: ${email}`);
+      console.log(`[SERVER-AUTH] Iniciando registo via Admin para: ${email} (Username: ${requestedUsername})`);
 
-      // 1. Criar Utilizador Auth (Admin Bypass)
-      const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
+      const client = supabaseAdmin;
+
+      // 1. Verificar se o Email ou Username já existe em PERFIS
+      const { data: existingUser, error: checkError } = await client
+        .from("perfis")
+        .select("email, username")
+        .or(`email.eq.${email.trim().toLowerCase()},username.eq.${requestedUsername}`)
+        .maybeSingle();
+
+      if (checkError) {
+        console.error("[SERVER-AUTH] Erro ao verificar existência:", checkError);
+      }
+
+      if (existingUser) {
+        if (existingUser.email.toLowerCase() === email.trim().toLowerCase()) {
+          return res.status(400).json({ error: "Este email já está registado no sistema." });
+        }
+        if (existingUser.username === requestedUsername) {
+          return res.status(400).json({ error: "Este username já está em uso. Por favor, escolha outro." });
+        }
+      }
+
+      // 1b. Criar Utilizador Auth (Admin Bypass)
+      const { data: authUser, error: authError } = await client.auth.admin.createUser({
         email,
         password,
         email_confirm: true,
@@ -1232,7 +1259,7 @@ async function startServer() {
           email: email,
           nome: (formData.nome_administrador || formData.nome_empresa || '').trim(),
           role: 'admin',
-          username: (email.split('@')[0] || '').trim()
+          username: (formData.username || email.split('@')[0] || '').trim()
         });
 
       if (profileError) {

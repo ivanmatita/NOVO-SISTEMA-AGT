@@ -998,10 +998,10 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
           <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
         </label>
         <h2 className="text-white font-bold text-lg leading-tight text-center px-4 line-clamp-1">
-          {companyLogo && companyData?.name ? companyData.name : 'Admin'}
+          {companyData?.nome_empresa || companyData?.name || 'Admin'}
         </h2>
         <p className="text-[10px] text-zinc-500 font-bold tracking-widest uppercase mt-1">
-          {companyLogo && companyData?.nif ? `NIF: ${companyData.nif}` : 'ADMIN'}
+          {companyData?.nif ? `NIF: ${companyData.nif}` : 'ADMIN'}
         </p>
       </div>
       
@@ -13811,16 +13811,23 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
     nif: initialData?.nif || '',
     matricula: initialData?.matricula || '',
     alvara: initialData?.alvara || '',
-    localizacao: initialData?.localizacao || initialData?.address || '',
+    endereco: initialData?.endereco || initialData?.address || initialData?.localizacao || '',
     provincia: initialData?.provincia || '',
+    municipio: initialData?.municipio || '',
     codigo_postal: initialData?.codigo_postal || '',
+    pais: initialData?.pais || 'Angola',
     inss: initialData?.inss || '',
-    contacto: initialData?.contacto || initialData?.contact || '',
-    responsavel: initialData?.responsavel || '',
+    telefone: initialData?.telefone || initialData?.contacto || initialData?.contact || '',
+    responsavel: initialData?.responsavel || initialData?.nome_administrador || '',
     email: initialData?.email || '',
     regime: initialData?.regime || 'Regime geral',
     tipo_empresa: initialData?.tipo_empresa || 'Serviços',
     coordenadas_bancarias: initialData?.coordenadas_bancarias || '',
+    // License Info (Read-only)
+    plano: initialData?.plano || 'trial',
+    pacote_licenca: initialData?.pacote_licenca || 'Gratuito',
+    valor_licenca: initialData?.valor_licenca || '0',
+    // Visual Identity
     logo_url: initialData?.logo_url || initialData?.logo || '',
     logo_size: initialData?.logo_size || 100,
     watermark_url: initialData?.watermark_url || initialData?.marca_agua || '',
@@ -13836,16 +13843,21 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
         nif: initialData.nif || '',
         matricula: initialData.matricula || '',
         alvara: initialData.alvara || '',
-        localizacao: initialData.localizacao || initialData.address || '',
+        endereco: initialData.endereco || initialData.address || initialData.localizacao || '',
         provincia: initialData.provincia || '',
+        municipio: initialData.municipio || '',
         codigo_postal: initialData.codigo_postal || '',
+        pais: initialData.pais || 'Angola',
         inss: initialData.inss || '',
-        contacto: initialData.contacto || initialData.contact || '',
-        responsavel: initialData.responsavel || '',
+        telefone: initialData.telefone || initialData.contacto || initialData.contact || '',
+        responsavel: initialData.responsavel || initialData.nome_administrador || '',
         email: initialData.email || '',
         regime: initialData.regime || 'Regime geral',
         tipo_empresa: initialData.tipo_empresa || 'Serviços',
         coordenadas_bancarias: initialData.coordenadas_bancarias || '',
+        plano: initialData.plano || 'trial',
+        pacote_licenca: initialData.pacote_licenca || 'Gratuito',
+        valor_licenca: initialData.valor_licenca || '0',
         logo_url: initialData.logo_url || initialData.logo || '',
         logo_size: initialData.logo_size || 100,
         watermark_url: initialData.watermark_url || initialData.marca_agua || '',
@@ -13855,7 +13867,6 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
       });
     }
   }, [initialData]);
-
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: string) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -13944,12 +13955,17 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
         nif: formData.nif,
         matricula: formData.matricula,
         alvara: formData.alvara,
-        localizacao: formData.localizacao,
+        endereco: formData.endereco,
+        localizacao: formData.endereco, // Sync
         provincia: formData.provincia,
+        municipio: formData.municipio,
         codigo_postal: formData.codigo_postal,
+        pais: formData.pais,
         inss: formData.inss,
-        contacto: formData.contacto,
+        telefone: formData.telefone,
+        contacto: formData.telefone, // Sync
         responsavel: formData.responsavel,
+        nome_administrador: formData.responsavel, // Sync
         email: formData.email,
         regime: formData.regime,
         tipo_empresa: formData.tipo_empresa,
@@ -14006,33 +14022,35 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Nome da Empresa *</label>
-                  <input required type="text" name="nome_empresa" value={formData.nome_empresa} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                  <input readOnly required type="text" name="nome_empresa" value={formData.nome_empresa} className="w-full bg-zinc-100 border border-zinc-200 px-4 py-2 text-sm text-zinc-500 cursor-not-allowed" title="O nome da empresa não pode ser alterado" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">NIF da Empresa *</label>
-                  <input required type="text" name="nif" value={formData.nif} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                  <input readOnly required type="text" name="nif" value={formData.nif} className="w-full bg-zinc-100 border border-zinc-200 px-4 py-2 text-sm text-zinc-500 cursor-not-allowed" title="O NIF da empresa não pode ser alterado" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Número de Matrícula</label>
-                  <input type="text" name="matricula" value={formData.matricula} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                  <input type="text" name="matricula" value={formData.matricula} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Número de Alvará</label>
-                  <input type="text" name="alvara" value={formData.alvara} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                  <input type="text" name="alvara" value={formData.alvara} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Regime</label>
-                  <select name="regime" value={formData.regime} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Regime Fiscal</label>
+                  <select name="regime" value={formData.regime} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
                     <option value="Regime geral">Regime geral</option>
                     <option value="Regime simplificado">Regime simplificado</option>
                     <option value="Regime de exclusão">Regime de exclusão</option>
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Tipo de Empresa</label>
-                  <select name="tipo_empresa" value={formData.tipo_empresa} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Tipo de Atividade</label>
+                  <select name="tipo_empresa" value={formData.tipo_empresa} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
                     <option value="Serviços">Serviços</option>
                     <option value="Comércio">Comércio</option>
+                    <option value="Indústria">Indústria</option>
+                    <option value="Agropecuária">Agropecuária</option>
                     <option value="Outro">Outro</option>
                   </select>
                 </div>
@@ -14040,45 +14058,80 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
             </div>
 
             <div>
-              <h3 className="text-sm font-bold text-[#003366] uppercase tracking-wider mb-4 border-b border-zinc-200 pb-2">Contactos e Localização</h3>
+              <h3 className="text-sm font-bold text-[#003366] uppercase tracking-wider mb-4 border-b border-zinc-200 pb-2">Localização e Contacto</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-1 md:col-span-2">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Localização (Morada)</label>
-                  <input type="text" name="localizacao" value={formData.localizacao} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Morada da Sede</label>
+                  <input type="text" name="endereco" value={formData.endereco} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Província</label>
-                  <input type="text" name="provincia" value={formData.provincia} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                  <input type="text" name="provincia" value={formData.provincia} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Município</label>
+                  <input type="text" name="municipio" value={formData.municipio} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">País</label>
+                  <input type="text" name="pais" value={formData.pais} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Código Postal</label>
-                  <input type="text" name="codigo_postal" value={formData.codigo_postal} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                  <input type="text" name="codigo_postal" value={formData.codigo_postal} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Contacto Telefónico</label>
-                  <input type="text" name="contacto" value={formData.contacto} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Telemóvel / Telefone</label>
+                  <input type="text" name="telefone" value={formData.telefone} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Email</label>
-                  <input type="email" name="email" value={formData.email} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">E-mail Institucional</label>
+                  <input type="email" name="email" value={formData.email} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
                 </div>
               </div>
             </div>
 
-            <div>
-              <h3 className="text-sm font-bold text-[#003366] uppercase tracking-wider mb-4 border-b border-zinc-200 pb-2">Dados Legais e Bancários</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Nº Contribuinte INSS</label>
-                  <input type="text" name="inss" value={formData.inss} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="space-y-6">
+                <h3 className="text-sm font-bold text-[#003366] uppercase tracking-wider border-b border-zinc-200 pb-2">Dados Legais</h3>
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Nº Contribuinte INSS</label>
+                    <input type="text" name="inss" value={formData.inss} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Administrador / Responsável</label>
+                    <input type="text" name="responsavel" value={formData.responsavel} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Coordenadas Bancárias (IBAN Principal)</label>
+                    <textarea name="coordenadas_bancarias" value={formData.coordenadas_bancarias} onChange={handleChange} rows={3} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" placeholder="Ex: AO06.0040.0000.1234.5678.9 (BAI)"></textarea>
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Responsável</label>
-                  <input type="text" name="responsavel" value={formData.responsavel} onChange={handleChange} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
-                </div>
-                <div className="space-y-1 md:col-span-2">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Coordenadas Bancárias (IBAN, Swift, etc)</label>
-                  <textarea name="coordenadas_bancarias" value={formData.coordenadas_bancarias} onChange={handleChange} rows={3} className="w-full bg-zinc-50 border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" placeholder="Ex: AO06.0040.0000.1234.5678.9 (BAI)"></textarea>
+              </div>
+
+              <div className="space-y-6">
+                <h3 className="text-sm font-bold text-[#003366] uppercase tracking-wider border-b border-zinc-200 pb-2">Licenciamento do Sistema</h3>
+                <div className="bg-zinc-100 p-4 border border-zinc-200 space-y-4">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] font-bold text-zinc-500 uppercase">Estado da Conta</span>
+                    <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${formData.plano === 'trial' ? 'bg-orange-100 text-orange-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                      {formData.plano === 'trial' ? 'Período Experimental' : 'Ativo'}
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Pacote Contratado</label>
+                    <div className="text-sm font-bold text-zinc-700">{formData.pacote_licenca}</div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Valor da Licença (Mensal)</label>
+                    <div className="text-sm font-bold text-zinc-700">{Number(formData.valor_licenca).toLocaleString()} AOA</div>
+                  </div>
+                  <div className="pt-2">
+                    <button type="button" onClick={() => alert('Módulo de Faturação de Licenças em desenvolvimento.')} className="w-full py-1.5 bg-zinc-200 text-zinc-600 text-[10px] font-black uppercase tracking-widest hover:bg-zinc-300 transition-colors">
+                      Upgrade de Plano
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

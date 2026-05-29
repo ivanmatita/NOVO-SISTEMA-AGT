@@ -99,6 +99,8 @@ if (!supabaseAdmin) {
               updated_at TIMESTAMPTZ DEFAULT now()
           );
 
+          ALTER TABLE public.series_fiscais ADD COLUMN IF NOT EXISTS utilizador_id UUID REFERENCES public.perfis(id);
+
           CREATE TABLE IF NOT EXISTS public.historico_licencas (
               id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
               empresa_id UUID NOT NULL,

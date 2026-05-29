@@ -17448,7 +17448,16 @@ const FiscalSeriesModule = ({
   const { user } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [showOptionsId, setShowOptionsId] = useState<number | null>(null);
+  const [systemUsers, setSystemUsers] = useState<SystemUser[]>([]);
   
+  useEffect(() => {
+    if (user?.empresa_id) {
+      systemUsersService.getUsers(user.empresa_id).then(data => {
+        setSystemUsers(data);
+      }).catch(console.error);
+    }
+  }, [user?.empresa_id]);
+
   const [name, setName] = useState('');
   const [selectedUser, setSelectedUser] = useState<string>('');
   const [type, setType] = useState<'normal' | 'manual'>('normal');
@@ -17471,6 +17480,7 @@ const FiscalSeriesModule = ({
           serie: reference,
           descricao: name,
           tipo: type,
+          utilizador_id: selectedUser || null,
           proximo_numero: 1,
           ativo: true,
           created_at: new Date().toISOString()
@@ -17553,7 +17563,7 @@ const FiscalSeriesModule = ({
                   <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Selecionar Utilizador</label>
                   <select value={selectedUser} onChange={e => setSelectedUser(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none">
                     <option value="">Todos</option>
-                    {users.map(u => <option key={u.id} value={u.id.toString()}>{u.nome_completo}</option>)}
+                    {systemUsers.map(u => <option key={u.id} value={u.id.toString()}>{u.name}</option>)}
                   </select>
                 </div>
                 <div className="space-y-1">
@@ -17912,9 +17922,9 @@ const InvoiceList = ({
                 {activeSubTab === 'emitidos' && (
                   <button 
                     onClick={onNew}
-                    disabled={!canAccessSeries(user, serieFilter)}
-                    title={!canAccessSeries(user, serieFilter) ? `não tem permissão da série ${serieFilter} contacte o administrador` : ""}
-                    className={`font-bold px-6 py-2.5 rounded-none flex items-center gap-2 transition-all shadow-sm text-sm ${canAccessSeries(user, serieFilter) ? 'bg-[#2563eb] hover:bg-blue-700 text-white' : 'bg-zinc-200 text-zinc-500 cursor-not-allowed'}`}
+                    disabled={!canAccessSeries(user, serieFilter, fiscalSeries)}
+                    title={!canAccessSeries(user, serieFilter, fiscalSeries) ? `não tem permissão da série ${serieFilter} contacte o administrador` : ""}
+                    className={`font-bold px-6 py-2.5 rounded-none flex items-center gap-2 transition-all shadow-sm text-sm ${canAccessSeries(user, serieFilter, fiscalSeries) ? 'bg-[#2563eb] hover:bg-blue-700 text-white' : 'bg-zinc-200 text-zinc-500 cursor-not-allowed'}`}
                   >
                     <Plus size={20} className="bg-white/20 rounded-none p-0.5" />
                     {mode === 'electronic' ? 'Emitir Fatura Electrónica' : 'Nova Fatura'}
@@ -17980,7 +17990,10 @@ const InvoiceList = ({
                   onChange={(e) => setSerieFilter(e.target.value)}
                   className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
                 >
-                  <option>Todas</option>
+                  <option value="Todas">Todas</option>
+                  {fiscalSeries.map(s => (
+                     <option key={s.id} value={s.reference}>{s.reference} - {s.name}</option>
+                  ))}
                 </select>
               </div>
 
@@ -25213,11 +25226,18 @@ const ConvertDocumentModal = ({ document, onClose, onSuccess }: {
   );
 };
 
-const canAccessSeries = (user: any, serieFilter: string) => {
+const canAccessSeries = (user: any, serieFilter: string, fiscalSeries: any[]) => {
   if (!user) return false;
   if (user.is_admin || user.role === 'admin') return true;
-  // Placeholder - currently allowing all, will be refined once database structure allows
-  return true; 
+  
+  if (serieFilter === 'Todas') {
+    return false; // Force standard user to select a series in order to emit it, thus blocking them until they do
+  }
+  
+  const serie = fiscalSeries.find(s => s.reference === serieFilter || s.name === serieFilter);
+  if (!serie || !serie.user_id) return false;
+  
+  return String(serie.user_id) === String(user.id);
 };
 
 export default function App() {
@@ -26208,7 +26228,7 @@ export default function App() {
       
       const { data: sfData } = await supabase.from('series_fiscais').select('*').eq('empresa_id', targetCompanyId);
       const fsDataFormatted = (sfData || []).map(s => ({
-        id: s.id, reference: s.serie, description: s.descricao, type: s.tipo, is_active: s.ativo
+        id: s.id, reference: s.serie, description: s.descricao, type: s.tipo, is_active: s.ativo, user_id: s.utilizador_id, name: s.descricao
       }));
 
       const results = await Promise.allSettled([

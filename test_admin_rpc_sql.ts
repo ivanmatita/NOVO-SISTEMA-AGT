@@ -18,17 +18,15 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
 });
 
 async function run() {
-  console.log("=== Querying existing profiles from 'perfis' ===");
-  const { data, error } = await supabaseAdmin
-    .from('perfis')
-    .select('id, nome, role, email, empresa_id');
+  console.log("=== Testing query_exec with Admin Client ===");
+  const { data: qeData, error: qeErr } = await supabaseAdmin.rpc('query_exec', { query: 'SELECT 1 as val' });
+  console.log("query_exec Error:", qeErr);
+  console.log("query_exec Data:", qeData);
 
-  if (error) {
-    console.error("Error fetching profiles:", error);
-  } else {
-    console.log(`Found ${data?.length || 0} profiles:`);
-    console.log(JSON.stringify(data, null, 2));
-  }
+  console.log("\n=== Testing exec_sql with Admin Client ===");
+  const { data: esData, error: esErr } = await supabaseAdmin.rpc('exec_sql', { query: 'SELECT 1 as val' });
+  console.log("exec_sql Error:", esErr);
+  console.log("exec_sql Data:", esData);
 }
 
 run();

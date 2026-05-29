@@ -15,12 +15,39 @@ async function getSchema() {
     }
     const schema: any = await response.json();
 
+    console.log("\n--- Exposed tables in Supabase definitions ---");
+    console.log(Object.keys(schema.definitions || {}));
+
     const perfisDef = schema.definitions?.perfis;
     if (perfisDef) {
-      console.log("\n--- 'perfis' columns in database ---");
-      console.log(JSON.stringify(perfisDef.properties, null, 2));
+       console.log("\n--- 'perfis' columns in database ---");
+       console.log(JSON.stringify(perfisDef.properties, null, 2));
     } else {
-      console.log("\n'perfis' table not found in definitions!");
+       console.log("\n'perfis' table not found in definitions!");
+    }
+
+    const profilesDef = schema.definitions?.profiles;
+    if (profilesDef) {
+       console.log("\n--- 'profiles' columns in database ---");
+       console.log(JSON.stringify(profilesDef.properties, null, 2));
+    } else {
+       console.log("\n'profiles' table not found in definitions!");
+    }
+
+    const caixasDef = schema.definitions?.caixas;
+    if (caixasDef) {
+      console.log("\n--- 'caixas' columns in database ---");
+      console.log(JSON.stringify(caixasDef.properties, null, 2));
+    } else {
+      console.log("\n'caixas' table not found in definitions!");
+    }
+
+    const metricsDef = schema.definitions?.metrics;
+    if (metricsDef) {
+       console.log("\n--- 'metrics' columns in database ---");
+       console.log(JSON.stringify(metricsDef.properties, null, 2));
+    } else {
+       console.log("\n'metrics' table not found in definitions!");
     }
   } catch (err) {
     console.error("Failed to query schema:", err);

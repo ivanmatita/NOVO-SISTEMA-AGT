@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Wallet, ArrowRightLeft, ShieldCheck, Calculator, Search, Eye, Trash2, ChevronLeft, ChevronRight, ArrowUpCircle, ArrowDownCircle, History, FileText, X } from 'lucide-react';
+import { Plus, Wallet, ArrowRightLeft, ShieldCheck, Calculator, Search, Eye, Trash2, ChevronLeft, ChevronRight, ArrowUpCircle, ArrowDownCircle, History, FileText, X, Check, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Caixa, CaixaMovement } from '../types';
 import { useAuth } from '../contexts/AuthContext';
@@ -10,7 +10,7 @@ export const CaixaModule = () => {
   const { caixas, movements, profiles, loading, createCaixa, updateCaixa, deleteCaixa, addMovement } = useCaixas();
   
   const [showForm, setShowForm] = useState(false);
-  const [newCaixa, setNewCaixa] = useState({ name: '', codigo_caixa: '', account: '', initialBalance: 0, obs: '', responsible: '', user: '' });
+  const [newCaixa, setNewCaixa] = useState({ name: '', codigo_caixa: '', account: '', initialBalance: 0, obs: '', responsible: '', user: '', moeda: 'AOA' });
   const [activeSection, setActiveSection] = useState('list');
   const [selectedCaixaId, setSelectedCaixaId] = useState<string | null>(null);
   const [activeCurrency, setActiveCurrency] = useState('AOA');
@@ -26,6 +26,18 @@ export const CaixaModule = () => {
   const [paymentData, setPaymentData] = useState({ caixaId: '', amount: 0, description: '', type: 'outros' });
   // Reconciliation state
   const [reconData, setReconData] = useState({ caixaId: '', actualBalance: 0, description: '' });
+
+  // Custom toast notification state and helper
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  // Custom non-blocking delete confirmation state
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => {
+      setToast(null);
+    }, 5000);
+  };
 
   const handleCreateCaixa = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,17 +57,17 @@ export const CaixaModule = () => {
         initialBalance: Number(newCaixa.initialBalance),
         obs: newCaixa.obs,
         user: newCaixa.user,
-        moeda: activeCurrency,
+        moeda: newCaixa.moeda || 'AOA',
         status: 'aberto',
         activo: true
       });
 
-      alert('Caixa registado com sucesso!');
-      setNewCaixa({ name: '', codigo_caixa: '', account: '', initialBalance: 0, obs: '', responsible: '', user: '' });
+      showToast('Caixa/Banco registado com sucesso!');
+      setNewCaixa({ name: '', codigo_caixa: '', account: '', initialBalance: 0, obs: '', responsible: '', user: '', moeda: 'AOA' });
       setShowForm(false);
     } catch (error: any) {
       console.error('Error creating caixa:', error);
-      alert(`Erro ao registar caixa: ${error.message}`);
+      showToast(`Erro ao registar caixa: ${error.message}`, 'error');
     } finally {
       setIsSaving(false);
     }
@@ -78,12 +90,12 @@ export const CaixaModule = () => {
         activo: editCaixa.activo !== false
       });
       
-      alert('Caixa atualizado com sucesso!');
+      showToast('Caixa atualizado com sucesso!');
       setEditCaixa(null);
       setActiveSection('list');
     } catch (err: any) {
       console.error(err);
-      alert(`Erro ao atualizar caixa: ${err.message}`);
+      showToast(`Erro ao atualizar caixa: ${err.message}`, 'error');
     } finally {
       setIsUpdating(false);
     }
@@ -92,32 +104,33 @@ export const CaixaModule = () => {
   const handleCloseCaixa = async (id: string) => {
     try {
       await updateCaixa(id, { status: 'fechado' });
-      alert('Caixa fechado com sucesso!');
+      showToast('Caixa fechado com sucesso!');
     } catch (error: any) {
       console.error('Error closing caixa:', error);
-      alert(`Erro ao fechar caixa: ${error.message}`);
+      showToast(`Erro ao fechar caixa: ${error.message}`, 'error');
     }
   };
 
   const handleEliminarCaixa = async (id: string) => {
-    if (!confirm('Tem a certeza que deseja eliminar este caixa?')) return;
     try {
       await deleteCaixa(id);
-      alert('Caixa eliminado com sucesso');
+      showToast('Caixa eliminado com sucesso');
     } catch (error: any) {
       console.error('Error deleting caixa:', error);
-      alert(`Erro ao eliminar caixa: ${error.message}`);
+      showToast(`Erro ao eliminar caixa: ${error.message}`, 'error');
+    } finally {
+      setConfirmDeleteId(null);
     }
   };
 
   const handleTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user?.empresa_id) return;
-    if (transferData.from === transferData.to) return alert('Selecione caixas diferentes');
+    if (transferData.from === transferData.to) return showToast('Selecione caixas diferentes', 'error');
     if (transferData.amount <= 0) return;
 
     const fromCaixa = (caixas || []).find(c => c.id === transferData.from);
-    if (!fromCaixa || fromCaixa.currentBalance < transferData.amount) return alert('Saldo insuficiente no caixa de origem');
+    if (!fromCaixa || fromCaixa.currentBalance < transferData.amount) return showToast('Saldo insuficiente no caixa de origem', 'error');
 
     try {
       const toCaixa = caixas.find(c => c.id === transferData.to);
@@ -130,12 +143,12 @@ export const CaixaModule = () => {
         description: transferData.description || `Transferência para ${toCaixa?.name || 'outro caixa'}`,
       });
 
-      alert('Transferência concluída com sucesso!');
+      showToast('Transferência concluída com sucesso!');
       setTransferData({ from: '', to: '', amount: 0, description: '' });
       setActiveSection('list');
     } catch (error: any) {
       console.error('Error in transfer:', error);
-      alert(`Erro ao realizar transferência: ${error.message}`);
+      showToast(`Erro ao realizar transferência: ${error.message}`, 'error');
     }
   };
 
@@ -146,7 +159,7 @@ export const CaixaModule = () => {
 
     const caixa = (caixas || []).find(c => c.id === paymentData.caixaId);
     if (!caixa || (paymentData.type !== 'entrada' && caixa.currentBalance < paymentData.amount)) {
-        if (paymentData.type !== 'entrada') return alert('Saldo insuficiente no caixa selecionado');
+        if (paymentData.type !== 'entrada') return showToast('Saldo insuficiente no caixa selecionado', 'error');
     }
 
     try {
@@ -158,12 +171,12 @@ export const CaixaModule = () => {
         description: paymentData.description,
       });
 
-      alert('Operação registada com sucesso!');
+      showToast('Operação registada com sucesso!');
       setPaymentData({ caixaId: '', amount: 0, description: '', type: 'outros' });
       setActiveSection('list');
     } catch (error: any) {
       console.error('Error in payment:', error);
-      alert(`Erro ao realizar operação: ${error.message}`);
+      showToast(`Erro ao realizar operação: ${error.message}`, 'error');
     }
   };
 
@@ -174,7 +187,7 @@ export const CaixaModule = () => {
     if (!caixa) return;
 
     const diff = reconData.actualBalance - caixa.currentBalance;
-    if (diff === 0) return alert('O saldo já está correto');
+    if (diff === 0) return showToast('O saldo já está correto', 'error');
 
     try {
       await addMovement({
@@ -185,12 +198,12 @@ export const CaixaModule = () => {
         description: `Conciliação: ${reconData.description}`,
       });
 
-      alert('Conciliação efetuada com sucesso!');
+      showToast('Conciliação efetuada com sucesso!');
       setReconData({ caixaId: '', actualBalance: 0, description: '' });
       setActiveSection('list');
     } catch (error: any) {
       console.error('Error in reconciliation:', error);
-      alert(`Erro ao realizar conciliação: ${error.message}`);
+      showToast(`Erro ao realizar conciliação: ${error.message}`, 'error');
     }
   };
 
@@ -229,7 +242,19 @@ export const CaixaModule = () => {
             </button>
           ))}
           <button 
-            onClick={() => setShowForm(true)}
+            onClick={() => {
+              setNewCaixa({
+                name: '',
+                codigo_caixa: '',
+                account: '',
+                initialBalance: 0,
+                obs: '',
+                responsible: user?.username || user?.email || '',
+                user: user?.id || '',
+                moeda: activeCurrency
+              });
+              setShowForm(true);
+            }}
             className="bg-[#F27D26] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-[#d96a1a] transition-all shadow-lg ml-4"
           >
             <Plus size={14} /> Registar Caixa
@@ -715,10 +740,9 @@ export const CaixaModule = () => {
                       onChange={e => setEditCaixa({...editCaixa, responsible: e.target.value})}
                     />
                   </div>
-                  <div className="space-y-1.5">
+                  <div className="space-y-1.5 font-sans">
                     <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Utilizador Associado</label>
                     <select 
-                      required
                       disabled={isUpdating}
                       className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" 
                       value={editCaixa.user || ''}
@@ -829,8 +853,8 @@ export const CaixaModule = () => {
                     <select
                       disabled={isSaving}
                       className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all font-bold"
-                      value={activeCurrency}
-                      onChange={e => setActiveCurrency(e.target.value)}
+                      value={newCaixa.moeda}
+                      onChange={e => setNewCaixa({ ...newCaixa, moeda: e.target.value })}
                     >
                       <option value="AOA">AOA (Kwanza)</option>
                       <option value="USD">USD (Dólar)</option>
@@ -859,8 +883,11 @@ export const CaixaModule = () => {
                       step="0.01"
                       className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all" 
                       placeholder="0,00"
-                      value={newCaixa.initialBalance || ''}
-                      onChange={e => setNewCaixa({...newCaixa, initialBalance: parseFloat(e.target.value)})}
+                      value={isNaN(newCaixa.initialBalance) ? '' : newCaixa.initialBalance}
+                      onChange={e => {
+                        const val = parseFloat(e.target.value);
+                        setNewCaixa({...newCaixa, initialBalance: isNaN(val) ? 0 : val});
+                      }}
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -879,7 +906,6 @@ export const CaixaModule = () => {
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Selecionar utilizador associado</label>
                   <select 
-                    required
                     disabled={isSaving}
                     className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all" 
                     value={newCaixa.user}
@@ -986,7 +1012,7 @@ export const CaixaModule = () => {
                         handleCloseCaixa(showOptionsMenu.id);
                       }
                       if (opt.id === 'eliminar') {
-                        handleEliminarCaixa(showOptionsMenu.id);
+                        setConfirmDeleteId(showOptionsMenu.id);
                       }
                       setShowOptionsMenu(null);
                     }}
@@ -996,6 +1022,80 @@ export const CaixaModule = () => {
                     <span className="text-[10px] font-black uppercase tracking-widest text-center">{opt.label}</span>
                   </button>
                 ))}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Toast notifications */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div 
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.9 }}
+            className={`fixed bottom-6 right-6 z-[100] px-6 py-4 shadow-2xl flex items-center gap-3 border ${
+              toast.type === 'success' 
+                ? 'bg-[#003366] text-white border-[#004488]' 
+                : 'bg-red-650 text-white border-red-700'
+            }`}
+          >
+            <div className={`p-1 rounded-full ${toast.type === 'success' ? 'bg-[#00CCFF] text-black' : 'bg-white text-red-650'}`}>
+              {toast.type === 'success' ? (
+                <Check size={14} className="text-black" />
+              ) : (
+                <AlertCircle size={14} className="text-red-750 animate-pulse" />
+              )}
+            </div>
+            <p className="text-xs font-bold uppercase tracking-wider">{toast.message}</p>
+            <button 
+              onClick={() => setToast(null)}
+              className="ml-2 hover:opacity-80 transition-opacity"
+            >
+              <X size={14} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete confirmation modal */}
+      <AnimatePresence>
+        {confirmDeleteId && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[70]">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-white border border-zinc-200 p-8 shadow-2xl max-w-md w-full"
+            >
+              <div className="text-center space-y-4">
+                <div className="w-12 h-12 bg-red-50 text-red-600 rounded-full flex items-center justify-center mx-auto">
+                  <Trash2 size={24} />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-[#003366] uppercase tracking-wider">Confirmar Eliminação</h3>
+                  <p className="text-xs text-zinc-500 font-bold uppercase tracking-widest mt-2">
+                    Tem a certeza que deseja eliminar este caixa?
+                  </p>
+                  <p className="text-[10px] text-zinc-400 font-medium uppercase mt-1">
+                    Esta ação será removida do sistema, mas preservada de forma auditável no Supabase.
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3 mt-8">
+                <button
+                  onClick={() => setConfirmDeleteId(null)}
+                  className="bg-zinc-100 hover:bg-zinc-200 text-zinc-600 py-3 text-[10px] font-black uppercase tracking-widest transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => handleEliminarCaixa(confirmDeleteId)}
+                  className="bg-red-600 hover:bg-red-700 text-white py-3 text-[10px] font-black uppercase tracking-widest transition-all"
+                >
+                  Sim, Eliminar
+                </button>
               </div>
             </motion.div>
           </div>

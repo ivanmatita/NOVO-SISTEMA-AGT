@@ -18,15 +18,15 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
 });
 
 async function run() {
-  console.log("=== Querying existing profiles from 'perfis' ===");
+  console.log("=== Querying all caixas using Admin Client ===");
   const { data, error } = await supabaseAdmin
-    .from('perfis')
-    .select('id, nome, role, email, empresa_id');
+    .from('caixas')
+    .select('*');
 
   if (error) {
-    console.error("Error fetching profiles:", error);
+    console.error("Error fetching caixas:", error);
   } else {
-    console.log(`Found ${data?.length || 0} profiles:`);
+    console.log(`Found ${data?.length || 0} caixas:`);
     console.log(JSON.stringify(data, null, 2));
   }
 }

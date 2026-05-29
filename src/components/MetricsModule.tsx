@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Plus, X, Edit, Trash2, CheckCircle } from 'lucide-react';
+import { Settings, Plus, X, Edit, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import toast, { Toaster } from 'react-hot-toast';
 
 export interface Metric {
   id: string;
@@ -20,6 +21,7 @@ export const fetchMetrics = async (empresaId: string) => {
       .from('metrics')
       .select('*')
       .eq('empresa_id', empresaId)
+      .eq('activo', true)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -36,6 +38,7 @@ export const MetricsModule = ({ onRefreshData }: { onRefreshData?: () => void })
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   
   const [sigla, setSigla] = useState('');
   const [descricao, setDescricao] = useState('');
@@ -82,7 +85,7 @@ export const MetricsModule = ({ onRefreshData }: { onRefreshData?: () => void })
       setEditingId(metric.id);
       setSigla(metric.sigla);
       setDescricao(metric.descricao);
-      setObservacoes(metric.observacoes);
+      setObservacoes(metric.observacoes || '');
     } else {
       setEditingId(null);
       setSigla('');
@@ -94,8 +97,12 @@ export const MetricsModule = ({ onRefreshData }: { onRefreshData?: () => void })
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user?.empresa_id) return;
+    if (!user?.empresa_id) {
+        toast.error("Utilizador não autenticado ou empresa desconhecida.");
+        return;
+    }
     
+    setIsSaving(true);
     try {
       if (editingId) {
         const { error } = await supabase
@@ -109,6 +116,7 @@ export const MetricsModule = ({ onRefreshData }: { onRefreshData?: () => void })
           .eq('empresa_id', user.empresa_id);
           
         if (error) throw error;
+        toast.success("Métrica atualizada com sucesso!");
       } else {
         const { error } = await supabase
           .from('metrics')
@@ -120,36 +128,40 @@ export const MetricsModule = ({ onRefreshData }: { onRefreshData?: () => void })
           }]);
           
         if (error) throw error;
+        toast.success("Métrica registada com sucesso!");
       }
       
       setIsModalOpen(false);
-      // loadMetrics handles the sync via Realtime or manual call
       loadMetrics();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error saving metric:', err);
-      alert('Erro ao guardar métrica. Verifique se tem permissão.');
+      toast.error(`Erro ao guardar métrica: ${err.message || 'Erro desconhecido'}`);
+    } finally {
+        setIsSaving(false);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!user?.empresa_id || !confirm('Tem a certeza?')) return;
+    if (!user?.empresa_id || !confirm('Tem a certeza que deseja eliminar esta métrica?')) return;
     try {
       const { error } = await supabase
         .from('metrics')
-        .delete()
+        .update({ activo: false })
         .eq('id', id)
         .eq('empresa_id', user.empresa_id);
       
       if (error) throw error;
+      toast.success("Métrica eliminada com sucesso!");
       loadMetrics();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error deleting metric:', err);
-      alert('Erro ao eliminar métrica.');
+      toast.error(`Erro ao eliminar métrica: ${err.message || 'Erro desconhecido'}`);
     }
   };
 
   return (
     <div className="space-y-6">
+      <Toaster position="top-right" />
       <div className="flex justify-between items-center">
         <div className="space-y-1">
           <h2 className="text-2xl font-bold text-zinc-800 flex items-center gap-3">
@@ -257,8 +269,12 @@ export const MetricsModule = ({ onRefreshData }: { onRefreshData?: () => void })
                   />
                 </div>
                 
-                <button type="submit" className="w-full bg-[#003366] text-white font-bold py-3 shadow-lg uppercase text-xs tracking-widest mt-4">
-                  {editingId ? 'Atualizar Métrica' : 'Registar Métrica'}
+                <button 
+                    type="submit" 
+                    disabled={isSaving}
+                    className="w-full bg-[#003366] text-white font-bold py-3 shadow-lg uppercase text-xs tracking-widest mt-4 disabled:opacity-50"
+                >
+                  {isSaving ? 'Guardando...' : (editingId ? 'Atualizar Métrica' : 'Registar Métrica')}
                 </button>
               </form>
             </motion.div>

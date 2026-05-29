@@ -181,6 +181,51 @@ if (!supabaseAdmin) {
           ALTER TABLE public.user_activities_sessions ADD COLUMN IF NOT EXISTS empresa_id UUID;
           ALTER TABLE public.user_activities_sessions ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'ativo';
 
+          -- Ensure public.caixas table and columns exist with both sets of columns for compatibility
+          CREATE TABLE IF NOT EXISTS public.caixas (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              empresa_id UUID NOT NULL,
+              nome_caixa TEXT NOT NULL,
+              codigo_caixa TEXT,
+              moeda TEXT NOT NULL DEFAULT 'AOA',
+              status TEXT NOT NULL DEFAULT 'aberto',
+              is_deleted BOOLEAN NOT NULL DEFAULT false,
+              created_at TIMESTAMPTZ DEFAULT now(),
+              updated_at TIMESTAMPTZ DEFAULT now()
+          );
+
+          CREATE TABLE IF NOT EXISTS public.caixa_movimentacoes (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              empresa_id UUID NOT NULL,
+              caixa_id UUID NOT NULL,
+              target_caixa_id UUID,
+              type TEXT NOT NULL,
+              amount NUMERIC NOT NULL DEFAULT 0,
+              moeda TEXT DEFAULT 'AOA',
+              description TEXT,
+              date TIMESTAMPTZ DEFAULT now(),
+              created_at TIMESTAMPTZ DEFAULT now()
+          );
+
+          ALTER TABLE public.caixas ADD COLUMN IF NOT EXISTS codigo_caixa TEXT;
+          ALTER TABLE public.caixas ADD COLUMN IF NOT EXISTS account TEXT DEFAULT '';
+          ALTER TABLE public.caixas ADD COLUMN IF NOT EXISTS numero_conta TEXT DEFAULT '';
+          ALTER TABLE public.caixas ADD COLUMN IF NOT EXISTS moeda TEXT NOT NULL DEFAULT 'AOA';
+          ALTER TABLE public.caixas ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'aberto';
+          ALTER TABLE public.caixas ADD COLUMN IF NOT EXISTS valor_inicial NUMERIC DEFAULT 0;
+          ALTER TABLE public.caixas ADD COLUMN IF NOT EXISTS saldo_inicial NUMERIC DEFAULT 0;
+          ALTER TABLE public.caixas ADD COLUMN IF NOT EXISTS current_balance NUMERIC DEFAULT 0;
+          ALTER TABLE public.caixas ADD COLUMN IF NOT EXISTS saldo_actual NUMERIC DEFAULT 0;
+          ALTER TABLE public.caixas ADD COLUMN IF NOT EXISTS responsavel TEXT;
+          ALTER TABLE public.caixas ADD COLUMN IF NOT EXISTS responsavel_caixa TEXT;
+          ALTER TABLE public.caixas ADD COLUMN IF NOT EXISTS utilizador_id UUID;
+          ALTER TABLE public.caixas ADD COLUMN IF NOT EXISTS observacao TEXT;
+          ALTER TABLE public.caixas ADD COLUMN IF NOT EXISTS data_abertura TIMESTAMPTZ DEFAULT now();
+          ALTER TABLE public.caixas ADD COLUMN IF NOT EXISTS data_fechamento TIMESTAMPTZ;
+          ALTER TABLE public.caixas ADD COLUMN IF NOT EXISTS activo BOOLEAN NOT NULL DEFAULT true;
+          ALTER TABLE public.caixas ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT false;
+          ALTER TABLE public.caixas ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
+
           -- Schema Cache Reload
           NOTIFY pgrst, 'reload schema';
 
@@ -2963,12 +3008,22 @@ async function startServer() {
   });
 
   // Clients are now exclusively handled by Supabase via ClienteService.
-app.post("/api/exec-sql", express.json(), async (req, res) => {
-  try {
-    const { sql } = req.body;
-    if (!sql) return res.status(400).json({ error: "Missing SQL" });
-  } catch(e) { }
-});
+  app.post("/api/exec-sql", express.json(), async (req, res) => {
+    try {
+      const { sql } = req.body;
+      if (!sql) return res.status(400).json({ error: "Missing SQL" });
+
+      if (!supabaseAdmin) return res.status(500).json({ error: "SupabaseAdmin not configured" });
+
+      const { data, error } = await supabaseAdmin.rpc('query_exec', { query: sql });
+      if (error) return res.status(500).json({ error });
+
+      return res.json({ data });
+    } catch(e) { 
+        console.error(e);
+        res.status(500).json({ error: e });
+    }
+  });
 
   // ===================================================
   // ENDPOINTS PARA DOCUMENTOS DA EMPRESA (BYPASS RLS)

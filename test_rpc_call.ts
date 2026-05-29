@@ -18,17 +18,10 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
 });
 
 async function run() {
-  console.log("=== Querying existing profiles from 'perfis' ===");
-  const { data, error } = await supabaseAdmin
-    .from('perfis')
-    .select('id, nome, role, email, empresa_id');
-
-  if (error) {
-    console.error("Error fetching profiles:", error);
-  } else {
-    console.log(`Found ${data?.length || 0} profiles:`);
-    console.log(JSON.stringify(data, null, 2));
-  }
+  console.log("=== Testing 'get_auth_empresa_id' RPC ===");
+  const { data, error } = await supabaseAdmin.rpc('get_auth_empresa_id');
+  console.log("RPC Error:", error);
+  console.log("RPC Data:", data);
 }
 
 run();

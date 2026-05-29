@@ -17912,7 +17912,9 @@ const InvoiceList = ({
                 {activeSubTab === 'emitidos' && (
                   <button 
                     onClick={onNew}
-                    className="bg-[#2563eb] hover:bg-blue-700 text-white font-bold px-6 py-2.5 rounded-none flex items-center gap-2 transition-all shadow-sm text-sm"
+                    disabled={!canAccessSeries(user, serieFilter)}
+                    title={!canAccessSeries(user, serieFilter) ? `não tem permissão da série ${serieFilter} contacte o administrador` : ""}
+                    className={`font-bold px-6 py-2.5 rounded-none flex items-center gap-2 transition-all shadow-sm text-sm ${canAccessSeries(user, serieFilter) ? 'bg-[#2563eb] hover:bg-blue-700 text-white' : 'bg-zinc-200 text-zinc-500 cursor-not-allowed'}`}
                   >
                     <Plus size={20} className="bg-white/20 rounded-none p-0.5" />
                     {mode === 'electronic' ? 'Emitir Fatura Electrónica' : 'Nova Fatura'}
@@ -25209,6 +25211,13 @@ const ConvertDocumentModal = ({ document, onClose, onSuccess }: {
       </motion.div>
     </div>
   );
+};
+
+const canAccessSeries = (user: any, serieFilter: string) => {
+  if (!user) return false;
+  if (user.is_admin || user.role === 'admin') return true;
+  // Placeholder - currently allowing all, will be refined once database structure allows
+  return true; 
 };
 
 export default function App() {

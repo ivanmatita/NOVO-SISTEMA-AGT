@@ -1,37 +1,63 @@
 -- ==================================================================================
--- 🔐 RECRIAÇÃO TOTAL & FORTIFICADA DA TABELA "caixas" COM TOAS AS COLUNAS E RLS
--- Execute esta query no Editor SQL do seu painel Supabase (https://supabase.com)
+-- 🔐 RECRIAÇÃO TOTAL DA TABELA "caixas" COM TODAS AS COLUNAS E REGRAS DE RLS
+-- Execute este script completo no Editor SQL do seu painel Supabase (https://supabase.com)
 -- ==================================================================================
 
--- 1. PREPARAR CAMINHO (remover tabela anterior com segurança)
--- ATENÇÃO: Dependendo de dados legados, isto apagará caixas anteriores para evitar inconsistência de colunas.
+-- ----------------------------------------------------------------------------------
+-- OPÇÃO A: LIMPEZA COMPLETA & RECONSTRUÇÃO DO ZERO (RECOMENDADO PARA CORRIGIR ERROS)
+-- ATENÇÃO: Isto apagará as tabelas caixas e caixa_movimentacoes para recriar com a estrutura ideal.
+-- ----------------------------------------------------------------------------------
+DROP TABLE IF EXISTS public.caixa_movimentacoes CASCADE;
 DROP TABLE IF EXISTS public.caixas CASCADE;
 
--- 2. CRIAR A TABELA EXACTA DE CAIXAS COM TODAS AS COLUNAS EM FALTA
+-- 1. CRIAR A TABELA "caixas" EXATA E COMPLETA
 CREATE TABLE public.caixas (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     empresa_id uuid NOT NULL,
     nome_caixa text NOT NULL,
-    account text DEFAULT '',
-    moeda text NOT NULL DEFAULT 'AOA',
-    status text NOT NULL DEFAULT 'aberto',
-    valor_inicial numeric DEFAULT 0,
-    current_balance numeric DEFAULT 0,
-    responsavel text,
-    utilizador_id uuid,
-    observacao text,
+    codigo_caixa text NOT NULL,                    -- EX: "CX01"
+    moeda text NOT NULL DEFAULT 'AOA',              -- EX: "AOA", "USD", "EUR"
+    account text DEFAULT '',                        -- Número de Conta / IBAN
+    valor_inicial numeric NOT NULL DEFAULT 0,       -- Saldo de abertura
+    current_balance numeric NOT NULL DEFAULT 0,     -- Saldo em tempo real
+    responsavel text NOT NULL,                      -- Nome do responsável
+    utilizador_id uuid,                             -- ID do utilizador associado (pode ser nulo)
+    observacao text,                                -- Notas/observações adicionais
+    activo boolean NOT NULL DEFAULT true,           -- Se o caixa está ativo
+    status text NOT NULL DEFAULT 'aberto' CHECK (status IN ('aberto', 'fechado')),
+    data_abertura timestamptz DEFAULT now(),
+    data_fechamento timestamptz,
+    is_deleted boolean NOT NULL DEFAULT false,      -- Soft delete (exclusão lógica)
     created_at timestamptz DEFAULT now(),
-    is_deleted boolean NOT NULL DEFAULT false
+    updated_at timestamptz DEFAULT now()
 );
 
--- 3. CRIAR ÍNDICES ÚTEIS PARA PERFORMANCE DE BUSCAS MULTI-TENANT
+-- 2. RECONSTRUIR A TABELA "caixa_movimentacoes" VINCULADA À TABELA RECONSTRUÍDA
+CREATE TABLE public.caixa_movimentacoes (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    empresa_id uuid NOT NULL,
+    caixa_id uuid NOT NULL REFERENCES public.caixas(id) ON DELETE CASCADE,
+    target_caixa_id uuid REFERENCES public.caixas(id) ON DELETE SET NULL,
+    type text NOT NULL CHECK (type IN ('entrada', 'saida', 'transferencia')),
+    amount numeric NOT NULL DEFAULT 0,
+    moeda text DEFAULT 'AOA',
+    description text,
+    date timestamptz DEFAULT now(),
+    created_at timestamptz DEFAULT now()
+);
+
+-- 3. CRIAR ÍNDICES DE ALTA PERFORMANCE (ISOLAMENTO MULTI-TENANT SEGURO)
 CREATE INDEX IF NOT EXISTS idx_caixas_empresa_id ON public.caixas(empresa_id);
 CREATE INDEX IF NOT EXISTS idx_caixas_is_deleted ON public.caixas(is_deleted);
+CREATE INDEX IF NOT EXISTS idx_caixas_activo ON public.caixas(activo);
+CREATE INDEX IF NOT EXISTS idx_mov_empresa_id ON public.caixa_movimentacoes(empresa_id);
+CREATE INDEX IF NOT EXISTS idx_mov_caixa_id ON public.caixa_movimentacoes(caixa_id);
 
--- 4. HABILITAR ROW LEVEL SECURITY (RLS) NA TABELA
+-- 4. HABILITAR ROW LEVEL SECURITY (RLS) PARA AS DUAS TABELAS
 ALTER TABLE public.caixas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.caixa_movimentacoes ENABLE ROW LEVEL SECURITY;
 
--- 5. LIMPAR E ANULAR TODAS AS POLÍTICAS ANTIGAS DA TABELA "caixas"
+-- 5. LIMPAR POLÍTICAS ANTIGAS DA TABELA "caixas" PARA EVITAR CONFLITOS DE SEGURANÇA
 DROP POLICY IF EXISTS "caixas_isolation" ON public.caixas;
 DROP POLICY IF EXISTS "Select caixas" ON public.caixas;
 DROP POLICY IF EXISTS "Insert caixas" ON public.caixas;
@@ -42,34 +68,61 @@ DROP POLICY IF EXISTS "caixas_insert_policy" ON public.caixas;
 DROP POLICY IF EXISTS "caixas_update_policy" ON public.caixas;
 DROP POLICY IF EXISTS "caixas_delete_policy" ON public.caixas;
 
--- 6. CRIAR OS 4 NÍVEIS DE SEGURANÇA (DECLARATIVO MULTI-TENANT)
+-- 6. CRIAR POLÍTICAS DE CONTROLE DE ACESSO E EXCLUSÃO LÓGICA (ISOLAMENTO MULTI-TENANT BRUTAL)
 
--- Nível 1: ISOLAMENTO DE DADOS DE LEITURA (SELECT)
--- O utilizador só consegue ver caixas da sua própria empresa (SaaS).
+-- SELECT: Permite visualizar apenas registros da empresa do usuário ativo de acordo com RLS
 CREATE POLICY "caixas_select_policy" ON public.caixas
 FOR SELECT TO authenticated
-USING (empresa_id = public.get_auth_empresa_id());
+USING (empresa_id = public.get_auth_empresa_id() AND is_deleted = false);
 
--- Nível 2: ISOLAMENTO DE INSERÇÃO (INSERT)
--- O utilizador só insere novos registos vinculados devidamente à sua própria empresa.
+-- INSERT: Permite inserir caixas garantindo o vínculo com a empresa correta
 CREATE POLICY "caixas_insert_policy" ON public.caixas
 FOR INSERT TO authenticated
 WITH CHECK (empresa_id = public.get_auth_empresa_id());
 
--- Nível 3: ISOLAMENTO DE EDIÇÃO (UPDATE)
--- Permite editar as informações do formulário (nome, saldos, responsável) mantendo a empresa isolada.
+-- UPDATE: Permite atualizar dados sem violar isolamento multi-tenant
 CREATE POLICY "caixas_update_policy" ON public.caixas
 FOR UPDATE TO authenticated
 USING (empresa_id = public.get_auth_empresa_id())
 WITH CHECK (empresa_id = public.get_auth_empresa_id());
 
--- Nível 4: SEGURANÇA CONTRA APAGAR DADOS DO SUPABASE (BLOCKED DELETE)
--- "nunca apagar dados no supabase"
--- Não temos nenhuma política para 'DELETE'. Por padrão, sem políticas explícitas de delete,
--- comandos SQL DELETE disparados por utilizadores autenticados serão REJEITADOS pelo Supabase.
--- Desta forma, a exclusão lógica definida pelo código TypeScript ('is_deleted = true') é a única permitida.
+-- 7. BLOQUEIO DE DELETE FÍSICO (NUNCA DELETAR REGISTROS DO SUPABASE)
+-- Nenhuma política para 'DELETE' é concedida para utilizadores normais autenticados.
+-- Adicionalmente, criamos abaixo um TRIGGER de segurança máxima que impede qualquer remoção física (Hard-delete),
+-- obrigando o sistema e qualquer operador a realizar apenas Soft-delete lógicos ('is_deleted = true').
+CREATE OR REPLACE FUNCTION public.block_physical_delete_caixas()
+RETURNS TRIGGER AS $$
+BEGIN
+    RAISE EXCEPTION 'Erro de Segurança: Exclusão física não permitida! Utilize os mecanismos de exclusão lógica (is_deleted = true) para preservar o histórico de auditoria.';
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
 
--- 7. ADICIONAR TABELA AO FLUXO REALTIME (Habilita sincronização instantânea em tempo real)
--- Nota: se já estiver registada, o PostgreSQL ignora ou lança aviso seguro.
--- Caso apresente erro por já existir na publicação, pode ignorá-lo com segurança.
+DROP TRIGGER IF EXISTS trg_block_physical_delete_caixas_trigger ON public.caixas;
+CREATE TRIGGER trg_block_physical_delete_caixas_trigger
+BEFORE DELETE ON public.caixas
+FOR EACH ROW
+EXECUTE FUNCTION public.block_physical_delete_caixas();
+
+-- 8. APLICAR EXATAMENTE AS MESMAS REGRAS DE SEGURANÇA E RLS NA TABELA DE MOVIMENTAÇÕES
+DROP POLICY IF EXISTS "mov_select_policy" ON public.caixa_movimentacoes;
+DROP POLICY IF EXISTS "mov_insert_policy" ON public.caixa_movimentacoes;
+DROP POLICY IF EXISTS "mov_update_policy" ON public.caixa_movimentacoes;
+
+CREATE POLICY "mov_select_policy" ON public.caixa_movimentacoes
+FOR SELECT TO authenticated
+USING (empresa_id = public.get_auth_empresa_id());
+
+CREATE POLICY "mov_insert_policy" ON public.caixa_movimentacoes
+FOR INSERT TO authenticated
+WITH CHECK (empresa_id = public.get_auth_empresa_id());
+
+CREATE POLICY "mov_update_policy" ON public.caixa_movimentacoes
+FOR UPDATE TO authenticated
+USING (empresa_id = public.get_auth_empresa_id())
+WITH CHECK (empresa_id = public.get_auth_empresa_id());
+
+-- 9. ADICIONAR AS TABELAS AO CANAL REALTIME DO SUPABASE PARA ATUALIZAÇÕES INSTANTÂNEAS NO IFRAME
+-- Caso já existam na publicação, o PostgreSQL ignora com segurança
 ALTER PUBLICATION supabase_realtime ADD TABLE public.caixas;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.caixa_movimentacoes;

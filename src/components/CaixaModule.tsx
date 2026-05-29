@@ -7,15 +7,18 @@ import { useCaixas } from '../hooks/useCaixas';
 
 export const CaixaModule = () => {
   const { user } = useAuth();
-  const { caixas, movements, loading, createCaixa, updateCaixa, deleteCaixa, addMovement } = useCaixas();
+  const { caixas, movements, profiles, loading, createCaixa, updateCaixa, deleteCaixa, addMovement } = useCaixas();
   
   const [showForm, setShowForm] = useState(false);
-  const [newCaixa, setNewCaixa] = useState({ name: '', account: '', initialBalance: 0, obs: '', responsible: '', user: '' });
+  const [newCaixa, setNewCaixa] = useState({ name: '', codigo_caixa: '', account: '', initialBalance: 0, obs: '', responsible: '', user: '' });
   const [activeSection, setActiveSection] = useState('list');
   const [selectedCaixaId, setSelectedCaixaId] = useState<string | null>(null);
   const [activeCurrency, setActiveCurrency] = useState('AOA');
   const [showOptionsMenu, setShowOptionsMenu] = useState<Caixa | null>(null);
   const [editCaixa, setEditCaixa] = useState<Caixa | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   // Transfer form state
   const [transferData, setTransferData] = useState({ from: '', to: '', amount: 0, description: '' });
@@ -26,38 +29,53 @@ export const CaixaModule = () => {
 
   const handleCreateCaixa = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSaving) return;
     try {
+      setIsSaving(true);
       if (!user?.empresa_id) throw new Error('Empresa não identificada');
+
+      // Generate random custom unique code if not provided
+      const finalCode = newCaixa.codigo_caixa.trim() || `CX-${Math.floor(100 + Math.random() * 900)}`;
 
       await createCaixa({
         name: newCaixa.name,
+        codigo_caixa: finalCode,
         account: newCaixa.account,
         responsible: newCaixa.responsible,
         initialBalance: Number(newCaixa.initialBalance),
         obs: newCaixa.obs,
         user: newCaixa.user,
-        moeda: activeCurrency
-      } as any);
+        moeda: activeCurrency,
+        status: 'aberto',
+        activo: true
+      });
 
       alert('Caixa registado com sucesso!');
-      setNewCaixa({ name: '', account: '', initialBalance: 0, obs: '', responsible: '', user: '' });
+      setNewCaixa({ name: '', codigo_caixa: '', account: '', initialBalance: 0, obs: '', responsible: '', user: '' });
       setShowForm(false);
     } catch (error: any) {
       console.error('Error creating caixa:', error);
       alert(`Erro ao registar caixa: ${error.message}`);
+    } finally {
+      setIsSaving(false);
     }
   };
 
   const handleUpdateCaixa = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editCaixa || !user?.empresa_id) return;
+    if (!editCaixa || !user?.empresa_id || isUpdating) return;
     try {
+      setIsUpdating(true);
       await updateCaixa(editCaixa.id, {
         name: editCaixa.name,
-        account: editCaixa.account,
-        responsible: editCaixa.responsible,
-        obs: editCaixa.obs,
-        user: editCaixa.user
+        codigo_caixa: editCaixa.codigo_caixa || '',
+        account: editCaixa.account || '',
+        responsible: editCaixa.responsible || '',
+        obs: editCaixa.obs || '',
+        user: editCaixa.user || '',
+        moeda: editCaixa.moeda || 'AOA',
+        status: editCaixa.status || 'aberto',
+        activo: editCaixa.activo !== false
       });
       
       alert('Caixa atualizado com sucesso!');
@@ -66,6 +84,8 @@ export const CaixaModule = () => {
     } catch (err: any) {
       console.error(err);
       alert(`Erro ao atualizar caixa: ${err.message}`);
+    } finally {
+      setIsUpdating(false);
     }
   };
 
@@ -220,18 +240,30 @@ export const CaixaModule = () => {
       <div className="grid grid-cols-1 gap-6">
         {activeSection === 'list' && (
           <div className="space-y-4">
-            <div className="flex gap-1">
-              {['AOA', 'USD', 'EUR'].map(curr => (
-                <button
-                  key={curr}
-                  onClick={() => setActiveCurrency(curr)}
-                  className={`px-6 py-2 text-xs font-black border border-zinc-200 transition-all ${
-                    activeCurrency === curr ? 'bg-[#00CCFF] text-black' : 'bg-white text-zinc-600 hover:bg-zinc-50'
-                  }`}
-                >
-                  {curr}
-                </button>
-              ))}
+            <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
+              <div className="flex gap-1">
+                {['AOA', 'USD', 'EUR'].map(curr => (
+                  <button
+                    key={curr}
+                    onClick={() => setActiveCurrency(curr)}
+                    className={`px-6 py-2 text-xs font-black border border-zinc-200 transition-all ${
+                      activeCurrency === curr ? 'bg-[#00CCFF] text-black' : 'bg-white text-zinc-600 hover:bg-zinc-50'
+                    }`}
+                  >
+                    {curr}
+                  </button>
+                ))}
+              </div>
+              <div className="relative w-full md:w-64">
+                <input
+                  type="text"
+                  placeholder="Pesquisar por nome, código, conta..."
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  className="w-full bg-white border border-zinc-200 pl-10 pr-4 py-2 text-xs font-bold text-[#003366] focus:outline-none focus:border-[#003366]"
+                />
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+              </div>
             </div>
 
             <div className="bg-white border border-zinc-200 shadow-sm overflow-hidden">
@@ -243,46 +275,70 @@ export const CaixaModule = () => {
                   <thead>
                     <tr className="bg-zinc-100 text-zinc-600 font-black uppercase border-b border-zinc-200">
                       <th className="px-2 py-2 border-r border-zinc-200 text-center w-10">Ln</th>
-                      <th className="px-2 py-2 border-r border-zinc-200 text-center w-10">ID</th>
-                      <th className="px-4 py-2 border-r border-zinc-200 min-w-[200px]">Caixa</th>
-                      <th className="px-4 py-2 border-r border-zinc-200 min-w-[150px]">Nº Conta / IBAN</th>
-                      <th className="px-4 py-2 border-r border-zinc-200 min-w-[200px]">Responsavel</th>
-                      <th className="px-4 py-2 border-r border-zinc-200 min-w-[200px]">Obs</th>
-                      <th className="px-4 py-2 border-r border-zinc-200 text-right">Saldo Caixa</th>
+                      <th className="px-2 py-2 border-r border-zinc-200 text-center w-16">Código</th>
+                      <th className="px-4 py-2 border-r border-zinc-200 min-w-[180px]">Caixa/Banco</th>
+                      <th className="px-4 py-2 border-r border-zinc-200 text-center">Moeda</th>
+                      <th className="px-4 py-2 border-r border-zinc-200 min-w-[140px]">Nº Conta / IBAN</th>
+                      <th className="px-4 py-2 border-r border-zinc-200 min-w-[130px]">Responsável</th>
+                      <th className="px-4 py-2 border-r border-zinc-200 text-right">Saldo Inicial</th>
+                      <th className="px-4 py-2 border-r border-zinc-200 text-right">Saldo Atual</th>
+                      <th className="px-4 py-2 border-r border-zinc-200 text-center">Data Abertura</th>
                       <th className="px-2 py-2 border-r border-zinc-200 text-center">Status</th>
                       <th className="px-2 py-2 text-center">Opção</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-200">
-                    {(caixas || []).filter(c => !activeCurrency || (c as any).moeda === activeCurrency || (c as any).moeda === (activeCurrency === 'AOA' ? 'Kwanza' : activeCurrency) || (activeCurrency === 'AOA' && !(c as any).moeda)).map((caixa, idx) => (
-                      <tr key={caixa.id} className="hover:bg-zinc-50 transition-colors group">
-                        <td className="px-2 py-2 border-r border-zinc-200 text-center text-zinc-500">{idx + 1}</td>
-                        <td className="px-2 py-2 border-r border-zinc-200 text-center text-zinc-500">{String(caixa.id).slice(-1)}</td>
-                        <td className="px-4 py-2 border-r border-zinc-200 font-black text-[#003366] uppercase">{caixa.name}</td>
-                        <td className="px-4 py-2 border-r border-zinc-200 text-zinc-500 font-mono text-[9px]">{caixa.account || '---'}</td>
-                        <td className="px-4 py-2 border-r border-zinc-200 text-zinc-500">{caixa.responsible || '---'}</td>
-                        <td className="px-4 py-2 border-r border-zinc-200 text-zinc-400 italic">{caixa.obs || '---'}</td>
-                        <td className="px-4 py-2 border-r border-zinc-200 text-right font-black text-zinc-900">
-                          {caixa.currentBalance.toLocaleString('pt-PT', { minimumFractionDigits: 2 })} {activeCurrency}
-                        </td>
-                        <td className="px-2 py-2 border-r border-zinc-200 text-center">
-                          <span className={`px-2 py-0.5 text-[8px] font-black uppercase tracking-widest ${caixa.status === 'aberto' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
-                            {caixa.status || 'aberto'}
-                          </span>
-                        </td>
-                        <td className="px-2 py-2 text-center">
-                          <button 
-                            onClick={() => setShowOptionsMenu(caixa)}
-                            className="bg-[#003366] text-white px-3 py-1 text-[9px] font-black uppercase tracking-widest hover:bg-[#002244] transition-all"
-                          >
-                            Opção
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {(caixas || [])
+                      .filter(c => {
+                        const matchesCurrency = !activeCurrency || 
+                          c.moeda === activeCurrency || 
+                          (activeCurrency === 'AOA' && (!c.moeda || c.moeda === 'Kwanza'));
+                        
+                        const searchLower = searchTerm.toLowerCase();
+                        const matchesSearch = !searchTerm ||
+                          c.name.toLowerCase().includes(searchLower) ||
+                          (c.codigo_caixa || '').toLowerCase().includes(searchLower) ||
+                          (c.account || '').toLowerCase().includes(searchLower) ||
+                          (c.responsible || '').toLowerCase().includes(searchLower) ||
+                          (c.obs || '').toLowerCase().includes(searchLower);
+                          
+                        return matchesCurrency && matchesSearch;
+                      })
+                      .map((caixa, idx) => (
+                        <tr key={caixa.id} className={`hover:bg-zinc-50 transition-colors group ${!caixa.activo ? 'opacity-65' : ''}`}>
+                          <td className="px-2 py-2 border-r border-zinc-200 text-center text-zinc-500">{idx + 1}</td>
+                          <td className="px-2 py-2 border-r border-zinc-200 text-center font-bold font-mono text-zinc-600">{caixa.codigo_caixa || '---'}</td>
+                          <td className="px-4 py-2 border-r border-zinc-200 font-black text-[#003366] uppercase">{caixa.name}</td>
+                          <td className="px-4 py-2 border-r border-zinc-200 text-center font-bold text-zinc-500">{caixa.moeda || 'AOA'}</td>
+                          <td className="px-4 py-2 border-r border-zinc-200 text-zinc-500 font-mono text-[9px]">{caixa.account || '---'}</td>
+                          <td className="px-4 py-2 border-r border-zinc-200 text-zinc-500">{caixa.responsible || '---'}</td>
+                          <td className="px-4 py-2 border-r border-zinc-200 text-right text-zinc-600 font-mono">
+                            {caixa.initialBalance.toLocaleString('pt-PT', { minimumFractionDigits: 2 })} {caixa.moeda || 'AOA'}
+                          </td>
+                          <td className="px-4 py-2 border-r border-zinc-200 text-right font-black text-[#003366] font-mono">
+                            {caixa.currentBalance.toLocaleString('pt-PT', { minimumFractionDigits: 2 })} {caixa.moeda || 'AOA'}
+                          </td>
+                          <td className="px-4 py-2 border-r border-zinc-200 text-center text-zinc-500 font-mono">
+                            {caixa.data_abertura ? new Date(caixa.data_abertura).toLocaleDateString('pt-PT') : '---'}
+                          </td>
+                          <td className="px-2 py-2 border-r border-zinc-200 text-center">
+                            <span className={`px-2 py-0.5 text-[8px] font-black uppercase tracking-widest ${caixa.status === 'aberto' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+                              {caixa.status || 'aberto'}
+                            </span>
+                          </td>
+                          <td className="px-2 py-2 text-center">
+                            <button 
+                              onClick={() => setShowOptionsMenu(caixa)}
+                              className="bg-[#003366] text-white px-3 py-1 text-[9px] font-black uppercase tracking-widest hover:bg-[#002244] transition-all"
+                            >
+                              Opção
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
                     {caixas.length === 0 && (
                       <tr>
-                        <td colSpan={9} className="px-6 py-12 text-center text-zinc-400 italic">Nenhum caixa registado.</td>
+                        <td colSpan={11} className="px-6 py-12 text-center text-zinc-400 italic">Nenhum caixa registado.</td>
                       </tr>
                     )}
                   </tbody>
@@ -590,9 +646,9 @@ export const CaixaModule = () => {
 
         {activeSection === 'edit' && editCaixa && (
           <div className="max-w-2xl mx-auto w-full bg-white border border-zinc-200 shadow-sm">
-            <div className="p-4 bg-[#003366] text-white">
+            <div className="p-4 bg-[#003366] text-white font-bold uppercase tracking-widest">
               <h3 className="text-xs font-black uppercase tracking-widest flex items-center gap-2">
-                <FileText size={14} /> Editar Caixa: {editCaixa.name}
+                <FileText size={14} /> Editar Caixa/Banco: {editCaixa.name}
               </h3>
             </div>
             <form onSubmit={handleUpdateCaixa} className="p-8 space-y-6">
@@ -602,44 +658,127 @@ export const CaixaModule = () => {
                     <input 
                       type="text" 
                       required 
+                      disabled={isUpdating}
                       className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" 
                       value={editCaixa.name}
                       onChange={e => setEditCaixa({...editCaixa, name: e.target.value})}
                     />
                   </div>
                   <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Código do Caixa</label>
+                    <input 
+                      type="text" 
+                      required
+                      disabled={isUpdating}
+                      className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] font-mono" 
+                      value={editCaixa.codigo_caixa || ''}
+                      onChange={e => setEditCaixa({...editCaixa, codigo_caixa: e.target.value})}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
                     <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Número de Conta / IBAN</label>
                     <input 
                       type="text" 
+                      disabled={isUpdating}
                       className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" 
                       value={editCaixa.account || ''}
                       onChange={e => setEditCaixa({...editCaixa, account: e.target.value})}
                     />
                   </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Moeda</label>
+                    <select
+                      disabled={isUpdating}
+                      className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" 
+                      value={editCaixa.moeda || 'AOA'}
+                      onChange={e => setEditCaixa({...editCaixa, moeda: e.target.value})}
+                    >
+                      <option value="AOA">AOA (Kwanza)</option>
+                      <option value="USD">USD (Dólar)</option>
+                      <option value="EUR">EUR (Euro)</option>
+                    </select>
+                  </div>
                 </div>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Responsável</label>
                     <input 
                       type="text" 
                       required
+                      disabled={isUpdating}
                       className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" 
                       value={editCaixa.responsible || ''}
                       onChange={e => setEditCaixa({...editCaixa, responsible: e.target.value})}
                     />
                   </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Utilizador Associado</label>
+                    <select 
+                      required
+                      disabled={isUpdating}
+                      className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" 
+                      value={editCaixa.user || ''}
+                      onChange={e => {
+                        const prof = (profiles || []).find(p => p.id === e.target.value);
+                        setEditCaixa({
+                          ...editCaixa,
+                          user: e.target.value,
+                          responsible: prof ? prof.name : editCaixa.responsible
+                        });
+                      }}
+                    >
+                      <option value="">Selecione um utilizador</option>
+                      {(profiles || []).map(p => (
+                        <option key={p.id} value={p.id}>{p.name} ({p.role})</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Status / Estado Operacional</label>
+                    <select
+                      disabled={isUpdating}
+                      className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" 
+                      value={editCaixa.status || 'aberto'}
+                      onChange={e => setEditCaixa({...editCaixa, status: e.target.value as any})}
+                    >
+                      <option value="aberto">Aberto</option>
+                      <option value="fechado">Fechado</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2 pt-6">
+                    <input 
+                      type="checkbox" 
+                      id="edit_activo_box"
+                      disabled={isUpdating}
+                      checked={editCaixa.activo !== false}
+                      onChange={e => setEditCaixa({...editCaixa, activo: e.target.checked})}
+                      className="w-4 h-4 text-[#003366] border-zinc-300 focus:ring-[#003366]"
+                    />
+                    <label htmlFor="edit_activo_box" className="text-xs font-black uppercase tracking-wider text-zinc-600 cursor-pointer">Caixa Ativo / Operacional</label>
+                  </div>
+                </div>
+
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Observação</label>
                   <textarea 
+                    disabled={isUpdating}
                     className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] h-24" 
                     value={editCaixa.obs || ''}
                     onChange={e => setEditCaixa({...editCaixa, obs: e.target.value})}
                   />
                 </div>
                 <div className="flex gap-4">
-                   <button type="button" onClick={() => setActiveSection('list')} className="flex-1 bg-zinc-100 text-zinc-600 py-3 text-[10px] font-black uppercase tracking-widest">Voltar</button>
-                   <button type="submit" className="flex-2 bg-[#003366] text-white py-3 px-8 text-[10px] font-black uppercase tracking-widest shadow-lg">Guardar Alterações</button>
+                   <button type="button" disabled={isUpdating} onClick={() => setActiveSection('list')} className="flex-1 bg-zinc-100 text-zinc-600 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-zinc-200">Voltar</button>
+                   <button type="submit" disabled={isUpdating} className="flex-2 bg-[#003366] text-white py-3 px-8 text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-[#002244] transition-all">
+                     {isUpdating ? 'A Guardar...' : 'Guardar Alterações'}
+                   </button>
                 </div>
             </form>
           </div>
@@ -658,7 +797,7 @@ export const CaixaModule = () => {
             >
               <div className="absolute top-0 left-0 w-1 h-full bg-[#F27D26]" />
               <h3 className="font-black text-[#003366] mb-6 flex items-center gap-2 uppercase tracking-tight">
-                <Plus size={18} /> Registar Novo Caixa
+                <Plus size={18} /> Registar Novo Caixa/Banco
               </h3>
               <form onSubmit={handleCreateCaixa} className="space-y-5">
                 <div className="space-y-1.5">
@@ -666,16 +805,44 @@ export const CaixaModule = () => {
                   <input 
                     type="text" 
                     required 
+                    disabled={isSaving}
                     className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all" 
                     placeholder="Ex: Caixa Principal, Banco BFA..." 
                     value={newCaixa.name}
                     onChange={e => setNewCaixa({...newCaixa, name: e.target.value})}
                   />
                 </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Código do Caixa (ExCX01)</label>
+                    <input 
+                      type="text" 
+                      disabled={isSaving}
+                      className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all font-mono" 
+                      placeholder="Ex: CX-01, CX-02..." 
+                      value={newCaixa.codigo_caixa}
+                      onChange={e => setNewCaixa({...newCaixa, codigo_caixa: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Moeda</label>
+                    <select
+                      disabled={isSaving}
+                      className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all font-bold"
+                      value={activeCurrency}
+                      onChange={e => setActiveCurrency(e.target.value)}
+                    >
+                      <option value="AOA">AOA (Kwanza)</option>
+                      <option value="USD">USD (Dólar)</option>
+                      <option value="EUR">EUR (Euro)</option>
+                    </select>
+                  </div>
+                </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Número de Conta / IBAN (Se aplicável)</label>
                   <input 
                     type="text" 
+                    disabled={isSaving}
                     className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all" 
                     placeholder="Ex: AO06.0000.0000.0000.0000.0" 
                     value={newCaixa.account}
@@ -684,10 +851,11 @@ export const CaixaModule = () => {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Valor inicial</label>
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Saldo Inicial / Abertura</label>
                     <input 
                       type="number" 
                       required 
+                      disabled={isSaving}
                       step="0.01"
                       className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all" 
                       placeholder="0,00"
@@ -695,37 +863,45 @@ export const CaixaModule = () => {
                       onChange={e => setNewCaixa({...newCaixa, initialBalance: parseFloat(e.target.value)})}
                     />
                   </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Responsável</label>
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Responsável Caixa</label>
                     <input 
                       type="text" 
                       required
+                      disabled={isSaving}
                       className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all" 
                       placeholder="Nome do responsável" 
                       value={newCaixa.responsible}
                       onChange={e => setNewCaixa({...newCaixa, responsible: e.target.value})}
                     />
                   </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Selecionar utilizador</label>
-                    <select 
-                      required
-                      className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all" 
-                      value={newCaixa.user}
-                      onChange={e => setNewCaixa({...newCaixa, user: e.target.value})}
-                    >
-                      <option value="">Selecione um utilizador</option>
-                      <option value="admin">Administrador</option>
-                      <option value="financeiro">Financeiro</option>
-                      <option value="rh">Recursos Humanos</option>
-                    </select>
-                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Selecionar utilizador associado</label>
+                  <select 
+                    required
+                    disabled={isSaving}
+                    className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] transition-all" 
+                    value={newCaixa.user}
+                    onChange={e => {
+                      const prof = (profiles || []).find(p => p.id === e.target.value);
+                      setNewCaixa({
+                        ...newCaixa,
+                        user: e.target.value,
+                        responsible: prof ? prof.name : newCaixa.responsible
+                      });
+                    }}
+                  >
+                    <option value="">Selecione um utilizador de sistema</option>
+                    {(profiles || []).map(p => (
+                      <option key={p.id} value={p.id}>{p.name} ({p.role})</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Observação</label>
                   <textarea 
+                    disabled={isSaving}
                     className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366] h-24 transition-all" 
                     placeholder="Notas adicionais..."
                     value={newCaixa.obs}
@@ -733,8 +909,10 @@ export const CaixaModule = () => {
                   />
                 </div>
                 <div className="pt-4 flex gap-3">
-                  <button type="button" onClick={() => setShowForm(false)} className="flex-1 bg-zinc-100 text-zinc-600 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-zinc-200 transition-all">Cancelar</button>
-                  <button type="submit" className="flex-2 bg-[#003366] text-white py-3 px-8 text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-[#002244] transition-all">Registar</button>
+                  <button type="button" disabled={isSaving} onClick={() => setShowForm(false)} className="flex-1 bg-zinc-100 text-zinc-600 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-zinc-200 transition-all">Cancelar</button>
+                  <button type="submit" disabled={isSaving} className="flex-2 bg-[#003366] text-white py-3 px-8 text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-[#002244] transition-all">
+                    {isSaving ? 'A Registar...' : 'Registar'}
+                  </button>
                 </div>
               </form>
             </motion.div>

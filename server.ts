@@ -299,6 +299,28 @@ if (!supabaseAdmin) {
                 updated_at TIMESTAMPTZ DEFAULT now()
             );
 
+            CREATE TABLE IF NOT EXISTS public.fornecedores (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                empresa_id UUID NOT NULL,
+                nome TEXT NOT NULL,
+                nif TEXT,
+                email TEXT,
+                telefone TEXT,
+                morada TEXT,
+                localidade TEXT,
+                municipio TEXT,
+                provincia TEXT,
+                pais TEXT DEFAULT 'Angola',
+                codigo_postal TEXT,
+                sigla_banco TEXT,
+                iban TEXT,
+                tipo_fornecedor TEXT DEFAULT 'Nacional',
+                webpage TEXT,
+                activo BOOLEAN DEFAULT true,
+                created_at TIMESTAMPTZ DEFAULT now(),
+                updated_at TIMESTAMPTZ DEFAULT now()
+            );
+
             -- 2. DROP ALL LEGACY POLICIES
             FOR pol IN 
               SELECT policyname, tablename 
@@ -308,6 +330,12 @@ if (!supabaseAdmin) {
             LOOP
               EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', pol.policyname, pol.tablename);
             END LOOP;
+            
+            -- Enable RLS for newly added table
+            ALTER TABLE IF EXISTS public.fornecedores ENABLE ROW LEVEL SECURITY;
+            EXECUTE 'CREATE POLICY "company_isolation_fornecedores" ON public.fornecedores FOR ALL TO authenticated 
+              USING (public.is_system_admin() OR empresa_id = public.get_user_company_id())
+              WITH CHECK (public.is_system_admin() OR empresa_id = public.get_user_company_id())';
             
             -- 3. CORE ISOLATION POLICIES WITH COLUMN CHECKS
             IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = ''public'' AND table_name = ''system_users'' AND column_name = ''company_id'') THEN
@@ -2669,6 +2697,141 @@ async function startServer() {
     }
   });
 
+  // Secure Suppliers (Fornecedores) Endpoints
+  app.get("/api/secure-fornecedores", async (req, res) => {
+    const ctx = await getAuthUserContext(req);
+    if (!ctx) return res.status(401).json({ error: "Sessão expirada ou inválida. Por favor volte a iniciar sessão." });
+    if (ctx.isBlocked) return res.status(403).json({ error: "Conta suspensa ou revogada pelo administrador." });
+
+    try {
+      if (!supabaseAdmin) return res.status(500).json({ error: "Database admin client is not initialized on server." });
+      
+      console.log(`[SERVER-FORNECEDORES] Buscando fornecedores para a empresa: ${ctx.empresaId}`);
+      const { data, error } = await supabaseAdmin
+        .from('fornecedores')
+        .select('*')
+        .eq('empresa_id', ctx.empresaId)
+        .order('nome', { ascending: true });
+
+      if (error) {
+        console.error("[SERVER-FORNECEDORES] Erro ao carregar fornecedores:", error);
+        return res.status(500).json({ error: error.message });
+      }
+      return res.json(data || []);
+    } catch (err: any) {
+      console.error("[SERVER-FORNECEDORES] Erro na busca de fornecedores:", err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/secure-fornecedores", express.json(), async (req, res) => {
+    const ctx = await getAuthUserContext(req);
+    if (!ctx) return res.status(401).json({ error: "Sessão expirada ou inválida. Por favor volte a iniciar sessão." });
+    if (ctx.isBlocked) return res.status(403).json({ error: "Conta suspensa ou revogada." });
+
+    try {
+      if (!supabaseAdmin) return res.status(500).json({ error: "Database admin client is not initialized on server." });
+
+      const supplierData = req.body;
+      const payload = {
+        ...supplierData,
+        empresa_id: ctx.empresaId,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        activo: supplierData.activo !== undefined ? supplierData.activo : true
+      };
+      
+      delete payload.id;
+
+      console.log(`[SERVER-FORNECEDORES] Criando fornecedor "${payload.nome}" na empresa "${ctx.empresaId}"`);
+
+      const { data, error } = await supabaseAdmin
+        .from('fornecedores')
+        .insert([payload])
+        .select()
+        .single();
+
+      if (error) {
+        console.error("[SERVER-FORNECEDORES] Erro no INSERT de fornecedor:", error);
+        return res.status(500).json({ error: error.message });
+      }
+      return res.status(201).json(data);
+    } catch (err: any) {
+      console.error("[SERVER-FORNECEDORES] Erro ao guardar fornecedor:", err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.put("/api/secure-fornecedores/:id", express.json(), async (req, res) => {
+    const ctx = await getAuthUserContext(req);
+    if (!ctx) return res.status(401).json({ error: "Sessão expirada ou inválida. Por favor volte a iniciar sessão." });
+    if (ctx.isBlocked) return res.status(403).json({ error: "Conta suspensa ou revogada." });
+
+    const supplierId = req.params.id;
+
+    try {
+      if (!supabaseAdmin) return res.status(500).json({ error: "Database admin client is not initialized on server." });
+
+      const updateData = req.body;
+      delete updateData.id;
+      delete updateData.empresa_id;
+      delete updateData.created_at;
+      
+      const payload = {
+        ...updateData,
+        updated_at: new Date().toISOString()
+      };
+
+      console.log(`[SERVER-FORNECEDORES] Atualizando fornecedor ID "${supplierId}" na empresa "${ctx.empresaId}"`);
+
+      const { data, error } = await supabaseAdmin
+        .from('fornecedores')
+        .update(payload)
+        .eq('id', supplierId)
+        .eq('empresa_id', ctx.empresaId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error("[SERVER-FORNECEDORES] Erro no UPDATE de fornecedor:", error);
+        return res.status(500).json({ error: error.message });
+      }
+      return res.json(data);
+    } catch (err: any) {
+      console.error("[SERVER-FORNECEDORES] Erro ao atualizar fornecedor:", err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/secure-fornecedores/:id", async (req, res) => {
+    const ctx = await getAuthUserContext(req);
+    if (!ctx) return res.status(401).json({ error: "Sessão expirada ou inválida. Por favor volte a iniciar sessão." });
+    if (ctx.isBlocked) return res.status(403).json({ error: "Conta suspensa ou revogada." });
+
+    const supplierId = req.params.id;
+
+    try {
+      if (!supabaseAdmin) return res.status(500).json({ error: "Database admin client is not initialized on server." });
+
+      console.log(`[SERVER-FORNECEDORES] Removendo fornecedor ID "${supplierId}" na empresa "${ctx.empresaId}"`);
+
+      const { error } = await supabaseAdmin
+        .from('fornecedores')
+        .delete()
+        .eq('id', supplierId)
+        .eq('empresa_id', ctx.empresaId);
+
+      if (error) {
+        console.error("[SERVER-FORNECEDORES] Erro no DELETE de fornecedor:", error);
+        return res.status(500).json({ error: error.message });
+      }
+      return res.json({ success: true });
+    } catch (err: any) {
+      console.error("[SERVER-FORNECEDORES] Erro ao remover fornecedor:", err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
   // Secure Locais de Trabalho Endpoints with server-side company isolation
   app.get("/api/secure-locais-trabalho", async (req, res) => {
     const ctx = await getAuthUserContext(req);
@@ -4375,8 +4538,44 @@ app.post("/api/exec-sql", express.json(), async (req, res) => {
   });
 
   // Company info
-  app.get("/api/company/:id", (req, res) => {
-    const comp = companies.find(c => c.id === req.params.id) || companies[0];
+  app.get("/api/company/:id", async (req, res) => {
+    const id = req.params.id;
+    if (supabaseAdmin) {
+      try {
+        const { data: dbComp } = await supabaseAdmin
+          .from('empresas')
+          .select('*')
+          .eq('id', id)
+          .maybeSingle();
+
+        const { data: configComp } = await supabaseAdmin
+          .from('config_empresa')
+          .select('*')
+          .eq('empresa_id', id)
+          .maybeSingle();
+
+        if (dbComp || configComp) {
+          const merged = {
+            id: dbComp?.id || configComp?.id || id,
+            empresa_id: id,
+            nome_empresa: dbComp?.nome_empresa || configComp?.nome_empresa || '',
+            nif: dbComp?.nif || configComp?.nif || '',
+            email: dbComp?.email || configComp?.email || '',
+            telefone: dbComp?.telefone || configComp?.telefone || '',
+            endereco: dbComp?.endereco || dbComp?.localizacao || configComp?.endereco || '',
+            provincia: dbComp?.provincia || configComp?.provincia || '',
+            municipio: dbComp?.municipio || configComp?.municipio || '',
+            logo_url: dbComp?.logo_url || configComp?.logo_url || '',
+            footer_image_url: dbComp?.footer_image_url || configComp?.footer_image_url || 'Processado por computador'
+          };
+          return res.json(merged);
+        }
+      } catch (err) {
+        console.error("[SERVER] Error fetching company from Supabase in /api/company/:id:", err);
+      }
+    }
+
+    const comp = companies.find(c => c.id === id) || companies[0];
     res.json(comp);
   });
   app.put("/api/company/:id", (req, res) => {
@@ -4963,6 +5162,186 @@ app.post("/api/exec-sql", express.json(), async (req, res) => {
   });
 
   // --- Configuração da Empresa ---
+  // ===================================================
+  // CRM SUPER ADMIN ENDPOINTS (Restricted to IMATEC)
+  // ===================================================
+
+  // Helper to check if the company is IMATEC
+  const isSuperAdmin = async (req: express.Request) => {
+    const userCtx = await getAuthUserContext(req);
+    if (!userCtx?.empresaId) return false;
+    
+    if (!supabaseAdmin) return false;
+
+    // Check config_empresa first
+    const { data: config } = await supabaseAdmin
+      .from('config_empresa')
+      .select('nif')
+      .eq('empresa_id', userCtx.empresaId)
+      .maybeSingle();
+
+    let nif = config?.nif;
+
+    // If not found, check empresas
+    if (!nif) {
+      const { data: empresa } = await supabaseAdmin
+        .from('empresas')
+        .select('nif')
+        .eq('id', userCtx.empresaId)
+        .maybeSingle();
+      nif = empresa?.nif;
+    }
+
+    if (!nif) return false;
+    
+    const cleanNif = String(nif).replace(/\D/g, '').trim();
+    return cleanNif === '5002123665';
+  };
+
+  app.get("/api/crm/stats", async (req, res) => {
+    try {
+      if (!await isSuperAdmin(req)) return res.status(403).json({ error: "Acesso negado. Apenas IMATEC ANGOLA pode aceder ao CRM." });
+      if (!supabaseAdmin) return res.status(500).json({ error: "Supabase Admin não disponível" });
+
+      const { data: companies } = await supabaseAdmin.from('config_empresa').select('plano, valor_licenca');
+      const { data: licenses } = await supabaseAdmin.from('licencas_empresas').select('status_licenca, valor_licenca');
+      const { data: usersCount } = await supabaseAdmin.from('perfis').select('id', { count: 'exact' });
+
+      const stats = {
+        total: companies?.length || 0,
+        active: licenses?.filter(l => l.status_licenca === 'activa' || l.status_licenca === 'active').length || 0,
+        vencidas: licenses?.filter(l => l.status_licenca === 'vencida').length || 0,
+        pendentes: licenses?.filter(l => l.status_licenca === 'pendente').length || 0,
+        bloqueadas: licenses?.filter(l => l.status_licenca === 'bloqueada').length || 0,
+        receitaTotal: licenses?.reduce((acc, curr) => acc + (Number(curr.valor_licenca) || 0), 0) || 0,
+        usuariosTotais: usersCount?.length || 0
+      };
+
+      res.json(stats);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/crm/companies", async (req, res) => {
+    try {
+      if (!await isSuperAdmin(req)) return res.status(403).json({ error: "Acesso negado." });
+      if (!supabaseAdmin) return res.status(500).json({ error: "Supabase Admin não disponível" });
+
+      // Fetch from 'empresas' as the source of truth for ALL registered companies
+      const { data: companiesList } = await supabaseAdmin.from('empresas').select('*');
+      const { data: configEmpresas } = await supabaseAdmin.from('config_empresa').select('*');
+      const { data: licenses } = await supabaseAdmin.from('licencas_empresas').select('*');
+      const { data: profiles } = await supabaseAdmin.from('perfis').select('empresa_id');
+
+      const combined = (companiesList || []).map(emp => {
+        const lic = licenses?.find(l => String(l.empresa_id) === String(emp.id));
+        const config = configEmpresas?.find(c => String(c.empresa_id) === String(emp.id));
+        const companyUsers = profiles?.filter(p => String(p.empresa_id) === String(emp.id)).length || 0;
+        
+        return {
+          ...emp,
+          empresa_id: emp.id, // Ensure consistent ID field
+          status_licenca: lic?.status_licenca || config?.status_licenca || 'active',
+          data_fim: lic?.data_fim || config?.updated_at || emp.created_at,
+          plano: lic?.plano || config?.plano || 'Standard',
+          usuarios_count: companyUsers
+        };
+      });
+
+      res.json(combined);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/crm/users", async (req, res) => {
+    try {
+      if (!await isSuperAdmin(req)) return res.status(403).json({ error: "Acesso negado." });
+      if (!supabaseAdmin) return res.status(500).json({ error: "Supabase Admin não disponível" });
+
+      const { data: profiles, error } = await supabaseAdmin
+        .from('perfis')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+         console.warn("Error fetching profiles:", error.message);
+         return res.json([]);
+      }
+      
+      const { data: companiesList } = await supabaseAdmin.from('empresas').select('id, nome_empresa, nif');
+      
+      const hydratedProfiles = (profiles || []).map(p => {
+         const emp = companiesList?.find(c => String(c.id) === String(p.empresa_id));
+         return {
+            ...p,
+            empresas: emp ? { nome_empresa: emp.nome_empresa, nif: emp.nif } : null
+         }
+      });
+
+      res.json(hydratedProfiles);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/crm/logs", async (req, res) => {
+    try {
+      if (!await isSuperAdmin(req)) return res.status(403).json({ error: "Acesso negado." });
+      if (!supabaseAdmin) return res.status(500).json({ error: "Supabase Admin não disponível" });
+
+      const { data: logs, error } = await supabaseAdmin
+        .from('logs_actividade')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(200);
+
+      if (error) {
+         console.warn("Table logs_actividade might not exist", error.message);
+         return res.json([]);
+      }
+      res.json(logs || []);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/crm/companies/:id/toggle-status", async (req, res) => {
+    try {
+      if (!await isSuperAdmin(req)) return res.status(403).json({ error: "Acesso negado." });
+      if (!supabaseAdmin) return res.status(500).json({ error: "Supabase Admin não disponível" });
+
+      const { id } = req.params;
+      const { status } = req.body;
+
+      // Update both config_empresa and licencas_empresas just in case
+      await supabaseAdmin
+        .from('config_empresa')
+        .update({ status_licenca: status, updated_at: new Date().toISOString() })
+        .eq('empresa_id', id);
+
+      const { error } = await supabaseAdmin
+        .from('licencas_empresas')
+        .update({ status_licenca: status, updated_at: new Date().toISOString() })
+        .eq('empresa_id', id);
+
+      if (error) {
+        // If it doesn't exist in licencas_empresas, insert it
+        await supabaseAdmin.from('licencas_empresas').insert({
+          empresa_id: id,
+          status_licenca: status,
+          created_at: new Date().toISOString()
+        });
+      }
+      
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Endpoints do Config Empresa - Strictly synchronized with 'empresas' table
   app.get("/api/config-empresa", async (req, res) => {
     const authCtx = await getAuthUserContext(req);
     if (!authCtx) return res.status(401).json({ error: "Sessão inválida" });
@@ -4971,28 +5350,36 @@ app.post("/api/exec-sql", express.json(), async (req, res) => {
     if (!empresa_id) return res.status(400).json({ error: "ID da empresa não encontrado no perfil" });
 
     if (supabaseAdmin) {
-      const { data, error } = await supabaseAdmin
-        .from('config_empresa')
-        .select('*')
-        .eq('empresa_id', empresa_id)
-        .maybeSingle();
-      
-      if (error) return res.status(500).json({ error: error.message });
-      if (data) return res.json(data);
-      
-      // Se não existir, tenta buscar da tabela empresas (registo inicial)
-      const { data: companyBasic } = await supabaseAdmin
+      // 1. Get official registry from 'empresas'
+      const { data: companyRegistry } = await supabaseAdmin
         .from('empresas')
         .select('*')
         .eq('id', empresa_id)
         .maybeSingle();
 
-      return res.json({ 
-        empresa_id, 
-        nome_empresa: companyBasic?.nome_empresa || '',
-        nif: companyBasic?.nif || '',
-        email: companyBasic?.email || ''
-      });
+      // 2. Get settings from 'config_empresa'
+      const { data: configSettings } = await supabaseAdmin
+        .from('config_empresa')
+        .select('*')
+        .eq('empresa_id', empresa_id)
+        .maybeSingle();
+
+      // Ensure data is merged, prioritizing the core 'empresas' table for "real" info
+      const consolidated = {
+        ...configSettings, // Start with settings
+        id: configSettings?.id || companyRegistry?.id, // Use config PK if available, else registry
+        empresa_id: empresa_id,
+        // Override with registry data to ensure it's "real" and matches Supabase table
+        nome_empresa: companyRegistry?.nome_empresa || configSettings?.nome_empresa || '',
+        nif: companyRegistry?.nif || configSettings?.nif || '',
+        email: companyRegistry?.email || configSettings?.email || '',
+        telefone: companyRegistry?.telefone || configSettings?.telefone || '',
+        endereco: companyRegistry?.endereco || companyRegistry?.localizacao || configSettings?.endereco || '',
+        provincia: companyRegistry?.provincia || configSettings?.provincia || '',
+        municipio: companyRegistry?.municipio || configSettings?.municipio || ''
+      };
+
+      return res.json(consolidated);
     }
     res.json({ empresa_id });
   });

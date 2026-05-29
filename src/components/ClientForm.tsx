@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Search, X, Check, AlertCircle, ShoppingBag } from 'lucide-react';
+import { Users, Search, X, Check, AlertCircle, ShoppingBag, Landmark, CreditCard, Activity } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { clienteService, Cliente } from '../services/clienteService';
+import { fornecedorService, Fornecedor } from '../services/fornecedorService';
 
 interface ClientFormProps {
   initialData?: any;
@@ -28,7 +29,12 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
     telefone: '',
     webpage: '',
     tipo_cliente: 'normal',
-    saldo_inicial: 0
+    saldo_inicial: 0,
+    // Supplier specific fields
+    sigla_banco: '',
+    iban: '',
+    tipo_fornecedor: 'Nacional',
+    activo: true
   });
 
   useEffect(() => {
@@ -37,7 +43,7 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
         name: initialData.name || initialData.nome || '',
         email: initialData.email || '',
         contribuinte: initialData.contribuinte || initialData.nif || '',
-        morada: initialData.morada || initialData.endereco || '',
+        morada: initialData.morada || initialData.endereco || initialData.morada || '',
         localidade: initialData.localidade || '',
         codigo_postal: initialData.codigo_postal || '',
         provincia: initialData.provincia || '',
@@ -46,7 +52,11 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
         telefone: initialData.telefone || '',
         webpage: initialData.webpage || '',
         tipo_cliente: initialData.tipo_cliente || 'normal',
-        saldo_inicial: initialData.saldo_inicial || 0
+        saldo_inicial: initialData.saldo_inicial || 0,
+        sigla_banco: initialData.sigla_banco || '',
+        iban: initialData.iban || '',
+        tipo_fornecedor: initialData.tipo_fornecedor || 'Nacional',
+        activo: initialData.activo !== undefined ? initialData.activo : true
       });
     }
   }, [initialData]);
@@ -66,32 +76,59 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
 
     try {
       if (!user?.empresa_id) {
-        throw new Error("Sessão inválida ou empresa não associada. Por favor, faça login novamente.");
+        throw new Error("Sessão inválida ou empresa não associada.");
       }
 
-      const clientData: Cliente = {
-        nome: formData.name,
-        email: formData.email,
-        telefone: formData.telefone,
-        endereco: formData.morada,
-        empresa_id: user.empresa_id,
-        contribuinte: formData.contribuinte,
-        nif: formData.contribuinte,
-        localidade: formData.localidade,
-        codigo_postal: formData.codigo_postal,
-        provincia: formData.provincia,
-        municipio: formData.municipio,
-        pais: formData.pais,
-        webpage: formData.webpage,
-        tipo_cliente: formData.tipo_cliente,
-        saldo_inicial: formData.saldo_inicial,
-        tipo_entidade: isSupplier ? 'Fornecedor' : 'Cliente'
-      };
+      if (isSupplier) {
+        const supplierData: any = {
+          nome: formData.name,
+          email: formData.email,
+          telefone: formData.telefone,
+          morada: formData.morada,
+          empresa_id: user.empresa_id,
+          nif: formData.contribuinte,
+          localidade: formData.localidade,
+          codigo_postal: formData.codigo_postal,
+          provincia: formData.provincia,
+          municipio: formData.municipio,
+          pais: formData.pais,
+          webpage: formData.webpage,
+          sigla_banco: formData.sigla_banco,
+          iban: formData.iban,
+          tipo_fornecedor: formData.tipo_fornecedor,
+          activo: formData.activo
+        };
 
-      if (initialData?.id) {
-        await clienteService.updateCliente(initialData.id, clientData);
+        if (initialData?.id) {
+          await fornecedorService.updateFornecedor(initialData.id, supplierData);
+        } else {
+          await fornecedorService.createFornecedor(supplierData);
+        }
       } else {
-        await clienteService.createCliente(clientData);
+        const clientData: Cliente = {
+          nome: formData.name,
+          email: formData.email,
+          telefone: formData.telefone,
+          endereco: formData.morada,
+          empresa_id: user.empresa_id,
+          contribuinte: formData.contribuinte,
+          nif: formData.contribuinte,
+          localidade: formData.localidade,
+          codigo_postal: formData.codigo_postal,
+          provincia: formData.provincia,
+          municipio: formData.municipio,
+          pais: formData.pais,
+          webpage: formData.webpage,
+          tipo_cliente: formData.tipo_cliente,
+          saldo_inicial: formData.saldo_inicial,
+          tipo_entidade: 'Cliente'
+        };
+
+        if (initialData?.id) {
+          await clienteService.updateCliente(initialData.id, clientData);
+        } else {
+          await clienteService.createCliente(clientData);
+        }
       }
 
       setMessage({ type: 'success', text: isSupplier ? 'Fornecedor guardado com sucesso!' : 'Cliente guardado com sucesso!' });
@@ -138,7 +175,7 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
 
         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Contribuinte (NIF) *</label>
+            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Identificação (NIF) *</label>
             <div className="flex gap-2">
               <input 
                 type="text" 
@@ -163,13 +200,13 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
                 }}
                 className="bg-zinc-100 hover:bg-zinc-200 text-[#003366] px-3 py-2 text-[10px] font-black uppercase tracking-widest transition-all border border-zinc-200 flex items-center gap-1 shadow-sm active:scale-95"
               >
-                <Search size={14} /> Pesquisar
+                <Search size={14} /> NIF
               </button>
             </div>
           </div>
 
           <div className="space-y-1 md:col-span-2">
-            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Nome Completo / Designação Social *</label>
+            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Nome do {isSupplier ? 'Fornecedor' : 'Cliente'} *</label>
             <input 
               type="text" 
               name="name"
@@ -182,31 +219,31 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
           </div>
 
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Email</label>
+            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Email institucional</label>
             <input 
               type="email" 
               name="email"
               value={formData.email} 
               onChange={handleChange} 
               className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" 
-              placeholder="cliente@exemplo.com" 
+              placeholder="comercial@exemplo.com" 
             />
           </div>
 
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Telefone</label>
+            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Contacto Telefónico</label>
             <input 
               type="text" 
               name="telefone"
               value={formData.telefone} 
               onChange={handleChange} 
-              className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" 
-              placeholder="+244 9... / 222..." 
+              className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-mono" 
+              placeholder="+244 9..." 
             />
           </div>
 
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">País</label>
+            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">País de Origem</label>
             <select 
               name="pais"
               value={formData.pais} 
@@ -216,20 +253,7 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
               <option value="Angola">Angola</option>
               <option value="Portugal">Portugal</option>
               <option value="Brasil">Brasil</option>
-              <option value="Moçambique">Moçambique</option>
-              <option value="Cabo Verde">Cabo Verde</option>
-              <option value="Guiné-Bissau">Guiné-Bissau</option>
-              <option value="São Tomé e Príncipe">São Tomé e Príncipe</option>
-              <option value="África do Sul">África do Sul</option>
-              <option value="Namíbia">Namíbia</option>
-              <option value="Zâmbia">Zâmbia</option>
-              <option value="RDC">República Democrática do Congo</option>
-              <option value="China">China</option>
-              <option value="EUA">Estados Unidos</option>
-              <option value="França">França</option>
-              <option value="Reino Unido">Reino Unido</option>
-              <option value="Alemanha">Alemanha</option>
-              <option value="Espanha">Espanha</option>
+              <option value="Outro">Outro</option>
             </select>
           </div>
 
@@ -270,7 +294,7 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
           </div>
 
           <div className="space-y-1 md:col-span-2">
-            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Morada Principal</label>
+            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Morada / Sede Social</label>
             <input 
               type="text" 
               name="morada"
@@ -288,37 +312,92 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
               name="codigo_postal"
               value={formData.codigo_postal} 
               onChange={handleChange} 
-              className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm italic" 
+              className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" 
               placeholder="0000-000" 
             />
           </div>
 
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Página Web (URL)</label>
-            <input 
-              type="url" 
-              name="webpage"
-              value={formData.webpage} 
-              onChange={handleChange} 
-              className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm" 
-              placeholder="https://www.exemplo.com" 
-            />
+          <div className="space-y-6 md:col-span-3 border-t border-zinc-100 pt-6 mt-6">
+             <div className="flex items-center gap-3 mb-4">
+                <Landmark size={20} className="text-[#003366]" />
+                <h4 className="text-sm font-black text-[#003366] uppercase tracking-widest">Informações Financeiras</h4>
+             </div>
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                    <Activity size={12} /> Sigla / Banco
+                  </label>
+                  <input 
+                    type="text" 
+                    name="sigla_banco"
+                    value={formData.sigla_banco} 
+                    onChange={handleChange} 
+                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold" 
+                    placeholder="Ex: BFA, BAI, BCI..." 
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                    <CreditCard size={12} /> IBAN Bancário
+                  </label>
+                  <input 
+                    type="text" 
+                    name="iban"
+                    value={formData.iban} 
+                    onChange={handleChange} 
+                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-mono" 
+                    placeholder="AO06 0000..." 
+                  />
+                </div>
+             </div>
           </div>
 
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tipo de Cliente (SFT)</label>
+            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tipo de {isSupplier ? 'Fornecedor' : 'Cliente'}</label>
             <select 
-              name="tipo_cliente"
-              value={formData.tipo_cliente} 
+              name={isSupplier ? "tipo_fornecedor" : "tipo_cliente"}
+              value={isSupplier ? formData.tipo_fornecedor : formData.tipo_cliente} 
               onChange={handleChange} 
-              required 
               className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold uppercase"
             >
-              <option value="normal">Cliente Normal</option>
-              <option value="grupo_nacional">Cliente Grupo Nacional</option>
-              <option value="subsidiarias">Cliente Subsidiárias</option>
-              <option value="associados">Cliente Associados</option>
+              {isSupplier ? (
+                <>
+                  <option value="Nacional">Fornecedor Nacional</option>
+                  <option value="Estrangeiro">Fornecedor Estrangeiro</option>
+                  <option value="Serviços">Prestador de Serviços</option>
+                </>
+              ) : (
+                <>
+                  <option value="normal">Cliente Normal</option>
+                  <option value="grupo_nacional">Cliente Grupo Nacional</option>
+                </>
+              )}
             </select>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Estado de Actividade</label>
+            <select 
+              name="activo"
+              value={formData.activo ? 'true' : 'false'} 
+              onChange={(e) => setFormData(prev => ({ ...prev, activo: e.target.value === 'true' }))} 
+              className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold uppercase"
+            >
+              <option value="true">Activo / Operacional</option>
+              <option value="false">Inactivo / Suspenso</option>
+            </select>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Saldo Inicial / Pendente</label>
+            <input 
+              type="number" 
+              name="saldo_inicial"
+              value={formData.saldo_inicial} 
+              onChange={handleChange} 
+              className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold text-right" 
+              placeholder="0,00" 
+            />
           </div>
         </form>
       </div>
@@ -329,14 +408,14 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
           onClick={onBack} 
           className="px-8 py-2.5 text-xs font-black uppercase tracking-widest text-zinc-500 hover:text-zinc-800 transition-all active:scale-95"
         >
-          Anular Operação
+          Cancelar
         </button>
         <button 
           onClick={handleSubmit}
           disabled={loading || authLoading}
           className="bg-[#003366] text-white px-10 py-2.5 text-xs font-black uppercase tracking-[0.2em] shadow-xl hover:bg-[#002244] transition-all disabled:opacity-50 active:scale-95"
         >
-          {loading ? 'Processando...' : authLoading ? 'Verificando...' : initialData ? 'Validar Alterações' : (isSupplier ? 'Submeter Novo Fornecedor' : 'Submeter Novo Cliente')}
+          {loading ? 'A processar...' : initialData ? 'Confirmar Alterações' : 'Guardar Registo'}
         </button>
       </div>
     </div>

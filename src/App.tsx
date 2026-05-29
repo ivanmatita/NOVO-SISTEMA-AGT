@@ -22,6 +22,7 @@ import {
   BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area 
 } from 'recharts';
 import { professionService } from './services/professionService';
+import { fornecedorService } from './services/fornecedorService';
 import { useAuth } from './contexts/AuthContext';
 import { useMedia } from './hooks/useMedia';
 import { useCaixas } from './hooks/useCaixas';
@@ -78,6 +79,7 @@ import {
   X,
   Check,
   AlertCircle,
+  AlertTriangle,
   ShieldAlert,
   Copy,
   LogOut,
@@ -117,7 +119,6 @@ import {
   ArrowRightLeft,
   ArrowDownCircle,
   UserCheck,
-  AlertTriangle,
   Building2,
   FileBox,
   Paperclip,
@@ -188,6 +189,7 @@ import { MetricsModule, fetchMetrics, Metric } from './components/MetricsModule'
 import { MediaLibraryModule } from './components/MediaLibraryModule';
 import LicencasModule from './components/LicencasModule';
 import { EmpresaModule } from './components/EmpresaModule';
+import { CRMModule } from './components/CRMModule';
 
 // --- Helpers ---
 
@@ -803,6 +805,7 @@ const hasModulePermission = (user: any, moduleId: string): boolean => {
 
 const SIDEBAR_MENU_ITEMS = [
   { id: 'dashboard', label: 'Painel de Bordo', icon: LayoutDashboard },
+  { id: 'crm_empresas', label: 'CRM EMPRESAS', icon: ShieldAlert, badge: 'SUPER ADM' },
   { id: 'clients', label: 'Clientes', icon: Users },
   { id: 'workplaces', label: 'Locais de Trabalho', icon: Briefcase },
   { id: 'secretary', label: 'Secretaria Beta', icon: Paperclip },
@@ -1016,10 +1019,16 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
       <div className="flex-1 px-3 py-4 space-y-1 pb-8">
         <h3 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-3 px-2">Menu Principal</h3>
         <nav className="space-y-1">
-          {SIDEBAR_MENU_ITEMS.map((item) => {
+          {SIDEBAR_MENU_ITEMS.filter(item => {
+            if (item.id === 'crm_empresas') {
+              const currentNif = String(companyData?.nif || user?.empresa_nif || '').replace(/\D/g, '').trim();
+              return currentNif === '5002123665';
+            }
+            return true;
+          }).map((item) => {
             const canAccess = (module: string) => {
+              if (module === 'crm_empresas') return true; 
               const hasAccess = hasModulePermission(user, module);
-              console.log(`[MENU-DEBUG] Module: ${module}, HasAccess: ${hasAccess}, Permissions:`, user?.permission_areas);
               return hasAccess;
             };
 
@@ -1048,6 +1057,11 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
                     )}
                   </div>
                   <span className={`text-sm ${isRestricted ? 'text-zinc-500 font-medium' : ''}`}>{item.label}</span>
+                  {item.badge && (
+                    <span className="ml-2 text-[8px] font-black bg-[#1a4da6] text-white px-1.5 py-0.5 rounded-full uppercase tracking-tighter">
+                      {item.badge}
+                    </span>
+                  )}
                 </div>
                 {item.hasChevron && !isRestricted && (
                   <ChevronRight size={14} className={activeTab === item.id ? 'text-white/70' : 'text-zinc-500'} />
@@ -14189,7 +14203,7 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Regime Fiscal</label>
-                  <select name="regime" value={formData.regime} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
+                  <select name="regime" value={formData.regime || ''} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
                     <option value="Regime geral">Regime geral</option>
                     <option value="Regime simplificado">Regime simplificado</option>
                     <option value="Regime de exclusão">Regime de exclusão</option>
@@ -14197,7 +14211,7 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Tipo de Atividade</label>
-                  <select name="tipo_empresa" value={formData.tipo_empresa} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
+                  <select name="tipo_empresa" value={formData.tipo_empresa || ''} onChange={handleChange} className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm focus:outline-none focus:border-[#003366]">
                     <option value="Serviços">Serviços</option>
                     <option value="Comércio">Comércio</option>
                     <option value="Indústria">Indústria</option>
@@ -14622,15 +14636,18 @@ const SettingsModule = ({ user, companyData, onRefreshData, alerts, setAlerts, o
                    </tr>
                    <tr className="hover:bg-zinc-50">
                       <th className="px-6 py-4 text-zinc-500 font-medium bg-zinc-50/50 border-r border-zinc-100">Sede / Morada Fiscal</th>
-                      <td className="px-6 py-4 text-zinc-800">{companyData?.address || companyData?.localizacao || '---'}</td>
+                      <td className="px-6 py-4 text-zinc-800">{companyData?.endereco || companyData?.address || companyData?.localizacao || '---'}</td>
                    </tr>
                    <tr className="hover:bg-zinc-50">
-                      <th className="px-6 py-4 text-zinc-500 font-medium bg-zinc-50/50 border-r border-zinc-100">Cidade / Província</th>
-                      <td className="px-6 py-4 text-zinc-800">{companyData?.city || 'Luanda'}</td>
+                      <th className="px-6 py-4 text-zinc-500 font-medium bg-zinc-50/50 border-r border-zinc-100">Localidade</th>
+                      <td className="px-6 py-4 text-zinc-800">
+                        {companyData?.municipio ? `${companyData.municipio}, ` : ''}
+                        {companyData?.provincia || companyData?.city || 'Angola'}
+                      </td>
                    </tr>
                    <tr className="hover:bg-zinc-50">
-                      <th className="px-6 py-4 text-zinc-500 font-medium bg-zinc-50/50 border-r border-zinc-100">Telefone de Contacto</th>
-                      <td className="px-6 py-4 text-zinc-800 font-mono">{companyData?.phone || '---'}</td>
+                      <th className="px-6 py-4 text-zinc-500 font-medium bg-zinc-50/50 border-r border-zinc-100">Telemóvel / Telefone</th>
+                      <td className="px-6 py-4 text-zinc-800 font-mono">{companyData?.telefone || companyData?.phone || '---'}</td>
                    </tr>
                    <tr className="hover:bg-zinc-50">
                       <th className="px-6 py-4 text-zinc-500 font-medium bg-zinc-50/50 border-r border-zinc-100">Email Institucional</th>
@@ -15071,7 +15088,7 @@ const TaxSeriesModule = () => {
     
     console.log(`[TaxSeriesModule] Carregando impostos para empresa: ${user.empresa_id}`);
     const { data } = await supabase
-      .from('tabela_impostos')
+      .from('impostos')
       .select('*')
       .eq('empresa_id', user.empresa_id)
       .order('created_at', { ascending: false });
@@ -15082,7 +15099,8 @@ const TaxSeriesModule = () => {
         id: d.id,
         date: new Date(d.created_at).toLocaleDateString(),
         layout: d.nome,
-        type: 'IVA',
+        type: d.tipo_imposto || 'IVA',
+        region: 'AO',
         code: d.codigo_imposto || 'NOR',
         rate: `${d.taxa}%`,
         motive: d.descricao || ''
@@ -15090,9 +15108,9 @@ const TaxSeriesModule = () => {
     }
   };
 
-  const removeTax = async (id: number) => {
+  const removeTax = async (id: string) => {
     if (!user) return;
-    await supabase.from('tabela_impostos').delete().eq('id', id).eq('empresa_id', user.empresa_id);
+    await supabase.from('impostos').delete().eq('id', id).eq('empresa_id', user.empresa_id);
     loadTaxes();
   };
 
@@ -15152,12 +15170,14 @@ const TaxSeriesModule = () => {
                     const { data: { user: authUser } } = await supabase.auth.getUser();
                     if (!authUser || !user) return;
                     
-                    const { error } = await supabase.from('tabela_impostos').insert([{
+                    const { error } = await supabase.from('impostos').insert([{
                       empresa_id: user.empresa_id,
                       nome: taxName,
                       taxa: rateNum,
                       codigo_imposto: isIsento ? 'ISE' : 'NOR',
-                      descricao: isIsento ? 'Isenção' : ''
+                      descricao: isIsento ? 'Isenção' : null,
+                      tipo_imposto: isIva ? 'IVA' : 'Outro',
+                      activo: true
                     }]);
                     
                     if (!error) {
@@ -22245,6 +22265,7 @@ const PurchasesModule = ({ suppliers, products, activeTaxes, workSites, fiscalSe
   const [showSupplierModal, setShowSupplierModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState<Purchase | null>(null);
   const [completedReceipt, setCompletedReceipt] = useState<Purchase | null>(null);
+  const [editingSupplier, setEditingSupplier] = useState<any>(null);
 
   const fetchPurchases = async () => {
     try {
@@ -22591,47 +22612,103 @@ const PurchasesModule = ({ suppliers, products, activeTaxes, workSites, fiscalSe
             <table className="w-full text-left border-collapse whitespace-nowrap">
               <thead>
                 <tr className="bg-zinc-100/50 text-[#003366] text-[11px] uppercase tracking-wider font-black border-b border-zinc-200">
-                  <th className="px-6 py-4">Nome do Fornecedor</th>
-                  <th className="px-6 py-4">NIF</th>
-                  <th className="px-6 py-4">Contacto</th>
-                  <th className="px-6 py-4">Localização</th>
-                  <th className="px-6 py-4 text-right">Saldo Corrente</th>
-                  <th className="px-6 py-4 text-right">Ações</th>
+                  <th className="px-6 py-4">Fornecedor</th>
+                  <th className="px-6 py-4">NIF / Contribuinte</th>
+                  <th className="px-6 py-4">Contacto / Email</th>
+                  <th className="px-6 py-4">Localização (País/Prov)</th>
+                  <th className="px-6 py-4">Tipo Fornecedor</th>
+                  <th className="px-6 py-4">Banco / IBAN</th>
+                  <th className="px-6 py-4 text-right">Crédito/Saldo</th>
+                  <th className="px-6 py-4">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
-                {suppliers.map(s => {
-                   const supplierTotal = purchases
-                      .filter(p => p.supplier_name === s.name)
-                      .reduce((acc, p) => {
-                         const isPayment = ['Pagamento', 'Recibo'].includes(p.document_type || '');
-                         return isPayment ? acc - p.total : acc + p.total;
-                      }, 0);
+                {suppliers.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-6 py-20 text-center text-zinc-300 italic font-black uppercase tracking-widest bg-zinc-50/10">
+                      Nenhum fornecedor registado no sistema
+                    </td>
+                  </tr>
+                ) : (
+                  suppliers.map(s => {
+                    const supplierTotal = purchases
+                       .filter(p => p.supplier_name === s.name)
+                       .reduce((acc, p) => {
+                          const isPayment = ['Pagamento', 'Recibo'].includes(p.document_type || '');
+                          return isPayment ? acc - p.total : acc + p.total;
+                       }, 0);
 
-                   return (
-                    <tr key={s.id} className="hover:bg-zinc-50 transition-colors text-xs border-b border-zinc-50 group">
-                      <td className="px-6 py-4 font-black text-[#003366] uppercase">{s.name}</td>
-                      <td className="px-6 py-4 font-mono font-bold text-zinc-500">{s.nif || '999999999'}</td>
-                      <td className="px-6 py-4">
-                        <div className="font-bold text-zinc-700">{s.phone || '9xx xxx xxx'}</div>
-                        <div className="text-[10px] text-zinc-400 mt-0.5">{s.email || 'info@exemplo.com'}</div>
-                      </td>
-                      <td className="px-6 py-4 text-zinc-500 font-medium italic">{s.localidade || 'Luanda'}</td>
-                      <td className="px-6 py-4 text-right font-black text-red-600 bg-zinc-50/30">{formatCurrency(supplierTotal)}</td>
-                      <td className="px-6 py-4 text-right">
-                        <button 
-                          onClick={() => {
-                             setActiveSubTab('movimentos');
-                             setSearchTerm(s.name);
-                          }}
-                          className="bg-white border border-[#003366] text-[#003366] px-4 py-1.5 text-[10px] font-black uppercase hover:bg-[#003366] hover:text-white transition-all shadow-sm"
-                        >
-                          Ver Extrato
-                        </button>
+                    return (
+                     <tr key={s.id} className="hover:bg-zinc-50 transition-colors text-xs border-b border-zinc-50 group">
+                       <td className="px-6 py-4">
+                         <div className="font-black text-[#003366] uppercase">{s.name}</div>
+                         <div className="text-[10px] text-zinc-400 mt-1">{new Date(s.created_at || '').toLocaleDateString('pt-PT')}</div>
+                       </td>
+                       <td className="px-6 py-4 font-mono font-bold text-zinc-500">{s.nif || '999999999'}</td>
+                       <td className="px-6 py-4">
+                         <div className="font-bold text-zinc-700">{s.phone || s.telefone || '-'}</div>
+                         <div className="text-[10px] text-zinc-400 mt-0.5 lowercase group-hover:text-blue-500 transition-colors">{s.email || '-'}</div>
+                       </td>
+                       <td className="px-6 py-4">
+                         <div className="text-zinc-600 font-bold">{s.localidade || 'Luanda'}</div>
+                         <div className="text-[10px] text-zinc-400 italic">{(s.provincia || s.pais) ? `${s.provincia || ''} ${s.pais || ''}`.trim() : 'Angola'}</div>
+                       </td>
+                       <td className="px-6 py-4">
+                         <span className="px-2 py-1 bg-zinc-100 text-zinc-500 rounded-none text-[9px] font-black uppercase tracking-tighter">
+                           {s.tipo_fornecedor || s.tipo_cliente || 'NORMAL'}
+                         </span>
+                       </td>
+                       <td className="px-6 py-4">
+                         <div className="font-black text-zinc-700 uppercase tracking-tighter">{s.sigla_banco || s.siglas_banco || '-'}</div>
+                         <div className="text-[9px] font-mono text-zinc-400 mt-0.5">{s.iban || '-'}</div>
+                       </td>
+                       <td className="px-6 py-4 text-right font-black text-red-600 bg-zinc-50/30">
+                         {formatCurrency(supplierTotal)}
+                       </td>
+                       <td className="px-6 py-4">
+                         <div className="flex justify-end gap-2">
+                          <button 
+                            onClick={() => {
+                              setActiveSubTab('movimentos');
+                              setSearchTerm(s.name);
+                            }}
+                            className="bg-white border border-[#003366] text-[#003366] px-3 py-1.5 text-[10px] font-black uppercase hover:bg-[#003366] hover:text-white transition-all shadow-sm"
+                            title="Ver Extrato"
+                          >
+                            Extrato
+                          </button>
+                          <button 
+                            onClick={() => {
+                              setEditingSupplier(s);
+                              setShowSupplierModal(true);
+                            }}
+                            className="bg-white border border-blue-600 text-blue-600 px-3 py-1.5 text-[10px] font-black uppercase hover:bg-blue-600 hover:text-white transition-all shadow-sm"
+                            title="Editar Dados"
+                          >
+                            <Edit size={12} />
+                          </button>
+                          <button 
+                            onClick={async () => {
+                              if (window.confirm(`Tens a certeza que desejas eliminar o fornecedor ${s.name}? Esta ação é irreversível.`)) {
+                                try {
+                                  await fornecedorService.deleteFornecedor(s.id);
+                                  // The real-time sync will handle the list update
+                                } catch (err: any) {
+                                  alert('Erro ao eliminar: ' + err.message);
+                                }
+                              }
+                            }}
+                            className="bg-white border border-red-500 text-red-500 px-3 py-1.5 text-[10px] font-black uppercase hover:bg-red-500 hover:text-white transition-all shadow-sm"
+                            title="Remover Fornecedor"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
-                   );
-                })}
+                   )
+                  })
+                )}
               </tbody>
             </table>
           </div>
@@ -23028,18 +23105,24 @@ const PurchasesModule = ({ suppliers, products, activeTaxes, workSites, fiscalSe
              className="w-full max-w-4xl bg-white shadow-2xl overflow-hidden relative"
            >
              <button 
-               onClick={() => setShowSupplierModal(false)}
+               onClick={() => {
+                 setShowSupplierModal(false);
+                 setEditingSupplier(null);
+               }}
                className="absolute top-4 right-4 text-zinc-400 hover:text-zinc-600 z-10 p-2 hover:bg-zinc-100 rounded-full"
              >
                <X size={24} />
              </button>
              <ClientForm 
-               onBack={() => setShowSupplierModal(false)}
+               onBack={() => {
+                 setShowSupplierModal(false);
+                 setEditingSupplier(null);
+               }}
+               initialData={editingSupplier}
                onSuccess={() => {
                  setShowSupplierModal(false);
-                 // We don't have a direct refetch function for suppliers here, but we can assume they refresh elsewhere 
-                 // or just reload the page if needed, but better to just use standard global refresh if it exists.
-                 window.location.reload(); 
+                 setEditingSupplier(null);
+                 // O refresh será automático via Realtime Sync no App.tsx
                }}
                isSupplier={true}
              />
@@ -23883,112 +23966,19 @@ const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas
               </button>
             </div>
             
-            <div className="flex-1 overflow-y-auto p-4 md:p-8 bg-white">
-              <form onSubmit={handleSubmit} className="space-y-4 max-w-5xl mx-auto bg-zinc-50/30 p-6 border border-zinc-100">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">NIF *</label>
-                    <input 
-                      type="text" 
-                      placeholder="Ex: 5000..." 
-                      value={nif} 
-                      onChange={e => setNif(e.target.value)} 
-                      required 
-                      className={`w-full border border-zinc-200 bg-white px-3 py-2 text-xs font-mono font-bold focus:border-[#003366] outline-none ${
-                        selectedSupplier && nif !== '999999999' ? 'opacity-70 cursor-not-allowed bg-zinc-100' : ''
-                      }`}
-                      readOnly={selectedSupplier && nif !== '999999999'}
-                    />
-                  </div>
-                  <div className="md:col-span-3 space-y-1">
-                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Nome / Designação Social *</label>
-                    <input type="text" placeholder="Ex: Fornecedor ABC Lda" value={name} onChange={e => setName(e.target.value)} required className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs font-bold focus:border-[#003366] outline-none" />
-                  </div>
-                  
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Email</label>
-                    <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs focus:border-[#003366] outline-none" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Telefone</label>
-                    <input type="text" value={phone} onChange={e => setPhone(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs focus:border-[#003366] font-bold outline-none" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">País</label>
-                    <select 
-                      value={pais} 
-                      onChange={e => setPais(e.target.value)} 
-                      className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs font-bold focus:border-[#003366] outline-none"
-                    >
-                      <option value="Angola">Angola</option>
-                      <option value="Portugal">Portugal</option>
-                      <option value="Brasil">Brasil</option>
-                      <option value="Moçambique">Moçambique</option>
-                      <option value="Cabo Verde">Cabo Verde</option>
-                      <option value="Guiné-Bissau">Guiné-Bissau</option>
-                      <option value="São Tomé e Príncipe">São Tomé e Príncipe</option>
-                      <option value="África do Sul">África do Sul</option>
-                      <option value="Namíbia">Namíbia</option>
-                      <option value="Zâmbia">Zâmbia</option>
-                      <option value="RDC">República Democrática do Congo</option>
-                      <option value="China">China</option>
-                      <option value="EUA">Estados Unidos</option>
-                      <option value="França">França</option>
-                      <option value="Reino Unido">Reino Unido</option>
-                      <option value="Alemanha">Alemanha</option>
-                      <option value="Espanha">Espanha</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Província</label>
-                    <input type="text" value={provincia} onChange={e => setProvincia(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs focus:border-[#003366] outline-none" />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Município</label>
-                    <input type="text" value={municipio} onChange={e => setMunicipio(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs focus:border-[#003366] outline-none" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Localidade</label>
-                    <input type="text" value={localidade} onChange={e => setLocalidade(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs focus:border-[#003366] outline-none" />
-                  </div>
-                  <div className="md:col-span-2 space-y-1">
-                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Morada</label>
-                    <input type="text" value={address} onChange={e => setAddress(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs focus:border-[#003366] outline-none" />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Código Postal</label>
-                    <input type="text" value={codigoPostal} onChange={e => setCodigoPostal(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs font-mono focus:border-[#003366] outline-none" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">SIGLAS BANCO</label>
-                    <input type="text" placeholder="Ex: BFA, BAI..." value={siglasBanco} onChange={e => setSiglasBanco(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs font-bold focus:border-[#003366] outline-none" />
-                  </div>
-                  <div className="md:col-span-2 space-y-1">
-                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">IBAN</label>
-                    <input type="text" placeholder="AO06..." value={iban} onChange={e => setIban(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs font-mono font-black text-[#003366] focus:border-[#003366] outline-none" />
-                  </div>
-                  
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Tipo de Fornecedor</label>
-                    <select value={tipoCliente} onChange={e => setTipoCliente(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs font-bold focus:border-[#003366] outline-none">
-                      <option value="normal">Normal</option>
-                      <option value="servicos">Serviços</option>
-                      <option value="mercadorias">Mercadorias</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Webpage</label>
-                    <input type="text" value={webpage} onChange={e => setWebpage(e.target.value)} className="w-full border border-zinc-200 bg-white px-3 py-2 text-xs focus:border-[#003366] outline-none" />
-                  </div>
-                </div>
-
-                <div className="flex justify-end gap-3 pt-6">
-                  <button type="button" onClick={() => setShowForm(false)} className="px-6 py-2 text-[10px] font-black text-zinc-500 hover:text-red-600 transition-colors uppercase tracking-widest">Descartar</button>
-                  <button type="submit" className="bg-[#003366] text-white px-8 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-[#002244] transition-all shadow-lg">Confirmar Registo</button>
-                </div>
-              </form>
+            <div className="flex-1 overflow-y-auto bg-white">
+              <ClientForm 
+                onBack={() => {
+                  setShowForm(false);
+                  setSelectedSupplier(null);
+                }}
+                initialData={selectedSupplier}
+                onSuccess={() => {
+                  setShowForm(false);
+                  setSelectedSupplier(null);
+                }}
+                isSupplier={true}
+              />
             </div>
           </motion.div>
         </div>
@@ -25358,6 +25348,10 @@ export default function App() {
   const [securityArmory, setSecurityArmory] = useState<any[]>([]);
   const [securityRoster, setSecurityRoster] = useState<any[]>([]);
   const [companyData, setCompanyData] = useState<any>(null);
+  const [licenseStatus, setLicenseStatus] = useState<any>(null);
+  const [isLicenseBlocked, setIsLicenseBlocked] = useState(false);
+  const [showLicensePopup, setShowLicensePopup] = useState(false);
+  const [licenseAlert, setLicenseAlert] = useState<string | null>(null);
   const [purchases, setPurchases] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [activeTaxes, setActiveTaxes] = useState<any[]>([]);
@@ -25378,7 +25372,7 @@ export default function App() {
       
       // Try to load active taxes
       const { data, error } = await supabase
-        .from('tabela_impostos')
+        .from('impostos')
         .select('*')
         .eq('empresa_id', companyId);
         
@@ -25388,7 +25382,7 @@ export default function App() {
       
       // Filtermos na UI para cobrir se a coluna `ativo` existe ou se o Supabase não quebrar 
       // Se não existir, vai ignorar
-      const filtered = (data || []).filter(t => t.ativo !== false);
+      const filtered = (data || []).filter(t => t.activo !== false);
       setActiveTaxes(filtered);
     } catch (err) {
       console.error('Error loading active taxes:', err);
@@ -26066,6 +26060,7 @@ export default function App() {
 
   const fetchData = async () => {
     try {
+      let compSupabase: any = null;
       console.log('[DEBUG-SYNC] Iniciando fetchData...');
       const session = await authService.getSessionSafe();
       if (!session) {
@@ -26130,19 +26125,73 @@ export default function App() {
       }
 
       // Dados da Empresa (Blinda o UI com dados reais do Tenant)
-      const { data: compSupabase } = await supabase
-        .from('empresas')
+      try {
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        const res = await fetch(`/api/config-empresa`, {
+          headers: { 'Authorization': `Bearer ${currentSession?.access_token}` }
+        });
+        
+        if (res.ok) {
+          const fullCompData = await res.json();
+          setCompanyData(fullCompData);
+          setCompanyName(fullCompData.nome_empresa || 'Minha Empresa');
+          setCompanyNif(fullCompData.nif || '');
+          setCompanyAddress(fullCompData.endereco || fullCompData.localizacao || fullCompData.address || '');
+          setCompanyLogo(fullCompData.logo_url || '');
+          setCompanyFooter(fullCompData.footer_image_url || 'Processado por computador');
+          compSupabase = fullCompData;
+        } else {
+          // Fallback legacy behavior
+          const { data: dbComp } = await supabase
+            .from('empresas')
+            .select('*')
+            .eq('id', targetCompanyId)
+            .maybeSingle();
+
+          compSupabase = dbComp;
+
+          if (compSupabase) {
+            setCompanyData(compSupabase);
+            setCompanyName(compSupabase.nome_empresa || 'Minha Empresa');
+            setCompanyNif(compSupabase.nif || '');
+            setCompanyAddress(compSupabase.endereco || compSupabase.localizacao || '');
+            setCompanyLogo(compSupabase.logo_url || '');
+            setCompanyFooter(compSupabase.footer_image_url || 'Processado por computador');
+          }
+        }
+      } catch (err) {
+        console.error('Erro ao carregar dados unificados da empresa:', err);
+      }
+
+      // 3. Load License Status
+      const { data: licenseData } = await supabase
+        .from('licencas_empresas')
         .select('*')
-        .eq('id', targetCompanyId)
+        .eq('empresa_id', targetCompanyId)
         .maybeSingle();
 
-      if (compSupabase) {
-        setCompanyData(compSupabase);
-        setCompanyName(compSupabase.nome_empresa || 'Minha Empresa');
-        setCompanyNif(compSupabase.nif || '');
-        setCompanyAddress(compSupabase.endereco || compSupabase.localizacao || '');
-        setCompanyLogo(compSupabase.logo_url || '');
-        setCompanyFooter(compSupabase.footer_image_url || 'Processado por computador');
+      if (licenseData) {
+        setLicenseStatus(licenseData);
+        const now = new Date();
+        const expiry = new Date(licenseData.data_fim);
+        const diffTime = expiry.getTime() - now.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        if (licenseData.status_licenca === 'bloqueada' || licenseData.status_licenca === 'vencida' || diffDays <= 0) {
+          setIsLicenseBlocked(true);
+        } else if (diffDays <= 20) {
+          setLicenseAlert(`A sua licença expira em ${diffDays} dias (${formatDate(licenseData.data_fim)}). Regularize o pagamento para evitar o bloqueio automático.`);
+          if (diffDays <= 5 && !localStorage.getItem('license_popup_shown_today')) {
+             setShowLicensePopup(true);
+             localStorage.setItem('license_popup_shown_today', new Date().toDateString());
+          }
+        } else {
+          setIsLicenseBlocked(false);
+          setLicenseAlert(null);
+        }
+      } else {
+        // Fallback or trial
+        setIsLicenseBlocked(false);
       }
       
       await doLoadAlerts(targetCompanyId);
@@ -26552,6 +26601,40 @@ export default function App() {
                   </button>
                 </div>
               )}
+              {licenseAlert && (
+                <div className="mb-6 bg-amber-50 border border-amber-200 p-4 shadow-sm flex items-center justify-between animate-in slide-in-from-top duration-300">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-amber-100 p-2 rounded-full">
+                      <AlertTriangle className="text-amber-600" size={20} />
+                    </div>
+                    <div>
+                       <p className="text-xs font-black text-amber-800 uppercase tracking-tight">Aviso de Licenciamento</p>
+                       <p className="text-[10px] text-amber-700 font-bold">{licenseAlert}</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setActiveTab('licencas')} className="bg-amber-600 text-white text-[10px] font-black px-4 py-2 uppercase tracking-widest hover:bg-amber-700 transition-all rounded shadow-sm">
+                    Renovar Licença
+                  </button>
+                </div>
+              )}
+              {isLicenseBlocked && companyData?.nif !== '5002123665' && (
+                <div className="mb-6 bg-red-600 text-white p-6 shadow-xl flex flex-col md:flex-row items-center justify-between gap-6 border-b-4 border-red-800">
+                  <div className="flex items-center gap-5">
+                    <div className="bg-white/10 p-4 rounded-xl backdrop-blur-sm border border-white/20">
+                       <ShieldAlert size={40} className="text-white" />
+                    </div>
+                    <div>
+                       <p className="text-xl font-black uppercase tracking-tighter italic">Sistema em Modo de Visualização</p>
+                       <p className="text-xs font-bold opacity-90 text-white/80 max-w-lg">Atenção: A sua licença expirou. Novas operações (vendas, RH, stocks, etc) estão temporariamente suspensas. Pode continuar a visualizar os dados existentes.</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-3">
+                    <button onClick={() => setActiveTab('licencas')} className="bg-white text-red-600 px-8 py-3 font-black uppercase tracking-widest text-[10px] hover:bg-zinc-100 transition-all shadow-xl">
+                      Regularizar Licença Agora
+                    </button>
+                  </div>
+                </div>
+              )}
               <div className="mb-6 flex items-center justify-between border-b border-zinc-200/60 pb-4">
                 <div className="flex items-center gap-2 text-xs font-bold text-zinc-400 uppercase tracking-widest">
                   <LayoutDashboard size={14} />
@@ -26575,29 +26658,49 @@ export default function App() {
                 transition={{ duration: 0.3 }}
               >
                 {isCreatingInvoice ? (
-                  <div key={(selectedDocument?.id || 'new') + (fixedDocumentType || 'none')}>
-                    <CreateInvoice 
-                      clients={clients} 
-                      products={products} 
-                      workSites={workSites}
-                      fiscalSeries={fiscalSeries}
-                      activeTaxes={activeTaxes}
-                      initialData={selectedDocument}
-                      fixedDocumentType={fixedDocumentType}
-                      onBack={() => {
-                        setIsCreatingInvoice(false);
-                        setSelectedDocument(null);
-                        setFixedDocumentType(undefined);
-                      }} 
-                      onSuccess={() => {
-                        setIsCreatingInvoice(false);
-                        setSelectedDocument(null);
-                        setFixedDocumentType(undefined);
-                        fetchData();
-                      }} 
-                      caixas={caixas}
-                    />
-                  </div>
+                  isLicenseBlocked && companyData?.nif !== '5002123665' ? (
+                    <div className="bg-white border border-red-200 p-16 text-center space-y-8 shadow-2xl relative overflow-hidden">
+                      <div className="absolute top-0 left-0 w-full h-2 bg-red-600"></div>
+                      <div className="w-24 h-24 bg-red-50 text-red-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
+                        <ShieldAlert size={48} className="animate-pulse" />
+                      </div>
+                      <div className="space-y-3">
+                        <h2 className="text-4xl font-black text-[#003366] uppercase tracking-tighter">Operação Bloqueada</h2>
+                        <p className="text-zinc-500 max-w-xl mx-auto text-sm font-medium leading-relaxed">
+                          Detectamos que a licença da sua empresa expirou ou que existem pagamentos pendentes. 
+                          Para garantir a integridade fiscal e o cumprimento das normas, novas operações de venda e registo estão temporariamente suspensas.
+                        </p>
+                      </div>
+                      <div className="flex gap-4 justify-center pt-4">
+                        <button onClick={() => setIsCreatingInvoice(false)} className="px-10 py-3 bg-zinc-100 text-zinc-600 font-bold uppercase tracking-widest text-[10px] hover:bg-zinc-200 transition-all">Voltar</button>
+                        <button onClick={() => { setIsCreatingInvoice(false); setActiveTab('licencas'); }} className="px-10 py-3 bg-[#003366] text-white font-bold uppercase tracking-widest text-[10px] shadow-lg hover:bg-[#002244] transition-all">Ver Estado da Licença</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div key={(selectedDocument?.id || 'new') + (fixedDocumentType || 'none')}>
+                      <CreateInvoice 
+                        clients={clients} 
+                        products={products} 
+                        workSites={workSites}
+                        fiscalSeries={fiscalSeries}
+                        activeTaxes={activeTaxes}
+                        initialData={selectedDocument}
+                        fixedDocumentType={fixedDocumentType}
+                        onBack={() => {
+                          setIsCreatingInvoice(false);
+                          setSelectedDocument(null);
+                          setFixedDocumentType(undefined);
+                        }} 
+                        onSuccess={() => {
+                          setIsCreatingInvoice(false);
+                          setSelectedDocument(null);
+                          setFixedDocumentType(undefined);
+                          fetchData();
+                        }} 
+                        caixas={caixas}
+                      />
+                    </div>
+                  )
                 ) : viewingInvoiceId ? (
                   <InvoiceDetail 
                     id={viewingInvoiceId} 
@@ -26761,6 +26864,15 @@ export default function App() {
                       }
                       
                       switch (activeTab) {
+                        case 'crm_empresas':
+                          return (
+                            <CRMModule 
+                              fetchJson={fetchJson} 
+                              formatCurrency={formatCurrency} 
+                              formatDate={formatDate} 
+                              setActiveTab={setActiveTab}
+                            />
+                          );
                         case 'dashboard':
                           return <EcosystemDashboard stats={stats} issuedDocuments={issuedDocuments} setActiveTab={setActiveTab} />;
                         default:
@@ -27410,6 +27522,48 @@ export default function App() {
 
       {/* Global Real-Time User Activity Tracking Tracker */}
       <UserActivityTracker />
+
+      {showLicensePopup && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-zinc-900/80 backdrop-blur-md">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white max-w-lg w-full shadow-2xl overflow-hidden border-t-8 border-amber-500"
+          >
+            <div className="p-8 text-center" id="license-warning-popup">
+              <div className="mx-auto w-20 h-20 bg-amber-50 rounded-full flex items-center justify-center mb-6">
+                <AlertTriangle size={40} className="text-amber-600 animate-pulse" id="alert-icon-anim" />
+              </div>
+              <h3 className="text-2xl font-black text-[#003366] uppercase tracking-tighter mb-2 italic underline decoration-amber-500 decoration-4 underline-offset-8">Aviso de Expiração</h3>
+              <p className="text-zinc-600 font-medium mb-8 leading-relaxed mt-6">
+                  A sua licença de uso do ERP está prestes a expirar. Para evitar o bloqueio automático de vendas, stocks e processamento, por favor regularize a sua subscrição nos próximos dias.
+              </p>
+              
+              <div className="flex flex-col gap-3">
+                <button 
+                  id="renew-license-btn"
+                  onClick={() => { setShowLicensePopup(false); setActiveTab('licencas'); }}
+                  className="w-full bg-[#003366] text-white py-4 text-xs font-black uppercase tracking-[0.2em] shadow-lg hover:bg-[#002244] transition-all"
+                >
+                  Renovar e Regularizar Agora
+                </button>
+                <button 
+                  onClick={() => setShowLicensePopup(false)}
+                  className="w-full bg-zinc-100 text-zinc-500 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-zinc-200 transition-all"
+                >
+                  Lembrar-me mais tarde
+                </button>
+              </div>
+            </div>
+            <div className="bg-zinc-50 p-4 border-t border-zinc-100 flex items-center justify-between">
+              <span className="text-[10px] font-bold text-zinc-400 italic">Central de Segurança do Ecossistema</span>
+              <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest">
+                {licenseStatus && Math.ceil((new Date(licenseStatus.data_fim).getTime() - Date.now()) / (1000 * 60 * 60 * 24))} Dias Restantes
+              </span>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
     </ProtectedRoute>
   );

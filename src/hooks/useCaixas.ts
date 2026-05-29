@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { Caixa, CaixaMovement } from '../types';
+import { systemUsersService } from '../services/systemUsersService';
 
 export const useCaixas = () => {
   const [caixas, setCaixas] = useState<Caixa[]>([]);
   const [movements, setMovements] = useState<CaixaMovement[]>([]);
+  const [profiles, setProfiles] = useState<{ id: string, name: string, role: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [empresaId, setEmpresaId] = useState<string | null>(null);
 
@@ -48,7 +50,12 @@ export const useCaixas = () => {
         status: item.status || 'aberto',
         empresa_id: item.empresa_id,
         account: item.account || '',
-        moeda: item.moeda || 'AOA'
+        moeda: item.moeda || 'AOA',
+        codigo_caixa: item.codigo_caixa || '',
+        activo: item.activo !== false,
+        data_abertura: item.data_abertura || '',
+        data_fechamento: item.data_fechamento || '',
+        updated_at: item.updated_at || ''
       })) as Caixa[];
       
       setCaixas(mappedData);
@@ -72,6 +79,39 @@ export const useCaixas = () => {
           empresa_id: m.empresa_id,
           moeda: m.moeda
         })));
+      }
+
+      // Fetch user profiles of company using systemUsersService safely (bypassing Client RLS constraints)
+      try {
+        const sysUsersList = await systemUsersService.getUsers(fetchEmpresaId);
+        if (sysUsersList) {
+          const activeSysUsers = sysUsersList.filter(u => u.is_active !== false);
+          setProfiles(activeSysUsers.map(p => ({
+            id: p.id,
+            name: p.name || p.nome || '',
+            role: p.role || ''
+          })));
+        } else {
+          setProfiles([]);
+        }
+      } catch (err) {
+        console.error('Error fetching system users in useCaixas hook:', err);
+        // Fallback to direct supabase query on table 'perfis'
+        const { data: profs } = await supabase
+          .from('perfis')
+          .select('id, nome, role')
+          .eq('company_id', fetchEmpresaId)
+          .eq('is_active', true);
+
+        if (profs) {
+          setProfiles(profs.map(p => ({
+            id: p.id,
+            name: p.nome || '',
+            role: p.role || ''
+          })));
+        } else {
+          setProfiles([]);
+        }
       }
     } catch (err) {
       console.error('Unexpected error fetching caixas:', err);
@@ -143,14 +183,18 @@ export const useCaixas = () => {
         .insert({
           empresa_id: currentEmpresaId,
           nome_caixa: caixa.name || '',
+          codigo_caixa: caixa.codigo_caixa || '',
           valor_inicial: caixa.initialBalance || 0,
           current_balance: caixa.initialBalance || 0,
           responsavel: caixa.responsible || '',
           utilizador_id: user.id, // Assigning explicitly from authenticated user
           observacao: caixa.obs || '',
-          account: (caixa as any).account || '',
-          moeda: (caixa as any).moeda || 'AOA',
-          status: (caixa as any).status || 'aberto'
+          account: caixa.account || '',
+          moeda: caixa.moeda || 'AOA',
+          status: caixa.status || 'aberto',
+          activo: caixa.activo !== false,
+          data_abertura: caixa.data_abertura || new Date().toISOString(),
+          data_fechamento: caixa.data_fechamento || null
         })
         .select()
         .single();
@@ -185,8 +229,14 @@ export const useCaixas = () => {
       if (updates.currentBalance !== undefined) payload.current_balance = updates.currentBalance;
       if (updates.responsible !== undefined) payload.responsavel = updates.responsible;
       if (updates.obs !== undefined) payload.observacao = updates.obs;
-      if ((updates as any).account !== undefined) payload.account = (updates as any).account;
+      if (updates.account !== undefined) payload.account = updates.account;
       if (updates.status !== undefined) payload.status = updates.status;
+      if (updates.codigo_caixa !== undefined) payload.codigo_caixa = updates.codigo_caixa;
+      if (updates.moeda !== undefined) payload.moeda = updates.moeda;
+      if (updates.activo !== undefined) payload.activo = updates.activo;
+      if (updates.data_abertura !== undefined) payload.data_abertura = updates.data_abertura;
+      if (updates.data_fechamento !== undefined) payload.data_fechamento = updates.data_fechamento;
+      payload.updated_at = new Date().toISOString();
 
       const { error } = await supabase
         .from('caixas')
@@ -300,6 +350,7 @@ export const useCaixas = () => {
   return {
     caixas,
     movements,
+    profiles,
     loading,
     refresh: fetchCaixas,
     createCaixa,

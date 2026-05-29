@@ -13,6 +13,8 @@ export const EmpresaModule = ({ onUpdate }: { onUpdate: () => void }) => {
     email: '',
     telefone: '',
     endereco: '',
+    provincia: '',
+    municipio: '',
   });
 
   useEffect(() => {
@@ -23,34 +25,50 @@ export const EmpresaModule = ({ onUpdate }: { onUpdate: () => void }) => {
 
   const loadCompanyData = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('empresas')
-      .select('*')
-      .eq('id', user?.empresa_id)
-      .single();
-    
-    if (data) {
-      setFormData({
-        nome_empresa: data.nome_empresa || '',
-        nif: data.nif || '',
-        email: data.email || '',
-        telefone: data.telefone || '',
-        endereco: data.endereco || '',
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch('/api/config-empresa', {
+        headers: { 'Authorization': `Bearer ${session?.access_token}` }
       });
+      
+      if (res.ok) {
+        const data = await res.json();
+        setFormData({
+          nome_empresa: data.nome_empresa || '',
+          nif: data.nif || '',
+          email: data.email || '',
+          telefone: data.telefone || '',
+          endereco: data.endereco || data.address || '',
+          provincia: data.provincia || '',
+          municipio: data.municipio || '',
+        });
+      }
+    } catch (error) {
+      console.error("Erro ao carregar dados unificados da empresa:", error);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
-      const { error } = await supabase
-        .from('empresas')
-        .update(formData)
-        .eq('id', user?.empresa_id);
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch('/api/config-empresa', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}` 
+        },
+        body: JSON.stringify(formData)
+      });
       
-      if (error) throw error;
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Erro ao atualizar');
+      }
+
       alert('Dados da empresa atualizados com sucesso!');
       onUpdate();
     } catch (err: any) {
@@ -89,7 +107,15 @@ export const EmpresaModule = ({ onUpdate }: { onUpdate: () => void }) => {
               <input value={formData.endereco} onChange={e => setFormData({...formData, endereco: e.target.value})} className="w-full border border-zinc-200 p-2 text-sm" />
            </div>
            
-           <button type="submit" disabled={loading} className="col-span-full bg-[#003366] text-white py-3 font-bold text-xs uppercase hover:bg-blue-900 flex items-center justify-center gap-2">
+           <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase text-zinc-400">Província</label>
+              <input value={formData.provincia} onChange={e => setFormData({...formData, provincia: e.target.value})} className="w-full border border-zinc-200 p-2 text-sm" placeholder="Ex: Luanda" />
+           </div>
+           <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase text-zinc-400">Município</label>
+              <input value={formData.municipio} onChange={e => setFormData({...formData, municipio: e.target.value})} className="w-full border border-zinc-200 p-2 text-sm" placeholder="Ex: Belas" />
+           </div>
+           <button type="submit" disabled={loading} className="col-span-full bg-[#003366] text-white py-4 font-black text-xs uppercase hover:bg-blue-900 flex items-center justify-center gap-2 shadow-xl shadow-blue-900/20 transition-all">
              <Save size={14} /> {loading ? 'A guardar...' : 'Guardar Dados'}
            </button>
         </form>

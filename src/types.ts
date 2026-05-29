@@ -30,6 +30,7 @@ export interface User {
   username: string;
   email: string;
   empresa_id: string;
+  empresa_nif?: string;
   role: string;
   created_at?: string;
   company?: any;
@@ -64,6 +65,12 @@ export interface Caixa {
   obs: string;
   status: 'aberto' | 'fechado';
   empresa_id?: string;
+  codigo_caixa?: string;
+  moeda?: string;
+  activo?: boolean;
+  data_abertura?: string;
+  data_fechamento?: string;
+  updated_at?: string;
 }
 
 export interface CaixaMovement {
@@ -533,22 +540,30 @@ export interface Warehouse {
 }
 
 export interface Supplier {
-  id: number;
+  id: number | string;
+  empresa_id: string;
   name: string;
-  nif?: string;
+  nome?: string; // Compatibility
+  nif: string;
   email?: string;
   phone?: string;
+  telefone?: string; // Compatibility
   address?: string;
+  morada?: string; // Compatibility
   localidade?: string;
   codigo_postal?: string;
   provincia?: string;
   municipio?: string;
   pais?: string;
   webpage?: string;
-  siglas_banco?: string;
+  sigla_banco?: string;
+  siglas_banco?: string; // Compatibility
   iban?: string;
-  tipo_cliente?: 'nao_grupo' | 'nacionais' | 'estrangeiro' | 'associados' | 'normal';
-  created_at: string;
+  tipo_fornecedor?: string;
+  tipo_cliente?: string; // Compatibility
+  created_at?: string;
+  updated_at?: string;
+  activo?: boolean;
 }
 
 export interface SystemUser {

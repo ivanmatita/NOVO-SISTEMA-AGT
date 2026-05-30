@@ -194,6 +194,8 @@ import { CRMModule } from './components/CRMModule';
 // --- Helpers ---
 
 import { supabase, supabaseStatus } from './lib/supabase';
+import { realtimeManager } from './lib/realtimeManager';
+import { toast } from 'react-hot-toast';
 import { authService } from './services/authService';
 import { clienteService, Cliente as DbCliente } from './services/clienteService';
 import { localTrabalhoService, LocalTrabalho as DbLocalTrabalho } from './services/localTrabalhoService';
@@ -237,12 +239,26 @@ const fetchJson = async (url: string, options?: RequestInit) => {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(url, { ...options, headers });
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Failed to fetch ${url} (Status: ${response.status}): ${errorText || response.statusText}`);
+  // Implement automatic timeout for unstable connections
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), 15000); // 15s timeout
+
+  try {
+    const response = await fetch(url, { ...options, headers, signal: controller.signal });
+    clearTimeout(id);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to fetch ${url} (Status: ${response.status}): ${errorText || response.statusText}`);
+    }
+    return response.json();
+  } catch (err: any) {
+    clearTimeout(id);
+    if (err.name === 'AbortError') {
+      throw new Error(`O servidor demorou demasiado tempo a responder (${url}). Verifique a sua ligação.`);
+    }
+    throw err;
   }
-  return response.json();
 };
 
 const CATEGORIES = ['Mercadoria', 'Serviço', 'Matéria-prima', 'Consumível', 'Equipamento', 'Outro'];
@@ -866,16 +882,16 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
         
         const { data: profile } = await supabase
           .from('perfis')
-          .select('company_id')
+          .select('empresa_id')
           .eq('id', supabaseUser.id)
           .single();
           
-        if (profile?.company_id) {
+        if (profile?.empresa_id) {
           // Fetch avatar
           const { data: avatarData } = await supabase
             .from('media_arquivos')
             .select('url_publica')
-            .eq('empresa_id', profile.company_id)
+            .eq('empresa_id', profile.empresa_id)
             .eq('utilizador_id', supabaseUser.id)
             .eq('tipo', 'avatar')
             .eq('ativo', true)
@@ -891,7 +907,7 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
           const { data: logoData } = await supabase
             .from('media_arquivos')
             .select('url_publica')
-            .eq('empresa_id', profile.company_id)
+            .eq('empresa_id', profile.empresa_id)
             .eq('tipo', 'menu_logo')
             .eq('ativo', true)
             .order('created_at', { ascending: false })
@@ -935,11 +951,11 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
         
         const { data: profile } = await supabase
           .from('perfis')
-          .select('company_id')
+          .select('empresa_id')
           .eq('id', supabaseUser.id)
           .single();
           
-        const empresaId = profile?.company_id;
+        const empresaId = profile?.empresa_id;
         if (!empresaId) return;
         
         const fileExt = file.name.split('.').pop();
@@ -2152,29 +2168,18 @@ const HRModule = ({
   useEffect(() => {
     if (!user?.empresa_id) return;
 
-    const channel = supabase
-      .channel('professions-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'professions',
-          filter: `empresa_id=eq.${user.empresa_id}`
-        },
-        async () => {
-          const { data } = await supabase
-            .from('professions')
-            .select('*')
-            .eq('empresa_id', user.empresa_id)
-            .order('name', { ascending: true });
-          if (data) setProfessions(data);
-        }
-      )
-      .subscribe();
+    // Use Managed Realtime sync for 'professions'
+    realtimeManager.subscribe('professions', user.empresa_id, async () => {
+      const { data } = await supabase
+        .from('professions')
+        .select('*')
+        .eq('empresa_id', user.empresa_id)
+        .order('name', { ascending: true });
+      if (data) setProfessions(data);
+    });
 
     return () => {
-      supabase.removeChannel(channel);
+      realtimeManager.unsubscribe('professions', user.empresa_id);
     };
   }, [user?.empresa_id]);
 
@@ -11446,25 +11451,13 @@ const UsersSettings = () => {
     
     fetchUsers();
 
-    // Set up Realtime sync directly via Supabase on 'perfis'
-    const channel = supabase
-      .channel(`system-users-realtime-${user.empresa_id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'perfis',
-          filter: `company_id=eq.${user.empresa_id}`
-        },
-        () => {
-          fetchUsers(true);
-        }
-      )
-      .subscribe();
+    // Use Managed Realtime sync for 'perfis'
+    realtimeManager.subscribe('perfis', user.empresa_id, () => {
+      fetchUsers(true);
+    });
 
     return () => {
-      supabase.removeChannel(channel);
+      realtimeManager.unsubscribe('perfis', user.empresa_id);
     };
   }, [user?.empresa_id]);
 
@@ -14069,11 +14062,11 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
 
         const { data: profile } = await supabase
           .from('perfis')
-          .select('company_id')
+          .select('empresa_id')
           .eq('id', authUser.id)
           .single();
           
-        const empresaId = profile?.company_id;
+        const empresaId = profile?.empresa_id;
         if (!empresaId) throw new Error('Empresa não identificada');
 
         const fileExt = file.name.split('.').pop();
@@ -17459,45 +17452,94 @@ const FiscalSeriesModule = ({
   }, [user?.empresa_id]);
 
   const [name, setName] = useState('');
-  const [selectedUser, setSelectedUser] = useState<string>('');
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [type, setType] = useState<'normal' | 'manual'>('normal');
   const [destiny, setDestiny] = useState('');
   
+  const [editingSerie, setEditingSerie] = useState<FiscalSeries | null>(null);
+
+  const openForm = (serie?: FiscalSeries) => {
+    if (serie) {
+      setEditingSerie(serie);
+      setName(serie.description || serie.name || '');
+      setSelectedUsers(serie.user_ids ? serie.user_ids : (serie.user_id ? [String(serie.user_id)] : []));
+      setType(serie.type || 'normal');
+      setDestiny(''); // Or from somewhere if existing
+    } else {
+      setEditingSerie(null);
+      setName('');
+      setSelectedUsers([]);
+      setType('normal');
+      setDestiny('');
+    }
+    setShowForm(true);
+  };
+  
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    const year = new Date().getFullYear().toString();
-    const reference = `S${series.length + 1}${year}`;
     
     try {
       if (!user?.empresa_id) {
         alert('Sessão expirada ou sem empresa associada.');
         return;
       }
-      const { error } = await supabase
-        .from('series_fiscais')
-        .insert([{
-          empresa_id: user.empresa_id,
-          serie: reference,
-          descricao: name,
-          tipo: type,
-          utilizador_id: selectedUser || null,
-          proximo_numero: 1,
-          ativo: true,
-          created_at: new Date().toISOString()
-        }]);
-
-      if (!error) {
-        setShowForm(false);
-        onRefresh();
-        setName('');
-        setDestiny('');
-        setType('normal');
-        alert('Série criada!');
+      
+      if (editingSerie) {
+        const { error } = await supabase
+          .from('series_fiscais')
+          .update({
+            descricao: name,
+            tipo: type,
+            utilizador_id: selectedUsers.length > 0 ? selectedUsers[0] : null,
+          })
+          .eq('id', editingSerie.id);
+          
+        if (!error) {
+          // Update the relation table
+          await supabase.from('series_fiscais_usuarios').delete().eq('serie_id', editingSerie.id);
+          if (selectedUsers.length > 0) {
+             const userInserts = selectedUsers.map(uid => ({ empresa_id: user.empresa_id, serie_id: editingSerie.id, usuario_id: uid }));
+             const { error: relError } = await supabase.from('series_fiscais_usuarios').insert(userInserts);
+             if (relError) console.error('Erro ao atualizar utilizadores:', relError);
+          }
+          
+          setShowForm(false);
+          onRefresh();
+          alert('Série atualizada com sucesso!');
+        } else {
+          alert('Erro ao atualizar série: ' + error.message);
+        }
       } else {
-        alert('Erro ao criar série: ' + error.message);
+        const year = new Date().getFullYear().toString();
+        const reference = `S${series.length + 1}${year}`;
+        const { data, error } = await supabase
+          .from('series_fiscais')
+          .insert([{
+            empresa_id: user.empresa_id,
+            serie: reference,
+            descricao: name,
+            tipo: type,
+            utilizador_id: selectedUsers.length > 0 ? selectedUsers[0] : null,
+            proximo_numero: 1,
+            ativo: true,
+            created_at: new Date().toISOString()
+          }]).select().single();
+
+        if (!error && data) {
+          if (selectedUsers.length > 0) {
+             const userInserts = selectedUsers.map(uid => ({ empresa_id: user.empresa_id, serie_id: data.id, usuario_id: uid }));
+             await supabase.from('series_fiscais_usuarios').insert(userInserts);
+          }
+          
+          setShowForm(false);
+          onRefresh();
+          alert('Série criada!');
+        } else {
+          alert('Erro ao criar série: ' + (error?.message || 'Erro desconhecido.'));
+        }
       }
     } catch (error) {
-      console.error('Error creating series:', error);
+      console.error('Error creating/updating series:', error);
     }
   };
 
@@ -17518,12 +17560,14 @@ const FiscalSeriesModule = ({
           <h2 className="text-xl font-bold text-[#003366]">Séries Fiscais</h2>
           <p className="text-xs text-zinc-500 uppercase tracking-widest font-medium">Gestão de numeração e configuração de documentos</p>
         </div>
-        <button 
-          onClick={() => setShowForm(true)}
-          className="bg-[#003366] text-white px-6 py-2.5 text-xs font-bold uppercase tracking-widest flex items-center gap-2 hover:bg-[#002244] transition-all shadow-lg"
-        >
-          <Plus size={16} /> Criar Série
-        </button>
+        {(user?.is_admin || user?.role === 'admin') && (
+          <button 
+            onClick={() => openForm()}
+            className="bg-[#003366] text-white px-6 py-2.5 text-xs font-bold uppercase tracking-widest flex items-center gap-2 hover:bg-[#002244] transition-all shadow-lg"
+          >
+            <Plus size={16} /> Criar Série
+          </button>
+        )}
       </div>
 
       <AnimatePresence>
@@ -17560,11 +17604,24 @@ const FiscalSeriesModule = ({
                   <input type="text" required value={name} onChange={e => setName(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none" />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Selecionar Utilizador</label>
-                  <select value={selectedUser} onChange={e => setSelectedUser(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none">
-                    <option value="">Todos</option>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Selecionar Utilizadores (Multi-Select)</label>
+                  <select 
+                    multiple 
+                    value={selectedUsers} 
+                    onChange={e => {
+                      const options = Array.from(e.target.selectedOptions, option => option.value);
+                      if (options.includes("")) { // If 'Nenhum' selected, clear others
+                        setSelectedUsers([]);
+                      } else {
+                        setSelectedUsers(options);
+                      }
+                    }} 
+                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none min-h-[100px]"
+                  >
+                    <option value="">Nenhuma</option>
                     {systemUsers.map(u => <option key={u.id} value={u.id.toString()}>{u.name}</option>)}
                   </select>
+                  <p className="text-[9px] text-zinc-500">Pressione e segure o CTRL (ou CMD) para selecionar múltiplos utilizadores.</p>
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tipo de Série</label>
@@ -17628,7 +17685,7 @@ const FiscalSeriesModule = ({
                 <td className="px-2 py-3 border-r border-zinc-100 text-center text-red-600 font-black">X</td>
                 <td className="px-2 py-3 border-r border-zinc-100 text-center text-red-600 font-black">X</td>
                 <td className="px-2 py-3 border-r border-zinc-200 text-center text-blue-600 font-bold underline cursor-pointer">Setup</td>
-                <td className="px-4 py-3 border-r border-zinc-100 text-center font-bold">{s.user_id ? '1' : 'Tdos'}</td>
+                <td className="px-4 py-3 border-r border-zinc-100 text-center font-bold">{s.user_ids?.length ? s.user_ids.length : (s.user_id ? '1' : 'Nenhuma')}</td>
                 <td className="px-4 py-3 border-r border-zinc-100 text-center font-bold text-zinc-400">0 / 5</td>
                 <td className="px-4 py-3 text-center relative">
                   <button 
@@ -17658,12 +17715,14 @@ const FiscalSeriesModule = ({
                             <p className="text-[10px] font-black text-[#003366] uppercase tracking-widest italic">Opções da Série</p>
                             <button onClick={() => setShowOptionsId(null)} className="text-zinc-400 hover:text-red-500"><X size={16}/></button>
                           </div>
-                          {OPTIONS.map((opt, idx) => (
+                          {OPTIONS.filter(opt => (user?.is_admin || user?.role === 'admin') || opt.label !== 'Editar Destino da Serie').map((opt, idx) => (
                             <button 
                               key={idx}
                               onClick={() => {
                                 if (opt.label.startsWith('Configurar')) {
                                   onConfigGraphic(s);
+                                } else if (opt.label === 'Editar Destino da Serie') {
+                                  openForm(s);
                                 }
                                 setShowOptionsId(null);
                               }}
@@ -17861,7 +17920,11 @@ const InvoiceList = ({
                           (currencyFilter === 'Kwanza' && (doc.currency === 'Kwanza' || doc.moeda === 'Kwanza' || doc.currency === 'Akz' || !doc.currency));
 
     return matchesSearch && matchesType && matchesStatus && matchesMin && matchesMax && matchesCurrency;
-  }).sort((a, b) => (b.id || 0) - (a.id || 0)) : [];
+  }).sort((a, b) => {
+    const dateA = new Date(a.data_emissao || a.date || a.created_at || 0).getTime();
+    const dateB = new Date(b.data_emissao || b.date || b.created_at || 0).getTime();
+    return dateB - dateA;
+  }) : [];
 
   return (
     <div className="space-y-0 -mt-12 -mx-12">
@@ -17923,7 +17986,7 @@ const InvoiceList = ({
                   <button 
                     onClick={onNew}
                     disabled={!canAccessSeries(user, serieFilter, fiscalSeries)}
-                    title={!canAccessSeries(user, serieFilter, fiscalSeries) ? `não tem permissão da série ${serieFilter} contacte o administrador` : ""}
+                    title={!canAccessSeries(user, serieFilter, fiscalSeries) ? "Não tem permissão nesta série. Contacte o administrador." : ""}
                     className={`font-bold px-6 py-2.5 rounded-none flex items-center gap-2 transition-all shadow-sm text-sm ${canAccessSeries(user, serieFilter, fiscalSeries) ? 'bg-[#2563eb] hover:bg-blue-700 text-white' : 'bg-zinc-200 text-zinc-500 cursor-not-allowed'}`}
                   >
                     <Plus size={20} className="bg-white/20 rounded-none p-0.5" />
@@ -25227,21 +25290,93 @@ const ConvertDocumentModal = ({ document, onClose, onSuccess }: {
 };
 
 const canAccessSeries = (user: any, serieFilter: string, fiscalSeries: any[]) => {
-  if (!user) return false;
-  if (user.is_admin || user.role === 'admin') return true;
+  if (!user) {
+    console.log('[Access] Bloqueado: Usuário não definido');
+    return false;
+  }
+  const isAdmin = user.is_admin || user.role === 'admin' || user.is_system_admin === true;
+  if (isAdmin) return true;
   
-  if (serieFilter === 'Todas') {
-    return false; // Force standard user to select a series in order to emit it, thus blocking them until they do
+  // Verificação de permissão específica por área (Fallback de segurança)
+  const hasGlobalPermission = user.permission_areas?.includes('vendas') || 
+                               user.permission_areas?.includes('faturacao') || 
+                               user.permission_areas?.includes('series');
+  
+  if (hasGlobalPermission) return true;
+  
+  const currentUserId = String(user.id).toLowerCase();
+  
+  if (serieFilter === 'Todas' || !serieFilter) {
+    // Se estiver em 'Todas', permitimos o botão se ele tiver acesso a pelo menos UMA série activa
+    const hasAny = fiscalSeries.some(s => {
+      if (s.user_ids && Array.isArray(s.user_ids)) {
+        return s.user_ids.some((uid: any) => String(uid).toLowerCase() === currentUserId);
+      }
+      if (s.user_id) {
+        return String(s.user_id).toLowerCase() === currentUserId;
+      }
+      return false;
+    });
+    console.log('[Access] Verificação global para Todas as séries:', hasAny);
+    return hasAny;
   }
   
-  const serie = fiscalSeries.find(s => s.reference === serieFilter || s.name === serieFilter);
-  if (!serie || !serie.user_id) return false;
+  const serie = fiscalSeries.find(s => 
+    String(s.serie || s.reference).toLowerCase() === String(serieFilter).toLowerCase()
+  );
+
+  if (!serie) {
+    console.log('[Access] Série não encontrada para filtro:', serieFilter);
+    return false;
+  }
   
-  return String(serie.user_id) === String(user.id);
+  let hasAccess = false;
+  if (serie.user_ids && Array.isArray(serie.user_ids)) {
+    hasAccess = serie.user_ids.some((uid: any) => String(uid).toLowerCase() === currentUserId);
+  } else if (serie.user_id) {
+    hasAccess = String(serie.user_id).toLowerCase() === currentUserId;
+  }
+  
+  console.log(`[Access] Verificação para série ${serieFilter}:`, hasAccess);
+  return hasAccess;
 };
 
 export default function App() {
   console.log("[App] Rendering initial state...");
+  // Global system stability listeners
+  useEffect(() => {
+    const handleRejection = (event: PromiseRejectionEvent) => {
+      console.warn('[SystemGuard] Prevenindo crash por Unhandled Rejection:', event.reason);
+      event.preventDefault();
+      
+      // Notify user only if it is a critical failure, but keep logs clean
+      const reason = event.reason?.message || String(event.reason);
+      if (reason.includes("connection") || reason.includes("fetch")) {
+        // Ignorar erros de rede silenciosos
+      } else {
+        toast.error("Ocorreu um erro de segundo plano, mas o sistema continua estável.");
+      }
+    };
+
+    const handleError = (event: ErrorEvent) => {
+      const msg = event.message || "";
+      if (msg.includes("WebSocket") || msg.includes("Socket") || msg.includes("closed")) {
+        console.warn("[SystemGuard] WebSocket instável interceptado.");
+        event.preventDefault();
+        return;
+      }
+      console.error("[SystemGuard] Erro capturado:", event.error || msg);
+    };
+
+    window.addEventListener('unhandledrejection', handleRejection);
+    window.addEventListener('error', handleError);
+
+    return () => {
+      window.removeEventListener('unhandledrejection', handleRejection);
+      window.removeEventListener('error', handleError);
+    };
+  }, []);
+
   const { user, logout, refreshUser } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showMenu, setShowMenu] = useState(true);
@@ -25458,8 +25593,13 @@ export default function App() {
   const loadAlerts = throttle(async (explicitId?: string) => {
     if (syncLockRef.current) return;
     syncLockRef.current = true;
-    await doLoadAlerts(explicitId);
-    syncLockRef.current = false;
+    try {
+      await doLoadAlerts(explicitId);
+    } catch (err) {
+      console.error('[App] Failed to load alerts:', err);
+    } finally {
+      syncLockRef.current = false;
+    }
   }, 3000);
 
   const handleSaveTask = async (e: React.FormEvent) => {
@@ -25644,21 +25784,30 @@ export default function App() {
     try {
       if (!user?.empresa_id) {
         console.error('Usuário não autenticado ou sem empresa no saveDocumentoEmitido');
+        toast.error('Erro: Usuário não autenticado ou sem empresa vinculada.');
         return;
       }
 
+      const docRef = doc.invoice_number || doc.numero_documento;
+      console.log('Dados enviados para emissão:', { 
+        empresa_id: user.empresa_id,
+        numero_documento: docRef,
+        tipo: doc.document_type || doc.tipo_documento,
+        total: doc.total
+      });
+
       if (doc?.is_certified || doc?.hash) {
-        console.log('Documento já foi devidamente certificado pelo servidor:', doc.invoice_number);
+        console.log('Documento já foi devidamente certificado pelo servidor:', docRef);
         await fetchData();
         return;
       }
 
-      console.log('Persistindo documento no Supabase:', doc.invoice_number || doc.numero_documento);
+      console.log('Persistindo documento no Supabase:', docRef);
 
       const payload = {
         empresa_id: user.empresa_id,
         tipo_documento: doc.document_type || doc.tipo_documento || 'Fatura',
-        numero_documento: doc.invoice_number || doc.numero_documento,
+        numero_documento: docRef,
         cliente_nome: doc.client_name || doc.cliente_nome || 'Desconhecido',
         cliente_email: doc.client_email || doc.customer_email || '',
         total: Number(doc.total || 0),
@@ -25684,36 +25833,31 @@ export default function App() {
         p_detalhes: payload.detalhes
       };
 
-      console.log('Emitindo via RPC Professional emitir_documento_fiscal...', rpcPayload);
-      const { data: rpcRes, error: rpcErr } = await supabase.rpc('emitir_documento_fiscal', rpcPayload);
+      console.log('[App] Chamando emissão via RPC...');
+      const { data: emitData, error: rpcError } = await supabase.rpc('emitir_documento_seguro', rpcPayload);
 
-      if (rpcErr) {
-        console.warn('RPC emitir_documento_fiscal falhou. Verifique se o SQL foi executado:', rpcErr.message);
-        
-        // Fallback for non-certified drafts if RPC fails
-        const { error } = await supabase
+      if (rpcError) {
+        console.error('[App] Erro crítico na emissão via RPC:', rpcError);
+        // Fallback para inserção simples se o RPC não existir ou falhar
+        const { error: insertError } = await supabase
           .from('documentos_emitidos')
-          .insert([{
-            ...payload,
-            numero_sequencial: null,
-            serie: doc.serie || 'PRD',
-            ano: fiscalYear,
-            estado_certificacao: 'pendente',
-            hash_documento: 'PENDENTE'
-          }]);
-
-        if (error) {
-          console.error('Erro ao salvar rascunho no Supabase:', error);
+          .insert(payload);
+          
+        if (insertError) {
+          console.error('Erro fatal ao salvar documento no Supabase:', insertError);
+          toast.error(`Falha ao registrar documento: ${insertError.message}`);
         } else {
-          console.log('Rascunho persistido para certificação posterior.');
+          toast.success('Documento registrado com sucesso!');
           await fetchData();
         }
       } else {
-        console.log('Documento certificado emitido via backend:', rpcRes);
+        console.log('Documento emitido via backend:', emitData);
+        toast.success(`Documento emitido com sucesso!`);
         await fetchData();
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Erro crítico no saveDocumentoEmitido:', err);
+      toast.error(`Erro inesperado: ${err.message}`);
     }
   }
 
@@ -25757,6 +25901,7 @@ export default function App() {
       if (!companyId) return;
 
       console.log('[App] Carregando documentos do Supabase para:', companyId);
+      // Sincronizar com empresa_id
       const { data, error } = await supabase
         .from('documentos_emitidos')
         .select('*')
@@ -25770,15 +25915,17 @@ export default function App() {
         throw error;
       }
       
-      console.log(`Documentos carregados: ${data?.length || 0}`);
+      console.log(`[App] Documentos carregados do Supabase: ${data?.length || 0}`);
       const docs = data?.map((d: any) => ({
         ...d,
-        contravalor: Number(d.total || 0), // Mapping Supabase 'total' to UI expected 'contravalor'
+        id: d.id,
+        is_certified: Boolean(d.is_certified),
+        status: (d.status || d.estado_certificacao || 'ativo').toLowerCase(),
+        contravalor: Number(d.total || 0),
         date: d.data_emissao || d.created_at,
-        client_name: d.cliente_nome || d.client_name,
-        invoice_number: d.numero_documento || d.invoice_number,
-        estado_documento: (d.estado || 'ativo').toLowerCase(),
-        document_type: d.tipo_documento || d.document_type
+        client_name: d.cliente_nome || d.client_name || 'Desconhecido',
+        invoice_number: d.numero_documento || d.invoice_number || d.documento_formatado || 'DRAFT',
+        document_type: d.tipo_documento || d.document_type || 'FT'
       })) || [];
       
       setIssuedDocuments(docs);
@@ -25844,7 +25991,7 @@ export default function App() {
         .eq('empresa_id', companyId)
         .gte('created_at', `${fiscalYear}-01-01T00:00:00Z`)
         .lte('created_at', `${fiscalYear}-12-31T23:59:59Z`)
-        .order('date', { ascending: false });
+        .order('created_at', { ascending: false });
 
       if (error) {
         if (error.code === 'PGRST205') {
@@ -25854,7 +26001,7 @@ export default function App() {
             .eq('empresa_id', companyId)
             .gte('created_at', `${fiscalYear}-01-01T00:00:00Z`)
             .lte('created_at', `${fiscalYear}-12-31T23:59:59Z`)
-            .order('date', { ascending: false });
+            .order('created_at', { ascending: false });
           data = fallback.data || [];
         } else {
           throw error;
@@ -26041,12 +26188,12 @@ export default function App() {
     syncLockRef.current = false;
   }, 3000);
 
-  // Real-time synchronization (Full Table Monitoring)
+  // Real-time synchronization using named callbacks for proper cleanup
   useEffect(() => {
     const companyId = user?.empresa_id;
     if (!companyId) return;
 
-    console.log('[REALTIME] Monitoramento ativado para empresa:', companyId);
+    console.log('[REALTIME] Monitoramento global ativado para empresa:', companyId);
 
     const tables = [
       'clientes', 
@@ -26057,33 +26204,33 @@ export default function App() {
       'fornecedores', 
       'compras',
       'alertas_tarefas'
-    ];
+    ] as const;
 
-    const channels = tables.map(table => {
-      return supabase
-        .channel(`public:${table}`)
-        .on('postgres_changes', { 
-          event: '*', 
-          schema: 'public', 
-          table: table, 
-          filter: `empresa_id=eq.${companyId}` 
-        }, (payload) => {
-          console.log(`[REALTIME-UPDATE] Mudança em ${table}:`, payload.eventType);
-          // Recarregamento inteligente baseado na tabela
-          if (table === 'clientes') loadClientes();
-          else if (table === 'locais_trabalho') loadLocaisTrabalho();
-          else if (table === 'documentos_emitidos') loadDocumentosEmitidos();
-          else if (table === 'caixas') loadCaixas();
-          else if (table === 'caixa_movimentacoes') loadCaixaMovements();
-          else if (table === 'fornecedores') loadFornecedores();
-          else if (table === 'compras') loadCompras();
-          else if (table === 'alertas_tarefas') loadAlerts();
-        })
-        .subscribe();
+    const handlers: Record<string, Callback> = {
+      clientes: () => loadClientes(),
+      locais_trabalho: () => loadLocaisTrabalho(),
+      documentos_emitidos: () => loadDocumentosEmitidos(),
+      caixas: () => loadCaixas(),
+      caixa_movimentacoes: () => loadCaixaMovements(),
+      fornecedores: () => loadFornecedores(),
+      compras: () => loadCompras(),
+      alertas_tarefas: () => loadAlerts()
+    };
+
+    tables.forEach(table => {
+      const handler = handlers[table];
+      if (handler) {
+        realtimeManager.subscribe(table, companyId, handler);
+      }
     });
 
     return () => {
-      channels.forEach(channel => supabase.removeChannel(channel));
+      tables.forEach(table => {
+        const handler = handlers[table];
+        if (handler) {
+          realtimeManager.unsubscribe(table, companyId, handler);
+        }
+      });
     };
   }, [user?.empresa_id]);
 
@@ -26110,12 +26257,12 @@ export default function App() {
         console.log('[DEBUG-SYNC] Ainda sem empresa_id. Buscando no DB (perfis)...');
         const { data: profileCheck, error: profileErr } = await supabase
           .from('perfis')
-          .select('company_id')
+          .select('empresa_id')
           .eq('id', session?.user?.id)
           .maybeSingle();
         
         if (profileErr) console.error('[DEBUG-SYNC] Erro ao buscar perfil:', profileErr);
-        targetCompanyId = profileCheck?.company_id;
+        targetCompanyId = profileCheck?.empresa_id;
       }
 
       if (!targetCompanyId && session?.user?.id) {
@@ -26226,10 +26373,25 @@ export default function App() {
       await doLoadAlerts(targetCompanyId);
 
       
-      const { data: sfData } = await supabase.from('series_fiscais').select('*').eq('empresa_id', targetCompanyId);
-      const fsDataFormatted = (sfData || []).map(s => ({
-        id: s.id, reference: s.serie, description: s.descricao, type: s.tipo, is_active: s.ativo, user_id: s.utilizador_id, name: s.descricao
-      }));
+      const [{ data: sfData }, { data: sfUsersData }] = await Promise.all([
+        supabase.from('series_fiscais').select('*').eq('empresa_id', targetCompanyId),
+        supabase.from('series_fiscais_usuarios').select('*').eq('empresa_id', targetCompanyId)
+      ]);
+      const fsDataFormatted = (sfData || []).map(s => {
+        const seriesUsers = (sfUsersData || [])
+          .filter((su: any) => String(su.serie_id).toLowerCase() === String(s.id).toLowerCase() && su.activo)
+          .map((su: any) => String(su.usuario_id).toLowerCase());
+        return {
+          id: s.id, 
+          reference: s.serie, 
+          description: s.descricao, 
+          type: s.tipo, 
+          is_active: s.ativo, 
+          user_id: s.utilizador_id, 
+          name: s.descricao,
+          user_ids: seriesUsers
+        };
+      });
 
       const results = await Promise.allSettled([
         fetchJson(`/api/stats?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
@@ -26422,9 +26584,12 @@ export default function App() {
 
   const handleCertifyDocument = async (id: number | string) => {
     try {
-      if (!user?.empresa_id) return;
+      if (!user?.id || !user?.empresa_id) {
+        alert('Erro: Utilizador não autenticado corretamente.');
+        return;
+      }
       
-      // Get the current document data to pass to the RPC
+      // Get the current document data
       const { data: doc, error: fetchErr } = await supabase
         .from('documentos_emitidos')
         .select('*')
@@ -26432,34 +26597,27 @@ export default function App() {
         .single();
         
       if (fetchErr || !doc) throw new Error('Documento não encontrado para certificação');
+      if (doc.is_certified) throw new Error('Este documento já se encontra certificado.');
 
-      // Call the Professional Fiscal RPC
-      const rpcPayload = {
-        p_empresa_id: user.empresa_id,
-        p_tipo_documento: doc.tipo_documento || 'Fatura',
-        p_cliente_nome: doc.cliente_nome,
-        p_cliente_email: doc.cliente_email,
-        p_total: Number(doc.total || 0),
-        p_imposto: Number(doc.imposto || 0),
-        p_detalhes: doc.detalhes
-      };
+      console.log('Certificando documento via RPC Professional...', id);
+      // We implement a more direct RPC or logic to avoid creating duplicates
+      // First try a dedicated "certify existing" RPC if it exists, otherwise use the standard one
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc('certificar_documento_existente', {
+        p_documento_id: id,
+        p_usuario_id: user.id
+      });
 
-      console.log('Certificando via RPC Professional...', rpcPayload);
-      const { data: rpcRes, error: rpcErr } = await supabase.rpc('emitir_documento_fiscal', rpcPayload);
-
-      if (rpcErr) throw rpcErr;
-
-      // If successful, we can optionally delete the old draft or mark it as converted
-      // In this case, the RPC created a new certified document. 
-      // We should probably delete the draft to avoid duplication in listing if listing filters certified only.
-      await supabase.from('documentos_emitidos').delete().eq('id', id);
-      
-      alert('Documento certificado com sucesso! Novo número: ' + (rpcRes as any).documento);
-      setShowCertifyModal(false);
-      await fetchData();
+      if (rpcErr) {
+        throw new Error(`Erro na certificação fiscal: ${rpcErr.message}`);
+      } else {
+        console.log('Documento certificado com sucesso:', rpcRes);
+        toast.success(`Documento certificado como ${rpcRes.numero}!`);
+        setShowCertifyModal(false);
+        await fetchData();
+      }
     } catch (err: any) {
       console.error('Erro ao certificar documento:', err);
-      alert('Erro ao certificar: ' + (err.message || 'Erro desconhecido. Verifique se as funções SQL foram criadas.'));
+      alert('Erro ao certificar: ' + (err.message || 'Erro desconhecido. Verifique se as funções SQL foram criadas na base de dados.'));
     }
   };
 

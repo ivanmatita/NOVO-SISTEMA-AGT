@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Warehouse } from '../types';
+import { realtimeManager } from '../lib/realtimeManager';
 
 export const useWarehouses = () => {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
@@ -10,16 +11,17 @@ export const useWarehouses = () => {
   const fetchWarehouses = useCallback(async () => {
     try {
       setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) return;
 
       const { data: profile } = await supabase
         .from('perfis')
-        .select('company_id')
+        .select('empresa_id')
         .eq('id', user.id)
         .single();
       
-      const currentEmpresaId = profile?.company_id;
+      const currentEmpresaId = profile?.empresa_id;
       setEmpresaId(currentEmpresaId);
 
       if (!currentEmpresaId) return;
@@ -34,9 +36,6 @@ export const useWarehouses = () => {
         console.error('Error fetching warehouses:', error);
         return;
       }
-
-      console.log("[ARMAZENS] empresaId:", currentEmpresaId);
-      console.log("[ARMAZENS] data:", data);
 
       setWarehouses(data || []);
     } catch (error) {
@@ -53,24 +52,11 @@ export const useWarehouses = () => {
   useEffect(() => {
     if (!empresaId) return;
 
-    const channel = supabase
-      .channel(`armazens-${empresaId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'armazens',
-          filter: `empresa_id=eq.${empresaId}`
-        },
-        () => {
-          fetchWarehouses();
-        }
-      )
-      .subscribe();
+    const onUpdate = () => fetchWarehouses();
+    realtimeManager.subscribe('armazens', empresaId, onUpdate);
 
     return () => {
-      supabase.removeChannel(channel);
+      realtimeManager.unsubscribe('armazens', empresaId, onUpdate);
     };
   }, [empresaId, fetchWarehouses]);
 

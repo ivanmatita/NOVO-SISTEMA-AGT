@@ -69,6 +69,183 @@ if (!supabaseAdmin) {
               updated_at TIMESTAMPTZ DEFAULT now()
           );
 
+          -- Ensure pgcrypto for hashing
+          CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+          -- Fiscal Functions
+          CREATE OR REPLACE FUNCTION gerar_hash_sha256(texto text) RETURNS text LANGUAGE sql AS $$
+              SELECT encode(digest(texto, 'sha256'), 'hex');
+          $$;
+
+          CREATE OR REPLACE FUNCTION gerar_codigo_curto(hash_text text) RETURNS text LANGUAGE plpgsql AS $$
+          BEGIN
+              RETURN upper(substring(hash_text from 1 for 4));
+          END;
+          $$;
+
+          -- Documentos Emitidos Migration
+          CREATE TABLE IF NOT EXISTS public.documentos_emitidos (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              empresa_id UUID NOT NULL,
+              tipo_documento TEXT NOT NULL,
+              numero_documento TEXT NOT NULL,
+              cliente_id UUID,
+              cliente_nome TEXT,
+              cliente_email TEXT,
+              total NUMERIC DEFAULT 0,
+              imposto NUMERIC DEFAULT 0,
+              estado TEXT DEFAULT 'ativo',
+              data_emissao TIMESTAMPTZ DEFAULT now(),
+              detalhes JSONB DEFAULT '{}',
+              created_at TIMESTAMPTZ DEFAULT now()
+          );
+
+          -- Ensure all columns for certification exist
+          ALTER TABLE public.documentos_emitidos ADD COLUMN IF NOT EXISTS empresa_id UUID;
+          ALTER TABLE public.documentos_emitidos ADD COLUMN IF NOT EXISTS is_certified BOOLEAN DEFAULT false;
+          ALTER TABLE public.documentos_emitidos ADD COLUMN IF NOT EXISTS hash_anterior TEXT;
+          ALTER TABLE public.documentos_emitidos ADD COLUMN IF NOT EXISTS hash_documento TEXT;
+          ALTER TABLE public.documentos_emitidos ADD COLUMN IF NOT EXISTS assinatura_digital TEXT;
+          ALTER TABLE public.documentos_emitidos ADD COLUMN IF NOT EXISTS codigo_validacao TEXT;
+          ALTER TABLE public.documentos_emitidos ADD COLUMN IF NOT EXISTS certificado_por UUID;
+          ALTER TABLE public.documentos_emitidos ADD COLUMN IF NOT EXISTS certified_at TIMESTAMPTZ;
+          ALTER TABLE public.documentos_emitidos ADD COLUMN IF NOT EXISTS data_emissao TIMESTAMPTZ DEFAULT now();
+          ALTER TABLE public.documentos_emitidos ADD COLUMN IF NOT EXISTS data_vencimento TIMESTAMPTZ;
+          ALTER TABLE public.documentos_emitidos ADD COLUMN IF NOT EXISTS serie TEXT;
+          ALTER TABLE public.documentos_emitidos ADD COLUMN IF NOT EXISTS ano INTEGER;
+          ALTER TABLE public.documentos_emitidos ADD COLUMN IF NOT EXISTS numero_sequencial INTEGER;
+          ALTER TABLE public.documentos_emitidos ADD COLUMN IF NOT EXISTS documento_formatado TEXT;
+          ALTER TABLE public.documentos_emitidos ADD COLUMN IF NOT EXISTS estado_certificacao TEXT DEFAULT 'Rascunho';
+          ALTER TABLE public.documentos_emitidos ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'ativo';
+          ALTER TABLE public.documentos_emitidos ADD COLUMN IF NOT EXISTS documento_anulado BOOLEAN DEFAULT false;
+          ALTER TABLE public.documentos_emitidos ADD COLUMN IF NOT EXISTS motivo_anulacao TEXT;
+
+          -- Migration: transfer company_id to empresa_id if exists
+          DO $$ 
+          BEGIN
+            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'documentos_emitidos' AND column_name = 'company_id') THEN
+                UPDATE public.documentos_emitidos SET empresa_id = company_id WHERE empresa_id IS NULL AND company_id IS NOT NULL;
+            END IF;
+          END $$;
+          
+          -- Ensure series_fiscais has necessary columns
+          ALTER TABLE public.series_fiscais ADD COLUMN IF NOT EXISTS ano integer DEFAULT EXTRACT(YEAR FROM now());
+          ALTER TABLE public.series_fiscais ADD COLUMN IF NOT EXISTS ultimo_hash text;
+
+          -- RPC to certify existing document
+          CREATE OR REPLACE FUNCTION public.certificar_documento_existente(p_documento_id uuid, p_usuario_id uuid)
+          RETURNS json LANGUAGE plpgsql SECURITY DEFINER AS $$
+          DECLARE
+              v_doc record;
+              v_serie_record record;
+              v_numero integer;
+              v_hash_anterior text;
+              v_hash_novo text;
+              v_codigo_curto text;
+              v_texto_hash text;
+              v_ano_fiscal integer;
+          BEGIN
+              -- 1. Buscar documento
+              SELECT * INTO v_doc FROM public.documentos_emitidos WHERE id = p_documento_id;
+              IF v_doc IS NULL THEN RETURN json_build_object('success', false, 'error', 'Documento não encontrado'); END IF;
+              IF v_doc.is_certified THEN RETURN json_build_object('success', false, 'error', 'Documento já certificado'); END IF;
+              IF v_doc.documento_anulado THEN RETURN json_build_object('success', false, 'error', 'Documento anulado não pode ser certificado'); END IF;
+
+              v_ano_fiscal := EXTRACT(YEAR FROM now());
+
+              -- 2. Buscar série ativa para o tipo de documento
+              SELECT * INTO v_serie_record FROM public.series_fiscais
+              WHERE empresa_id = v_doc.empresa_id AND ativo = true AND (tipo = v_doc.tipo_documento OR serie = v_doc.serie)
+              ORDER BY created_at DESC LIMIT 1;
+              
+              IF v_serie_record IS NULL THEN
+                  -- Criar série automática se não existir
+                  INSERT INTO public.series_fiscais (empresa_id, serie, descricao, tipo, proximo_numero, ativo, ano)
+                  VALUES (v_doc.empresa_id, 'PRD', 'Serie Produção', v_doc.tipo_documento, 1, true, v_ano_fiscal)
+                  RETURNING * INTO v_serie_record;
+              END IF;
+
+              -- 3. Incrementar contador da série
+              UPDATE public.series_fiscais SET proximo_numero = proximo_numero + 1
+              WHERE id = v_serie_record.id
+              RETURNING proximo_numero - 1 INTO v_numero;
+
+              -- 4. Buscar hash anterior (Encadeamento Fiscal)
+              SELECT hash_documento INTO v_hash_anterior FROM public.documentos_emitidos
+              WHERE empresa_id = v_doc.empresa_id AND tipo_documento = v_doc.tipo_documento AND is_certified = true
+              ORDER BY certified_at DESC, created_at DESC LIMIT 1;
+
+              -- 5. Gerar Hash
+              v_texto_hash := COALESCE(v_doc.numero_documento,'') || COALESCE(v_doc.cliente_nome,'') || COALESCE(v_doc.total::text,'0') || COALESCE(v_doc.imposto::text,'0') || COALESCE(v_hash_anterior,'');
+              v_hash_novo := public.gerar_hash_sha256(v_texto_hash);
+              v_codigo_curto := public.gerar_codigo_curto(v_hash_novo);
+
+              -- 6. Atualizar documento com certificação
+              UPDATE public.documentos_emitidos SET
+                  is_certified = true,
+                  estado_certificacao = 'CERTIFICADO',
+                  status = 'ativo',
+                  certified_at = now(),
+                  certificado_por = p_usuario_id,
+                  hash_anterior = v_hash_anterior,
+                  hash_documento = v_hash_novo,
+                  assinatura_digital = v_hash_novo,
+                  codigo_validacao = v_codigo_curto,
+                  numero_sequencial = v_numero,
+                  serie = v_serie_record.serie,
+                  ano = v_ano_fiscal
+              WHERE id = p_documento_id;
+
+              -- 7. Atualizar último hash na série
+              UPDATE public.series_fiscais SET ultimo_hash = v_hash_novo WHERE id = v_serie_record.id;
+
+              RETURN json_build_object(
+                  'success', true,
+                  'hash', v_hash_novo,
+                  'codigo_validacao', v_codigo_curto,
+                  'numero_sequencial', v_numero
+              );
+          END;
+          $$;
+
+          -- RPC to annul document
+          CREATE OR REPLACE FUNCTION public.anular_documento_fiscal(p_documento_id uuid, p_motivo text)
+          RETURNS json LANGUAGE plpgsql SECURITY DEFINER AS $$
+          BEGIN
+              UPDATE public.documentos_emitidos SET
+                  documento_anulado = true,
+                  estado = 'ANULADO',
+                  status = 'anulado',
+                  estado_certificacao = 'ANULADO',
+                  motivo_anulacao = p_motivo,
+                  is_certified = true, -- Still certified but invalidated
+                  updated_at = now()
+              WHERE id = p_documento_id;
+
+              RETURN json_build_object('success', true);
+          END;
+          $$;
+
+          -- Main fiscal emission function (Legacy wrapper - now only creates drafts)
+          CREATE OR REPLACE FUNCTION public.emitir_documento_fiscal(
+            p_empresa_id uuid,
+            p_tipo_documento text,
+            p_cliente_nome text,
+            p_cliente_email text,
+            p_total numeric,
+            p_imposto numeric,
+            p_detalhes jsonb
+          ) RETURNS json LANGUAGE plpgsql SECURITY DEFINER AS $$
+          DECLARE
+              v_res jsonb;
+          BEGIN
+              -- Consolidate to SECURE DRAFT creation.
+              -- Certification must be triggered manually via certificar_documento_existente.
+              v_res := public.emitir_documento_seguro(p_empresa_id, p_tipo_documento, p_cliente_nome, p_cliente_email, p_total, p_imposto, p_detalhes);
+              RETURN v_res::json;
+          END;
+          $$;
+
           -- Novo Módulo de Licenças
           CREATE TABLE IF NOT EXISTS public.licencas_empresas (
               id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -100,6 +277,31 @@ if (!supabaseAdmin) {
           );
 
           ALTER TABLE public.series_fiscais ADD COLUMN IF NOT EXISTS utilizador_id UUID REFERENCES public.perfis(id);
+
+          CREATE TABLE IF NOT EXISTS public.series_fiscais_usuarios (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              empresa_id UUID NOT NULL,
+              serie_id UUID NOT NULL,
+              usuario_id UUID NOT NULL,
+              activo BOOLEAN DEFAULT true,
+              created_at TIMESTAMPTZ DEFAULT now()
+          );
+
+          DO $$ 
+          BEGIN 
+              IF EXISTS (
+                  SELECT 1 
+                  FROM information_schema.columns 
+                  WHERE table_schema = 'public' 
+                  AND table_name = 'series_fiscais_usuarios' 
+                  AND column_name = 'serie_id' 
+                  AND data_type = 'bigint'
+              ) THEN 
+                  ALTER TABLE public.series_fiscais_usuarios ALTER COLUMN serie_id TYPE UUID USING serie_id::text::uuid;
+              END IF;
+          END $$;
+          
+          ALTER TABLE IF EXISTS public.series_fiscais_usuarios ENABLE ROW LEVEL SECURITY;
 
           CREATE TABLE IF NOT EXISTS public.historico_licencas (
               id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -183,7 +385,7 @@ if (!supabaseAdmin) {
           ALTER TABLE public.user_activities_sessions ADD COLUMN IF NOT EXISTS empresa_id UUID;
           ALTER TABLE public.user_activities_sessions ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'ativo';
 
-          -- Ensure public.caixas table and columns exist with both sets of columns for compatibility
+          -- Ensure tables and columns exist
           CREATE TABLE IF NOT EXISTS public.caixas (
               id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
               empresa_id UUID NOT NULL,
@@ -228,6 +430,51 @@ if (!supabaseAdmin) {
           ALTER TABLE public.caixas ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT false;
           ALTER TABLE public.caixas ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
 
+          ALTER TABLE public.caixa_movimentacoes ADD COLUMN IF NOT EXISTS date TIMESTAMPTZ DEFAULT now();
+          ALTER TABLE public.caixa_movimentacoes ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
+          ALTER TABLE public.caixa_movimentacoes ADD COLUMN IF NOT EXISTS empresa_id UUID;
+          ALTER TABLE public.caixa_movimentacoes ADD COLUMN IF NOT EXISTS moeda TEXT DEFAULT 'AOA';
+
+          -- Realtime Publication Initialization (Idempotent)
+          DO $$ 
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+               CREATE PUBLICATION supabase_realtime FOR ALL TABLES;
+            ELSE
+               BEGIN
+                 ALTER PUBLICATION supabase_realtime ADD TABLE public.clientes, public.caixas, public.caixa_movimentacoes, public.documentos_emitidos, public.perfis, public.alertas_tarefas;
+               EXCEPTION WHEN OTHERS THEN 
+                 RAISE NOTICE 'Some tables might already be in publication';
+               END;
+            END IF;
+          END $$;
+
+          -- RPCs for Document Issuance
+          CREATE OR REPLACE FUNCTION public.emitir_documento_seguro(
+              p_empresa_id UUID,
+              p_tipo_documento TEXT,
+              p_cliente_nome TEXT,
+              p_cliente_email TEXT,
+              p_total NUMERIC,
+              p_imposto NUMERIC,
+              p_detalhes JSONB
+          ) RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER AS $$
+          DECLARE
+              v_doc_id UUID;
+              v_doc_numero TEXT;
+          BEGIN
+              v_doc_numero := COALESCE(p_detalhes->>'numero_documento', 'DOC-' || floor(random() * 1000000)::text);
+              
+              INSERT INTO public.documentos_emitidos (
+                  empresa_id, tipo_documento, numero_documento, cliente_nome, cliente_email, total, imposto, detalhes, created_at, data_emissao
+              ) VALUES (
+                  p_empresa_id, p_tipo_documento, v_doc_numero, p_cliente_nome, p_cliente_email, p_total, p_imposto, p_detalhes, NOW(), NOW()
+              ) RETURNING id INTO v_doc_id;
+              
+              RETURN jsonb_build_object('success', true, 'id', v_doc_id, 'numero', v_doc_numero);
+          END;
+          $$;
+
           -- Schema Cache Reload
           NOTIFY pgrst, 'reload schema';
 
@@ -238,6 +485,43 @@ if (!supabaseAdmin) {
           ALTER TABLE public.user_activities_sessions ENABLE ROW LEVEL SECURITY;
           ALTER TABLE public.empresas ENABLE ROW LEVEL SECURITY;
 
+          -- Global Column Renaming: company_id -> empresa_id
+          DO $$ 
+          DECLARE 
+              r RECORD;
+          BEGIN
+              FOR r IN (
+                  SELECT table_name 
+                  FROM information_schema.columns 
+                  WHERE table_schema = 'public' 
+                  AND column_name = 'company_id'
+                  AND table_name NOT LIKE 'pg_%'
+              ) LOOP
+                  -- Check if empresa_id already exists in that table
+                  IF NOT EXISTS (
+                      SELECT 1 
+                      FROM information_schema.columns 
+                      WHERE table_schema = 'public' 
+                      AND table_name = r.table_name 
+                      AND column_name = 'empresa_id'
+                  ) THEN
+                      BEGIN
+                        EXECUTE format('ALTER TABLE public.%I RENAME COLUMN company_id TO empresa_id', r.table_name);
+                      EXCEPTION WHEN OTHERS THEN
+                        RAISE NOTICE 'Could not rename company_id in %', r.table_name;
+                      END;
+                  ELSE
+                      BEGIN
+                        -- Both exist, merge data and drop company_id
+                        EXECUTE format('UPDATE public.%I SET empresa_id = company_id WHERE empresa_id IS NULL AND company_id IS NOT NULL', r.table_name);
+                        EXECUTE format('ALTER TABLE public.%I DROP COLUMN company_id', r.table_name);
+                      EXCEPTION WHEN OTHERS THEN
+                        RAISE NOTICE 'Could not merge/drop company_id in %', r.table_name;
+                      END;
+                  END IF;
+              END LOOP;
+          END $$;
+
           -- Secure Helper Functions to resolve Tenant ID and Role securely bypassing RLS recursion
           CREATE OR REPLACE FUNCTION public.get_user_company_id()
           RETURNS UUID AS $$
@@ -247,14 +531,16 @@ if (!supabaseAdmin) {
           BEGIN
             IF v_uid IS NULL THEN RETURN NULL; END IF;
 
-            -- 1. Try JWT metadata first (highly reliable in SaaS context)
+            -- 1. Try JWT metadata first (Safe, no recursion)
             BEGIN
               v_company_id := (auth.jwt() -> 'user_metadata' ->> 'empresa_id')::UUID;
               IF v_company_id IS NOT NULL THEN RETURN v_company_id; END IF;
             EXCEPTION WHEN OTHERS THEN END;
 
-            -- 2. Try perfis (fastest table lookup)
-            SELECT COALESCE(company_id, empresa_id) INTO v_company_id FROM public.perfis WHERE id = v_uid LIMIT 1;
+            -- 2. Try perfis WITH A SECURITY DEFINER SUBQUERY to prevent RLS recursion
+            -- Note: Since this function is security definer, we can select from perfis directly.
+            -- Using a nested transaction block to be safe.
+            SELECT empresa_id INTO v_company_id FROM public.perfis WHERE id = v_uid LIMIT 1;
             IF v_company_id IS NOT NULL THEN RETURN v_company_id; END IF;
 
             -- 3. Try direct ownership fallback
@@ -385,41 +671,24 @@ if (!supabaseAdmin) {
               WITH CHECK (public.is_system_admin() OR empresa_id = public.get_user_company_id())';
             
             -- 3. CORE ISOLATION POLICIES WITH COLUMN CHECKS
-            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = ''public'' AND table_name = ''system_users'' AND column_name = ''company_id'') THEN
-              EXECUTE ''CREATE POLICY "company_isolation_system_users" ON public.system_users FOR ALL TO authenticated 
-                USING (public.is_system_admin() OR id = auth.uid() OR company_id = public.get_user_company_id())
-                WITH CHECK (public.is_system_admin() OR id = auth.uid() OR company_id = public.get_user_company_id())'';
-            ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = ''public'' AND table_name = ''system_users'' AND column_name = ''empresa_id'') THEN
-              EXECUTE ''CREATE POLICY "company_isolation_system_users" ON public.system_users FOR ALL TO authenticated 
-                USING (public.is_system_admin() OR id = auth.uid() OR empresa_id = public.get_user_company_id())
-                WITH CHECK (public.is_system_admin() OR id = auth.uid() OR empresa_id = public.get_user_company_id())'';
-            END IF;
+            EXECUTE 'CREATE POLICY "company_isolation_system_users" ON public.system_users FOR ALL TO authenticated 
+              USING (public.is_system_admin() OR id = auth.uid() OR empresa_id = public.get_user_company_id())
+              WITH CHECK (public.is_system_admin() OR id = auth.uid() OR empresa_id = public.get_user_company_id())';
               
-            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = ''public'' AND table_name = ''perfis'' AND column_name = ''company_id'') THEN
-              EXECUTE ''CREATE POLICY "company_isolation_perfis" ON public.perfis FOR ALL TO authenticated 
-                USING (public.is_system_admin() OR id = auth.uid() OR company_id = public.get_user_company_id())
-                WITH CHECK (public.is_system_admin() OR id = auth.uid() OR company_id = public.get_user_company_id())'';
-            ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = ''public'' AND table_name = ''perfis'' AND column_name = ''empresa_id'') THEN
-              EXECUTE ''CREATE POLICY "company_isolation_perfis" ON public.perfis FOR ALL TO authenticated 
-                USING (public.is_system_admin() OR id = auth.uid() OR empresa_id = public.get_user_company_id())
-                WITH CHECK (public.is_system_admin() OR id = auth.uid() OR empresa_id = public.get_user_company_id())'';
-            END IF;
+            -- Avoid recursion by using auth.uid() directly for self-access
+            EXECUTE 'CREATE POLICY "company_isolation_perfis" ON public.perfis FOR ALL TO authenticated 
+              USING (id = auth.uid() OR public.is_system_admin() OR empresa_id = public.get_user_company_id())
+              WITH CHECK (id = auth.uid() OR public.is_system_admin() OR empresa_id = public.get_user_company_id())';
               
-            EXECUTE ''CREATE POLICY "company_isolation_logs" ON public.logs_auditoria FOR SELECT TO authenticated 
-              USING (public.is_system_admin() OR user_id = auth.uid() OR company_id = public.get_user_company_id())'';
+            EXECUTE 'CREATE POLICY "company_isolation_logs" ON public.logs_auditoria FOR SELECT TO authenticated 
+              USING (public.is_system_admin() OR user_id = auth.uid() OR empresa_id = public.get_user_company_id())';
               
-            EXECUTE ''CREATE POLICY "company_isolation_logs_insert" ON public.logs_auditoria FOR INSERT TO authenticated 
-              WITH CHECK (auth.uid() IS NOT NULL)'';
+            EXECUTE 'CREATE POLICY "company_isolation_logs_insert" ON public.logs_auditoria FOR INSERT TO authenticated 
+              WITH CHECK (auth.uid() IS NOT NULL)';
               
-            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = ''public'' AND table_name = ''user_activities_sessions'' AND column_name = ''empresa_id'') THEN
-              EXECUTE ''CREATE POLICY "company_isolation_activities" ON public.user_activities_sessions FOR ALL TO authenticated 
-                USING (public.is_system_admin() OR utilizador_id = auth.uid() OR empresa_id = public.get_user_company_id())
-                WITH CHECK (public.is_system_admin() OR utilizador_id = auth.uid() OR empresa_id = public.get_user_company_id())'';
-            ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = ''public'' AND table_name = ''user_activities_sessions'' AND column_name = ''company_id'') THEN
-              EXECUTE ''CREATE POLICY "company_isolation_activities" ON public.user_activities_sessions FOR ALL TO authenticated 
-                USING (public.is_system_admin() OR utilizador_id = auth.uid() OR company_id = public.get_user_company_id())
-                WITH CHECK (public.is_system_admin() OR utilizador_id = auth.uid() OR company_id = public.get_user_company_id())'';
-            END IF;
+            EXECUTE 'CREATE POLICY "company_isolation_activities" ON public.user_activities_sessions FOR ALL TO authenticated 
+              USING (public.is_system_admin() OR utilizador_id = auth.uid() OR empresa_id = public.get_user_company_id())
+              WITH CHECK (public.is_system_admin() OR utilizador_id = auth.uid() OR empresa_id = public.get_user_company_id())';
               
             EXECUTE 'CREATE POLICY "empresas_select_policy" ON public.empresas FOR SELECT TO authenticated 
               USING (public.is_system_admin() OR auth_user_id = auth.uid() OR id = public.get_user_company_id())';
@@ -435,25 +704,13 @@ if (!supabaseAdmin) {
               USING (public.is_system_admin() OR auth_user_id = auth.uid())';
 
             -- 4. GENERIC Isolation for data tables
-            FOR t IN SELECT unnest(ARRAY['clientes', 'products', 'produtos', 'documentos_emitidos', 'caixas', 'caixa_movimentacoes', 'fornecedores', 'compras', 'transacoes', 'recibos', 'hr_contratos', 'professions', 'locais_trabalho', 'inventario', 'vendas', 'items_transacao', 'items_documento', 'user_activities_sessions', 'series_fiscais', 'tabela_impostos', 'armazens', 'licencas_empresas', 'historico_licencas']) LOOP
+            FOR t IN SELECT unnest(ARRAY['clientes', 'products', 'produtos', 'documentos_emitidos', 'caixas', 'caixa_movimentacoes', 'fornecedores', 'compras', 'transacoes', 'recibos', 'hr_contratos', 'professions', 'locais_trabalho', 'inventario', 'vendas', 'items_transacao', 'items_documento', 'user_activities_sessions', 'series_fiscais', 'series_fiscais_usuarios', 'tabela_impostos', 'armazens', 'licencas_empresas', 'historico_licencas']) LOOP
                 EXECUTE format('ALTER TABLE IF EXISTS public.%I ENABLE ROW LEVEL SECURITY', t);
                 
-                IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = t AND column_name = 'company_id') THEN
-                    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = t AND column_name = 'empresa_id') THEN
-                        EXECUTE format('CREATE POLICY %I_isolation ON public.%I FOR ALL TO authenticated 
-                            USING (public.is_system_admin() OR empresa_id = public.get_user_company_id() OR company_id = public.get_user_company_id())
-                            WITH CHECK (public.is_system_admin() OR empresa_id = public.get_user_company_id() OR company_id = public.get_user_company_id())', t, t);
-                    ELSE
-                        EXECUTE format('CREATE POLICY %I_isolation ON public.%I FOR ALL TO authenticated 
-                            USING (public.is_system_admin() OR company_id = public.get_user_company_id())
-                            WITH CHECK (public.is_system_admin() OR company_id = public.get_user_company_id())', t, t);
-                    END IF;
-                ELSE
-                    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = t AND column_name = 'empresa_id') THEN
-                        EXECUTE format('CREATE POLICY %I_isolation ON public.%I FOR ALL TO authenticated 
-                            USING (public.is_system_admin() OR empresa_id = public.get_user_company_id())
-                            WITH CHECK (public.is_system_admin() OR empresa_id = public.get_user_company_id())', t, t);
-                    END IF;
+                IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = t AND column_name = 'empresa_id') THEN
+                    EXECUTE format('CREATE POLICY %I_isolation ON public.%I FOR ALL TO authenticated 
+                        USING (public.is_system_admin() OR empresa_id = public.get_user_company_id())
+                        WITH CHECK (public.is_system_admin() OR empresa_id = public.get_user_company_id())', t, t);
                 END IF;
             END LOOP;
               
@@ -2504,9 +2761,22 @@ async function startServer() {
 
     if (supabaseAdmin && empresa_id) {
        try {
-         const { data: dbDocs } = await supabaseAdmin.from('documentos_emitidos').select('*').eq('empresa_id', empresa_id);
-         if (dbDocs) docs = dbDocs;
-         // Transactions still legacy for now, or we can add /compras if they exist in Supabase
+         const [docsRes, comprasRes] = await Promise.all([
+           supabaseAdmin.from('documentos_emitidos').select('*').eq('empresa_id', empresa_id),
+           supabaseAdmin.from('compras').select('*').eq('empresa_id', empresa_id)
+         ]);
+         
+         if (docsRes.data) docs = docsRes.data;
+         if (comprasRes.data) {
+            // Map compras to trans structure for costs
+            trans = comprasRes.data.map(c => ({
+              id: c.id,
+              date: c.data_emissao || c.created_at,
+              amount: c.total || 0,
+              type: 'expense',
+              category: c.tipo === 'Serviços' ? 'Serviços' : 'Fornecedores' // Basic mapping
+            }));
+         }
        } catch (e) {
          console.error("[SERVER-REPORTS] Supabase error:", e);
        }
@@ -2564,7 +2834,7 @@ async function startServer() {
     // Use Supabase if Admin is available, otherwise fallback to memory
     if (supabaseAdmin) {
       try {
-        const [docsRes, clientsRes, caixasRes] = await Promise.all([
+        const [docsRes, clientsRes, caixasRes, comprasRes] = await Promise.all([
           supabaseAdmin.from('documentos_emitidos')
             .select('*')
             .eq('empresa_id', empresa_id)
@@ -2573,18 +2843,24 @@ async function startServer() {
           supabaseAdmin.from('clientes')
             .select('id')
             .eq('empresa_id', empresa_id),
-          supabaseAdmin.from('caixas').select('current_balance').eq('empresa_id', empresa_id)
+          supabaseAdmin.from('caixas').select('current_balance').eq('empresa_id', empresa_id),
+          supabaseAdmin.from('compras')
+            .select('total')
+            .eq('empresa_id', empresa_id)
+            .gte('created_at', `${year}-01-01T00:00:00Z`)
+            .lte('created_at', `${year}-12-31T23:59:59Z`)
         ]);
 
         const dbDocs = docsRes.data || [];
         const dbClientsCount = clientsRes.data?.length || 0;
         const dbCaixasTotal = (caixasRes.data || []).reduce((acc, c) => acc + (Number(c.current_balance) || 0), 0);
+        const dbComprasTotal = (comprasRes.data || []).reduce((acc, c) => acc + (Number(c.total) || 0), 0);
 
         return res.json({
           totalInvoiced: dbDocs.reduce((acc, doc) => acc + (Number(doc.total) || 0), 0),
           pendingCount: dbDocs.filter(d => (d.status || d.estado_documento || '').toLowerCase() === 'pendente' || d.payment_status === 'pending').length,
           clientCount: dbClientsCount,
-          totalExpenses: 0,
+          totalExpenses: dbComprasTotal,
           cashBalance: dbCaixasTotal,
           recentInvoices: dbDocs.slice(-5).map(doc => ({
             id: doc.id,
@@ -4353,9 +4629,29 @@ async function startServer() {
   });
 
   // Transactions
-  app.get("/api/transactions", (req, res) => {
+  app.get("/api/transactions", async (req, res) => {
     const { empresa_id } = req.query;
     const year = Number(req.query.year) || new Date().getFullYear();
+    
+    if (supabaseAdmin && empresa_id) {
+       try {
+           const { data } = await supabaseAdmin.from('compras').select('*').eq('empresa_id', empresa_id);
+           if (data) {
+              const mapped = data.map((c: any) => ({
+                 id: c.id,
+                 date: c.data_emissao || c.created_at,
+                 amount: c.total || 0,
+                 type: 'expense',
+                 category: c.tipo === 'Serviços' ? 'Serviços' : 'Fornecedores',
+                 description: c.fornecedor_nome || c.descricao || 'Despesa'
+              }));
+              return res.json(mapped.filter((t: any) => !t.date || new Date(t.date).getFullYear() === year));
+           }
+       } catch (err) {
+           console.error('Error fetching transactions from compras', err);
+       }
+    }
+    
     if (empresa_id) return res.json(transactions.filter(t => String(t.empresa_id) === String(empresa_id) && (!t.date || new Date(t.date).getFullYear() === year)));
     res.json([]);
   });

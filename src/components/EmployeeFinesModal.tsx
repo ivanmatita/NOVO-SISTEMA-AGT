@@ -40,7 +40,7 @@ export const EmployeeFinesModal = ({
         .from('employee_penalties')
         .select('*')
         .eq('employee_id', employee.id)
-        .order('date', { ascending: false });
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
       setPenalties(data || []);

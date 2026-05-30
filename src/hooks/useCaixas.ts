@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { Caixa, CaixaMovement } from '../types';
 import { systemUsersService } from '../services/systemUsersService';
 import { useAuth } from '../contexts/AuthContext';
+import { realtimeManager } from '../lib/realtimeManager';
 
 export const useCaixas = () => {
   const { user: authUser } = useAuth();
@@ -60,7 +61,7 @@ export const useCaixas = () => {
         .from('caixa_movimentacoes')
         .select('*')
         .eq('empresa_id', fetchEmpresaId)
-        .order('date', { ascending: false });
+        .order('created_at', { ascending: false });
 
       if (movData) {
         setMovements(movData.map(m => ({
@@ -170,41 +171,14 @@ export const useCaixas = () => {
   useEffect(() => {
     if (!empresaId) return;
 
-    const channel = supabase
-      .channel(`caixas-${empresaId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'caixas',
-          filter: `empresa_id=eq.${empresaId}`
-        },
-        () => {
-          fetchCaixas();
-        }
-      )
-      .subscribe();
+    const onUpdate = () => fetchCaixas();
 
-    const movementsChannel = supabase
-      .channel(`caixa_movimentacoes-${empresaId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'caixa_movimentacoes',
-          filter: `empresa_id=eq.${empresaId}`
-        },
-        () => {
-          fetchCaixas();
-        }
-      )
-      .subscribe();
+    realtimeManager.subscribe('caixas', empresaId, onUpdate);
+    realtimeManager.subscribe('caixa_movimentacoes', empresaId, onUpdate);
 
     return () => {
-      supabase.removeChannel(channel);
-      supabase.removeChannel(movementsChannel);
+      realtimeManager.unsubscribe('caixas', empresaId, onUpdate);
+      realtimeManager.unsubscribe('caixa_movimentacoes', empresaId, onUpdate);
     };
   }, [empresaId, fetchCaixas]);
 
@@ -350,8 +324,7 @@ export const useCaixas = () => {
           type: movement.type,
           amount: movement.amount,
           moeda: movement.moeda || 'AOA',
-          description: movement.description,
-          date: new Date().toISOString()
+          description: movement.description
         });
 
       if (movError) throw movError;

@@ -40,7 +40,7 @@ export const caixaService = {
         .from('caixa_movimentacoes')
         .select('*')
         .eq('empresa_id', empresaId)
-        .order('date', { ascending: false });
+        .order('created_at', { ascending: false });
 
       if (caixaId) {
         query = query.or(`caixa_id.eq.${caixaId},target_caixa_id.eq.${caixaId}`);
@@ -147,8 +147,7 @@ export const caixaService = {
           type: movement.type,
           amount: movement.amount,
           moeda: movement.moeda || 'AOA',
-          description: movement.description,
-          date: new Date().toISOString()
+          description: movement.description
         }]);
 
       if (movError) throw movError;

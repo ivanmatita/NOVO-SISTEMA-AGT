@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { realtimeManager } from '../lib/realtimeManager';
 import { Plus, Trash2, Edit, Save, X, Percent, FileText, Loader2, AlertCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -58,20 +59,15 @@ const TaxesModule = ({ onRefreshData }: { onRefreshData?: () => void }) => {
     
     if (!user?.empresa_id) return;
     
-    // Realtime subscription setup
-    const subscription = supabase
-      .channel('impostos_changes')
-      .on('postgres_changes', 
-        { event: '*', schema: 'public', table: 'impostos', filter: `empresa_id=eq.${user.empresa_id}` }, 
-        () => {
-          fetchTaxes();
-          if (onRefreshData) onRefreshData();
-        }
-      )
-      .subscribe();
+    const onUpdate = () => {
+      fetchTaxes();
+      if (onRefreshData) onRefreshData();
+    };
+
+    realtimeManager.subscribe('impostos', user.empresa_id, onUpdate);
 
     return () => {
-      supabase.removeChannel(subscription);
+      realtimeManager.unsubscribe('impostos', user.empresa_id, onUpdate);
     };
   }, [user?.empresa_id]);
 

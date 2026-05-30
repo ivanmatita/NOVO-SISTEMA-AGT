@@ -373,24 +373,26 @@ export interface CashSession {
 }
 
 export interface FiscalSeries {
-  id: number;
+  id: string | number;
   name: string;
   description?: string;
-  user_id: string | number;
+  user_id?: string | number; // Legacy
+  users?: Array<{id: string, name: string}>;
+  user_ids?: string[];
   user_name?: string;
   type: 'normal' | 'manual' | 'manual_recovery';
   reference: string; 
   counter: number;
-  year: number;
   is_active: boolean;
-  data_inicio: string;
-  destino: string;
+  year?: number;
+  data_inicio?: string;
+  destino?: string;
   top_config?: boolean;
   down_config?: boolean;
   watermark_setup?: boolean;
   users_count?: number;
   bancos_count?: string;
-  created_at: string;
+  created_at?: string;
 }
 
 export interface CostCenter {

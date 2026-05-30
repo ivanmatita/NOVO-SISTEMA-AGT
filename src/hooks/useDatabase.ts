@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Cliente, clienteService } from '../services/clienteService';
 import { LocalTrabalho, localTrabalhoService } from '../services/localTrabalhoService';
-import { supabase } from '../lib/supabase';
+import { realtimeManager } from '../lib/realtimeManager';
 
 export function useClientes(empresa_id?: string) {
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -26,17 +26,11 @@ export function useClientes(empresa_id?: string) {
     if (!empresa_id) return;
     load();
 
-    // 🔄 REALTIME SUBSCRIPTION
-    const channel = supabase
-      .channel('realtime:clientes')
-      .on('postgres_changes', 
-        { event: '*', schema: 'public', table: 'clientes', filter: `empresa_id=eq.${empresa_id}` }, 
-        () => load()
-      )
-      .subscribe();
+    const onUpdate = () => load();
+    realtimeManager.subscribe('clientes', empresa_id, onUpdate);
 
     return () => {
-      supabase.removeChannel(channel);
+      realtimeManager.unsubscribe('clientes', empresa_id, onUpdate);
     };
   }, [empresa_id, load]);
 
@@ -66,17 +60,11 @@ export function useLocaisTrabalho(empresa_id?: string) {
     if (!empresa_id) return;
     load();
 
-    // 🔄 REALTIME SUBSCRIPTION
-    const channel = supabase
-      .channel('realtime:locais')
-      .on('postgres_changes', 
-        { event: '*', schema: 'public', table: 'locais_trabalho', filter: `empresa_id=eq.${empresa_id}` }, 
-        () => load()
-      )
-      .subscribe();
+    const onUpdate = () => load();
+    realtimeManager.subscribe('locais_trabalho', empresa_id, onUpdate);
 
     return () => {
-      supabase.removeChannel(channel);
+      realtimeManager.unsubscribe('locais_trabalho', empresa_id, onUpdate);
     };
   }, [empresa_id, load]);
 

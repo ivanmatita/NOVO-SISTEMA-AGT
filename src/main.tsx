@@ -65,11 +65,19 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 }
 
+import { Toaster, toast } from 'react-hot-toast';
+
 // Global Rejection and Exception Listeners to prevent uncaught page failures
 if (typeof window !== 'undefined') {
   window.addEventListener('unhandledrejection', (event) => {
     // Intercept with clean logs. Suppress noise or trace.
     console.warn('[SafeSystem] Intercepted Unhandled promise rejection:', event.reason);
+    
+    // Toast amigável
+    const msg = event.reason?.message || 'Erro de rede ou processamento.';
+    if (!msg.includes('WebSocket')) {
+      toast.error(`Falha de processamento: ${msg.substring(0, 60)}...`, { id: 'unhandled-rejection' });
+    }
     
     // Gracefully prevent default browser reporting
     event.preventDefault();
@@ -82,7 +90,11 @@ if (typeof window !== 'undefined') {
     const errorStr = event.message || '';
     if (errorStr.includes('WebSocket') || errorStr.includes('Socket') || errorStr.includes('connection')) {
       event.preventDefault();
+      // Optional: silenty notify if it was a real connection fail
+      return;
     }
+
+    toast.error('Ocorreu uma instabilidade no painel. A tentar recuperar...', { id: 'runtime-error' });
   });
 }
 
@@ -107,6 +119,7 @@ createRoot(document.getElementById('root')!).render(
     <ErrorBoundary>
       <AuthProvider>
         <App />
+        <Toaster position="top-right" />
       </AuthProvider>
     </ErrorBoundary>
   </StrictMode>,

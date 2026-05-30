@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { realtimeManager } from '../lib/realtimeManager';
 
 export interface MediaArquivo {
   id: string;
@@ -30,16 +31,17 @@ export const useMedia = () => {
   const fetchMedia = useCallback(async () => {
     try {
       setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) return;
 
       const { data: profile } = await supabase
         .from('perfis')
-        .select('company_id')
+        .select('empresa_id')
         .eq('id', user.id)
         .single();
 
-      const currentEmpresaId = profile?.company_id;
+      const currentEmpresaId = profile?.empresa_id;
       setEmpresaId(currentEmpresaId);
 
       if (!currentEmpresaId) return;
@@ -70,24 +72,11 @@ export const useMedia = () => {
   useEffect(() => {
     if (!empresaId) return;
 
-    const channel = supabase
-      .channel(`media-${empresaId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'media_arquivos',
-          filter: `empresa_id=eq.${empresaId}`
-        },
-        () => {
-          fetchMedia();
-        }
-      )
-      .subscribe();
+    const onUpdate = () => fetchMedia();
+    realtimeManager.subscribe('media_arquivos', empresaId, onUpdate);
 
     return () => {
-      supabase.removeChannel(channel);
+      realtimeManager.unsubscribe('media_arquivos', empresaId, onUpdate);
     };
   }, [empresaId, fetchMedia]);
 

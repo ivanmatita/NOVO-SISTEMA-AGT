@@ -132,10 +132,10 @@ export const authService = {
 
       sessionCache = authData.session;
 
-      // 1. Tentar buscar Perfil (using company_id column)
+      // 1. Tentar buscar Perfil (using empresa_id column)
       const { data: perfil, error: perfilError } = await supabase
         .from('perfis')
-        .select('company_id, role')
+        .select('empresa_id, role')
         .eq('id', authData.user.id)
         .maybeSingle();
 
@@ -222,7 +222,7 @@ export const authService = {
           .from('perfis')
           .upsert({
             id: authData.user.id,
-            company_id: targetCompany.id,
+            empresa_id: targetCompany.id,
             email: authData.user.email,
             role: 'admin',
             nome: authData.user.user_metadata?.full_name || targetCompany.nome_empresa || authData.user.email?.split('@')[0]
@@ -237,7 +237,7 @@ export const authService = {
              .from('perfis')
              .insert([{
                id: authData.user.id,
-               company_id: targetCompany.id,
+               empresa_id: targetCompany.id,
                email: authData.user.email,
                role: 'admin',
                nome: authData.user.user_metadata?.full_name || targetCompany.nome_empresa || authData.user.email?.split('@')[0]
@@ -336,7 +336,7 @@ export const authService = {
       const startTime = Date.now();
       const perfilQuery = supabase
         .from('perfis')
-        .select('company_id, role, permission_areas, is_admin, level')
+        .select('empresa_id, role, permission_areas, is_admin, level')
         .eq('id', session?.user?.id)
         .maybeSingle();
 
@@ -358,7 +358,7 @@ export const authService = {
       }
 
       let empresa = null;
-      const parsedCompanyId = perfil?.company_id;
+      const parsedCompanyId = perfil?.empresa_id;
 
       if (parsedCompanyId) {
         const pt2 = createTimeout(30000);
@@ -418,8 +418,8 @@ export const authService = {
         }
 
         // Tentativa 2: Buscar QUALQUER perfil deste utilizador (caso o lookup anterior tenha falhado)
-        const { data: profileOnly } = await supabase.from('perfis').select('company_id, role, permission_areas, is_admin, level').eq('id', session?.user?.id).maybeSingle();
-        const fallbackCompanyId = profileOnly?.company_id;
+        const { data: profileOnly } = await supabase.from('perfis').select('empresa_id, role, permission_areas, is_admin, level').eq('id', session?.user?.id).maybeSingle();
+        const fallbackCompanyId = profileOnly?.empresa_id;
         if (fallbackCompanyId) {
            const { data: companyOnly } = await supabase.from('empresas').select('*').eq('id', fallbackCompanyId).maybeSingle();
            if (companyOnly) {

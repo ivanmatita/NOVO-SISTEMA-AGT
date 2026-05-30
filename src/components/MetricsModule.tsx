@@ -3,6 +3,7 @@ import { Settings, Plus, X, Edit, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import { realtimeManager } from '../lib/realtimeManager';
 import toast, { Toaster } from 'react-hot-toast';
 
 export interface Metric {
@@ -58,25 +59,11 @@ export const MetricsModule = ({ onRefreshData }: { onRefreshData?: () => void })
 
     loadMetrics();
 
-    // --- Realtime Implementation ---
-    const channel = supabase
-      .channel(`metrics-${user.empresa_id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'metrics',
-          filter: `empresa_id=eq.${user.empresa_id}`
-        },
-        () => {
-          loadMetrics();
-        }
-      )
-      .subscribe();
+    const onUpdate = () => loadMetrics();
+    realtimeManager.subscribe('metrics', user.empresa_id, onUpdate);
 
     return () => {
-      supabase.removeChannel(channel);
+      realtimeManager.unsubscribe('metrics', user.empresa_id, onUpdate);
     };
   }, [user?.empresa_id]);
 

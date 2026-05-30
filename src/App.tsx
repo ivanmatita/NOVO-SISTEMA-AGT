@@ -10726,12 +10726,65 @@ const FinancialModule = ({
   );
 };
 
-const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isDraftsPage = false }: { 
+const UserIssuerButton = ({ doc, globalUsers }: { doc: any, globalUsers?: any[] }) => {
+  const [show, setShow] = useState(false);
+  const getIssuerName = () => {
+    // 1. New direct fields
+    if (doc.created_by_nome) return doc.created_by_nome;
+    if (doc.created_by_username) return doc.created_by_username;
+    
+    // 2. Legacy/Specific fields that might contain actual names
+    if (doc.utilizador_emissao && !doc.utilizador_emissao.includes('-')) return doc.utilizador_emissao;
+    if (doc.detalhes?.vendedor) return doc.detalhes?.vendedor;
+    if (doc.detalhes?.operador) return doc.detalhes?.operador;
+    if (doc.operator_name) return doc.operator_name;
+
+    // 3. User ID lookup fallback
+    const issuerId = doc.criado_por || doc.certificado_por || doc.usuario_id || doc.user_id || doc.created_by;
+    if (issuerId) {
+      const foundUser = globalUsers?.find(u => String(u.id) === String(issuerId));
+      if (foundUser) return foundUser.name || foundUser.username || foundUser.email;
+    }
+    
+    return 'Não identificado';
+  };
+
+  const name = getIssuerName();
+
+  return (
+    <div 
+      className="relative flex items-center justify-center"
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setShow(!show);
+        }}
+        title={`Emitido por: ${name}`}
+        className={`transition-all p-1.5 rounded-sm flex items-center justify-center ${show ? 'text-amber-500 bg-amber-50 border border-amber-100 scale-105' : 'text-zinc-300 hover:text-blue-600 hover:bg-blue-50 border border-transparent'}`}
+      >
+        <UserIcon size={16} />
+      </button>
+      {show && (
+        <div className="absolute right-0 bottom-full mb-2 z-[999] bg-zinc-950 text-white text-[9px] uppercase font-bold tracking-widest py-1.5 px-3 border border-zinc-850 shadow-2xl rounded-none whitespace-nowrap">
+          Emissor: <span className="text-amber-400 font-black">{name}</span>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isDraftsPage = false, globalUsers }: { 
   documents: IssuedDocument[], 
   onAction: (action: string, doc: IssuedDocument) => void, 
   onCertify: (doc: IssuedDocument) => void,
   onViewDetail?: (doc: IssuedDocument) => void,
-  isDraftsPage?: boolean
+  isDraftsPage?: boolean,
+  globalUsers?: any[]
 }) => {
   const [showActionsModal, setShowActionsModal] = useState<IssuedDocument | null>(null);
   const [showAnularModal, setShowAnularModal] = useState<IssuedDocument | null>(null);
@@ -10777,6 +10830,12 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
                   <div className={`uppercase tracking-tighter ${doc.status === 'anulado' ? 'line-through text-red-400' : ''}`}>
                     {doc.document_type || doc.tipo_documento}
                   </div>
+                  {(doc.reference_document || doc.numero_documento_origem || doc.associated_document) && (
+                    <div className="text-[8px] text-red-700 bg-red-50 border border-red-100 font-black px-1.5 py-0.5 mt-1 rounded-none w-fit uppercase tracking-tight flex items-center gap-1">
+                      <span>Ref:</span>
+                      <span className="font-mono">{(doc.reference_document || doc.numero_documento_origem || doc.associated_document)}</span>
+                    </div>
+                  )}
                   {doc.series_name && <div className="text-[9px] text-zinc-400 font-black uppercase tracking-widest">{doc.series_name}</div>}
                 </td>
                 <td className={`px-6 py-4 font-mono text-[10px] font-black whitespace-nowrap transition-colors ${doc.status === 'anulado' ? 'bg-red-50 text-red-600' : 'text-zinc-600 bg-zinc-50/50'}`}>
@@ -10798,13 +10857,13 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
                     onClick={(e) => {
                       e.stopPropagation();
                       if (!doc.is_certified) {
-                        alert('Este documento ainda não está certificado. O documento só pode abrir para imprimir depois de estar certificado conforme as regras fiscais de Angola.');
-                        return;
+                        onCertify(doc);
+                      } else {
+                        onAction('print_a4', doc);
                       }
-                      onAction('print_a4', doc);
                     }} 
-                    title={doc.is_certified ? "Imprimir" : "Não certificado (Bloqueado)"}
-                    className={`transition-all p-1.5 hover:bg-zinc-100 ${doc.is_certified ? 'text-[#003366]' : 'text-zinc-350 cursor-not-allowed opacity-50'}`}
+                    title={doc.is_certified ? "Imprimir" : "Certificar e Imprimir"}
+                    className={`transition-all p-1.5 hover:bg-zinc-100 text-[#003366]`}
                   >
                     <Printer size={14} />
                   </button>
@@ -10829,6 +10888,7 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
                   >
                     <BadgeCheck size={16} />
                   </button>
+                  <UserIssuerButton doc={doc} globalUsers={globalUsers} />
                   <button 
                     onClick={(e) => {
                       e.stopPropagation();
@@ -16712,7 +16772,7 @@ const PGCModule = ({ onBack }: { onBack: () => void }) => {
   );
 };
 
-const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employees, issuedDocuments, fiscalYear, companyData }: { 
+const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employees, issuedDocuments, fiscalYear, companyData, setFiscalYear }: { 
   invoices: Invoice[], 
   clients: Client[], 
   fiscalSeries: FiscalSeries[], 
@@ -16720,7 +16780,8 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
   employees: Employee[],
   issuedDocuments: IssuedDocument[],
   fiscalYear: string,
-  companyData?: any
+  companyData?: any,
+  setFiscalYear: (year: string) => void
 }) => {
   const { user } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState<string | null>(null);
@@ -17440,7 +17501,7 @@ const FiscalSeriesModule = ({
 }) => {
   const { user } = useAuth();
   const [showForm, setShowForm] = useState(false);
-  const [showOptionsId, setShowOptionsId] = useState<number | null>(null);
+  const [showOptionsId, setShowOptionsId] = useState<number | string | null>(null);
   const [systemUsers, setSystemUsers] = useState<SystemUser[]>([]);
   
   useEffect(() => {
@@ -17453,7 +17514,7 @@ const FiscalSeriesModule = ({
 
   const [name, setName] = useState('');
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
-  const [type, setType] = useState<'normal' | 'manual'>('normal');
+  const [type, setType] = useState<'normal' | 'manual' | 'manual_recovery'>('normal');
   const [destiny, setDestiny] = useState('');
   
   const [editingSerie, setEditingSerie] = useState<FiscalSeries | null>(null);
@@ -17463,7 +17524,7 @@ const FiscalSeriesModule = ({
       setEditingSerie(serie);
       setName(serie.description || serie.name || '');
       setSelectedUsers(serie.user_ids ? serie.user_ids : (serie.user_id ? [String(serie.user_id)] : []));
-      setType(serie.type || 'normal');
+      setType((serie.type as any) || 'normal');
       setDestiny(''); // Or from somewhere if existing
     } else {
       setEditingSerie(null);
@@ -17773,7 +17834,9 @@ const InvoiceList = ({
   mode = 'standard',
   fiscalSeries,
   onDeleteWorkSite,
-  onRefresh
+  onRefresh,
+  fiscalYear = '2026',
+  globalUsers
 }: { 
   invoices: Invoice[], 
   issuedDocuments: IssuedDocument[],
@@ -17794,7 +17857,9 @@ const InvoiceList = ({
   mode?: 'standard' | 'electronic',
   fiscalSeries: FiscalSeries[],
   onDeleteWorkSite: (id: number) => void,
-  onRefresh: () => void
+  onRefresh: () => void,
+  fiscalYear?: string,
+  globalUsers?: any[]
 }) => {
   const { user } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState('emitidos');
@@ -17805,6 +17870,11 @@ const InvoiceList = ({
   const [currencyFilter, setCurrencyFilter] = useState('Todos');
   const [minValue, setMinValue] = useState('');
   const [maxValue, setMaxValue] = useState('');
+  const [filterSerieFiscal, setFilterSerieFiscal] = useState<string>('all');
+  const [selectedTipoDocFiscal, setSelectedTipoDocFiscal] = useState<string>('all');
+  const [selectedStatusCertFiscal, setSelectedStatusCertFiscal] = useState<string>('all');
+  const [selectedStatusAnuladoFiscal, setSelectedStatusAnuladoFiscal] = useState<string>('all');
+  const [selectedClienteFiscal, setSelectedClienteFiscal] = useState<string>('all');
   const [showWorkSiteForm, setShowWorkSiteForm] = useState(false);
   const [selectedWorkSite, setSelectedWorkSite] = useState<WorkSite | null>(null);
   const [showActionMenu, setShowActionMenu] = useState(false);
@@ -17898,33 +17968,121 @@ const InvoiceList = ({
   ];
 
   const filteredIssuedDocuments = Array.isArray(issuedDocuments) ? issuedDocuments.filter(doc => {
+    // 1. Pesquisa Geral (Nome Cliente ou Número)
     const searchStr = searchTerm.toLowerCase();
     const matchesSearch = (doc.invoice_number || doc.numero_documento || '').toLowerCase().includes(searchStr) ||
-                         (doc.client_name || doc.cliente_id || '').toString().toLowerCase().includes(searchStr);
+                         (doc.client_name || doc.cliente_nome || doc.client_id || '').toString().toLowerCase().includes(searchStr);
     
-    const matchesType = typeFilter === 'Todos' || 
-                       (typeFilter === 'Provisórios / Documento de Suporte (Draft)' && !doc.is_certified) ||
-                       (doc.document_type || doc.tipo_documento) === typeFilter;
+    // 2. Filtro de Exercício Fiscal (Ano)
+    const docYear = doc.ano || (doc.data_emissao ? new Date(doc.data_emissao).getFullYear() : (doc.date ? new Date(doc.date).getFullYear() : null));
+    const matchesYear = !fiscalYear || String(docYear) === String(fiscalYear);
 
-    const matchesStatus = statusFilter === 'Todos' || 
-                         (statusFilter === 'PAGO' && (doc.status === 'paid' || (doc.estado_documento as string) === 'pago' || doc.payment_status === 'paid')) ||
-                         (statusFilter === 'PENDENTE' && (doc.status === 'pending' || doc.estado_documento === 'anulado' || doc.payment_status === 'pending'));
+    // 3. Filtro de Série
+    const matchesSeries = filterSerieFiscal === 'all' || doc.serie === filterSerieFiscal;
+
+    // 4. Filtro de Tipo de Documento
+    const docType = (doc.tipo_documento || doc.document_type);
     
+    // Garantir que todos os documentos fiscais apareçam se o filtro for 'all' ou 'Todos' 
+    // ou se o documento for de um tipo específico que deve sempre constar
+    let matchesType = false;
+    if (selectedTipoDocFiscal === 'all') {
+      matchesType = true;
+    } else {
+      matchesType = (docType === selectedTipoDocFiscal);
+    }
+
+    // Reforçar a regra de "Todos" (typeFilter)
+    if (typeFilter !== 'Todos') {
+      const isDraftSpec = (typeFilter === 'Provisórios / Documento de Suporte (Draft)' && !doc.is_certified);
+      matchesType = matchesType && (isDraftSpec || docType === typeFilter);
+    }
+
+    // 5. Filtro de Certificação
+    const matchesCert = selectedStatusCertFiscal === 'all' || 
+                       (selectedStatusCertFiscal === 'certificado' && doc.is_certified) ||
+                       (selectedStatusCertFiscal === 'pendente' && !doc.is_certified);
+
+    // 6. Filtro de Anulação
+    const isAnulado = doc.estado === 'ANULADO' || doc.status === 'anulado' || doc.documento_anulado === true;
+    const matchesAnulado = selectedStatusAnuladoFiscal === 'all' || 
+                          (selectedStatusAnuladoFiscal === 'anulado' && isAnulado) ||
+                          (selectedStatusAnuladoFiscal === 'activo' && !isAnulado);
+
+    // 7. Filtro de Cliente Específico
+    const matchesClient = selectedClienteFiscal === 'all' || (doc.cliente_nome || doc.client_name) === selectedClienteFiscal;
+
+    // 8. Filtros de Valor e Status Legado
     const docValue = doc.contravalor || doc.total || 0;
     const matchesMin = minValue === '' || docValue >= Number(minValue);
     const matchesMax = maxValue === '' || docValue <= Number(maxValue);
+    
+    const matchesStatus = statusFilter === 'Todos' || 
+                         (statusFilter === 'PAGO' && (doc.status === 'paid' || (doc.estado_documento as string) === 'pago' || doc.payment_status === 'paid')) ||
+                         (statusFilter === 'PENDENTE' && (doc.status === 'pending' || doc.status === 'ativo' || doc.payment_status === 'pending' || !doc.payment_status));
 
     const matchesCurrency = currencyFilter === 'Todos' || 
                           (currencyFilter === 'USD' && (doc.currency === 'USD' || doc.moeda === 'USD')) ||
                           (currencyFilter === 'EUR' && (doc.currency === 'Euro' || doc.moeda === 'Euro' || doc.currency === 'EUR' || doc.moeda === 'EUR')) ||
                           (currencyFilter === 'Kwanza' && (doc.currency === 'Kwanza' || doc.moeda === 'Kwanza' || doc.currency === 'Akz' || !doc.currency));
 
-    return matchesSearch && matchesType && matchesStatus && matchesMin && matchesMax && matchesCurrency;
+    return matchesSearch && matchesYear && matchesSeries && matchesType && matchesCert && matchesAnulado && matchesClient && matchesMin && matchesMax && matchesStatus && matchesCurrency;
   }).sort((a, b) => {
-    const dateA = new Date(a.data_emissao || a.date || a.created_at || 0).getTime();
-    const dateB = new Date(b.data_emissao || b.date || b.created_at || 0).getTime();
+    const dateA = new Date(a.data_emissao || a.date || (a as any).created_at || 0).getTime();
+    const dateB = new Date(b.data_emissao || b.date || (b as any).created_at || 0).getTime();
     return dateB - dateA;
   }) : [];
+
+  const handleExportPDF = () => {
+    import('jspdf').then(async ({ default: jsPDF }) => {
+      const { default: autoTable } = await import('jspdf-autotable');
+      const doc = new jsPDF();
+      doc.setFont("Helvetica");
+      doc.setFontSize(16);
+      doc.text("RELATORIO ERP - DOCUMENTOS EMITIDOS", 14, 15);
+      doc.setFontSize(10);
+      doc.text(`Exercicio Fiscal: ${fiscalYear} | Emitido em: ${new Date().toLocaleString()}`, 14, 22);
+      
+      const dataRows = filteredIssuedDocuments.map(i => [
+        i.numero_documento || i.invoice_number || 'S/N',
+        i.tipo_documento || i.document_type || 'N/A',
+        i.cliente_nome || i.client_name || 'Consumidor Final',
+        (i.total || i.contravalor || 0).toLocaleString('pt-AO', { style: 'currency', currency: 'AOA' }),
+        i.is_certified ? 'Certificado' : 'Rascunho'
+      ]);
+
+      autoTable(doc, {
+        startY: 28,
+        head: [["Documento", "Tipo", "Cliente", "Total", "Estado"]],
+        body: dataRows,
+      });
+
+      doc.save(`relatorio_documentos_${fiscalYear}.pdf`);
+    }).catch(err => {
+      console.error("Erro ao carregar Modulos de PDF:", err);
+    });
+  };
+
+  const handleExportExcel = () => {
+    import('xlsx').then(({ default: XLSX }) => {
+      const dataToExport = filteredIssuedDocuments.map(i => ({
+        "Numero Documento": i.numero_documento || i.invoice_number || 'Sem Numero',
+        "Tipo Documento": i.tipo_documento || i.document_type || 'N/A',
+        "Cliente": i.cliente_nome || i.client_name || 'Consumidor Final',
+        "Total (AOA)": i.total || i.contravalor || 0,
+        "Imposto (AOA)": (i as any).imposto || 0,
+        "Data Emissao": i.data_emissao || i.date || '',
+        "Estado": i.is_certified ? 'Certificado' : 'Rascunho'
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(dataToExport);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Documentos");
+      XLSX.writeFile(wb, `relatorio_documentos_${fiscalYear}.xlsx`);
+    }).catch(err => {
+      console.error("Erro ao carregar XLSX:", err);
+    });
+  };
 
   return (
     <div className="space-y-0 -mt-12 -mx-12">
@@ -18007,9 +18165,19 @@ const InvoiceList = ({
                   <BarChart3 size={18} />
                   Visão Geral do Negócio
                 </button>
-                <button className="bg-[#16a34a] hover:bg-green-700 text-white font-bold px-6 py-2.5 rounded-none flex items-center gap-2 transition-all shadow-sm text-sm">
+                <button 
+                  onClick={handleExportExcel}
+                  className="bg-[#16a34a] hover:bg-green-700 text-white font-bold px-6 py-2.5 rounded-none flex items-center gap-2 transition-all shadow-sm text-sm cursor-pointer"
+                >
                   <FileSpreadsheet size={18} />
                   Excel
+                </button>
+                <button 
+                  onClick={handleExportPDF}
+                  className="bg-[#dc2626] hover:bg-red-700 text-white font-bold px-6 py-2.5 rounded-none flex items-center gap-2 transition-all shadow-sm text-sm cursor-pointer"
+                >
+                  <FileText size={18} />
+                  PDF
                 </button>
                 {activeSubTab === 'emitidos' && (
                   <button 
@@ -18030,128 +18198,114 @@ const InvoiceList = ({
               </div>
             </div>
 
-            {/* Filter Section */}
-            <div className="bg-white border border-zinc-200 rounded-none shadow-sm flex flex-wrap gap-4 items-end">
-              <div className="flex-1 min-w-[200px] space-y-1.5">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Pesquisa Geral</label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
-                  <input 
-                    type="text" 
-                    placeholder="Cliente, Nº Doc..." 
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 bg-zinc-50 border border-zinc-200 rounded-none text-sm focus:outline-none focus:border-blue-500 transition-all"
-                  />
-                </div>
+            {/* Professional Fiscal Filter Section */}
+            <div className="flex flex-wrap items-end gap-3 mb-6 bg-white p-4 border border-zinc-200 shadow-sm">
+              <div className="w-48 space-y-1.5 flex-1 min-w-[150px]">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Exercício Fiscal (Ano)</label>
+                <select 
+                  value={fiscalYear}
+                  onChange={(e) => setFiscalYear(e.target.value)}
+                  className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-xs font-black focus:outline-none focus:border-[#003366] text-[#003366]"
+                >
+                  <option value="2024">2024</option>
+                  <option value="2025">2025</option>
+                  <option value="2026">2026</option>
+                  <option value="2027">2027</option>
+                </select>
               </div>
 
-              <div className="w-32 space-y-1.5">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Série</label>
+              <div className="w-48 space-y-1.5 flex-1 min-w-[150px]">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Série Fiscal</label>
                 <select 
-                  value={serieFilter}
-                  onChange={(e) => setSerieFilter(e.target.value)}
-                  className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+                  value={filterSerieFiscal}
+                  onChange={(e) => setFilterSerieFiscal(e.target.value)}
+                  className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-xs font-bold focus:outline-none focus:border-[#003366]"
                 >
-                  <option value="Todas">Todas</option>
+                  <option value="all">Série: Todas</option>
+                  {[...new Set(issuedDocuments.map(d => d.serie).filter(Boolean))].map(s => (
+                    <option key={s as string} value={s as string}>{s as string}</option>
+                  ))}
                   {fiscalSeries.map(s => (
                      <option key={s.id} value={s.reference}>{s.reference} - {s.name}</option>
                   ))}
                 </select>
               </div>
 
-              <div className="w-32 space-y-1.5">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Estado</label>
+              <div className="w-48 space-y-1.5 flex-1 min-w-[150px]">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tipo Documento</label>
                 <select 
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+                  value={selectedTipoDocFiscal}
+                  onChange={(e) => setSelectedTipoDocFiscal(e.target.value)}
+                  className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-xs font-bold focus:outline-none focus:border-[#003366]"
                 >
-                  <option>Todos</option>
-                  <option>PAGO</option>
-                  <option>PENDENTE</option>
+                  <option value="all">Tipo: Todos</option>
+                  <option value="Factura">Factura (FT)</option>
+                  <option value="Factura Recibo">Factura Recibo (FR)</option>
+                  <option value="Factura Simplificada">Factura Simplificada (FS)</option>
+                  <option value="Nota de Crédito">Nota de Crédito (NC)</option>
+                  <option value="Nota de Débito">Nota de Débito (ND)</option>
+                  <option value="Recibo">Recibo (RC)</option>
+                  <option value="Orçamento">Orçamento (PP)</option>
+                  <option value="Guia de Remessa">Guia de Remessa (GR)</option>
+                  <option value="Guia de Transporte">Guia de Transporte (GT)</option>
                 </select>
               </div>
 
-              <div className="w-32 space-y-1.5">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tipo</label>
+              <div className="w-48 space-y-1.5 flex-1 min-w-[150px]">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Certificação</label>
                 <select 
-                  value={typeFilter}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (val === 'Provisórios / Documento de Suporte (Draft)') {
-                      setActiveTab('drafts');
-                    } else {
-                      setTypeFilter(val);
-                    }
-                  }}
-                  className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+                  value={selectedStatusCertFiscal}
+                  onChange={(e) => setSelectedStatusCertFiscal(e.target.value)}
+                  className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-xs font-bold focus:outline-none focus:border-[#003366]"
                 >
-                  <option value="Todos">Todos os Tipos</option>
-                  <option value="Provisórios / Documento de Suporte (Draft)">Provisórios / Documento de Suporte (Draft)</option>
-                  <option value="Fatura">Fatura</option>
-                  <option value="Fatura Recibo">Fatura Recibo</option>
-                  <option value="Fatura Proforma">Fatura Proforma</option>
-                  <option value="Orçamento">Orçamento</option>
-                  <option value="Nota de Crédito">Nota de Crédito</option>
-                  <option value="Nota de Débito">Nota de Débito</option>
-                  <option value="Guia de Entrega">Guia de Entrega</option>
-                  <option value="Guia de Transporte">Guia de Transporte</option>
-                  <option value="Guia de Remessa">Guia de Remessa</option>
-                  <option value="Venda a Dinheiro">Venda a Dinheiro</option>
-                  <option value="Recibo">Recibo</option>
-                  <option value="Consulta de Mesa">Consulta de Mesa</option>
+                  <option value="all">Certf.: Qualquer</option>
+                  <option value="certificado">Certificado ✔</option>
+                  <option value="pendente">Pendente ⌛</option>
                 </select>
               </div>
 
-              {typeFilter === 'Provisórios / Documento de Suporte (Draft)' && (
-                <div className="w-32 space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Moeda</label>
-                  <select 
-                    value={currencyFilter}
-                    onChange={(e) => setCurrencyFilter(e.target.value)}
-                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
-                  >
-                    <option value="Todos">Todas</option>
-                    <option value="Kwanza">Kwanza</option>
-                    <option value="USD">USD</option>
-                    <option value="EUR">EUR</option>
-                  </select>
+              <div className="w-48 space-y-1.5 flex-1 min-w-[150px]">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Anulado</label>
+                <select 
+                  value={selectedStatusAnuladoFiscal}
+                  onChange={(e) => setSelectedStatusAnuladoFiscal(e.target.value)}
+                  className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-xs font-bold focus:outline-none focus:border-[#003366]"
+                >
+                  <option value="all">Anulação: Qualquer</option>
+                  <option value="activo">Activo / Válido</option>
+                  <option value="anulado">Anulado / Rectif.</option>
+                </select>
+              </div>
+
+              <div className="w-48 space-y-1.5 flex-1 min-w-[200px]">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Pesquisar Cliente / Nº</label>
+                <div className="relative">
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+                  <input 
+                    placeholder="Pesquisar..." 
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none pl-10 pr-3 py-2 text-xs font-bold focus:outline-none focus:border-[#003366]"
+                  />
                 </div>
-              )}
-
-              <div className="w-32 space-y-1.5">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Valor Mín.</label>
-                <input 
-                  type="number" 
-                  placeholder="0.00" 
-                  value={minValue}
-                  onChange={(e) => setMinValue(e.target.value)}
-                  className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
-                />
-              </div>
-
-              <div className="w-32 space-y-1.5">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Valor Máx.</label>
-                <input 
-                  type="number" 
-                  placeholder="0.00" 
-                  value={maxValue}
-                  onChange={(e) => setMaxValue(e.target.value)}
-                  className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
-                />
               </div>
 
               <button 
                 onClick={() => {
                   setSearchTerm('');
+                  setFilterSerieFiscal('all');
+                  setSelectedTipoDocFiscal('all');
+                  setSelectedStatusCertFiscal('all');
+                  setSelectedStatusAnuladoFiscal('all');
+                  setSelectedClienteFiscal('all');
+                  setMinValue('');
+                  setMaxValue('');
+                  setFiscalYear('2026');
                   setSerieFilter('Todas');
                   setStatusFilter('Todos');
                   setTypeFilter('Todos');
-                  setMinValue('');
-                  setMaxValue('');
                 }}
-                className="bg-zinc-100 text-zinc-600 font-bold px-4 py-2 rounded-none flex items-center gap-2 hover:bg-zinc-200 transition-all text-sm"
+                className="bg-[#003366] text-white font-bold px-6 py-2 rounded-none flex items-center gap-2 hover:bg-[#002244] transition-all text-xs uppercase tracking-widest shadow-md"
               >
                 <Filter size={16} />
                 Limpar
@@ -18166,6 +18320,7 @@ const InvoiceList = ({
                 onCertify={onCertify}
                 onViewDetail={onViewDetail}
                 isDraftsPage={typeFilter === 'Provisórios / Documento de Suporte (Draft)'}
+                globalUsers={globalUsers}
               />
             )}
 
@@ -18503,8 +18658,8 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
       setDocumentType(fixedDocumentType);
     }
   }, [fixedDocumentType]);
-  const [seriesId, setSeriesId] = useState<number | ''>(
-    (initialData?.series_id && !isNaN(Number(initialData.series_id))) ? Number(initialData.series_id) : ''
+  const [selectedSerieFiscal, setSelectedSerieFiscal] = useState<number | null>(
+    (initialData?.series_id && !isNaN(Number(initialData.series_id))) ? Number(initialData.series_id) : null
   );
   const [date, setDate] = useState(initialData?.date ? new Date(initialData.date).toISOString().split('T')[0] : (initialData?.data_emissao ? new Date(initialData.data_emissao).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]));
   const [countryCode, setCountryCode] = useState('Angola');
@@ -18638,7 +18793,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
   const lineDiscountsTotal = (items ?? []).reduce((sum, item) => sum + Number(item.desconto || 0), 0);
   const finalTotal = total + vatAmount - vatWithholdingAmount - Number(globalDiscount || 0) - retencaoFonteTotal;
 
-  const selectedSeries = fiscalSeries.find(s => s.id === Number(seriesId));
+  const selectedSeries = fiscalSeries.find(s => s.id === Number(selectedSerieFiscal));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -18661,7 +18816,10 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
     }
 
     if (items.length === 0) return;
-    if (!seriesId) { alert('Por favor, selecione uma série.'); return; }
+    if (!selectedSerieFiscal) {
+      alert('Por favor, selecione uma série.');
+      return;
+    }
     if (!clientId) { alert('Por favor, selecione um cliente.'); return; }
 
     const client = clients.find(c => c.id === Number(clientId));
@@ -18692,14 +18850,15 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
         service_location: serviceLocation,
         cash_box: paymentCondition === 'Pronto Pagamento' ? cashBox : '',
         payment_method: paymentCondition === 'Pronto Pagamento' ? paymentMethod : 'A Prazo',
-        series_id: seriesId,
+        series_id: selectedSerieFiscal,
         invoice_number: isManual ? documentNumberManual : ((initialData?.numero_documento || initialData?.invoice_number || undefined) && !isNewFromTemplate ? (initialData?.numero_documento || initialData?.invoice_number) : undefined),
         reference_document: isNewFromTemplate ? (initialData?.numero_documento || initialData?.invoice_number) : initialData?.reference_document,
         series_reference: isManual ? referenceManual : selectedSeries?.reference,
         total: finalTotal,
         total_in_words: writeValorPorExtenso(finalTotal),
         retencao_fonte_total: retencaoFonteTotal,
-        empresa_id: user?.empresa_id
+        empresa_id: user?.empresa_id,
+        criado_por: user?.id
       })
     });
 
@@ -18785,8 +18944,8 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
             <div className="space-y-2">
               <label className="text-xs font-bold text-zinc-600">Série</label>
               <select 
-                value={isNaN(Number(seriesId)) ? '' : seriesId} 
-                onChange={(e) => setSeriesId(e.target.value ? Number(e.target.value) : '')} 
+                value={selectedSerieFiscal === null ? '' : selectedSerieFiscal} 
+                onChange={(e) => setSelectedSerieFiscal(e.target.value ? Number(e.target.value) : null)} 
                 required
                 className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
               >
@@ -20365,7 +20524,38 @@ const InvoiceDetail = ({
           </tbody>
         </table>
 
-        <div className="grid grid-cols-2 gap-8 pt-8 border-t-2 border-zinc-100">
+        <div className="pt-8 grid grid-cols-2 gap-8 text-[10px] text-zinc-500 border-t border-zinc-100">
+          <div>
+            <p className="font-bold uppercase tracking-widest text-zinc-400 mb-1">Emitido por:</p>
+            <p className="font-bold text-[#003366] text-sm uppercase">{invoice.created_by_nome || 'Utilizador do Sistema'}</p>
+            {invoice.created_by_username && <p>Username: {invoice.created_by_username} (ID: {invoice.created_by?.slice(-6) || '---'})</p>}
+            <p>Data: {new Date(invoice.created_at || invoice.date || invoice.data_emissao).toLocaleString('pt-PT')}</p>
+            {invoice.documento_anulado && (
+              <div className="mt-4 p-2 bg-red-50 border border-red-100 text-red-600 rounded-none font-bold">
+                <p className="uppercase text-[8px]">DOCUMENTO ANULADO</p>
+                <p className="text-[10px]">Motivo: {invoice.motivo_anulacao}</p>
+                {invoice.anulado_at && <p className="text-[8px] mt-1">Data: {new Date(invoice.anulado_at).toLocaleString()}</p>}
+              </div>
+            )}
+          </div>
+          <div className="text-right flex flex-col gap-2">
+            <div>
+              <p className="font-bold uppercase tracking-widest text-zinc-400 mb-1">Rastreabilidade Fiscal:</p>
+              <p className="font-mono text-[8px] break-all bg-zinc-50 p-1 border border-zinc-100">{invoice.hash_documento || invoice.hash || '---'}</p>
+              {invoice.codigo_validacao && <p className="mt-1 font-black text-[#003366]">Cód. Validação: {invoice.codigo_validacao}</p>}
+              <p className="mt-1">Certificação: {invoice.is_certified ? 'CERTIFICADO' : 'PENDENTE'}</p>
+            </div>
+            
+            {(invoice.numero_documento_origem || invoice.rectified_document) && (
+              <div className="mt-2 p-2 bg-blue-50 border border-blue-100 text-blue-700 text-left rounded-none">
+                <p className="font-bold uppercase text-[8px]">Documento Relacionado:</p>
+                <p className="font-black text-[10px]">{invoice.tipo_documento_origem || 'Origem'}: {invoice.numero_documento_origem || invoice.rectified_document}</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-8 pt-8">
           <div>
             <h4 className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-4">Resumo de IVA</h4>
             <table className="w-full text-[10px] text-left">
@@ -20448,7 +20638,7 @@ const InvoiceDetail = ({
                 ✓ PROCESSADO POR PROGRAMA VALIDADO Nº 101/AGT/2026 - SISTEMA DE FACTURAÇÃO ANGOLA.
               </p>
               <p className="text-[8px] text-zinc-400 mt-1 uppercase">
-                IMUTABILIDADE GARANTIDA POR ALGORITMO DE ENCADEAMENTO CRIPTOGRÁFICO SHA-256 SÉRIE FISCAL {invoice.serie || 'PRD'}
+                IMUTABILIDADE GARANTIDA POR ALGORITMO DE ENCADEAMENTO CRIPTOGRÁFICO SHA-256 SÉRIE FISCAL {invoice.serie || new Date(invoice.data_emissao || Date.now()).getFullYear()}
               </p>
             </div>
             <div className="text-left md:text-right font-mono">
@@ -20458,10 +20648,30 @@ const InvoiceDetail = ({
                   {invoice.codigo_validacao || (invoice.hash ? invoice.hash.slice(0, 4).toUpperCase() : 'PENDENTE')}
                 </span>
               </div>
-              {invoice.hash && (
+              {(invoice.hash || invoice.hash_documento || invoice.hash_fiscal) && (
                 <div className="mt-1.5 text-[8px] text-zinc-400 font-mono break-all select-all">
-                  <span className="font-bold text-zinc-600">Hash/Assinatura: </span>
-                  {invoice.hash}
+                  <span className="font-bold text-zinc-600">Hash Fiscal: </span>
+                  {invoice.hash || invoice.hash_documento || invoice.hash_fiscal}
+                </div>
+              )}
+              {invoice.is_certified && (
+                <div className="mt-1 text-[8px] text-zinc-500 font-mono text-left md:text-right">
+                  <span className="font-bold text-zinc-600">Estado: </span>
+                  <span className="text-emerald-600 font-bold uppercase">{invoice.estado_certificacao || 'CERTIFICADO'}</span>
+                  {invoice.certified_at && (
+                    <span className="block mt-0.5">
+                      <span className="font-bold text-zinc-600">Data Certificação: </span>
+                      <span>
+                        {new Date(invoice.certified_at).toLocaleString('pt-AO', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </span>
+                    </span>
+                  )}
                 </div>
               )}
             </div>
@@ -21220,7 +21430,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
     initialData?.supplier_id || ''
   );
   const [documentType, setDocumentType] = useState(fixedDocumentType || initialData?.document_type || 'Fatura de Compra');
-  const [seriesId, setSeriesId] = useState<number | ''>('');
+  const [selectedSerieFiscal, setSelectedSerieFiscal] = useState<number | null>(null);
   const [invoiceNumber, setInvoiceNumber] = useState(initialData?.invoice_number || '');
   const [documentNumber, setDocumentNumber] = useState(initialData?.purchase_number || '');
   const [date, setDate] = useState(initialData?.date ? new Date(initialData.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
@@ -21398,7 +21608,11 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
       const purchaseDataFields: any = {
         empresa_id: user.empresa_id,
         supplier_id: finalSupplierId,
-        data: date,
+    created_by: user.id,
+    created_by_nome: user.nome || user.username || 'Operador',
+    created_by_username: user.username,
+    criado_por: user.id,
+    data: date,
         data_vencimento: dueDate || null,
         document_type: documentType,
         numero_compra: documentNumber,
@@ -21431,7 +21645,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
       } else {
         result = await supabase
           .from('compras')
-          .insert([purchaseDataFields])
+          .insert([{ ...purchaseDataFields, ano: new Date(date).getFullYear() }])
           .select()
           .single();
       }
@@ -22329,7 +22543,7 @@ const PurchaseActionsModal = ({ purchase, onClose, onAction }: {
   );
 };
 
-const PurchasesModule = ({ suppliers, products, activeTaxes, workSites, fiscalSeries, caixas, companyData, addMovement }: { suppliers: Supplier[], products: Product[], activeTaxes: any[], workSites: WorkSite[], fiscalSeries: FiscalSeries[], caixas: Caixa[], companyData?: any, addMovement?: (m: any) => Promise<void> }) => {
+const PurchasesModule = ({ suppliers, products, activeTaxes, workSites, fiscalSeries, caixas, companyData, addMovement, globalUsers }: { suppliers: Supplier[], products: Product[], activeTaxes: any[], workSites: WorkSite[], fiscalSeries: FiscalSeries[], caixas: Caixa[], companyData?: any, addMovement?: (m: any) => Promise<void>, globalUsers: any[] }) => {
   const { user } = useAuth();
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [isCreating, setIsCreating] = useState(false);
@@ -22566,13 +22780,16 @@ const PurchasesModule = ({ suppliers, products, activeTaxes, workSites, fiscalSe
                         </button>
                       </td>
                       <td className="px-6 py-4 text-right pr-8">
-                        <button 
-                          onClick={() => setSelectedPurchase(p)}
-                          className="bg-blue-600 text-white p-2 shadow-lg hover:bg-blue-700 active:scale-95 transition-all"
-                          title="Opções do Documento"
-                        >
-                          <MoreHorizontal size={18} />
-                        </button>
+                        <div className="flex items-center justify-end gap-3">
+                          <UserIssuerButton doc={p} globalUsers={globalUsers} />
+                          <button 
+                            onClick={() => setSelectedPurchase(p)}
+                            className="bg-blue-600 text-white p-2 shadow-lg hover:bg-blue-700 active:scale-95 transition-all"
+                            title="Opções do Documento"
+                          >
+                            <MoreHorizontal size={18} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -22652,12 +22869,15 @@ const PurchasesModule = ({ suppliers, products, activeTaxes, workSites, fiscalSe
                       <td className="px-6 py-4 text-right font-bold text-emerald-600">{formatCurrency(0)}</td>
                       <td className="px-6 py-4 text-right font-black text-red-600 text-sm italic">{formatCurrency(p.total)}</td>
                       <td className="px-6 py-4 text-right pr-8">
-                        <button 
-                          onClick={() => setSelectedPurchase(p)}
-                          className="bg-[#003366] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-[#002244] shadow-sm transition-all"
-                        >
-                          Liquidar
-                        </button>
+                        <div className="flex items-center justify-end gap-3 font-sans">
+                          <UserIssuerButton doc={p} globalUsers={globalUsers} />
+                          <button 
+                            onClick={() => setSelectedPurchase(p)}
+                            className="bg-[#003366] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-[#002244] shadow-sm transition-all"
+                          >
+                            Liquidar
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -23558,7 +23778,7 @@ const SupplierAccount = ({ supplier, purchases, onBack }: {
   );
 };
 
-const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas, companyData, addMovement }: { products: Product[], activeTaxes: any[], workSites: WorkSite[], fiscalSeries: FiscalSeries[], caixas: Caixa[], companyData?: any, addMovement?: (m: any) => Promise<void> }) => {
+const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas, companyData, addMovement, globalUsers }: { products: Product[], activeTaxes: any[], workSites: WorkSite[], fiscalSeries: FiscalSeries[], caixas: Caixa[], companyData?: any, addMovement?: (m: any) => Promise<void>, globalUsers?: any[] }) => {
   const { user } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState<string | null>(null);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -23849,7 +24069,7 @@ const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas
           </div>
         );
       case 'purchases-list':
-        return <PurchasesModule suppliers={suppliers} products={products} activeTaxes={activeTaxes} workSites={workSites} fiscalSeries={fiscalSeries} caixas={caixas} companyData={companyData} addMovement={addMovement} />;
+        return <PurchasesModule suppliers={suppliers} products={products} activeTaxes={activeTaxes} workSites={workSites} fiscalSeries={fiscalSeries} caixas={caixas} companyData={companyData} addMovement={addMovement} globalUsers={globalUsers} />;
       case 'current-accounts':
         if (selectedSupplier) {
           return <SupplierAccount supplier={selectedSupplier} purchases={purchases.filter(p => p.supplier_id === selectedSupplier.id)} onBack={() => setSelectedSupplier(null)} />;
@@ -24146,7 +24366,11 @@ const ProductList = ({ products, setProducts, onRefresh, stockMovements, warehou
         quantity,
         previous_stock,
         current_stock,
-        description
+        description,
+        created_by: user.id,
+        created_by_nome: user.nome || user.username || 'Operador',
+        created_by_username: user.username,
+        criado_por: user.id
       });
       if (movError) throw movError;
 
@@ -24172,7 +24396,11 @@ const ProductList = ({ products, setProducts, onRefresh, stockMovements, warehou
         quantity,
         warehouse_id: fromWh,
         to_warehouse_id: toWh,
-        description: `Transferência do armazém ${fromWh} para ${toWh}`
+        description: `Transferência do armazém ${fromWh} para ${toWh}`,
+        created_by: user.id,
+        created_by_nome: user.nome || user.username || 'Operador',
+        created_by_username: user.username,
+        criado_por: user.id
       });
       if (movError) throw movError;
       onRefresh();
@@ -25218,7 +25446,8 @@ const ConvertDocumentModal = ({ document, onClose, onSuccess }: {
 
       const prefix = targetType === 'Fatura' ? 'FT' : (targetType === 'Fatura Recibo' ? 'FR' : (targetType === 'Orçamento' ? 'PP' : 'FP'));
       const seq = Date.now().toString().slice(-6);
-      const generatedNum = `${prefix} PRD/${seq}`;
+      const yr = new Date().getFullYear();
+      const generatedNum = `${prefix} ${yr}/${seq}`;
       
       const convertedDoc = {
         ...docData,
@@ -25233,8 +25462,10 @@ const ConvertDocumentModal = ({ document, onClose, onSuccess }: {
         counter_value: Number(document.total || document.counter_value || 0),
         data_emissao: new Date().toISOString(),
         date: new Date().toISOString(),
-        is_certified: true, // auto-certified on conversion
+        is_certified: false, // Do not auto-certify drafts anymore
+        ano: new Date().getFullYear(),
         status: 'emitido',
+        criado_por: user?.id,
         items: document.items || []
       };
 
@@ -25406,7 +25637,7 @@ export default function App() {
   const [posPoints, setPosPoints] = useState<any[]>([]);
   const [sessions, setSessions] = useState<any[]>([]);
   const [selectedPOS, setSelectedPOS] = useState<string | null>(null);
-  const [selectedSeries, setSelectedSeries] = useState<string | null>(null);
+  const [selectedSerieFiscal, setSelectedSerieFiscal] = useState<string | null>(null);
   const [printingInvoice, setPrintingInvoice] = useState<Invoice | null>(null);
   const [printingGraphicConfigs, setPrintingGraphicConfigs] = useState<GraphicConfig[]>([]);
 
@@ -25520,6 +25751,7 @@ export default function App() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [activeTaxes, setActiveTaxes] = useState<any[]>([]);
   const [metrics, setMetrics] = useState<Metric[]>([]);
+  const [globalUsers, setGlobalUsers] = useState<SystemUser[]>([]);
 
   // Core HR Global State (to persist during tab navigation)
   const [hrProcessedReceipts, setHrProcessedReceipts] = useState<any[]>([]);
@@ -25814,6 +26046,7 @@ export default function App() {
         imposto: Number(doc.total_tax || doc.imposto || 0),
         estado: doc.status || doc.estado_documento || 'ativo',
         data_emissao: doc.date || doc.data_emissao || new Date().toISOString(),
+        ano: new Date(doc.date || doc.data_emissao || new Date()).getFullYear(),
         detalhes: {
           items: doc.items || [],
           payment_method: doc.payment_method,
@@ -25870,8 +26103,7 @@ export default function App() {
         .from('movimentacoes_stock')
         .select('*')
         .eq('empresa_id', companyId)
-        .gte('created_at', `${fiscalYear}-01-01T00:00:00Z`)
-        .lte('created_at', `${fiscalYear}-12-31T23:59:59Z`)
+        .eq('ano', Number(fiscalYear))
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -25900,22 +26132,17 @@ export default function App() {
       const companyId = explicitId || user?.empresa_id;
       if (!companyId) return;
 
-      console.log('[App] Carregando documentos do Supabase para:', companyId);
-      // Sincronizar com empresa_id
-      const { data, error } = await supabase
-        .from('documentos_emitidos')
-        .select('*')
-        .eq('empresa_id', companyId)
-        .gte('created_at', `${fiscalYear}-01-01T00:00:00Z`)
-        .lte('created_at', `${fiscalYear}-12-31T23:59:59Z`)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Erro ao carregar documentos emitidos:', error);
-        throw error;
+      console.log('[App] Carregando documentos via API para (bypass RLS):', companyId, 'no ano:', fiscalYear);
+      const res = await fetchWithAuth(`/api/invoices?empresa_id=${companyId}&year=${fiscalYear}`);
+      
+      if (!res.ok) {
+        console.error('Erro ao carregar documentos emitidos:', await res.text());
+        return;
       }
       
-      console.log(`[App] Documentos carregados do Supabase: ${data?.length || 0}`);
+      const data = await res.json();
+      
+      console.log(`[App] Documentos carregados da API: ${data?.length || 0}`);
       const docs = data?.map((d: any) => ({
         ...d,
         id: d.id,
@@ -25925,7 +26152,7 @@ export default function App() {
         date: d.data_emissao || d.created_at,
         client_name: d.cliente_nome || d.client_name || 'Desconhecido',
         invoice_number: d.numero_documento || d.invoice_number || d.documento_formatado || 'DRAFT',
-        document_type: d.tipo_documento || d.document_type || 'FT'
+        document_type: d.tipo_documento || d.document_type
       })) || [];
       
       setIssuedDocuments(docs);
@@ -25989,8 +26216,7 @@ export default function App() {
         .from('caixa_movimentacoes')
         .select('*')
         .eq('empresa_id', companyId)
-        .gte('created_at', `${fiscalYear}-01-01T00:00:00Z`)
-        .lte('created_at', `${fiscalYear}-12-31T23:59:59Z`)
+        .eq('ano', Number(fiscalYear))
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -25999,8 +26225,7 @@ export default function App() {
             .from('caixa_movements')
             .select('*')
             .eq('empresa_id', companyId)
-            .gte('created_at', `${fiscalYear}-01-01T00:00:00Z`)
-            .lte('created_at', `${fiscalYear}-12-31T23:59:59Z`)
+            .eq('ano', Number(fiscalYear))
             .order('created_at', { ascending: false });
           data = fallback.data || [];
         } else {
@@ -26148,6 +26373,17 @@ export default function App() {
     }
   };
 
+  const doLoadGlobalUsers = async (explicitId?: string) => {
+    try {
+      const companyId = explicitId || user?.empresa_id;
+      if (!companyId) return;
+      const data = await systemUsersService.getUsers(companyId);
+      setGlobalUsers(data || []);
+    } catch (err) {
+      console.error('Erro ao carregar utilizadores globais:', err);
+    }
+  };
+
   const doLoadCompras = async (explicitId?: string) => {
     try {
       const companyId = explicitId || user?.empresa_id;
@@ -26157,8 +26393,7 @@ export default function App() {
         .from('compras')
         .select('*')
         .eq('empresa_id', companyId)
-        .gte('created_at', `${fiscalYear}-01-01T00:00:00Z`)
-        .lte('created_at', `${fiscalYear}-12-31T23:59:59Z`)
+        .eq('ano', Number(fiscalYear))
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -26206,7 +26441,7 @@ export default function App() {
       'alertas_tarefas'
     ] as const;
 
-    const handlers: Record<string, Callback> = {
+    const handlers: Record<string, () => void> = {
       clientes: () => loadClientes(),
       locais_trabalho: () => loadLocaisTrabalho(),
       documentos_emitidos: () => loadDocumentosEmitidos(),
@@ -26290,6 +26525,7 @@ export default function App() {
         await doLoadStockMovements(targetCompanyId);
         await doLoadActiveTaxes(targetCompanyId);
         await doLoadMetrics(targetCompanyId);
+        await doLoadGlobalUsers(targetCompanyId);
         
         console.timeEnd('[TIMER-SYNC] Supabase Queries');
       } catch (err: any) {
@@ -26441,7 +26677,7 @@ export default function App() {
       setSessions(Array.isArray(sess) ? sess : []);
       
       if (Array.isArray(pp) && pp.length > 0 && !selectedPOS) setSelectedPOS(pp[0].id.toString());
-      if (Array.isArray(fs) && fs.length > 0 && !selectedSeries) setSelectedSeries(fs[0].id.toString());
+      if (Array.isArray(fs) && fs.length > 0 && !selectedSerieFiscal) setSelectedSerieFiscal(fs[0].id.toString());
 
       // setCaixas(Array.isArray(cx) ? cx : []); // DO NOT OVERWRITE SUPABASE DATA
       // setCaixaMovements(Array.isArray(cm) ? cm : []); // DO NOT OVERWRITE SUPABASE DATA
@@ -26589,39 +26825,82 @@ export default function App() {
         return;
       }
       
-      // Get the current document data
-      const { data: doc, error: fetchErr } = await supabase
-        .from('documentos_emitidos')
-        .select('*')
-        .eq('id', id)
-        .single();
-        
-      if (fetchErr || !doc) throw new Error('Documento não encontrado para certificação');
+      const doc = issuedDocuments.find(d => String(d.id) === String(id));
+      if (!doc) throw new Error('Documento não encontrado na listagem para certificação');
+      
       if (doc.is_certified) throw new Error('Este documento já se encontra certificado.');
 
-      console.log('Certificando documento via RPC Professional...', id);
-      // We implement a more direct RPC or logic to avoid creating duplicates
-      // First try a dedicated "certify existing" RPC if it exists, otherwise use the standard one
-      const { data: rpcRes, error: rpcErr } = await supabase.rpc('certificar_documento_existente', {
-        p_documento_id: id,
-        p_usuario_id: user.id
+      console.log('Certificando documento via API do backend...', id);
+      
+      // If already certified locally, don't even try the API
+      if (doc.is_certified) {
+        toast.info("Este documento já se encontra certificado.");
+        return;
+      }
+
+      const res = await fetchWithAuth(`/api/invoices/${id}/certify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ usuario_id: user.id })
       });
 
-      if (rpcErr) {
-        throw new Error(`Erro na certificação fiscal: ${rpcErr.message}`);
-      } else {
-        console.log('Documento certificado com sucesso:', rpcRes);
-        toast.success(`Documento certificado como ${rpcRes.numero}!`);
-        setShowCertifyModal(false);
-        await fetchData();
+      if (!res.ok) {
+        const errorText = await res.text();
+        let parsedError = errorText;
+        try {
+          const errObj = JSON.parse(errorText);
+          parsedError = errObj.error || errObj.message || errorText;
+        } catch (_) {}
+        
+        // Handle specifically already certified case
+        if (parsedError.includes("já se encontra certificado")) {
+           toast.info("Este documento já se encontra certificado no sistema.");
+           await fetchData(); // Refresh to update status
+           setShowCertifyModal(false);
+           return;
+        }
+        
+        throw new Error(`Erro na certificação fiscal: ${parsedError}`);
       }
+
+      const resData = await res.json();
+      console.log('Documento certificado com sucesso:', resData);
+      
+      const docName = resData.doc?.numero_documento || resData.dbResult?.numero_documento || doc?.numero_documento || 'Documento';
+      toast.success(`${docName} certificado com sucesso!`);
+      setShowCertifyModal(false);
+      await fetchData();
     } catch (err: any) {
       console.error('Erro ao certificar documento:', err);
-      alert('Erro ao certificar: ' + (err.message || 'Erro desconhecido. Verifique se as funções SQL foram criadas na base de dados.'));
+      alert('Erro ao certificar: ' + (err.message || 'Erro desconhecido. Por favor tente novamente.'));
     }
   };
 
   const handleDocumentAction = async (action: string, doc: IssuedDocument) => {
+    // Validação de Integridade Fiscal antes de abrir (Regra 18)
+    if (doc.is_certified && ['edit', 'export_pdf', 'print_a4', 'preview_a4', 'preview_receipt'].includes(action)) {
+      try {
+        const { data, error } = await supabase.rpc('validar_integridade_documento', {
+          p_documento_id: doc.id
+        });
+        
+        if (error) {
+          console.error("Erro ao validar integridade:", error);
+          alert("Não foi possível validar a integridade fiscal deste documento. Acesso bloqueado por segurança.");
+          return;
+        }
+
+        if (data && data.success === false) {
+          alert(`[BLOQUEIO DE SEGURANÇA] ${data.error || 'Documento com integridade comprometida.'}`);
+          return; // Aborta abertura se o hash não bater
+        }
+      } catch (err) {
+        console.error("Falha ao tentar executar RPC validar_integridade_documento:", err);
+      }
+    }
+
     // These actions require full document data (e.g., items)
     if (['edit', 'credit_note', 'delivery_guide', 'export_pdf', 'draft', 'foreign_draft', 'print_a4', 'preview_a4'].includes(action)) {
       if (['export_pdf', 'print_a4', 'preview_a4', 'draft', 'foreign_draft'].includes(action)) {
@@ -26666,7 +26945,7 @@ export default function App() {
             } else {
               setIsPdfProcessing(false);
             }
-          } else if (action === 'print_a4') {
+          } else if (action === 'print_a4' || action === 'print_p80' || action === 'print_p24' || action === 'print_p24xl') {
             setPrintingInvoice(invoiceData);
             setIsPrintingDraft(false);
             setTimeout(() => {
@@ -26913,71 +27192,34 @@ export default function App() {
                             console.log('Anulando documento via RPC Professional...', showAnularModal.id);
                             
                             // Use the Professional RPC for Annulment
-                            let { data, error } = await supabase.rpc('anular_documento_fiscal', {
+                            const { data, error } = await supabase.rpc('anular_documento_fiscal', {
                               p_documento_id: showAnularModal.id,
-                              p_motivo: reason
-                            });
+                              p_motivo: reason,
+                              p_usuario_id: user.id
+                            }) as any;
                             
-                            // Fallback direct update to "anulado" if RPC results in error or lacks schema cache on some serverless nodes
                             if (error) {
-                              console.warn('RPC failed, using direct table update fallback:', error.message);
-                              const { error: updateError } = await supabase
-                                .from('documentos_emitidos')
-                                .update({ status: 'anulado', motivo_anulacao: reason })
-                                .eq('id', showAnularModal.id);
-                              if (!updateError) {
-                                error = null; // Direct update fallback was successful!
-                              }
+                              console.error('RPC Error:', error);
+                              alert('Erro ao anular documento: ' + error.message);
+                              return;
                             }
-                            
-                            if (!error) {
-                              // MANDATORY: Generate a Credit Note (Nota de Crédito) for the annulled document
-                              const nc_val = Number(showAnularModal.total || showAnularModal.counter_value || showAnularModal.contravalor || 0);
-                              const newNC = {
-                                empresa_id: user.empresa_id,
-                                tipo_documento: 'Nota de Crédito',
-                                document_type: 'Nota de Crédito',
-                                numero_documento: `NC PRD/${Date.now().toString().slice(-6)}`,
-                                invoice_number: `NC PRD/${Date.now().toString().slice(-6)}`,
-                                cliente_id: showAnularModal.cliente_id || showAnularModal.client_id || null,
-                                cliente_nome: showAnularModal.cliente_nome || showAnularModal.client_name || 'Desconhecido',
-                                total: nc_val,
-                                counter_value: nc_val,
-                                data_emissao: new Date().toISOString(),
-                                date: new Date().toISOString(),
-                                is_certified: true, // auto-certified
-                                status: 'emitido',
-                                items: showAnularModal.items || [
-                                  {
-                                    description: `Crédito por anulação de documento Ref. ${showAnularModal.numero_documento || showAnularModal.invoice_number}`,
-                                    quantity: 1,
-                                    price: nc_val,
-                                    total: nc_val
-                                  }
-                                ],
-                                rectified_document: showAnularModal.invoice_number || showAnularModal.numero_documento,
-                                moeda: showAnularModal.moeda || showAnularModal.currency || 'AOA',
-                                currency: showAnularModal.currency || showAnularModal.moeda || 'AOA',
-                                cambio: showAnularModal.cambio || 1,
-                                local_trabalho: showAnularModal.local_trabalho || showAnularModal.work_site_title || 'Sede/Balcão'
-                              };
 
-                              await supabase.from('documentos_emitidos').insert([newNC]);
-
-                              // If it's a receipt, we should inform the user that the invoice is liberated
-                              if (showAnularModal.document_type === 'Recibo' || showAnularModal.tipo_documento === 'RC') {
-                                alert('Recibo anulado com sucesso! Nota de Crédito gerada obrigatoriamente. A fatura correspondente está agora disponível para novo recebimento.');
-                              } else {
-                                alert('Documento anulado com sucesso! Nota de Crédito gerada obrigatoriamente conforme legislação fiscal vigente.');
+                            if (data && data.success) {
+                              const msg = data.message || 'Documento anulado com sucesso!';
+                              alert(msg);
+                              
+                              if (data.corretivo_id) {
+                                console.log('Documento corretivo gerado:', data.corretivo_id);
                               }
                               
                               await fetchData();
                               setShowAnularModal(null);
                             } else {
-                              alert('Erro ao anular: ' + error.message);
+                              alert('Erro ao anular: ' + (data?.error || 'Erro desconhecido'));
                             }
-                          } catch (error) {
+                          } catch (error: any) {
                             console.error('Error voiding document:', error);
+                            alert('Falha crítica na anulação: ' + error.message);
                           }
                         }}
                       />
@@ -27137,6 +27379,8 @@ export default function App() {
                                   mode={activeTab === 'electronic_invoices' ? 'electronic' : 'standard'}
                                   fiscalSeries={fiscalSeries}
                                   onRefresh={fetchData}
+                                  fiscalYear={fiscalYear}
+                                  globalUsers={globalUsers}
                                 />
                               );
                             case 'tax-settings':
@@ -27144,7 +27388,7 @@ export default function App() {
                             case 'issued-documents':
                               return (
                                 <IssuedDocumentsList 
-                                  documents={issuedDocuments} 
+                                  documents={filteredIssuedDocuments} 
                                   onAction={handleDocumentAction}
                                   onCertify={(doc) => {
                                     const emissionDate = new Date(doc.data_emissao || doc.date || '');
@@ -27159,6 +27403,7 @@ export default function App() {
                                     setShowCertifyModal(true);
                                   }}
                                   onViewDetail={(doc) => setViewingInvoiceId(doc.id)}
+                                  globalUsers={globalUsers}
                                 />
                               );
                             case 'client-account':
@@ -27251,7 +27496,7 @@ export default function App() {
                                 />
                               );
                             case 'suppliers':
-                              return <SupplierModule products={products} activeTaxes={activeTaxes} workSites={workSites} fiscalSeries={fiscalSeries} caixas={caixas} companyData={companyData} addMovement={doAddCaixaMovement} />;
+                              return <SupplierModule products={products} activeTaxes={activeTaxes} workSites={workSites} fiscalSeries={fiscalSeries} caixas={caixas} companyData={companyData} addMovement={doAddCaixaMovement} globalUsers={globalUsers} />;
                             case 'products':
                               return (
                                 <ProductList 
@@ -27322,6 +27567,7 @@ export default function App() {
                                 issuedDocuments={issuedDocuments} 
                                 fiscalYear={fiscalYear}
                                 companyData={companyData}
+                                setFiscalYear={setFiscalYear}
                               />;
                             case 'licencas':
                               return <LicencasModule user={user} userProfile={user} />;
@@ -27382,6 +27628,7 @@ export default function App() {
                                         setShowCertifyModal(true);
                                       }}
                                       onViewDetail={(doc) => setViewingInvoiceId(doc.id)}
+                                      globalUsers={globalUsers}
                                     />
                                   </div>
                                 </div>

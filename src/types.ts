@@ -200,6 +200,9 @@ export interface Invoice {
   codigo_validacao?: string;
   imposto?: number;
   detalhes?: string;
+  created_by?: string;
+  created_by_nome?: string;
+  created_by_username?: string;
 }
 
 export interface DashboardStats {
@@ -509,6 +512,9 @@ export interface IssuedDocument {
   serie?: string;
   ano?: number;
   estado_certificacao?: string;
+  created_by?: string;
+  created_by_nome?: string;
+  created_by_username?: string;
 }
 
 export interface StockMovement {
@@ -618,6 +624,9 @@ export interface Purchase {
   reference_purchase_number?: string;
   reference_document?: string;
   observations?: string;
+  created_by?: string;
+  created_by_nome?: string;
+  created_by_username?: string;
 }
 
 export interface LaborTermination {

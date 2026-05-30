@@ -23,6 +23,49 @@ export const TopHeader = ({
   const [time, setTime] = useState(new Date());
   const [searchTerm, setSearchTerm] = useState('');
   const [activeAlerts, setActiveAlerts] = useState<any[]>([]);
+  const [availableYears, setAvailableYears] = useState<string[]>(['2024', '2025', '2026', '2027']);
+
+  const loadFiscalYearsAndSelectActive = async () => {
+    try {
+      const { supabase } = await import('../lib/supabase');
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const res = await fetch('/api/exercicios-fiscais', {
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.length > 0) {
+          const years = data.map((x: any) => x.ano.toString());
+          const uniqueYears = Array.from(new Set([...years, '2024', '2025', '2026', '2027'])).sort((a: string, b: string) => Number(b) - Number(a));
+          setAvailableYears(uniqueYears);
+          
+          const activeDbYear = data.find((x: any) => x.ativo);
+          if (activeDbYear && !localStorage.getItem('user_manually_switched_year')) {
+            setFiscalYear(activeDbYear.ano.toString());
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Erro ao carregar anos para o TopHeader:", e);
+    }
+  };
+
+  useEffect(() => {
+    if (user?.empresa_id) {
+      loadFiscalYearsAndSelectActive();
+    }
+
+    // Escutar por atualizações globais para recarregar se necessário
+    const handleRefresh = () => {
+      if (user?.empresa_id) {
+        loadFiscalYearsAndSelectActive();
+      }
+    };
+    window.addEventListener('refresh_fiscal_years', handleRefresh);
+    return () => window.removeEventListener('refresh_fiscal_years', handleRefresh);
+  }, [user?.empresa_id]);
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
@@ -92,13 +135,15 @@ export const TopHeader = ({
             <label className="text-[10px] font-bold text-blue-800 uppercase tracking-wider">Ano Exercício:</label>
             <select 
               value={fiscalYear} 
-              onChange={(e) => setFiscalYear(e.target.value)}
+              onChange={(e) => {
+                localStorage.setItem('user_manually_switched_year', 'true');
+                setFiscalYear(e.target.value);
+              }}
               className="bg-transparent text-sm font-bold text-[#003366] focus:outline-none cursor-pointer"
             >
-              <option value="2024">2024</option>
-              <option value="2025">2025</option>
-              <option value="2026">2026</option>
-              <option value="2027">2027</option>
+              {availableYears.map(yearOption => (
+                <option key={yearOption} value={yearOption}>{yearOption}</option>
+              ))}
             </select>
           </div>
 

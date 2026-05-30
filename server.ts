@@ -100,7 +100,7 @@ if (!supabaseAdmin) {
               created_at TIMESTAMPTZ DEFAULT now()
           );
 
-          -- Ensure all columns for certification exist
+          -- Ensure all columns for certification and authorship exist
           ALTER TABLE public.documentos_emitidos ADD COLUMN IF NOT EXISTS empresa_id UUID;
           ALTER TABLE public.documentos_emitidos ADD COLUMN IF NOT EXISTS is_certified BOOLEAN DEFAULT false;
           ALTER TABLE public.documentos_emitidos ADD COLUMN IF NOT EXISTS hash_anterior TEXT;
@@ -108,6 +108,10 @@ if (!supabaseAdmin) {
           ALTER TABLE public.documentos_emitidos ADD COLUMN IF NOT EXISTS assinatura_digital TEXT;
           ALTER TABLE public.documentos_emitidos ADD COLUMN IF NOT EXISTS codigo_validacao TEXT;
           ALTER TABLE public.documentos_emitidos ADD COLUMN IF NOT EXISTS certificado_por UUID;
+          ALTER TABLE public.documentos_emitidos ADD COLUMN IF NOT EXISTS criado_por UUID;
+          ALTER TABLE public.documentos_emitidos ADD COLUMN IF NOT EXISTS created_by UUID;
+          ALTER TABLE public.documentos_emitidos ADD COLUMN IF NOT EXISTS created_by_username TEXT;
+          ALTER TABLE public.documentos_emitidos ADD COLUMN IF NOT EXISTS created_by_nome TEXT;
           ALTER TABLE public.documentos_emitidos ADD COLUMN IF NOT EXISTS certified_at TIMESTAMPTZ;
           ALTER TABLE public.documentos_emitidos ADD COLUMN IF NOT EXISTS data_emissao TIMESTAMPTZ DEFAULT now();
           ALTER TABLE public.documentos_emitidos ADD COLUMN IF NOT EXISTS data_vencimento TIMESTAMPTZ;
@@ -128,59 +132,167 @@ if (!supabaseAdmin) {
             END IF;
           END $$;
           
-          -- Ensure series_fiscais has necessary columns
-          ALTER TABLE public.series_fiscais ADD COLUMN IF NOT EXISTS ano integer DEFAULT EXTRACT(YEAR FROM now());
-          ALTER TABLE public.series_fiscais ADD COLUMN IF NOT EXISTS ultimo_hash text;
+          -- Ensure series_fiscais exists and has necessary columns
+          CREATE TABLE IF NOT EXISTS public.series_fiscais (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              empresa_id UUID NOT NULL,
+              serie TEXT NOT NULL,
+              descricao TEXT,
+              tipo TEXT,
+              proximo_numero INTEGER DEFAULT 1,
+              ativo BOOLEAN DEFAULT true,
+              ano INTEGER DEFAULT EXTRACT(YEAR FROM now()),
+              ultimo_hash TEXT,
+              ultimo_documento_id UUID,
+              ultima_certificacao TIMESTAMPTZ,
+              utilizador_id UUID,
+              created_at TIMESTAMPTZ DEFAULT now(),
+              updated_at TIMESTAMPTZ DEFAULT now()
+          );
+
+          DO $$ 
+          BEGIN 
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'series_fiscais' AND column_name = 'ano') THEN
+                ALTER TABLE public.series_fiscais ADD COLUMN ano integer DEFAULT EXTRACT(YEAR FROM now());
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'series_fiscais' AND column_name = 'ultimo_hash') THEN
+                ALTER TABLE public.series_fiscais ADD COLUMN ultimo_hash text;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'series_fiscais' AND column_name = 'ultimo_documento_id') THEN
+                ALTER TABLE public.series_fiscais ADD COLUMN ultimo_documento_id uuid;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'series_fiscais' AND column_name = 'ultima_certificacao') THEN
+                ALTER TABLE public.series_fiscais ADD COLUMN ultima_certificacao timestamptz;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'series_fiscais' AND column_name = 'utilizador_id') THEN
+                ALTER TABLE public.series_fiscais ADD COLUMN utilizador_id UUID REFERENCES public.perfis(id);
+            END IF;
+          END $$;
 
           -- RPC to certify existing document
           CREATE OR REPLACE FUNCTION public.certificar_documento_existente(p_documento_id uuid, p_usuario_id uuid)
-          RETURNS json LANGUAGE plpgsql SECURITY DEFINER AS $$
+          RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER AS $$
           DECLARE
               v_doc record;
-              v_serie_record record;
+              v_serie record;
               v_numero integer;
               v_hash_anterior text;
               v_hash_novo text;
               v_codigo_curto text;
               v_texto_hash text;
               v_ano_fiscal integer;
+              v_col_exists boolean;
+              v_col_tipo_exists boolean;
+              v_col_ano_exists boolean;
+              v_sql text;
+              v_sigla text;
+              v_numero_final text;
           BEGIN
+              -- 0. Garantir colunas na série se faltarem (Recuperação do esquema)
+              RAISE NOTICE 'INICIANDO CERTIFICAÇÃO DO DOCUMENTO: %', p_documento_id;
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'series_fiscais' AND column_name = 'ultimo_hash') THEN
+                      EXECUTE 'ALTER TABLE public.series_fiscais ADD COLUMN ultimo_hash text';
+                  END IF;
+                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'series_fiscais' AND column_name = 'ano') THEN
+                      EXECUTE 'ALTER TABLE public.series_fiscais ADD COLUMN ano integer';
+                  END IF;
+                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'series_fiscais' AND column_name = 'tipo') THEN
+                      EXECUTE 'ALTER TABLE public.series_fiscais ADD COLUMN tipo text';
+                  END IF;
+                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'series_fiscais' AND column_name = 'ultimo_documento_id') THEN
+                      EXECUTE 'ALTER TABLE public.series_fiscais ADD COLUMN ultimo_documento_id uuid';
+                  END IF;
+                  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'series_fiscais' AND column_name = 'ultima_certificacao') THEN
+                      EXECUTE 'ALTER TABLE public.series_fiscais ADD COLUMN ultima_certificacao timestamptz';
+                  END IF;
+              EXCEPTION WHEN OTHERS THEN
+                  RAISE WARNING 'Erro ao garantir colunas na série: %', SQLERRM;
+              END;
+
               -- 1. Buscar documento
+              RAISE NOTICE 'BUSCANDO DOCUMENTO...';
               SELECT * INTO v_doc FROM public.documentos_emitidos WHERE id = p_documento_id;
-              IF v_doc IS NULL THEN RETURN json_build_object('success', false, 'error', 'Documento não encontrado'); END IF;
-              IF v_doc.is_certified THEN RETURN json_build_object('success', false, 'error', 'Documento já certificado'); END IF;
-              IF v_doc.documento_anulado THEN RETURN json_build_object('success', false, 'error', 'Documento anulado não pode ser certificado'); END IF;
+              IF v_doc IS NULL THEN RETURN jsonb_build_object('success', false, 'error', 'Documento não encontrado'); END IF;
+              IF v_doc.is_certified THEN RETURN jsonb_build_object('success', false, 'error', 'Documento já certificado'); END IF;
+              IF v_doc.documento_anulado THEN RETURN jsonb_build_object('success', false, 'error', 'Documento anulado não pode ser certificado'); END IF;
 
               v_ano_fiscal := EXTRACT(YEAR FROM now());
 
-              -- 2. Buscar série ativa para o tipo de documento
-              SELECT * INTO v_serie_record FROM public.series_fiscais
-              WHERE empresa_id = v_doc.empresa_id AND ativo = true AND (tipo = v_doc.tipo_documento OR serie = v_doc.serie)
-              ORDER BY created_at DESC LIMIT 1;
+              -- 2. Buscar série ativa (DINÂMICO)
+              RAISE NOTICE 'BUSCANDO SÉRIE...';
+              SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'series_fiscais' AND column_name = 'tipo') INTO v_col_tipo_exists;
               
-              IF v_serie_record IS NULL THEN
-                  -- Criar série automática se não existir
-                  INSERT INTO public.series_fiscais (empresa_id, serie, descricao, tipo, proximo_numero, ativo, ano)
-                  VALUES (v_doc.empresa_id, 'PRD', 'Serie Produção', v_doc.tipo_documento, 1, true, v_ano_fiscal)
-                  RETURNING * INTO v_serie_record;
+              v_sql := 'SELECT * FROM public.series_fiscais WHERE empresa_id = $1 AND ativo = true ';
+              IF v_doc.serie IS NOT NULL THEN
+                  v_sql := v_sql || ' AND serie = $2';
+              ELSE
+                  IF v_col_tipo_exists THEN
+                      v_sql := v_sql || ' AND tipo = $3';
+                  END IF;
+              END IF;
+              v_sql := v_sql || ' ORDER BY created_at DESC LIMIT 1';
+              
+              EXECUTE v_sql INTO v_serie USING v_doc.empresa_id, v_doc.serie, v_doc.tipo_documento;
+              
+              IF v_serie IS NULL THEN
+                  RAISE NOTICE 'SÉRIE NÃO ENCONTRADA, CRIANDO SÉRIE AUTOMÁTICA...';
+                  -- Criar série automática se não existir (DINÂMICO)
+                  SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'series_fiscais' AND column_name = 'ano') INTO v_col_ano_exists;
+                  
+                  IF v_col_ano_exists AND v_col_tipo_exists THEN
+                      EXECUTE 'INSERT INTO public.series_fiscais (empresa_id, serie, descricao, tipo, proximo_numero, ativo, ano) VALUES ($1, $2, $3, $4, 1, true, $5) RETURNING *'
+                      INTO v_serie USING v_doc.empresa_id, v_ano_fiscal::text, 'Série ' || v_ano_fiscal::text, v_doc.tipo_documento, v_ano_fiscal;
+                  ELSIF v_col_tipo_exists THEN
+                      EXECUTE 'INSERT INTO public.series_fiscais (empresa_id, serie, descricao, tipo, proximo_numero, ativo) VALUES ($1, $2, $3, $4, 1, true) RETURNING *'
+                      INTO v_serie USING v_doc.empresa_id, v_ano_fiscal::text, 'Série ' || v_ano_fiscal::text, v_doc.tipo_documento;
+                  ELSE
+                      EXECUTE 'INSERT INTO public.series_fiscais (empresa_id, serie, descricao, proximo_numero, ativo) VALUES ($1, $2, $3, 1, true) RETURNING *'
+                      INTO v_serie USING v_doc.empresa_id, v_ano_fiscal::text, 'Série ' || v_ano_fiscal::text;
+                  END IF;
               END IF;
 
               -- 3. Incrementar contador da série
-              UPDATE public.series_fiscais SET proximo_numero = proximo_numero + 1
-              WHERE id = v_serie_record.id
-              RETURNING proximo_numero - 1 INTO v_numero;
+              RAISE NOTICE 'INCREMENTANDO CONTADOR DA SÉRIE: %', v_serie.id;
+              EXECUTE 'UPDATE public.series_fiscais SET proximo_numero = proximo_numero + 1 WHERE id = $1 RETURNING proximo_numero - 1'
+              INTO v_numero USING v_serie.id;
 
               -- 4. Buscar hash anterior (Encadeamento Fiscal)
+              RAISE NOTICE 'LENDO HASH ANTERIOR...';
               SELECT hash_documento INTO v_hash_anterior FROM public.documentos_emitidos
               WHERE empresa_id = v_doc.empresa_id AND tipo_documento = v_doc.tipo_documento AND is_certified = true
               ORDER BY certified_at DESC, created_at DESC LIMIT 1;
 
-              -- 5. Gerar Hash
-              v_texto_hash := COALESCE(v_doc.numero_documento,'') || COALESCE(v_doc.cliente_nome,'') || COALESCE(v_doc.total::text,'0') || COALESCE(v_doc.imposto::text,'0') || COALESCE(v_hash_anterior,'');
+              -- 5. Gerar Hash e Número Final
+              RAISE NOTICE 'GERANDO HASH...';
+              
+              -- Determinar Sigla Baseada no Tipo de Documento
+              CASE v_doc.tipo_documento
+                  WHEN 'Factura' THEN v_sigla := 'FT';
+                  WHEN 'Fatura' THEN v_sigla := 'FT';
+                  WHEN 'Factura Recibo' THEN v_sigla := 'FR';
+                  WHEN 'Fatura Recibo' THEN v_sigla := 'FR';
+                  WHEN 'Factura Simplificada' THEN v_sigla := 'FS';
+                  WHEN 'Nota de Crédito' THEN v_sigla := 'NC';
+                  WHEN 'Nota de Débito' THEN v_sigla := 'ND';
+                  WHEN 'Recibo' THEN v_sigla := 'RC';
+                  WHEN 'Orçamento' THEN v_sigla := 'PP';
+                  WHEN 'Fatura Proforma' THEN v_sigla := 'PP';
+                  WHEN 'Guia de Remessa' THEN v_sigla := 'GR';
+                  WHEN 'Guia de Transporte' THEN v_sigla := 'GT';
+                  ELSE v_sigla := 'DOC';
+              END CASE;
+
+              -- Formatar Número Final. Ex: FT PRD2026/1
+              v_numero_final := v_sigla || ' ' || v_serie.serie || v_ano_fiscal::text || '/' || v_numero::text;
+
+              -- Hash usa o número final gerado
+              v_texto_hash := COALESCE(v_numero_final,'') || COALESCE(v_doc.cliente_nome,'') || COALESCE(v_doc.total::text,'0') || COALESCE(v_doc.imposto::text,'0') || COALESCE(v_hash_anterior,'');
               v_hash_novo := public.gerar_hash_sha256(v_texto_hash);
               v_codigo_curto := public.gerar_codigo_curto(v_hash_novo);
 
-              -- 6. Atualizar documento com certificação
+              -- 6. Atualizar documento com certificação e número fiscal real
+              RAISE NOTICE 'ATUALIZANDO DOCUMENTO...';
               UPDATE public.documentos_emitidos SET
                   is_certified = true,
                   estado_certificacao = 'CERTIFICADO',
@@ -189,40 +301,242 @@ if (!supabaseAdmin) {
                   certificado_por = p_usuario_id,
                   hash_anterior = v_hash_anterior,
                   hash_documento = v_hash_novo,
+                  hash_fiscal = v_hash_novo,
                   assinatura_digital = v_hash_novo,
                   codigo_validacao = v_codigo_curto,
                   numero_sequencial = v_numero,
-                  serie = v_serie_record.serie,
+                  numero_documento = v_numero_final,
+                  serie = v_serie.serie,
                   ano = v_ano_fiscal
               WHERE id = p_documento_id;
 
-              -- 7. Atualizar último hash na série
-              UPDATE public.series_fiscais SET ultimo_hash = v_hash_novo WHERE id = v_serie_record.id;
+              -- 7. Atualizar série fiscal com informações da última certificação
+              RAISE NOTICE 'ATUALIZANDO SÉRIE FISCAL...';
+              BEGIN
+                  EXECUTE 'UPDATE public.series_fiscais SET 
+                      ultimo_hash = $1, 
+                      ultimo_documento_id = $2, 
+                      ultima_certificacao = now() 
+                  WHERE id = $3'
+                  USING v_hash_novo, p_documento_id, v_serie.id;
+              EXCEPTION WHEN OTHERS THEN
+                  RAISE WARNING 'Erro ao atualizar série fiscal: %', SQLERRM;
+                  -- Tenta apenas o ultimo_hash se as outras falharem
+                  BEGIN
+                      EXECUTE 'UPDATE public.series_fiscais SET ultimo_hash = $1 WHERE id = $2'
+                      USING v_hash_novo, v_serie.id;
+                  EXCEPTION WHEN OTHERS THEN NULL;
+                  END;
+              END;
 
-              RETURN json_build_object(
+              -- 8. Inserir log de auditoria de forma segura
+              RAISE NOTICE 'GRAVANDO AUDITORIA...';
+              BEGIN
+                  INSERT INTO public.logs_auditoria (company_id, user_id, acao, created_at)
+                  VALUES (v_doc.empresa_id, p_usuario_id, 'CERTIFICAÇÃO FISCAL - DOC: ' || COALESCE(v_doc.numero_documento, p_documento_id::text) || ' | HASH: ' || v_hash_novo, now());
+              EXCEPTION WHEN OTHERS THEN
+                  NULL;
+              END;
+
+              RAISE NOTICE 'CERTIFICAÇÃO CONCLUÍDA COM SUCESSO.';
+              RETURN jsonb_build_object(
                   'success', true,
                   'hash', v_hash_novo,
                   'codigo_validacao', v_codigo_curto,
+                  'codigo', v_codigo_curto,
+                  'documento_id', p_documento_id,
                   'numero_sequencial', v_numero
+              );
+          EXCEPTION WHEN OTHERS THEN
+              RAISE WARNING 'ERRO NA CERTIFICAÇÃO: %', SQLERRM;
+              RETURN jsonb_build_object(
+                  'success', false,
+                  'error', 'Erro na certificação fiscal: ' || SQLERRM,
+                  'detail', SQLERRM,
+                  'code', SQLSTATE
               );
           END;
           $$;
 
-          -- RPC to annul document
-          CREATE OR REPLACE FUNCTION public.anular_documento_fiscal(p_documento_id uuid, p_motivo text)
-          RETURNS json LANGUAGE plpgsql SECURITY DEFINER AS $$
+          -- Ensure documentos_emitidos has necessary fiscal columns
+          DO $$ 
+          BEGIN 
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'documentos_emitidos' AND column_name = 'documento_origem_id') THEN
+                ALTER TABLE public.documentos_emitidos ADD COLUMN documento_origem_id uuid;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'documentos_emitidos' AND column_name = 'numero_documento_origem') THEN
+                ALTER TABLE public.documentos_emitidos ADD COLUMN numero_documento_origem text;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'documentos_emitidos' AND column_name = 'tipo_documento_origem') THEN
+                ALTER TABLE public.documentos_emitidos ADD COLUMN tipo_documento_origem text;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'documentos_emitidos' AND column_name = 'motivo_anulacao') THEN
+                ALTER TABLE public.documentos_emitidos ADD COLUMN motivo_anulacao text;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'documentos_emitidos' AND column_name = 'anulado_at') THEN
+                ALTER TABLE public.documentos_emitidos ADD COLUMN anulado_at timestamptz;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'documentos_emitidos' AND column_name = 'anulado_por') THEN
+                ALTER TABLE public.documentos_emitidos ADD COLUMN anulado_por uuid;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'documentos_emitidos' AND column_name = 'serie') THEN
+                ALTER TABLE public.documentos_emitidos ADD COLUMN serie text;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'documentos_emitidos' AND column_name = 'ano') THEN
+                ALTER TABLE public.documentos_emitidos ADD COLUMN ano integer DEFAULT EXTRACT(YEAR FROM now());
+            END IF;
+          END $$;
+
+          -- Unique Fiscal Index to prevent duplicates
+          DO $$
           BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relname = 'idx_unique_fiscal_doc' AND n.nspname = 'public') THEN
+                CREATE UNIQUE INDEX idx_unique_fiscal_doc ON public.documentos_emitidos (empresa_id, tipo_documento, serie, ano, numero_sequencial) WHERE numero_sequencial IS NOT NULL;
+            END IF;
+          END $$;
+
+          -- Constraints on Series
+          DO $$
+          BEGIN
+              IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'unique_empresa_tipo_serie') THEN
+                  ALTER TABLE public.series_fiscais ADD CONSTRAINT unique_empresa_tipo_serie UNIQUE (empresa_id, tipo, serie);
+              END IF;
+          END $$;
+
+          -- TRG: Prevent DELETE on certified documents
+          CREATE OR REPLACE FUNCTION public.trg_prevent_delete_fiscal_doc()
+          RETURNS trigger AS $body$
+          BEGIN
+              IF OLD.is_certified = true THEN
+                  RAISE EXCEPTION 'Não é permitido eliminar documentos fiscais certificados. Deve anular o documento.';
+              END IF;
+              RETURN OLD;
+          END;
+          $body$ LANGUAGE plpgsql;
+
+          DROP TRIGGER IF EXISTS trg_prevent_delete_fiscal_doc_trigger ON public.documentos_emitidos;
+          CREATE TRIGGER trg_prevent_delete_fiscal_doc_trigger
+          BEFORE DELETE ON public.documentos_emitidos
+          FOR EACH ROW EXECUTE FUNCTION public.trg_prevent_delete_fiscal_doc();
+
+          -- TRG: Prevent UPDATE on critical fields of certified documents
+          CREATE OR REPLACE FUNCTION public.trg_prevent_update_certified_doc()
+          RETURNS trigger AS $body$
+          BEGIN
+              IF OLD.is_certified = true AND NEW.is_certified = true THEN
+                  IF OLD.total <> NEW.total OR OLD.imposto <> NEW.imposto OR OLD.hash_documento <> NEW.hash_documento OR OLD.numero_sequencial <> NEW.numero_sequencial OR OLD.numero_documento <> NEW.numero_documento OR OLD.serie <> NEW.serie OR OLD.tipo_documento <> NEW.tipo_documento OR OLD.cliente_nome <> NEW.cliente_nome THEN
+                      RAISE EXCEPTION 'Não é permitido alterar dados cruciais (totais, número, hash, cliente) de documentos fiscais já certificados.';
+                  END IF;
+              END IF;
+              RETURN NEW;
+          END;
+          $body$ LANGUAGE plpgsql;
+
+          DROP TRIGGER IF EXISTS trg_prevent_update_certified_doc_trigger ON public.documentos_emitidos;
+          CREATE TRIGGER trg_prevent_update_certified_doc_trigger
+          BEFORE UPDATE ON public.documentos_emitidos
+          FOR EACH ROW EXECUTE FUNCTION public.trg_prevent_update_certified_doc();
+
+          -- RPC para Validar Integridade do Documento (Regra 18)
+          CREATE OR REPLACE FUNCTION public.validar_integridade_documento(p_documento_id uuid)
+          RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER AS $$
+          DECLARE
+              v_doc record;
+              v_texto_hash text;
+              v_hash_calculado text;
+          BEGIN
+              SELECT * INTO v_doc FROM public.documentos_emitidos WHERE id = p_documento_id;
+              IF v_doc IS NULL THEN 
+                  RETURN jsonb_build_object('success', false, 'error', 'Documento não encontrado'); 
+              END IF;
+              
+              IF NOT v_doc.is_certified THEN 
+                  RETURN jsonb_build_object('success', true, 'message', 'Documento provisório'); 
+              END IF;
+
+              v_texto_hash := COALESCE(v_doc.numero_documento,'') || COALESCE(v_doc.cliente_nome,'') || COALESCE(v_doc.total::text,'0') || COALESCE(v_doc.imposto::text,'0') || COALESCE(v_doc.hash_anterior,'');
+              v_hash_calculado := public.gerar_hash_sha256(v_texto_hash);
+
+              IF v_hash_calculado <> v_doc.hash_documento THEN
+                  RETURN jsonb_build_object('success', false, 'error', 'INCONSISTÊNCIA FISCAL: O Hash do documento (' || v_doc.hash_documento || ') não confere com a assinatura gerada a partir dos dados atuais (' || v_hash_calculado || '). Integridade comprometida.');
+              END IF;
+
+              RETURN jsonb_build_object('success', true);
+          END;
+          $$;
+
+          -- RPC to annul document with automatic corrective generation
+          CREATE OR REPLACE FUNCTION public.anular_documento_fiscal(p_documento_id uuid, p_motivo text, p_usuario_id uuid DEFAULT NULL)
+          RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER AS $$
+          DECLARE
+              v_doc record;
+              v_tipo_corretivo text;
+              v_new_doc_id uuid;
+              v_res jsonb;
+          BEGIN
+              SELECT * INTO v_doc FROM public.documentos_emitidos WHERE id = p_documento_id;
+              IF v_doc IS NULL THEN RETURN jsonb_build_object('success', false, 'error', 'Documento não encontrado'); END IF;
+              IF v_doc.documento_anulado = true THEN RETURN jsonb_build_object('success', false, 'error', 'Documento já se encontra anulado'); END IF;
+
+              -- 1. Marcar documento como anulado
               UPDATE public.documentos_emitidos SET
                   documento_anulado = true,
-                  estado = 'ANULADO',
-                  status = 'anulado',
-                  estado_certificacao = 'ANULADO',
                   motivo_anulacao = p_motivo,
-                  is_certified = true, -- Still certified but invalidated
+                  anulado_at = now(),
+                  anulado_por = p_usuario_id,
+                  estado = 'ANULADO',
+                  status = 'Anulado',
+                  estado_certificacao = 'ANULADO',
                   updated_at = now()
               WHERE id = p_documento_id;
 
-              RETURN json_build_object('success', true);
+              -- Gravar Auditoria (Regra 15)
+              BEGIN
+                  INSERT INTO public.logs_auditoria (company_id, user_id, acao, created_at)
+                  VALUES (v_doc.empresa_id, p_usuario_id, 'ANULAÇÃO DE DOCUMENTO FISCAL - DOC: ' || COALESCE(v_doc.numero_documento, p_documento_id::text) || ' | MOTIVO: ' || p_motivo, now());
+              EXCEPTION WHEN OTHERS THEN
+                  NULL;
+              END;
+
+              -- 2. Se o documento for certificado, gerar documento corretivo automático
+              IF v_doc.is_certified = true THEN
+                  IF v_doc.tipo_documento IN ('Factura', 'Factura Recibo', 'Factura Simplificada', 'Guia de Remessa', 'Guia de Transporte') THEN
+                      v_tipo_corretivo := 'Nota de Crédito';
+                  ELSIF v_doc.tipo_documento = 'Nota de Crédito' THEN
+                      v_tipo_corretivo := 'Nota de Débito';
+                  ELSE
+                      -- Para outros tipos, apenas anula sem gerar corretivo automático por agora
+                      RETURN jsonb_build_object('success', true, 'message', 'Documento anulado com sucesso');
+                  END IF;
+
+                  -- Gerar novo ID para o corretivo
+                  v_new_doc_id := gen_random_uuid();
+
+                  -- Inserir documento corretivo
+                  INSERT INTO public.documentos_emitidos (
+                      id, empresa_id, tipo_documento, cliente_nome, cliente_email,
+                      total, imposto, estado, data_emissao, detalhes,
+                      documento_origem_id, numero_documento_origem, tipo_documento_origem,
+                      serie, ano, is_certified, created_at, created_by, created_by_username, created_by_nome, criado_por
+                  ) VALUES (
+                      v_new_doc_id, v_doc.empresa_id, v_tipo_corretivo, v_doc.cliente_nome, v_doc.cliente_email,
+                      v_doc.total, v_doc.imposto, 'EMITIDO', now(), v_doc.detalhes,
+                      v_doc.id, v_doc.numero_documento, v_doc.tipo_documento,
+                      v_doc.serie, EXTRACT(YEAR FROM now()), false, now(), v_doc.created_by, v_doc.created_by_username, v_doc.created_by_nome, v_doc.criado_por
+                  );
+
+                  -- Tentar certificar o documento corretivo imediatamente
+                  SELECT public.certificar_documento_existente(v_new_doc_id, p_usuario_id) INTO v_res;
+                  
+                  RETURN jsonb_build_object(
+                      'success', true, 
+                      'message', 'Documento anulado e ' || v_tipo_corretivo || ' gerada com sucesso',
+                      'corretivo_id', v_new_doc_id,
+                      'certificacao_result', v_res
+                  );
+              END IF;
+
+              RETURN jsonb_build_object('success', true, 'message', 'Documento anulado com sucesso');
           END;
           $$;
 
@@ -408,7 +722,10 @@ if (!supabaseAdmin) {
               moeda TEXT DEFAULT 'AOA',
               description TEXT,
               date TIMESTAMPTZ DEFAULT now(),
-              created_at TIMESTAMPTZ DEFAULT now()
+              created_at TIMESTAMPTZ DEFAULT now(),
+              created_by UUID,
+              created_by_username TEXT,
+              created_by_nome TEXT
           );
 
           ALTER TABLE public.caixas ADD COLUMN IF NOT EXISTS codigo_caixa TEXT;
@@ -434,6 +751,236 @@ if (!supabaseAdmin) {
           ALTER TABLE public.caixa_movimentacoes ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
           ALTER TABLE public.caixa_movimentacoes ADD COLUMN IF NOT EXISTS empresa_id UUID;
           ALTER TABLE public.caixa_movimentacoes ADD COLUMN IF NOT EXISTS moeda TEXT DEFAULT 'AOA';
+          ALTER TABLE public.caixa_movimentacoes ADD COLUMN IF NOT EXISTS ano INTEGER;
+
+          -- 1. Criar tabela exercicios_fiscais se não existir
+          CREATE TABLE IF NOT EXISTS public.exercicios_fiscais (
+              id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+              empresa_id uuid NOT NULL,
+              ano integer NOT NULL,
+              ativo boolean DEFAULT false,
+              fechado boolean DEFAULT false,
+              data_abertura timestamptz DEFAULT now(),
+              data_fecho timestamptz,
+              UNIQUE (empresa_id, ano)
+          );
+
+          -- 2. Garantir coluna empresa_id e ano nas tabelas financeiras
+          -- documentos_emitidos
+          ALTER TABLE public.documentos_emitidos ADD COLUMN IF NOT EXISTS empresa_id UUID;
+          ALTER TABLE public.documentos_emitidos ADD COLUMN IF NOT EXISTS ano INTEGER;
+
+          -- caixa_movimentacoes
+          ALTER TABLE public.caixa_movimentacoes ADD COLUMN IF NOT EXISTS ano INTEGER;
+
+          -- movimentacoes_stock
+          CREATE TABLE IF NOT EXISTS public.movimentacoes_stock (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              empresa_id UUID NOT NULL,
+              ano INTEGER,
+              product_id UUID,
+              quantity NUMERIC,
+              type TEXT,
+              description TEXT,
+              created_at TIMESTAMPTZ DEFAULT now()
+          );
+          ALTER TABLE public.movimentacoes_stock ADD COLUMN IF NOT EXISTS empresa_id UUID;
+          ALTER TABLE public.movimentacoes_stock ADD COLUMN IF NOT EXISTS ano INTEGER;
+          ALTER TABLE public.movimentacoes_stock ADD COLUMN IF NOT EXISTS created_by UUID;
+          ALTER TABLE public.movimentacoes_stock ADD COLUMN IF NOT EXISTS created_by_username TEXT;
+          ALTER TABLE public.movimentacoes_stock ADD COLUMN IF NOT EXISTS created_by_nome TEXT;
+
+          -- compras
+          CREATE TABLE IF NOT EXISTS public.compras (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              empresa_id UUID NOT NULL,
+              ano INTEGER,
+              fornecedor_id UUID,
+              total NUMERIC DEFAULT 0,
+              created_at TIMESTAMPTZ DEFAULT now()
+          );
+          ALTER TABLE public.compras ADD COLUMN IF NOT EXISTS empresa_id UUID;
+          ALTER TABLE public.compras ADD COLUMN IF NOT EXISTS ano INTEGER;
+          ALTER TABLE public.compras ADD COLUMN IF NOT EXISTS criado_por UUID;
+          ALTER TABLE public.compras ADD COLUMN IF NOT EXISTS created_by UUID;
+          ALTER TABLE public.compras ADD COLUMN IF NOT EXISTS created_by_username TEXT;
+          ALTER TABLE public.compras ADD COLUMN IF NOT EXISTS created_by_nome TEXT;
+
+          -- transacoes
+          CREATE TABLE IF NOT EXISTS public.transacoes (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              empresa_id UUID NOT NULL,
+              tipo TEXT NOT NULL,
+              valor NUMERIC DEFAULT 0,
+              descricao TEXT,
+              data_transacao TIMESTAMPTZ DEFAULT now(),
+              created_at TIMESTAMPTZ DEFAULT now()
+          );
+          ALTER TABLE public.transacoes ADD COLUMN IF NOT EXISTS created_by UUID;
+          ALTER TABLE public.transacoes ADD COLUMN IF NOT EXISTS created_by_username TEXT;
+          ALTER TABLE public.transacoes ADD COLUMN IF NOT EXISTS created_by_nome TEXT;
+          ALTER TABLE public.vendas ADD COLUMN IF NOT EXISTS created_by UUID;
+          ALTER TABLE public.vendas ADD COLUMN IF NOT EXISTS created_by_username TEXT;
+          ALTER TABLE public.vendas ADD COLUMN IF NOT EXISTS created_by_nome TEXT;
+
+          -- vendas
+          CREATE TABLE IF NOT EXISTS public.vendas (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              empresa_id UUID NOT NULL,
+              ano INTEGER,
+              total NUMERIC DEFAULT 0,
+              created_at TIMESTAMPTZ DEFAULT now()
+          );
+          ALTER TABLE public.vendas ADD COLUMN IF NOT EXISTS empresa_id UUID;
+          ALTER TABLE public.vendas ADD COLUMN IF NOT EXISTS ano INTEGER;
+
+          -- pagamentos
+          CREATE TABLE IF NOT EXISTS public.pagamentos (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              empresa_id UUID NOT NULL,
+              ano INTEGER,
+              total NUMERIC DEFAULT 0,
+              created_at TIMESTAMPTZ DEFAULT now()
+          );
+          ALTER TABLE public.pagamentos ADD COLUMN IF NOT EXISTS empresa_id UUID;
+          ALTER TABLE public.pagamentos ADD COLUMN IF NOT EXISTS ano INTEGER;
+          ALTER TABLE public.pagamentos ADD COLUMN IF NOT EXISTS created_by UUID;
+          ALTER TABLE public.pagamentos ADD COLUMN IF NOT EXISTS created_by_username TEXT;
+          ALTER TABLE public.pagamentos ADD COLUMN IF NOT EXISTS created_by_nome TEXT;
+
+          -- lancamentos_contabeis
+          CREATE TABLE IF NOT EXISTS public.lancamentos_contabeis (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              empresa_id UUID NOT NULL,
+              ano INTEGER,
+              descricao TEXT,
+              total NUMERIC DEFAULT 0,
+              created_at TIMESTAMPTZ DEFAULT now()
+          );
+          ALTER TABLE public.lancamentos_contabeis ADD COLUMN IF NOT EXISTS empresa_id UUID;
+          ALTER TABLE public.lancamentos_contabeis ADD COLUMN IF NOT EXISTS ano INTEGER;
+
+          -- Preenchimento retroativo dos anos nulos utilizando o ano da criação ou o ano actual
+          UPDATE public.documentos_emitidos SET ano = EXTRACT(YEAR FROM COALESCE(created_at, now())) WHERE ano IS NULL;
+          UPDATE public.caixa_movimentacoes SET ano = EXTRACT(YEAR FROM COALESCE(date, created_at, now())) WHERE ano IS NULL;
+          UPDATE public.movimentacoes_stock SET ano = EXTRACT(YEAR FROM COALESCE(created_at, now())) WHERE ano IS NULL;
+          UPDATE public.compras SET ano = EXTRACT(YEAR FROM COALESCE(created_at, now())) WHERE ano IS NULL;
+          UPDATE public.vendas SET ano = EXTRACT(YEAR FROM COALESCE(created_at, now())) WHERE ano IS NULL;
+          UPDATE public.pagamentos SET ano = EXTRACT(YEAR FROM COALESCE(created_at, now())) WHERE ano IS NULL;
+          UPDATE public.lancamentos_contabeis SET ano = EXTRACT(YEAR FROM COALESCE(created_at, now())) WHERE ano IS NULL;
+
+          -- Funções de Exercícios Fiscais
+          CREATE OR REPLACE FUNCTION public.ativar_exercicio(p_empresa_id uuid, p_ano integer)
+          RETURNS void
+          AS $$
+          BEGIN
+            UPDATE public.exercicios_fiscais
+            SET ativo = false
+            WHERE empresa_id = p_empresa_id;
+
+            UPDATE public.exercicios_fiscais
+            SET ativo = true
+            WHERE empresa_id = p_empresa_id
+            AND ano = p_ano;
+          END;
+          $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+          CREATE OR REPLACE FUNCTION public.fechar_exercicio(p_empresa_id uuid, p_ano integer)
+          RETURNS void
+          AS $$
+          BEGIN
+            UPDATE public.exercicios_fiscais
+            SET ativo = false,
+                fechado = true,
+                data_fecho = now()
+            WHERE empresa_id = p_empresa_id
+            AND ano = p_ano;
+          END;
+          $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+          -- Bloqueio fiscal (impedir alteração em ano fechado)
+          CREATE OR REPLACE FUNCTION public.bloquear_exercicio_fechado()
+          RETURNS trigger
+          AS $$
+          DECLARE 
+            v_fechado boolean;
+            v_ano integer;
+            v_empresa_id uuid;
+          BEGIN
+            v_ano := COALESCE(NEW.ano, EXTRACT(YEAR FROM COALESCE(NEW.created_at, now()))::integer);
+            v_empresa_id := NEW.empresa_id;
+
+            SELECT fechado INTO v_fechado
+            FROM public.exercicios_fiscais
+            WHERE empresa_id = v_empresa_id
+            AND ano = v_ano;
+
+            IF v_fechado = true THEN
+              RAISE EXCEPTION 'Exercício fiscal fechado e selado. Não são permitidos novos lançamentos/alterações para o ano %.', v_ano;
+            END IF;
+
+            RETURN NEW;
+          END;
+          $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+          -- Dynamic trigger creations to prevent 'relation "..." does not exist' in case tables are missing
+          DO $$
+          BEGIN
+            IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'documentos_emitidos') THEN
+                DROP TRIGGER IF EXISTS trg_bloqueio ON public.documentos_emitidos;
+                CREATE TRIGGER trg_bloqueio
+                BEFORE INSERT OR UPDATE ON public.documentos_emitidos
+                FOR EACH ROW EXECUTE FUNCTION public.bloquear_exercicio_fechado();
+            END IF;
+
+            IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'caixa_movimentacoes') THEN
+                DROP TRIGGER IF EXISTS trg_bloqueio_caixa ON public.caixa_movimentacoes;
+                CREATE TRIGGER trg_bloqueio_caixa
+                BEFORE INSERT OR UPDATE ON public.caixa_movimentacoes
+                FOR EACH ROW EXECUTE FUNCTION public.bloquear_exercicio_fechado();
+            END IF;
+
+            IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'movimentacoes_stock') THEN
+                DROP TRIGGER IF EXISTS trg_bloqueio_stock ON public.movimentacoes_stock;
+                CREATE TRIGGER trg_bloqueio_stock
+                BEFORE INSERT OR UPDATE ON public.movimentacoes_stock
+                FOR EACH ROW EXECUTE FUNCTION public.bloquear_exercicio_fechado();
+            END IF;
+
+            IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'compras') THEN
+                DROP TRIGGER IF EXISTS trg_bloqueio_compras ON public.compras;
+                CREATE TRIGGER trg_bloqueio_compras
+                BEFORE INSERT OR UPDATE ON public.compras
+                FOR EACH ROW EXECUTE FUNCTION public.bloquear_exercicio_fechado();
+            END IF;
+
+            IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'vendas') THEN
+                DROP TRIGGER IF EXISTS trg_bloqueio_vendas ON public.vendas;
+                CREATE TRIGGER trg_bloqueio_vendas
+                BEFORE INSERT OR UPDATE ON public.vendas
+                FOR EACH ROW EXECUTE FUNCTION public.bloquear_exercicio_fechado();
+            END IF;
+          EXCEPTION WHEN OTHERS THEN
+            RAISE NOTICE 'Trigger setup encountered minor issue: %', SQLERRM;
+          END $$;
+
+          -- Função HASH FISCAL
+          CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+          CREATE OR REPLACE FUNCTION public.gerar_hash_sha256(texto text)
+          RETURNS text
+          AS $$
+          SELECT encode(digest(texto,'sha256'),'hex');
+          $$ LANGUAGE sql IMMUTABLE;
+
+          -- Código curto 4 caracteres
+          CREATE OR REPLACE FUNCTION public.gerar_codigo_curto(hash text)
+          RETURNS text
+          AS $$
+          BEGIN
+            RETURN upper(substring(hash from 1 for 4));
+          END;
+          $$ LANGUAGE plpgsql IMMUTABLE;
 
           -- Realtime Publication Initialization (Idempotent)
           DO $$ 
@@ -462,16 +1009,18 @@ if (!supabaseAdmin) {
           DECLARE
               v_doc_id UUID;
               v_doc_numero TEXT;
+              v_ano_fiscal INTEGER;
           BEGIN
-              v_doc_numero := COALESCE(p_detalhes->>'numero_documento', 'DOC-' || floor(random() * 1000000)::text);
+              v_doc_numero := COALESCE(p_detalhes->>'numero_documento', 'DRAFT-' || floor(random() * 1000000)::text);
+              v_ano_fiscal := EXTRACT(YEAR FROM now());
               
               INSERT INTO public.documentos_emitidos (
-                  empresa_id, tipo_documento, numero_documento, cliente_nome, cliente_email, total, imposto, detalhes, created_at, data_emissao
+                  empresa_id, tipo_documento, numero_documento, cliente_nome, cliente_email, total, imposto, detalhes, ano, created_at, data_emissao, estado_certificacao
               ) VALUES (
-                  p_empresa_id, p_tipo_documento, v_doc_numero, p_cliente_nome, p_cliente_email, p_total, p_imposto, p_detalhes, NOW(), NOW()
+                  p_empresa_id, p_tipo_documento, v_doc_numero, p_cliente_nome, p_cliente_email, p_total, p_imposto, p_detalhes, v_ano_fiscal, NOW(), NOW(), 'Rascunho'
               ) RETURNING id INTO v_doc_id;
               
-              RETURN jsonb_build_object('success', true, 'id', v_doc_id, 'numero', v_doc_numero);
+              RETURN jsonb_build_object('success', true, 'id', v_doc_id, 'numero', v_doc_numero, 'ano', v_ano_fiscal);
           END;
           $$;
 
@@ -704,10 +1253,11 @@ if (!supabaseAdmin) {
               USING (public.is_system_admin() OR auth_user_id = auth.uid())';
 
             -- 4. GENERIC Isolation for data tables
-            FOR t IN SELECT unnest(ARRAY['clientes', 'products', 'produtos', 'documentos_emitidos', 'caixas', 'caixa_movimentacoes', 'fornecedores', 'compras', 'transacoes', 'recibos', 'hr_contratos', 'professions', 'locais_trabalho', 'inventario', 'vendas', 'items_transacao', 'items_documento', 'user_activities_sessions', 'series_fiscais', 'series_fiscais_usuarios', 'tabela_impostos', 'armazens', 'licencas_empresas', 'historico_licencas']) LOOP
+            FOR t IN SELECT unnest(ARRAY['clientes', 'products', 'produtos', 'documentos_emitidos', 'caixas', 'caixa_movimentacoes', 'fornecedores', 'compras', 'transacoes', 'recibos', 'hr_contratos', 'professions', 'locais_trabalho', 'inventario', 'vendas', 'items_transacao', 'items_documento', 'user_activities_sessions', 'series_fiscais', 'series_fiscais_usuarios', 'tabela_impostos', 'armazens', 'licencas_empresas', 'historico_licencas', 'exercicios_fiscais', 'movimentacoes_stock', 'pagamentos', 'lancamentos_contabeis']) LOOP
                 EXECUTE format('ALTER TABLE IF EXISTS public.%I ENABLE ROW LEVEL SECURITY', t);
                 
                 IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = t AND column_name = 'empresa_id') THEN
+                    EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', t || '_isolation', t);
                     EXECUTE format('CREATE POLICY %I_isolation ON public.%I FOR ALL TO authenticated 
                         USING (public.is_system_admin() OR empresa_id = public.get_user_company_id())
                         WITH CHECK (public.is_system_admin() OR empresa_id = public.get_user_company_id())', t, t);
@@ -727,15 +1277,15 @@ if (!supabaseAdmin) {
    `; // Final SQL migrations
 
   Promise.resolve(supabaseAdmin.rpc('query_exec', { query: sqlMigrations }))
-    .then(({ error }) => {
+    .then(({ data, error }) => {
       if (error) {
         if (error.code === 'PGRST202') {
-            console.warn("⚠️ [STARTUP] SQL Migration skipped: RPC 'query_exec' not found. This is expected if masterpiece SQL was not run yet.");
+            console.warn("⚠️ [STARTUP] SQL Migration skipped: RPC 'query_exec' not found.");
         } else {
             console.error("❌ [STARTUP] SQL Migration failed:", error);
         }
       } else {
-          console.log("✅ [STARTUP] SQL Migrations completed with NOTIFY reload.");
+          console.log("✅ [STARTUP] SQL Migrations completed successfully.");
       }
     })
     .catch(err => {
@@ -745,6 +1295,23 @@ if (!supabaseAdmin) {
 }
 
 // Secure User Context to bypass RLS and authenticate with Supabase JWT Key securely
+// Record Audit Event - Fiscal Tracking Requirements
+async function recordAuditLog(empresaId: string, userId: string, username: string, nome: string, documento: string, acao: string) {
+    if (!supabaseAdmin) return;
+    try {
+        await supabaseAdmin.from('logs_auditoria').insert([{
+            empresa_id: empresaId,
+            user_id: userId,
+            username: username,
+            nome: nome,
+            documento: documento,
+            acao: acao,
+            created_at: new Date().toISOString()
+        }]);
+    } catch (e) {
+        console.warn('[AUDIT] Failed to record log:', e);
+    }
+}
 async function getAuthUserContext(req: express.Request) {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -785,6 +1352,8 @@ async function getAuthUserContext(req: express.Request) {
             return {
                 userId: user.id,
                 email: user.email,
+                name: perfil.nome || perfil.name || user.email,
+                username: perfil.username || user.email?.split('@')[0],
                 empresaId: activeCompanyId,
                 role: normRole,
                 isBlocked: perfil.is_active === false
@@ -797,6 +1366,8 @@ async function getAuthUserContext(req: express.Request) {
             return {
                 userId: user.id,
                 email: user.email,
+                name: (user.user_metadata?.full_name) || user.email,
+                username: user.email?.split('@')[0],
                 empresaId: ownedCompany.id,
                 role: 'admin',
                 isBlocked: false
@@ -1509,7 +2080,7 @@ async function startServer() {
 
   app.get("/api/run-fix", async (req, res) => {
     try {
-      const sqlBuffer = fs.readFileSync(path.join(process.cwd(), 'FIX_RECURSION.sql'), 'utf-8');
+      const sqlBuffer = fs.readFileSync(path.join(process.cwd(), 'FIX_RLS.sql'), 'utf-8');
       
       let errorStr = "";
       if (supabaseAdmin) {
@@ -3602,35 +4173,51 @@ async function startServer() {
 
   // Invoices & Issued Documents
   app.get("/api/invoices", async (req, res) => {
-    const { empresa_id } = req.query;
+    const { empresa_id, year } = req.query;
     if (!empresa_id) return res.json([]);
 
     if (supabaseAdmin) {
       try {
-        const { data, error } = await supabaseAdmin
+        let query = supabaseAdmin
           .from('documentos_emitidos')
           .select('*')
-          .eq('empresa_id', empresa_id)
-          .order('data_emissao', { ascending: false });
+          .eq('empresa_id', empresa_id);
+
+        if (year) {
+          // Fetch both the matching year and documents where ano is null (like old receipts etc.)
+          query = query.or(`ano.eq.${Number(year)},ano.is.null`);
+        }
+
+        const { data, error } = await query.order('data_emissao', { ascending: false });
 
         if (!error && data) {
-          const formatted = data.map((d: any) => ({
-            ...d,
-            id: d.id,
-            client_id: d.cliente_id || d.client_id,
-            client_name: d.cliente_nome || d.client_name || 'Desconhecido',
-            invoice_number: d.numero_documento || d.invoice_number,
-            date: d.data_emissao || d.created_at,
-            due_date: d.data_vencimento || d.due_date,
-            status: (d.status || d.estado || 'ativo').toLowerCase(),
-            total: Number(d.total || 0),
-            imposto: Number(d.imposto || 0),
-            items: d.detalhes?.items || d.items || [],
-            client_email: d.cliente_email || d.client_email,
-            document_type: d.tipo_documento || d.document_type,
-            is_certified: d.is_certified,
-            hash: d.hash_documento || d.hash
-          }));
+          let formatted = data.map((d: any) => {
+            const docYear = d.ano || (d.data_emissao ? new Date(d.data_emissao).getFullYear() : (d.created_at ? new Date(d.created_at).getFullYear() : null));
+            return {
+              ...d,
+              id: d.id,
+              client_id: d.cliente_id || d.client_id,
+              client_name: d.cliente_nome || d.client_name || 'Desconhecido',
+              invoice_number: d.numero_documento || d.invoice_number,
+              date: d.data_emissao || d.created_at,
+              due_date: d.data_vencimento || d.due_date,
+              status: (d.status || d.estado || 'ativo').toLowerCase(),
+              total: Number(d.total || 0),
+              imposto: Number(d.imposto || 0),
+              items: d.detalhes?.items || d.items || [],
+              client_email: d.cliente_email || d.client_email,
+              document_type: d.tipo_documento || d.document_type,
+              is_certified: d.is_certified,
+              hash: d.hash_documento || d.hash,
+              ano: docYear,
+              reference_document: d.reference_document || d.numero_documento_origem || d.associated_document || d.detalhes?.reference_document
+            };
+          });
+
+          if (year) {
+            formatted = formatted.filter((d: any) => String(d.ano) === String(year));
+          }
+
           return res.json(formatted);
         }
       } catch (err) {
@@ -3725,16 +4312,7 @@ async function startServer() {
     else res.status(404).json({ error: "Document not found" });
   });
   app.delete("/api/invoices/:id", (req, res) => {
-    const docId = req.params.id;
-    const index = issuedDocuments.findIndex(d => String(d.id) === String(docId));
-    if (index !== -1) {
-      if (issuedDocuments[index].is_certified) {
-        return res.status(403).json({ error: "Cannot delete certified document" });
-      }
-      issuedDocuments.splice(index, 1);
-      saveData();
-      res.json({ success: true });
-    } else res.status(404).json({ error: "Document not found" });
+    return res.status(403).json({ error: "A deleção física de documentos está estritamente proibida por lei fiscal (AGT). Utilize a funcionalidade de anulação." });
   });
   app.post("/api/invoices/:id/clone", (req, res) => {
     const docId = req.params.id;
@@ -3856,7 +4434,8 @@ async function startServer() {
       }
 
       // 2. Generate and Insert the 'Recibo' document into documentos_emitidos so it appears in the documents list
-      const receiptNum = `RC PRD/${Date.now().toString().slice(-6)}`;
+      const yr = new Date().getFullYear().toString();
+      const receiptNum = `RC ${yr}/${Date.now().toString().slice(-6)}`;
       const newReceiptDoc = {
         empresa_id: activeCompanyId,
         tipo_documento: 'Recibo',
@@ -3873,6 +4452,8 @@ async function startServer() {
         status: 'emitido',
         payment_method: payment_method,
         cash_box: cash_box,
+        ano: Number(yr),
+        reference_document: invoice.numero_documento || invoice.invoice_number,
         items: [
           {
             description: `Liquidação de Factura Ref. ${invoice.numero_documento || invoice.invoice_number}`,
@@ -4129,13 +4710,49 @@ async function startServer() {
     } else res.status(404).json({ error: "Invoice not found" });
   });
 
-  app.post("/api/invoices/:id/certify", (req, res) => {
+  app.post("/api/invoices/:id/certify", async (req, res) => {
     const docId = req.params.id;
+    const { usuario_id } = req.body;
+    
+    console.log(`[API-CERTIFY] Certifying document ${docId} on backend via supabaseAdmin RPC...`);
+    
+    let dbResult: any = null;
+    if (supabaseAdmin) {
+      try {
+        const { data, error } = await supabaseAdmin.rpc('certificar_documento_existente', {
+          p_documento_id: docId,
+          p_usuario_id: usuario_id || null
+        });
+        
+        if (error) {
+          console.error(`[API-CERTIFY] Error calling RPC 'certificar_documento_existente':`, error);
+          return res.status(500).json({ error: `Falha na certificação da base de dados: ${error.message}` });
+        }
+        
+        dbResult = data;
+        console.log(`[API-CERTIFY] Database certification successful!`, dbResult);
+        
+        if (dbResult && dbResult.success === false) {
+          return res.status(400).json({ error: dbResult.error || 'Falha de validação na certificação' });
+        }
+      } catch (dbErr: any) {
+        console.error(`[API-CERTIFY] Unhandled database certification error:`, dbErr);
+        return res.status(500).json({ error: dbErr.message || 'Erro inesperado na base de dados' });
+      }
+    }
+
     const docIndex = issuedDocuments.findIndex(d => String(d.id) === String(docId));
     if (docIndex !== -1) {
       const doc = issuedDocuments[docIndex];
       doc.is_certified = true;
-      doc.hash = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+      if (dbResult) {
+        doc.hash = dbResult.hash || doc.hash;
+        doc.codigo_validacao = dbResult.codigo_validacao || doc.codigo_validacao;
+        doc.numero_sequencial = dbResult.numero_sequencial || doc.numero_sequencial;
+        doc.estado_certificacao = 'CERTIFICADO';
+      } else {
+        doc.hash = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+      }
 
       // 1. Record stock movements ONLY on certification
       if (Array.isArray(doc.items)) {
@@ -4207,8 +4824,14 @@ async function startServer() {
         }
       }
 
-      res.json({ success: true, doc });
-    } else res.status(404).json({ error: "Document not found" });
+      saveData();
+      return res.json({ success: true, doc });
+    } else {
+      if (dbResult) {
+        return res.json({ success: true, dbResult });
+      }
+      res.status(404).json({ error: "Document not found" });
+    }
   });
 
   function getDocTypeAbbreviation(type: string): string {
@@ -4233,7 +4856,7 @@ async function startServer() {
       const companyId = req.body.empresa_id || (series ? series.empresa_id : undefined);
 
       // Ensure we have a series reference
-      const seriesRef = series ? series.reference : 'PRD';
+      const seriesRef = series ? series.reference : year.toString();
 
       // Lock and increment active series / counter
       let counter = 1;
@@ -4286,6 +4909,9 @@ async function startServer() {
 
       const newId = generateId();
 
+      // Get authenticated user context
+      const authUser = await getAuthUserContext(req);
+
       const newDoc = { 
         ...req.body, 
         id: newId, 
@@ -4293,12 +4919,16 @@ async function startServer() {
         numero_documento: invoice_number,
         document_type: docTypeAbbr,
         tipo_documento: docTypeAbbr,
-        is_certified: true, // Auto-certified immediately!
+        is_certified: false, // Wait for manual certification
+        estado_certificacao: 'pendente',
         hash,
         codigo_validacao,
         currency: req.body.currency || req.body.moeda || 'Kwanza',
         moeda: req.body.moeda || req.body.currency || 'Kwanza',
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
+        created_by: authUser?.userId,
+        created_by_nome: authUser?.name,
+        created_by_username: authUser?.username
       };
 
       if (supabaseAdmin && companyId) {
@@ -4329,15 +4959,29 @@ async function startServer() {
               codigo_validacao: codigo_validacao,
               assinatura_digital: hash,
               documento_formatado: invoice_number,
-              is_certified: true,
-              estado_certificacao: 'CERTIFICADO',
-              status: 'ativo'
+              is_certified: false,
+              estado_certificacao: 'pendente',
+              status: 'ativo',
+              criado_por: authUser?.userId || req.body.criado_por || req.body.user_id,
+              created_by: authUser?.userId,
+              created_by_nome: authUser?.name,
+              created_by_username: authUser?.username
             }])
             .select()
             .single();
 
           if (!dbErr && dbData) {
             newDoc.id = dbData.id; // Sync back database UUID to maintain absolute relational link
+            if (authUser) {
+              await recordAuditLog(
+                companyId,
+                authUser.userId,
+                authUser.username,
+                authUser.name,
+                invoice_number,
+                `CRIAÇÃO DE DOCUMENTO: ${docTypeAbbr}`
+              );
+            }
           } else {
             console.error('Erro ao instanciar no Supabase:', dbErr);
           }
@@ -4766,7 +5410,7 @@ async function startServer() {
     saveData();
     res.json({ success: true });
   });
-  app.post("/api/purchases", (req, res) => {
+  app.post("/api/purchases", async (req, res) => {
     const newPurchaseId = generateId();
     
     // Automatic Sequential Numbering
@@ -4791,6 +5435,9 @@ async function startServer() {
       if (ws) workSiteName = ws.name || ws.title;
     }
 
+    // Get authenticated user context
+    const authUser = await getAuthUserContext(req);
+
     const newPurchase: any = { 
       ...req.body, 
       id: newPurchaseId, 
@@ -4798,9 +5445,46 @@ async function startServer() {
       work_site: workSiteName,
       date: req.body.date || new Date().toISOString(), 
       status: 'completed',
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
+      created_by: authUser?.userId,
+      created_by_nome: authUser?.name,
+      created_by_username: authUser?.username
     };
     purchases.push(newPurchase);
+
+    if (supabaseAdmin) {
+      const companyId = req.body.company_id || req.body.empresa_id || authUser?.empresaId || '11111111-1111-1111-1111-111111111111';
+      supabaseAdmin.from('compras').insert([{
+        empresa_id: companyId,
+        ano: year,
+        fornecedor_id: req.body.supplier_id || req.body.fornecedor_id,
+        total: amount,
+        created_at: newPurchase.created_at,
+        criado_por: authUser?.userId,
+        created_by: authUser?.userId,
+        created_by_nome: authUser?.name,
+        created_by_username: authUser?.username,
+        detalhes: {
+          items: req.body.items || [],
+          purchase_number: purchaseNumber,
+          document_type: docType,
+          supplier_name: req.body.supplier_name
+        }
+      }]).then(async ({ error }) => {
+        if (error) {
+          console.error('[SERVER] Erro ao salvar compra no Supabase:', error);
+        } else if (authUser) {
+          await recordAuditLog(
+            companyId,
+            authUser.userId,
+            authUser.username,
+            authUser.name,
+            purchaseNumber,
+            `REGISTO DE COMPRA: ${docType}`
+          );
+        }
+      });
+    }
     
     // Record finance movement (Accounting Cost)
     const amount = Number(newPurchase.total || 0);
@@ -5437,9 +6121,17 @@ async function startServer() {
     if (empresa_id) return res.json(caixaMovements.filter(m => String(m.empresa_id) === String(empresa_id) && (!m.date || new Date(m.date).getFullYear() === year || !m.created_at || new Date(m.created_at).getFullYear() === year)));
     res.json([]);
   });
-  app.post("/api/caixa-movements", (req, res) => {
+  app.post("/api/caixa-movements", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    const created_by = authCtx?.userId || req.body.user_id || req.body.criado_por;
+    const created_by_nome = authCtx?.name || req.body.operator_name || req.body.user_name || req.body.created_by_nome;
+    const created_by_username = authCtx?.username || req.body.created_by_username;
+
     const newMovement = { 
         ...req.body, 
+        created_by,
+        created_by_nome,
+        created_by_username,
         id: generateId(), 
         created_at: new Date().toISOString() 
     };
@@ -5766,6 +6458,200 @@ async function startServer() {
       return res.json(data);
     }
     res.json(payload);
+  });
+
+  // --- Módulo de Exercícios Fiscais ---
+  app.get("/api/exercicios-fiscais", async (req, res) => {
+    try {
+      const authCtx = await getAuthUserContext(req);
+      if (!authCtx) return res.status(401).json({ error: "Sessão inválida" });
+
+      const empresa_id = authCtx.empresaId;
+      if (!empresa_id) return res.status(400).json({ error: "ID da empresa não encontrado" });
+
+      if (supabaseAdmin) {
+        const { data, error } = await supabaseAdmin
+          .from('exercicios_fiscais')
+          .select('*')
+          .eq('empresa_id', empresa_id)
+          .order('ano', { ascending: false });
+
+        if (error) {
+          console.error("Erro ao buscar exercícios fiscais via DB:", error);
+          return res.status(500).json({ error: error.message });
+        }
+        return res.json(data || []);
+      }
+      res.json([]);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/exercicios-fiscais", async (req, res) => {
+    try {
+      const authCtx = await getAuthUserContext(req);
+      if (!authCtx) return res.status(401).json({ error: "Sessão inválida" });
+
+      if (authCtx.role !== 'admin' && authCtx.role !== 'system_admin') {
+        return res.status(403).json({ error: "Apenas administradores podem gerir exercícios fiscais" });
+      }
+
+      const empresa_id = authCtx.empresaId;
+      if (!empresa_id) return res.status(400).json({ error: "ID da empresa não encontrado" });
+
+      const { ano } = req.body;
+      if (!ano || isNaN(Number(ano))) {
+        return res.status(400).json({ error: "Ano inválido fornecido" });
+      }
+
+      if (supabaseAdmin) {
+        // Verificar se já existe
+        const { data: existing } = await supabaseAdmin
+          .from('exercicios_fiscais')
+          .select('*')
+          .eq('empresa_id', empresa_id)
+          .eq('ano', Number(ano))
+          .maybeSingle();
+
+        if (existing) {
+          return res.status(400).json({ error: `O exercício de ${ano} já se encontra registado.` });
+        }
+
+        // Se for o primeiro exercício fiscal, podemos criá-lo como ativo por padrão
+        const { count } = await supabaseAdmin
+          .from('exercicios_fiscais')
+          .select('*', { count: 'exact', head: true })
+          .eq('empresa_id', empresa_id);
+
+        const isFirst = !count || count === 0;
+
+        // Criar
+        const { data, error } = await supabaseAdmin
+          .from('exercicios_fiscais')
+          .insert({
+            empresa_id,
+            ano: Number(ano),
+            ativo: isFirst,
+            fechado: false,
+            data_abertura: new Date().toISOString()
+          })
+          .select()
+          .single();
+
+        if (error) {
+          return res.status(500).json({ error: error.message });
+        }
+        return res.json(data);
+      }
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.put("/api/exercicios-fiscais/:id/activate", async (req, res) => {
+    try {
+      const authCtx = await getAuthUserContext(req);
+      if (!authCtx) return res.status(401).json({ error: "Sessão inválida" });
+
+      if (authCtx.role !== 'admin' && authCtx.role !== 'system_admin') {
+        return res.status(403).json({ error: "Apenas administradores podem gerir exercícios fiscais" });
+      }
+
+      const empresa_id = authCtx.empresaId;
+      if (!empresa_id) return res.status(400).json({ error: "ID da empresa não encontrado" });
+
+      const { id } = req.params;
+
+      if (supabaseAdmin) {
+        // Primeiro carregar o exercício correspondente para saber o ano
+        const { data: exercise, error: findError } = await supabaseAdmin
+          .from('exercicios_fiscais')
+          .select('*')
+          .eq('id', id)
+          .eq('empresa_id', empresa_id)
+          .single();
+
+        if (findError || !exercise) {
+          return res.status(404).json({ error: "Exercício fiscal não encontrado." });
+        }
+
+        if (exercise.fechado) {
+          return res.status(400).json({ error: "Não é possível ativar um exercício fiscal que já se encontra fechado." });
+        }
+
+        // Desativar todos os exercícios da mesma empresa
+        await supabaseAdmin
+          .from('exercicios_fiscais')
+          .update({ ativo: false })
+          .eq('empresa_id', empresa_id);
+
+        // Ativar o atual
+        const { data, error: updateError } = await supabaseAdmin
+          .from('exercicios_fiscais')
+          .update({ ativo: true })
+          .eq('id', id)
+          .select()
+          .single();
+
+        if (updateError) {
+          return res.status(500).json({ error: updateError.message });
+        }
+        return res.json(data);
+      }
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.put("/api/exercicios-fiscais/:id/close", async (req, res) => {
+    try {
+      const authCtx = await getAuthUserContext(req);
+      if (!authCtx) return res.status(401).json({ error: "Sessão inválida" });
+
+      if (authCtx.role !== 'admin' && authCtx.role !== 'system_admin') {
+        return res.status(403).json({ error: "Apenas administradores podem gerir exercícios fiscais" });
+      }
+
+      const empresa_id = authCtx.empresaId;
+      if (!empresa_id) return res.status(400).json({ error: "ID da empresa não encontrado" });
+
+      const { id } = req.params;
+
+      if (supabaseAdmin) {
+        const { data: exercise, error: findError } = await supabaseAdmin
+          .from('exercicios_fiscais')
+          .select('*')
+          .eq('id', id)
+          .eq('empresa_id', empresa_id)
+          .single();
+
+        if (findError || !exercise) {
+          return res.status(404).json({ error: "Exercício fiscal não encontrado." });
+        }
+
+        const { data, error: updateError } = await supabaseAdmin
+          .from('exercicios_fiscais')
+          .update({ 
+            fechado: true,
+            ativo: false,
+            data_fecho: new Date().toISOString()
+          })
+          .eq('id', id)
+          .select()
+          .single();
+
+        if (updateError) {
+          return res.status(500).json({ error: updateError.message });
+        }
+        return res.json(data);
+      }
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
   });
 
   // --- Módulo de Licenças Profissional ---

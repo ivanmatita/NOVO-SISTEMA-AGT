@@ -502,7 +502,16 @@ const PrintA4 = ({ invoice, isDraft = false, companyData, graphicConfigs = [] }:
         <div className="grid grid-cols-2 gap-16 mb-8 text-center uppercase font-bold text-[9px] tracking-widest text-zinc-400">
           <div className="space-y-12">
             <div className="border-b border-zinc-200 pb-2">Emitido por</div>
-            <div>{invoice.operator_name || 'Operador'}</div>
+             <div className="text-zinc-800">
+                <div className="font-black">{invoice.created_by_nome || invoice.operator_name || 'Operador Central'}</div>
+                <div className="text-[7px] text-zinc-500 font-medium space-x-2 mt-1">
+                  {invoice.created_by_username && <span>@{invoice.created_by_username}</span>}
+                  {(invoice.created_by || invoice.criado_por) && <span className="opacity-40">ID: {String(invoice.created_by || invoice.criado_por).slice(0, 8)}</span>}
+                </div>
+                <div className="text-[7px] text-zinc-400 mt-0.5">
+                   {new Date(invoice.created_at || invoice.data_emissao || new Date()).toLocaleString('pt-PT')}
+                </div>
+             </div>
           </div>
           <div className="space-y-12">
             <div className="border-b border-zinc-200 pb-2">Recebido por (Cliente)</div>

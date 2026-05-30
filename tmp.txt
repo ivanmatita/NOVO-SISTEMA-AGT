@@ -1,0 +1,11 @@
+18642:selectedSerieFiscal, setSelectedSerieFiscal] = useState<number | null>(
+18777:selectedSeries = fiscalSeries.find(s => s.id === Number(selectedSerieFiscal));
+18800:selectedSerieFiscal) {
+18807:selectedSeries?.type === 'manual';
+18834:selectedSerieFiscal,
+18837:selectedSeries?.reference,
+18928:selectedSerieFiscal === null ? '' : selectedSerieFiscal} 
+18951:selectedSeries?.type === 'manual' && (
+21414:selectedSerieFiscal, setSelectedSerieFiscal] = useState<number | null>(null);
+25621:selectedSerieFiscal, setSelectedSerieFiscal] = useState<string | null>(null);
+26661:selectedSerieFiscal) setSelectedSerieFiscal(fs[0].id.toString());

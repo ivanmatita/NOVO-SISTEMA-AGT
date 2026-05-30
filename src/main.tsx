@@ -70,30 +70,45 @@ import { Toaster, toast } from 'react-hot-toast';
 // Global Rejection and Exception Listeners to prevent uncaught page failures
 if (typeof window !== 'undefined') {
   window.addEventListener('unhandledrejection', (event) => {
-    // Intercept with clean logs. Suppress noise or trace.
+    // Stringify the reason to catch raw string rejections (like the Vite HMR code) or standard Error object structures
+    const reasonStr = event.reason ? String(event.reason.message || event.reason) : '';
+    
+    // Silence WebSocket, Socket, HMR, connection errors, and hot update alerts
+    if (
+      reasonStr.includes('WebSocket') || 
+      reasonStr.includes('websocket') || 
+      reasonStr.includes('HMR') || 
+      reasonStr.includes('hot update') || 
+      reasonStr.includes('connection')
+    ) {
+      event.preventDefault();
+      return;
+    }
+
     console.warn('[SafeSystem] Intercepted Unhandled promise rejection:', event.reason);
     
     // Toast amigável
-    const msg = event.reason?.message || 'Erro de rede ou processamento.';
-    if (!msg.includes('WebSocket')) {
-      toast.error(`Falha de processamento: ${msg.substring(0, 60)}...`, { id: 'unhandled-rejection' });
-    }
+    toast.error(`Falha de processamento: ${reasonStr.substring(0, 60)}...`, { id: 'unhandled-rejection' });
     
     // Gracefully prevent default browser reporting
     event.preventDefault();
   });
 
   window.addEventListener('error', (event) => {
-    console.error('[SafeSystem] Intercepted runtime exception:', event.error || event.message);
-    
     // Suppress unhandled WebSocket closed errors or connection errors to never display to user as a stack
     const errorStr = event.message || '';
-    if (errorStr.includes('WebSocket') || errorStr.includes('Socket') || errorStr.includes('connection')) {
+    if (
+      errorStr.includes('WebSocket') || 
+      errorStr.includes('websocket') || 
+      errorStr.includes('Socket') || 
+      errorStr.includes('connection') || 
+      errorStr.includes('HMR')
+    ) {
       event.preventDefault();
-      // Optional: silenty notify if it was a real connection fail
       return;
     }
 
+    console.error('[SafeSystem] Intercepted runtime exception:', event.error || event.message);
     toast.error('Ocorreu uma instabilidade no painel. A tentar recuperar...', { id: 'runtime-error' });
   });
 }

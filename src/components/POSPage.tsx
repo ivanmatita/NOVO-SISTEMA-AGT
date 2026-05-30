@@ -21,6 +21,21 @@ const fetchJson = async (url: string, options?: RequestInit) => {
   return response.json();
 };
 
+const fetchJsonWithAuth = async (url: string, options?: RequestInit) => {
+  const session = await authService.getSessionSafe();
+  const token = session?.access_token;
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+  };
+  const response = await fetch(url, { ...options, headers: { ...headers, ...options?.headers } });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+  }
+  return response.json();
+};
+
 // Web Audio API Sound Effects Synthesizer for hardware-like feeling
 const playBeep = (type: 'success' | 'error' | 'double' | 'click' = 'success') => {
   if (typeof window === 'undefined') return;
@@ -216,13 +231,13 @@ const POSPage = ({
       try {
         const empresaId = companyData?.id || user?.empresa_id || '1';
         const [cc, pp, cl, sl, stats, suspended, movements] = await Promise.all([
-          fetchJson(`/api/cost-centers?empresa_id=${empresaId}`),
-          fetchJson(`/api/pos-points?empresa_id=${empresaId}`),
-          fetchJson(`/api/secure-clientes`), // Use secure-clientes instead of deprecated /api/clients
-          fetchJson(`/api/pos/sales?empresa_id=${empresaId}`).catch(() => []),
-          fetchJson(`/api/pos/stats?empresa_id=${empresaId}`).catch(() => ({ todayCount: 0, todayTotal: 0, activeOperators: 0, topProducts: [] })),
-          fetchJson(`/api/pos/suspended?empresa_id=${empresaId}`).catch(() => []),
-          fetchJson(`/api/caixa-movements?empresa_id=${empresaId}`).catch(() => [])
+          fetchJsonWithAuth(`/api/cost-centers?empresa_id=${empresaId}`),
+          fetchJsonWithAuth(`/api/pos-points?empresa_id=${empresaId}`),
+          fetchJsonWithAuth(`/api/secure-clientes`), // Use secure-clientes instead of deprecated /api/clients
+          fetchJsonWithAuth(`/api/pos/sales?empresa_id=${empresaId}`).catch(() => []),
+          fetchJsonWithAuth(`/api/pos/stats?empresa_id=${empresaId}`).catch(() => ({ todayCount: 0, todayTotal: 0, activeOperators: 0, topProducts: [] })),
+          fetchJsonWithAuth(`/api/pos/suspended?empresa_id=${empresaId}`).catch(() => []),
+          fetchJsonWithAuth(`/api/caixa-movements?empresa_id=${empresaId}`).catch(() => [])
         ]);
         setCostCenters(cc);
         setPosPoints(pp);
@@ -621,13 +636,20 @@ const POSPage = ({
           total: ((item.customPrice !== undefined ? item.customPrice : item.product.price) * item.qty) - item.discount
         })),
         cash_box: selectedPOS,
-        operator_name: user?.username || 'Operador Central',
+        operator_name: user?.name || user?.username || 'Operador Central',
+        criado_por: user?.id || user?.userId,
         empresa_id: clientEmpresaId
       };
 
+      const session = await authService.getSessionSafe();
+      const token = session?.access_token;
+
       const invRes = await fetch('/api/invoices', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
         body: JSON.stringify(invoicePayload)
       });
 
@@ -637,7 +659,10 @@ const POSPage = ({
       // 2. Persist specifically as POS Sale to reduce stock and track sessions
       await fetch('/api/pos/sales', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({
           ...invoicePayload,
           invoice_id: invoiceData.id,

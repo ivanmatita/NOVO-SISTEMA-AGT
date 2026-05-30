@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { Building2, Save, Upload } from 'lucide-react';
 import { SecretariaDigitalManager } from './SecretariaDigitalManager';
+import { ExerciciosFiscaisManager } from './ExerciciosFiscaisManager';
 
 export const EmpresaModule = ({ onUpdate }: { onUpdate: () => void }) => {
   const { user } = useAuth();
@@ -120,6 +121,8 @@ export const EmpresaModule = ({ onUpdate }: { onUpdate: () => void }) => {
            </button>
         </form>
       </div>
+
+      <ExerciciosFiscaisManager onFiscalYearChange={onUpdate} />
 
       <SecretariaDigitalManager />
     </div>

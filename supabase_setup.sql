@@ -1,100 +1,147 @@
--- ATENÇÃO: Execute este script no SQL Editor do seu painel Supabase.
+-- ==============================================================================
+-- IMATEC ERP - COMPLETE MULTI-TENANT SYSTEM SETUP (BLINDADO)
+-- INSTRUCÕES: Execute este SQL no editor de SQL do seu painel Supabase.
+-- ==============================================================================
 
--- 1. Tabela Companies
-CREATE TABLE IF NOT EXISTS public.companies (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
-  type TEXT,
-  nif TEXT,
-  address_street TEXT,
-  address_neighborhood TEXT,
-  address_municipality TEXT,
-  address_province TEXT,
-  address_postal_code TEXT,
-  address_country TEXT,
-  phone TEXT,
-  email TEXT,
-  admin_name TEXT,
-  billing_name TEXT,
-  billing_nif TEXT,
-  billing_street TEXT,
-  billing_neighborhood TEXT,
-  billing_municipality TEXT,
-  billing_province TEXT,
-  billing_postal_code TEXT,
-  billing_country TEXT,
-  billing_phone TEXT,
-  billing_email TEXT,
-  promo_code TEXT,
-  pre_registration_date TIMESTAMP WITH TIME ZONE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+-- 1. EXTENSÕES
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- 2. TABELA DE EMPRESAS (empresas)
+-- Esta tabela armazena os dados mestre de cada empresa no sistema SaaS.
+CREATE TABLE IF NOT EXISTS public.empresas (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    nome_empresa TEXT NOT NULL,
+    nif TEXT UNIQUE,
+    email TEXT,
+    telefone TEXT,
+    endereco TEXT,
+    provincia TEXT,
+    municipio TEXT,
+    pais TEXT DEFAULT 'Angola',
+    logo_url TEXT,
+    footer_image_url TEXT,
+    tipo_empresa TEXT, -- Ex: Prestação de Serviços, Comercial, etc.
+    nome_administrador TEXT,
+    email_admin TEXT,
+    pacote_licenca TEXT,
+    valor_licenca TEXT,
+    auth_user_id UUID REFERENCES auth.users(id),
+    plano TEXT DEFAULT 'trial', -- Ex: Mensal, Trimestral, Anual
+    plano_status TEXT DEFAULT 'trial', -- trial, ativo, expirado
+    plano_expira_em TIMESTAMP WITH TIME ZONE DEFAULT (now() + interval '14 days'),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
--- 2. Tabela Users
-CREATE TABLE IF NOT EXISTS public.users (
-  id UUID PRIMARY KEY, -- linked to auth.users.id
-  email TEXT NOT NULL,
-  username TEXT,
-  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
-  role TEXT DEFAULT 'admin',
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+-- 3. TABELA DE PERFIS (perfis)
+-- Liga o utilizador (auth.users) a uma empresa específica (empresas).
+CREATE TABLE IF NOT EXISTS public.perfis (
+    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    empresa_id UUID NOT NULL REFERENCES public.empresas(id) ON DELETE CASCADE,
+    nome TEXT,
+    role TEXT DEFAULT 'admin', -- admin, operador, financeiro, rh
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
--- 3. Tabela Clients
-CREATE TABLE IF NOT EXISTS public.clients (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
-  name TEXT NOT NULL,
-  email TEXT,
-  nif TEXT,
-  address TEXT,
-  localidade TEXT,
-  codigo_postal TEXT,
-  provincia TEXT,
-  municipio TEXT,
-  pais TEXT,
-  telefone TEXT,
-  webpage TEXT,
-  tipo_cliente TEXT,
-  initial_balance NUMERIC DEFAULT 0,
-  estado_nif TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-);
+-- 4. FUNÇÃO AUXILIAR PARA RLS (get_auth_empresa_id)
+-- Obtém o empresa_id do utilizador autenticado para isolamento automático.
+CREATE OR REPLACE FUNCTION public.get_auth_empresa_id()
+RETURNS UUID AS $$
+DECLARE
+    tenant_id UUID;
+BEGIN
+    -- Busca o empresa_id na tabela de perfis usando o UID da sessão atual
+    SELECT empresa_id INTO tenant_id
+    FROM public.perfis
+    WHERE id = auth.uid();
+    RETURN tenant_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- 4. Tabela Workplaces
-CREATE TABLE IF NOT EXISTS public.workplaces (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
-  name TEXT NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-);
+-- 5. ATIVAR RLS (Row Level Security) NAS TABELAS CRÍTICAS
+ALTER TABLE public.empresas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.perfis ENABLE ROW LEVEL SECURITY;
 
--- ATIVAÇÃO DA SEGURANÇA RLS
-ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.clients ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.workplaces ENABLE ROW LEVEL SECURITY;
+-- 6. POLÍTICAS DE SEGURANÇA (POLICIES)
+-- Estas políticas garantem que NENHUMA empresa veja dados de outra.
 
--- POLÍTICAS
--- Os utilizadores podem criar empresas na fase de registo
-CREATE POLICY "Permitir leitura de empresa" ON public.companies FOR SELECT USING (true);
-CREATE POLICY "Permitir inserção de empresa" ON public.companies FOR INSERT WITH CHECK (true);
-CREATE POLICY "Permitir alteração da empresa pelo utilizador logado" ON public.companies FOR UPDATE USING (id IN (SELECT company_id FROM public.users WHERE id = auth.uid()));
+-- Políticas para EMPRESAS
+DROP POLICY IF EXISTS "Empresas Isolation" ON public.empresas;
+CREATE POLICY "Empresas Isolation" ON public.empresas
+    FOR SELECT 
+    USING (id = public.get_auth_empresa_id());
 
--- Utilizadores
-CREATE POLICY "Permitir leitura de utilizadores da mesma empresa" ON public.users FOR SELECT USING (company_id IN (SELECT company_id FROM public.users WHERE id = auth.uid()));
-CREATE POLICY "Permitir registo de utilizador" ON public.users FOR INSERT WITH CHECK (auth.uid() = id);
+DROP POLICY IF EXISTS "Empresas Update Isolation" ON public.empresas;
+CREATE POLICY "Empresas Update Isolation" ON public.empresas
+    FOR UPDATE
+    USING (id = public.get_auth_empresa_id())
+    WITH CHECK (id = public.get_auth_empresa_id());
 
--- Clientes
-CREATE POLICY "Leitura de clientes da mesma empresa" ON public.clients FOR SELECT USING (company_id IN (SELECT company_id FROM public.users WHERE id = auth.uid()));
-CREATE POLICY "Inserção de clientes da mesma empresa" ON public.clients FOR INSERT WITH CHECK (company_id IN (SELECT company_id FROM public.users WHERE id = auth.uid()));
-CREATE POLICY "Edição de clientes da mesma empresa" ON public.clients FOR UPDATE USING (company_id IN (SELECT company_id FROM public.users WHERE id = auth.uid()));
-CREATE POLICY "Remoção de clientes da mesma empresa" ON public.clients FOR DELETE USING (company_id IN (SELECT company_id FROM public.users WHERE id = auth.uid()));
+-- Políticas para PERFIS
+DROP POLICY IF EXISTS "Perfis Isolation" ON public.perfis;
+CREATE POLICY "Perfis Isolation" ON public.perfis
+    FOR ALL
+    USING (empresa_id = public.get_auth_empresa_id());
 
--- Workplaces
-CREATE POLICY "Leitura de locais de trabalho" ON public.workplaces FOR SELECT USING (company_id IN (SELECT company_id FROM public.users WHERE id = auth.uid()));
-CREATE POLICY "Inserção de locais de trabalho" ON public.workplaces FOR INSERT WITH CHECK (company_id IN (SELECT company_id FROM public.users WHERE id = auth.uid()));
-CREATE POLICY "Edição de locais de trabalho" ON public.workplaces FOR UPDATE USING (company_id IN (SELECT company_id FROM public.users WHERE id = auth.uid()));
-CREATE POLICY "Remoção de locais de trabalho" ON public.workplaces FOR DELETE USING (company_id IN (SELECT company_id FROM public.users WHERE id = auth.uid()));
+-- 7. ISOLAMENTO AUTOMÁTICO EM TODAS AS OUTRAS TABELAS
+-- Este script percorre as tabelas existentes e aplica o isolamento por empresa_id ou company_id.
+DO $$
+DECLARE
+    t text;
+    core_tables text[] := ARRAY[
+        'clientes', 'produtos', 'armazens', 'funcionarios', 'profissoes', 
+        'locais_trabalho', 'series_fiscais', 'faturas', 'itens_fatura', 
+        'documentos_emitidos', 'caixas', 'caixa_movimentacoes', 'purchases', 
+        'payroll', 'security_occurrences', 'security_armory', 'security_rostering'
+    ];
+BEGIN
+    FOR t IN SELECT unnest(core_tables) LOOP
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = t) THEN
+            -- Ativa RLS
+            EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY;', t);
+            
+            -- Cria Política de Isolamento Multiempresa
+            EXECUTE format('DROP POLICY IF EXISTS "Tenant Isolation" ON public.%I;', t);
+            
+            -- Tenta detetar se a coluna é company_id ou empresa_id
+            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = t AND column_name = 'company_id') THEN
+                EXECUTE format('CREATE POLICY "Tenant Isolation" ON public.%I FOR ALL USING (company_id = public.get_auth_empresa_id());', t);
+            ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = t AND column_name = 'empresa_id') THEN
+                EXECUTE format('CREATE POLICY "Tenant Isolation" ON public.%I FOR ALL USING (empresa_id = public.get_auth_empresa_id());', t);
+            END IF;
+        END IF;
+    END LOOP;
+END $$;
 
--- Nota: Como tem tabelas extra como products, invoices, app_settings, etc, será provável necessitar replicar a estrutura nestas.
+-- 8. PERMISSÕES INICIAIS (Para o Registo de novas empresas)
+-- Permite que utilizadores autenticados criem a sua primeira empresa e perfil.
+DROP POLICY IF EXISTS "Allow Registration Insert" ON public.empresas;
+CREATE POLICY "Allow Registration Insert" ON public.empresas
+    FOR INSERT
+    TO authenticated
+    WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow Initial Profile Insert" ON public.perfis;
+CREATE POLICY "Allow Initial Profile Insert" ON public.perfis
+    FOR INSERT
+    TO authenticated
+    WITH CHECK (id = auth.uid());
+
+-- 9. TRIGGERS DE UPDATED_AT
+CREATE OR REPLACE FUNCTION public.handle_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Aplicar a tabelas principais
+CREATE TRIGGER tr_perfis_updated_at BEFORE UPDATE ON public.perfis FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+CREATE TRIGGER tr_empresas_updated_at BEFORE UPDATE ON public.empresas FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+
+-- 10. RECARREGAR SCHEMA (PostgREST)
+NOTIFY pgrst, 'reload schema';
+
+-- FINISHED.

@@ -19,6 +19,7 @@ const supabaseAdmin = (supabaseUrl && supabaseServiceKey)
   : null;
 
 let isProcessing = false;
+let _warnedOnce = false;
 
 /**
  * ==============================================================================
@@ -27,7 +28,10 @@ let isProcessing = false;
  */
 export async function runAgtQueueCycle() {
   if (!supabaseAdmin) {
-    console.warn("[AGT-QUEUE-WORKER] SupabaseAdmin Client não inicializado. Verifique as credenciais.");
+    if (!_warnedOnce) {
+      console.warn("[AGT-QUEUE-WORKER] SupabaseAdmin Client não inicializado. Verifique as credenciais no .env");
+      _warnedOnce = true;
+    }
     return;
   }
   if (isProcessing) {

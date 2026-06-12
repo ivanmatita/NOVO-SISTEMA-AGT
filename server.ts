@@ -12,7 +12,10 @@ import { validateDocumentControllerNew, registerInvoiceController, validateNifCo
 import { startAgtQueueWorker } from "./agt/agtQueueWorker.js";
 
 // Carregar variáveis de ambiente do ficheiro .env
-dotenv.config();
+import { fileURLToPath } from "url";
+const __filename = fileURLToPath(import.meta.url);
+const __dirname_server = path.dirname(__filename);
+dotenv.config({ override: true, path: path.resolve(__dirname_server, ".env") });
 
 // --- Supabase Admin (Bypasses Rate Limits) ---
 const rawSupabaseUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "").trim();
@@ -21,6 +24,7 @@ const supabaseUrl = rawSupabaseUrl
   .split('/auth/v1')[0]
   .replace(/\/$/, "");
 const supabaseServiceRole = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+console.log(`[STARTUP] SupabaseURL: ${supabaseUrl ? 'OK' : 'EMPTY'} | ServiceKey length: ${supabaseServiceRole.length}`);
 
 // Verificação de segurança para o Supabase Admin
 const isServiceKeyValid = supabaseServiceRole && supabaseServiceRole.length > 50;
@@ -2009,6 +2013,15 @@ const PORT = 3000;
 app.all("/api/supabase-proxy/*", express.raw({ type: "*/*", limit: "50mb" }), async (req, res) => {
   try {
     const subPath = req.originalUrl.substring("/api/supabase-proxy".length);
+
+    // Guard: if Supabase URL not configured, return clean error (avoid ENOTFOUND flood)
+    if (!supabaseUrl || supabaseUrl.includes("xxxx") || !supabaseUrl.startsWith("http")) {
+      return res.status(503).json({ 
+        error: "Supabase não configurado", 
+        message: "Defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY no ficheiro .env" 
+      });
+    }
+
     const destinationUrl = supabaseUrl + subPath;
 
     // Filter and prepare headers to send to Supabase

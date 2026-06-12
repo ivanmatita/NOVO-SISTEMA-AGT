@@ -27234,6 +27234,8 @@ export default function App() {
   const [isDocumentsModalOpen, setIsDocumentsModalOpen] = useState(false);
   const [isFinesModalOpen, setIsFinesModalOpen] = useState(false);
   const [modalEmployee, setModalEmployee] = useState<Employee | null>(null);
+  const [activeSubTab, setActiveSubTab] = useState<string | null>(null);
+  const [editingType, setEditingType] = useState<string | null>(null);
   const syncLockRef = useRef(false);
   const isFetchingRef = useRef(false);
 

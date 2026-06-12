@@ -10,11 +10,27 @@ import { listarFacturasService } from "./listarFacturas.service.js";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 
-// Inicialização do Supabase (utilizando variáveis de ambiente já configuradas)
-const supabase = createClient(
-  process.env.SUPABASE_URL || "",
-  process.env.SUPABASE_SERVICE_ROLE_KEY || ""
-);
+// Inicialização lazy do Supabase — evita crash no arranque se as variáveis não estiverem configuradas
+let _supabase = null;
+const getSupabase = () => {
+  if (_supabase) return _supabase;
+  const url = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "").trim();
+  const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+  if (!url || !key) {
+    console.warn("⚠️ [agt.controllers] SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY não configurados.");
+    return null;
+  }
+  _supabase = createClient(url, key);
+  return _supabase;
+};
+// Alias para compatibilidade com código existente
+const supabase = new Proxy({}, {
+  get(_, prop) {
+    const client = getSupabase();
+    if (!client) throw new Error("Supabase não configurado. Defina SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no .env");
+    return client[prop];
+  }
+});
 
 /**
  * Controller Express para solicitar série fiscal (/api/agt/solicitar-serie)

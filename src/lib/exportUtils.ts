@@ -8,33 +8,45 @@ import printJS from 'print-js';
  * Uses html2canvas for capturing and jsPDF for PDF generation.
  */
 export const exportToPDF = async (elementId: string, filename: string = 'document.pdf') => {
-  const element = document.getElementById(elementId);
-  if (!element) {
+  const el = document.getElementById(elementId);
+  if (!el) {
     console.error(`Element with id ${elementId} not found`);
     return;
   }
 
   try {
-    // Show a loading indicator if possible (can be handled by caller)
-    
-    const canvas = await html2canvas(element, {
-      scale: 3, // Higher scale for professional resolution
-      useCORS: true,
-      logging: false,
-      backgroundColor: '#ffffff',
-      windowWidth: element.scrollWidth,
-      windowHeight: element.scrollHeight,
-      onclone: (clonedDoc) => {
-        const clonedElement = clonedDoc.getElementById(elementId);
-        if (clonedElement) {
-          clonedElement.style.maxHeight = 'none';
-          clonedElement.style.overflow = 'visible';
-          // Force visibility of print-specific elements if needed
+    const clone = el.cloneNode(true) as HTMLElement;
+
+    // remover estilos modernos incompatíveis (oklch fix) e preservar design profissional
+    clone.querySelectorAll<HTMLElement>("*").forEach(node => {
+      if (node.style) {
+        node.style.filter = "none";
+        
+        // Substituimos cores oklch por equivalentes standard para garantir compatibilidade
+        const comp = window.getComputedStyle(node);
+        if (comp.color && comp.color.includes('oklch')) {
+          // Fallback para preto ou marinho corporativo dependendo de onde está
+          node.style.color = "#0f172a"; 
+        }
+        if (comp.backgroundColor && comp.backgroundColor.includes('oklch')) {
+          node.style.backgroundColor = "transparent";
         }
       }
     });
+    
+    // We append the clone to the document to render it properly
+    clone.style.position = 'absolute';
+    clone.style.left = '-9999px';
+    clone.style.top = '0';
+    document.body.appendChild(clone);
 
-    const imgData = canvas.toDataURL('image/jpeg', 0.95); // JPEG with 95% quality for better size/quality balance
+    const canvas = await html2canvas(clone, {
+      scale: 2,
+      useCORS: true,
+      logging: false
+    });
+
+    const imgData = canvas.toDataURL('image/png');
     const pdf = new jsPDF({
       orientation: 'portrait',
       unit: 'mm',
@@ -42,28 +54,11 @@ export const exportToPDF = async (elementId: string, filename: string = 'documen
       compress: true
     });
 
-    const pdfWidth = pdf.internal.pageSize.getWidth();
-    const pdfHeight = pdf.internal.pageSize.getHeight();
+    // The A4 size is 210 x 297 mm
+    pdf.addImage(imgData, 'PNG', 0, 0, 210, 297);
     
-    const imgProps = pdf.getImageProperties(imgData);
-    const imgWidth = pdfWidth;
-    const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
-
-    // Handle multi-page if content is too long
-    let heightLeft = imgHeight;
-    let position = 0;
-
-    pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
-    heightLeft -= pdfHeight;
-
-    while (heightLeft >= 0) {
-      position = heightLeft - imgHeight;
-      pdf.addPage();
-      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
-      heightLeft -= pdfHeight;
-    }
-
     pdf.save(filename);
+    document.body.removeChild(clone);
   } catch (error) {
     console.error('Error generating PDF:', error);
   }

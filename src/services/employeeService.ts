@@ -37,7 +37,6 @@ export const employeeService = {
 
       const payload = {
         ...employee,
-        company_id: employee.empresa_id,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
@@ -65,7 +64,6 @@ export const employeeService = {
     try {
       const payload = {
         ...employee,
-        company_id: employee.empresa_id,
         updated_at: new Date().toISOString()
       };
 

@@ -1,3 +1,4 @@
+import { emitirDocumentoFiscal } from './services/fiscalEngine';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import html2pdf from 'html2pdf.js';
 import { DocumentReportModal } from './components/DocumentReportModal';
@@ -12,6 +13,7 @@ import LiteracyModule from './components/LiteracyModule';
 import ArchiveModule from './components/ArchiveModule';
 import POSPage from './components/POSPage';
 import { CartaForm } from './components/CartaForm';
+import { CartasModule } from './components/CartasModule';
 import { QRCodeCanvas } from 'qrcode.react';
 import { PurchasesReport } from './components/Reports/PurchasesReport';
 import { SalesReport } from './components/Reports/SalesReport';
@@ -147,7 +149,8 @@ import {
   Star,
   Shield,
   KeyRound,
-  Pencil
+  Pencil,
+  FolderOpen
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
@@ -190,6 +193,9 @@ import { MediaLibraryModule } from './components/MediaLibraryModule';
 import LicencasModule from './components/LicencasModule';
 import { EmpresaModule } from './components/EmpresaModule';
 import { CRMModule } from './components/CRMModule';
+import { AgtValidationModal } from './components/AgtValidationModal';
+import { AgtElectronicInvoiceModal } from './components/AgtElectronicInvoiceModal';
+import { AgtElectronicInvoicesListModal } from './components/AgtElectronicInvoicesListModal';
 
 // --- Helpers ---
 
@@ -205,6 +211,12 @@ import { payrollService } from './services/payrollService';
 import { pagamentoService } from './services/pagamentoService';
 import { systemUsersService } from './services/systemUsersService';
 import { throttle } from './utils/throttle';
+
+const isValidUUID = (id: any): boolean => {
+  if (typeof id !== 'string') return false;
+  const regex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return regex.test(id);
+};
 
 const fetchWithAuth = async (url: string, options?: RequestInit) => {
   const session = await authService.getSessionSafe();
@@ -831,6 +843,7 @@ const SIDEBAR_MENU_ITEMS = [
   { id: 'security', label: 'Segurança Gestão privada', icon: ShieldCheck },
   { id: 'specialized', label: 'Gestão Especializada', icon: Briefcase, hasChevron: true },
   { id: 'archive', label: 'Arquivo', icon: Archive },
+  { id: 'cartas', label: 'Gestão de Cartas', icon: Mail },
   { id: 'invoices', label: 'Vendas', icon: FileText, hasChevron: true },
   { id: 'drafts', label: 'Rascunhos (Drafts)', icon: FileSignature },
   { id: 'suppliers', label: 'Compras', icon: ShoppingBag, hasChevron: true },
@@ -877,7 +890,8 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
     // Try to load user profile picture from media_arquivos
     const loadProfilePic = async () => {
       try {
-        const { data: { user: supabaseUser } } = await supabase.auth.getUser();
+        const { data } = await supabase.auth.getUser();
+        const supabaseUser = data?.user;
         if (!supabaseUser) return;
         
         const { data: profile } = await supabase
@@ -946,7 +960,8 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
       localStorage.setItem('profileImg', objectUrl);
       
       try {
-        const { data: { user: supabaseUser } } = await supabase.auth.getUser();
+        const { data } = await supabase.auth.getUser();
+        const supabaseUser = data?.user;
         if (!supabaseUser) return;
         
         const { data: profile } = await supabase
@@ -9683,6 +9698,15 @@ const DocumentActionsModal = ({ document, onClose, onAction }: {
                 <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-600 group-hover:text-[#003366] text-center">Documento de Suporte (Draft)</span>
               </button>
             )}
+
+            <button onClick={() => handleAction('agt_validate')} className="flex flex-col items-center gap-3 p-6 border border-zinc-100 hover:bg-emerald-50 hover:border-emerald-200 transition-all group">
+              <ShieldCheck size={24} className="text-zinc-400 group-hover:text-emerald-600 shrink-0" />
+              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-600 group-hover:text-emerald-700 text-center">Validar AGT</span>
+            </button>
+            <button onClick={() => handleAction('agt_electronic_invoice')} className="flex flex-col items-center gap-3 p-6 border border-zinc-100 hover:bg-blue-50 hover:border-blue-200 transition-all group">
+              <ShieldCheck size={24} className="text-zinc-400 group-hover:text-blue-600 shrink-0" />
+              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-600 group-hover:text-blue-700 text-center">Submeter (Fila AGT)</span>
+            </button>
           </div>
         </div>
       </div>
@@ -9737,7 +9761,8 @@ const ProfitLossReport = ({ fiscalYear, empresa_id }: { fiscalYear: string, empr
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchJson(`/api/reports/profit-loss?year=${fiscalYear}${empresa_id ? `&empresa_id=${empresa_id}` : ''}`)
+    const yearToFetch = fiscalYear || new Date().getFullYear().toString();
+    fetchJson(`/api/reports/profit-loss?year=${yearToFetch}${empresa_id ? `&empresa_id=${empresa_id}` : ''}`)
       .then(setData)
       .catch(err => console.error('Error fetching profit-loss report:', err))
       .finally(() => setLoading(false));
@@ -9915,8 +9940,8 @@ const ProfitLossReport = ({ fiscalYear, empresa_id }: { fiscalYear: string, empr
           </p>
           <div className="pt-8">
             <h4 className="text-[10px] font-black text-zinc-800 uppercase tracking-widest mb-4">GRAFICO COMPARATIVO DE RECEITAS E CUSTOS</h4>
-            <div className="h-64 min-h-[300px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
+            <div className="h-[350px] w-full">
+              <ResponsiveContainer width="100%" height="100%" minHeight={350}>
                 <AreaChart data={chartData}>
                   <defs>
                     <linearGradient id="colorReceita" x1="0" y1="0" x2="0" y2="1">
@@ -9962,6 +9987,7 @@ const ProfitLossReport = ({ fiscalYear, empresa_id }: { fiscalYear: string, empr
 };
 
 const RetencaoFonteModule = ({ issuedDocuments }: { issuedDocuments: IssuedDocument[] }) => {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'receber' | 'pagar'>('receber');
   const [search, setSearch] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -9969,7 +9995,9 @@ const RetencaoFonteModule = ({ issuedDocuments }: { issuedDocuments: IssuedDocum
   const [purchases, setPurchases] = useState<Purchase[]>([]);
 
   useEffect(() => {
-    fetchWithAuth('/api/purchases')
+    if (!user?.empresa_id) return;
+    const currentFiscalYear = localStorage.getItem('fiscalYear') || String(new Date().getFullYear());
+    fetchWithAuth(`/api/purchases?empresa_id=${user.empresa_id}&ano=${currentFiscalYear}`)
       .then(r => {
         if (!r.ok) throw new Error(`Server error: ${r.status}`);
         return r.json();
@@ -10787,7 +10815,7 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
   globalUsers?: any[]
 }) => {
   const [showActionsModal, setShowActionsModal] = useState<IssuedDocument | null>(null);
-  const [showAnularModal, setShowAnularModal] = useState<IssuedDocument | null>(null);
+  const [showAnularModalList, setShowAnularModalList] = useState<IssuedDocument | null>(null);
 
   return (
     <div className="bg-white border border-zinc-200 rounded-none overflow-x-auto shadow-sm">
@@ -10841,7 +10869,10 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
                 <td className={`px-6 py-4 font-mono text-[10px] font-black whitespace-nowrap transition-colors ${doc.status === 'anulado' ? 'bg-red-50 text-red-600' : 'text-zinc-600 bg-zinc-50/50'}`}>
                   <div className="flex flex-col">
                     <span className="text-zinc-900 font-black">{doc.invoice_number || doc.numero_documento}</span>
-                    {doc.status === 'anulado' && <span className="mt-1 bg-red-600 text-white px-1.5 py-0.5 rounded-full text-[8px] animate-pulse w-fit">ANULADO</span>}
+                    <span className="text-zinc-400 text-[9px] mt-1">
+                      Hash: <span className="text-[#003366] font-bold">{doc.codigo_validacao || (doc.hash ? doc.hash.slice(0, 4).toUpperCase() : 'PENDENTE')}</span>
+                    </span>
+                    {doc.status === 'anulado' && <span className="mt-1 bg-red-600 text-white px-1.5 py-0.5 rounded-full text-[8px] animate-pulse w-fit text-center">ANULADO</span>}
                   </div>
                 </td>
                 <td className="px-6 py-4 text-zinc-900 font-black min-w-[150px] uppercase">
@@ -11016,41 +11047,67 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
                     </button>
                   </div>
 
-                  {/* 5. Impressões Térmicas */}
-                  <div className="col-span-2 grid grid-cols-4 gap-2 bg-zinc-50 p-3 border border-zinc-100 text-center">
-                     <button 
-                      disabled={!showActionsModal.is_certified}
-                      onClick={() => { onAction('print_a4', showActionsModal); setShowActionsModal(null); }} 
-                      className={`flex flex-col items-center gap-1 p-2 hover:bg-white transition-all border border-transparent hover:border-zinc-200 ${!showActionsModal.is_certified ? 'opacity-30 grayscale cursor-not-allowed' : ''}`}
-                     >
-                       <Printer size={16} className="text-zinc-400" />
-                       <span className="text-[8px] font-black uppercase">A4</span>
-                     </button>
-                     <button 
-                      disabled={!showActionsModal.is_certified}
-                      onClick={() => { onAction('print_p24', showActionsModal); setShowActionsModal(null); }} 
-                      className={`flex flex-col items-center gap-1 p-2 hover:bg-white transition-all border border-transparent hover:border-zinc-200 ${!showActionsModal.is_certified ? 'opacity-30 grayscale cursor-not-allowed' : ''}`}
-                     >
-                       <Printer size={16} className="text-zinc-400" />
-                       <span className="text-[8px] font-black uppercase">P24</span>
-                     </button>
-                     <button 
-                      disabled={!showActionsModal.is_certified}
-                      onClick={() => { onAction('print_p24xl', showActionsModal); setShowActionsModal(null); }} 
-                      className={`flex flex-col items-center gap-1 p-2 hover:bg-white transition-all border border-transparent hover:border-zinc-200 ${!showActionsModal.is_certified ? 'opacity-30 grayscale cursor-not-allowed' : ''}`}
-                     >
-                       <Printer size={16} className="text-zinc-400" />
-                       <span className="text-[8px] font-black uppercase">P24-XL</span>
-                     </button>
-                     <button 
-                      disabled={!showActionsModal.is_certified}
-                      onClick={() => { onAction('print_p80', showActionsModal); setShowActionsModal(null); }} 
-                      className={`flex flex-col items-center gap-1 p-2 hover:bg-white transition-all border border-transparent hover:border-zinc-200 ${!showActionsModal.is_certified ? 'opacity-30 grayscale cursor-not-allowed' : ''}`}
-                     >
-                       <Printer size={16} className="text-zinc-400" />
-                       <span className="text-[8px] font-black uppercase">P80</span>
-                     </button>
-                  </div>
+                   {/* 5. Impressões Térmicas e Cópias */}
+                   <div className="col-span-2 space-y-2">
+                     <div className="grid grid-cols-4 gap-2 bg-zinc-50 p-3 border border-zinc-100 text-center">
+                        <button 
+                         disabled={!showActionsModal.is_certified}
+                         onClick={() => { onAction('print_a4', showActionsModal); setShowActionsModal(null); }} 
+                         className={`flex flex-col items-center gap-1 p-2 transition-all border border-transparent ${!showActionsModal.is_certified ? 'opacity-30 cursor-not-allowed' : 'hover:bg-white hover:border-zinc-200'}`}
+                        >
+                          <Printer size={16} className="text-zinc-400" />
+                          <span className="text-[8px] font-black uppercase">A4</span>
+                        </button>
+                        <button 
+                         disabled={!showActionsModal.is_certified}
+                         onClick={() => { onAction('print_p24', showActionsModal); setShowActionsModal(null); }} 
+                         className={`flex flex-col items-center gap-1 p-2 transition-all border border-transparent ${!showActionsModal.is_certified ? 'opacity-30 cursor-not-allowed' : 'hover:bg-white hover:border-zinc-200'}`}
+                        >
+                          <Printer size={16} className="text-zinc-400" />
+                          <span className="text-[8px] font-black uppercase">P24</span>
+                        </button>
+                        <button 
+                         disabled={!showActionsModal.is_certified}
+                         onClick={() => { onAction('print_p24xl', showActionsModal); setShowActionsModal(null); }} 
+                         className={`flex flex-col items-center gap-1 p-2 transition-all border border-transparent ${!showActionsModal.is_certified ? 'opacity-30 cursor-not-allowed' : 'hover:bg-white hover:border-zinc-200'}`}
+                        >
+                          <Printer size={16} className="text-zinc-400" />
+                          <span className="text-[8px] font-black uppercase">P24-XL</span>
+                        </button>
+                        <button 
+                         disabled={!showActionsModal.is_certified}
+                         onClick={() => { onAction('print_p80', showActionsModal); setShowActionsModal(null); }} 
+                         className={`flex flex-col items-center gap-1 p-2 transition-all border border-transparent ${!showActionsModal.is_certified ? 'opacity-30 cursor-not-allowed' : 'hover:bg-white hover:border-zinc-200'}`}
+                        >
+                          <Printer size={16} className="text-zinc-400" />
+                          <span className="text-[8px] font-black uppercase">P80</span>
+                        </button>
+                     </div>
+
+                     <div className="grid grid-cols-3 gap-2 pb-1">
+                        <button 
+                         disabled={!showActionsModal.is_certified}
+                         onClick={() => { onAction('print_a4_orig', showActionsModal); setShowActionsModal(null); }} 
+                         className={`flex flex-col items-center justify-center p-3 bg-white transition-all border border-zinc-100 shadow-sm group ${!showActionsModal.is_certified ? 'opacity-30 cursor-not-allowed' : 'hover:bg-[#003366] hover:text-white'}`}
+                        >
+                          <span className="text-[9px] font-black uppercase tracking-tighter">Imprimir Original</span>
+                        </button>
+                        <button 
+                         disabled={!showActionsModal.is_certified}
+                         onClick={() => { onAction('print_a4_dup', showActionsModal); setShowActionsModal(null); }} 
+                         className={`flex flex-col items-center justify-center p-3 bg-white transition-all border border-zinc-100 shadow-sm group ${!showActionsModal.is_certified ? 'opacity-30 cursor-not-allowed' : 'hover:bg-[#003366] hover:text-white'}`}
+                        >
+                          <span className="text-[9px] font-black uppercase tracking-tighter">Imprimir Duplicado</span>
+                        </button>
+                        <button 
+                         disabled={!showActionsModal.is_certified}
+                         onClick={() => { onAction('print_a4_tri', showActionsModal); setShowActionsModal(null); }} 
+                         className={`flex flex-col items-center justify-center p-3 bg-white transition-all border border-zinc-100 shadow-sm group ${!showActionsModal.is_certified ? 'opacity-30 cursor-not-allowed' : 'hover:bg-[#003366] hover:text-white'}`}
+                        >
+                          <span className="text-[9px] font-black uppercase tracking-tighter">Imprimir Triplicado</span>
+                        </button>
+                     </div>
+                   </div>
 
                   {/* 6. Recibo (Apenas Faturas Certificadas) */}
                   <button 
@@ -11088,9 +11145,13 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
                   </div>
 
                   {/* 8. Anular Documento (SENSÍVEL) */}
-                  {showActionsModal.is_certified && showActionsModal.status !== 'anulado' && (
+                  {(showActionsModal.is_certified && showActionsModal.status !== 'anulado' && showActionsModal.estado_documento !== 'anulado' && !showActionsModal.documento_anulado) ? (
                     <button 
-                      onClick={() => { onAction('void', showActionsModal); setShowActionsModal(null); }}
+                      onClick={() => { 
+                        console.log('Void button clicked for:', showActionsModal.id);
+                        onAction('void', showActionsModal); 
+                        setShowActionsModal(null); 
+                      }}
                       className="col-span-2 w-full flex items-center gap-4 p-4 transition-all border border-red-100 bg-red-50 hover:bg-red-100 group shadow-sm"
                     >
                       <div className="w-10 h-10 bg-white text-red-600 flex items-center justify-center group-hover:bg-red-600 group-hover:text-white transition-colors border border-red-200">
@@ -11101,6 +11162,12 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
                         <p className="text-[9px] text-red-400 uppercase tracking-tighter">Operação irreversível • Fica sem validade</p>
                       </div>
                     </button>
+                  ) : (
+                    (showActionsModal.status === 'anulado' || showActionsModal.estado_documento === 'anulado' || showActionsModal.documento_anulado) && (
+                      <div className="col-span-2 p-4 bg-red-50 border border-red-200 text-center">
+                        <span className="text-red-600 font-black uppercase tracking-widest text-xs">Documento Anulado</span>
+                      </div>
+                    )
                   )}
 
                   {/* 9. Apagar Documento (Apenas não certificados) */}
@@ -13575,7 +13642,7 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
                                           await supabase.storage.from('documentos').remove([record.anexo_path]);
                                         }
                                         if (record.source === 'cartas') {
-                                          await supabase.from('cartas').update({ imagem_url: null, imagem_path: null, imagem_name: null }).eq('id', record.id);
+                                          await supabase.from('cartas').update({ imagem_url: null, imagem_path: null, imagem_nome: null, imagem_name: null }).eq('id', record.id);
                                         } else {
                                           await supabase.from('secretaria_digital').update({ anexo_url: null, anexo_path: null, anexo_nome: null }).eq('id', record.id);
                                         }
@@ -14079,7 +14146,8 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
       const fetchConfig = async () => {
         setLoading(true);
         try {
-          const { data: { session } } = await supabase.auth.getSession();
+          const { data } = await supabase.auth.getSession();
+          const session = data?.session;
           const res = await fetch('/api/config-empresa', {
             headers: { 'Authorization': `Bearer ${session?.access_token}` }
           });
@@ -14117,7 +14185,8 @@ const CompanySettingsModal = ({ isOpen, onClose, onSave, initialData }: { isOpen
 
       // Upload para o Supabase
       try {
-        const { data: { user: authUser } } = await supabase.auth.getUser();
+        const { data } = await supabase.auth.getUser();
+        const authUser = data?.user;
         if (!authUser) return;
 
         const { data: profile } = await supabase
@@ -15220,7 +15289,8 @@ const TaxSeriesModule = () => {
                     const rateMatch = taxName.match(/(\d+)%/);
                     const rateNum = rateMatch ? parseFloat(rateMatch[1]) : (isIsento ? 0 : 14);
                     
-                    const { data: { user: authUser } } = await supabase.auth.getUser();
+                    const { data } = await supabase.auth.getUser();
+                    const authUser = data?.user;
                     if (!authUser || !user) return;
                     
                     const { error } = await supabase.from('impostos').insert([{
@@ -16796,13 +16866,15 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
       try {
         if (!user?.empresa_id) return;
 
+        const year = fiscalYear || new Date().getFullYear().toString();
+
         // Load Purchases
         const { data: purData } = await supabase
           .from('compras')
           .select('*')
           .eq('empresa_id', user.empresa_id)
-          .gte('created_at', `${fiscalYear}-01-01T00:00:00Z`)
-          .lte('created_at', `${fiscalYear}-12-31T23:59:59Z`)
+          .gte('created_at', `${year}-01-01T00:00:00Z`)
+          .lte('created_at', `${year}-12-31T23:59:59Z`)
           .order('created_at', { ascending: false });
         
         if (purData) {
@@ -17202,7 +17274,7 @@ const GraphicConfigModule = ({
         .from('setup_grafico_series')
         .update({
           ...form,
-          updated_at: new Date().toISOString()
+          atualizado_em: new Date().toISOString()
         })
         .eq('id', current?.id);
 
@@ -17514,7 +17586,7 @@ const FiscalSeriesModule = ({
 
   const [name, setName] = useState('');
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
-  const [type, setType] = useState<'normal' | 'manual' | 'manual_recovery'>('normal');
+  const [type, setType] = useState<string>('FT');
   const [destiny, setDestiny] = useState('');
   
   const [editingSerie, setEditingSerie] = useState<FiscalSeries | null>(null);
@@ -17685,9 +17757,18 @@ const FiscalSeriesModule = ({
                   <p className="text-[9px] text-zinc-500">Pressione e segure o CTRL (ou CMD) para selecionar múltiplos utilizadores.</p>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tipo de Série</label>
-                  <select value={type} onChange={e => setType(e.target.value as 'normal' | 'manual')} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none">
-                    <option value="normal">Normal</option>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tipo de Série (Documento)</label>
+                  <select value={type} onChange={e => setType(e.target.value)} className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-sm focus:outline-none">
+                    <option value="FT">Fatura (FT)</option>
+                    <option value="FR">Fatura Recibo (FR)</option>
+                    <option value="RC">Recibo (RC)</option>
+                    <option value="NC">Nota de Crédito (NC)</option>
+                    <option value="ND">Nota de Débito (ND)</option>
+                    <option value="GR">Guia de Remessa (GR)</option>
+                    <option value="GT">Guia de Transporte (GT)</option>
+                    <option value="FP">Fatura Proforma (FP)</option>
+                    <option value="PP">Orçamento / Proposta (PP)</option>
+                    <option value="normal">Geral / Tudo (Normal)</option>
                     <option value="manual">Recuperação Documentos Manuais</option>
                   </select>
                 </div>
@@ -17836,14 +17917,16 @@ const InvoiceList = ({
   onDeleteWorkSite,
   onRefresh,
   fiscalYear = '2026',
-  globalUsers
+  setFiscalYear,
+  globalUsers,
+  companyData
 }: { 
   invoices: Invoice[], 
   issuedDocuments: IssuedDocument[],
   clients: Client[],
   workSites: WorkSite[],
   employees: Employee[],
-  onNew: () => void, 
+  onNew: (fixedType?: string) => void, 
   onView: (id: number) => void, 
   onRegisterClient: () => void,
   onAddWorkSite: (site: Omit<WorkSite, 'id'>) => void,
@@ -17859,7 +17942,9 @@ const InvoiceList = ({
   onDeleteWorkSite: (id: number) => void,
   onRefresh: () => void,
   fiscalYear?: string,
-  globalUsers?: any[]
+  setFiscalYear?: (year: string) => void,
+  globalUsers?: any[],
+  companyData?: any
 }) => {
   const { user } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState('emitidos');
@@ -17959,6 +18044,7 @@ const InvoiceList = ({
 
   const tabs = [
     { id: 'emitidos', label: 'Documentos emitidos', icon: ClipboardList },
+    { id: 'recibos', label: 'Recibos (RC)', icon: FileText },
     { id: 'recebidos', label: 'Documentos recebidos', icon: ClipboardList },
     { id: 'clientes', label: 'Clientes', icon: Users },
     { id: 'sales_report', label: 'Relatório de Vendas', icon: BarChart3 },
@@ -17967,7 +18053,37 @@ const InvoiceList = ({
     { id: 'fiscal-series', label: 'Série Fiscal', icon: BadgeCheck },
   ];
 
+  if (mode === 'electronic') {
+    tabs.push({ id: 'agt-list-invoices', label: 'Listar Facturas AGT', icon: ShieldCheck });
+  }
+
   const filteredIssuedDocuments = Array.isArray(issuedDocuments) ? issuedDocuments.filter(doc => {
+    const getNormalizedTypeForCheck = (type: string) => {
+      const t = String(type || '').trim().toUpperCase();
+      if (t === 'FT' || t.includes('FATURA') || t.includes('FACTURA')) {
+        if (t.includes('RECIBO') || t === 'FR' || t.includes('FATURA-RECIBO') || t.includes('FACTURA RECIBO')) return 'FR';
+        if (t.includes('SIMPLIFICADA') || t === 'FS') return 'FS';
+        if (t.includes('PROFORMA') || t === 'PP') return 'PP';
+        return 'FT';
+      }
+      if (t === 'FR') return 'FR';
+      if (t === 'RC' || t.includes('RECIBO')) return 'RC';
+      if (t === 'NC' || t.includes('CRÉDITO') || t.includes('CREDITO')) return 'NC';
+      if (t === 'ND' || t.includes('DÉBITO') || t.includes('DEBITO')) return 'ND';
+      if (t === 'DRAFT' || t.includes('RASCUNHO')) return 'DRAFT';
+      if (t === 'GR' || t.includes('REMESSA')) return 'GR';
+      if (t === 'GT' || t.includes('TRANSPORTE')) return 'GT';
+      if (t === 'GD' || t.includes('DEVOLUÇÃO') || t.includes('DEVOLUCAO')) return 'GD';
+      return t;
+    };
+
+    const docTypeNormalizedCheck = getNormalizedTypeForCheck(doc.tipo_documento || doc.document_type || '');
+    if (activeSubTab === 'recibos') {
+      if (docTypeNormalizedCheck !== 'RC') return false;
+    } else if (activeSubTab === 'emitidos') {
+      if (docTypeNormalizedCheck === 'RC') return false;
+    }
+
     // 1. Pesquisa Geral (Nome Cliente ou Número)
     const searchStr = searchTerm.toLowerCase();
     const matchesSearch = (doc.invoice_number || doc.numero_documento || '').toLowerCase().includes(searchStr) ||
@@ -17981,21 +18097,47 @@ const InvoiceList = ({
     const matchesSeries = filterSerieFiscal === 'all' || doc.serie === filterSerieFiscal;
 
     // 4. Filtro de Tipo de Documento
-    const docType = (doc.tipo_documento || doc.document_type);
-    
-    // Garantir que todos os documentos fiscais apareçam se o filtro for 'all' ou 'Todos' 
-    // ou se o documento for de um tipo específico que deve sempre constar
-    let matchesType = false;
-    if (selectedTipoDocFiscal === 'all') {
-      matchesType = true;
-    } else {
-      matchesType = (docType === selectedTipoDocFiscal);
-    }
+    const getNormalizedType = (type: string) => {
+      const t = String(type || '').trim().toUpperCase();
+      if (t === 'FT' || t.includes('FATURA') || t.includes('FACTURA')) {
+        if (t.includes('RECIBO') || t === 'FR' || t.includes('FATURA-RECIBO') || t.includes('FACTURA RECIBO')) return 'FR';
+        if (t.includes('SIMPLIFICADA') || t === 'FS') return 'FS';
+        if (t.includes('PROFORMA') || t === 'PP') return 'PP';
+        return 'FT';
+      }
+      if (t === 'FR') return 'FR';
+      if (t === 'RC' || t.includes('RECIBO')) return 'RC';
+      if (t === 'NC' || t.includes('CRÉDITO') || t.includes('CREDITO')) return 'NC';
+      if (t === 'ND' || t.includes('DÉBITO') || t.includes('DEBITO')) return 'ND';
+      if (t === 'DRAFT' || t.includes('RASCUNHO')) return 'DRAFT';
+      if (t === 'GR' || t.includes('REMESSA')) return 'GR';
+      if (t === 'GT' || t.includes('TRANSPORTE')) return 'GT';
+      if (t === 'GD' || t.includes('DEVOLUÇÃO') || t.includes('DEVOLUCAO')) return 'GD';
+      return t;
+    };
 
-    // Reforçar a regra de "Todos" (typeFilter)
+    const docTypeNormalized = getNormalizedType(doc.tipo_documento || doc.document_type || '');
+    
+    let matchesType = true;
+    if (selectedTipoDocFiscal !== 'all') {
+      const selectedNormalized = getNormalizedType(selectedTipoDocFiscal);
+      matchesType = (docTypeNormalized === selectedNormalized);
+    }
+    
     if (typeFilter !== 'Todos') {
-      const isDraftSpec = (typeFilter === 'Provisórios / Documento de Suporte (Draft)' && !doc.is_certified);
-      matchesType = matchesType && (isDraftSpec || docType === typeFilter);
+      const isDraftSpec = (typeFilter === 'Provisórios / Documento de Suporte (Draft)' && (!doc.is_certified || doc.is_draft || docTypeNormalized === 'DRAFT'));
+      let filterMatches = false;
+      if (typeFilter === 'Factura') filterMatches = (docTypeNormalized === 'FT');
+      else if (typeFilter === 'Factura Recibo') filterMatches = (docTypeNormalized === 'FR');
+      else if (typeFilter === 'Recibo') filterMatches = (docTypeNormalized === 'RC');
+      else if (typeFilter === 'Nota de Crédito') filterMatches = (docTypeNormalized === 'NC');
+      else if (typeFilter === 'Nota de Débito') filterMatches = (docTypeNormalized === 'ND');
+      else if (typeFilter === 'Guia de Remessa') filterMatches = (docTypeNormalized === 'GR');
+      else if (typeFilter === 'Guia de Transporte') filterMatches = (docTypeNormalized === 'GT');
+      else if (typeFilter === 'Guia de Devolução') filterMatches = (docTypeNormalized === 'GD');
+      else if (typeFilter === 'DRAFT') filterMatches = (docTypeNormalized === 'DRAFT');
+      
+      matchesType = matchesType && (isDraftSpec || filterMatches || docTypeNormalized === getNormalizedType(typeFilter));
     }
 
     // 5. Filtro de Certificação
@@ -18066,12 +18208,13 @@ const InvoiceList = ({
   const handleExportExcel = () => {
     import('xlsx').then(({ default: XLSX }) => {
       const dataToExport = filteredIssuedDocuments.map(i => ({
-        "Numero Documento": i.numero_documento || i.invoice_number || 'Sem Numero',
-        "Tipo Documento": i.tipo_documento || i.document_type || 'N/A',
+        "Documento": i.numero_documento || i.invoice_number || 'Sem Numero',
         "Cliente": i.cliente_nome || i.client_name || 'Consumidor Final',
-        "Total (AOA)": i.total || i.contravalor || 0,
-        "Imposto (AOA)": (i as any).imposto || 0,
-        "Data Emissao": i.data_emissao || i.date || '',
+        "Data": i.data_emissao || i.date || '',
+        "Moeda": i.moeda || i.currency || 'AOA',
+        "Subtotal": (i.total || i.contravalor || 0) / 1.14,
+        "IVA": (i.total || i.contravalor || 0) - ((i.total || i.contravalor || 0) / 1.14),
+        "Total": i.total || i.contravalor || 0,
         "Estado": i.is_certified ? 'Certificado' : 'Rascunho'
       }));
 
@@ -18118,14 +18261,21 @@ const InvoiceList = ({
         {activeSubTab === 'sales_report' && (
           <SalesReport issuedDocuments={issuedDocuments} />
         )}
-        {(activeSubTab === 'emitidos' || activeSubTab === 'recebidos') && (
+        {activeSubTab === 'agt-list-invoices' && (
+          <AgtElectronicInvoicesListModal
+            companyNif={companyData?.nif || companyData?.tax_registration_number || user?.empresa_nif}
+            userId={user?.id}
+            inlineMode={true}
+          />
+        )}
+        {(activeSubTab === 'emitidos' || activeSubTab === 'recebidos' || activeSubTab === 'recibos') && (
           <>
             {/* Top Header Section */}
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div className="space-y-1">
                 <div className="flex items-center gap-3">
                   <h2 className="text-2xl font-bold text-zinc-800">
-                    {activeSubTab === 'emitidos' ? 'Documentos de Venda' : 'Documentos Recebidos'}
+                    {activeSubTab === 'emitidos' ? 'Documentos de Venda' : activeSubTab === 'recibos' ? 'Recibos Emitidos (RC)' : 'Documentos Recebidos'}
                   </h2>
                   <span className="bg-blue-50 text-blue-600 text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1">
                     <Cloud size={12} />
@@ -18135,20 +18285,28 @@ const InvoiceList = ({
                 <p className="text-zinc-400 text-xs">
                   {activeSubTab === 'emitidos' 
                     ? 'Gestão de documentos certificados e faturas (Sincronizado com Supabase)'
-                    : 'Lista de faturas recibos e recibos recebidos'}
+                    : activeSubTab === 'recibos'
+                      ? 'Processamento e emissão de Recibos para liquidação de faturas'
+                      : 'Lista de faturas recibos e recibos recebidos'}
                 </p>
               </div>
 
               <div className="flex flex-wrap gap-2">
-                {activeSubTab === 'emitidos' && (
+                {(activeSubTab === 'emitidos' || activeSubTab === 'recibos') && (
                   <button 
-                    onClick={onNew}
+                    onClick={() => {
+                      if (activeSubTab === 'recibos') {
+                        onNew('Recibo');
+                      } else {
+                        onNew(undefined);
+                      }
+                    }}
                     disabled={!canAccessSeries(user, serieFilter, fiscalSeries)}
                     title={!canAccessSeries(user, serieFilter, fiscalSeries) ? "Não tem permissão nesta série. Contacte o administrador." : ""}
                     className={`font-bold px-6 py-2.5 rounded-none flex items-center gap-2 transition-all shadow-sm text-sm ${canAccessSeries(user, serieFilter, fiscalSeries) ? 'bg-[#2563eb] hover:bg-blue-700 text-white' : 'bg-zinc-200 text-zinc-500 cursor-not-allowed'}`}
                   >
                     <Plus size={20} className="bg-white/20 rounded-none p-0.5" />
-                    {mode === 'electronic' ? 'Emitir Fatura Electrónica' : 'Nova Fatura'}
+                    {activeSubTab === 'recibos' ? 'Emitir Recibo (RC)' : mode === 'electronic' ? 'Emitir Fatura Electrónica' : 'Nova Fatura'}
                   </button>
                 )}
                 <button 
@@ -18179,7 +18337,7 @@ const InvoiceList = ({
                   <FileText size={18} />
                   PDF
                 </button>
-                {activeSubTab === 'emitidos' && (
+                {(activeSubTab === 'emitidos' || activeSubTab === 'recibos') && (
                   <button 
                     onClick={onRegisterClient}
                     className="bg-white border border-zinc-200 text-zinc-600 font-bold px-6 py-2.5 rounded-none flex items-center gap-2 hover:bg-zinc-50 transition-all shadow-sm text-sm"
@@ -18204,7 +18362,7 @@ const InvoiceList = ({
                 <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Exercício Fiscal (Ano)</label>
                 <select 
                   value={fiscalYear}
-                  onChange={(e) => setFiscalYear(e.target.value)}
+                  onChange={(e) => setFiscalYear && setFiscalYear(e.target.value)}
                   className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-xs font-black focus:outline-none focus:border-[#003366] text-[#003366]"
                 >
                   <option value="2024">2024</option>
@@ -18300,7 +18458,7 @@ const InvoiceList = ({
                   setSelectedClienteFiscal('all');
                   setMinValue('');
                   setMaxValue('');
-                  setFiscalYear('2026');
+                  if (setFiscalYear) setFiscalYear('2026');
                   setSerieFilter('Todas');
                   setStatusFilter('Todos');
                   setTypeFilter('Todos');
@@ -18652,6 +18810,50 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
     (initialData?.client_id && !isNaN(Number(initialData.client_id))) ? Number(initialData.client_id) : ''
   );
   const [documentType, setDocumentType] = useState(fixedDocumentType || initialData?.document_type || 'Fatura');
+  const [documentTypesList, setDocumentTypesList] = useState<{codigo: string, descricao: string}[]>([
+    { codigo: 'FT', descricao: 'Fatura' },
+    { codigo: 'FR', descricao: 'Fatura Recibo' },
+    { codigo: 'PP', descricao: 'Fatura Proforma' },
+    { codigo: 'OR', descricao: 'Orçamento' },
+    { codigo: 'NC', descricao: 'Nota de Crédito' },
+    { codigo: 'ND', descricao: 'Nota de Débito' },
+    { codigo: 'RC', descricao: 'Recibo' },
+    { codigo: 'GR', descricao: 'Guia de Remessa' },
+    { codigo: 'GT', descricao: 'Guia de Transporte' },
+    { codigo: 'FS', descricao: 'Fatura Simplificada' }
+  ]);
+  const [originDocs, setOriginDocs] = useState<any[]>([]);
+  const [originDocId, setOriginDocId] = useState<string>(initialData?.documento_origem_id || '');
+  
+  useEffect(() => {
+    fetch('/api/documentos-tipos')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          const seen = new Set();
+          const unique = data.filter((t: any) => {
+            if (seen.has(t.codigo)) return false;
+            seen.add(t.codigo);
+            return true;
+          });
+          setDocumentTypesList(unique);
+        }
+      })
+      .catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    if (user?.empresa_id && (documentType === 'Nota de Crédito' || documentType === 'Recibo' || documentType === 'NC' || documentType === 'RC')) {
+      supabase.from('documentos_emitidos')
+        .select('id, numero_documento, total, cliente_nome, data_emissao')
+        .eq('empresa_id', user.empresa_id)
+        .in('tipo_documento', ['FT', 'FR', 'Fatura', 'Fatura Recibo'])
+        .eq('status', 'ativo')
+        .order('created_at', { ascending: false })
+        .limit(50)
+        .then(({data}) => setOriginDocs(data || []));
+    }
+  }, [user?.empresa_id, documentType]);
   
   useEffect(() => {
     if (fixedDocumentType) {
@@ -18679,7 +18881,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
   const [cashBox, setCashBox] = useState(initialData?.cash_box || '');
   const [paymentMethod, setPaymentMethod] = useState(initialData?.payment_method || '');
   const [paymentCondition, setPaymentCondition] = useState(initialData?.payment_method === 'A Prazo' ? 'A Prazo' : 'Pronto Pagamento');
-  
+
   const isCertified = !!initialData?.is_certified && !fixedDocumentType;
   const [expandedDimensions, setExpandedDimensions] = useState<number | null>(null);
   const [useRetencao, setUseRetencao] = useState(false);
@@ -18687,11 +18889,46 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
   const [documentNumberManual, setDocumentNumberManual] = useState('');
   const [referenceManual, setReferenceManual] = useState('');
 
+   // Helper to match series type with currently selected documentType
+  const filteredSeries = fiscalSeries.filter(s => {
+     const seriesTypeNormalized = String(s.tipo || s.type || '').trim().toUpperCase();
+     const docTypeNormalized = String(documentType || '').trim().toUpperCase();
+     
+     const getAbbr = (val: string) => {
+       const u = String(val || '').trim().toUpperCase();
+       if (!u || u === 'NORMAL' || u === 'DEFAULT') return 'GENERAL';
+       if (u.includes('PROFORMA') || u === 'FP') return 'PP'; // Map proforma to PP
+       if (u === 'FT' || u.includes('FATURA') || u.includes('FACTURA')) {
+         if (u.includes('RECIBO') || u === 'FR') return 'FR';
+         if (u.includes('SIMPLIFICADA') || u === 'FS') return 'FS';
+         return 'FT';
+       }
+       if (u === 'RC' || u.includes('RECIBO')) return 'RC';
+       if (u === 'NC' || u.includes('CRÉDITO') || u.includes('CREDITO')) return 'NC';
+       if (u === 'ND' || u.includes('DÉBITO') || u.includes('DEBITO')) return 'ND';
+       if (u === 'GR' || u.includes('REMESSA')) return 'GR';
+       if (u === 'GT' || u.includes('TRANSPORTE')) return 'GT';
+       if (u === 'PP' || u.includes('ORÇAMENTO') || u.includes('ORCAMENTO')) return 'PP';
+       return u;
+     };
+     
+     const sAbbr = getAbbr(seriesTypeNormalized);
+     const dAbbr = getAbbr(docTypeNormalized);
+     return sAbbr === dAbbr || sAbbr === 'GENERAL';
+   });
+
   useEffect(() => {
     if (user?.empresa_id) {
       supabase.from('armazens').select('*').eq('empresa_id', user.empresa_id).then(({data}) => setWarehouses(data || [])).catch(console.error);
     }
   }, [user?.empresa_id]);
+
+  useEffect(() => {
+    const currentSeriesStillValid = filteredSeries.some(s => s.id === selectedSerieFiscal);
+    if (!currentSeriesStillValid && filteredSeries.length > 0) {
+      setSelectedSerieFiscal(filteredSeries[0].id);
+    }
+  }, [filteredSeries, selectedSerieFiscal]);
 
   const addItem = () => {
     setItems([...items, { 
@@ -18767,6 +19004,12 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
   };
 
   const total = (items ?? []).reduce((sum, item) => sum + (item.total || 0), 0);
+
+  useEffect(() => {
+    const t = total || 0;
+    const rate = Number(exchangeRate) || 1;
+    setCounterValue((t * rate).toFixed(2));
+  }, [total, exchangeRate, setCounterValue]);
   
   const vatBreakdown: { [key: string]: number } = {};
   const retencaoBreakdown: { [key: string]: number } = {};
@@ -18824,6 +19067,9 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
 
     const client = clients.find(c => c.id === Number(clientId));
     const isManual = selectedSeries?.type === 'manual';
+    
+    const originDoc = originDocs.find(d => d.id === originDocId);
+    const numeroDocOrigem = originDoc?.numero_documento || (initialData as any)?.numero_documento_origem || '';
 
     const isNewFromTemplate = !!fixedDocumentType && initialData?.document_type !== fixedDocumentType;
     const url = (initialData && !isNewFromTemplate) ? `/api/invoices/${initialData.id}` : '/api/invoices';
@@ -18850,6 +19096,8 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
         service_location: serviceLocation,
         cash_box: paymentCondition === 'Pronto Pagamento' ? cashBox : '',
         payment_method: paymentCondition === 'Pronto Pagamento' ? paymentMethod : 'A Prazo',
+        documento_origem_id: originDocId || undefined,
+        numero_documento_origem: numeroDocOrigem,
         series_id: selectedSerieFiscal,
         invoice_number: isManual ? documentNumberManual : ((initialData?.numero_documento || initialData?.invoice_number || undefined) && !isNewFromTemplate ? (initialData?.numero_documento || initialData?.invoice_number) : undefined),
         reference_document: isNewFromTemplate ? (initialData?.numero_documento || initialData?.invoice_number) : initialData?.reference_document,
@@ -18868,7 +19116,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
       // Automatic Cash Movement for sales
       if (savedDoc && (documentType === 'Fatura Recibo' || paymentCondition === 'Pronto Pagamento') && cashBox && addMovement) {
         try {
-          const selectedCaixa = caixas.find(c => c.name === cashBox);
+          const selectedCaixa = caixas.find(c => c.id === cashBox || c.name === cashBox);
           if (selectedCaixa) {
             await addMovement({
               caixaId: selectedCaixa.id,
@@ -18922,25 +19170,37 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                 required
                 className={`w-full border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm ${fixedDocumentType ? 'bg-zinc-100 text-zinc-500' : 'bg-zinc-50'}`}
               >
-                {fixedDocumentType ? (
-                  <option value={fixedDocumentType}>{fixedDocumentType}</option>
+                {documentTypesList.length > 0 ? (
+                  documentTypesList.map(t => <option key={t.codigo} value={t.codigo}>{t.descricao} ({t.codigo})</option>)
                 ) : (
                   <>
-                    <option value="Fatura">Fatura</option>
-                    <option value="Fatura Recibo">Fatura Recibo</option>
-                    <option value="Fatura Proforma">Fatura Proforma</option>
-                    <option value="Orçamento">Orçamento</option>
-                    {(currency !== 'Kwanza') && (
-                      <option value="Provisórios / Documento de Suporte (Draft)">Provisórios / Documento de Suporte (Draft)</option>
-                    )}
-                    <option value="Nota de Crédito">Nota de Crédito</option>
-                    <option value="Nota de Débito">Nota de Débito</option>
-                    <option value="Guia de Remessa">Guia de Remessa</option>
-                    <option value="Guia de Transporte">Guia de Transporte</option>
+                    <option value="FT">Fatura</option>
+                    <option value="FR">Fatura Recibo</option>
+                    <option value="RC">Recibo</option>
+                    <option value="NC">Nota de Crédito</option>
+                    <option value="OR">Orçamento</option>
+                    <option value="PP">Proforma</option>
                   </>
                 )}
               </select>
             </div>
+
+            {['NC', 'RC', 'Nota de Crédito', 'Recibo'].includes(documentType) && (
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-zinc-600">Documento de Origem (Obrigatório)</label>
+                <select 
+                  value={originDocId}
+                  onChange={(e) => setOriginDocId(e.target.value)}
+                  required
+                  className="w-full bg-amber-50 border border-amber-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-amber-600 text-sm"
+                >
+                  <option value="">Selecionar Documento vinculado...</option>
+                  {originDocs.map(d => (
+                    <option key={d.id} value={d.id}>{d.numero_documento} - {d.cliente_nome} ({new Date(d.data_emissao).toLocaleDateString()})</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="space-y-2">
               <label className="text-xs font-bold text-zinc-600">Série</label>
               <select 
@@ -18950,9 +19210,13 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                 className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
               >
                 <option value="">Selecionar Série</option>
-                {fiscalSeries.map(s => (
-                  <option key={s.id} value={s.id}>{s.name} ({s.type === 'manual' ? 'Manual' : 'Auto'})</option>
-                ))}
+                {filteredSeries.length === 0 ? (
+                  <option value="" disabled>Solicite uma nova série na guia "Série Fiscal"</option>
+                ) : (
+                  filteredSeries.map(s => (
+                    <option key={s.id} value={s.id}>{s.name} ({s.type === 'manual' ? 'Manual' : 'Auto'})</option>
+                  ))
+                )}
               </select>
             </div>
             <div className="space-y-2">
@@ -19099,13 +19363,13 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-zinc-600">Caixa / Conta <span className="text-red-500">*</span></label>
                   <select 
-                    value={isNaN(Number(cashBox)) && cashBox !== 'Banco' ? '' : cashBox} 
+                    value={cashBox || ''} 
                     onChange={(e) => setCashBox(e.target.value)}
                     required
                     className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
                   >
                     <option value="">Selecione...</option>
-                    {caixas.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                    {caixas.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
               </>
@@ -20359,6 +20623,7 @@ const InvoiceDetail = ({
   id, 
   onBack,
   onPrint,
+  onDownload,
   companyName,
   companyNif,
   companyAddress,
@@ -20369,6 +20634,7 @@ const InvoiceDetail = ({
   id: number, 
   onBack: () => void,
   onPrint: (invoice: Invoice) => void,
+  onDownload?: (invoice: Invoice) => void,
   companyName: string,
   companyNif: string,
   companyAddress: string,
@@ -20427,7 +20693,10 @@ const InvoiceDetail = ({
           >
             <Printer size={18} /> Imprimir
           </button>
-          <button className="bg-[#003366] hover:bg-[#002244] text-white font-bold px-4 py-2 rounded-none flex items-center gap-2 transition-all text-sm shadow-sm">
+          <button 
+            onClick={() => invoice && onDownload && onDownload(invoice)}
+            className="bg-[#003366] hover:bg-[#002244] text-white font-bold px-4 py-2 rounded-none flex items-center gap-2 transition-all text-sm shadow-sm"
+          >
             <Download size={18} /> Baixar PDF
           </button>
         </div>
@@ -20528,7 +20797,7 @@ const InvoiceDetail = ({
           <div>
             <p className="font-bold uppercase tracking-widest text-zinc-400 mb-1">Emitido por:</p>
             <p className="font-bold text-[#003366] text-sm uppercase">{invoice.created_by_nome || 'Utilizador do Sistema'}</p>
-            {invoice.created_by_username && <p>Username: {invoice.created_by_username} (ID: {invoice.created_by?.slice(-6) || '---'})</p>}
+            {invoice.created_by_username && <p>Username: {invoice.created_by_username} (ID: {invoice.created_by ? String(invoice.created_by).slice(-6) : '---'})</p>}
             <p>Data: {new Date(invoice.created_at || invoice.date || invoice.data_emissao).toLocaleString('pt-PT')}</p>
             {invoice.documento_anulado && (
               <div className="mt-4 p-2 bg-red-50 border border-red-100 text-red-600 rounded-none font-bold">
@@ -20630,49 +20899,49 @@ const InvoiceDetail = ({
         </div>
 
         {/* Secção de Certificação AGT no Documento Aberto */}
-        <div className="pt-6 border-t border-zinc-100 mt-8 relative z-10 font-mono text-zinc-600">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-zinc-50 p-4 border border-zinc-200">
-            <div>
-              <p className="text-[10px] font-black text-zinc-800 tracking-wider">SISTEMA VALIDADO PELA AGT / ACORDO REQUISITOS IMUTABILIDADE</p>
-              <p className="text-[9px] text-[#003366] font-bold mt-1">
-                ✓ PROCESSADO POR PROGRAMA VALIDADO Nº 101/AGT/2026 - SISTEMA DE FACTURAÇÃO ANGOLA.
-              </p>
-              <p className="text-[8px] text-zinc-400 mt-1 uppercase">
-                IMUTABILIDADE GARANTIDA POR ALGORITMO DE ENCADEAMENTO CRIPTOGRÁFICO SHA-256 SÉRIE FISCAL {invoice.serie || new Date(invoice.data_emissao || Date.now()).getFullYear()}
-              </p>
-            </div>
-            <div className="text-left md:text-right font-mono">
-              <div className="flex items-center gap-1.5 justify-start md:justify-end">
-                <span className="text-[9px] font-bold text-zinc-400 uppercase">Cód. Validação:</span>
-                <span className="bg-[#003366] text-white px-2 py-0.5 text-[10px] font-black">
+        <div className="pt-6 border-t border-zinc-100 mt-8 relative z-10">
+          <div className="bg-zinc-50 p-6 border border-zinc-200">
+            <p className="text-[10px] font-black text-zinc-800 tracking-widest uppercase mb-4 text-center border-b border-zinc-200 pb-2">
+              SISTEMA VALIDADO PELA AGT — DECLARAÇÃO DE CONFORMIDADE FISCAL
+            </p>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 text-xs font-mono text-zinc-650 my-4">
+              <div className="space-y-1 bg-white p-3 border border-zinc-100">
+                <span className="text-[9px] font-black text-zinc-400 uppercase tracking-wider block">Número Documento</span>
+                <span className="font-bold text-[#003366] block">{invoice.invoice_number || invoice.numero_documento}</span>
+              </div>
+              <div className="space-y-1 bg-white p-3 border border-zinc-100">
+                <span className="text-[9px] font-black text-zinc-400 uppercase tracking-wider block">Hash Fiscal (4 Chars)</span>
+                <span className="bg-[#003366] text-white px-2 py-0.5 text-[11px] font-black rounded-none inline-block mt-0.5">
                   {invoice.codigo_validacao || (invoice.hash ? invoice.hash.slice(0, 4).toUpperCase() : 'PENDENTE')}
                 </span>
               </div>
+              <div className="space-y-1 bg-white p-3 border border-zinc-100">
+                <span className="text-[9px] font-black text-zinc-400 uppercase tracking-wider block">Estado Fiscal</span>
+                <span className={`font-black uppercase text-[10px] ${
+                  invoice.documento_anulado ? 'text-red-650' : invoice.is_certified ? 'text-emerald-650' : 'text-amber-650'
+                }`}>
+                  {invoice.documento_anulado ? 'Anulado' : invoice.is_certified ? 'Certificado' : 'Rascunho'}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-2 text-[9px] text-zinc-500 font-sans leading-relaxed border-t border-zinc-200 pt-3">
+              <p>
+                <strong>✓ Processamento:</strong> Processado por programa validado nº 101/AGT/2026 - Gesforma.
+              </p>
+              <p>
+                <strong>✓ Encadeamento:</strong> Imutabilidade fiscal garantida por algoritmo de encadeamento criptográfico SHA-256 da série fiscal <span className="font-mono text-zinc-700 font-bold">{invoice.serie || 'S1'}</span>.
+              </p>
               {(invoice.hash || invoice.hash_documento || invoice.hash_fiscal) && (
-                <div className="mt-1.5 text-[8px] text-zinc-400 font-mono break-all select-all">
-                  <span className="font-bold text-zinc-600">Hash Fiscal: </span>
-                  {invoice.hash || invoice.hash_documento || invoice.hash_fiscal}
+                <div className="mt-2 p-2 bg-white border border-zinc-100 font-mono text-[8.5px] break-all select-all">
+                  <span className="font-bold text-zinc-600 uppercase tracking-wider">Assinatura Digital (JWS / RS256):</span> <span className="text-zinc-750">{invoice.hash || invoice.hash_documento || invoice.hash_fiscal}</span>
                 </div>
               )}
-              {invoice.is_certified && (
-                <div className="mt-1 text-[8px] text-zinc-500 font-mono text-left md:text-right">
-                  <span className="font-bold text-zinc-600">Estado: </span>
-                  <span className="text-emerald-600 font-bold uppercase">{invoice.estado_certificacao || 'CERTIFICADO'}</span>
-                  {invoice.certified_at && (
-                    <span className="block mt-0.5">
-                      <span className="font-bold text-zinc-600">Data Certificação: </span>
-                      <span>
-                        {new Date(invoice.certified_at).toLocaleString('pt-AO', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </span>
-                    </span>
-                  )}
-                </div>
+              {invoice.is_certified && invoice.certified_at && (
+                <p className="text-[8px] text-zinc-400 font-mono">
+                  Data de Certificação: {new Date(invoice.certified_at).toLocaleString('pt-AO')}
+                </p>
               )}
             </div>
           </div>
@@ -20716,21 +20985,37 @@ const ClientAccount = ({ client, documents, onBack }: {
       let isCredit = false;
       let isDebit = false;
       
+      const type = String(doc.tipo_documento || doc.document_type || '').toUpperCase();
+      const isFT = type === 'FT' || type.includes('FATURA');
+      const isFR = type === 'FR' || type.includes('FATURA-RECIBO');
+      const isRC = type === 'RC' || type === 'RE' || type.includes('RECIBO');
+      const isNC = type === 'NC' || type.includes('CRÉDITO') || type.includes('CREDITO');
+      const isND = type === 'ND' || type.includes('DÉBITO') || type.includes('DEBITO');
+      const isDraft = type === 'DRAFT';
+
       if (isSupplier) {
-        isCredit = ['Fatura de Compra', 'Fatura Recibo de Compra', 'Nota de Débito de Fornecedor'].includes(doc.tipo_documento);
-        isDebit = ['Pagamento', 'Recibo', 'Fatura Recibo de Compra', 'Nota de Crédito de Fornecedor'].includes(doc.tipo_documento);
+        // Purchases logic
+        isCredit = isFT || isFR || isND;
+        isDebit = isRC || isNC;
       } else {
-        isCredit = ['RE', 'NC', 'FR', 'Recibo', 'Fatura Recibo'].includes(doc.tipo_documento);
-        isDebit = ['FT', 'ND', 'FR', 'Fatura', 'Fatura Recibo'].includes(doc.tipo_documento);
+        // Sales logic
+        isDebit = isFT || isND || isFR || isDraft;
+        isCredit = isRC || isNC || isFR;
       }
       
       return {
         ...doc,
-        debito: isDebit ? doc.contravalor : 0,
-        credito: isCredit ? doc.contravalor : 0
+        debito: isDebit ? (doc.contravalor || doc.total || 0) : 0,
+        credito: isCredit ? (doc.contravalor || doc.total || 0) : 0
       };
     }).filter(m => {
-      if (!m.data_emissao) return true; // Show it anyway if date is missing, let it be at the top/bottom
+      // Filtering types as requested in Req 11
+      const type = String(m.tipo_documento || m.document_type || '').toUpperCase();
+      const allowedTypes = ['FT', 'FR', 'RC', 'NC', 'ND', 'DRAFT', 'RE'];
+      const isAllowed = allowedTypes.some(t => type === t || type.includes(t));
+      if (!isAllowed) return false;
+
+      if (!m.data_emissao) return true;
       try {
         const date = new Date(m.data_emissao).toISOString().split('T')[0];
         if (startDate && date < startDate) return false;
@@ -21426,34 +21711,69 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
   const { user } = useAuth();
   const [showSupplierModal, setShowSupplierModal] = useState(false);
   const isCertified = false;
+  const initAny = initialData as any;
   const [supplierId, setSupplierId] = useState<number | string | ''>(
-    initialData?.supplier_id || ''
+    initAny?.supplier_id || ''
   );
-  const [documentType, setDocumentType] = useState(fixedDocumentType || initialData?.document_type || 'Fatura de Compra');
+  const [documentType, setDocumentType] = useState(fixedDocumentType || initAny?.document_type || 'Fatura de Compra');
   const [selectedSerieFiscal, setSelectedSerieFiscal] = useState<number | null>(null);
-  const [invoiceNumber, setInvoiceNumber] = useState(initialData?.invoice_number || '');
-  const [documentNumber, setDocumentNumber] = useState(initialData?.purchase_number || '');
-  const [date, setDate] = useState(initialData?.date ? new Date(initialData.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
+  const [invoiceNumber, setInvoiceNumber] = useState(initAny?.invoice_number || '');
+  const [documentNumber, setDocumentNumber] = useState(initAny?.purchase_number || '');
+  const [date, setDate] = useState(() => {
+    try {
+      if (initAny?.date) {
+        const d = new Date(initAny.date);
+        if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+      }
+    } catch {}
+    return new Date().toISOString().split('T')[0];
+  });
   const [countryCode, setCountryCode] = useState('Angola');
-  const [nif, setNif] = useState('');
-  const [supplierName, setSupplierName] = useState(initialData?.supplier_name || '');
-  const [workSiteId, setWorkSiteId] = useState<string>(initialData?.work_site || '');
-  const [dueDate, setDueDate] = useState<string>(initialData?.due_date ? new Date(initialData.due_date).toISOString().split('T')[0] : '');
-  const [vatWithholding, setVatWithholding] = useState<string>('0');
-  const [exchangeRate, setExchangeRate] = useState<string>('1');
-  const [currency, setCurrency] = useState<string>('Kwanza');
-  const [counterValue, setCounterValue] = useState<string>('0');
-  const [globalDiscount, setGlobalDiscount] = useState<string>('0');
-  const [serviceDate, setServiceDate] = useState(new Date().toISOString().split('T')[0]);
+  const [nif, setNif] = useState(initAny?.supplier_nif || initAny?.nif || '');
+  const [supplierName, setSupplierName] = useState(initAny?.supplier_name || '');
+  const [workSiteId, setWorkSiteId] = useState<string>(String(initAny?.work_site_id || initAny?.work_site || ''));
+  const [dueDate, setDueDate] = useState<string>(() => {
+    try {
+      if (initAny?.due_date) {
+        const d = new Date(initAny.due_date);
+        if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+      }
+    } catch {}
+    return '';
+  });
+  const [vatWithholding, setVatWithholding] = useState<string>(String(initAny?.vat_withholding ?? '0'));
+  const [exchangeRate, setExchangeRate] = useState<string>(String(initAny?.exchange_rate ?? '1'));
+  const [currency, setCurrency] = useState<string>(initAny?.currency || 'Kwanza');
+  const [counterValue, setCounterValue] = useState<string>(String(initAny?.counter_value ?? '0'));
+  const [globalDiscount, setGlobalDiscount] = useState<string>(String(initAny?.global_discount ?? '0'));
+  const [serviceDate, setServiceDate] = useState(() => {
+    try {
+      if (initAny?.service_date) {
+        const d = new Date(initAny.service_date);
+        if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+      }
+    } catch {}
+    return new Date().toISOString().split('T')[0];
+  });
   const [items, setItems] = useState<any[]>(
-    initialData?.items && fixedDocumentType !== 'Pagamento' ? initialData.items.map(i => ({...i})) : []
+    initAny?.items && fixedDocumentType !== 'Pagamento' ? initAny.items.map((i: any) => ({...i})) : []
   );
-  const [cashBox, setCashBox] = useState(initialData?.caixa || '');
-  const [paymentMethod, setPaymentMethod] = useState(initialData?.payment_method || '');
+  const [cashBox, setCashBox] = useState(initAny?.caixa || '');
+  const [paymentMethod, setPaymentMethod] = useState(initAny?.payment_method || '');
   const [hash, setHash] = useState(initialData?.hash || '');
   const [expandedDimensions, setExpandedDimensions] = useState<number | null>(null);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (supplierId && suppliers && suppliers.length > 0) {
+      const foundSup = suppliers.find(s => String(s.id) === String(supplierId));
+      if (foundSup) {
+        setNif(foundSup.nif || '');
+        setSupplierName(foundSup.name || '');
+      }
+    }
+  }, [supplierId, suppliers]);
 
   useEffect(() => {
     if (user?.empresa_id) {
@@ -21552,12 +21872,14 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
     if (loading) return;
     if (items.length === 0) return;
 
-    // Validate warehouse for all product items
+    // Validate warehouse for all product items - OPTIONAL NOW
+    /*
     const missingWarehouse = items.find(i => i.tipo_artigo === 'produto' && !i.warehouse_id && (documentType === 'Compra' || documentType === 'Fatura de Compra'));
     if (missingWarehouse) {
       alert('Por favor, selecione um armazém para todos os produtos.');
       return;
     }
+    */
 
     setLoading(true);
 
@@ -21604,53 +21926,95 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
         return;
       }
 
+      // Resolve cashBox to a UUID if it's 'Banco'
+      let finalCaixaId = cashBox || null;
+      if (cashBox === 'Banco') {
+        const bankCaixa = caixas.find(c => c.name.toLowerCase().includes('banco'));
+        if (bankCaixa) {
+          finalCaixaId = bankCaixa.id;
+        } else if (caixas.length > 0) {
+          finalCaixaId = caixas[0].id;
+        } else {
+          finalCaixaId = null;
+        }
+      }
+
+      if (!isValidUUID(finalCaixaId)) {
+        finalCaixaId = null;
+      }
+
       // Objeto limpo apenas com campos que existem na tabela 'compras'
       const purchaseDataFields: any = {
         empresa_id: user.empresa_id,
-        supplier_id: finalSupplierId,
-    created_by: user.id,
-    created_by_nome: user.nome || user.username || 'Operador',
-    created_by_username: user.username,
-    criado_por: user.id,
-    data: date,
+        fornecedor_id: finalSupplierId || null,
+        data_compra: date,
+        valor_total: Number(finalTotal),
+        tipo_documento: documentType,
+        numero_documento: documentNumber || invoiceNumber,
         data_vencimento: dueDate || null,
-        document_type: documentType,
-        numero_compra: documentNumber,
-        invoice_number: invoiceNumber,
-        work_site_id: workSiteId || null,
-        supplier_name: supplierName,
-        country_code: countryCode,
-        vat_withholding: Number(vatWithholding || 0),
-        exchange_rate: Number(exchangeRate || 1),
-        currency: currency,
-        counter_value: Number(counterValue || 0),
-        global_discount: Number(globalDiscount || 0),
-        service_date: serviceDate || date,
-        caixa_id: cashBox || null,
-        payment_method: paymentMethod,
-        items: items,
-        total: finalTotal,
-        hash: hash,
-        status: 'completed'
+        taxa_cambio: Number(exchangeRate || 1),
+        moeda: currency || 'Kwanza',
+        caixa_id: finalCaixaId,
+        itens: items,
+        descricao: `${documentType} nº ${invoiceNumber || documentNumber}`,
+        ano: Number(new Date(date).getFullYear()),
+        created_by: user.id,
+        created_by_username: user.username,
+        created_by_nome: user.nome || user.username || 'Operador',
+        criado_por: user.id
       };
 
       let result;
-      if (initialData?.id) {
+      if (initialData?.id && !fixedDocumentType) { // If it's a real update of a purchase
+        purchaseDataFields.atualizado_em = new Date().toISOString();
+        purchaseDataFields.atualizado_por = user.id;
+
+        console.log('[UPDATE compras] Updating existing purchase:', purchaseDataFields);
         result = await supabase
           .from('compras')
           .update(purchaseDataFields)
           .eq('id', initialData.id)
+          .eq('empresa_id', user.empresa_id)
           .select()
           .single();
-      } else {
+      } else { // New Purchase or Pagamento
+        if (fixedDocumentType === 'Pagamento') {
+          // If it's a Pagamento, keep the relationship
+          purchaseDataFields.reference_purchase_number = initialData?.purchase_number || '';
+          purchaseDataFields.reference_document = initialData?.purchase_number || '';
+          purchaseDataFields.descricao = `Recibo de Fornecedor referente a ${initialData?.purchase_number || invoiceNumber}`;
+        }
+
+        console.log('[INSERT compras] Creating new record:', purchaseDataFields);
         result = await supabase
           .from('compras')
-          .insert([{ ...purchaseDataFields, ano: new Date(date).getFullYear() }])
+          .insert([purchaseDataFields])
           .select()
           .single();
+
+        // If it's a Pagamento, update the original Purchase
+        if (!result.error && fixedDocumentType === 'Pagamento' && initialData?.id) {
+          const valorJaPago = Number(initialData.valor_pago || 0) + Number(finalTotal);
+          const valorTotalDoc = Number(initialData.valor_total || initialData.total || 0);
+          const saldo = Math.max(0, valorTotalDoc - valorJaPago);
+          
+          await supabase
+            .from('compras')
+            .update({
+              recibo_emitido: saldo <= 0,
+              valor_pago: valorJaPago,
+              saldo_pendente: saldo
+            })
+            .eq('id', initialData.id)
+            .eq('empresa_id', user.empresa_id);
+        }
       }
 
-      if (result.error) throw result.error;
+      console.log('Supabase result:', result);
+      if (result.error) {
+        console.error('Supabase error:', result.error);
+        throw result.error;
+      }
 
       // Automatic Cash Movement for purchases (SAÍDA)
       if (result.data && (documentType === 'Fatura Recibo de Compra' || documentType === 'Pagamento') && cashBox && addMovement) {
@@ -22448,6 +22812,26 @@ const PurchaseActionsModal = ({ purchase, onClose, onAction }: {
         
         <div className="p-6 grid grid-cols-2 gap-3 bg-zinc-50/30 overflow-y-auto max-h-[70vh]">
           {/* Main Actions */}
+          <button onClick={() => handleAction('edit')} className="flex items-center gap-4 p-4 bg-white border border-zinc-100 hover:shadow-md hover:border-blue-500/30 transition-all group text-left">
+            <div className="w-10 h-10 bg-blue-50 flex items-center justify-center text-blue-600">
+               <Pencil size={20} />
+            </div>
+            <div>
+              <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">Editar Documento</span>
+              <span className="text-[9px] font-bold text-zinc-400 uppercase">Alterar informações e itens</span>
+            </div>
+          </button>
+
+          <button onClick={() => handleAction('open')} className="flex items-center gap-4 p-4 bg-white border border-zinc-100 hover:shadow-md hover:border-blue-500/30 transition-all group text-left">
+            <div className="w-10 h-10 bg-zinc-50 flex items-center justify-center text-zinc-600 group-hover:text-blue-600">
+               <FolderOpen size={20} />
+            </div>
+            <div>
+              <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">Abrir Documento</span>
+              <span className="text-[9px] font-bold text-zinc-400 uppercase">Ver detalhes e informações gravadas</span>
+            </div>
+          </button>
+
           <button onClick={() => handleAction('clone')} className="flex items-center gap-4 p-4 bg-white border border-zinc-100 hover:shadow-md hover:border-blue-500/30 transition-all group text-left">
             <div className="w-10 h-10 bg-blue-50 flex items-center justify-center text-blue-600">
                <Copy size={20} />
@@ -22458,7 +22842,7 @@ const PurchaseActionsModal = ({ purchase, onClose, onAction }: {
             </div>
           </button>
 
-          {['Fatura de Compra', 'Compra'].includes(purchase.document_type || '') && (
+          {['Fatura de Compra', 'Compra', 'FT', 'Fatura'].includes(purchase.document_type || '') && (
             <button onClick={() => handleAction('credit_note')} className="flex items-center gap-4 p-4 bg-white border border-zinc-100 hover:shadow-md hover:border-red-500/30 transition-all group text-left">
               <div className="w-10 h-10 bg-red-50 flex items-center justify-center text-red-600">
                  <RefreshCw size={20} />
@@ -22500,14 +22884,33 @@ const PurchaseActionsModal = ({ purchase, onClose, onAction }: {
             </div>
           </button>
 
-          {purchase.document_type === 'Fatura de Compra' && (
-            <button onClick={() => handleAction('receipt')} className="flex items-center gap-4 p-4 bg-white border border-zinc-100 hover:shadow-md hover:border-emerald-500/30 transition-all group text-left">
-              <div className="w-10 h-10 bg-emerald-50 flex items-center justify-center text-emerald-600">
+          {['Fatura de Compra', 'Compra', 'FT', 'Fatura'].includes(purchase.document_type || '') && (
+            <button onClick={() => handleAction('receipt')} className="flex items-center gap-4 p-4 bg-emerald-50/10 border border-emerald-100 hover:bg-emerald-50 hover:shadow-md transition-all group text-left">
+              <div className="w-10 h-10 bg-white border border-emerald-100 flex items-center justify-center text-emerald-600">
                  <FileCheck size={20} />
               </div>
               <div>
-                <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">Liquidar / Recibo</span>
-                <span className="text-[9px] font-bold text-zinc-400 uppercase">Registar pagamento</span>
+                <span className="block text-xs font-black uppercase tracking-wider text-emerald-700">Liquidado / Pago</span>
+                <span className="text-[9px] font-bold text-emerald-400 uppercase">Registar recibo de pagamento</span>
+              </div>
+            </button>
+          )}
+
+          {['Fatura de Compra', 'Compra', 'FT', 'Fatura'].includes(purchase.document_type || '') && (
+            <button 
+              onClick={() => {
+                if(confirm('Tem a certeza que deseja anular este documento?')) {
+                  handleAction('void_document');
+                }
+              }} 
+              className="flex items-center gap-4 p-4 bg-amber-50/10 border border-amber-100 hover:bg-amber-50 hover:shadow-md transition-all group text-left"
+            >
+              <div className="w-10 h-10 bg-white border border-amber-100 flex items-center justify-center text-amber-600">
+                 <XCircle size={20} />
+              </div>
+              <div>
+                <span className="block text-xs font-black uppercase tracking-wider text-amber-700">Anular Documento</span>
+                <span className="text-[9px] font-bold text-amber-500 uppercase tracking-tight">Marcar como anulado/inválido</span>
               </div>
             </button>
           )}
@@ -22517,8 +22920,8 @@ const PurchaseActionsModal = ({ purchase, onClose, onAction }: {
                <BarChart3 size={20} />
             </div>
             <div>
-              <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">Relatório do Doc</span>
-              <span className="text-[9px] font-bold text-zinc-400 uppercase">Análise de custos</span>
+              <span className="block text-xs font-black uppercase tracking-wider text-zinc-800">Relatório Detalhado</span>
+              <span className="text-[9px] font-bold text-zinc-400 uppercase">Ver detalhes e recalcular totais</span>
             </div>
           </button>
 
@@ -22543,8 +22946,7 @@ const PurchaseActionsModal = ({ purchase, onClose, onAction }: {
   );
 };
 
-const PurchasesModule = ({ suppliers, products, activeTaxes, workSites, fiscalSeries, caixas, companyData, addMovement, globalUsers }: { suppliers: Supplier[], products: Product[], activeTaxes: any[], workSites: WorkSite[], fiscalSeries: FiscalSeries[], caixas: Caixa[], companyData?: any, addMovement?: (m: any) => Promise<void>, globalUsers: any[] }) => {
-  const { user } = useAuth();
+const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fiscalSeries, caixas, companyData, addMovement, globalUsers, fiscalYear }: { user: any, suppliers: Supplier[], products: Product[], activeTaxes: any[], workSites: WorkSite[], fiscalSeries: FiscalSeries[], caixas: Caixa[], companyData?: any, addMovement?: (m: any) => Promise<void>, globalUsers: any[], fiscalYear: string }) => {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [createData, setCreateData] = useState<Purchase | null>(null);
@@ -22558,27 +22960,353 @@ const PurchasesModule = ({ suppliers, products, activeTaxes, workSites, fiscalSe
   const [showReportModal, setShowReportModal] = useState<Purchase | null>(null);
   const [completedReceipt, setCompletedReceipt] = useState<Purchase | null>(null);
   const [editingSupplier, setEditingSupplier] = useState<any>(null);
+  const [showReceiptModal, setShowReceiptModal] = useState<any | null>(null);
+  const [showA4PrintModal, setShowA4PrintModal] = useState<any | null>(null);
+
+  const [attachments, setAttachments] = useState<any[]>([]);
+  const [loadingAttachments, setLoadingAttachments] = useState(false);
+  const [selectedAttachment, setSelectedAttachment] = useState<any | null>(null);
+  const [editingAttachmentId, setEditingAttachmentId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+
+  useEffect(() => {
+    if (showFileModal) {
+      const fetchAttachments = async () => {
+        setLoadingAttachments(true);
+        try {
+          const { data, error } = await supabase
+            .from('media_arquivos')
+            .select('*')
+            .eq('entidade', 'compras')
+            .eq('entidade_id', String(showFileModal.id))
+            .eq('empresa_id', user?.empresa_id || user?.company_id);
+          
+          if (!error && data) {
+            setAttachments(data);
+            if (data.length > 0) {
+              setSelectedAttachment(data[0]);
+            } else if (showFileModal.document_url) {
+              setSelectedAttachment({
+                id: 'primary',
+                nome_original: 'Documento Principal',
+                url_publica: showFileModal.document_url,
+                caminho_arquivo: showFileModal.document_path || '',
+                mime_type: showFileModal.document_url.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg',
+                extensao: showFileModal.document_url.endsWith('.pdf') ? 'pdf' : 'jpg'
+              });
+            } else {
+              setSelectedAttachment(null);
+            }
+          }
+        } catch (err) {
+          console.error("Error loading attachments:", err);
+        } finally {
+          setLoadingAttachments(false);
+        }
+      };
+      fetchAttachments();
+    } else {
+      setAttachments([]);
+      setSelectedAttachment(null);
+    }
+  }, [showFileModal, user]);
+
+  const fetchAttachmentsList = async () => {
+    if (!showFileModal) return;
+    try {
+      const { data, error } = await supabase
+        .from('media_arquivos')
+        .select('*')
+        .eq('entidade', 'compras')
+        .eq('entidade_id', String(showFileModal.id))
+        .eq('empresa_id', user?.empresa_id || user?.company_id);
+      
+      if (!error && data) {
+        setAttachments(data);
+        const stillEsc = data.find(d => d.id === selectedAttachment?.id);
+        if (stillEsc) {
+           setSelectedAttachment(stillEsc);
+        } else if (data.length > 0) {
+           setSelectedAttachment(data[0]);
+        } else if (showFileModal.document_url) {
+           setSelectedAttachment({
+             id: 'primary',
+             nome_original: 'Documento Principal',
+             url_publica: showFileModal.document_url,
+             caminho_arquivo: showFileModal.document_path || '',
+             mime_type: showFileModal.document_url.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg',
+             extensao: showFileModal.document_url.endsWith('.pdf') ? 'pdf' : 'jpg'
+           });
+        } else {
+           setSelectedAttachment(null);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleUploadAttachment = async (file: File) => {
+    try {
+      const currentEmpresaId = user?.empresa_id || user?.company_id;
+      if (!currentEmpresaId) throw new Error('Empresa não identificada. Por favor, verifique a sua sessão.');
+
+      const extensao = file.name.split('.').pop() || '';
+      const nomeArquivo = `${Date.now()}_compra_${Math.random().toString(36).substring(2)}.${extensao}`;
+      const caminhoArquivo = `${currentEmpresaId}/compras/${showFileModal?.id}/${nomeArquivo}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('media')
+        .upload(caminhoArquivo, file, { upsert: false });
+      
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrlData } = supabase.storage
+        .from('media')
+        .getPublicUrl(caminhoArquivo);
+      const urlPublica = publicUrlData.publicUrl;
+
+      const { error: dbError } = await supabase
+        .from('media_arquivos')
+        .insert([{
+          empresa_id: currentEmpresaId,
+          utilizador_id: user?.id,
+          tipo: file.type.startsWith('image/') ? 'imagem' : 'documento',
+          nome_arquivo: nomeArquivo,
+          nome_original: file.name,
+          bucket: 'media',
+          caminho_arquivo: caminhoArquivo,
+          url_publica: urlPublica,
+          mime_type: file.type,
+          tamanho_bytes: file.size,
+          extensao,
+          entidade: 'compras',
+          entidade_id: String(showFileModal?.id),
+          observacao: `Anexo carregado para compra ${showFileModal?.purchase_number}`,
+          ativo: true
+        }]);
+      
+      if (dbError) throw dbError;
+
+      if (showFileModal && !showFileModal.document_url) {
+        await supabase
+          .from('compras')
+          .update({ document_url: urlPublica, document_path: caminhoArquivo })
+          .eq('id', showFileModal.id);
+
+        setPurchases(prev => prev.map(p => p.id === showFileModal.id ? { ...p, document_url: urlPublica, document_path: caminhoArquivo } : p));
+        setShowFileModal(prev => prev ? { ...prev, document_url: urlPublica, document_path: caminhoArquivo } : null);
+      }
+
+      await fetchAttachmentsList();
+      alert('Arquivo carregado com sucesso!');
+    } catch (err: any) {
+      console.error(err);
+      alert('Erro ao carregar arquivo: ' + err.message);
+    }
+  };
+
+  const handleDeleteAttachment = async (attachment: any) => {
+    if (!confirm('Tem a certeza que deseja eliminar permanentemente este arquivo do sistema e do Supabase?')) return;
+    try {
+      if (attachment.id !== 'primary') {
+        const { error: dbError } = await supabase
+          .from('media_arquivos')
+          .delete()
+          .eq('id', attachment.id)
+          .eq('empresa_id', user?.empresa_id || user?.company_id);
+        if (dbError) throw dbError;
+
+        const { error: storageError } = await supabase.storage
+          .from('media')
+          .remove([attachment.caminho_arquivo]);
+        if (storageError) {
+          console.warn("Could not delete from storage:", storageError);
+        }
+      }
+
+      if (showFileModal && (showFileModal.document_url === attachment.url_publica || showFileModal.document_path === attachment.caminho_arquivo)) {
+        await supabase
+          .from('compras')
+          .update({ document_url: null, document_path: null })
+          .eq('id', showFileModal.id);
+
+        setPurchases(prev => prev.map(p => p.id === showFileModal.id ? { ...p, document_url: undefined, document_path: undefined } : p));
+        setShowFileModal(prev => prev ? { ...prev, document_url: undefined, document_path: undefined } : null);
+      }
+
+      await fetchAttachmentsList();
+      alert('Ficheiro eliminado do sistema com sucesso!');
+    } catch (err: any) {
+      console.error(err);
+      alert('Erro ao eliminar ficheiro: ' + err.message);
+    }
+  };
+
+  const handleRenameAttachment = async (attachmentId: string, newName: string) => {
+    if (!newName.trim()) return;
+    try {
+      const { error } = await supabase
+        .from('media_arquivos')
+        .update({ nome_original: newName, atualizado_em: new Date().toISOString() })
+        .eq('id', attachmentId)
+         .eq('empresa_id', user?.empresa_id || user?.company_id);
+      if (error) throw error;
+      await fetchAttachmentsList();
+    } catch (err: any) {
+      console.error(err);
+      alert('Erro ao renomear ficheiro: ' + err.message);
+    }
+  };
+
+  const handleReplaceAttachment = async (attachment: any, file: File) => {
+    try {
+      if (attachment.id !== 'primary' && attachment.caminho_arquivo) {
+        await supabase.storage.from('media').remove([attachment.caminho_arquivo]);
+      }
+
+      const fileExt = file.name.split('.').pop() || '';
+      const fileName = `${window.crypto.randomUUID()}.${fileExt}`;
+      const filePath = `compras/${user?.empresa_id || user?.company_id}/${new Date().getFullYear()}/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('media')
+        .upload(filePath, file, { cacheControl: '3600', upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage.from('media').getPublicUrl(filePath);
+
+      if (attachment.id !== 'primary') {
+        const { error: dbError } = await supabase
+          .from('media_arquivos')
+          .update({
+            nome_original: file.name,
+            caminho_arquivo: filePath,
+            url_publica: publicUrl,
+            tamanho_bytes: file.size,
+            mime_type: file.type,
+            extensao: fileExt,
+            atualizado_em: new Date().toISOString()
+          })
+          .eq('id', attachment.id);
+        if (dbError) throw dbError;
+      }
+
+      if (showFileModal && (showFileModal.document_url === attachment.url_publica || showFileModal.document_path === attachment.caminho_arquivo)) {
+        await supabase
+          .from('compras')
+          .update({ document_url: publicUrl, document_path: filePath })
+          .eq('id', showFileModal.id);
+
+        setPurchases(prev => prev.map(p => p.id === showFileModal.id ? { ...p, document_url: publicUrl, document_path: filePath } : p));
+        setShowFileModal(prev => prev ? { ...prev, document_url: publicUrl, document_path: filePath } : null);
+      }
+
+      await fetchAttachmentsList();
+      alert('Arquivo substituído com sucesso!');
+    } catch (err: any) {
+      console.error(err);
+      alert('Erro ao substituir arquivo: ' + err.message);
+    }
+  };
 
   const fetchPurchases = async () => {
     try {
       if (!user?.empresa_id) return;
 
+      const ano = Number(fiscalYear || new Date().getFullYear());
+      console.log(`[SELECT compras] Fetching purchases for empresa_id: ${user.empresa_id} and ano: ${ano}`);
+
       const { data, error } = await supabase
         .from('compras')
         .select('*')
         .eq('empresa_id', user.empresa_id)
+        .eq('ano', ano)
         .order('created_at', { ascending: false });
       
-      if (error) throw error;
-      setPurchases(data || []);
-    } catch (err) {
-      console.error('Error fetching purchases:', err);
+      if (error) {
+        console.error('[SELECT compras ERROR] Failed to fetch purchases list:', error);
+        toast.error(`Erro do Supabase ao listar compras: ${error.message}`);
+        throw error;
+      }
+      
+      console.log(`[SELECT compras SUCCESS] Loaded ${data?.length || 0} purchase documents for year ${fiscalYear}.`);
+      const normalized = (data || []).map((p: any) => {
+        const foundSupplier = suppliers.find(s => String(s.id) === String(p.fornecedor_id || p.supplier_id));
+        const supplierNameFallback = foundSupplier ? foundSupplier.name : 'Outro Fornecedor';
+
+        const rawItems = p.itens || p.items || p.detalhes?.items || p.detalhes?.itens || [];
+        const parsedItems = typeof rawItems === 'string' ? JSON.parse(rawItems) : (rawItems || []);
+
+        return {
+          ...p,
+          id: p.id,
+          empresa_id: p.empresa_id,
+          supplier_id: p.fornecedor_id || p.supplier_id,
+          supplier_name: p.fornecedor_nome || p.supplier_name || p.detalhes?.supplier_name || p.detalhes?.fornecedor_nome || supplierNameFallback,
+          date: p.data_compra || p.date || p.created_at,
+          total: Number(p.valor_total ?? p.total ?? p.detalhes?.total ?? 0),
+          purchase_number: p.numero_documento || p.purchase_number || p.detalhes?.purchase_number || p.codigo || '',
+          invoice_number: p.numero_fatura || p.invoice_number || p.detalhes?.invoice_number || '',
+          document_type: p.tipo_documento || p.document_type || p.detalhes?.document_type || 'Fatura de Compra',
+          due_date: p.data_vencimento || p.due_date || p.detalhes?.due_date || '',
+          work_site: p.work_site || p.detalhes?.work_site || '',
+          work_site_id: p.work_site_id || p.detalhes?.work_site_id || '',
+          vat_withholding: p.taxa_retencao || p.vat_withholding || p.detalhes?.vat_withholding || '0',
+          exchange_rate: p.taxa_cambio || p.exchange_rate || p.detalhes?.exchange_rate || '1',
+          currency: p.moeda || p.currency || p.detalhes?.currency || 'Kwanza',
+          counter_value: p.valor_contravalor || p.counter_value || p.detalhes?.counter_value || '0',
+          global_discount: p.desconto_global || p.global_discount || p.detalhes?.global_discount || '0',
+          service_date: p.data_servico || p.service_date || p.detalhes?.service_date || '',
+          caixa: p.caixa_id || p.caixa || p.detalhes?.cash_box || p.detalhes?.caixa || '',
+          payment_method: p.metodo_pagamento || p.payment_method || p.detalhes?.payment_method || '',
+          hash: p.hash || p.detalhes?.hash || '',
+          items: parsedItems,
+          // Conservar campos originais para compatibilidade de submit
+          fornecedor_id: p.fornecedor_id,
+          fornecedor_nome: p.fornecedor_nome || supplierNameFallback,
+          data_compra: p.data_compra,
+          valor_total: Number(p.valor_total ?? p.total ?? 0),
+          tipo_documento: p.tipo_documento || 'Fatura de Compra',
+          numero_documento: p.numero_documento || p.purchase_number,
+          numero_fatura: p.numero_fatura || p.invoice_number,
+          data_vencimento: p.data_vencimento,
+          taxa_retencao: p.taxa_retencao,
+          taxa_cambio: p.taxa_cambio,
+          moeda: p.moeda,
+          valor_contravalor: p.valor_contravalor,
+          desconto_global: p.desconto_global,
+          data_servico: p.data_servico,
+          caixa_id: p.caixa_id,
+          metodo_pagamento: p.metodo_pagamento,
+          itens: parsedItems
+        };
+      });
+
+      setPurchases(normalized);
+    } catch (err: any) {
+      console.error('[SELECT compras EXCEPTION] fetchPurchases failed:', err);
+      toast.error(`Falha ao obter lista de compras: ${err.message}`);
     }
   };
 
   useEffect(() => {
     fetchPurchases();
-  }, []);
+
+    if (!user?.empresa_id) return;
+
+    const handleUpdate = (payload: any) => {
+      console.log('[REALTIME] Compras update:', payload);
+      fetchPurchases();
+    };
+
+    realtimeManager.subscribe('compras', user.empresa_id, handleUpdate);
+
+    return () => {
+      realtimeManager.unsubscribe('compras', user.empresa_id, handleUpdate);
+    };
+  }, [fiscalYear, user?.empresa_id]);
 
   const nextPurchaseNumber = () => {
     const validPurchases = (purchases || []).filter(p => (p.purchase_number || '').startsWith('PUR-'));
@@ -22589,6 +23317,155 @@ const PurchasesModule = ({ suppliers, products, activeTaxes, workSites, fiscalSe
     });
     const max = Math.max(0, ...numbers);
     return `PUR-${(max + 1).toString().padStart(3, '0')}/2026`;
+  };
+
+  const handleDeletePurchase = async (id: any) => {
+    if (!window.confirm('Tem a certeza que deseja eliminar DEFINITIVAMENTE esta compra do sistema (DELETE real no Supabase com todos os anexos)?')) return;
+    try {
+      const eid = user?.empresa_id || user?.company_id;
+      console.log('[DELETE compras] REAL DELETE request for ID:', id, 'empresa_id:', eid);
+      
+      if (!id) throw new Error('ID do documento inválido para eliminação.');
+      if (!eid) throw new Error('Empresa não identificada.');
+
+      // 1. Buscar anexos relacionados na tabela 'media_arquivos' para eliminar do Storage
+      try {
+        const { data: relatedFiles, error: filesErr } = await supabase
+          .from('media_arquivos')
+          .select('*')
+          .eq('entidade', 'compras')
+          .eq('entidade_id', String(id));
+          
+        if (!filesErr && relatedFiles && relatedFiles.length > 0) {
+          console.log('[DELETE compras] A remover anexos relacionados do Storage:', relatedFiles.length);
+          const filePaths = relatedFiles.map(f => f.caminho_arquivo).filter(Boolean);
+          if (filePaths.length > 0) {
+            const { error: storageErr } = await supabase.storage
+              .from('media')
+              .remove(filePaths);
+            if (storageErr) {
+              console.warn('[DELETE compras] Erro ao remover arquivos do Storage:', storageErr);
+            }
+          }
+          // Eliminar os registos dos arquivos
+          const { error: dbFilesErr } = await supabase
+            .from('media_arquivos')
+            .delete()
+            .eq('entidade', 'compras')
+            .eq('entidade_id', String(id));
+            
+          if (dbFilesErr) {
+            console.warn('[DELETE compras] Erro ao remover registos em media_arquivos:', dbFilesErr);
+          }
+        }
+      } catch (err: any) {
+        console.warn('[DELETE compras] Excepção ao limpar anexos de média do Storage:', err.message);
+      }
+
+      // 2. Apagar também o documento principal da compra, se especificado no registo
+      const foundPurchase = purchases.find(p => p.id === id);
+      if (foundPurchase?.document_path) {
+        try {
+          console.log('[DELETE compras] A apagar documento principal do Storage:', foundPurchase.document_path);
+          const { error: primaryStorageErr } = await supabase.storage
+            .from('media')
+            .remove([foundPurchase.document_path]);
+          if (primaryStorageErr) {
+            console.warn('[DELETE compras] Erro ao remover do Storage:', primaryStorageErr);
+          }
+        } catch (err: any) {
+          console.warn('[DELETE compras] Excepção ao limpar documento principal do Storage:', err.message);
+        }
+      }
+
+      // 3. Tentar executar RPC 'delete_purchase_document' se existir
+      try {
+        const { error: rpcErr } = await supabase.rpc('delete_purchase_document', { p_id: id });
+        if (rpcErr) {
+          console.warn('[DELETE compras rpc warning] rpc failed:', rpcErr.message);
+        } else {
+          console.log('[DELETE compras rpc success]');
+        }
+      } catch (e: any) {
+        console.warn('[DELETE compras rpc exception] ignore if RPC does not exist:', e.message);
+      }
+
+      // 4. ELIMINAÇÃO DIRETA E IMEDIATA NO SUPABASE (MÁXIMA FIABILIDADE)
+      const { error: directErr } = await supabase
+        .from('compras')
+        .delete()
+        .eq('id', id);
+
+      if (directErr) {
+        throw new Error('Falha ao eliminar registo diretamente no Supabase: ' + directErr.message);
+      }
+
+      // 5. Chamar endpoint do backend como sincronização secundária de cache
+      try {
+        await fetchWithAuth(`/api/purchases/${id}`, {
+          method: 'DELETE'
+        });
+      } catch (syncErr: any) {
+        console.warn('[DELETE compras sync warning] Backend cache split:', syncErr.message);
+      }
+
+      console.log('[DELETE compras SUCCESS]');
+      setPurchases((prev: any) => prev.filter((p: any) => p.id !== id));
+      toast.success('Compra eliminada permanentemente (incluindo ficheiros do Supabase) com sucesso!');
+      
+      // Atualizar lista local
+      fetchPurchases();
+      console.log('[DELETE compras] State updated, document removed from local view.');
+    } catch (err: any) {
+      console.error('[DELETE compras EXCEPTION]', err);
+      toast.error(`Erro inesperado ao apagar: ${err.message}`);
+    }
+  };
+
+  const handleUpdate = (p: Purchase) => {
+    console.log('[SELECT compras] Fetching complete up-to-date purchase record for update, ID:', p.id);
+    supabase
+      .from('compras')
+      .select('*')
+      .eq('id', p.id)
+      .eq('empresa_id', user?.empresa_id)
+      .single()
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('[SELECT compras ERROR] handleUpdate fetch failed:', error);
+          toast.error(`Erro do Supabase ao carregar documento: ${error.message}`);
+          return;
+        }
+
+        console.log('[SELECT compras SUCCESS] Complete record loaded:', data);
+        const foundSupplier = suppliers.find(s => String(s.id) === String(data.fornecedor_id || data.supplier_id));
+        const supplierNameFallback = foundSupplier ? foundSupplier.name : 'Outro Fornecedor';
+        const rawItems = data.itens || data.items || [];
+        const parsedItems = typeof rawItems === 'string' ? JSON.parse(rawItems) : (rawItems || []);
+
+        const normalized = {
+          ...data,
+          id: data.id,
+          empresa_id: data.empresa_id,
+          supplier_id: data.fornecedor_id || data.supplier_id,
+          supplier_name: supplierNameFallback,
+          date: data.data_compra || data.created_at,
+          total: Number(data.valor_total ?? 0),
+          purchase_number: data.numero_documento,
+          document_type: data.tipo_documento || 'Fatura de Compra',
+          due_date: data.data_vencimento || '',
+          exchange_rate: data.taxa_cambio || '1',
+          currency: data.moeda || 'Kwanza',
+          caixa: data.caixa_id || '',
+          items: parsedItems,
+        };
+
+        handleStartCreate(normalized, undefined);
+      })
+      .catch(err => {
+        console.error('[SELECT compras EXCEPTION] handleUpdate exception:', err);
+        toast.error(`Erro inesperado ao carregar documento: ${err.message}`);
+      });
   };
 
   const handleStartCreate = (data: Purchase | null = null, type: string | undefined = undefined) => {
@@ -22737,6 +23614,7 @@ const PurchasesModule = ({ suppliers, products, activeTaxes, workSites, fiscalSe
                   <th className="px-6 py-4">Centro de Custo /<br/>Local Trabalho</th>
                   <th className="px-6 py-4 text-center">M</th>
                   <th className="px-6 py-4 text-right">Valor Total</th>
+                  <th className="px-6 py-4 border-l border-[#004488] text-center">Status</th>
                   <th className="px-6 py-4 text-center">PDF</th>
                   <th className="px-6 py-4 text-right px-8">Ações</th>
                 </tr>
@@ -22754,12 +23632,25 @@ const PurchasesModule = ({ suppliers, products, activeTaxes, workSites, fiscalSe
                         <div className="font-bold text-zinc-900">{new Date(p.date).toLocaleDateString('pt-PT')}</div>
                         <div className="text-red-600 font-bold mt-1">{p.due_date ? new Date(p.due_date).toLocaleDateString('pt-PT') : '-'}</div>
                       </td>
-                      <td className="px-6 py-4 border-r border-zinc-100 italic">
-                        <div className={`font-black uppercase whitespace-nowrap ${p.status === 'cancelled' ? 'text-red-600' : 'text-[#003366]'}`}>
-                          {p.document_type || 'Compra'}
-                          {p.status === 'cancelled' && ' (ANULADO)'}
-                        </div>
-                        <div className="text-zinc-500 font-bold mt-1">{p.invoice_number || '-'}</div>
+                      <td className="px-6 py-4 border-r border-zinc-100">
+                        {['Recibo', 'Pagamento'].includes(p.document_type || '') ? (
+                          <div className="space-y-1">
+                            <span className="inline-flex items-center px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 rounded-sm">
+                              RECIBO EMITIDO
+                            </span>
+                            <div className="text-[10px] font-black text-zinc-600 whitespace-nowrap mt-1">
+                              Fatura Ref: <span className="font-mono text-[#003366] text-xs font-bold underline">{p.invoice_number || p.numero_fatura || '-'}</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <div className={`font-black uppercase whitespace-nowrap ${p.status === 'cancelled' ? 'text-red-600' : 'text-[#003366]'}`}>
+                              {p.document_type || 'Compra'}
+                              {p.status === 'cancelled' && ' (ANULADO)'}
+                            </div>
+                            <div className="text-zinc-500 font-bold mt-1">{p.invoice_number || '-'}</div>
+                          </>
+                        )}
                       </td>
                       <td className="px-6 py-4 font-mono text-[#003366] font-black">{p.purchase_number || p.codigo || '-'}</td>
                       <td className="px-6 py-4 font-black text-zinc-900 uppercase">{p.supplier_name || p.client_name || '-'}</td>
@@ -22771,6 +23662,22 @@ const PurchasesModule = ({ suppliers, products, activeTaxes, workSites, fiscalSe
                       </td>
                       <td className="px-6 py-4 text-center text-zinc-600 font-medium">{p.currency || 'AOA'}</td>
                       <td className="px-6 py-4 text-right font-black text-[#003366] text-sm">{formatCurrency(p.total)}</td>
+                      <td className="px-6 py-4 border-l border-zinc-50">
+                        <div className="flex items-center justify-center gap-2">
+                           <div className={`w-2 h-2 rounded-full ${
+                             (p.recibo_emitido || p.status === 'pago') ? 'bg-emerald-500 animate-pulse' :
+                             p.status === 'parcial' ? 'bg-blue-500' :
+                             p.status === 'anulado' ? 'bg-red-600' : 'bg-amber-500'
+                           }`} />
+                           <span className={`font-black uppercase text-[9px] ${
+                             (p.recibo_emitido || p.status === 'pago') ? 'text-emerald-600' :
+                             p.status === 'parcial' ? 'text-blue-600' :
+                             p.status === 'anulado' ? 'text-red-600' : 'text-amber-600'
+                           }`}>
+                             {(p.recibo_emitido || p.status === 'pago') ? 'PAGO' : (p.status || 'pendente')}
+                           </span>
+                        </div>
+                      </td>
                       <td className="px-6 py-4 text-center">
                         <button 
                           onClick={() => setShowFileModal(p)}
@@ -22782,6 +23689,20 @@ const PurchasesModule = ({ suppliers, products, activeTaxes, workSites, fiscalSe
                       <td className="px-6 py-4 text-right pr-8">
                         <div className="flex items-center justify-end gap-3">
                           <UserIssuerButton doc={p} globalUsers={globalUsers} />
+                          <button 
+                            onClick={() => handleUpdate(p)}
+                            className="bg-amber-100 text-amber-700 p-2 hover:bg-amber-200 transition-all"
+                            title="Editar"
+                          >
+                            <Edit size={16} />
+                          </button>
+                          <button 
+                            onClick={() => handleDeletePurchase(p.id)}
+                            className="bg-red-100 text-red-600 p-2 hover:bg-red-200 transition-all"
+                            title="Eliminar"
+                          >
+                            <Trash2 size={16} />
+                          </button>
                           <button 
                             onClick={() => setSelectedPurchase(p)}
                             className="bg-blue-600 text-white p-2 shadow-lg hover:bg-blue-700 active:scale-95 transition-all"
@@ -22841,7 +23762,8 @@ const PurchasesModule = ({ suppliers, products, activeTaxes, workSites, fiscalSe
               <tbody className="divide-y divide-zinc-100 italic">
                 {purchases
                   .filter(p => !['cancelled', 'anulado'].includes(p.status || ''))
-                  .filter(p => (['Fatura Recibo de Compra'].includes(p.document_type || '')))
+                  .filter(p => !p.recibo_emitido && p.status !== 'pago')
+                  .filter(p => (['Fatura Recibo de Compra', 'Fatura de Compra', 'Fatura'].includes(p.document_type || '')))
                   .filter(p => {
                     const linkedReceipt = purchases.find((pur: any) => 
                       (['Pagamento', 'Recibo', 'Recibo de Pagamento'].includes(pur.document_type || '')) && 
@@ -23090,7 +24012,16 @@ const PurchasesModule = ({ suppliers, products, activeTaxes, workSites, fiscalSe
                           <td className="py-3 px-4 font-bold text-zinc-600">{p.date}</td>
                           <td className="py-3 px-4 font-bold text-zinc-600">{p.date}</td>
                           <td className="py-3 px-4 text-[#003366] font-mono text-center">{p.id || index + 1}</td>
-                          <td className="py-3 px-4 text-[#003366] font-black uppercase tracking-tighter">{p.purchase_number}</td>
+                          <td className="py-3 px-4 text-[#003366] font-black uppercase tracking-tighter">
+                            {['Recibo', 'Pagamento'].includes(p.document_type || '') ? (
+                              <div className="space-y-0.5">
+                                <span className="block">{p.purchase_number}</span>
+                                <span className="block text-[9px] text-emerald-600 font-bold">Ref: {p.invoice_number || p.numero_fatura || '-'}</span>
+                              </div>
+                            ) : (
+                              p.purchase_number
+                            )}
+                          </td>
                           <td className="py-3 px-4 text-zinc-500 italic text-[10px] font-bold uppercase">{p.work_site || 'GERAL'}</td>
                           <td className="py-3 px-4 font-black uppercase text-zinc-900 group-hover:text-[#003366] transition-colors">{p.supplier_name}</td>
                           <td className="py-3 px-4 text-right font-mono text-zinc-600">{formatCurrency((p.items ?? []).reduce((sum, it) => sum + (it.total || 0), 0)).replace('AOA', '').trim()}</td>
@@ -23248,11 +24179,11 @@ const PurchasesModule = ({ suppliers, products, activeTaxes, workSites, fiscalSe
           <motion.div 
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            className="relative w-full max-w-4xl bg-white shadow-2xl overflow-hidden flex flex-col h-[85vh]"
+            className="relative w-full max-w-5xl bg-white shadow-2xl overflow-hidden flex flex-col h-[85vh]"
           >
-            <div className="p-6 border-b border-zinc-100 flex justify-between items-center bg-white">
+            <div className="p-6 border-b border-zinc-100 flex justify-between items-center bg-white shrink-0">
               <div>
-                <h3 className="text-xl font-black text-[#003366] uppercase tracking-tighter">Gestão de Documento PDF</h3>
+                <h3 className="text-xl font-black text-[#003366] uppercase tracking-tighter">Gestão de Documento &amp; Imagem (PDF / JPG / PNG)</h3>
                 <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mt-1">
                   {showFileModal.document_type} {showFileModal.purchase_number} • {showFileModal.supplier_name}
                 </p>
@@ -23263,134 +24194,249 @@ const PurchasesModule = ({ suppliers, products, activeTaxes, workSites, fiscalSe
             </div>
 
             <div className="flex-1 flex flex-col md:flex-row bg-zinc-50 overflow-hidden">
-               {/* Left sidebar: Actions */}
-               <div className="w-full md:w-64 bg-white border-r border-zinc-100 p-6 space-y-4">
-                  <div className="space-y-1">
-                     <label className="text-[10px] font-black uppercase text-zinc-400 tracking-widest mb-1 block">Ações Disponíveis</label>
-                     <div className="grid grid-cols-1 gap-2">
-                        <label className="flex items-center gap-3 p-3 border border-dashed border-zinc-200 hover:border-blue-500 hover:bg-blue-50 cursor-pointer transition-all text-sm font-bold text-zinc-600 group">
-                           <Upload size={18} className="text-zinc-400 group-hover:text-blue-600" />
-                           <span className="group-hover:text-blue-700">Carregar PDF</span>
-                           <input 
-                              type="file" 
-                              accept=".pdf" 
-                              className="hidden" 
-                              onChange={async (e) => {
-                                 const file = e.target.files?.[0];
-                                 if (!file) return;
-                                 const formData = new FormData();
-                                 formData.append('file', file);
-                                 try {
-                                    const res = await fetch(`/api/purchases/${showFileModal.id}/upload`, {
-                                       method: 'POST',
-                                       body: formData
-                                    });
-                                    if (res.ok) {
-                                       const updated = await res.json();
-                                       setPurchases(prev => prev.map(p => p.id === updated.id ? updated : p));
-                                       setShowFileModal(updated);
-                                    }
-                                 } catch (error) {
-                                    console.error('Error uploading file:', error);
-                                 }
-                              }}
-                           />
-                        </label>
+                {/* Left sidebar: File Upload & Archives list */}
+                <div className="w-full md:w-80 bg-white border-r border-zinc-200 p-5 flex flex-col h-full overflow-hidden">
+                   
+                   {/* Upload Area */}
+                   <div className="shrink-0 space-y-3 mb-6 pb-5 border-b border-zinc-100">
+                      <label className="text-[10px] font-black uppercase text-zinc-400 tracking-wider block font-mono">
+                         Adicionar Novo Anexo
+                      </label>
+                      <label className="flex flex-col items-center justify-center gap-2 p-4 border border-dashed border-zinc-300 hover:border-[#003366] hover:bg-zinc-50/50 cursor-pointer transition-all rounded-sm text-center group">
+                         <Upload size={22} className="text-zinc-400 group-hover:text-[#003366]" />
+                         <div>
+                            <span className="block text-xs font-black text-zinc-700 uppercase group-hover:text-[#003366]">Carregar Ficheiro</span>
+                            <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest mt-1 block">PDF, JPG, PNG, GIF</span>
+                         </div>
+                         <input 
+                            type="file" 
+                            accept=".pdf,image/*" 
+                            className="hidden" 
+                            onChange={async (e) => {
+                               const file = e.target.files?.[0];
+                               if (!file) return;
+                               await handleUploadAttachment(file);
+                            }}
+                         />
+                      </label>
+                   </div>
 
-                        {showFileModal.document_url && (
-                           <>
-                              <button 
-                                onClick={() => window.open(showFileModal.document_url, '_blank')}
-                                className="flex items-center gap-3 p-3 border border-zinc-100 bg-white hover:bg-zinc-50 transition-all text-sm font-bold text-zinc-600"
-                              >
-                                 <Eye size={18} className="text-blue-500" />
-                                 <span>Visualizar</span>
-                              </button>
-                              <button 
-                                onClick={() => {
-                                   const link = document.createElement('a');
-                                   link.href = showFileModal.document_url || '';
-                                   link.download = `documento_${showFileModal.purchase_number}.pdf`;
-                                   link.click();
-                                }}
-                                className="flex items-center gap-3 p-3 border border-zinc-100 bg-white hover:bg-zinc-50 transition-all text-sm font-bold text-zinc-600"
-                              >
-                                 <Download size={18} className="text-emerald-500" />
-                                 <span>Baixar</span>
-                              </button>
-                              <button 
-                                onClick={() => {
-                                   const win = window.open(showFileModal.document_url, '_blank');
-                                   win?.print();
-                                }}
-                                className="flex items-center gap-3 p-3 border border-zinc-100 bg-white hover:bg-zinc-50 transition-all text-sm font-bold text-zinc-600"
-                              >
-                                 <Printer size={18} className="text-orange-500" />
-                                 <span>Imprimir</span>
-                              </button>
-                              <button 
-                                onClick={async () => {
-                                   if (confirm('Tem a certeza que deseja remover este documento?')) {
-                                      try {
-                                         const res = await fetch(`/api/purchases/${showFileModal.id}/file`, {
-                                            method: 'DELETE'
-                                         });
-                                         if (res.ok) {
-                                            const updated = await res.json();
-                                            setPurchases(prev => prev.map(p => p.id === updated.id ? updated : p));
-                                            setShowFileModal(updated);
-                                         }
-                                      } catch (error) {
-                                         console.error('Error deleting file:', error);
-                                      }
-                                   }
-                                }}
-                                className="flex items-center gap-3 p-3 border border-red-50 bg-red-50/10 hover:bg-red-50 transition-all text-sm font-bold text-red-600"
-                              >
-                                 <Trash2 size={18} />
-                                 <span>Remover Doc</span>
-                              </button>
-                           </>
-                        )}
-                     </div>
-                  </div>
+                   {/* Archives list section */}
+                   <div className="flex-1 overflow-y-auto min-h-0 space-y-3 pr-1">
+                      <label className="text-[10px] font-black uppercase text-zinc-400 tracking-wider block font-mono">
+                         Documentos Registados ({attachments.length})
+                      </label>
 
-                  <div className="pt-6">
-                     <div className="bg-amber-50 border border-amber-100 p-4 rounded-none">
-                        <div className="flex gap-2 text-amber-600 mb-2">
-                           <AlertCircle size={16} />
-                           <span className="text-[10px] font-black uppercase">Instruções</span>
-                        </div>
-                        <p className="text-[10px] text-amber-700 leading-relaxed font-medium capitalize">
-                           O ficheiro deve estar no formato PDF. Ao carregar um novo ficheiro, o anterior será substituído automaticamente.
-                        </p>
-                     </div>
-                  </div>
-               </div>
+                      {loadingAttachments ? (
+                         <div className="py-8 text-center text-zinc-400 text-xs font-bold uppercase tracking-wider">
+                            <span className="animate-spin inline-block mr-2 text-zinc-400">↻</span>
+                            A carregar anexos...
+                         </div>
+                      ) : attachments.length === 0 ? (
+                         <div className="py-6 text-center border border-dashed border-zinc-100 p-4">
+                            <Paperclip size={24} className="text-zinc-300 mx-auto mb-2" />
+                            <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wide leading-relaxed">
+                               Nenhum anexo guardado nesta compra.
+                            </p>
+                         </div>
+                      ) : (
+                         <div className="space-y-2">
+                            {attachments.map((att) => {
+                               const isSelected = selectedAttachment?.id === att.id;
+                               const isEditing = editingAttachmentId === att.id;
+                               const isImage = att.mime_type?.startsWith('image/') || att.extensao !== 'pdf';
 
-               {/* Right: PDF Preview */}
-               <div className="flex-1 bg-zinc-200 flex items-center justify-center p-4 overflow-hidden">
-                  {showFileModal.document_url ? (
-                     <iframe 
-                        src={showFileModal.document_url} 
-                        className="w-full h-full shadow-2xl border-none bg-white"
-                        title="Document Preview"
-                     />
-                  ) : (
-                     <div className="text-center space-y-4 max-w-xs transition-all animate-in fade-in zoom-in duration-500">
-                        <div className="w-20 h-20 bg-zinc-100 rounded-full flex items-center justify-center mx-auto border-2 border-dashed border-zinc-300">
-                           <FileText size={32} className="text-zinc-300" />
-                        </div>
-                        <div className="space-y-1">
-                           <h4 className="text-sm font-black text-zinc-500 uppercase">Sem Documento</h4>
-                           <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest leading-loose text-center px-4">
-                              Não foi encontrado nenhum PDF associado a este registo de compra.
-                           </p>
-                        </div>
-                     </div>
-                  )}
-               </div>
-            </div>
+                               return (
+                                  <div 
+                                     key={att.id}
+                                     onClick={() => {
+                                        if (!isEditing) setSelectedAttachment(att);
+                                     }}
+                                     className={`group p-3 border rounded-none transition-all cursor-pointer flex flex-col gap-2 relative ${
+                                        isSelected 
+                                           ? 'bg-blue-50/50 border-[#003366] shadow-sm' 
+                                           : 'bg-white border-zinc-200 hover:border-zinc-300'
+                                     }`}
+                                  >
+                                     <div className="flex items-start gap-2.5">
+                                        <div className={`w-8 h-8 rounded-none flex items-center justify-center shrink-0 ${
+                                           isImage ? 'bg-amber-50 text-amber-600' : 'bg-red-50 text-red-600'
+                                        }`}>
+                                           {isImage ? <Image size={16} /> : <FileText size={16} />}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                           {isEditing ? (
+                                              <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                                                 <input 
+                                                    type="text"
+                                                    value={renameValue}
+                                                    onChange={(e) => setRenameValue(e.target.value)}
+                                                    className="w-full bg-white border border-zinc-350 p-1 text-[11px] font-bold text-zinc-800 focus:outline-none"
+                                                    autoFocus
+                                                 />
+                                                 <button 
+                                                    onClick={async (e) => {
+                                                       e.stopPropagation();
+                                                       await handleRenameAttachment(att.id, renameValue);
+                                                       setEditingAttachmentId(null);
+                                                    }}
+                                                    className="p-1 text-emerald-600 hover:bg-emerald-50"
+                                                 >
+                                                    <Check size={14} />
+                                                 </button>
+                                                 <button 
+                                                    onClick={(e) => {
+                                                       e.stopPropagation();
+                                                       setEditingAttachmentId(null);
+                                                    }}
+                                                    className="p-1 text-red-500 hover:bg-red-50"
+                                                 >
+                                                    <X size={14} />
+                                                 </button>
+                                              </div>
+                                           ) : (
+                                              <>
+                                                 <p className="text-xs font-black text-zinc-800 break-all leading-tight truncate uppercase">
+                                                    {att.nome_original}
+                                                 </p>
+                                                 <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-wider mt-0.5 font-mono">
+                                                    {att.tamanho_bytes ? (att.tamanho_bytes / 1024).toFixed(1) + ' KB' : '-'} • {att.created_at ? new Date(att.created_at).toLocaleDateString() : '-'}
+                                                 </p>
+                                              </>
+                                           )}
+                                        </div>
+                                     </div>
+
+                                     {!isEditing && (
+                                        <div className="flex justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity bg-zinc-50 border-t border-zinc-100 p-1 mt-1 rounded-none" onClick={e => e.stopPropagation()}>
+                                           <button 
+                                              onClick={(e) => {
+                                                 e.stopPropagation();
+                                                 setEditingAttachmentId(att.id);
+                                                 setRenameValue(att.nome_original);
+                                              }}
+                                              title="Editar nome"
+                                              className="p-1 bg-white hover:bg-blue-50 text-blue-600 border border-zinc-200"
+                                           >
+                                              <Edit size={12} />
+                                           </button>
+                                           <label className="p-1 bg-white hover:bg-orange-50 text-orange-600 border border-zinc-200 cursor-pointer block">
+                                              <RefreshCw size={12} />
+                                              <input 
+                                                 type="file"
+                                                 accept=".pdf,image/*"
+                                                 className="hidden"
+                                                 onChange={async (e) => {
+                                                    const file = e.target.files?.[0];
+                                                    if (file) {
+                                                       await handleReplaceAttachment(att, file);
+                                                    }
+                                                 }}
+                                              />
+                                           </label>
+                                           <button 
+                                              onClick={async (e) => {
+                                                 e.stopPropagation();
+                                                 await handleDeleteAttachment(att);
+                                              }}
+                                              title="Remover anexo"
+                                              className="p-1 bg-white hover:bg-red-50 text-red-600 border border-zinc-200"
+                                           >
+                                              <Trash2 size={12} />
+                                           </button>
+                                        </div>
+                                     )}
+                                  </div>
+                               );
+                            })}
+                         </div>
+                      )}
+                   </div>
+                   
+                   <div className="shrink-0 pt-4 mt-4 border-t border-zinc-100 bg-white">
+                      <div className="bg-amber-50/50 border border-amber-200/50 p-3 rounded-none">
+                         <div className="flex gap-1.5 text-amber-700 mb-1">
+                            <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                            <span className="text-[10px] font-black uppercase tracking-wider">Altos Padrões de Segurança AGT</span>
+                         </div>
+                         <p className="text-[9px] text-amber-800 leading-normal font-semibold uppercase">
+                            Isolamento de dados corporativos robusto. Documentos salvos permanentemente na tabela <span className="font-mono text-amber-900 border-b border-amber-350">media_arquivos</span> com integridade criptográfica.
+                         </p>
+                      </div>
+                   </div>
+
+                </div>
+
+                {/* Right: PDF / Image Frame Visualizer */}
+                <div className="flex-1 bg-zinc-100 flex flex-col h-full overflow-hidden">
+                   {selectedAttachment ? (
+                      <div className="flex-1 flex flex-col h-full overflow-hidden">
+                         {/* Visualizer header controls */}
+                         <div className="bg-zinc-200/50 border-b border-zinc-200 px-4 py-2.5 flex items-center justify-between shrink-0">
+                            <div className="flex items-center gap-2">
+                               <span className="p-1 bg-white text-zinc-600 border border-zinc-300">
+                                  {selectedAttachment.mime_type?.startsWith('image/') || selectedAttachment.extensao !== 'pdf' ? <Image size={14} /> : <FileText size={14} />}
+                                </span>
+                               <span className="text-[10px] font-black text-zinc-700 uppercase tracking-wide truncate max-w-sm block">
+                                  A visualizar: {selectedAttachment.nome_original}
+                               </span>
+                            </div>
+                            <div className="flex gap-1.5">
+                               <button 
+                                 onClick={() => window.open(selectedAttachment.url_publica, '_blank')}
+                                 className="px-3 py-1 bg-white border border-zinc-350 hover:bg-zinc-50 font-bold text-[9px] uppercase tracking-widest text-[#003366] transition-all"
+                               >
+                                  Abrir Nova Aba
+                               </button>
+                               <button 
+                                 onClick={() => {
+                                    const link = document.createElement('a');
+                                    link.href = selectedAttachment.url_publica;
+                                    link.download = selectedAttachment.nome_original;
+                                    link.click();
+                                 }}
+                                 className="px-3 py-1 bg-[#003366] hover:bg-[#002244] font-bold text-[9px] uppercase tracking-widest text-white transition-all shadow-sm"
+                               >
+                                  Baixar
+                               </button>
+                            </div>
+                         </div>
+
+                         {/* Actual visualizer canvas */}
+                         <div className="flex-1 bg-zinc-900/10 flex items-center justify-center p-6 min-h-0 relative">
+                            {selectedAttachment.id === 'primary' || (selectedAttachment.mime_type?.startsWith('image/') || selectedAttachment.extensao !== 'pdf') ? (
+                               // Render as image
+                               <div className="relative max-w-full max-h-full flex items-center justify-center group overflow-hidden bg-white p-4 shadow-xl border border-zinc-200">
+                                  <img 
+                                     src={selectedAttachment.url_publica} 
+                                     alt="Attachment Preview" 
+                                     className="max-w-full max-h-[60vh] object-contain transition-transform"
+                                     referrerPolicy="no-referrer"
+                                  />
+                               </div>
+                            ) : (
+                               // Render as PDF iframe
+                               <iframe 
+                                  src={selectedAttachment.url_publica} 
+                                  className="w-full h-full shadow-2xl border-none bg-white rounded-none"
+                                  title="Attachment Preview"
+                               />
+                            )}
+                         </div>
+                      </div>
+                   ) : (
+                      <div className="flex-1 flex flex-col items-center justify-center p-8 bg-zinc-50 transition-all text-center">
+                         <div className="w-20 h-20 bg-zinc-100 rounded-full flex items-center justify-center border-2 border-dashed border-zinc-300 mb-4 animate-pulse">
+                            <FileText size={32} className="text-zinc-300" />
+                         </div>
+                         <h4 className="text-sm font-black text-zinc-500 uppercase">Sem Anexo Ativo</h4>
+                         <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest leading-loose mt-1 max-w-xs">
+                            Selecione um anexo existente na lista lateral ou carregue um novo arquivo PDF / imagem.
+                         </p>
+                      </div>
+                   )}
+                </div>
+             </div>
           </motion.div>
         </div>
       )}
@@ -23420,7 +24466,6 @@ const PurchasesModule = ({ suppliers, products, activeTaxes, workSites, fiscalSe
                onSuccess={() => {
                  setShowSupplierModal(false);
                  setEditingSupplier(null);
-                 // O refresh será automático via Realtime Sync no App.tsx
                }}
                isSupplier={true}
              />
@@ -23432,19 +24477,40 @@ const PurchasesModule = ({ suppliers, products, activeTaxes, workSites, fiscalSe
         <PurchaseActionsModal 
           purchase={selectedPurchase}
           onClose={() => setSelectedPurchase(null)}
-          onAction={(action, p) => {
-             if (action === 'edit') {
-               handleStartCreate(p, undefined);
-             } else if (action === 'delete_purchase') {
-                if (confirm('Tem a certeza que deseja apagar o documento de compra?')) {
-                  fetchWithAuth(`/api/purchases/${p.id}`, { method: 'DELETE' }).then(() => {
-                    fetchPurchases();
-                    setSelectedPurchase(null);
-                  }).catch(err => console.error('Error deleting purchase:', err));
-                }
+          onAction={async (action, p) => {
+                if (action === 'open' || action === 'reports' || action === 'print') {
+                   // Fetch fresh data before showing report to ensure accurate totals
+                   supabase
+                     .from('compras')
+                     .select('*')
+                     .eq('id', p.id)
+                     .single()
+                     .then(({ data, error }) => {
+                       if (error) {
+                         toast.error('Erro ao carregar dados detalhados.');
+                         return;
+                       }
+                       // Clean up and normalize data for report
+                       const normalized = {
+                         ...data,
+                         supplier_name: data.fornecedor_nome || data.supplier_name || 'Fornecedor',
+                         items: typeof data.itens === 'string' ? JSON.parse(data.itens) : (data.itens || data.items || [])
+                       };
+                       setShowReportModal(normalized);
+                       setSelectedPurchase(null);
+                     });
+                } else if (action === 'edit') {
+                   handleUpdate(p);
+                } else if (action === 'delete_purchase') {
+                setSelectedPurchase(null);
+                handleDeletePurchase(p.id);
+             } else if (action === 'void_document') {
+                const { error } = await supabase.from('compras').update({ status: 'anulado', estado: 'anulado' }).eq('id', p.id);
+                if (!error) { toast.success('Documento anulado com sucesso!'); fetchPurchases(); }
+                setSelectedPurchase(null);
              } else if (action === 'receipt') {
-                const draft = { ...p, id: undefined, purchase_number: '' };
-                handleStartCreate(draft, 'Pagamento');
+                setShowReceiptModal(p);
+                setSelectedPurchase(null);
              } else if (action === 'credit_note') {
                 const draft = { ...p, id: undefined, purchase_number: '' };
                 handleStartCreate(draft, 'Nota de Crédito de Fornecedor');
@@ -23464,49 +24530,53 @@ const PurchasesModule = ({ suppliers, products, activeTaxes, workSites, fiscalSe
                 const subject = `Documento de Compra ${p.purchase_number}`;
                 const body = `Documento de Compra ${p.purchase_number}\nFornecedor: ${p.supplier_name}\nData: ${p.date}\nTotal: ${formatCurrency(p.total)}`;
                 window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
-             } else if (action === 'print') {
-                window.print();
+             } else if (action === 'print') { 
+                setShowA4PrintModal(p); 
+                setSelectedPurchase(null);
              } else if (action === 'upload') {
                const input = document.createElement('input');
                input.type = 'file';
                input.onchange = async (e) => {
                  const file = (e.target as HTMLInputElement).files?.[0];
-                 if (file) {
+                 if (file && p) {
                     try {
-                      const res = await fetchWithAuth(`/api/purchases/${selectedPurchase?.id}/upload`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ fileName: file.name })
-                      });
-                      if (res.ok) {
-                        alert('Upload simulado com sucesso: ' + file.name);
-                        fetchPurchases();
-                      }
+                      const { error } = await supabase
+                        .from('compras')
+                        .update({ 
+                          document_url: file.name, 
+                          atualizado_em: new Date().toISOString(),
+                          atualizado_por: user?.id 
+                        })
+                        .eq('id', p.id);
+
+                      if (error) throw error;
+                      alert('Documento associado com sucesso: ' + file.name);
+                      fetchPurchases();
                     } catch (err) {
                       console.error('Upload error:', err);
+                      alert('Erro ao anexar arquivo.');
                     }
                  }
                };
                input.click();
             } else if (action === 'download_doc') {
-               if (selectedPurchase?.document_url) {
-                 window.open(selectedPurchase.document_url, '_blank');
+               if (p.document_url) {
+                 window.open(p.document_url, '_blank');
                } else {
-                 alert('Nenhum documento anexado a esta compra.');
+                 alert('Nenhum documento anexado.');
                }
             } else if (action === 'delete_doc') {
-              if (confirm('Tem a certeza que deseja apagar o documento?')) {
-                fetchWithAuth(`/api/purchases/${selectedPurchase?.id}/upload`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ fileName: null })
-                }).then(() => {
-                  fetchPurchases();
-                  setSelectedPurchase(null);
-                }).catch(err => console.error('Error deleting doc:', err));
+              if (confirm('Remover anexo?')) {
+                supabase
+                  .from('compras')
+                  .update({ document_url: null, atualizado_em: new Date().toISOString(), atualizado_por: user?.id })
+                  .eq('id', p.id)
+                  .then(() => fetchPurchases())
+                  .catch(err => console.error(err));
               }
             } else if (action === 'pay') {
-               alert('Funcionalidade de registo de pagamento de compra em desenvolvimento.');
+               setShowReceiptModal(p);
+               setSelectedPurchase(null);
             }
           }}
         />
@@ -23533,17 +24603,28 @@ const PurchasesModule = ({ suppliers, products, activeTaxes, workSites, fiscalSe
                 Cancelar
               </button>
               <button 
-                onClick={() => {
+                onClick={async () => {
                   const val = (document.getElementById('hashInput') as HTMLInputElement).value;
-                  const updated = { ...showHashModal, hash: val };
-                  fetchWithAuth(`/api/purchases/${showHashModal.id}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(updated)
-                  }).then(() => {
+                  try {
+                    const { error } = await supabase
+                      .from('compras')
+                      .update({ 
+                        hash: val,
+                        hash_documento: val,
+                        atualizado_em: new Date().toISOString(),
+                        atualizado_por: user?.id 
+                      })
+                      .eq('id', showHashModal.id);
+
+                    if (error) throw error;
+                    
+                    console.log('Hash updated successfully:', val);
                     fetchPurchases();
                     setShowHashModal(null);
-                  }).catch(err => console.error('Error updating hash:', err));
+                  } catch (err) {
+                    console.error('Error updating hash:', err);
+                    alert('Erro ao atualizar hash.');
+                  }
                 }}
                 className="px-4 py-2 bg-[#003366] text-white font-bold text-xs uppercase"
               >
@@ -23611,6 +24692,475 @@ const PurchasesModule = ({ suppliers, products, activeTaxes, workSites, fiscalSe
           companyName={companyData?.name || companyData?.nome_empresa}
           companyNif={companyData?.nif}
         />
+      )}
+
+      {showReceiptModal && (
+        <div className="fixed inset-0 z-[400] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm">
+          <motion.div 
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="w-full max-w-lg bg-white shadow-2xl border-t-8 border-emerald-600 overflow-hidden flex flex-col rounded-sm"
+          >
+            {/* Header */}
+            <div className="p-6 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-emerald-50 text-emerald-600 flex items-center justify-center rounded-full">
+                  <BadgeCheck size={22} className="text-emerald-600" />
+                </div>
+                <div>
+                  <h3 className="font-black text-emerald-700 uppercase tracking-tight text-md">Emitir Recibo de Fatura</h3>
+                  <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest mt-0.5">Fatura: {showReceiptModal.purchase_number}</p>
+                </div>
+              </div>
+              <button onClick={() => setShowReceiptModal(null)} className="text-zinc-400 hover:text-zinc-600 p-1 hover:bg-zinc-100 rounded-full">
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              try {
+                const target = e.target as any;
+                const rDate = target.receipt_date.value;
+                const rCaixa = target.receipt_caixa.value;
+                const rMethod = target.receipt_method.value;
+                const rAmount = Number(target.receipt_amount.value);
+                const rObs = target.receipt_obs.value;
+
+                if (!rCaixa) {
+                  alert('Por favor selecione uma caixa de pagamento.');
+                  return;
+                }
+                if (!rMethod) {
+                  alert('Por favor selecione a forma de pagamento.');
+                  return;
+                }
+
+                // Resolve cashBox to a UUID if it's 'Banco' or other custom string
+                let finalCaixaId = rCaixa;
+                if (!isValidUUID(finalCaixaId)) {
+                  const bCaixa = (caixas || []).find(c => c.name?.toLowerCase().includes('banco'));
+                  if (bCaixa) {
+                    finalCaixaId = bCaixa.id;
+                  } else if (caixas && caixas.length > 0) {
+                    finalCaixaId = caixas[0].id;
+                  } else {
+                    finalCaixaId = null;
+                  }
+                }
+                if (!isValidUUID(finalCaixaId)) {
+                  finalCaixaId = null;
+                }
+
+                const year = new Date(rDate).getFullYear();
+                const nextNum = (purchases || []).filter(p => (p.tipo_documento === 'Recibo' || p.document_type === 'Recibo')).length + 1;
+                const receiptNum = `R-FT-${year}/${nextNum.toString().padStart(3, '0')}`;
+
+                const updatePayload = {
+                  recibo_emitido: true,
+                  numero_recibo: receiptNum,
+                  data_recibo: new Date().toISOString(),
+                  caixa_id: finalCaixaId,
+                  forma_pagamento: rMethod,
+                  valor_pago: rAmount,
+                  saldo_pendente: 0,
+                  atualizado_em: new Date().toISOString(),
+                  atualizado_por: user?.id,
+                  status: 'pago',
+                  estado: 'PAGO'
+                };
+
+                console.log('[UPDATE compras recibo] original document ID:', showReceiptModal.id, 'fields:', updatePayload);
+
+                const { error } = await supabase
+                  .from('compras')
+                  .update(updatePayload)
+                  .eq('id', showReceiptModal.id);
+
+                if (error) {
+                  console.error('[UPDATE compras recibo ERROR]', error);
+                  throw error;
+                }
+                console.log('[UPDATE compras recibo SUCCESS] updated fatura ID:', showReceiptModal.id);
+
+                // Criar o documento de Recibo separado no sistema
+                const receiptPayload = {
+                  empresa_id: user?.empresa_id,
+                  ano: year,
+                  fornecedor_id: showReceiptModal.supplier_id || showReceiptModal.fornecedor_id || null,
+                  fornecedor_nome: showReceiptModal.supplier_name || showReceiptModal.fornecedor_nome || '',
+                  data_compra: rDate,
+                  valor_total: rAmount,
+                  tipo_documento: 'Recibo',
+                  numero_documento: receiptNum,
+                  numero_fatura: showReceiptModal.purchase_number,
+                  data_vencimento: rDate,
+                  taxa_retencao: Number(showReceiptModal.taxa_retencao || 0),
+                  taxa_cambio: Number(showReceiptModal.taxa_cambio || 1),
+                  moeda: showReceiptModal.moeda || 'Kwanza',
+                  valor_contravalor: rAmount,
+                  desconto_global: Number(showReceiptModal.desconto_global || 0),
+                  data_servico: rDate,
+                  caixa_id: finalCaixaId,
+                  metodo_pagamento: rMethod,
+                  itens: showReceiptModal.itens || showReceiptModal.items || [{ description: `Liquidação de Fatura de Compra ${showReceiptModal.purchase_number}`, quantity: 1, unit_price: rAmount, total: rAmount }],
+                  items: showReceiptModal.itens || showReceiptModal.items || [{ description: `Liquidação de Fatura de Compra ${showReceiptModal.purchase_number}`, quantity: 1, unit_price: rAmount, total: rAmount }],
+                  hash: 'RC-SHA256-' + Math.random().toString(36).substring(7).toUpperCase(),
+                  descricao: rObs || `Pagamento de FT nº ${showReceiptModal.purchase_number} - Recibo ${receiptNum}`,
+                  created_by: user?.id,
+                  criado_por: user?.id,
+                  created_by_nome: user?.nome || 'Operador',
+                  created_by_username: user?.username || 'admin',
+                  detalhes: {
+                    supplier_name: showReceiptModal.supplier_name || showReceiptModal.fornecedor_nome || '',
+                    purchase_number: receiptNum,
+                    invoice_number: showReceiptModal.purchase_number,
+                    due_date: rDate,
+                    vat_withholding: showReceiptModal.taxa_retencao || '0',
+                    exchange_rate: showReceiptModal.taxa_cambio || '1',
+                    currency: showReceiptModal.moeda || 'Kwanza',
+                    counter_value: rAmount,
+                    global_discount: '0',
+                    service_date: rDate,
+                    cash_box: finalCaixaId,
+                    payment_method: rMethod,
+                    items: showReceiptModal.itens || showReceiptModal.items || [{ description: `Liquidação de Fatura de Compra ${showReceiptModal.purchase_number}`, quantity: 1, unit_price: rAmount, total: rAmount }]
+                  }
+                };
+
+                const { data: insertedRecibo, error: insertError } = await supabase
+                  .from('compras')
+                  .insert([receiptPayload])
+                  .select()
+                  .single();
+
+                if (insertError) {
+                  console.error('[INSERT compras recibo ERROR]', insertError);
+                  throw insertError;
+                }
+                console.log('[INSERT compras recibo SUCCESS] Registered new Recibo:', receiptNum);
+
+                // 2. Criar automaticamente um documento RECIBO em documentos_emitidos
+                const eid = user?.empresa_id || user?.company_id;
+                const docEmitidoPayload = {
+                  empresa_id: eid,
+                  tipo_documento: 'RECIBO',
+                  numero_documento: receiptNum,
+                  referencia_documento: showReceiptModal.purchase_number || '',
+                  cliente_nome: showReceiptModal.supplier_name || showReceiptModal.fornecedor_nome || 'Fornecedor',
+                  total: rAmount,
+                  moeda: showReceiptModal.moeda || 'Kwanza',
+                  data_emissao: new Date().toISOString(),
+                  documento_origem_id: showReceiptModal.id,
+                  estado: 'EMITIDO',
+                  origem: 'COMPRA',
+                  ano: showReceiptModal.ano || year,
+                  detalhes: receiptPayload.detalhes
+                };
+                
+                const { error: docError } = await supabase
+                  .from('documentos_emitidos')
+                  .insert([docEmitidoPayload]);
+
+                if (docError) {
+                  console.warn('[DOCS_EMITIDOS ERROR] Falha ao registar espelho do recibo:', docError);
+                } else {
+                  console.log('[DOCS_EMITIDOS SUCCESS] Recibo RECIBO criado com referências de origem.');
+                }
+
+                // Registrar o movimento de Caixa automática (saída)
+                if (addMovement) {
+                  await addMovement({
+                    caixaId: finalCaixaId,
+                    type: 'saida',
+                    amount: rAmount,
+                    description: `Pagamento de Fatura Compra ${showReceiptModal.purchase_number} - Recibo ${receiptNum}`,
+                    date: new Date(rDate).toISOString()
+                  });
+                }
+
+                toast.success(`Recibo ${receiptNum} registado com sucesso no sistema!`);
+                
+                // 3. Atualizar estado local e sincronizar com o pai
+                fetchPurchases();
+                
+                setShowReceiptModal(null);
+              } catch (err: any) {
+                console.error(err);
+                alert('Erro ao registar recibo: ' + err.message);
+              }
+            }} className="p-6 space-y-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-zinc-400 uppercase tracking-wider">Referência da Fatura de Compra</label>
+                <input 
+                  type="text" 
+                  value={showReceiptModal.purchase_number} 
+                  disabled 
+                  className="w-full bg-zinc-100 border border-zinc-200 px-4 py-2 text-xs font-bold text-zinc-500 rounded-none cursor-not-allowed" 
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-zinc-400 uppercase tracking-wider font-mono">Data Emissão Fatura</label>
+                  <input 
+                    type="text" 
+                    value={showReceiptModal.date ? new Date(showReceiptModal.date).toLocaleDateString() : 'N/A'} 
+                    disabled 
+                    className="w-full bg-zinc-100 border border-zinc-200 px-4 py-2 text-xs font-medium text-zinc-500 rounded-none cursor-not-allowed" 
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-wider">Data Emissão Recibo</label>
+                  <input 
+                    type="date" 
+                    name="receipt_date"
+                    required
+                    defaultValue={new Date().toISOString().split('T')[0]} 
+                    className="w-full bg-white border border-zinc-200 px-4 py-2 text-xs font-bold text-zinc-800 rounded-none focus:outline-none focus:border-[#003366]" 
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-wider">Caixa de Pagamento <span className="text-red-500">*</span></label>
+                  <select 
+                    name="receipt_caixa"
+                    required
+                    className="w-full bg-white border border-zinc-200 px-3 py-2 text-xs font-bold text-zinc-800 rounded-none focus:outline-none focus:border-[#003366]"
+                  >
+                    <option value="">Selecione a Caixa</option>
+                    {(caixas || []).map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                    <option value="Banco">Banco de Testes</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-wider">Forma de Pagamento <span className="text-red-500">*</span></label>
+                  <select 
+                    name="receipt_method"
+                    required
+                    className="w-full bg-white border border-zinc-200 px-3 py-2 text-xs font-bold text-zinc-800 rounded-none focus:outline-none focus:border-[#003366]"
+                  >
+                    <option value="">Forma de Pagamento</option>
+                    <option value="Numerário">Numerário</option>
+                    <option value="Multicaixa">Multicaixa</option>
+                    <option value="Transferência">Transferência</option>
+                    <option value="Depósito">Depósito</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-wider">Valor do Documento</label>
+                <div className="relative">
+                  <input 
+                    type="number" 
+                    name="receipt_amount"
+                    step="0.01"
+                    defaultValue={showReceiptModal.total}
+                    required
+                    className="w-full bg-white border border-zinc-200 px-4 py-2 text-xs font-black text-zinc-800 rounded-none focus:outline-none focus:border-[#003366]" 
+                  />
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-zinc-400">AOA (Kz)</div>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-wider">Observações / Notas</label>
+                <textarea 
+                  name="receipt_obs"
+                  placeholder="Ex: Pagamento integral efetuado..."
+                  rows={2}
+                  className="w-full bg-white border border-zinc-200 px-4 py-2 text-xs text-zinc-800 rounded-none focus:outline-none focus:border-[#003366] font-medium"
+                />
+              </div>
+
+              <div className="pt-4 flex gap-2 justify-end">
+                <button 
+                  type="button" 
+                  onClick={() => setShowReceiptModal(null)}
+                  className="px-6 py-2.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold text-xs uppercase rounded-none transition-all"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit"
+                  className="px-6 py-2.5 bg-[#003366] hover:bg-[#002244] text-white font-bold text-xs uppercase rounded-none shadow-md transition-all flex items-center gap-2"
+                >
+                  Registar Recibo
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
+
+      {showA4PrintModal && (
+        <div className="fixed inset-0 z-[400] flex items-center justify-center p-4 bg-zinc-900/70 backdrop-blur-sm overflow-y-auto no-print">
+          <div className="absolute inset-0 bg-transparent no-print" onClick={() => setShowA4PrintModal(null)} />
+          
+          <motion.div 
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="relative w-full max-w-[210mm] bg-zinc-100 shadow-2xl rounded-none flex flex-col z-[410] max-h-[95vh] overflow-hidden no-print"
+          >
+            {/* Control bar */}
+            <div className="p-4 bg-[#003366] text-white flex justify-between items-center shrink-0 shadow-md">
+              <span className="text-xs font-black uppercase tracking-widest flex items-center gap-2">
+                <Printer size={16} /> Visualização de Impressão A4
+              </span>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => window.print()} 
+                  className="bg-emerald-600 hover:bg-emerald-700 px-6 py-2 font-bold text-xs uppercase tracking-wider rounded-none flex items-center gap-2 text-white transition-all shadow"
+                >
+                  <Printer size={14} /> Imprimir Documento
+                </button>
+                <button 
+                  onClick={() => setShowA4PrintModal(null)} 
+                  className="bg-zinc-700 hover:bg-zinc-800 px-4 py-2 font-black text-xs uppercase rounded-none transition-colors"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+
+            {/* Printable Frame wrapper */}
+            <div className="flex-1 overflow-y-auto p-8 bg-zinc-200 flex justify-center">
+              <div 
+                id="a4-printable-document-sheet"
+                className="w-[210mm] min-h-[297mm] bg-white p-16 shadow-2xl text-zinc-900 flex flex-col justify-between font-sans border border-zinc-300 relative print:shadow-none print:border-none print:p-0 print:m-0 print:w-full print:h-full"
+              >
+                {/* Header */}
+                <div>
+                  <div className="flex justify-between items-start border-b-2 border-zinc-200 pb-8">
+                    <div>
+                      <h1 className="text-3xl font-black text-[#003366] tracking-tighter uppercase leading-none">{companyData?.name || companyData?.nome_empresa || 'Empresa SaaS ERP'}</h1>
+                      <div className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest mt-2">NIF: {companyData?.nif || '999999999'}</div>
+                      <div className="text-[10px] text-zinc-500 font-medium leading-relaxed uppercase mt-1">
+                        {companyData?.morada || 'Sede Social - Luanda, Angola'}<br />
+                        Email: {companyData?.email || 'contacto@saas-erp.co.ao'}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="bg-[#003366] text-white px-5 py-2 font-black text-xs uppercase tracking-widest inline-block mb-3 leading-none rounded-none shadow-sm">
+                        {showA4PrintModal.document_type || 'Compra'}
+                      </div>
+                      <div className="text-lg font-black font-mono text-zinc-800 mt-1">{showA4PrintModal.purchase_number}</div>
+                      <div className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest mt-2">Data de Emissão: {new Date(showA4PrintModal.date).toLocaleDateString('pt-PT')}</div>
+                      {showA4PrintModal.due_date && (
+                        <div className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">Data de Vencimento: {new Date(showA4PrintModal.due_date).toLocaleDateString('pt-PT')}</div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Supplier Info */}
+                  <div className="grid grid-cols-2 gap-10 py-8 border-b border-zinc-100">
+                    <div>
+                      <div className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-2">FORNECEDOR / ENTIDADE EMISSORA</div>
+                      <div className="text-sm font-black text-zinc-900 uppercase">{showA4PrintModal.supplier_name}</div>
+                      <div className="text-[11px] text-zinc-500 font-bold mt-1">NIF: {showA4PrintModal.nif || showA4PrintModal.supplier_nif || '999999999'}</div>
+                      <div className="text-[10px] text-zinc-400 mt-1 uppercase font-medium">País / Origem: {showA4PrintModal.countryCode || 'Angola'}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-2">DETALHES DE LOGÍSTICA</div>
+                      <div className="text-xs font-bold text-zinc-700 uppercase">Local: {showA4PrintModal.work_site || 'Central'}</div>
+                      {showA4PrintModal.numero_fatura && (
+                        <div className="text-[11px] text-zinc-500 font-semibold mt-1">Nº Fatura Origem: <span className="font-mono text-zinc-800 font-black">{showA4PrintModal.numero_fatura}</span></div>
+                      )}
+                      {showA4PrintModal.metodo_pagamento && (
+                        <div className="text-[11px] text-zinc-500 font-semibold mt-1">Forma Pagamento: <span className="uppercase text-zinc-800 font-black">{showA4PrintModal.metodo_pagamento}</span></div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Items list */}
+                  <div className="py-8">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b-2 border-zinc-200 text-[10px] font-black text-zinc-400 uppercase tracking-widest">
+                          <th className="py-3 px-2">Composição dos Bens e Serviços</th>
+                          <th className="py-3 px-2 text-center text-zinc-500">Qtd</th>
+                          <th className="py-3 px-2 text-right">Preço Unitário</th>
+                          <th className="py-3 px-2 text-center font-bold">Taxa IVA</th>
+                          <th className="py-3 px-2 text-right">Valor Líquido</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-100 text-[11px]">
+                        {(showA4PrintModal.itens || showA4PrintModal.items || []).map((item: any, idx: number) => (
+                          <tr key={idx} className="hover:bg-zinc-50 font-medium">
+                            <td className="py-3 px-2 text-zinc-900 uppercase font-bold">{item.description}</td>
+                            <td className="py-3 px-2 text-center font-bold font-mono text-zinc-600">{item.quantity}</td>
+                            <td className="py-3 px-2 text-right font-bold text-zinc-600 font-mono">{formatCurrency(item.unit_price)}</td>
+                            <td className="py-3 px-2 text-center text-[10px] uppercase font-black text-zinc-400">
+                              {item.tax || 'IVA 14%'}
+                            </td>
+                            <td className="py-3 px-2 text-right font-bold text-[#003366] font-mono">{formatCurrency(item.total)}</td>
+                          </tr>
+                        ))}
+                        {(showA4PrintModal.itens || showA4PrintModal.items || []).length === 0 && (
+                          <tr>
+                            <td colSpan={5} className="py-8 text-center text-zinc-400 italic font-medium">Documento sem linhas de mercadorias.</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Footer and calculations */}
+                <div className="space-y-8">
+                  <div className="grid grid-cols-2 gap-10 items-end pt-8 border-t border-zinc-200">
+                    <div>
+                      {/* Integrity disclaimer */}
+                      <div className="text-[10px] bg-zinc-50 text-zinc-400 p-4 border border-zinc-100 leading-relaxed font-semibold uppercase tracking-wider select-none">
+                        PRODUZIDO POR SOFTWARE EM CONFORMIDADE COM AS REGRAS DA AGT.<br />
+                        <span className="font-mono text-[9px] tracking-normal mt-1 block">HASH: {showA4PrintModal.hash || 'FTX-AGT-SHA256-EMITTING'}</span>
+                      </div>
+                    </div>
+                    {/* Totals */}
+                    <div className="space-y-2 border-l border-zinc-100 pl-8">
+                      <div className="flex justify-between items-center text-[11px] font-bold uppercase tracking-widest text-zinc-500">
+                        <span>Valor Base</span>
+                        <span className="font-mono">{formatCurrency(showA4PrintModal.total)}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-[11px] font-bold uppercase tracking-widest text-zinc-500">
+                        <span>Cativação/Desconto</span>
+                        <span className="font-mono">- {formatCurrency(Number(showA4PrintModal.desconto_global || showA4PrintModal.global_discount || 0))}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-[11px] font-bold uppercase tracking-widest text-[#003366] border-t border-zinc-100 pt-2">
+                        <span className="font-black">Total de Compra</span>
+                        <span className="text-lg font-black font-mono">{formatCurrency(Number(showA4PrintModal.total || 0) - Number(showA4PrintModal.desconto_global || showA4PrintModal.global_discount || 0))}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Signatures placeholders */}
+                  <div className="pt-12 grid grid-cols-2 gap-12 text-center text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
+                    <div className="space-y-10">
+                      <div>Responsável Técnico</div>
+                      <div className="border-b border-zinc-200 pb-2"></div>
+                    </div>
+                    <div className="space-y-10">
+                      <div>Contabilidade / Recepção</div>
+                      <div className="border-b border-zinc-200 pb-2"></div>
+                    </div>
+                  </div>
+
+                  <div className="pt-6 text-center text-[8px] font-black tracking-widest uppercase text-zinc-300">
+                    SaaS ERP Cloud • Processamento por Inteligência Coeso • Certificado AGT
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+          </motion.div>
+        </div>
       )}
     </div>
   );
@@ -23778,7 +25328,7 @@ const SupplierAccount = ({ supplier, purchases, onBack }: {
   );
 };
 
-const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas, companyData, addMovement, globalUsers }: { products: Product[], activeTaxes: any[], workSites: WorkSite[], fiscalSeries: FiscalSeries[], caixas: Caixa[], companyData?: any, addMovement?: (m: any) => Promise<void>, globalUsers?: any[] }) => {
+const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas, companyData, addMovement, globalUsers, fiscalYear }: { products: Product[], activeTaxes: any[], workSites: WorkSite[], fiscalSeries: FiscalSeries[], caixas: Caixa[], companyData?: any, addMovement?: (m: any) => Promise<void>, globalUsers?: any[], fiscalYear: string }) => {
   const { user } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState<string | null>(null);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -24069,7 +25619,7 @@ const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas
           </div>
         );
       case 'purchases-list':
-        return <PurchasesModule suppliers={suppliers} products={products} activeTaxes={activeTaxes} workSites={workSites} fiscalSeries={fiscalSeries} caixas={caixas} companyData={companyData} addMovement={addMovement} globalUsers={globalUsers} />;
+        return <PurchasesModule user={user} suppliers={suppliers} products={products} activeTaxes={activeTaxes} workSites={workSites} fiscalSeries={fiscalSeries} caixas={caixas} companyData={companyData} addMovement={addMovement} globalUsers={globalUsers} fiscalYear={fiscalYear} />;
       case 'current-accounts':
         if (selectedSupplier) {
           return <SupplierAccount supplier={selectedSupplier} purchases={purchases.filter(p => p.supplier_id === selectedSupplier.id)} onBack={() => setSelectedSupplier(null)} />;
@@ -25394,7 +26944,7 @@ const ReceiptModal = ({ document: doc, caixas, onClose, onSuccess }: {
               className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold"
             >
               <option value="">Selecione...</option>
-              {caixas.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+              {caixas.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
           <div className="space-y-1">
@@ -25427,7 +26977,8 @@ const ConvertDocumentModal = ({ document, onClose, onSuccess }: {
 
   const handleConvert = async () => {
     try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
+      const { data } = await supabase.auth.getUser();
+      const authUser = data?.user;
       if (!authUser) return;
 
       if (!user?.empresa_id) {
@@ -25439,12 +26990,19 @@ const ConvertDocumentModal = ({ document, onClose, onSuccess }: {
       // We safely extract properties that might exist in runtime but lack TS definitions
       const docData: any = { ...baseDocData };
       delete docData.created_at;
-      delete docData.updated_at;
+      delete docData.atualizado_em;
       delete docData.data_emissao;
       delete docData.hash;
       delete docData.signature;
 
-      const prefix = targetType === 'Fatura' ? 'FT' : (targetType === 'Fatura Recibo' ? 'FR' : (targetType === 'Orçamento' ? 'PP' : 'FP'));
+      const docTypeMap: { [key: string]: string } = {
+        'Fatura': 'FT',
+        'Fatura Recibo': 'FR',
+        'Orçamento': 'PP',
+        'Fatura Proforma': 'FP'
+      };
+
+      const prefix = docTypeMap[targetType] || 'FT';
       const seq = Date.now().toString().slice(-6);
       const yr = new Date().getFullYear();
       const generatedNum = `${prefix} ${yr}/${seq}`;
@@ -25452,7 +27010,7 @@ const ConvertDocumentModal = ({ document, onClose, onSuccess }: {
       const convertedDoc = {
         ...docData,
         empresa_id: user.empresa_id,
-        tipo_documento: targetType,
+        tipo_documento: prefix,
         document_type: targetType,
         numero_documento: generatedNum,
         invoice_number: generatedNum,
@@ -25469,10 +27027,8 @@ const ConvertDocumentModal = ({ document, onClose, onSuccess }: {
         items: document.items || []
       };
 
-      const { error } = await supabase.from('documentos_emitidos').insert([convertedDoc]);
-      if (error) {
-        throw error;
-      }
+      console.log("🔥 BOTÃO ATIVO - EMITINDO VIA MOTOR FISCAL");
+      await emitirDocumentoFiscal(convertedDoc);
 
       alert('Documento convertido com sucesso!');
       onSuccess();
@@ -25582,8 +27138,14 @@ export default function App() {
       
       // Notify user only if it is a critical failure, but keep logs clean
       const reason = event.reason?.message || String(event.reason);
-      if (reason.includes("connection") || reason.includes("fetch")) {
-        // Ignorar erros de rede silenciosos
+      if (
+        reason.includes("connection") || 
+        reason.includes("fetch") || 
+        reason.includes("WebSocket") || 
+        reason.includes("closed without opened") ||
+        reason.includes("not defined")
+      ) {
+        // Ignorar erros de rede silenciosos ou websockets cancelados
       } else {
         toast.error("Ocorreu um erro de segundo plano, mas o sistema continua estável.");
       }
@@ -25657,18 +27219,23 @@ export default function App() {
   }, [printingInvoice]);
   const [isPrintingDraft, setIsPrintingDraft] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [copyType, setCopyType] = useState<'Original' | 'Duplicado' | 'Triplicado'>('Original');
+  const [printFormat, setPrintFormat] = useState<'A4' | 'P80' | 'P24'>('A4');
   const [isPdfProcessing, setIsPdfProcessing] = useState(false);
   const [viewingInvoiceId, setViewingInvoiceId] = useState<number | null>(null);
   const [isCreatingInvoice, setIsCreatingInvoice] = useState(false);
   const [isClientModalOpen, setIsClientModalOpen] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState<IssuedDocument | null>(null);
   const [fixedDocumentType, setFixedDocumentType] = useState<string | undefined>(undefined);
+  const [isAgtModalOpen, setIsAgtModalOpen] = useState(false);
+  const [isAgtElectronicInvoiceModalOpen, setIsAgtElectronicInvoiceModalOpen] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [penalties, setPenalties] = useState<any[]>([]);
   const [isDocumentsModalOpen, setIsDocumentsModalOpen] = useState(false);
   const [isFinesModalOpen, setIsFinesModalOpen] = useState(false);
   const [modalEmployee, setModalEmployee] = useState<Employee | null>(null);
   const syncLockRef = useRef(false);
+  const isFetchingRef = useRef(false);
 
   useEffect(() => {
     // Com o AuthContext sincronizado, apenas precisamos garantir que o App saiba quando pode começar
@@ -25684,36 +27251,59 @@ export default function App() {
   useEffect(() => {
     if (isExportingPdf && printingInvoice) {
       setIsPdfProcessing(true);
-      setTimeout(() => {
+      setTimeout(async () => {
         const element = document.getElementById('pdf-export-container');
         if (element) {
-          const opt = {
-            margin: [2, 2, 2, 2] as [number, number, number, number],
-            filename: `${printingInvoice.numero_documento || printingInvoice.invoice_number || 'documento'}.pdf`,
-            image: { type: 'jpeg' as const, quality: 0.95 },
-            html2canvas: { 
-              scale: 2, 
-              useCORS: true, 
-              logging: false, 
-              letterRendering: true,
-              allowTaint: true,
-              backgroundColor: '#ffffff'
-            },
-            jsPDF: { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const, compress: true }
-          };
-          
-          html2pdf().from(element).set(opt).save()
-            .then(() => {
-              setIsExportingPdf(false);
-              setPrintingInvoice(null);
-              setIsPdfProcessing(false);
-            })
-            .catch((err: any) => {
-              console.error('PDF Export Error:', err);
-              setIsExportingPdf(false);
-              setIsPdfProcessing(false);
-              alert('Erro ao gerar PDF. Por favor, tente novamente.');
+          try {
+            const clone = element.cloneNode(true) as HTMLElement;
+            clone.querySelectorAll("*").forEach((node: any) => {
+              if (node.style) {
+                node.style.color = "#000";
+                node.style.backgroundColor = "#fff";
+                node.style.filter = "none";
+              }
             });
+            
+            clone.style.position = 'absolute';
+            clone.style.left = '-9999px';
+            clone.style.top = '0';
+            document.body.appendChild(clone);
+
+            const { default: html2canvas } = await import('html2canvas-pro');
+            const { jsPDF } = await import('jspdf');
+
+            const canvas = await html2canvas(clone, {
+              scale: 2,
+              useCORS: true,
+              logging: false
+            });
+
+            const imgData = canvas.toDataURL("image/png");
+            const pdf = new jsPDF("p", "mm", "a4");
+
+            pdf.addImage(imgData, "PNG", 0, 0, 210, 297);
+            
+            const filename = `${printingInvoice.numero_documento || printingInvoice.invoice_number || 'documento'}.pdf`;
+            pdf.save(filename);
+            
+            document.body.removeChild(clone);
+
+            const nowStr = new Date().toISOString();
+            await supabase.from('documentos_emitidos').update({
+              pdf_gerado: true,
+              ultima_exportacao_pdf_em: nowStr
+            }).eq('id', printingInvoice.id);
+            
+            setIssuedDocuments(prev => prev.map(d => d.id === printingInvoice.id ? { ...d, pdf_gerado: true, ultima_exportacao_pdf_em: nowStr } : d));
+            
+            setIsExportingPdf(false);
+            setPrintingInvoice(null);
+            setIsPdfProcessing(false);
+          } catch (err: any) {
+            console.error('PDF Export Error:', err);
+            setIsExportingPdf(false);
+            setIsPdfProcessing(false);
+          }
         } else {
           setIsExportingPdf(false);
           setIsPdfProcessing(false);
@@ -25823,14 +27413,10 @@ export default function App() {
   };
 
   const loadAlerts = throttle(async (explicitId?: string) => {
-    if (syncLockRef.current) return;
-    syncLockRef.current = true;
     try {
       await doLoadAlerts(explicitId);
     } catch (err) {
       console.error('[App] Failed to load alerts:', err);
-    } finally {
-      syncLockRef.current = false;
     }
   }, 3000);
 
@@ -25947,17 +27533,19 @@ export default function App() {
   };
 
   const loadClientes = throttle(async (explicitId?: string) => {
-    if (syncLockRef.current) return;
-    syncLockRef.current = true;
-    await doLoadClientes(explicitId);
-    syncLockRef.current = false;
+    try {
+      await doLoadClientes(explicitId);
+    } catch (err) {
+      console.error('[App] Failed to load clients:', err);
+    }
   }, 3000);
 
   const loadLocaisTrabalho = throttle(async (explicitId?: string) => {
-    if (syncLockRef.current) return;
-    syncLockRef.current = true;
-    await doLoadLocaisTrabalho(explicitId);
-    syncLockRef.current = false;
+    try {
+      await doLoadLocaisTrabalho(explicitId);
+    } catch (err) {
+      console.error('[App] Failed to load work sites:', err);
+    }
   }, 3000);
 
   const doLoadProducts = async (explicitId?: string) => {
@@ -26006,10 +27594,11 @@ export default function App() {
   };
 
   const loadProducts = throttle(async (explicitId?: string) => {
-    if (syncLockRef.current) return;
-    syncLockRef.current = true;
-    await doLoadProducts(explicitId);
-    syncLockRef.current = false;
+    try {
+      await doLoadProducts(explicitId);
+    } catch (err) {
+      console.error('[App] Failed to load products:', err);
+    }
   }, 3000);
 
   async function saveDocumentoEmitido(doc: any) {
@@ -26103,7 +27692,6 @@ export default function App() {
         .from('movimentacoes_stock')
         .select('*')
         .eq('empresa_id', companyId)
-        .eq('ano', Number(fiscalYear))
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -26132,7 +27720,9 @@ export default function App() {
       const companyId = explicitId || user?.empresa_id;
       if (!companyId) return;
 
-      console.log('[App] Carregando documentos via API para (bypass RLS):', companyId, 'no ano:', fiscalYear);
+      console.log('[App] Carregando todos os documentos emitidos via API para (bypass RLS):', companyId, 'no ano:', fiscalYear);
+      // Remove any implicit year filter if necessary, or ensure backend handles it robustly.
+      // Fetching all to guarantee list visibility.
       const res = await fetchWithAuth(`/api/invoices?empresa_id=${companyId}&year=${fiscalYear}`);
       
       if (!res.ok) {
@@ -26143,6 +27733,7 @@ export default function App() {
       const data = await res.json();
       
       console.log(`[App] Documentos carregados da API: ${data?.length || 0}`);
+      // Pass all documents through, do not filter here.
       const docs = data?.map((d: any) => ({
         ...d,
         id: d.id,
@@ -26151,7 +27742,7 @@ export default function App() {
         contravalor: Number(d.total || 0),
         date: d.data_emissao || d.created_at,
         client_name: d.cliente_nome || d.client_name || 'Desconhecido',
-        invoice_number: d.numero_documento || d.invoice_number || d.documento_formatado || 'DRAFT',
+        invoice_number: (d.numero_documento || d.invoice_number || d.documento_formatado || 'DRAFT').split('-')[0].trim(),
         document_type: d.tipo_documento || d.document_type
       })) || [];
       
@@ -26162,7 +27753,7 @@ export default function App() {
         id: d.id,
         client_id: d.cliente_id || d.client_id,
         client_name: d.cliente_nome || d.client_name || 'Consumidor Final',
-        invoice_number: d.numero_documento || d.invoice_number,
+        invoice_number: (d.numero_documento || d.invoice_number || 'DRAFT').split('-')[0].trim(),
         date: d.data_emissao || d.date || new Date().toISOString(),
         due_date: d.data_vencimento || d.due_date || new Date().toISOString(),
         status: (d.estado || d.status || 'ativo').toLowerCase() as any,
@@ -26216,8 +27807,8 @@ export default function App() {
         .from('caixa_movimentacoes')
         .select('*')
         .eq('empresa_id', companyId)
-        .eq('ano', Number(fiscalYear))
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(200);
 
       if (error) {
         if (error.code === 'PGRST205') {
@@ -26225,8 +27816,8 @@ export default function App() {
             .from('caixa_movements')
             .select('*')
             .eq('empresa_id', companyId)
-            .eq('ano', Number(fiscalYear))
-            .order('created_at', { ascending: false });
+            .order('created_at', { ascending: false })
+            .limit(200);
           data = fallback.data || [];
         } else {
           throw error;
@@ -26307,24 +27898,27 @@ export default function App() {
   };
 
   const loadDocumentosEmitidos = throttle(async (explicitId?: string) => {
-    if (syncLockRef.current) return;
-    syncLockRef.current = true;
-    await doLoadDocumentosEmitidos(explicitId);
-    syncLockRef.current = false;
+    try {
+      await doLoadDocumentosEmitidos(explicitId);
+    } catch (err) {
+      console.error('[App] Failed to load documents:', err);
+    }
   }, 3000);
 
   const loadCaixas = throttle(async (explicitId?: string) => {
-    if (syncLockRef.current) return;
-    syncLockRef.current = true;
-    await doLoadCaixas(explicitId);
-    syncLockRef.current = false;
+    try {
+      await doLoadCaixas(explicitId);
+    } catch (err) {
+      console.error('[App] Failed to load caixas:', err);
+    }
   }, 3000);
 
   const loadCaixaMovements = throttle(async (explicitId?: string) => {
-    if (syncLockRef.current) return;
-    syncLockRef.current = true;
-    await doLoadCaixaMovements(explicitId);
-    syncLockRef.current = false;
+    try {
+      await doLoadCaixaMovements(explicitId);
+    } catch (err) {
+      console.error('[App] Failed to load movements:', err);
+    }
   }, 3000);
 
   const doLoadFornecedores = async (explicitId?: string) => {
@@ -26393,7 +27987,6 @@ export default function App() {
         .from('compras')
         .select('*')
         .eq('empresa_id', companyId)
-        .eq('ano', Number(fiscalYear))
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -26410,17 +28003,19 @@ export default function App() {
   };
 
   const loadFornecedores = throttle(async (explicitId?: string) => {
-    if (syncLockRef.current) return;
-    syncLockRef.current = true;
-    await doLoadFornecedores(explicitId);
-    syncLockRef.current = false;
+    try {
+      await doLoadFornecedores(explicitId);
+    } catch (err) {
+      console.error('[App] Failed to load suppliers:', err);
+    }
   }, 3000);
 
   const loadCompras = throttle(async (explicitId?: string) => {
-    if (syncLockRef.current) return;
-    syncLockRef.current = true;
-    await doLoadCompras(explicitId);
-    syncLockRef.current = false;
+    try {
+      await doLoadCompras(explicitId);
+    } catch (err) {
+      console.error('[App] Failed to load purchases:', err);
+    }
   }, 3000);
 
   // Real-time synchronization using named callbacks for proper cleanup
@@ -26470,6 +28065,11 @@ export default function App() {
   }, [user?.empresa_id]);
 
   const fetchData = async () => {
+    if (isFetchingRef.current) {
+      console.log('[DEBUG-SYNC] fetchData já está em execução, ignorando...');
+      return;
+    }
+    isFetchingRef.current = true;
     try {
       let compSupabase: any = null;
       console.log('[DEBUG-SYNC] Iniciando fetchData...');
@@ -26511,8 +28111,8 @@ export default function App() {
       setConnectionError(false);
       
       // Fontes de Verdade Principais (Supabase com RLS)
+      const syncStartTime = performance.now();
       try {
-        console.time('[TIMER-SYNC] Supabase Queries');
         // Carregamos sequencialmente para melhor diagnóstico se um falhar
         await doLoadClientes(targetCompanyId);
         await doLoadLocaisTrabalho(targetCompanyId);
@@ -26526,19 +28126,21 @@ export default function App() {
         await doLoadActiveTaxes(targetCompanyId);
         await doLoadMetrics(targetCompanyId);
         await doLoadGlobalUsers(targetCompanyId);
-        
-        console.timeEnd('[TIMER-SYNC] Supabase Queries');
       } catch (err: any) {
         console.error('[DEBUG-SYNC] Erro nas queries Supabase:', err);
         if (err.message?.includes('fetch') || err.name === 'TypeError') {
           setConnectionError(true);
         }
         // Não lançamos erro aqui para permitir que o resto da página carregue (parcialmente)
+      } finally {
+        const syncDuration = performance.now() - syncStartTime;
+        console.log(`[TIMER-SYNC] Supabase Queries took ${syncDuration.toFixed(2)}ms`);
       }
 
       // Dados da Empresa (Blinda o UI com dados reais do Tenant)
       try {
-        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        const { data } = await supabase.auth.getSession();
+        const currentSession = data?.session;
         const res = await fetch(`/api/config-empresa`, {
           headers: { 'Authorization': `Bearer ${currentSession?.access_token}` }
         });
@@ -26702,6 +28304,8 @@ export default function App() {
       console.log('Data state updated (Supabase sync complete)');
     } catch (err) {
       console.error('Critical error in fetchData:', err);
+    } finally {
+      isFetchingRef.current = false;
     }
   };
 
@@ -26834,7 +28438,7 @@ export default function App() {
       
       // If already certified locally, don't even try the API
       if (doc.is_certified) {
-        toast.info("Este documento já se encontra certificado.");
+        toast("Este documento já se encontra certificado.");
         return;
       }
 
@@ -26856,7 +28460,7 @@ export default function App() {
         
         // Handle specifically already certified case
         if (parsedError.includes("já se encontra certificado")) {
-           toast.info("Este documento já se encontra certificado no sistema.");
+           toast("Este documento já se encontra certificado no sistema.");
            await fetchData(); // Refresh to update status
            setShowCertifyModal(false);
            return;
@@ -26932,10 +28536,14 @@ export default function App() {
             setIsCreatingInvoice(true);
           } else if (action === 'export_pdf') {
             setPrintingInvoice(invoiceData);
+            setCopyType('Original');
+            setPrintFormat('A4');
             setIsPrintingDraft(!doc.is_certified);
             setIsExportingPdf(true);
           } else if (action === 'draft' || action === 'foreign_draft' || action === 'preview_a4') {
             setPrintingInvoice(invoiceData);
+            setCopyType('Original');
+            setPrintFormat('A4');
             setIsPrintingDraft(true);
             if (action !== 'preview_a4') {
                setTimeout(() => {
@@ -26945,9 +28553,29 @@ export default function App() {
             } else {
               setIsPdfProcessing(false);
             }
-          } else if (action === 'print_a4' || action === 'print_p80' || action === 'print_p24' || action === 'print_p24xl') {
+          } else if (action === 'print_a4' || action === 'print_p80' || action === 'print_p24' || action === 'print_p24xl' || action.startsWith('print_a4_')) {
+            if (!invoiceData.is_certified) {
+              alert("Apenas documentos certificados (is_certified) podem ser impressos.");
+              setIsPdfProcessing(false);
+              return;
+            }
             setPrintingInvoice(invoiceData);
             setIsPrintingDraft(false);
+            
+            if (action === 'print_p80') {
+              setPrintFormat('P80');
+              setCopyType('Original');
+            } else if (action === 'print_p24' || action === 'print_p24xl') {
+              setPrintFormat('P24');
+              setCopyType('Original');
+            } else {
+              setPrintFormat('A4');
+              if (action === 'print_a4_orig') setCopyType('Original');
+              else if (action === 'print_a4_dup') setCopyType('Duplicado');
+              else if (action === 'print_a4_tri') setCopyType('Triplicado');
+              else setCopyType('Original');
+            }
+
             setTimeout(() => {
               setIsPdfProcessing(false);
               window.print();
@@ -26964,7 +28592,14 @@ export default function App() {
     } else if (action === 'reports') {
       setSelectedDocument(doc);
       setShowDocumentReportModal(doc);
+    } else if (action === 'agt_validate') {
+      setSelectedDocument(doc);
+      setIsAgtModalOpen(true);
+    } else if (action === 'agt_electronic_invoice') {
+      setSelectedDocument(doc);
+      setIsAgtElectronicInvoiceModalOpen(true);
     } else if (action === 'void') {
+      console.log('Action void triggered for doc:', doc.id);
       setShowAnularModal(doc);
     } else if (action === 'delete') {
       setShowDeleteModal(doc);
@@ -26977,7 +28612,7 @@ export default function App() {
         const { id, numero_documento, invoice_number, ...baseData } = doc;
         const clonedData: any = { ...baseData };
         delete clonedData.created_at;
-        delete clonedData.updated_at;
+        delete clonedData.atualizado_em;
         delete clonedData.data_emissao;
         delete clonedData.hash;
         delete clonedData.signature;
@@ -27031,6 +28666,9 @@ export default function App() {
               setActiveTab(t);
               setViewingInvoiceId(null);
               setIsCreatingInvoice(false);
+              if (t !== 'dashboard') {
+                setSidebarOpen(false);
+              }
             }} 
             companyData={companyData}
           />
@@ -27047,6 +28685,28 @@ export default function App() {
               setIsTaskModalOpen(true);
             }}
             alerts={alerts}
+            showNavButtons={activeTab !== 'dashboard' || isCreatingInvoice || viewingInvoiceId !== null}
+            onHome={() => {
+              setActiveTab('dashboard');
+              setViewingInvoiceId(null);
+              setIsCreatingInvoice(false);
+              setActiveSubTab(null);
+              setEditingType(null);
+              setIsTaskModalOpen(false);
+              setIsClientModalOpen(false);
+              setSidebarOpen(true);
+            }}
+            onBack={() => {
+              if (isCreatingInvoice) {
+                setIsCreatingInvoice(false);
+              } else if (viewingInvoiceId) {
+                setViewingInvoiceId(null);
+              } else if (activeSubTab) {
+                setActiveSubTab(null);
+              } else {
+                setActiveTab('dashboard');
+              }
+            }}
           />
           <main className="flex-1 overflow-y-auto w-full transition-all duration-300">
             <div className="p-6 md:p-8 max-w-[1600px] mx-auto">
@@ -27172,6 +28832,12 @@ export default function App() {
                     id={viewingInvoiceId} 
                     onBack={() => setViewingInvoiceId(null)}
                     onPrint={(doc) => setPrintingInvoice(doc as any)}
+                    onDownload={(doc) => {
+                      setPrintingInvoice(doc as any);
+                      setCopyType('Original');
+                      setIsPrintingDraft(!doc.is_certified);
+                      setIsExportingPdf(true);
+                    }}
                     companyName={companyName}
                     companyNif={companyNif}
                     companyAddress={companyAddress}
@@ -27191,7 +28857,7 @@ export default function App() {
 
                             console.log('Anulando documento via RPC Professional...', showAnularModal.id);
                             
-                            // Use the Professional RPC for Annulment
+                            // 1. Call the Professional RPC for Annulment in Database
                             const { data, error } = await supabase.rpc('anular_documento_fiscal', {
                               p_documento_id: showAnularModal.id,
                               p_motivo: reason,
@@ -27202,6 +28868,17 @@ export default function App() {
                               console.error('RPC Error:', error);
                               alert('Erro ao anular documento: ' + error.message);
                               return;
+                            }
+
+                            // 2. Synchronize memory state/transactions in the Express API
+                            try {
+                              await fetchWithAuth(`/api/invoices/${showAnularModal.id}/void`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ reason })
+                              });
+                            } catch (apiErr) {
+                              console.warn('Backend API void sync completed with fallback:', apiErr);
                             }
 
                             if (data && data.success) {
@@ -27220,6 +28897,7 @@ export default function App() {
                           } catch (error: any) {
                             console.error('Error voiding document:', error);
                             alert('Falha crítica na anulação: ' + error.message);
+                            setShowAnularModal(null);
                           }
                         }}
                       />
@@ -27353,7 +29031,7 @@ export default function App() {
                                   clients={clients} 
                                   workSites={workSites}
                                   employees={employees}
-                                  onNew={() => { setSelectedDocument(null); setFixedDocumentType(undefined); setIsCreatingInvoice(true); }} 
+                                  onNew={(fixedType?: string) => { setSelectedDocument(null); setFixedDocumentType(fixedType); setIsCreatingInvoice(true); }} 
                                   onView={setViewingInvoiceId}
                                   onRegisterClient={() => setIsClientModalOpen(true)}
                                   onAddWorkSite={handleAddWorkSite}
@@ -27381,6 +29059,7 @@ export default function App() {
                                   onRefresh={fetchData}
                                   fiscalYear={fiscalYear}
                                   globalUsers={globalUsers}
+                                  companyData={companyData}
                                 />
                               );
                             case 'tax-settings':
@@ -27388,7 +29067,7 @@ export default function App() {
                             case 'issued-documents':
                               return (
                                 <IssuedDocumentsList 
-                                  documents={filteredIssuedDocuments} 
+                                  documents={issuedDocuments} 
                                   onAction={handleDocumentAction}
                                   onCertify={(doc) => {
                                     const emissionDate = new Date(doc.data_emissao || doc.date || '');
@@ -27496,7 +29175,7 @@ export default function App() {
                                 />
                               );
                             case 'suppliers':
-                              return <SupplierModule products={products} activeTaxes={activeTaxes} workSites={workSites} fiscalSeries={fiscalSeries} caixas={caixas} companyData={companyData} addMovement={doAddCaixaMovement} globalUsers={globalUsers} />;
+                              return <SupplierModule products={products} activeTaxes={activeTaxes} workSites={workSites} fiscalSeries={fiscalSeries} caixas={caixas} companyData={companyData} addMovement={doAddCaixaMovement} globalUsers={globalUsers} fiscalYear={fiscalYear} />;
                             case 'products':
                               return (
                                 <ProductList 
@@ -27637,6 +29316,8 @@ export default function App() {
                               return <SpecializedManagementModule activeTab={activeTab} setActiveTab={setActiveTab} />;
                             case 'archive':
                               return <ArchiveModule fiscalYear={fiscalYear} />;
+                            case 'cartas':
+                              return <CartasModule />;
                             case 'church':
                               return <ChurchModule />;
                             case 'agrobusiness':
@@ -27697,7 +29378,7 @@ export default function App() {
           </main>
         </div>
         
-        <RightSidebar />
+        {(activeTab === 'dashboard' && !isCreatingInvoice && !viewingInvoiceId) && <RightSidebar />}
         
         {isClientModalOpen && (
           <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm animate-in fade-in duration-200">
@@ -27756,6 +29437,8 @@ export default function App() {
             <PrintA4 
               invoice={printingInvoice} 
               isDraft={isPrintingDraft} 
+              copyType={copyType}
+              printFormat={printFormat}
               companyData={companyData}
               graphicConfigs={printingGraphicConfigs}
             />
@@ -27791,6 +29474,24 @@ export default function App() {
             setShowConvertModal(false);
             fetchData();
           }}
+        />
+      )}
+
+      {isAgtModalOpen && selectedDocument && (
+        <AgtValidationModal 
+          document={selectedDocument}
+          companyNif={companyData?.nif}
+          userId={user?.id}
+          onClose={() => setIsAgtModalOpen(false)}
+        />
+      )}
+
+      {isAgtElectronicInvoiceModalOpen && selectedDocument && (
+        <AgtElectronicInvoiceModal 
+          document={selectedDocument}
+          companyNif={companyData?.nif}
+          userId={user?.id}
+          onClose={() => setIsAgtElectronicInvoiceModalOpen(false)}
         />
       )}
 

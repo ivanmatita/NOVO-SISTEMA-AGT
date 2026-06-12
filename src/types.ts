@@ -29,6 +29,8 @@ export interface User {
   id: string;
   username: string;
   email: string;
+  nome?: string;
+  name?: string;
   empresa_id: string;
   empresa_nif?: string;
   role: string;
@@ -161,6 +163,21 @@ export interface Invoice {
   client_name: string;
   invoice_number: string;
   numero_documento?: string;
+  documento_origem_id?: number | string;
+  numero_documento_origem?: string;
+  tipo_documento_origem?: string;
+  is_draft?: boolean;
+  documento_anulado?: boolean;
+  motivo_anulacao?: string;
+  anulado_at?: string;
+  hash_documento?: string;
+  hash_fiscal?: string;
+  certified_at?: string;
+  estado_certificacao?: string;
+  rectified_document?: string;
+  created_at?: string;
+  created_by?: number | string;
+  criado_por?: number | string;
   date: string;
   data_emissao?: string;
   due_date: string;
@@ -200,7 +217,6 @@ export interface Invoice {
   codigo_validacao?: string;
   imposto?: number;
   detalhes?: string;
-  created_by?: string;
   created_by_nome?: string;
   created_by_username?: string;
 }
@@ -378,6 +394,7 @@ export interface CashSession {
 export interface FiscalSeries {
   id: string | number;
   name: string;
+  tipo?: string;
   description?: string;
   user_id?: string | number; // Legacy
   users?: Array<{id: string, name: string}>;
@@ -459,12 +476,24 @@ export interface IssuedDocument {
   numero_documento: string;
   invoice_number?: string;
   reference_document?: string;
+  associated_document?: string;
+  documento_origem_id?: number | string;
+  numero_documento_origem?: string;
+  tipo_documento_origem?: string;
+  is_draft?: boolean;
+  documento_anulado?: boolean;
+  estado?: string;
+  pdf_gerado?: boolean;
+  ultima_exportacao_pdf_em?: string;
   data_emissao: string;
   date?: string;
   data_vencimento: string;
   due_date?: string;
   cliente_id: number;
   client_id?: number | string;
+  client_nif?: string | null;
+  imposto?: number;
+  created_at?: string;
   client_name?: string;
   cliente_nome?: string;
   local_trabalho: string;
@@ -505,6 +534,7 @@ export interface IssuedDocument {
   service_location?: string;
   retencao_fonte_total?: number;
   hash_documento?: string;
+  hash?: string;
   hash_anterior?: string;
   codigo_validacao?: string;
   assinatura_digital?: string;
@@ -602,11 +632,12 @@ export interface Purchase {
   purchase_number: string;
   numero_documento?: string;
   invoice_number?: string;
+  numero_fatura?: string;
   date: string;
   data_emissao?: string;
   due_date?: string;
   payment_method?: string;
-  status: 'pending' | 'completed' | 'cancelled' | 'pendente' | 'paga' | 'cancelada';
+  status: string;
   total: number;
   items?: PurchaseItem[];
   document_url?: string;
@@ -627,6 +658,11 @@ export interface Purchase {
   created_by?: string;
   created_by_nome?: string;
   created_by_username?: string;
+  valor_pago?: number;
+  valor_total?: number;
+  recibo_emitido?: boolean;
+  saldo_pendente?: number;
+  tipo_documento?: string;
 }
 
 export interface LaborTermination {

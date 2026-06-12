@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { 
     LayoutDashboard, FileText, Users, Settings, Plus, CheckCircle, Clock, 
     MoreVertical, Search, Filter, AlertCircle, BarChart3, TrendingUp, DollarSign,
-    Briefcase, Calendar, ChevronRight, Play, Pause, Square, Trash2, Edit3,
+    Briefcase, Calendar, ChevronRight, Play, Pause, Square, Trash2, Edit,
     CheckCircle2, Info, X, PieChart, Layers, Target, Activity, Zap, Shield
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -391,7 +391,7 @@ const ProjectManagementModule = () => {
                                 </td>
                                 <td className="px-6 py-4 text-right">
                                     <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button className="p-2 bg-zinc-50 border border-zinc-200 text-zinc-500 hover:text-[#003366] transition-all"><Edit3 size={14}/></button>
+                                        <button className="p-2 bg-zinc-50 border border-zinc-200 text-zinc-500 hover:text-[#003366] transition-all"><Edit size={14}/></button>
                                         <button className="p-2 bg-zinc-50 border border-zinc-200 text-zinc-500 hover:text-red-600 transition-all"><Trash2 size={14}/></button>
                                     </div>
                                 </td>

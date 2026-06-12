@@ -1,37 +1,44 @@
--- Correção: Criar a função get_auth_empresa_id() que estava em falta para que o RLS e as Caixas funcionem
+-- 1. Ensure the function exists with the exact signature needed.
+-- Make sure the RPC function name is exactly 'anular_documento_fiscal' and parameters match.
+-- Use parameters in a named JSON object as requested by postgrest.
 
-CREATE OR REPLACE FUNCTION public.get_auth_empresa_id()
-RETURNS UUID AS $$
+CREATE OR REPLACE FUNCTION public.anular_documento_fiscal(
+    p_documento_id UUID,
+    p_motivo TEXT,
+    p_usuario_id UUID
+) RETURNS JSONB AS $$
 DECLARE
-    tenant_id UUID;
+    v_doc RECORD;
+    v_result JSONB;
 BEGIN
-    -- 1. Tentar encontrar a empresa através do perfil do utilizador (novo modelo)
-    SELECT empresa_id INTO tenant_id
-    FROM public.perfis
-    WHERE id = auth.uid();
+    -- Verify document exists
+    SELECT * INTO v_doc FROM public.documentos_emitidos WHERE id = p_documento_id;
 
-    -- 2. Tentar encontrar a empresa verificando se o utilizador é o owner direto na tabela empresas
-    IF tenant_id IS NULL THEN
-        SELECT id INTO tenant_id
-        FROM public.empresas
-        WHERE auth_user_id = auth.uid();
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Documento não encontrado');
     END IF;
 
-    -- 3. Modo legado: O ID da empresa era diretamente o ID do utilizador
-    IF tenant_id IS NULL THEN
-        SELECT id INTO tenant_id
-        FROM public.empresas
-        WHERE id = auth.uid();
+    -- Verify if already annulled
+    IF v_doc.documento_anulado = true THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Documento já se encontra anulado');
     END IF;
 
-    -- 4. Fallback final
-    IF tenant_id IS NULL THEN
-        tenant_id := auth.uid();
-    END IF;
+    -- Perform the annulment update
+    UPDATE public.documentos_emitidos
+    SET 
+        documento_anulado = true,
+        motivo_anulacao = p_motivo,
+        anulado_por = p_usuario_id,
+        anulado_at = now(),
+        status = 'anulado',
+        estado_certificacao = 'Anulado'
+    WHERE id = p_documento_id;
 
-    RETURN tenant_id;
+    -- Return success
+    RETURN jsonb_build_object('success', true, 'message', 'Documento anulado com sucesso!');
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Recarregar o schema caso seja necessário
-NOTIFY pgrst, 'reload schema';
+-- Grant permissions if necessary
+GRANT EXECUTE ON FUNCTION public.anular_documento_fiscal(UUID, TEXT, UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.anular_documento_fiscal(UUID, TEXT, UUID) TO anon;

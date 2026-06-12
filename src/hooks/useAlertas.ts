@@ -89,10 +89,10 @@ export const useAlertas = () => {
 
       const { data: profile } = await supabase
         .from('perfis')
-        .select('company_id')
+        .select('empresa_id')
         .eq('id', user.id)
         .single();
-      const currentEmpresaId = profile?.company_id;
+      const currentEmpresaId = profile?.empresa_id;
       if (!currentEmpresaId) throw new Error('Empresa não identificada');
 
       const { data, error } = await supabase
@@ -136,10 +136,10 @@ export const useAlertas = () => {
 
       const { data: profile } = await supabase
         .from('perfis')
-        .select('company_id')
+        .select('empresa_id')
         .eq('id', user.id)
         .single();
-      const currentEmpresaId = profile?.company_id;
+      const currentEmpresaId = profile?.empresa_id;
       if (!currentEmpresaId) throw new Error('Empresa não identificada');
 
       const { error } = await supabase
@@ -171,10 +171,10 @@ export const useAlertas = () => {
 
       const { data: profile } = await supabase
         .from('perfis')
-        .select('company_id')
+        .select('empresa_id')
         .eq('id', user.id)
         .single();
-      const currentEmpresaId = profile?.company_id;
+      const currentEmpresaId = profile?.empresa_id;
       if (!currentEmpresaId) throw new Error('Empresa não identificada');
 
       const { error } = await supabase

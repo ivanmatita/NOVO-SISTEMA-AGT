@@ -40,7 +40,8 @@ export const caixaService = {
         .from('caixa_movimentacoes')
         .select('*')
         .eq('empresa_id', empresaId)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(200);
 
       if (caixaId) {
         query = query.or(`caixa_id.eq.${caixaId},target_caixa_id.eq.${caixaId}`);

@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, RealtimeClient } from '@supabase/supabase-js';
 
 const getEnvVar = (name: string): string => {
   try {
@@ -22,11 +22,14 @@ if (!getEnvVar('VITE_SUPABASE_ANON_KEY')) {
   console.error("VITE_SUPABASE_ANON_KEY não encontrada");
 }
 
-// Robust cleaning: remove /rest/v1, /auth/v1, and trailing slashes
-const supabaseUrl = rawUrl
-  .replace(/\/rest\/v1\/?$/, "")
-  .replace(/\/auth\/v1\/?$/, "")
-  .replace(/\/$/, "");
+// Robust cleaning & premium browser proxy selection to defeat regional routing delays/blocks
+const isBrowser = typeof window !== 'undefined';
+const supabaseUrl = isBrowser
+  ? window.location.origin + "/api/supabase-proxy"
+  : rawUrl
+      .replace(/\/rest\/v1\/?$/, "")
+      .replace(/\/auth\/v1\/?$/, "")
+      .replace(/\/$/, "");
 const supabaseAnonKey = getEnvVar('VITE_SUPABASE_ANON_KEY').trim();
 
 // Connection status exported for UI inspection
@@ -213,8 +216,13 @@ class SafeRealtimeChannel {
     try {
       this.listeners.push({ type, filter, callback });
       this.baseChannel.on(type, filter, callback);
-    } catch (e) {
-      console.error(`[SafeSupabase Channel] Error registering listener on ${this.channelName}:`, e);
+    } catch (e: any) {
+      const errMsg = e?.message || String(e);
+      if (errMsg.includes('subscribe()') || errMsg.includes('subscribe') || errMsg.includes('postgres_changes')) {
+        console.warn(`[SafeSupabase Channel] Graceful post-subscribe .on() warning on ${this.channelName}: ${errMsg}`);
+      } else {
+        console.error(`[SafeSupabase Channel] Error registering listener on ${this.channelName}:`, e);
+      }
     }
     return this;
   }
@@ -390,6 +398,24 @@ const realClientInstance = supabaseStatus.configured
       }
     })
   : null;
+
+// Direct WSS connection patch for Realtime to bypass standard fetch / proxy limits
+if (realClientInstance && isBrowser) {
+  try {
+    const rawWssUrl = rawUrl.trim().replace(/^http/, 'ws') + '/realtime/v1';
+    console.log('[Supabase Client] Patching RealtimeClient to direct WSS:', rawWssUrl);
+    (realClientInstance as any).realtime = new RealtimeClient(rawWssUrl, {
+      headers: (realClientInstance as any).headers,
+      accessToken: (realClientInstance as any)._getAccessToken.bind(realClientInstance),
+      fetch: (realClientInstance as any).fetch,
+      params: {
+        apikey: supabaseAnonKey,
+      }
+    });
+  } catch (err) {
+    console.error('[Supabase Client] Failed to patch RealtimeClient:', err);
+  }
+}
 
 // Wrap configured client or create recursive mock proxy
 export const supabase = realClientInstance

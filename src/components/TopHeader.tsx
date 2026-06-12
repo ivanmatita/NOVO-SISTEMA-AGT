@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Clock, Plus, Printer, Menu, Bell } from 'lucide-react';
+import { Search, Clock, Plus, Printer, Menu, Bell, Home, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 export const TopHeader = ({ 
@@ -9,7 +9,10 @@ export const TopHeader = ({
   onAddTask, 
   onPrint, 
   onSearch,
-  alerts = []
+  alerts = [],
+  showNavButtons = false,
+  onHome,
+  onBack
 }: { 
   fiscalYear: string, 
   setFiscalYear: (y: string) => void,
@@ -17,7 +20,10 @@ export const TopHeader = ({
   onAddTask?: () => void,
   onPrint?: () => void,
   onSearch?: (term: string) => void,
-  alerts?: any[]
+  alerts?: any[],
+  showNavButtons?: boolean,
+  onHome?: () => void,
+  onBack?: () => void
 }) => {
   const { user, logout } = useAuth();
   const [time, setTime] = useState(new Date());
@@ -106,6 +112,17 @@ export const TopHeader = ({
             <Menu size={20} />
           </button>
           
+          {showNavButtons && (
+            <div className="flex items-center gap-2 mr-2">
+              <button onClick={onBack} className="p-2 bg-zinc-100 text-[#003366] hover:bg-zinc-200 rounded-md transition-colors" title="Voltar">
+                <ArrowLeft size={18} />
+              </button>
+              <button onClick={onHome} className="p-2 bg-zinc-100 text-[#003366] hover:bg-zinc-200 rounded-md transition-colors" title="Menu Principal">
+                <Home size={18} />
+              </button>
+            </div>
+          )}
+
           {/* Global Search */}
           <form onSubmit={handleSearch} className="hidden md:flex relative w-full max-w-md">
             <input 

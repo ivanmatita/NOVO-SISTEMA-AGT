@@ -1,8 +1,9 @@
 import { supabase } from '../lib/supabase';
 import { SystemUser } from '../types';
+import { authService } from './authService';
 
 const getHeaders = async () => {
-  const { data: { session } } = await supabase.auth.getSession();
+  const session = await authService.getSessionSafe();
   const token = session?.access_token;
   return {
     'Content-Type': 'application/json',
@@ -14,7 +15,7 @@ export const systemUsersService = {
   /**
    * Grava log de auditoria no backend server.
    */
-  async logAuditoria(companyId: string, userId: string, email: string, action: string) {
+  async logAuditoria(empresaId: string, userId: string, email: string, action: string) {
     try {
       const headers = await getHeaders();
       await fetch('/api/audit-logs', {
@@ -23,7 +24,7 @@ export const systemUsersService = {
         body: JSON.stringify({
           action,
           email,
-          empresa_id: companyId
+          empresa_id: empresaId
         })
       });
     } catch (err) {
@@ -34,11 +35,11 @@ export const systemUsersService = {
   /**
    * Listar todos os utilizadores do sistema para uma empresa de forma segura via backend.
    */
-  async getUsers(companyId: string): Promise<SystemUser[]> {
-    if (!companyId) return [];
+  async getUsers(empresaId: string): Promise<SystemUser[]> {
+    if (!empresaId) return [];
     try {
       const headers = await getHeaders();
-      const response = await fetch(`/api/system-users?empresa_id=${companyId}`, {
+      const response = await fetch(`/api/system-users?empresa_id=${empresaId}`, {
         method: 'GET',
         headers
       });
@@ -51,8 +52,8 @@ export const systemUsersService = {
       const users = await response.json();
       return (users || []).map((u: any) => ({
         ...u,
-        company_id: u.company_id || u.empresa_id,
-        empresa_id: u.empresa_id || u.company_id // compatibilidade legado
+        empresa_id: u.empresa_id || u.company_id,
+        company_id: u.empresa_id || u.company_id
       }));
     } catch (err) {
       console.error('[SystemUsersService] Erro ao listar utilizadores:', err);
@@ -64,8 +65,8 @@ export const systemUsersService = {
    * Criar utilizador com segurança via backend server.
    * Evita a Warning/Erro de "Multiple GoTrueClient instances detected" e problemas de RLS/Auth no cliente.
    */
-  async createUser(companyId: string, payload: any): Promise<SystemUser> {
-    if (!companyId) throw new Error('O company_id é obrigatório.');
+  async createUser(empresaId: string, payload: any): Promise<SystemUser> {
+    if (!empresaId) throw new Error('O empresa_id é obrigatório.');
     if (!payload.email) throw new Error('O email é obrigatório.');
     if (!payload.name) throw new Error('O nome é obrigatório.');
     if (!payload.password) throw new Error('A password é obrigatória.');
@@ -77,8 +78,7 @@ export const systemUsersService = {
         headers,
         body: JSON.stringify({
           ...payload,
-          empresa_id: companyId,
-          company_id: companyId
+          empresa_id: empresaId
         })
       });
 
@@ -90,8 +90,8 @@ export const systemUsersService = {
       const createdUser = await response.json();
       return {
         ...createdUser,
-        company_id: companyId,
-        empresa_id: companyId
+        empresa_id: empresaId,
+        company_id: empresaId
       };
     } catch (err) {
       console.error('[SystemUsersService] Erro ao criar utilizador:', err);
@@ -102,8 +102,8 @@ export const systemUsersService = {
   /**
    * Atualizar dados de um utilizador existente via backend.
    */
-  async updateUser(companyId: string, userId: string, payload: any): Promise<SystemUser> {
-    if (!companyId || !userId) throw new Error('ID e Empresa são obrigatórios para atualizar.');
+  async updateUser(empresaId: string, userId: string, payload: any): Promise<SystemUser> {
+    if (!empresaId || !userId) throw new Error('ID e Empresa são obrigatórios para atualizar.');
 
     try {
       const headers = await getHeaders();
@@ -112,8 +112,7 @@ export const systemUsersService = {
         headers,
         body: JSON.stringify({
           ...payload,
-          empresa_id: companyId,
-          company_id: companyId
+          empresa_id: empresaId
         })
       });
 
@@ -126,8 +125,8 @@ export const systemUsersService = {
       return {
         ...updatedUser,
         id: userId,
-        company_id: companyId,
-        empresa_id: companyId
+        empresa_id: empresaId,
+        company_id: empresaId
       };
     } catch (err) {
       console.error('[SystemUsersService] Erro ao atualizar utilizador:', err);
@@ -138,8 +137,8 @@ export const systemUsersService = {
   /**
    * Alternar estado de ativação de um utilizador via backend.
    */
-  async toggleUserStatus(companyId: string, userId: string, currentStatus: boolean): Promise<boolean> {
-    if (!companyId || !userId) throw new Error('ID e Empresa são obrigatórios.');
+  async toggleUserStatus(empresaId: string, userId: string, currentStatus: boolean): Promise<boolean> {
+    if (!empresaId || !userId) throw new Error('ID e Empresa são obrigatórios.');
 
     try {
       const headers = await getHeaders();
@@ -148,7 +147,8 @@ export const systemUsersService = {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          is_active: nextStatus
+          is_active: nextStatus,
+          empresa_id: empresaId
         })
       });
 

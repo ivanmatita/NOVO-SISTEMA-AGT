@@ -6,8 +6,10 @@ let sessionLoading = false;
 
 export const authService = {
   async getSessionSafe() {
-    if (sessionCache) return sessionCache;
-    if (sessionLoading) return null;
+    if (sessionLoading) {
+      // Pequeno delay para evitar múltiplas chamadas simultâneas se já estiver a carregar
+      await new Promise(r => setTimeout(r, 200));
+    }
 
     sessionLoading = true;
     try {
@@ -15,6 +17,7 @@ export const authService = {
       const timeoutPromise = new Promise((_, reject) => {
         timeoutId = setTimeout(() => reject(new Error('Timeout on getSession')), 15000);
       });
+      timeoutPromise.catch(() => {}); // Prevent unhandled promise rejection
       const getSessionPromise = supabase.auth.getSession();
       
       const res = await Promise.race([
@@ -24,12 +27,15 @@ export const authService = {
         }), 
         timeoutPromise
       ]) as any;
+      
       if (res.error) {
         console.error('Error getting session:', res.error);
         return null;
       }
-      sessionCache = res.data.session;
-      return sessionCache;
+      
+      const session = res.data.session;
+      sessionCache = session; // Ainda atualizamos o cache global para outros usos, mas não bloqueamos a leitura oficial
+      return session;
     } catch (err) {
       console.error('getSessionSafe timeout/error:', err);
       return null;
@@ -132,14 +138,23 @@ export const authService = {
 
       sessionCache = authData.session;
 
-      // 1. Tentar buscar Perfil (using empresa_id column)
+      // 1. Tentar buscar Perfil
       const { data: perfil, error: perfilError } = await supabase
         .from('perfis')
-        .select('empresa_id, role')
+        .select('*')
         .eq('id', authData.user.id)
         .maybeSingle();
 
       if (perfilError) console.error('[AuthService] Erro de rede ao buscar perfil:', perfilError);
+
+      // Handle profile mappings
+      if (perfil && !perfil.empresa_id && perfil.company_id) {
+        perfil.empresa_id = perfil.company_id;
+      }
+      
+      if (perfil && perfil.empresa_id) {
+        perfil.company_id = perfil.empresa_id;
+      }
 
       // 2. Se não houver perfil, tentar buscar Empresa (Auto-reparação)
       if (!perfil) {
@@ -336,12 +351,12 @@ export const authService = {
       const startTime = Date.now();
       const perfilQuery = supabase
         .from('perfis')
-        .select('empresa_id, role, permission_areas, is_admin, level')
+        .select('*')
         .eq('id', session?.user?.id)
         .maybeSingle();
 
       const pt1 = createTimeout(30000);
-      const { data: perfil, error } = await Promise.race([
+      let { data: perfil, error } = await Promise.race([
         perfilQuery.then(res => {
           pt1.clear();
           return res;
@@ -351,6 +366,13 @@ export const authService = {
         }), 
         pt1.promise
       ]) as any;
+      
+      if (perfil && !perfil.empresa_id && perfil.company_id) {
+        perfil.empresa_id = perfil.company_id;
+      }
+      if (perfil && perfil.empresa_id) {
+        perfil.company_id = perfil.empresa_id;
+      }
       console.log(`[AuthService] perfilQuery levou ${Date.now() - startTime}ms`);
 
       if (error) {

@@ -93,15 +93,13 @@ export const SalesReport = ({ issuedDocuments, onBack, warehouses = [] }: SalesR
 
   const handleExcelExport = () => {
     const data = filteredDocs.map(doc => ({
-      'Data': new Date(doc.date || doc.data_emissao || Date.now()).toLocaleDateString(),
-      'Número': doc.invoice_number || doc.numero_documento,
+      'Documento': doc.invoice_number || doc.numero_documento,
       'Cliente': doc.client_name || 'Consumidor Final',
-      'Tipo': doc.document_type || 'VENDA',
-      'Incidência': (doc.counter_value || doc.total || 0) - (doc.vat_amount || 0),
-      'IVA': doc.vat_amount || 0,
-      'Desconto': doc.global_discount || 0,
-      'Total': doc.counter_value || doc.total || 0,
-      'Estado': doc.status || 'Ativo'
+      'Data': new Date(doc.date || doc.data_emissao || Date.now()).toLocaleDateString(),
+      'Moeda': (doc as any).moeda || (doc as any).currency || 'AOA',
+      'Subtotal': (doc.counter_value || doc.total || 0) / 1.14,
+      'IVA': doc.vat_amount || ((doc.counter_value || doc.total || 0) - (doc.counter_value || doc.total || 0) / 1.14),
+      'Total': doc.counter_value || doc.total || 0
     }));
     exportToExcel(data, `Vendas_${new Date().toISOString().split('T')[0]}.xlsx`, 'Vendas');
   };

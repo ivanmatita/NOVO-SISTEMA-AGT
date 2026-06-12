@@ -27,6 +27,7 @@ class RealtimeManager {
   private channels: Map<string, RealtimeChannel> = new Map();
   private listeners: Map<string, Set<Callback>> = new Map();
   private retryCounts: Map<string, number> = new Map();
+  private timeouts: Map<string, any> = new Map();
   private subscribing: Set<string> = new Set();
   private MAX_RETRIES = 3;
 
@@ -81,7 +82,12 @@ class RealtimeManager {
           if (callbacks) {
             callbacks.forEach(cb => {
               try {
-                cb(payload);
+                const result: any = cb(payload);
+                if (result && typeof result.catch === 'function') {
+                  result.catch(err => {
+                    console.error(`[RealtimeManager] Async Callback error on ${channelName}:`, err);
+                  });
+                }
               } catch (err) {
                 console.error(`[RealtimeManager] Callback error on ${channelName}:`, err);
               }
@@ -92,7 +98,8 @@ class RealtimeManager {
 
     return new Promise((resolve) => {
       // Small delay to prevent "WebSocket closed without opened" if called during rapid re-renders
-      setTimeout(() => {
+      const subTimeout = setTimeout(() => {
+        this.timeouts.delete(channelName);
         channel.subscribe(async (status) => {
           this.subscribing.delete(channelName);
           
@@ -104,31 +111,28 @@ class RealtimeManager {
           } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
             console.warn(`[RealtimeManager] Status ${status} para ${channelName}. Certifique-se que a tabela está na publicação 'supabase_realtime'.`);
             
-            const retries = this.retryCounts.get(channelName) || 0;
-            // Se for CLOSED, esperamos mais tempo antes de tentar novamente para não saturar o socket
-            if (retries < this.MAX_RETRIES) {
-              const delay = status === 'CLOSED' ? 5000 : (Math.pow(2, retries) * 1000);
-              this.retryCounts.set(channelName, retries + 1);
-              
-              setTimeout(async () => {
-                const retryChannel = await this.subscribe(table, empresaId, onUpdate);
-                resolve(retryChannel);
-              }, delay);
-            } else {
-              console.error(`[RealtimeManager] Desistindo de ${channelName} após ${retries} tentativas.`);
-              this.channels.delete(channelName);
-              this.subscribing.delete(channelName);
-              resolve(null);
-            }
+            // Supabase Safe Proxy in src/lib/supabase.ts already handles reconnection logic. 
+            // We just resolve(null) to avoid infinite loops and unhandled promise rejections.
+            this.channels.delete(channelName);
+            this.subscribing.delete(channelName);
+            resolve(null);
           }
         });
       }, 200); // Slightly longer delay
+      this.timeouts.set(channelName, subTimeout);
     });
   }
 
   public async unsubscribe(table: TableName, empresaId: string, callbackToRemove?: Callback) {
     const channelName = `realtime:${table}:${empresaId}`;
     
+    // Clear pending subscription timeout if unsubscribing early
+    const pendingTimeout = this.timeouts.get(channelName);
+    if (pendingTimeout) {
+      clearTimeout(pendingTimeout);
+      this.timeouts.delete(channelName);
+    }
+
     if (callbackToRemove) {
       const callbacks = this.listeners.get(channelName);
       if (callbacks) {
@@ -140,6 +144,8 @@ class RealtimeManager {
       // If no callback specified, we clear all listeners for this specific channel name
       this.listeners.delete(channelName);
     }
+
+    this.subscribing.delete(channelName);
 
     const channel = this.channels.get(channelName);
     if (channel) {
@@ -158,6 +164,11 @@ class RealtimeManager {
 
   public async unsubscribeAll() {
     console.log('[RealtimeManager] Unsubscribing from everything');
+    for (const [name, timeout] of this.timeouts.entries()) {
+      clearTimeout(timeout);
+    }
+    this.timeouts.clear();
+
     for (const [name, channel] of this.channels.entries()) {
       try {
         await supabase.removeChannel(channel);
@@ -166,6 +177,7 @@ class RealtimeManager {
     this.channels.clear();
     this.listeners.clear();
     this.retryCounts.clear();
+    this.subscribing.clear();
   }
 }
 

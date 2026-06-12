@@ -1,13 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { Building2, Save, Upload } from 'lucide-react';
+import { Building2, Save, Upload, ShieldCheck } from 'lucide-react';
 import { SecretariaDigitalManager } from './SecretariaDigitalManager';
 import { ExerciciosFiscaisManager } from './ExerciciosFiscaisManager';
+import { AgtSeriesModal } from './AgtSeriesModal';
+import { AgtSeriesListModal } from './AgtSeriesListModal';
 
 export const EmpresaModule = ({ onUpdate }: { onUpdate: () => void }) => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [showAgtModal, setShowAgtModal] = useState(false);
+  const [showAgtListModal, setShowAgtListModal] = useState(false);
   const [formData, setFormData] = useState({
     nome_empresa: '',
     nif: '',
@@ -120,11 +124,50 @@ export const EmpresaModule = ({ onUpdate }: { onUpdate: () => void }) => {
              <Save size={14} /> {loading ? 'A guardar...' : 'Guardar Dados'}
            </button>
         </form>
+
+        <div className="mt-8 pt-8 border-t border-zinc-100 flex flex-col md:flex-row items-center justify-between gap-4">
+           <div className="flex-1">
+             <h4 className="text-zinc-900 font-black text-xs uppercase tracking-tight flex items-center gap-2">
+               <ShieldCheck className="text-[#003366]" size={16} /> Certificação AGT (Séries Fiscais)
+             </h4>
+             <p className="text-[10px] text-zinc-400 mt-1">Autorize novas séries de faturas diretamente junto da AGT usando assinaturas digitais JWS.</p>
+           </div>
+           <div className="flex gap-2">
+             <button 
+               onClick={() => setShowAgtListModal(true)}
+               className="bg-white border border-zinc-200 text-zinc-600 px-4 py-2.5 text-[10px] font-black uppercase tracking-widest hover:bg-zinc-100 transition-all whitespace-nowrap"
+             >
+               Listar Séries
+             </button>
+             <button 
+               onClick={() => setShowAgtModal(true)}
+               className="bg-zinc-50 border border-zinc-200 text-zinc-600 px-6 py-2.5 text-[10px] font-black uppercase tracking-widest hover:bg-[#003366] hover:text-white transition-all whitespace-nowrap"
+             >
+               Solicitar Nova Série
+             </button>
+           </div>
+        </div>
       </div>
 
       <ExerciciosFiscaisManager onFiscalYearChange={onUpdate} />
 
       <SecretariaDigitalManager />
+
+      {showAgtModal && (
+        <AgtSeriesModal 
+          onClose={() => setShowAgtModal(false)}
+          onSuccess={() => {
+            onUpdate();
+            setShowAgtModal(false);
+          }}
+        />
+      )}
+
+      {showAgtListModal && (
+        <AgtSeriesListModal 
+          onClose={() => setShowAgtListModal(false)}
+        />
+      )}
     </div>
   );
 };

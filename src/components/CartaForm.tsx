@@ -35,6 +35,10 @@ export const CartaForm = ({ onBack, onSuccess, editingCarta }: { onBack: () => v
     tracking: true
   });
 
+  const [saving, setSaving] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [localSuccess, setLocalSuccess] = useState<string | null>(null);
+
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imageUrl, setImageUrl] = useState<string>('');
   const [imagePath, setImagePath] = useState<string>('');
@@ -69,7 +73,7 @@ export const CartaForm = ({ onBack, onSuccess, editingCarta }: { onBack: () => v
       });
       setImageUrl(editingCarta.imagem_url || '');
       setImagePath(editingCarta.imagem_path || '');
-      setImageName(editingCarta.imagem_name || '');
+      setImageName(editingCarta.imagem_name || editingCarta.imagem_nome || '');
       
       if (editorRef.current) {
         editorRef.current.innerHTML = editingCarta.conteudo || '';
@@ -116,10 +120,25 @@ export const CartaForm = ({ onBack, onSuccess, editingCarta }: { onBack: () => v
   };
 
   const handleSave = async () => {
-    if (!user?.empresa_id) {
-      alert('Erro: Empresa não identificada. Inicie sessão novamente.');
+    const empresa_id = user?.empresa_id || (user as any)?.user_metadata?.empresa_id || (user as any)?.user_metadata?.company_id || (user as any)?.company_id || (user as any)?.id;
+    if (!empresa_id) {
+      setLocalError('Erro: Empresa não identificada. Inicie sessão novamente.');
       return;
     }
+
+    if (!formData.nomeDestinatario.trim()) {
+      setLocalError('Erro: O Nome do Destinatário é um campo obrigatório.');
+      return;
+    }
+
+    if (!formData.assunto.trim()) {
+      setLocalError('Erro: O Assunto da Carta é um campo obrigatório.');
+      return;
+    }
+
+    setSaving(true);
+    setLocalError(null);
+    setLocalSuccess(null);
 
     // Auto Reference generation if and only if not editing and reference isn't set
     let finalReferencia = formData.referencia;
@@ -129,32 +148,10 @@ export const CartaForm = ({ onBack, onSuccess, editingCarta }: { onBack: () => v
     }
 
     try {
-        let finalImageUrl = imageUrl;
-        let finalImagePath = imagePath;
-        let finalImageName = imageName;
+        let savedCartaId = editingCarta?.id || null;
 
-        if (selectedImage) {
-            // Upload to Supabase Storage
-            const fileExt = selectedImage.name.split('.').pop();
-            const fileName = `${user.empresa_id}/cartas/${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-            
-            const { error: uploadError } = await supabase.storage
-              .from('documentos')
-              .upload(fileName, selectedImage);
-
-            if (uploadError) throw uploadError;
-
-            const { data } = supabase.storage
-              .from('documentos')
-              .getPublicUrl(fileName);
-
-            finalImageUrl = data.publicUrl;
-            finalImagePath = fileName;
-            finalImageName = selectedImage.name;
-        }
-
-        const payload = {
-            empresa_id: user.empresa_id,
+        const payload: any = {
+            empresa_id: empresa_id,
             destinatario: formData.destinatario,
             nome_destinatario: formData.nomeDestinatario,
             morada: formData.morada,
@@ -175,9 +172,10 @@ export const CartaForm = ({ onBack, onSuccess, editingCarta }: { onBack: () => v
             serie: formData.serie,
             tipo_documento: formData.tipoDocumento,
             conteudo: editorRef.current?.innerHTML || formData.conteudo || '',
-            imagem_url: finalImageUrl,
-            imagem_path: finalImagePath,
-            imagem_nome: finalImageName
+            imagem_url: imageUrl,
+            imagem_path: imagePath,
+            imagem_nome: imageName,
+            imagem_name: imageName
         };
 
         if (editingCarta?.id) {
@@ -186,29 +184,112 @@ export const CartaForm = ({ onBack, onSuccess, editingCarta }: { onBack: () => v
                 .update(payload)
                 .eq('id', editingCarta.id);
             if (error) throw error;
-            alert('Carta atualizada com sucesso!');
+            setLocalSuccess('Carta atualizada com sucesso!');
         } else {
-            const { error } = await supabase
+            const { data: insertedData, error } = await supabase
                 .from('cartas')
-                .insert([payload]);
+                .insert([payload])
+                .select('id')
+                .single();
             if (error) throw error;
-            alert('Carta guardada com sucesso!');
+            savedCartaId = insertedData?.id;
+            setLocalSuccess('Carta guardada com sucesso!');
         }
-        onSuccess();
+
+        if (selectedImage && savedCartaId) {
+            // Upload to Supabase Storage: primary bucket "cartas-media"
+            const fileExt = selectedImage.name.split('.').pop();
+            const uniqueName = `${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
+            const fileName = `${empresa_id}/${savedCartaId}/${uniqueName}.${fileExt}`;
+            
+            const { error: uploadError } = await supabase.storage
+              .from('cartas-media')
+              .upload(fileName, selectedImage, { cacheControl: '3600', upsert: false });
+
+            if (uploadError) {
+              console.error('[CartaForm] Storage upload failed on "cartas-media":', uploadError.message);
+              throw new Error(`Erro ao enviar ficheiro: ${uploadError.message}`);
+            }
+
+            const { data } = supabase.storage
+              .from('cartas-media')
+              .getPublicUrl(fileName);
+            const finalUrl = data.publicUrl;
+
+            // Register file metadata in media_arquivos table
+            const mediaPayload = {
+              empresa_id: empresa_id,
+              carta_id: savedCartaId,
+              url: finalUrl,
+              path: fileName, // Use the correct path based on the upload
+              nome_original: selectedImage.name,
+              tipo_ficheiro: selectedImage.type || 'application/octet-stream',
+              tamanho: selectedImage.size,
+              is_deleted: false,
+              tipo: 'documento',
+              nome_arquivo: selectedImage.name,
+              caminho_arquivo: fileName,
+              url_publica: finalUrl,
+              url_arquivo: finalUrl,
+              bucket: 'cartas-media'
+            };
+
+            const { error: mediaDbErr } = await supabase
+              .from('media_arquivos')
+              .insert([mediaPayload]);
+
+            if (mediaDbErr) {
+              console.error('[CartaForm] Error inserting into media_arquivos:', mediaDbErr);
+              throw new Error(`Erro ao registar ficheiro na base de dados: ${mediaDbErr.message}`);
+            }
+
+            // Update original letter to hold the image path and URL
+            await supabase
+              .from('cartas')
+              .update({
+                imagem_url: finalUrl,
+                imagem_path: fileName,
+                imagem_nome: selectedImage.name,
+                imagem_name: selectedImage.name
+              })
+              .eq('id', savedCartaId);
+        }
+
+        setTimeout(() => {
+          onSuccess();
+        }, 1500);
+
     } catch (error: any) {
         console.error('Error saving carta:', error);
-        alert('Erro ao guardar: ' + error.message);
+        setLocalError(error.message || 'Erro ao guardar o registo da correspondência.');
+    } finally {
+        setSaving(false);
     }
   };
 
   return (
     <div className="w-full max-w-5xl bg-white shadow-2xl overflow-hidden rounded-lg max-h-[90vh] flex flex-col">
       <div className="flex bg-[#003366] text-white p-4 items-center gap-4">
-          <button onClick={onBack} className="hover:bg-white/10 p-1.5 rounded-full transition-colors"><ChevronLeft size={20} /></button>
+          <button onClick={onBack} disabled={saving} className="hover:bg-white/10 p-1.5 rounded-full transition-colors disabled:opacity-50"><ChevronLeft size={20} /></button>
           <h2 className="text-xl font-bold">{editingCarta ? 'Editar Registo de Carta' : 'Novo Registo de Carta'}</h2>
       </div>
       
       <div className="p-6 overflow-y-auto space-y-4 flex-1">
+          {localError && (
+            <div className="bg-red-50 border border-red-200 text-red-700 p-4 font-sans text-xs flex flex-col gap-1 rounded shadow-sm">
+              <span className="font-bold uppercase tracking-wide">⚠️ Erro de Processamento:</span>
+              <p className="font-medium text-zinc-700">{localError}</p>
+              <p className="text-[10px] text-zinc-500 mt-1">
+                Certifique-se de que as tabelas de correspondência foram migradas para o seu banco de dados Supabase executando o ficheiro de instalação SQL.
+              </p>
+            </div>
+          )}
+
+          {localSuccess && (
+            <div className="bg-emerald-50 border border-emerald-200 text-emerald-850 p-4 font-sans text-xs font-bold rounded shadow-sm">
+              ✓ {localSuccess} A redirecionar...
+            </div>
+          )}
           {/* DADOS DO DOCUMENTO */}
           <div className="border border-zinc-200 rounded">
             <button type="button" onClick={() => setSections({...sections, dados: !sections.dados})} className="w-full bg-zinc-100 p-3 font-bold text-xs text-zinc-600 uppercase flex items-center justify-between">
@@ -328,7 +409,7 @@ export const CartaForm = ({ onBack, onSuccess, editingCarta }: { onBack: () => v
                             </span>
                             <input 
                               type="file" 
-                              accept="image/*" 
+                              accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt" 
                               className="hidden" 
                               onChange={e => {
                                 const file = e.target.files?.[0] || null;
@@ -424,8 +505,27 @@ export const CartaForm = ({ onBack, onSuccess, editingCarta }: { onBack: () => v
       </div>
 
       <div className="flex justify-end gap-3 p-4 bg-zinc-50 border-t border-zinc-100">
-        <button onClick={onBack} className="bg-zinc-100 text-zinc-600 px-6 py-2.5 rounded text-sm font-bold uppercase hover:bg-zinc-200 transition-colors">Cancelar</button>
-        <button onClick={handleSave} className="bg-[#003366] text-white px-8 py-2.5 rounded text-sm font-bold uppercase hover:bg-[#002244] transition-colors shadow-lg">Salvar Registo</button>
+        <button 
+          onClick={onBack} 
+          disabled={saving}
+          className="bg-zinc-100 text-zinc-600 px-6 py-2.5 rounded text-sm font-bold uppercase hover:bg-zinc-200 transition-colors disabled:opacity-50 cursor-pointer"
+        >
+          Cancelar
+        </button>
+        <button 
+          onClick={handleSave} 
+          disabled={saving}
+          className="bg-[#003366] text-white px-8 py-2.5 rounded text-sm font-bold uppercase hover:bg-[#002244] transition-colors shadow-lg disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+        >
+          {saving ? (
+            <>
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+              A carregar...
+            </>
+          ) : (
+            'Salvar Registo'
+          )}
+        </button>
       </div>
     </div>
   );

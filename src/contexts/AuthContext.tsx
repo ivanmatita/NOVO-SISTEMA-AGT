@@ -43,13 +43,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (sessionId === lastHandledSessionId) return;
       lastHandledSessionId = sessionId;
 
-      if (session) {
-        const curr = await authService.getCurrentUser();
-        if (mounted) {
-          setUser(curr);
+      try {
+        if (session) {
+          const curr = await authService.getCurrentUser();
+          if (mounted) {
+            setUser(curr);
+          }
+        } else {
+          setUser(null);
         }
-      } else {
-        setUser(null);
+      } catch (err) {
+        console.error('[AuthContext] Erro ao processar mudança de estado de autenticação:', err);
+        if (mounted) setUser(null);
       }
     });
 

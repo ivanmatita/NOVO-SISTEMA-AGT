@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { 
     Truck, AlertTriangle, Calendar, Settings, Plus, Wrench, FileText, 
     Search, Filter, Fuel, Shield, MapPin, ClipboardList, TrendingUp,
-    MoreVertical, Edit3, Trash2, History, CheckCircle2, AlertCircle, X
+    MoreVertical, Edit, Trash2, History, CheckCircle2, AlertCircle, X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { fetchWithAuth } from '../lib/fetchWithAuth';

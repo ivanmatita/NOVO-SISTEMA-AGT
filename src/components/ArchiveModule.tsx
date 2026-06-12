@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Upload, Search, FileText, Download, Trash2, UploadCloud, ChevronLeft, Filter, Folder, List, Grid, X, Archive, Edit3, Loader2, Eye
+  Upload, Search, FileText, Download, Trash2, UploadCloud, ChevronLeft, Filter, Folder, List, Grid, X, Archive, Edit, Loader2, Eye
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../contexts/AuthContext';
@@ -437,7 +437,7 @@ const ArchiveModule = ({ fiscalYear }: { fiscalYear?: string }) => {
                             className="p-2 text-zinc-400 hover:bg-blue-50 hover:text-blue-600 transition-colors rounded-none border border-zinc-100" 
                             title="Editar"
                           >
-                            <Edit3 size={16} />
+                            <Edit size={16} />
                           </button>
                           <button 
                             onClick={(e) => { e.stopPropagation(); handleDelete(f); }} 
@@ -496,7 +496,7 @@ const ArchiveModule = ({ fiscalYear }: { fiscalYear?: string }) => {
                         className="p-1.5 text-zinc-400 hover:bg-blue-50 hover:text-blue-600 transition-colors rounded-full border border-zinc-100" 
                         title="Editar"
                       >
-                        <Edit3 size={14} />
+                        <Edit size={14} />
                       </button>
                       <button 
                         onClick={(e) => { e.stopPropagation(); handleDelete(f); }} 

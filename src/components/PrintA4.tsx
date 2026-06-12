@@ -87,6 +87,8 @@ const writeValorPorExtenso = (n: number) => {
 interface PrintA4Props {
   invoice: Invoice | null;
   isDraft?: boolean;
+  copyType?: 'Original' | 'Duplicado' | 'Triplicado';
+  printFormat?: 'A4' | 'P80' | 'P24';
   companyData?: {
     name: string;
     nif: string;
@@ -121,7 +123,7 @@ interface PrintA4Props {
   }[];
 }
 
-const PrintA4 = ({ invoice, isDraft = false, companyData, graphicConfigs = [] }: PrintA4Props) => {
+const PrintA4 = ({ invoice, isDraft = false, copyType = 'Original', printFormat = 'A4', companyData, graphicConfigs = [] }: PrintA4Props) => {
   if (!invoice) return null;
   
   const getConfig = (tipo: string) => graphicConfigs.find(c => c.tipo === tipo && c.ativo);
@@ -135,8 +137,9 @@ const PrintA4 = ({ invoice, isDraft = false, companyData, graphicConfigs = [] }:
   
   const totalInWords = invoice.total_in_words || writeValorPorExtenso(invoice.total || 0);
   
-  const isProvisional = isDraft || !invoice.is_certified || !invoice.hash;
-  const qrValue = !isProvisional ? `${invoice.invoice_number}|${invoice.client_nif || '999999999'}|${invoice.date}|${invoice.total || 0}|${invoice.hash || ''}` : 'DOCUMENTO NÃO CERTIFICADO';
+  const isProvisional = isDraft || !invoice.is_certified || !invoice.hash || invoice.document_type === 'DRAFT' || invoice.tipo_documento === 'DRAFT';
+  const cleanInvoiceNumber = (invoice.invoice_number || invoice.numero_documento || 'DRAFT').split('-')[0].trim();
+  const qrValue = !isProvisional ? `${cleanInvoiceNumber}|${invoice.client_nif || '999999999'}|${invoice.date || invoice.data_emissao}|${invoice.total || 0}|${invoice.hash || ''}` : 'DOCUMENTO NÃO CERTIFICADO';
   const displayCurrency = isProvisional && invoice.currency !== 'AOA' ? (invoice.currency || 'AOA') : 'AOA';
   const formatParams = (val: number) => formatCurrency(val, displayCurrency);
 
@@ -165,6 +168,127 @@ const PrintA4 = ({ invoice, isDraft = false, companyData, graphicConfigs = [] }:
                    !!(invoice as any).supplier_name || 
                    invoice.document_type?.toLowerCase().includes('pagamento');
 
+  // Multi-format support: P80 Thermal format
+  if (printFormat === 'P80') {
+    return (
+      <div className="bg-white p-4 w-[80mm] mx-auto text-zinc-900 font-mono text-[10px] border border-zinc-200 shadow-sm leading-tight print:p-0">
+        <div className="text-center space-y-1 mb-3">
+          <p className="font-bold text-xs uppercase leading-snug">{companyData?.name || companyData?.nome_empresa || 'Empresa Local'}</p>
+          <p className="text-[8px]">{companyData?.address || companyData?.endereco || 'Endereço Sede'}</p>
+          <p className="text-[8px] font-bold">NIF: {companyData?.nif || '---'}</p>
+          {(companyData?.telefone || companyData?.phone) && <p className="text-[8px]">Tel: {companyData?.telefone || companyData?.phone}</p>}
+        </div>
+
+        <div className="border-t border-dashed border-zinc-300 py-1.5 text-[8px] space-y-0.5">
+          <p className="font-bold text-center uppercase tracking-wide text-[9px]">{invoice.document_type || invoice.tipo_documento || 'FATURA'} - {copyType}</p>
+          <p className="font-bold text-center text-zinc-600 mb-1">{cleanInvoiceNumber}</p>
+          <p>Data Emissão: {new Date(invoice.created_at || invoice.data_emissao || new Date()).toLocaleString('pt-PT')}</p>
+          <p>Cliente: <span className="font-bold">{displayName}</span></p>
+          <p>NIF Cliente: {displayNif}</p>
+        </div>
+
+        <div className="border-t border-dashed border-zinc-300 py-2">
+          <table className="w-full text-left text-[8px]">
+            <thead>
+              <tr className="border-b border-dashed border-zinc-300">
+                <th className="pb-1">Artigo</th>
+                <th className="pb-1 text-center font-bold">Qtd</th>
+                <th className="pb-1 text-right">Preço</th>
+                <th className="pb-1 text-right font-bold">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {invoice.items?.map((item, idx) => (
+                <tr key={idx} className="align-top">
+                  <td className="py-1 pr-1 truncate max-w-[28mm]">{item.description}</td>
+                  <td className="py-1 text-center">{item.quantity}</td>
+                  <td className="py-1 text-right">{formatCurrency(item.unit_price || 0, displayCurrency)}</td>
+                  <td className="py-1 text-right font-bold">{formatCurrency((item.unit_price || 0) * (item.quantity || 0), displayCurrency)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="border-t border-dashed border-zinc-300 pt-1.5 text-[8px] space-y-0.5 text-right font-mono">
+          <p>Subtotal: <span className="font-bold">{formatCurrency(subtotalWithLineDiscounts, displayCurrency)}</span></p>
+          <p>IVA: <span className="font-bold">{formatCurrency(vatTotal, displayCurrency)}</span></p>
+          {discountAmount > 0 && <p>Desconto: <span className="font-bold">-{formatCurrency(discountAmount, displayCurrency)}</span></p>}
+          {retencaoTotal > 0 && <p>Retenção: <span className="font-bold">-{formatCurrency(retencaoTotal, displayCurrency)}</span></p>}
+          <p className="text-[10px] font-bold pt-1 border-t border-dashed border-zinc-200">TOTAL: <span className="text-xs font-black">{formatCurrency(totalPagar, displayCurrency)}</span></p>
+        </div>
+
+        <div className="flex flex-col items-center justify-center my-3 space-y-1">
+          <QRCodeSVG value={qrValue} size={100} />
+          <p className="text-[7px] text-zinc-400 font-sans tracking-tight">Consulte a validade deste documento no Portal AGT</p>
+        </div>
+
+        {isFinal && (
+          <div className="text-center font-bold text-[7px] text-zinc-500 uppercase tracking-tighter py-1 bg-zinc-50 border border-zinc-200 font-mono">
+            Assinatura: {invoice.hash ? invoice.hash.slice(0, 4) + '-' + invoice.hash.slice(-4) : ''}-AGT-RECON-S1
+          </div>
+        )}
+
+        <div className="border-t border-dashed border-zinc-300 pt-2 text-center text-[7px] text-zinc-400">
+          <p className="uppercase">Processado por Programa Certificado nº 330/AGT/2024</p>
+          <p className="mt-0.5 font-bold text-zinc-700">Obrigado pela sua preferência!</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Multi-format support: P24 Thermal Portable format (narrower)
+  if (printFormat === 'P24') {
+    return (
+      <div className="bg-white p-2 w-[58mm] mx-auto text-zinc-900 font-mono text-[9px] border border-zinc-300 shadow-sm leading-none print:p-0">
+        <div className="text-center space-y-0.5 mb-2">
+          <p className="font-bold text-[10px] uppercase truncate">{companyData?.name || companyData?.nome_empresa || 'Empresa Local'}</p>
+          <p className="text-[7px] truncate">{companyData?.address || companyData?.endereco || 'Sede'}</p>
+          <p className="text-[7px] font-bold">NIF: {companyData?.nif || '---'}</p>
+        </div>
+
+        <div className="border-t border-dashed border-zinc-300 py-1 text-[7px] space-y-0.5">
+          <p className="font-bold text-center uppercase text-[8px]">{invoice.document_type || invoice.tipo_documento || 'FATURA'} - {copyType}</p>
+          <p className="font-bold text-center text-zinc-600 truncate">{cleanInvoiceNumber}</p>
+          <p className="scale-95 origin-left">Data: {new Date(invoice.created_at || invoice.data_emissao || new Date()).toLocaleString('pt-PT')}</p>
+          <p className="truncate scale-95 origin-left">Cli: {displayName}</p>
+          <p className="scale-95 origin-left">NIF: {displayNif}</p>
+        </div>
+
+        <div className="border-t border-dashed border-zinc-300 py-1">
+          <div className="text-[7px] font-bold border-b border-dashed border-zinc-300 pb-0.5 mb-1 grid grid-cols-4">
+            <span className="col-span-2">Desc</span>
+            <span className="text-center">Qtd</span>
+            <span className="text-right">Total</span>
+          </div>
+          {invoice.items?.map((item, idx) => (
+            <div key={idx} className="text-[7px] grid grid-cols-4 py-0.5 align-top">
+              <span className="col-span-2 truncate pr-1">{item.description}</span>
+              <span className="text-center">x{item.quantity}</span>
+              <span className="text-right font-bold">{formatCurrency((item.unit_price || 0) * (item.quantity || 0), displayCurrency)}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="border-t border-dashed border-zinc-300 pt-1 text-[7px] space-y-0.5 text-right">
+          <p>Subtotal: {formatCurrency(subtotalWithLineDiscounts, displayCurrency)}</p>
+          <p>IVA: {formatCurrency(vatTotal, displayCurrency)}</p>
+          <p className="text-[8px] font-black pt-0.5 border-t border-dashed border-zinc-200">TOTAL: {formatCurrency(totalPagar, displayCurrency)}</p>
+        </div>
+
+        <div className="flex flex-col items-center justify-center my-2 space-y-1">
+          <QRCodeSVG value={qrValue} size={70} />
+          <p className="text-[6px] text-zinc-400 text-center scale-90">Validação AGT</p>
+        </div>
+
+        <div className="border-t border-dashed border-zinc-300 pt-1 text-center text-[6px] text-zinc-400">
+          <p className="uppercase">Certificado AGT nº 330</p>
+          <p className="font-bold text-zinc-600 uppercase">Equipamento P24</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-white p-[2cm] w-[210mm] min-h-[297mm] mx-auto text-zinc-900 font-sans shadow-lg print:shadow-none print:m-0 relative overflow-hidden">
       {watermarkSrc && (
@@ -189,9 +313,10 @@ const PrintA4 = ({ invoice, isDraft = false, companyData, graphicConfigs = [] }:
       
       {isProvisional && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.05] rotate-[-45deg] z-[100] text-center border-8 border-amber-500 m-20">
-          <p className="text-[70px] font-black uppercase tracking-[0.1em] text-amber-600 leading-none">
-            DOCUMENTO NÃO CERTIFICADO<br/>
-            <span className="text-[30px] font-bold">SEM VALIDADE FISCAL EXERCÍCIO {new Date().getFullYear()}</span>
+          <p className="text-[50px] font-black uppercase tracking-[0.1em] text-amber-600 leading-none">
+            {invoice.currency && invoice.currency !== 'AOA' ? 'DRAFT - Documento emitido em moeda estrangeira' : 'DOCUMENTO NÃO CERTIFICADO'}
+            <br/>
+            <span className="text-[24px] font-bold">SEM VALIDADE FISCAL EXERCÍCIO {new Date().getFullYear()}</span>
           </p>
         </div>
       )}
@@ -260,7 +385,12 @@ const PrintA4 = ({ invoice, isDraft = false, companyData, graphicConfigs = [] }:
           <h2 className="text-2xl font-black uppercase text-[#003366] mb-1 tracking-tighter">
             {isProvisional ? 'Documento de Suporte (Draft)' : (invoice.document_type || 'Fatura')}
           </h2>
-          <p className="text-lg font-mono font-black text-zinc-800 tracking-widest">{invoice.invoice_number}</p>
+          <p className="text-lg font-mono font-black text-zinc-800 tracking-widest">{cleanInvoiceNumber}</p>
+          {!isProvisional && (
+            <p className="text-[11px] font-mono font-black text-zinc-600 uppercase mt-0.5 tracking-wider">
+              Hash: <span className="text-[#003366]">{invoice.codigo_validacao || (invoice.hash ? invoice.hash.slice(0, 4).toUpperCase() : 'PENDENTE')}</span>
+            </p>
+          )}
           <div className="mt-4 text-[10px] space-y-1 font-bold uppercase text-zinc-500">
             <p><span className="text-zinc-400">Data de Emissão:</span> {new Date(invoice.date).toLocaleDateString('pt-PT')}</p>
             {invoice.due_date && <p><span className="text-zinc-400">Vencimento:</span> {new Date(invoice.due_date).toLocaleDateString('pt-PT')}</p>}
@@ -286,14 +416,23 @@ const PrintA4 = ({ invoice, isDraft = false, companyData, graphicConfigs = [] }:
             {displayEmail && <p className="break-all"><span className="font-bold">Email:</span> {displayEmail}</p>}
           </div>
         </div>
-        <div className="p-4 border border-zinc-100 bg-white/80">
-          <h3 className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-3">Informações Adicionais</h3>
-          <div className="text-sm space-y-1">
-            {invoice.service_location && <p><span className="font-bold">Local de Serviço:</span> {invoice.service_location}</p>}
-            {invoice.service_date && <p><span className="font-bold">Data de Serviço:</span> {new Date(invoice.service_date).toLocaleDateString('pt-PT')}</p>}
-            <p><span className="font-bold">Estado:</span> {invoice.status === 'paid' ? 'Liquidado' : 'Pendente'}</p>
+          <div className="p-4 border border-zinc-100 bg-white/80 h-full">
+            <h3 className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-3">Informações Adicionais</h3>
+            <div className="text-sm space-y-1">
+              {invoice.service_location && <p><span className="font-bold">Local de Serviço:</span> {invoice.service_location}</p>}
+              {invoice.service_date && <p><span className="font-bold">Data de Serviço:</span> {new Date(invoice.service_date).toLocaleDateString('pt-PT')}</p>}
+              {invoice.documento_origem_id && (
+                <p><span className="font-bold text-red-600">Ref. Origem:</span> {invoice.numero_documento_origem || 'Consultar Original'}</p>
+              )}
+              {(invoice.document_type === 'Nota de Crédito' || invoice.tipo_documento === 'Nota de Crédito') && (
+                <p className="text-[10px] italic text-zinc-500 font-bold uppercase">Referente à: {invoice.numero_documento_origem || 'DOC ORIGEM'}</p>
+              )}
+              {(invoice.document_type === 'Recibo' || invoice.tipo_documento === 'Recibo') && (
+                <p className="text-[10px] italic text-zinc-500 font-bold uppercase">Liquidação de: {invoice.numero_documento_origem || 'FT ORIGEM'}</p>
+              )}
+              <p><span className="font-bold">Estado:</span> {invoice.status === 'paid' ? 'Liquidado' : 'Pendente'}</p>
+            </div>
           </div>
-        </div>
       </div>
 
       <table className="w-full mb-12 relative z-10">
@@ -529,9 +668,34 @@ const PrintA4 = ({ invoice, isDraft = false, companyData, graphicConfigs = [] }:
             )}
           </div>
           <div className="text-[8px] text-zinc-400 font-bold uppercase border border-zinc-200 px-2 py-0.5 rounded">
-             {invoice.status === 'paid' ? 'Original - Documento Quitado' : 'Original'}
+             {invoice.status === 'paid' ? `${copyType} - Documento Quitado` : copyType}
           </div>
         </div>
+
+        {(() => {
+          const exRate = Number(invoice.exchange_rate || (invoice as any).taxa_cambio || 1);
+          const hasFC = exRate !== 1 && invoice.currency && invoice.currency !== 'AOA';
+          if (!hasFC) return null;
+          
+          return (
+            <div className="mt-4 p-4 border border-zinc-200 bg-zinc-50 rounded-sm text-[10px] space-y-1">
+              <p className="font-bold text-[#003366] uppercase tracking-widest mb-2 border-b border-zinc-200 pb-1">Informação Multimoeda / Câmbio</p>
+              <div className="flex justify-between">
+                <span>Moeda Original:</span>
+                <span className="font-bold">{invoice.currency}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Taxa de Câmbio:</span>
+                <span className="font-bold">1.00 {invoice.currency} = {formatCurrency(exRate, 'AOA')}</span>
+              </div>
+              <div className="flex justify-between border-t border-zinc-200 pt-1 mt-1">
+                <span>Total em {invoice.currency}:</span>
+                <span className="font-bold text-base">{formatCurrency(invoice.total || 0, invoice.currency)}</span>
+              </div>
+              <p className="text-[8px] text-zinc-400 italic mt-2">* Os valores fiscais deste documento foram convertidos para Kwanzas (AOA) à taxa indicada, conforme as regras da AGT.</p>
+            </div>
+          );
+        })()}
 
         <div className="grid grid-cols-2 gap-8 pt-4 border-t border-zinc-100">
            <div className="text-[9px] space-y-0.5 font-medium uppercase tracking-tight text-zinc-600">

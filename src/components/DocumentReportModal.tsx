@@ -18,11 +18,39 @@ export const DocumentReportModal: React.FC<DocumentReportModalProps> = ({ docume
     return new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(value || 0).replace('Kz', '').trim() + ' Kz';
   };
 
-  const totalValue = (document.total || document.counter_value || 0) + (document.vat_amount || 0) - (document.global_discount || 0);
-
   const docAny = document as any;
+  const listItems = document.items || docAny.itens || docAny.items || [];
+  
+  // Recalcular totais e impostos com precisão
+  let calcSubtotal = 0;
+  let calcIva = 0;
+  let calcDiscount = 0;
+  
+  if (listItems && listItems.length > 0) {
+    listItems.forEach((item: any) => {
+      const q = Number(item.quantity ?? item.qtd ?? 0);
+      const p = Number(item.unit_price ?? item.preco_unitario ?? 0);
+      const lineBase = q * p;
+      calcSubtotal += lineBase;
+      calcDiscount += Number(item.desconto ?? item.desconto_linha ?? 0);
+      const rateStr = String(item.tax ?? item.tax_rate ?? item.taxa_iva ?? '14%');
+      const rateMatch = rateStr.match(/\d+/);
+      const rate = rateMatch ? Number(rateMatch[0]) : 14;
+      const lineNet = lineBase - Number(item.desconto ?? item.desconto_linha ?? 0);
+      calcIva += lineNet * (rate / 100);
+    });
+  } else {
+    calcSubtotal = Number(document.total || document.counter_value || 0);
+    calcIva = Number(document.vat_amount || docAny.imposto || 0);
+    calcDiscount = Number(document.global_discount || 0);
+  }
+  
+  const calcGlobalDiscount = Number(document.global_discount || 0);
+  const totalValue = calcSubtotal - calcDiscount - calcGlobalDiscount + calcIva;
+
   const displayName = docAny.supplier_name || document.client_name || 'N/A';
   const displayId = docAny.supplier_id || document.client_id || docAny.cliente_id || 'N/A';
+  const displayNif = document.client_nif || docAny.supplier_nif || docAny.nif_cliente || docAny.nif_fornecedor || '999999999';
   const displayAddress = docAny.supplier_address || docAny.client_address || docAny.morada_cliente || 'Endereço não informado';
 
   const triggerPrintArea = () => {
@@ -30,18 +58,24 @@ export const DocumentReportModal: React.FC<DocumentReportModalProps> = ({ docume
   };
   
   const handleDownloadExcel = () => {
-    const excelData = (document.items || []).map(item => ({
-      'Descrição': item.description,
-      'Quantidade': item.quantity,
-      'Preço Unitário': item.unit_price,
-      'Imposto': item.tax || '14%',
-      'Total': item.total
-    }));
-    exportToExcel(excelData, `Relatorio_${document.numero_documento || document.invoice_number || 'doc'}.xlsx`, 'Itens do Documento');
+    const subtotalCalc = calcSubtotal;
+    const ivaCalc = calcIva;
+    const totalCalc = totalValue;
+
+    const excelData = [{
+      'Documento': document.numero_documento || document.invoice_number || 'N/A',
+      'Cliente': displayName,
+      'Data': new Date(document.created_at || document.data_emissao || new Date()).toLocaleDateString('pt-PT'),
+      'Moeda': document.currency || document.moeda || 'AOA',
+      'Subtotal': subtotalCalc,
+      'IVA': ivaCalc,
+      'Total': totalCalc
+    }];
+    exportToExcel(excelData, `Relatorio_${document.numero_documento || document.invoice_number || 'doc'}.xlsx`, 'Resumo do Documento');
   };
 
-  const filteredItems = (document.items || []).filter(item => 
-    item.description.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredItems = (listItems || []).filter((item: any) => 
+    (item.description || item.descricao || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -182,9 +216,7 @@ export const DocumentReportModal: React.FC<DocumentReportModalProps> = ({ docume
                   </div>
                 </div>
               </div>
-            </div>
-
-            {/* Sidebar Stats */}
+                {/* Sidebar Stats */}
             <div className="space-y-6">
               <div className="bg-[#003366] p-6 text-white rounded-sm shadow-xl">
                 <p className="text-[10px] font-bold text-white/50 uppercase tracking-[0.2em] mb-4">Total a Pagar</p>
@@ -193,18 +225,18 @@ export const DocumentReportModal: React.FC<DocumentReportModalProps> = ({ docume
                 <div className="mt-8 pt-6 border-t border-white/10 space-y-4">
                    <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest text-white/60">
                       <span>Base Tributável</span>
-                      <span>{formatCurrency(document.total || document.counter_value)}</span>
+                      <span>{formatCurrency(calcSubtotal)}</span>
                    </div>
                    <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest text-emerald-400">
                       <span>IVA Total</span>
-                      <span>+ {formatCurrency(document.vat_amount || 0)}</span>
+                      <span>+ {formatCurrency(calcIva)}</span>
                    </div>
                    <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest text-red-300">
                       <span>Desconto</span>
-                      <span>- {formatCurrency(document.global_discount || 0)}</span>
+                      <span>- {formatCurrency(calcDiscount + calcGlobalDiscount)}</span>
                    </div>
                 </div>
-              </div>
+              </div>            </div>
 
               <div className="border border-zinc-200 divide-y divide-zinc-100 bg-white">
                 <div className="p-4 bg-zinc-50">

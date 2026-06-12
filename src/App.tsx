@@ -10856,10 +10856,23 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
               </td>
                 <td className="px-6 py-4 font-black text-[#003366] whitespace-nowrap">
                   <div className={`uppercase tracking-tighter ${doc.status === 'anulado' ? 'line-through text-red-400' : ''}`}>
+                    {/* Colour-coded type badge */}
+                    {(() => {
+                      const tp = (doc.tipo_documento || doc.document_type || '').toUpperCase();
+                      let badge = null;
+                      if (tp === 'RC' || tp.includes('RECIBO')) {
+                        badge = <span className="inline-block text-[8px] font-black bg-emerald-100 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 mr-1 rounded-none uppercase">RC</span>;
+                      } else if (tp === 'NC' || tp.includes('CRÉDITO') || tp.includes('CREDITO')) {
+                        badge = <span className="inline-block text-[8px] font-black bg-orange-100 text-orange-700 border border-orange-200 px-1.5 py-0.5 mr-1 rounded-none uppercase">NC</span>;
+                      } else if (tp === 'ND' || tp.includes('DÉBITO') || tp.includes('DEBITO')) {
+                        badge = <span className="inline-block text-[8px] font-black bg-blue-100 text-blue-700 border border-blue-200 px-1.5 py-0.5 mr-1 rounded-none uppercase">ND</span>;
+                      }
+                      return badge;
+                    })()}
                     {doc.document_type || doc.tipo_documento}
                   </div>
                   {(doc.reference_document || doc.numero_documento_origem || doc.associated_document) && (
-                    <div className="text-[8px] text-red-700 bg-red-50 border border-red-100 font-black px-1.5 py-0.5 mt-1 rounded-none w-fit uppercase tracking-tight flex items-center gap-1">
+                    <div className="text-[8px] text-zinc-600 bg-zinc-100 border border-zinc-200 font-black px-1.5 py-0.5 mt-1 rounded-none w-fit uppercase tracking-tight flex items-center gap-1">
                       <span>Ref:</span>
                       <span className="font-mono">{(doc.reference_document || doc.numero_documento_origem || doc.associated_document)}</span>
                     </div>
@@ -18079,10 +18092,11 @@ const InvoiceList = ({
 
     const docTypeNormalizedCheck = getNormalizedTypeForCheck(doc.tipo_documento || doc.document_type || '');
     if (activeSubTab === 'recibos') {
+      // The "Recibos (RC)" tab shows only Receipts
       if (docTypeNormalizedCheck !== 'RC') return false;
-    } else if (activeSubTab === 'emitidos') {
-      if (docTypeNormalizedCheck === 'RC') return false;
     }
+    // NOTE: The "emitidos" tab now shows ALL document types including Receipts (RC).
+    // Receipts emitted against invoices are part of the fiscal document trail and must be visible.
 
     // 1. Pesquisa Geral (Nome Cliente ou Número)
     const searchStr = searchTerm.toLowerCase();

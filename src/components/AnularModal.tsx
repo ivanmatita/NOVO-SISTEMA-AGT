@@ -13,6 +13,10 @@ export const AnularModal = ({ document, onClose, onAnular }: {
                     document.status === 'anulado' || 
                     (document as any).estado_documento === 'anulado';
 
+  const isNotaCredito = document.tipo_documento === 'NC' || 
+                        document.document_type === 'Nota de Crédito' ||
+                        document.document_type === 'NC';
+
   return (
     <div id="anular-modal" className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm">
       <div className="bg-white p-8 w-full max-w-md shadow-2xl border-t-8 border-red-600">
@@ -31,6 +35,18 @@ export const AnularModal = ({ document, onClose, onAnular }: {
         ) : (
           <>
             <p className="text-sm text-zinc-600 mb-4">Esta operação é irreversível e marcará o documento como "ANULADO" sem validade.</p>
+            
+            {isNotaCredito && (
+              <div className="mb-4 p-3 bg-amber-50 border border-amber-300 rounded-none">
+                <p className="text-xs font-black text-amber-800 uppercase tracking-wider mb-1">
+                  ⚡ Ação Automática — Nota de Débito (ND)
+                </p>
+                <p className="text-xs text-amber-700 font-medium">
+                  Ao anular esta Nota de Crédito, o sistema irá <strong>gerar automaticamente uma Nota de Débito (ND)</strong> com o mesmo valor, para reverter o crédito concedido ao cliente.
+                </p>
+              </div>
+            )}
+
             <label className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Motivo da Anulação</label>
             <textarea 
               value={reason} 
@@ -47,7 +63,7 @@ export const AnularModal = ({ document, onClose, onAnular }: {
           </button>
           {!isAnulado && (
             <button id="anular-submit-btn" onClick={() => onAnular(reason)} className="flex-1 py-2 bg-red-600 text-white font-bold uppercase text-xs hover:bg-red-700">
-              ANULAR
+              {isNotaCredito ? 'ANULAR + GERAR ND' : 'ANULAR'}
             </button>
           )}
         </div>

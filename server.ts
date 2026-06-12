@@ -4579,7 +4579,10 @@ async function startServer() {
               is_certified: d.is_certified,
               hash: d.hash_documento || d.hash,
               ano: docYear,
-              reference_document: d.reference_document || d.numero_documento_origem || d.associated_document || d.detalhes?.reference_document
+              reference_document: d.reference_document || d.numero_documento_origem || d.associated_document || d.detalhes?.reference_document,
+              numero_documento_origem: d.numero_documento_origem || d.detalhes?.documento_origem_numero || null,
+              tipo_documento_origem: d.tipo_documento_origem || null,
+              documento_origem_id: d.documento_origem_id || d.detalhes?.documento_origem_id || null,
             };
           });
 
@@ -5001,42 +5004,54 @@ async function startServer() {
         }
       }
 
-      // If it is a Credit Note (NC), automatically generate a Debit Note (ND)
+      // If it is a Credit Note (NC), sync the Debit Note (ND) into in-memory state.
+      // NOTE: The ND is already created in Supabase by the RPC `anular_documento_fiscal`.
+      // This block only handles the in-memory state for fallback/cache consistency.
       const docTypeAbbr = doc.tipo_documento || doc.document_type || '';
       if (docTypeAbbr === 'NC') {
         try {
-          let companyId = doc.empresa_id;
-          let year = new Date().getFullYear();
-          let seriesRef = year.toString(); // Default
+          // Check if the RPC already created a ND in Supabase (avoid duplication)
+          if (supabaseAdmin && doc.empresa_id) {
+            const { data: existingND } = await supabaseAdmin
+              .from('documentos_emitidos')
+              .select('id, numero_documento, total')
+              .eq('empresa_id', doc.empresa_id)
+              .eq('tipo_documento', 'ND')
+              .eq('documento_origem_id', doc.id)
+              .maybeSingle();
 
-          const counter_nd = getNextSequenceNumber(companyId || '', year, seriesRef, 'ND');
-
-          const ndNum = `ND ${seriesRef}/${year}/${String(counter_nd).padStart(6, '0')}`;
-          const origTotal = Number(doc.total || doc.counter_value || 0);
-
-          const ndDoc = {
-            ...doc,
-            id: generateId(),
-            document_type: 'Nota de Débito',
-            tipo_documento: 'ND',
-            numero_documento: ndNum,
-            invoice_number: ndNum,
-            is_certified: false, 
-            estado_certificacao: 'pendente',
-            status: 'ativo',
-            estado: 'emitido',
-            reference_document: doc.numero_documento || doc.invoice_number,
-            numero_documento_origem: doc.numero_documento || doc.invoice_number,
-            documento_origem_id: doc.id,
-            total: origTotal
-          };
-
-          if (supabaseAdmin && companyId) {
-            try {
-              const { data: ndData, error: ndErr } = await supabaseAdmin
+            if (existingND) {
+              // ND already created by RPC — just sync to in-memory state
+              console.log(`[VOID-NC] ND já criada pelo RPC Supabase: ${existingND.numero_documento}`);
+              const ndDocFromDB = {
+                ...doc,
+                id: existingND.id,
+                document_type: 'Nota de Débito',
+                tipo_documento: 'ND',
+                numero_documento: existingND.numero_documento,
+                invoice_number: existingND.numero_documento,
+                is_certified: true,
+                estado_certificacao: 'CERTIFICADO',
+                status: 'ativo',
+                estado: 'emitido',
+                reference_document: doc.numero_documento || doc.invoice_number,
+                numero_documento_origem: doc.numero_documento || doc.invoice_number,
+                documento_origem_id: doc.id,
+                total: existingND.total
+              };
+              issuedDocuments.push(ndDocFromDB);
+            } else {
+              // RPC did not create ND (e.g., older schema) — create it here as fallback
+              console.warn(`[VOID-NC] ND não encontrada no Supabase após RPC. A criar via backend como fallback.`);
+              let year = new Date().getFullYear();
+              let seriesRef = year.toString();
+              const counter_nd = getNextSequenceNumber(doc.empresa_id || '', year, seriesRef, 'ND');
+              const ndNum = `ND ${seriesRef}/${year}/${String(counter_nd).padStart(6, '0')}`;
+              const origTotal = Number(doc.total || doc.counter_value || 0);
+              const { data: ndData } = await supabaseAdmin
                 .from('documentos_emitidos')
                 .insert([{
-                  empresa_id: companyId,
+                  empresa_id: doc.empresa_id,
                   tipo_documento: 'ND',
                   numero_documento: ndNum,
                   cliente_nome: doc.cliente_nome || doc.client_name || 'Consumidor Final',
@@ -5057,34 +5072,33 @@ async function startServer() {
                   estado_certificacao: 'pendente',
                   status: 'ativo',
                   numero_documento_origem: doc.numero_documento || doc.invoice_number,
-                  tipo_documento_origem: doc.tipo_documento || doc.document_type,
+                  tipo_documento_origem: 'NC',
                   documento_origem_id: doc.id,
                   criado_por: doc.criado_por || doc.created_by
                 }])
                 .select()
                 .single();
-              
-              if (!ndErr && ndData) {
-                ndDoc.id = ndData.id;
-              }
-
-              // The user requested to validate the NC automatically when voided and creating ND.
-              // So for NC we want it to be VALIDADO instead of ANULADO since the ND cancels the NC effect?
-              // Wait, the prompt says "valida automaticamente a NC". So let's re-update the NC status to VALIDADO in supabase
-              await supabaseAdmin
-                .from('documentos_emitidos')
-                .update({
-                  estado: 'VALIDADO',
-                  estado_certificacao: 'VALIDADO'
-                })
-                .eq('id', doc.id);
-            } catch (dbErr) {
-              console.error('Error auto-creating ND for NC in Supabase:', dbErr);
+              const ndDoc = {
+                ...doc,
+                id: ndData?.id || generateId(),
+                document_type: 'Nota de Débito',
+                tipo_documento: 'ND',
+                numero_documento: ndNum,
+                invoice_number: ndNum,
+                is_certified: false,
+                estado_certificacao: 'pendente',
+                status: 'ativo',
+                estado: 'emitido',
+                reference_document: doc.numero_documento || doc.invoice_number,
+                numero_documento_origem: doc.numero_documento || doc.invoice_number,
+                documento_origem_id: doc.id,
+                total: origTotal
+              };
+              issuedDocuments.push(ndDoc);
             }
           }
-          issuedDocuments.push(ndDoc);
         } catch (ndErr) {
-          console.error("Failed to automatically generate ND from NC void", ndErr);
+          console.error("[VOID-NC] Falha ao sincronizar Nota de Débito:", ndErr);
         }
       }
 

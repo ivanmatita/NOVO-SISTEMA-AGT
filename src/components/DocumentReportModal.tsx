@@ -9,14 +9,21 @@ interface DocumentReportModalProps {
   onClose: () => void;
   companyName?: string;
   companyNif?: string;
+  showDraft?: boolean;
 }
 
-export const DocumentReportModal: React.FC<DocumentReportModalProps> = ({ document, onClose, companyName, companyNif }) => {
+export const DocumentReportModal: React.FC<DocumentReportModalProps> = ({ document, onClose, companyName, companyNif, showDraft }) => {
+  const currentCurrency = showDraft && document.currency ? document.currency : 'AOA';
   const [searchTerm, setSearchTerm] = React.useState('');
   
-  const formatCurrency = (value: number | null | undefined) => {
-    return new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(value || 0).replace('Kz', '').trim() + ' Kz';
+  const formatCurrency = (value: number | null | undefined, currency: string = currentCurrency) => {
+    const formatted = new Intl.NumberFormat('pt-AO', { style: 'currency', currency }).format(value || 0);
+    // Remove default Kz symbol if present and append appropriate currency label
+    const cleaned = formatted.replace('Kz', '').trim();
+    return cleaned + (currency === 'AOA' ? ' Kz' : ` ${currency}`);
   };
+
+
 
   const docAny = document as any;
   const listItems = document.items || docAny.itens || docAny.items || [];
@@ -185,6 +192,7 @@ export const DocumentReportModal: React.FC<DocumentReportModalProps> = ({ docume
                           <td className="py-4 px-2 text-zinc-900 font-bold uppercase">{item.description}</td>
                           <td className="py-4 px-2 text-center text-zinc-500 font-mono font-bold">{item.quantity}</td>
                           <td className="py-4 px-2 text-right text-zinc-600 font-bold font-mono">{formatCurrency(item.unit_price)}</td>
+                          <td className="py-4 px-2 text-right font-black text-[#003366] font-mono">{formatCurrency(item.total)}</td>
                           <td className="py-4 px-2 text-center">
                             <span className="bg-zinc-100 text-zinc-600 px-2 py-0.5 text-[9px] font-black rounded-sm">{item.tax || '14%'}</span>
                           </td>
@@ -216,6 +224,13 @@ export const DocumentReportModal: React.FC<DocumentReportModalProps> = ({ docume
                   </div>
                 </div>
               </div>
+              
+              {showDraft && (
+                <div className="bg-amber-100 border border-amber-200 p-2 mb-4 text-center text-amber-800 font-bold">
+                  Suporte (Draft) – Este documento está em moeda estrangeira e requer revisão adicional.
+                </div>
+              )}
+
                 {/* Sidebar Stats */}
             <div className="space-y-6">
               <div className="bg-[#003366] p-6 text-white rounded-sm shadow-xl">

@@ -114,8 +114,8 @@ export async function gerarNumeroFiscal(
     'Nota de Crédito': 'NC',
     'Nota de Débito': 'ND',
     'Recibo': 'RC',
-    'Orçamento': 'PP',
-    'Fatura Proforma': 'FP',
+    'Orçamento': 'OR',
+    'Fatura Proforma': 'PP',
     'Guia de Remessa': 'GR',
     'Guia de Transporte': 'GT'
   };

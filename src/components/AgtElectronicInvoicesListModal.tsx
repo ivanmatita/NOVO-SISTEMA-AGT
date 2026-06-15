@@ -35,6 +35,7 @@ export const AgtElectronicInvoicesListModal: React.FC<AgtElectronicInvoicesListM
   const [result, setResult] = useState<any | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [selectedAgtDocNo, setSelectedAgtDocNo] = useState<string | null>(null);
+  const [selectedDraftDoc, setSelectedDraftDoc] = useState<any>(null);
 
   const handleSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -260,11 +261,20 @@ export const AgtElectronicInvoicesListModal: React.FC<AgtElectronicInvoicesListM
                             <td className="px-4 py-3 text-zinc-500 font-medium">
                               {doc.documentDate ? new Date(doc.documentDate).toLocaleDateString('pt-AO') : '---'}
                             </td>
-                            <td className="px-4 py-3 text-right">
+                            <td className="px-4 py-3 text-right flex gap-2 justify-end">
+                              {doc.currency !== 'AOA' && (
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedDraftDoc(doc)}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-sans text-[10px] font-black uppercase tracking-wider rounded-sm transition-all shadow-sm cursor-pointer"
+                                >
+                                  Draft
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => setSelectedAgtDocNo(doc.documentNo)}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#003366] hover:bg-blue-900 text-white font-sans text-[10px] font-black uppercase tracking-wider rounded-sm transition-all shadow-sm cursor-pointer"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#003366] hover:bg-[#002244] text-white font-sans text-[10px] font-black uppercase tracking-wider rounded-sm transition-all shadow-sm cursor-pointer"
                               >
                                 Consultar
                                 <ChevronRight size={10} />
@@ -305,6 +315,15 @@ export const AgtElectronicInvoicesListModal: React.FC<AgtElectronicInvoicesListM
             companyNif={nif}
             userId={userId}
             onClose={() => setSelectedAgtDocNo(null)}
+          />
+        )}
+        {selectedDraftDoc && (
+          <DocumentReportModal
+            document={selectedDraftDoc}
+            onClose={() => setSelectedDraftDoc(null)}
+            companyName={companyName}
+            companyNif={nif}
+            showDraft={true}
           />
         )}
       </AnimatePresence>

@@ -2728,6 +2728,7 @@ const HRModule = ({
                                     required
                                   >
                                     <option value="">Seleccione Tipo</option>
+                                    <option value="OR">Orçamento (OR)</option>
                                     <option value="BI">BI (Bilhete de Identidade)</option>
                                     <option value="Passaporte">Passaporte</option>
                                     <option value="Cartão de Residente">Cartão de Residente</option>
@@ -17779,8 +17780,8 @@ const FiscalSeriesModule = ({
                     <option value="ND">Nota de Débito (ND)</option>
                     <option value="GR">Guia de Remessa (GR)</option>
                     <option value="GT">Guia de Transporte (GT)</option>
-                    <option value="FP">Fatura Proforma (FP)</option>
-                    <option value="PP">Orçamento / Proposta (PP)</option>
+                    <option value="PP">Fatura Proforma (PP)</option>
+                    <option value="OR">Orçamento / Proposta (OR)</option>
                     <option value="normal">Geral / Tudo (Normal)</option>
                     <option value="manual">Recuperação Documentos Manuais</option>
                   </select>
@@ -18073,10 +18074,11 @@ const InvoiceList = ({
   const filteredIssuedDocuments = Array.isArray(issuedDocuments) ? issuedDocuments.filter(doc => {
     const getNormalizedTypeForCheck = (type: string) => {
       const t = String(type || '').trim().toUpperCase();
+      if (t === 'PP' || t.includes('PROFORMA')) return 'PP';
+      if (t === 'OR' || t.includes('ORÇAMENTO') || t.includes('ORCAMENTO') || t.includes('PROPOSTA')) return 'OR';
       if (t === 'FT' || t.includes('FATURA') || t.includes('FACTURA')) {
         if (t.includes('RECIBO') || t === 'FR' || t.includes('FATURA-RECIBO') || t.includes('FACTURA RECIBO')) return 'FR';
         if (t.includes('SIMPLIFICADA') || t === 'FS') return 'FS';
-        if (t.includes('PROFORMA') || t === 'PP') return 'PP';
         return 'FT';
       }
       if (t === 'FR') return 'FR';
@@ -18113,10 +18115,11 @@ const InvoiceList = ({
     // 4. Filtro de Tipo de Documento
     const getNormalizedType = (type: string) => {
       const t = String(type || '').trim().toUpperCase();
+      if (t === 'PP' || t.includes('PROFORMA')) return 'PP';
+      if (t === 'OR' || t.includes('ORÇAMENTO') || t.includes('ORCAMENTO') || t.includes('PROPOSTA')) return 'OR';
       if (t === 'FT' || t.includes('FATURA') || t.includes('FACTURA')) {
         if (t.includes('RECIBO') || t === 'FR' || t.includes('FATURA-RECIBO') || t.includes('FACTURA RECIBO')) return 'FR';
         if (t.includes('SIMPLIFICADA') || t === 'FS') return 'FS';
-        if (t.includes('PROFORMA') || t === 'PP') return 'PP';
         return 'FT';
       }
       if (t === 'FR') return 'FR';
@@ -18827,7 +18830,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
   const [documentTypesList, setDocumentTypesList] = useState<{codigo: string, descricao: string}[]>([
     { codigo: 'FT', descricao: 'Fatura' },
     { codigo: 'FR', descricao: 'Fatura Recibo' },
-    { codigo: 'PP', descricao: 'Fatura Proforma' },
+    { codigo: 'FP', descricao: 'Fatura Proforma' },
     { codigo: 'OR', descricao: 'Orçamento' },
     { codigo: 'NC', descricao: 'Nota de Crédito' },
     { codigo: 'ND', descricao: 'Nota de Débito' },
@@ -18911,7 +18914,8 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
      const getAbbr = (val: string) => {
        const u = String(val || '').trim().toUpperCase();
        if (!u || u === 'NORMAL' || u === 'DEFAULT') return 'GENERAL';
-       if (u.includes('PROFORMA') || u === 'FP') return 'PP'; // Map proforma to PP
+       if (u === 'PP' || u.includes('PROFORMA')) return 'PP'; // Fatura Proforma
+       if (u === 'OR' || u.includes('ORÇAMENTO') || u.includes('ORCAMENTO') || u.includes('PROPOSTA')) return 'OR'; // Orçamento
        if (u === 'FT' || u.includes('FATURA') || u.includes('FACTURA')) {
          if (u.includes('RECIBO') || u === 'FR') return 'FR';
          if (u.includes('SIMPLIFICADA') || u === 'FS') return 'FS';
@@ -18922,7 +18926,6 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
        if (u === 'ND' || u.includes('DÉBITO') || u.includes('DEBITO')) return 'ND';
        if (u === 'GR' || u.includes('REMESSA')) return 'GR';
        if (u === 'GT' || u.includes('TRANSPORTE')) return 'GT';
-       if (u === 'PP' || u.includes('ORÇAMENTO') || u.includes('ORCAMENTO')) return 'PP';
        return u;
      };
      
@@ -19193,7 +19196,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                     <option value="RC">Recibo</option>
                     <option value="NC">Nota de Crédito</option>
                     <option value="OR">Orçamento</option>
-                    <option value="PP">Proforma</option>
+                    <option value="FP">Proforma</option>
                   </>
                 )}
               </select>
@@ -27012,8 +27015,8 @@ const ConvertDocumentModal = ({ document, onClose, onSuccess }: {
       const docTypeMap: { [key: string]: string } = {
         'Fatura': 'FT',
         'Fatura Recibo': 'FR',
-        'Orçamento': 'PP',
-        'Fatura Proforma': 'FP'
+        'Orçamento': 'OR',
+        'Fatura Proforma': 'PP'
       };
 
       const prefix = docTypeMap[targetType] || 'FT';
@@ -29284,7 +29287,7 @@ export default function App() {
                               );
                             case 'drafts':
                               const filteredDrafts = issuedDocuments.filter(d => {
-                                const isDraft = !d.is_certified || (d.currency && d.currency !== 'AOA') || d.tipo_documento === 'PP' || d.document_type === 'Fatura Proforma';
+                                const isDraft = !d.is_certified || (d.currency && d.currency !== 'AOA') || d.tipo_documento === 'PP' || d.document_type === 'Fatura Proforma' || d.document_type === 'PP';
                                 const matchesCurrency = draftCurrency === 'Todas' || 
                                                      (draftCurrency === 'Kwanza' && d.currency === 'Kwanza') ||
                                                      (draftCurrency === 'USD' && d.currency === 'USD') ||

@@ -15,7 +15,8 @@ export const AnularModal = ({ document, onClose, onAnular }: {
 
   const isNotaCredito = document.tipo_documento === 'NC' || 
                         document.document_type === 'Nota de Crédito' ||
-                        document.document_type === 'NC';
+                        document.document_type === 'NC' ||
+                        document.tipo_documento === 'NOTA_CREDITO';
 
   return (
     <div id="anular-modal" className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm">
@@ -36,13 +37,22 @@ export const AnularModal = ({ document, onClose, onAnular }: {
           <>
             <p className="text-sm text-zinc-600 mb-4">Esta operação é irreversível e marcará o documento como "ANULADO" sem validade.</p>
             
-            {isNotaCredito && (
+            {isNotaCredito ? (
               <div className="mb-4 p-3 bg-amber-50 border border-amber-300 rounded-none">
                 <p className="text-xs font-black text-amber-800 uppercase tracking-wider mb-1">
                   ⚡ Ação Automática — Nota de Débito (ND)
                 </p>
                 <p className="text-xs text-amber-700 font-medium">
                   Ao anular esta Nota de Crédito, o sistema irá <strong>gerar automaticamente uma Nota de Débito (ND)</strong> com o mesmo valor, para reverter o crédito concedido ao cliente.
+                </p>
+              </div>
+            ) : (
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-300 rounded-none">
+                <p className="text-xs font-black text-blue-800 uppercase tracking-wider mb-1">
+                  ⚡ Ação Automática — Nota de Crédito (NC)
+                </p>
+                <p className="text-xs text-blue-700 font-medium">
+                  Ao anular este documento, o sistema irá <strong>gerar automaticamente uma Nota de Crédito (NC)</strong> com o mesmo valor, para retificar o valor faturado.
                 </p>
               </div>
             )}
@@ -63,7 +73,7 @@ export const AnularModal = ({ document, onClose, onAnular }: {
           </button>
           {!isAnulado && (
             <button id="anular-submit-btn" onClick={() => onAnular(reason)} className="flex-1 py-2 bg-red-600 text-white font-bold uppercase text-xs hover:bg-red-700">
-              {isNotaCredito ? 'ANULAR + GERAR ND' : 'ANULAR'}
+              {isNotaCredito ? 'ANULAR + GERAR ND' : 'ANULAR + GERAR NC'}
             </button>
           )}
         </div>

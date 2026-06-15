@@ -84,9 +84,9 @@ if (!supabaseAdmin) {
               SELECT encode(digest(texto, 'sha256'), 'hex');
           $$;
 
-          CREATE OR REPLACE FUNCTION gerar_codigo_curto(hash_text text) RETURNS text LANGUAGE plpgsql AS $$
+          CREATE OR REPLACE FUNCTION gerar_codigo_curto(hash text) RETURNS text LANGUAGE plpgsql AS $$
           BEGIN
-              RETURN upper(substring(hash_text from 1 for 4));
+              RETURN upper(substring(hash from 1 for 4));
           END;
           $$;
 
@@ -366,9 +366,11 @@ if (!supabaseAdmin) {
                   WHEN 'ND' THEN v_sigla := 'ND';
                   WHEN 'Recibo' THEN v_sigla := 'RC';
                   WHEN 'RC' THEN v_sigla := 'RC';
-                  WHEN 'Orçamento' THEN v_sigla := 'PP';
-                  WHEN 'Fatura Proforma' THEN v_sigla := 'PP';
-                  WHEN 'PP' THEN v_sigla := 'PP';
+                  WHEN 'Orçamento' THEN v_sigla := 'OR';
+                  WHEN 'OR' THEN v_sigla := 'OR';
+                  WHEN 'PP' THEN v_sigla := 'OR';
+                  WHEN 'Fatura Proforma' THEN v_sigla := 'FP';
+                  WHEN 'FP' THEN v_sigla := 'FP';
                   WHEN 'Guia de Remessa' THEN v_sigla := 'GR';
                   WHEN 'GR' THEN v_sigla := 'GR';
                   WHEN 'Guia de Transporte' THEN v_sigla := 'GT';
@@ -571,45 +573,45 @@ if (!supabaseAdmin) {
                   NULL;
               END;
 
-              -- 2. Se o documento for certificado, gerar documento corretivo automático
-              IF v_doc.is_certified = true THEN
-                  IF v_doc.tipo_documento IN ('Factura', 'Factura Recibo', 'Factura Simplificada', 'Guia de Remessa', 'Guia de Transporte') THEN
-                      v_tipo_corretivo := 'Nota de Crédito';
-                  ELSIF v_doc.tipo_documento = 'Nota de Crédito' THEN
-                      v_tipo_corretivo := 'Nota de Débito';
-                  ELSE
-                      -- Para outros tipos, apenas anula sem gerar corretivo automático por agora
-                      RETURN jsonb_build_object('success', true, 'message', 'Documento anulado com sucesso');
-                  END IF;
-
-                  -- Gerar novo ID para o corretivo
-                  v_new_doc_id := gen_random_uuid();
-
-                  -- Inserir documento corretivo
-                  INSERT INTO public.documentos_emitidos (
-                      id, empresa_id, tipo_documento, cliente_nome, cliente_email,
-                      total, imposto, estado, data_emissao, detalhes,
-                      documento_origem_id, numero_documento_origem, tipo_documento_origem,
-                      serie, ano, is_certified, created_at, created_by, created_by_username, created_by_nome, criado_por
-                  ) VALUES (
-                      v_new_doc_id, v_doc.empresa_id, v_tipo_corretivo, v_doc.cliente_nome, v_doc.cliente_email,
-                      v_doc.total, v_doc.imposto, 'EMITIDO', now(), v_doc.detalhes,
-                      v_doc.id, v_doc.numero_documento, v_doc.tipo_documento,
-                      v_doc.serie, EXTRACT(YEAR FROM now()), false, now(), v_doc.created_by, v_doc.created_by_username, v_doc.created_by_nome, v_doc.criado_por
-                  );
-
-                  -- Tentar certificar o documento corretivo imediatamente
-                  SELECT public.certificar_documento_existente(v_new_doc_id, p_usuario_id) INTO v_res;
-                  
-                  RETURN jsonb_build_object(
-                      'success', true, 
-                      'message', 'Documento anulado e ' || v_tipo_corretivo || ' gerada com sucesso',
-                      'corretivo_id', v_new_doc_id,
-                      'certificacao_result', v_res
-                  );
+              -- 2. Gerar documento corretivo automático sempre que um documento é anulado
+              --    Se NC/Nota de Crédito → gera ND (Nota de Débito) para reverter o crédito
+              --    Para qualquer outro tipo → gera NC (Nota de Crédito) para anular a faturação
+              IF v_doc.tipo_documento IN ('NC', 'Nota de Crédito', 'NOTA_CREDITO', 'Nota de Credito') THEN
+                  v_tipo_corretivo := 'ND';
+              ELSE
+                  v_tipo_corretivo := 'NC';
               END IF;
 
-              RETURN jsonb_build_object('success', true, 'message', 'Documento anulado com sucesso');
+              -- Gerar novo ID para o corretivo
+              v_new_doc_id := gen_random_uuid();
+
+              -- Inserir documento corretivo com referência ao documento original
+              INSERT INTO public.documentos_emitidos (
+                  id, empresa_id, tipo_documento, numero_documento, cliente_nome, cliente_email,
+                  total, imposto, estado, data_emissao, detalhes,
+                  documento_origem_id, numero_documento_origem, tipo_documento_origem,
+                  serie, ano, is_certified, created_at, created_by, created_by_username, created_by_nome, criado_por
+              ) VALUES (
+                  v_new_doc_id, v_doc.empresa_id, v_tipo_corretivo, v_tipo_corretivo || ' TEMP-' || v_new_doc_id::text, v_doc.cliente_nome, v_doc.cliente_email,
+                  v_doc.total, v_doc.imposto, 'EMITIDO', now(), v_doc.detalhes,
+                  v_doc.id, v_doc.numero_documento, v_doc.tipo_documento,
+                  v_doc.serie, EXTRACT(YEAR FROM now())::int, false, now(), v_doc.created_by, v_doc.created_by_username, v_doc.created_by_nome, v_doc.criado_por
+              );
+
+              -- Tentar certificar o documento corretivo imediatamente
+              BEGIN
+                  SELECT public.certificar_documento_existente(v_new_doc_id, p_usuario_id) INTO v_res;
+              EXCEPTION WHEN OTHERS THEN
+                  v_res := jsonb_build_object('error', SQLERRM);
+              END;
+
+              RETURN jsonb_build_object(
+                  'success', true,
+                  'message', 'Documento anulado e ' || v_tipo_corretivo || ' gerada com sucesso',
+                  'corretivo_id', v_new_doc_id,
+                  'corretivo_tipo', v_tipo_corretivo,
+                  'certificacao_result', v_res
+              );
           END;
           $$;
 
@@ -897,9 +899,6 @@ if (!supabaseAdmin) {
           ALTER TABLE public.transacoes ADD COLUMN IF NOT EXISTS created_by UUID;
           ALTER TABLE public.transacoes ADD COLUMN IF NOT EXISTS created_by_username TEXT;
           ALTER TABLE public.transacoes ADD COLUMN IF NOT EXISTS created_by_nome TEXT;
-          ALTER TABLE public.vendas ADD COLUMN IF NOT EXISTS created_by UUID;
-          ALTER TABLE public.vendas ADD COLUMN IF NOT EXISTS created_by_username TEXT;
-          ALTER TABLE public.vendas ADD COLUMN IF NOT EXISTS created_by_nome TEXT;
 
           -- vendas
           CREATE TABLE IF NOT EXISTS public.vendas (
@@ -911,6 +910,9 @@ if (!supabaseAdmin) {
           );
           ALTER TABLE public.vendas ADD COLUMN IF NOT EXISTS empresa_id UUID;
           ALTER TABLE public.vendas ADD COLUMN IF NOT EXISTS ano INTEGER;
+          ALTER TABLE public.vendas ADD COLUMN IF NOT EXISTS created_by UUID;
+          ALTER TABLE public.vendas ADD COLUMN IF NOT EXISTS created_by_username TEXT;
+          ALTER TABLE public.vendas ADD COLUMN IF NOT EXISTS created_by_nome TEXT;
 
           -- pagamentos
           CREATE TABLE IF NOT EXISTS public.pagamentos (
@@ -4555,7 +4557,16 @@ async function startServer() {
           .from('documentos_emitidos')
           .select('*')
           .eq('empresa_id', empresa_id)
-          .in('tipo_documento', ['FT', 'FR', 'RC', 'REC', 'NC', 'ND', 'DRAFT', 'GR', 'GT', 'GD', 'NOTA_CREDITO', 'NOTA_DEBITO', 'RECIBO', 'Fatura', 'Fatura Recibo', 'Venda', 'Recibo de Venda', 'Guia de Remessa', 'Guia de Transporte', 'Guia de Entrega', 'Guia de Devolução', 'VD', 'OR', 'PP']);
+          .in('tipo_documento', [
+            'FT', 'FR', 'RC', 'REC', 'RE', 'NC', 'ND', 'FS', 'DRAFT', 'GR', 'GT', 'GD',
+            'NOTA_CREDITO', 'NOTA_DEBITO', 'RECIBO',
+            'Fatura', 'Factura', 'Fatura Recibo', 'Factura Recibo',
+            'Nota de Crédito', 'Nota de Débito', 'Nota de Credito', 'Nota de Debito',
+            'Recibo', 'Recibo de Venda',
+            'Venda', 'Guia de Remessa', 'Guia de Transporte', 'Guia de Entrega',
+            'Guia de Devolução', 'Guia de Devolucao',
+            'VD', 'OR', 'PP'
+          ]);
 
         const { data, error } = await query.order('created_at', { ascending: false });
 
@@ -4587,17 +4598,19 @@ async function startServer() {
           });
 
           return res.json(formatted);
+        } else if (error) {
+          console.error('[API-INVOICES] Supabase query error, using in-memory fallback:', error.message);
         }
       } catch (err) {
-        console.error('Erro ao ler faturas do Supabase:', err);
-        return res.status(500).json({ error: 'Supabase Error', details: err });
+        console.error('[API-INVOICES] Supabase unreachable, using in-memory fallback:', (err as any)?.message || err);
       }
     } else {
-      console.error('supabaseAdmin not initialized');
+      console.warn('[API-INVOICES] supabaseAdmin not initialized, using in-memory fallback');
     }
 
-    // Fallback
-    res.json(issuedDocuments.filter(d => String(d.empresa_id) === String(empresa_id)));
+    // Fallback: in-memory documents
+    const fallbackDocs = issuedDocuments.filter(d => String(d.empresa_id) === String(empresa_id));
+    res.json(fallbackDocs);
   });
 
   app.get("/api/issued-documents", async (req, res) => {
@@ -4610,7 +4623,16 @@ async function startServer() {
           .from('documentos_emitidos')
           .select('*')
           .eq('empresa_id', empresa_id)
-          .in('tipo_documento', ['FT', 'FR', 'RC', 'NC', 'ND', 'DRAFT', 'GR', 'GT', 'GD', 'NOTA_CREDITO', 'NOTA_DEBITO', 'RECIBO', 'Fatura', 'Fatura Recibo', 'Venda', 'Recibo de Venda', 'Guia de Remessa', 'Guia de Transporte', 'Guia de Entrega', 'Guia de Devolução', 'VD', 'OR', 'PP'])
+          .in('tipo_documento', [
+            'FT', 'FR', 'RC', 'REC', 'RE', 'NC', 'ND', 'FS', 'DRAFT', 'GR', 'GT', 'GD',
+            'NOTA_CREDITO', 'NOTA_DEBITO', 'RECIBO',
+            'Fatura', 'Factura', 'Fatura Recibo', 'Factura Recibo',
+            'Nota de Crédito', 'Nota de Débito', 'Nota de Credito', 'Nota de Debito',
+            'Recibo', 'Recibo de Venda',
+            'Venda', 'Guia de Remessa', 'Guia de Transporte', 'Guia de Entrega',
+            'Guia de Devolução', 'Guia de Devolucao',
+            'VD', 'OR', 'PP'
+          ])
           .order('created_at', { ascending: false });
 
         if (!error && data) {
@@ -4632,13 +4654,15 @@ async function startServer() {
             hash: d.hash_documento || d.hash
           }));
           return res.json(formatted);
+        } else if (error) {
+          console.error('[API-ISSUED-DOCS] Supabase query error, using in-memory fallback:', error.message);
         }
       } catch (err) {
-        console.error('Erro ao ler documentos emitidos do Supabase:', err);
+        console.error('[API-ISSUED-DOCS] Supabase unreachable, using in-memory fallback:', (err as any)?.message || err);
       }
     }
 
-    // Fallback
+    // Fallback: in-memory documents
     res.json(issuedDocuments.filter(d => String(d.empresa_id) === String(empresa_id)));
   });
 
@@ -4979,6 +5003,8 @@ async function startServer() {
       const { reason } = req.body;
       doc.status = 'anulado';
       doc.estado_documento = 'anulado';
+      doc.estado = 'ANULADO';
+      doc.documento_anulado = true;
       doc.description = `[ANULADO] ${doc.numero_documento || doc.invoice_number} - SEM VALIDADE`; 
       doc.is_valid = false;
       doc.void_reason = reason;
@@ -4991,11 +5017,12 @@ async function startServer() {
             .update({
               status: 'anulado',
               estado_documento: 'anulado',
-              estado_certificacao: 'anulado',
-              estado: 'anulado',
+              estado_certificacao: 'ANULADO',
+              estado: 'ANULADO',
               is_valid: false,
-              void_reason: reason,
-              void_at: doc.void_at,
+              motivo_anulacao: reason,
+              anulado_at: doc.void_at,
+              documento_anulado: true,
               descr_extra: doc.description
             })
             .eq('id', doc.id);
@@ -5004,102 +5031,114 @@ async function startServer() {
         }
       }
 
-      // If it is a Credit Note (NC), sync the Debit Note (ND) into in-memory state.
-      // NOTE: The ND is already created in Supabase by the RPC `anular_documento_fiscal`.
-      // This block only handles the in-memory state for fallback/cache consistency.
-      const docTypeAbbr = doc.tipo_documento || doc.document_type || '';
-      if (docTypeAbbr === 'NC') {
-        try {
-          // Check if the RPC already created a ND in Supabase (avoid duplication)
-          if (supabaseAdmin && doc.empresa_id) {
-            const { data: existingND } = await supabaseAdmin
-              .from('documentos_emitidos')
-              .select('id, numero_documento, total')
-              .eq('empresa_id', doc.empresa_id)
-              .eq('tipo_documento', 'ND')
-              .eq('documento_origem_id', doc.id)
-              .maybeSingle();
+      // 1. Sync or generate corrective document (NC or ND)
+      const isCreditNote = doc.tipo_documento === 'NC' || doc.document_type === 'Nota de Crédito' || doc.tipo_documento === 'Nota de Crédito' || doc.document_type === 'NC' || doc.tipo_documento === 'NOTA_CREDITO';
+      const targetCorretivoType = isCreditNote ? 'ND' : 'NC';
+      const targetCorretivoDisplay = isCreditNote ? 'Nota de Débito' : 'Nota de Crédito';
+      
+      let dbCorrDocId = null;
+      let dbCorrDocNumber = null;
+      let dbCorrDocTotal = null;
 
-            if (existingND) {
-              // ND already created by RPC — just sync to in-memory state
-              console.log(`[VOID-NC] ND já criada pelo RPC Supabase: ${existingND.numero_documento}`);
-              const ndDocFromDB = {
-                ...doc,
-                id: existingND.id,
-                document_type: 'Nota de Débito',
-                tipo_documento: 'ND',
-                numero_documento: existingND.numero_documento,
-                invoice_number: existingND.numero_documento,
-                is_certified: true,
-                estado_certificacao: 'CERTIFICADO',
-                status: 'ativo',
+      if (supabaseAdmin && doc.empresa_id) {
+        try {
+          const { data: existingCorr } = await supabaseAdmin
+            .from('documentos_emitidos')
+            .select('id, numero_documento, total')
+            .eq('empresa_id', doc.empresa_id)
+            .eq('tipo_documento', targetCorretivoType)
+            .eq('documento_origem_id', doc.id)
+            .maybeSingle();
+
+          if (existingCorr) {
+            dbCorrDocId = existingCorr.id;
+            dbCorrDocNumber = existingCorr.numero_documento;
+            dbCorrDocTotal = existingCorr.total;
+            console.log(`[VOID-SYNC] Corretivo já criado pelo RPC Supabase: ${dbCorrDocNumber}`);
+          } else {
+            console.log(`[VOID-SYNC] Corretivo não encontrado no Supabase. Criando via insert...`);
+            let year = new Date().getFullYear();
+            let seriesRef = doc.serie || year.toString();
+            const counter = getNextSequenceNumber(doc.empresa_id || '', year, seriesRef, targetCorretivoType);
+            const corrNum = `${targetCorretivoType} ${seriesRef}/${year}/${String(counter).padStart(6, '0')}`;
+            const origTotal = Number(doc.total || doc.counter_value || 0);
+            const adjustedTotal = isCreditNote ? Math.abs(origTotal) : -Math.abs(origTotal);
+
+            const { data: corrData, error: corrErr } = await supabaseAdmin
+              .from('documentos_emitidos')
+              .insert([{
+                empresa_id: doc.empresa_id,
+                tipo_documento: targetCorretivoType,
+                numero_documento: corrNum,
+                cliente_nome: doc.cliente_nome || doc.client_name || 'Consumidor Final',
+                cliente_email: doc.cliente_email || doc.client_email || '',
+                total: adjustedTotal,
+                imposto: Number(doc.imposto || 0),
                 estado: 'emitido',
-                reference_document: doc.numero_documento || doc.invoice_number,
-                numero_documento_origem: doc.numero_documento || doc.invoice_number,
-                documento_origem_id: doc.id,
-                total: existingND.total
-              };
-              issuedDocuments.push(ndDocFromDB);
-            } else {
-              // RPC did not create ND (e.g., older schema) — create it here as fallback
-              console.warn(`[VOID-NC] ND não encontrada no Supabase após RPC. A criar via backend como fallback.`);
-              let year = new Date().getFullYear();
-              let seriesRef = year.toString();
-              const counter_nd = getNextSequenceNumber(doc.empresa_id || '', year, seriesRef, 'ND');
-              const ndNum = `ND ${seriesRef}/${year}/${String(counter_nd).padStart(6, '0')}`;
-              const origTotal = Number(doc.total || doc.counter_value || 0);
-              const { data: ndData } = await supabaseAdmin
-                .from('documentos_emitidos')
-                .insert([{
-                  empresa_id: doc.empresa_id,
-                  tipo_documento: 'ND',
-                  numero_documento: ndNum,
-                  cliente_nome: doc.cliente_nome || doc.client_name || 'Consumidor Final',
-                  cliente_email: doc.cliente_email || doc.client_email || '',
-                  total: origTotal,
-                  imposto: Number(doc.imposto || 0),
-                  estado: 'emitido',
-                  data_emissao: new Date().toISOString(),
-                  detalhes: {
-                    items: doc.detalhes?.items || doc.items || [],
-                    documento_origem_id: doc.id,
-                    documento_origem_numero: doc.numero_documento || doc.invoice_number
-                  },
-                  serie: seriesRef,
-                  ano: year,
-                  numero_sequencial: counter_nd,
-                  is_certified: false,
-                  estado_certificacao: 'pendente',
-                  status: 'ativo',
-                  numero_documento_origem: doc.numero_documento || doc.invoice_number,
-                  tipo_documento_origem: 'NC',
+                data_emissao: new Date().toISOString(),
+                detalhes: {
+                  items: doc.detalhes?.items || doc.items || [],
                   documento_origem_id: doc.id,
-                  criado_por: doc.criado_por || doc.created_by
-                }])
-                .select()
-                .single();
-              const ndDoc = {
-                ...doc,
-                id: ndData?.id || generateId(),
-                document_type: 'Nota de Débito',
-                tipo_documento: 'ND',
-                numero_documento: ndNum,
-                invoice_number: ndNum,
+                  documento_origem_numero: doc.numero_documento || doc.invoice_number
+                },
+                serie: seriesRef,
+                ano: year,
+                numero_sequencial: counter,
                 is_certified: false,
                 estado_certificacao: 'pendente',
                 status: 'ativo',
-                estado: 'emitido',
-                reference_document: doc.numero_documento || doc.invoice_number,
                 numero_documento_origem: doc.numero_documento || doc.invoice_number,
+                tipo_documento_origem: doc.tipo_documento,
                 documento_origem_id: doc.id,
-                total: origTotal
-              };
-              issuedDocuments.push(ndDoc);
+                criado_por: doc.criado_por || doc.created_by
+              }])
+              .select()
+              .single();
+
+            if (corrErr) {
+              console.error("[VOID-SYNC] Erro ao inserir corretivo no Supabase:", corrErr);
+            } else if (corrData) {
+              dbCorrDocId = corrData.id;
+              dbCorrDocNumber = corrData.numero_documento;
+              dbCorrDocTotal = corrData.total;
             }
           }
-        } catch (ndErr) {
-          console.error("[VOID-NC] Falha ao sincronizar Nota de Débito:", ndErr);
+        } catch (dbErr) {
+          console.error("[VOID-SYNC] Falha ao verificar/inserir no Supabase:", dbErr);
         }
+      }
+
+      // Handle in-memory state sync (for both Supabase and non-Supabase environments)
+      const year = new Date().getFullYear();
+      let seriesRef = doc.serie || year.toString();
+      const counter = getNextSequenceNumber(doc.empresa_id || '', year, seriesRef, targetCorretivoType);
+      const corrNum = dbCorrDocNumber || `${targetCorretivoType} ${seriesRef}/${year}/${String(counter).padStart(6, '0')}`;
+      const origTotal = Number(doc.total || doc.counter_value || 0);
+      const adjustedTotal = dbCorrDocTotal !== null ? Number(dbCorrDocTotal) : (isCreditNote ? Math.abs(origTotal) : -Math.abs(origTotal));
+
+      const correctionDoc = {
+        ...doc,
+        id: dbCorrDocId || generateId(),
+        document_type: targetCorretivoDisplay,
+        tipo_documento: targetCorretivoType,
+        invoice_number: corrNum,
+        numero_documento: corrNum,
+        reference_document: doc.numero_documento || doc.invoice_number,
+        documento_origem_id: doc.id,
+        numero_documento_origem: doc.numero_documento || doc.invoice_number,
+        tipo_documento_origem: doc.tipo_documento,
+        total: adjustedTotal,
+        contravalor: adjustedTotal,
+        counter_value: adjustedTotal,
+        created_at: new Date().toISOString(),
+        is_certified: dbCorrDocId ? true : false,
+        status: 'ativo',
+        estado: dbCorrDocId ? 'CERTIFICADO' : 'emitido',
+        description: `Ref. ${doc.numero_documento || doc.invoice_number}`
+      };
+
+      if (!issuedDocuments.some(d => String(d.id) === String(correctionDoc.id))) {
+        issuedDocuments.push(correctionDoc);
       }
 
       // If it's a Receipt, free up the original Invoice
@@ -5155,121 +5194,6 @@ async function startServer() {
            if (targetCaixa) {
              targetCaixa.currentBalance = (targetCaixa.currentBalance || 0) - reverseAmount;
            }
-        }
-      }
-
-      // Generate associated correction document (Credit Note normally, Debit Note if voiding a Credit Note)
-      const isCreditNoteInput = doc.document_type === 'Nota de Crédito' || doc.tipo_documento === 'Nota de Crédito' || doc.tipo_documento === 'NC' || doc.document_type === 'NC';
-      const associatedDocTypeDB = isCreditNoteInput ? 'NOTA_DEBITO' : 'NOTA_CREDITO';
-      const associatedDocTypeDisplay = isCreditNoteInput ? 'Nota de Débito' : 'Nota de Crédito';
-      
-      let dbExists = false;
-      if (supabaseAdmin) {
-        const { data } = await supabaseAdmin
-          .from('documentos_emitidos')
-          .select('id')
-          .eq('documento_origem_id', doc.id)
-          .eq('tipo_documento', associatedDocTypeDB)
-          .maybeSingle();
-        if (data) dbExists = true;
-      }
-
-      // Check if already exists to prevent duplication as requested
-      const alreadyExists = dbExists || issuedDocuments.find(d => 
-        (String(d.reference_document) === String(doc.numero_documento || doc.invoice_number) || String(d.documento_origem_id) === String(doc.id)) && 
-        (d.tipo_documento === associatedDocTypeDB || d.document_type === associatedDocTypeDisplay)
-      );
-
-      if (!alreadyExists) {
-        const series = fiscalSeries.find(s => s.id === Number(doc.series_id));
-        const year = new Date().getFullYear().toString();
-        const seriesRef = series ? series.reference : year;
-        
-        let assocTypeAbbr = getDocTypeAbbreviation(associatedDocTypeDB);
-        
-        const counter = getNextSequenceNumber(doc.empresa_id || '', year, seriesRef, assocTypeAbbr);
-        
-        if (series) {
-          if (!series.counters) series.counters = {};
-          series.counters[assocTypeAbbr] = counter;
-        }
-        
-        const assoc_number = `${assocTypeAbbr} ${seriesRef}/${year}/${String(counter).padStart(6, '0')}`;
-        
-        const correctionDoc = {
-          ...doc,
-          id: generateId(),
-          document_type: associatedDocTypeDisplay,
-          tipo_documento: associatedDocTypeDB,
-          invoice_number: assoc_number,
-          numero_documento: assoc_number,
-          reference_document: doc.numero_documento || doc.invoice_number,
-          documento_origem_id: doc.id,
-          contravalor: isCreditNoteInput ? Math.abs(doc.contravalor || doc.counter_value || 0) : -Math.abs(doc.contravalor || doc.counter_value || 0),
-          counter_value: isCreditNoteInput ? Math.abs(doc.contravalor || doc.counter_value || 0) : -Math.abs(doc.contravalor || doc.counter_value || 0),
-          total: isCreditNoteInput ? Math.abs(doc.total || doc.counter_value || 0) : -Math.abs(doc.total || doc.counter_value || 0),
-          created_at: new Date().toISOString(),
-          is_certified: true,
-          status: 'ativo',
-          estado: 'CERTIFICADO',
-          description: `Ref. ${doc.numero_documento || doc.invoice_number}`
-        };
-        
-        issuedDocuments.push(correctionDoc);
-
-        if (supabaseAdmin) {
-          try {
-            const convertedCorrectionDoc = {
-              empresa_id: doc.empresa_id,
-              tipo_documento: correctionDoc.tipo_documento,
-              numero_documento: correctionDoc.numero_documento,
-              cliente_id: correctionDoc.cliente_id || null,
-              cliente_nome: correctionDoc.cliente_nome || 'Desconhecido',
-              total: Number(correctionDoc.total),
-              counter_value: Number(correctionDoc.counter_value),
-              data_emissao: correctionDoc.created_at,
-              is_certified: true,
-              status: 'ativo',
-              estado: 'CERTIFICADO',
-              reference_document: correctionDoc.reference_document,
-              numero_documento_origem: correctionDoc.reference_document,
-              documento_origem_id: doc.id,
-              tipo_documento_origem: doc.tipo_documento || doc.document_type || 'Fatura',
-              items: correctionDoc.items || []
-            };
-            await supabaseAdmin.from('documentos_emitidos').insert([convertedCorrectionDoc]);
-          } catch (dbErr) {
-            console.error("Error inserting correction document in Supabase:", dbErr);
-          }
-        }
-      }
-
-      doc.status = 'anulado';
-      doc.estado_documento = 'anulado';
-      doc.estado = 'ANULADO';
-      doc.documento_anulado = true;
-      doc.description = `[ANULADO] ${doc.numero_documento || doc.invoice_number} - SEM VALIDADE`; 
-      doc.is_valid = false;
-      doc.void_reason = reason;
-      doc.void_at = new Date().toISOString();
-      
-      if (supabaseAdmin) {
-        try {
-          await supabaseAdmin
-            .from('documentos_emitidos')
-            .update({
-              status: 'anulado',
-              estado_documento: 'anulado',
-              estado: 'ANULADO',
-              documento_anulado: true,
-              is_valid: false,
-              void_reason: reason,
-              void_at: doc.void_at,
-              descr_extra: doc.description
-            })
-            .eq('id', doc.id);
-        } catch (dbErr) {
-          console.error("Error voiding document in Supabase state update:", dbErr);
         }
       }
 
@@ -5660,17 +5584,17 @@ async function startServer() {
   });
 
 
-  function getDocTypeAbbreviation(type: string): string {
+   function getDocTypeAbbreviation(type: string): string {
     const t = String(type || '').trim().toLowerCase();
     if (t.includes('fatura recibo') || t === 'fr' || t === 'fatura_recibo') return 'FR';
-    if (t.includes('fatura proforma') || t.includes('proforma') || t === 'fp' || t === 'fatura_proforma') return 'PP';
+    if (t.includes('fatura proforma') || t.includes('proforma') || t === 'fp' || t === 'fatura_proforma' || t === 'pp') return 'PP';
     if (t.includes('fatura simplificada') || t === 'fs' || t === 'fatura_simplificada') return 'FS';
     if (t.includes('nota de credito') || t.includes('nota de crédito') || t === 'nc') return 'NC';
     if (t.includes('nota de debito') || t.includes('nota de débito') || t === 'nd') return 'ND';
     if (t.includes('recibo') || t === 'rc') return 'RC';
     if (t.includes('guia de remessa') || t.includes('remessa') || t === 'gr') return 'GR';
     if (t.includes('guia de transporte') || t.includes('transporte') || t === 'gt') return 'GT';
-    if (t.includes('orçamento') || t.includes('orcamento') || t === 'pp' || t === 'or') return 'PP';
+    if (t.includes('orçamento') || t.includes('orcamento') || t === 'or' || t.includes('proposta')) return 'OR';
     if (t.includes('fatura') || t === 'ft') return 'FT';
     return type || 'FT'; // Default to the actual type if it's already an abbreviation, else FT
   }
@@ -5712,7 +5636,7 @@ async function startServer() {
         { codigo: 'RC', descricao: 'Recibo' },
         { codigo: 'NC', descricao: 'Nota de Crédito' },
         { codigo: 'ND', descricao: 'Nota de Débito' },
-        { codigo: 'PP', descricao: 'Fatura Proforma' },
+        { codigo: 'FP', descricao: 'Fatura Proforma' },
         { codigo: 'OR', descricao: 'Orçamento' },
         { codigo: 'FS', descricao: 'Fatura Simplificada' },
         { codigo: 'GR', descricao: 'Guia de Remessa' },

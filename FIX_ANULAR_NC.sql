@@ -1,86 +1,106 @@
--- 1. Redefine public.anular_documento_fiscal to automatically generate ND when NC is annulled
+-- ============================================================
+-- FIX: Anulação de documentos com geração automática de corretivo
+-- NC é gerada ao anular qualquer documento (FT, FR, FS, etc.)
+-- ND é gerada ao anular uma Nota de Crédito (NC)
+-- Aplicar no Supabase SQL Editor
+-- ============================================================
+
+-- 1. Redefine public.anular_documento_fiscal com lógica completa NC/ND
 CREATE OR REPLACE FUNCTION public.anular_documento_fiscal(
     p_documento_id UUID,
     p_motivo TEXT,
-    p_usuario_id UUID
+    p_usuario_id UUID DEFAULT NULL
 ) RETURNS JSONB AS $$
 DECLARE
     v_doc RECORD;
-    v_nd_result JSON;
-    v_detalhes_nd JSONB;
-    v_nd_id UUID;
-    v_nd_numero TEXT;
+    v_tipo_corretivo TEXT;
+    v_new_doc_id UUID;
+    v_res JSONB;
 BEGIN
-    -- Verify document exists
+    -- Verificar se o documento existe
     SELECT * INTO v_doc FROM public.documentos_emitidos WHERE id = p_documento_id;
 
     IF NOT FOUND THEN
         RETURN jsonb_build_object('success', false, 'error', 'Documento não encontrado');
     END IF;
 
-    -- Verify if already annulled
-    IF v_doc.documento_anulado = true THEN
+    -- Verificar se já foi anulado
+    IF v_doc.documento_anulado = true OR v_doc.status = 'anulado' OR v_doc.estado = 'ANULADO' THEN
         RETURN jsonb_build_object('success', false, 'error', 'Documento já se encontra anulado');
     END IF;
 
-    -- Perform the annulment update
+    -- Marcar documento como anulado
     UPDATE public.documentos_emitidos
     SET 
-        documento_anulado = true,
-        motivo_anulacao = p_motivo,
-        anulado_por = p_usuario_id,
-        anulado_at = now(),
-        status = 'anulado',
-        estado_certificacao = 'Anulado',
-        estado = 'anulado'
+        documento_anulado   = true,
+        motivo_anulacao     = p_motivo,
+        anulado_por         = p_usuario_id,
+        anulado_at          = now(),
+        status              = 'anulado',
+        estado              = 'ANULADO',
+        estado_certificacao = 'ANULADO',
+        updated_at          = now()
     WHERE id = p_documento_id;
 
-    -- If the annulled document was a Credit Note (NC), automatically generate a Debit Note (ND)
-    IF v_doc.tipo_documento = 'NC' THEN
-        -- Construct details for ND referencing the NC
-        v_detalhes_nd := jsonb_build_object(
-            'items', COALESCE(v_doc.detalhes->'items', '[]'::jsonb),
-            'documento_origem_id', v_doc.id,
-            'documento_origem_numero', v_doc.numero_documento,
-            'motivo_debitou', 'Reversão de Nota de Crédito anulada: ' || p_motivo
-        );
-
-        -- Call emitir_documento_fiscal to generate the ND
-        SELECT emitir_documento_fiscal(
+    -- Auditoria (ignora erro caso tabela não exista)
+    BEGIN
+        INSERT INTO public.logs_auditoria (company_id, user_id, acao, created_at)
+        VALUES (
             v_doc.empresa_id,
-            'Nota de Débito',
-            v_doc.cliente_nome,
-            v_doc.cliente_email,
-            v_doc.total,
-            v_doc.imposto,
-            v_detalhes_nd
-        ) INTO v_nd_result;
-
-        -- Extract the generated ID and Number for audit/response
-        v_nd_id := (v_nd_result->>'documento_id')::UUID;
-        v_nd_numero := v_nd_result->>'documento';
-
-        -- Update the generated ND with origin reference columns
-        UPDATE public.documentos_emitidos
-        SET
-            numero_documento_origem = v_doc.numero_documento,
-            tipo_documento_origem = v_doc.tipo_documento,
-            documento_origem_id = v_doc.id,
-            criado_por = p_usuario_id
-        WHERE id = v_nd_id;
-
-        RETURN jsonb_build_object(
-            'success', true, 
-            'message', 'Nota de Crédito anulada e Nota de Débito ' || v_nd_numero || ' gerada com sucesso!',
-            'corretivo_id', v_nd_id
+            p_usuario_id,
+            'ANULAÇÃO DE DOCUMENTO FISCAL - DOC: ' || COALESCE(v_doc.numero_documento, p_documento_id::text) || ' | MOTIVO: ' || p_motivo,
+            now()
         );
+    EXCEPTION WHEN OTHERS THEN
+        NULL; -- ignora erro de auditoria
+    END;
+
+    -- Determinar tipo de documento corretivo:
+    -- Se NC/Nota de Crédito → gera ND (Nota de Débito) para reverter o crédito
+    -- Para qualquer outro tipo → gera NC (Nota de Crédito)
+    IF v_doc.tipo_documento IN ('NC', 'Nota de Crédito', 'NOTA_CREDITO', 'Nota de Credito') THEN
+        v_tipo_corretivo := 'ND';
+    ELSE
+        -- FT, FR, FS, Factura, Recibo, Guia, etc. → gera sempre NC
+        v_tipo_corretivo := 'NC';
     END IF;
 
-    -- Return success for non-NC documents
-    RETURN jsonb_build_object('success', true, 'message', 'Documento anulado com sucesso!');
+    v_new_doc_id := gen_random_uuid();
+
+    INSERT INTO public.documentos_emitidos (
+        id, empresa_id, tipo_documento, numero_documento, cliente_nome, cliente_email,
+        total, imposto, estado, data_emissao, detalhes,
+        documento_origem_id, numero_documento_origem, tipo_documento_origem,
+        serie, ano, is_certified, created_at,
+        created_by, created_by_username, created_by_nome, criado_por
+    ) VALUES (
+        v_new_doc_id, v_doc.empresa_id, v_tipo_corretivo,
+        v_tipo_corretivo || ' TEMP-' || v_new_doc_id::text,
+        v_doc.cliente_nome, v_doc.cliente_email,
+        v_doc.total, v_doc.imposto, 'EMITIDO', now(), v_doc.detalhes,
+        v_doc.id, v_doc.numero_documento, v_doc.tipo_documento,
+        v_doc.serie, EXTRACT(YEAR FROM now())::int, false, now(),
+        v_doc.created_by, v_doc.created_by_username, v_doc.created_by_nome, v_doc.criado_por
+    );
+
+    -- Tentar certificar o documento corretivo
+    BEGIN
+        SELECT public.certificar_documento_existente(v_new_doc_id, p_usuario_id) INTO v_res;
+    EXCEPTION WHEN OTHERS THEN
+        v_res := jsonb_build_object('error', SQLERRM);
+    END;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'message', 'Documento anulado e ' || v_tipo_corretivo || ' gerada com sucesso',
+        'corretivo_id', v_new_doc_id,
+        'corretivo_tipo', v_tipo_corretivo,
+        'certificacao_result', v_res
+    );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- 2. Grant permissions
+-- 2. Garantir permissões
 GRANT EXECUTE ON FUNCTION public.anular_documento_fiscal(UUID, TEXT, UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.anular_documento_fiscal(UUID, TEXT, UUID) TO anon;
+GRANT EXECUTE ON FUNCTION public.anular_documento_fiscal(UUID, TEXT, UUID) TO service_role;

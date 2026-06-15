@@ -138,6 +138,8 @@ const PrintA4 = ({ invoice, isDraft = false, copyType = 'Original', printFormat 
   const totalInWords = invoice.total_in_words || writeValorPorExtenso(invoice.total || 0);
   
   const isProvisional = isDraft || !invoice.is_certified || !invoice.hash || invoice.document_type === 'DRAFT' || invoice.tipo_documento === 'DRAFT';
+  // Determine if this draft is for a foreign currency (not Kwanza)
+  const isForeignDraft = isProvisional && invoice.currency && invoice.currency !== 'AOA';
   const cleanInvoiceNumber = (invoice.invoice_number || invoice.numero_documento || 'DRAFT').split('-')[0].trim();
   const qrValue = !isProvisional ? `${cleanInvoiceNumber}|${invoice.client_nif || '999999999'}|${invoice.date || invoice.data_emissao}|${invoice.total || 0}|${invoice.hash || ''}` : 'DOCUMENTO NÃO CERTIFICADO';
   const displayCurrency = isProvisional && invoice.currency !== 'AOA' ? (invoice.currency || 'AOA') : 'AOA';
@@ -382,9 +384,9 @@ const PrintA4 = ({ invoice, isDraft = false, copyType = 'Original', printFormat 
           </div>
         </div>
         <div className="text-right">
-          <h2 className="text-2xl font-black uppercase text-[#003366] mb-1 tracking-tighter">
-            {isProvisional ? 'Documento de Suporte (Draft)' : (invoice.document_type || 'Fatura')}
-          </h2>
+            <h2 className="text-2xl font-black uppercase text-[#003366] mb-1 tracking-tighter">
+              {isForeignDraft ? 'Documento de Suporte (Draft)' : (isProvisional ? 'DRAFT - Documento emitido em moeda estrangeira' : (invoice.document_type || 'Fatura'))}
+            </h2>
           <p className="text-lg font-mono font-black text-zinc-800 tracking-widest">{cleanInvoiceNumber}</p>
           {!isProvisional && (
             <p className="text-[11px] font-mono font-black text-zinc-600 uppercase mt-0.5 tracking-wider">
@@ -424,8 +426,19 @@ const PrintA4 = ({ invoice, isDraft = false, copyType = 'Original', printFormat 
               {invoice.documento_origem_id && (
                 <p><span className="font-bold text-red-600">Ref. Origem:</span> {invoice.numero_documento_origem || 'Consultar Original'}</p>
               )}
-              {(invoice.document_type === 'Nota de Crédito' || invoice.tipo_documento === 'Nota de Crédito') && (
-                <p className="text-[10px] italic text-zinc-500 font-bold uppercase">Referente à: {invoice.numero_documento_origem || 'DOC ORIGEM'}</p>
+              {(invoice.document_type === 'Nota de Crédito' || invoice.tipo_documento === 'Nota de Crédito' ||
+                invoice.tipo_documento === 'NC' || invoice.document_type === 'NC' ||
+                invoice.tipo_documento === 'NOTA_CREDITO') && (
+                <p className="text-[10px] italic text-blue-700 font-bold uppercase">
+                  📋 Referente à: {invoice.numero_documento_origem || invoice.reference_document || 'DOC ORIGEM'}
+                </p>
+              )}
+              {(invoice.document_type === 'Nota de Débito' || invoice.tipo_documento === 'Nota de Débito' ||
+                invoice.tipo_documento === 'ND' || invoice.document_type === 'ND' ||
+                invoice.tipo_documento === 'NOTA_DEBITO') && (
+                <p className="text-[10px] italic text-amber-700 font-bold uppercase">
+                  📋 Reverte NC: {invoice.numero_documento_origem || invoice.reference_document || 'NC ORIGEM'}
+                </p>
               )}
               {(invoice.document_type === 'Recibo' || invoice.tipo_documento === 'Recibo') && (
                 <p className="text-[10px] italic text-zinc-500 font-bold uppercase">Liquidação de: {invoice.numero_documento_origem || 'FT ORIGEM'}</p>

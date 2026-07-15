@@ -16,8 +16,20 @@ export default defineConfig(({mode}) => {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modify—file watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
+      watch: {
+        ignored: ['**/db.json', '**/logs/**', '**/*.log', '**/*.txt', '**/*.cjs'],
+      },
       headers: {
-        'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co ws://localhost:*"
+        'Content-Security-Policy': "default-src 'self' https: data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: data: https://*.supabase.co; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co ws://localhost:* wss: https: blob:;"
+      },
+      proxy: {
+        // Proxy for AGT NIF consultation — bypasses CORS in dev
+        '/api-agt-nif': {
+          target: 'https://portaldocontribuinte.minfin.gov.ao',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api-agt-nif/, ''),
+          secure: false,
+        },
       },
     },
     build: {

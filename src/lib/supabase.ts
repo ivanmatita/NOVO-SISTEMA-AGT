@@ -24,12 +24,10 @@ if (!getEnvVar('VITE_SUPABASE_ANON_KEY')) {
 
 // Robust cleaning & premium browser proxy selection to defeat regional routing delays/blocks
 const isBrowser = typeof window !== 'undefined';
-const supabaseUrl = isBrowser
-  ? window.location.origin + "/api/supabase-proxy"
-  : rawUrl
-      .replace(/\/rest\/v1\/?$/, "")
-      .replace(/\/auth\/v1\/?$/, "")
-      .replace(/\/$/, "");
+const supabaseUrl = rawUrl
+  .replace(/\/rest\/v1\/?$/, "")
+  .replace(/\/auth\/v1\/?$/, "")
+  .replace(/\/$/, "");
 const supabaseAnonKey = getEnvVar('VITE_SUPABASE_ANON_KEY').trim();
 
 // Connection status exported for UI inspection
@@ -84,8 +82,9 @@ function makeSafePromise(promise: Promise<any>, description: string): Promise<an
       if (!resolved) {
         resolved = true;
         console.warn(`[SafeSupabase Timeout] '${description}' timed out after ${timeoutMs}ms.`);
+        const isAuth = description.startsWith('Auth:');
         resolve({
-          data: null,
+          data: isAuth ? { user: null, session: null } : null,
           error: {
             message: 'O servidor do Supabase demorou demasiado tempo a responder (Timeout).',
             code: 'REQUEST_TIMEOUT',
@@ -138,8 +137,9 @@ function makeSafePromise(promise: Promise<any>, description: string): Promise<an
         if (!resolved) {
           resolved = true;
           clearTimeout(timer);
+          const isAuth = description.startsWith('Auth:');
           resolve({
-            data: null,
+            data: isAuth ? { user: null, session: null } : null,
             error: {
               message: errMsg || 'Erro de comunicação desconhecido com o servidor.',
               code: 'NETWORK_EXCEPTION',

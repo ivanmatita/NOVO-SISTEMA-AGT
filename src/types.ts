@@ -92,7 +92,9 @@ export interface Client {
   name: string;
   email: string;
   contribuinte: string;
+  nif?: string;
   morada: string;
+  endereco?: string;
   localidade?: string;
   codigo_postal?: string;
   provincia?: string;
@@ -396,6 +398,7 @@ export interface FiscalSeries {
   name: string;
   tipo?: string;
   description?: string;
+  serie?: string;
   user_id?: string | number; // Legacy
   users?: Array<{id: string, name: string}>;
   user_ids?: string[];

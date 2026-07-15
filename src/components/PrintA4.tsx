@@ -3,11 +3,46 @@ import { Invoice } from '../types';
 import { QRCodeSVG } from 'qrcode.react';
 
 const formatCurrency = (value: number, currency: string = 'AOA') => {
-  return new Intl.NumberFormat('pt-AO', { style: 'currency', currency: currency }).format(value);
+  let isoCurrency = currency;
+  const upper = currency.toUpperCase();
+  if (upper === 'EURO' || upper === 'EUROS') {
+    isoCurrency = 'EUR';
+  } else if (upper === 'DÓLAR' || upper === 'DOLARES' || upper === 'DÓLARES' || upper === 'DOLLAR' || upper === 'DOLLARS') {
+    isoCurrency = 'USD';
+  } else if (upper === 'KWANZA' || upper === 'KWANZAS' || upper === 'AKZ') {
+    isoCurrency = 'AOA';
+  } else if (upper === 'LIBRA' || upper === 'LIBRAS' || upper === 'POUND' || upper === 'POUNDS') {
+    isoCurrency = 'GBP';
+  }
+  
+  try {
+    return new Intl.NumberFormat('pt-AO', { style: 'currency', currency: isoCurrency }).format(value);
+  } catch (e) {
+    return `${value.toFixed(2)} ${currency}`;
+  }
 };
 
-const writeValorPorExtenso = (n: number) => {
-  if (n === 0) return 'Zero Kwanzas';
+const writeValorPorExtenso = (n: number, currency: string = 'AOA') => {
+  const upperCur = currency.toUpperCase();
+  let currencySuffix = '';
+  let centsSuffixSingular = ' cêntimo';
+  let centsSuffixPlural = ' cêntimos';
+  
+  if (upperCur === 'AOA' || upperCur === 'AKZ' || upperCur === 'KWANZA' || upperCur === 'KWANZAS') {
+    currencySuffix = Math.floor(n) === 1 ? ' Kwanza' : ' Kwanzas';
+  } else if (upperCur === 'USD' || upperCur === 'DÓLAR' || upperCur === 'DOLARES' || upperCur === 'DÓLARES' || upperCur === 'DOLLAR' || upperCur === 'DOLLARS') {
+    currencySuffix = Math.floor(n) === 1 ? ' Dólar' : ' Dólares';
+  } else if (upperCur === 'EUR' || upperCur === 'EURO' || upperCur === 'EUROS') {
+    currencySuffix = Math.floor(n) === 1 ? ' Euro' : ' Euros';
+  } else if (upperCur === 'GBP' || upperCur === 'LIBRA' || upperCur === 'LIBRAS' || upperCur === 'POUND' || upperCur === 'POUNDS') {
+    currencySuffix = Math.floor(n) === 1 ? ' Libra' : ' Libras';
+    centsSuffixSingular = ' penny';
+    centsSuffixPlural = ' pence';
+  } else {
+    currencySuffix = ` ${currency}`;
+  }
+
+  if (n === 0) return `Zero${currencySuffix}`;
   
   const unidades = ['', 'um', 'dois', 'três', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove'];
   const dezena_10 = ['dez', 'onze', 'doze', 'treze', 'catorze', 'quinze', 'dezasseis', 'dezassete', 'dezoito', 'dezanove'];
@@ -52,7 +87,7 @@ const writeValorPorExtenso = (n: number) => {
   }
   
   const suffixes = ['', 'mil', 'milhão', 'bilhão', 'trilhão', 'quadrilhão', 'quintilhão'];
-  const suffixesPlural = ['', 'mil', 'milhões', 'bilhões', 'trilhões', 'quadrilhões', 'quintilhões'];
+  const suffixesPlural = ['', 'mil', 'milões', 'bilhões', 'trilhões', 'quadrilhões', 'quintilhões'];
   
   let result = '';
   for (let i = chunks.length - 1; i >= 0; i--) {
@@ -74,11 +109,10 @@ const writeValorPorExtenso = (n: number) => {
     result += chunkWords + (suffix ? ' ' + suffix : '');
   }
   
-  const kwanzaSuffix = Math.floor(n) === 1 ? ' Kwanza' : ' Kwanzas';
-  result = result.charAt(0).toUpperCase() + result.slice(1) + kwanzaSuffix;
+  result = result.charAt(0).toUpperCase() + result.slice(1) + currencySuffix;
   
   if (decimalPart > 0) {
-    result += ' e ' + numToWords(decimalPart) + (decimalPart === 1 ? ' cêntimo' : ' cêntimos');
+    result += ' e ' + numToWords(decimalPart) + (decimalPart === 1 ? centsSuffixSingular : centsSuffixPlural);
   }
   
   return result;
@@ -121,9 +155,10 @@ interface PrintA4Props {
     transparencia: number;
     alinhamento: 'left' | 'center' | 'right';
   }[];
+  forceForeignDraft?: boolean;
 }
 
-const PrintA4 = ({ invoice, isDraft = false, copyType = 'Original', printFormat = 'A4', companyData, graphicConfigs = [] }: PrintA4Props) => {
+const PrintA4 = ({ invoice, isDraft = false, copyType = 'Original', printFormat = 'A4', companyData, graphicConfigs = [], forceForeignDraft = false }: PrintA4Props) => {
   if (!invoice) return null;
   
   const getConfig = (tipo: string) => graphicConfigs.find(c => c.tipo === tipo && c.ativo);
@@ -135,15 +170,15 @@ const PrintA4 = ({ invoice, isDraft = false, copyType = 'Original', printFormat 
 
   const isFinal = !isDraft && invoice.is_certified;
   
-  const totalInWords = invoice.total_in_words || writeValorPorExtenso(invoice.total || 0);
-  
   const isProvisional = isDraft || !invoice.is_certified || !invoice.hash || invoice.document_type === 'DRAFT' || invoice.tipo_documento === 'DRAFT';
   // Determine if this draft is for a foreign currency (not Kwanza)
-  const isForeignDraft = isProvisional && invoice.currency && invoice.currency !== 'AOA';
+  const isForeignDraft = (isProvisional || forceForeignDraft) && invoice.currency && invoice.currency !== 'AOA';
+  const effectiveExRate = Number((invoice as any).exchange_rate || (invoice as any).taxa_cambio || 1);
+  const divisor = (isForeignDraft && effectiveExRate > 0) ? effectiveExRate : 1;
   const cleanInvoiceNumber = (invoice.invoice_number || invoice.numero_documento || 'DRAFT').split('-')[0].trim();
   const qrValue = !isProvisional ? `${cleanInvoiceNumber}|${invoice.client_nif || '999999999'}|${invoice.date || invoice.data_emissao}|${invoice.total || 0}|${invoice.hash || ''}` : 'DOCUMENTO NÃO CERTIFICADO';
-  const displayCurrency = isProvisional && invoice.currency !== 'AOA' ? (invoice.currency || 'AOA') : 'AOA';
-  const formatParams = (val: number) => formatCurrency(val, displayCurrency);
+  const displayCurrency = isForeignDraft ? (invoice.currency || 'AOA') : 'AOA';
+  const formatParams = (val: number) => formatCurrency(val / divisor, displayCurrency);
 
   const subtotalRaw = invoice.items?.reduce((sum, item) => sum + (Number(item.unit_price || 0) * Number(item.quantity || 0)), 0) || 0;
   const lineDiscountTotal = invoice.items?.reduce((sum, item) => sum + Number(item.desconto || 0), 0) || 0;
@@ -155,6 +190,10 @@ const PrintA4 = ({ invoice, isDraft = false, copyType = 'Original', printFormat 
   const vatWithholdingAmount = vatTotal * vatWithholding;
   const totalDocumento = subtotalWithLineDiscounts + vatTotal - discountAmount;
   const totalPagar = totalDocumento - retencaoTotal - vatWithholdingAmount;
+
+  const totalInWords = isForeignDraft
+    ? writeValorPorExtenso(totalPagar / divisor, displayCurrency)
+    : (invoice.total_in_words || writeValorPorExtenso(invoice.total || 0));
 
   const logoSrc = logoConfig?.url_imagem || companyData?.logo_url || companyData?.logo;
   const watermarkSrc = watermarkConfig?.url_imagem || companyData?.watermark_url;
@@ -204,8 +243,8 @@ const PrintA4 = ({ invoice, isDraft = false, copyType = 'Original', printFormat 
                 <tr key={idx} className="align-top">
                   <td className="py-1 pr-1 truncate max-w-[28mm]">{item.description}</td>
                   <td className="py-1 text-center">{item.quantity}</td>
-                  <td className="py-1 text-right">{formatCurrency(item.unit_price || 0, displayCurrency)}</td>
-                  <td className="py-1 text-right font-bold">{formatCurrency((item.unit_price || 0) * (item.quantity || 0), displayCurrency)}</td>
+                  <td className="py-1 text-right">{formatCurrency((item.unit_price || 0) / divisor, displayCurrency)}</td>
+                  <td className="py-1 text-right font-bold">{formatCurrency(((item.unit_price || 0) * (item.quantity || 0)) / divisor, displayCurrency)}</td>
                 </tr>
               ))}
             </tbody>
@@ -213,11 +252,11 @@ const PrintA4 = ({ invoice, isDraft = false, copyType = 'Original', printFormat 
         </div>
 
         <div className="border-t border-dashed border-zinc-300 pt-1.5 text-[8px] space-y-0.5 text-right font-mono">
-          <p>Subtotal: <span className="font-bold">{formatCurrency(subtotalWithLineDiscounts, displayCurrency)}</span></p>
-          <p>IVA: <span className="font-bold">{formatCurrency(vatTotal, displayCurrency)}</span></p>
-          {discountAmount > 0 && <p>Desconto: <span className="font-bold">-{formatCurrency(discountAmount, displayCurrency)}</span></p>}
-          {retencaoTotal > 0 && <p>Retenção: <span className="font-bold">-{formatCurrency(retencaoTotal, displayCurrency)}</span></p>}
-          <p className="text-[10px] font-bold pt-1 border-t border-dashed border-zinc-200">TOTAL: <span className="text-xs font-black">{formatCurrency(totalPagar, displayCurrency)}</span></p>
+          <p>Subtotal: <span className="font-bold">{formatCurrency(subtotalWithLineDiscounts / divisor, displayCurrency)}</span></p>
+          <p>IVA: <span className="font-bold">{formatCurrency(vatTotal / divisor, displayCurrency)}</span></p>
+          {discountAmount > 0 && <p>Desconto: <span className="font-bold">-{formatCurrency(discountAmount / divisor, displayCurrency)}</span></p>}
+          {retencaoTotal > 0 && <p>Retenção: <span className="font-bold">-{formatCurrency(retencaoTotal / divisor, displayCurrency)}</span></p>}
+          <p className="text-[10px] font-bold pt-1 border-t border-dashed border-zinc-200">TOTAL: <span className="text-xs font-black">{formatCurrency(totalPagar / divisor, displayCurrency)}</span></p>
         </div>
 
         <div className="flex flex-col items-center justify-center my-3 space-y-1">
@@ -267,15 +306,15 @@ const PrintA4 = ({ invoice, isDraft = false, copyType = 'Original', printFormat 
             <div key={idx} className="text-[7px] grid grid-cols-4 py-0.5 align-top">
               <span className="col-span-2 truncate pr-1">{item.description}</span>
               <span className="text-center">x{item.quantity}</span>
-              <span className="text-right font-bold">{formatCurrency((item.unit_price || 0) * (item.quantity || 0), displayCurrency)}</span>
+              <span className="text-right font-bold">{formatCurrency(((item.unit_price || 0) * (item.quantity || 0)) / divisor, displayCurrency)}</span>
             </div>
           ))}
         </div>
 
         <div className="border-t border-dashed border-zinc-300 pt-1 text-[7px] space-y-0.5 text-right">
-          <p>Subtotal: {formatCurrency(subtotalWithLineDiscounts, displayCurrency)}</p>
-          <p>IVA: {formatCurrency(vatTotal, displayCurrency)}</p>
-          <p className="text-[8px] font-black pt-0.5 border-t border-dashed border-zinc-200">TOTAL: {formatCurrency(totalPagar, displayCurrency)}</p>
+          <p>Subtotal: {formatCurrency(subtotalWithLineDiscounts / divisor, displayCurrency)}</p>
+          <p>IVA: {formatCurrency(vatTotal / divisor, displayCurrency)}</p>
+          <p className="text-[8px] font-black pt-0.5 border-t border-dashed border-zinc-200">TOTAL: {formatCurrency(totalPagar / divisor, displayCurrency)}</p>
         </div>
 
         <div className="flex flex-col items-center justify-center my-2 space-y-1">
@@ -292,7 +331,7 @@ const PrintA4 = ({ invoice, isDraft = false, copyType = 'Original', printFormat 
   }
 
   return (
-    <div className="bg-white p-[2cm] w-[210mm] min-h-[297mm] mx-auto text-zinc-900 font-sans shadow-lg print:shadow-none print:m-0 relative overflow-hidden">
+    <div className="print-area-a4 bg-white p-[2cm] w-[210mm] min-h-[297mm] mx-auto text-zinc-900 font-sans shadow-lg print:shadow-none print:m-0 relative overflow-hidden">
       {watermarkSrc && (
         <div 
           className="absolute inset-0 flex items-center justify-center pointer-events-none z-0"
@@ -385,10 +424,15 @@ const PrintA4 = ({ invoice, isDraft = false, copyType = 'Original', printFormat 
         </div>
         <div className="text-right">
             <h2 className="text-2xl font-black uppercase text-[#003366] mb-1 tracking-tighter">
-              {isForeignDraft ? 'Documento de Suporte (Draft)' : (isProvisional ? 'DRAFT - Documento emitido em moeda estrangeira' : (invoice.document_type || 'Fatura'))}
+              {isForeignDraft ? 'Documento de Suporte (Draft)' : (isProvisional ? 'RASCUNHO' : (invoice.document_type || 'Fatura'))}
             </h2>
+            {isForeignDraft && (
+              <p className="text-[10px] font-bold text-amber-600 uppercase tracking-widest mt-1 bg-amber-50 border border-amber-200 px-2 py-1 inline-block">
+                Valores em {displayCurrency} • Ref: {invoice.document_type || invoice.tipo_documento || 'FT'} {cleanInvoiceNumber}
+              </p>
+            )}
           <p className="text-lg font-mono font-black text-zinc-800 tracking-widest">{cleanInvoiceNumber}</p>
-          {!isProvisional && (
+          {!isProvisional && !forceForeignDraft && (
             <p className="text-[11px] font-mono font-black text-zinc-600 uppercase mt-0.5 tracking-wider">
               Hash: <span className="text-[#003366]">{invoice.codigo_validacao || (invoice.hash ? invoice.hash.slice(0, 4).toUpperCase() : 'PENDENTE')}</span>
             </p>
@@ -396,7 +440,10 @@ const PrintA4 = ({ invoice, isDraft = false, copyType = 'Original', printFormat 
           <div className="mt-4 text-[10px] space-y-1 font-bold uppercase text-zinc-500">
             <p><span className="text-zinc-400">Data de Emissão:</span> {new Date(invoice.date).toLocaleDateString('pt-PT')}</p>
             {invoice.due_date && <p><span className="text-zinc-400">Vencimento:</span> {new Date(invoice.due_date).toLocaleDateString('pt-PT')}</p>}
-            <p><span className="text-zinc-400">Moeda:</span> {invoice.currency || 'Kwanza'}</p>
+            <p><span className="text-zinc-400">Moeda:</span> {displayCurrency}</p>
+            {isForeignDraft && effectiveExRate !== 1 && (
+              <p><span className="text-zinc-400">Taxa de Câmbio:</span> 1 {invoice.currency} = {effectiveExRate.toFixed(2)} AOA</p>
+            )}
           </div>
           {!isProvisional && (
             <div className="mt-4 flex justify-end">
@@ -430,14 +477,14 @@ const PrintA4 = ({ invoice, isDraft = false, copyType = 'Original', printFormat 
                 invoice.tipo_documento === 'NC' || invoice.document_type === 'NC' ||
                 invoice.tipo_documento === 'NOTA_CREDITO') && (
                 <p className="text-[10px] italic text-blue-700 font-bold uppercase">
-                  📋 Referente à: {invoice.numero_documento_origem || invoice.reference_document || 'DOC ORIGEM'}
+                  📋 Referente à: {invoice.numero_documento_origem || (invoice as any).reference_document || 'DOC ORIGEM'}
                 </p>
               )}
               {(invoice.document_type === 'Nota de Débito' || invoice.tipo_documento === 'Nota de Débito' ||
                 invoice.tipo_documento === 'ND' || invoice.document_type === 'ND' ||
                 invoice.tipo_documento === 'NOTA_DEBITO') && (
                 <p className="text-[10px] italic text-amber-700 font-bold uppercase">
-                  📋 Reverte NC: {invoice.numero_documento_origem || invoice.reference_document || 'NC ORIGEM'}
+                  📋 Reverte NC: {invoice.numero_documento_origem || (invoice as any).reference_document || 'NC ORIGEM'}
                 </p>
               )}
               {(invoice.document_type === 'Recibo' || invoice.tipo_documento === 'Recibo') && (
@@ -686,10 +733,28 @@ const PrintA4 = ({ invoice, isDraft = false, copyType = 'Original', printFormat 
         </div>
 
         {(() => {
-          const exRate = Number(invoice.exchange_rate || (invoice as any).taxa_cambio || 1);
+          const exRate = Number((invoice as any).exchange_rate || (invoice as any).taxa_cambio || 1);
           const hasFC = exRate !== 1 && invoice.currency && invoice.currency !== 'AOA';
           if (!hasFC) return null;
           
+          if (forceForeignDraft) {
+            // In foreign draft mode, body is in foreign currency — show AOA equivalent
+            return (
+              <div className="mt-4 p-4 border border-amber-200 bg-amber-50 rounded-sm text-[10px] space-y-1">
+                <p className="font-bold text-amber-700 uppercase tracking-widest mb-2 border-b border-amber-200 pb-1">Contravalor em Kwanza (AOA)</p>
+                <div className="flex justify-between">
+                  <span>Taxa de Câmbio:</span>
+                  <span className="font-bold">1.00 {invoice.currency} = {formatCurrency(exRate, 'AOA')}</span>
+                </div>
+                <div className="flex justify-between border-t border-amber-200 pt-1 mt-1">
+                  <span>Total em AOA (Kwanza):</span>
+                  <span className="font-bold text-base">{formatCurrency(totalPagar, 'AOA')}</span>
+                </div>
+                <p className="text-[8px] text-amber-500 italic mt-2">* Este é um documento de suporte com valores em moeda estrangeira. O documento fiscal principal contém os valores em Kwanzas (AOA).</p>
+              </div>
+            );
+          }
+
           return (
             <div className="mt-4 p-4 border border-zinc-200 bg-zinc-50 rounded-sm text-[10px] space-y-1">
               <p className="font-bold text-[#003366] uppercase tracking-widest mb-2 border-b border-zinc-200 pb-1">Informação Multimoeda / Câmbio</p>
@@ -703,7 +768,7 @@ const PrintA4 = ({ invoice, isDraft = false, copyType = 'Original', printFormat 
               </div>
               <div className="flex justify-between border-t border-zinc-200 pt-1 mt-1">
                 <span>Total em {invoice.currency}:</span>
-                <span className="font-bold text-base">{formatCurrency(invoice.total || 0, invoice.currency)}</span>
+                <span className="font-bold text-base">{formatCurrency((invoice.total || 0) / exRate, invoice.currency)}</span>
               </div>
               <p className="text-[8px] text-zinc-400 italic mt-2">* Os valores fiscais deste documento foram convertidos para Kwanzas (AOA) à taxa indicada, conforme as regras da AGT.</p>
             </div>

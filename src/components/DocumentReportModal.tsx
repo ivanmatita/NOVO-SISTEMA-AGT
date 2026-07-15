@@ -187,18 +187,23 @@ export const DocumentReportModal: React.FC<DocumentReportModalProps> = ({ docume
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-50 text-[11px]">
-                      {filteredItems.map((item, idx) => (
-                        <tr key={idx} className="hover:bg-zinc-50/50 group">
-                          <td className="py-4 px-2 text-zinc-900 font-bold uppercase">{item.description}</td>
-                          <td className="py-4 px-2 text-center text-zinc-500 font-mono font-bold">{item.quantity}</td>
-                          <td className="py-4 px-2 text-right text-zinc-600 font-bold font-mono">{formatCurrency(item.unit_price)}</td>
-                          <td className="py-4 px-2 text-right font-black text-[#003366] font-mono">{formatCurrency(item.total)}</td>
-                          <td className="py-4 px-2 text-center">
-                            <span className="bg-zinc-100 text-zinc-600 px-2 py-0.5 text-[9px] font-black rounded-sm">{item.tax || '14%'}</span>
-                          </td>
-                          <td className="py-4 px-2 text-right font-black text-[#003366] font-mono">{formatCurrency(item.total)}</td>
-                        </tr>
-                      ))}
+                      {filteredItems.map((item, idx) => {
+                        const q = Number(item.quantity ?? item.qtd ?? 0);
+                        const p = Number(item.unit_price ?? item.preco_unitario ?? 0);
+                        const lineTotal = Number(item.total ?? (q * p));
+                        const taxRate = item.tax || item.tax_rate || '14%';
+                        return (
+                          <tr key={idx} className="hover:bg-zinc-50/50 group">
+                            <td className="py-4 px-2 text-zinc-900 font-bold uppercase">{item.description || item.descricao || 'Sem descrição'}</td>
+                            <td className="py-4 px-2 text-center text-zinc-500 font-mono font-bold">{q}</td>
+                            <td className="py-4 px-2 text-right text-zinc-600 font-bold font-mono">{formatCurrency(p)}</td>
+                            <td className="py-4 px-2 text-center">
+                              <span className="bg-zinc-100 text-zinc-600 px-2 py-0.5 text-[9px] font-black rounded-sm">{taxRate}</span>
+                            </td>
+                            <td className="py-4 px-2 text-right font-black text-[#003366] font-mono">{formatCurrency(lineTotal)}</td>
+                          </tr>
+                        );
+                      })}
                       {filteredItems.length === 0 && (
                         <tr>
                           <td colSpan={5} className="py-12 text-center text-zinc-400 italic bg-zinc-50/30">Nenhum item corresponde ao filtro.</td>

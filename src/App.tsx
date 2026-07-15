@@ -1022,7 +1022,7 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
   };
 
   return (
-    <div className="w-64 bg-[#0a0e1c] text-zinc-300 h-screen sticky top-0 flex flex-col overflow-y-auto shrink-0 z-20">
+    <div className="w-80 bg-[#0a0e1c] text-zinc-300 min-h-screen flex flex-col overflow-y-auto shrink-0 z-20">
       <div className="flex flex-col items-center pt-8 pb-6 border-b border-white/5">
         <label className="relative cursor-pointer group">
           <div className="w-20 h-20 rounded-full border-2 border-white/10 bg-[#16213e] flex items-center justify-center overflow-hidden mb-3 group-hover:border-blue-500 transition-colors">
@@ -16995,7 +16995,7 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
       case 'retencao-receber':
         return <RetencaoReceberForm invoices={invoices} clients={clients} />;
       case 'calculos-impostos':
-        return <CalculosImpostosForm invoices={invoices} />;
+        return <CalculosImpostosForm invoices={invoices} purchases={purchases} onBack={() => setActiveSubTab(null)} companyData={companyData} />;
       case 'regime-exclusao':
         return <RegimeExclusaoForm />;
       case 'imposto-por-conta':
@@ -18840,7 +18840,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
     { codigo: 'FS', descricao: 'Fatura Simplificada' }
   ]);
   const [originDocs, setOriginDocs] = useState<any[]>([]);
-  const [originDocId, setOriginDocId] = useState<string>(initialData?.documento_origem_id || '');
+  const [originDocId, setOriginDocId] = useState<string>(initialData?.documento_origem_id ? String(initialData.documento_origem_id) : '');
   
   useEffect(() => {
     fetch('/api/documentos-tipos')
@@ -18877,8 +18877,8 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
       setDocumentType(fixedDocumentType);
     }
   }, [fixedDocumentType]);
-  const [selectedSerieFiscal, setSelectedSerieFiscal] = useState<number | null>(
-    (initialData?.series_id && !isNaN(Number(initialData.series_id))) ? Number(initialData.series_id) : null
+  const [selectedSerieFiscal, setSelectedSerieFiscal] = useState<number | string | null>(
+    (initialData?.series_id && !isNaN(Number(initialData.series_id))) ? Number(initialData.series_id) : (initialData?.series_id || null)
   );
   const [date, setDate] = useState(initialData?.date ? new Date(initialData.date).toISOString().split('T')[0] : (initialData?.data_emissao ? new Date(initialData.data_emissao).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]));
   const [countryCode, setCountryCode] = useState('Angola');
@@ -27189,6 +27189,7 @@ export default function App() {
 
   const { user, logout, refreshUser } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
   const [showMenu, setShowMenu] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [connectionError, setConnectionError] = useState(false);
@@ -28286,7 +28287,8 @@ export default function App() {
       setStats(s || null);
       // setProducts(Array.isArray(p) ? p : []); // DO NOT OVERWRITE SUPABASE DATA
       setTransactions(Array.isArray(tr) ? tr : []);
-      setInvoices([]); // Will be synced via issuedDocuments if needed, or use issuedDocuments directly
+      // NOTE: Do NOT call setInvoices([]) here — invoices are already populated by doLoadDocumentosEmitidos above.
+      // Clearing them here was causing the accounting module to always show zero totals.
       setEmployees(Array.isArray(e) ? e : []);
       
       if (Array.isArray(fs)) {
@@ -28539,7 +28541,36 @@ export default function App() {
           .single();
 
         if (data) {
-          const invoiceData = data;
+          const invoiceData = {
+            ...data,
+            id: data.id,
+            client_id: data.cliente_id || data.client_id,
+            client_name: data.cliente_nome || data.client_name || 'Consumidor Final',
+            client_nif: data.detalhes?.client_nif || data.detalhes?.cliente_nif || data.cliente_nif || '999999999',
+            client_address: data.detalhes?.client_address || data.detalhes?.cliente_morada || data.detalhes?.cliente_endereco || data.cliente_morada || 'Consumidor Final',
+            client_email: data.cliente_email || data.client_email,
+            invoice_number: (data.numero_documento || data.invoice_number || data.documento_formatado || 'DRAFT').split('-')[0].trim(),
+            date: data.data_emissao || data.date || data.created_at || new Date().toISOString(),
+            due_date: data.data_vencimento || data.due_date || new Date().toISOString(),
+            status: (data.estado || data.status || 'ativo').toLowerCase(),
+            total: Number(data.total || 0),
+            items: data.detalhes?.items || data.items || [],
+            document_type: data.tipo_documento || data.document_type,
+            is_certified: Boolean(data.is_certified),
+            hash: data.hash_documento || data.hash,
+            currency: data.detalhes?.currency || data.moeda || 'AOA',
+            exchange_rate: data.detalhes?.exchange_rate || data.taxa_cambio || 1,
+            payment_method: data.detalhes?.payment_method || data.payment_method,
+            service_location: data.detalhes?.service_location || data.service_location,
+            service_date: data.detalhes?.service_date || data.service_date,
+            numero_documento_origem: data.numero_documento_origem || data.detalhes?.numero_documento_origem,
+            documento_origem_id: data.documento_origem_id || data.detalhes?.documento_origem_id,
+            retencao_fonte_total: data.retencao_fonte_total || data.detalhes?.retencao_fonte_total || 0,
+            global_discount: data.global_discount || data.detalhes?.global_discount || 0,
+            vat_withholding: data.vat_withholding || data.detalhes?.vat_withholding || 0,
+            operator_name: data.created_by_nome || data.operator_name || 'Admin',
+            total_in_words: data.total_in_words || (typeof writeValorPorExtenso === 'function' ? writeValorPorExtenso(data.total || 0) : '')
+          };
           
           if (action === 'edit') {
             setSelectedDocument(invoiceData);
@@ -28693,11 +28724,12 @@ export default function App() {
           />
         )}
         
-        <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
+        <div className="flex-1 flex flex-col min-w-0 min-h-screen">
           <TopHeader 
             fiscalYear={fiscalYear} 
             setFiscalYear={setFiscalYear} 
             onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+            onToggleRightSidebar={() => setRightSidebarOpen(v => !v)}
             onAddTask={() => {
               setEditingAlertId(null);
               setTaskFormData({ name: '', type: 'imposto', description: '', responsible: '', startDate: '', endDate: '', advanceTime: '', obs: '' });
@@ -28727,7 +28759,7 @@ export default function App() {
               }
             }}
           />
-          <main className="flex-1 overflow-y-auto w-full transition-all duration-300">
+          <main className="flex-1 overflow-visible w-full transition-all duration-300">
             <div className="p-6 md:p-8 max-w-[1600px] mx-auto">
               {connectionError && (
                 <div className="mb-6 bg-red-50 border border-red-200 p-4 rounded-lg flex items-center gap-3 text-red-700 animate-pulse">
@@ -29397,7 +29429,23 @@ export default function App() {
           </main>
         </div>
         
-        {(activeTab === 'dashboard' && !isCreatingInvoice && !viewingInvoiceId) && <RightSidebar />}
+        {/* RightSidebar as sliding overlay panel */}
+        {rightSidebarOpen && (
+          <div className="fixed inset-0 z-[60] flex justify-end" onClick={() => setRightSidebarOpen(false)}>
+            <div
+              className="w-72 h-full bg-white shadow-2xl border-l border-zinc-200 animate-in slide-in-from-right duration-300 flex flex-col"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="bg-[#003366] text-white px-5 py-4 flex items-center justify-between">
+                <span className="text-sm font-black uppercase tracking-widest">Ferramentas Externas</span>
+                <button onClick={() => setRightSidebarOpen(false)} className="text-white/70 hover:text-white transition-colors text-xl font-bold leading-none">&times;</button>
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                <RightSidebar />
+              </div>
+            </div>
+          </div>
+        )}
         
         {isClientModalOpen && (
           <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm animate-in fade-in duration-200">

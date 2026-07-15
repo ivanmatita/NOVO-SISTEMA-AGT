@@ -1,8 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { Users, Search, X, Check, AlertCircle, ShoppingBag, Landmark, CreditCard, Activity } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  Users, Search, X, Check, AlertCircle, ShoppingBag,
+  Landmark, CreditCard, Activity, Loader2, ShieldCheck, ShieldX,
+} from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { clienteService, Cliente } from '../services/clienteService';
 import { fornecedorService, Fornecedor } from '../services/fornecedorService';
+import { validarNIFAGT, NifConsultaResult } from '../services/agt/validarNIF';
 
 interface ClientFormProps {
   initialData?: any;
@@ -15,6 +19,12 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
   const { user, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // NIF lookup state
+  const [nifLoading, setNifLoading] = useState(false);
+  const [nifResult, setNifResult] = useState<NifConsultaResult | null>(null);
+  const nifDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastLookedUpNif = useRef<string>('');
 
   const [formData, setFormData] = useState({
     name: '',
@@ -61,12 +71,63 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
     }
   }, [initialData]);
 
+  /** Debounced auto-lookup triggered when NIF changes */
+  const triggerNifLookup = useCallback((nif: string) => {
+    // Clear any pending lookup
+    if (nifDebounceRef.current) clearTimeout(nifDebounceRef.current);
+
+    // Reset state when NIF is cleared or too short
+    if (!nif || nif.length < 6) {
+      setNifResult(null);
+      setNifLoading(false);
+      return;
+    }
+
+    // Don't re-lookup the same NIF
+    if (nif === lastLookedUpNif.current) return;
+
+    setNifResult(null);
+
+    // Debounce: wait 800ms after the user stops typing
+    nifDebounceRef.current = setTimeout(async () => {
+      setNifLoading(true);
+      lastLookedUpNif.current = nif;
+      try {
+        const result = await validarNIFAGT(nif);
+        setNifResult(result);
+
+        if (result.exists) {
+          // Auto-fill Name if currently empty or matches a previous lookup
+          setFormData(prev => ({
+            ...prev,
+            name: result.nome && (!prev.name || prev.name === lastLookedUpNif.current)
+              ? result.nome
+              : prev.name || result.nome || prev.name,
+            activo: result.estado
+              ? result.estado.toLowerCase().includes('activo') ||
+                result.estado.toLowerCase().includes('ativo')
+              : prev.activo,
+          }));
+        }
+      } catch (e: any) {
+        setNifResult({ exists: false, error: e?.message || 'Erro ao consultar AGT' });
+      } finally {
+        setNifLoading(false);
+      }
+    }, 800);
+  }, []);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
     setFormData(prev => ({
       ...prev,
       [name]: type === 'number' ? parseFloat(value) || 0 : value
     }));
+
+    // Trigger NIF lookup when the NIF field changes
+    if (name === 'contribuinte') {
+      triggerNifLookup(value);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -144,6 +205,35 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
     }
   };
 
+  // NIF status badge component rendered inline
+  const NifStatusBadge = () => {
+    if (nifLoading) {
+      return (
+        <div className="flex items-center gap-1.5 mt-1.5 text-[10px] font-bold text-[#003366] animate-pulse">
+          <Loader2 size={11} className="animate-spin" />
+          <span>A consultar a AGT...</span>
+        </div>
+      );
+    }
+    if (!nifResult) return null;
+    if (!nifResult.exists) {
+      return (
+        <div className="flex items-center gap-1.5 mt-1.5 text-[10px] font-bold text-red-600">
+          <ShieldX size={11} />
+          <span>{nifResult.error || 'NIF não encontrado'}</span>
+        </div>
+      );
+    }
+    return (
+      <div className="flex items-center gap-1.5 mt-1.5 text-[10px] font-bold text-emerald-700">
+        <ShieldCheck size={11} />
+        <span>
+          NIF válido · <span className="text-[#003366]">{nifResult.estado}</span>
+        </span>
+      </div>
+    );
+  };
+
   return (
     <div className="bg-white p-0 overflow-hidden flex flex-col">
       <div className="shrink-0 p-6 border-b border-zinc-100 bg-zinc-50/50 flex justify-between items-center">
@@ -174,48 +264,72 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
         )}
 
         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* ── NIF Field ── */}
           <div className="space-y-1">
             <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Identificação (NIF) *</label>
             <div className="flex gap-2">
-              <input 
-                type="text" 
-                name="contribuinte"
-                value={formData.contribuinte} 
-                onChange={handleChange} 
-                className={`flex-1 bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold ${
-                  initialData && formData.contribuinte !== '999999999' ? 'opacity-70 cursor-not-allowed bg-zinc-100' : ''
-                }`}
-                placeholder="Ex: 5000..." 
-                required
-                readOnly={initialData && formData.contribuinte !== '999999999'}
-              />
+              <div className="flex-1 relative">
+                <input 
+                  type="text" 
+                  name="contribuinte"
+                  value={formData.contribuinte} 
+                  onChange={handleChange} 
+                  className={`w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold ${
+                    initialData && formData.contribuinte !== '999999999' ? 'opacity-70 cursor-not-allowed bg-zinc-100' : ''
+                  } ${nifResult?.exists ? 'border-emerald-400' : ''} ${nifResult && !nifResult.exists && !nifLoading ? 'border-red-400' : ''}`}
+                  placeholder="Ex: 5000..." 
+                  required
+                  readOnly={!!(initialData && formData.contribuinte !== '999999999')}
+                />
+                {nifLoading && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <Loader2 size={14} className="animate-spin text-[#003366]" />
+                  </div>
+                )}
+              </div>
               <button 
                 type="button"
                 onClick={() => {
                   if (formData.contribuinte) {
-                    window.open(`https://portaldocontribuinte.minfin.gov.ao/consultar-nif-do-contribuinte?nif=${formData.contribuinte}`, '_blank');
-                  } else {
-                    alert('Por favor, insira um NIF para pesquisar.');
+                    lastLookedUpNif.current = '';
+                    triggerNifLookup(formData.contribuinte);
                   }
                 }}
-                className="bg-zinc-100 hover:bg-zinc-200 text-[#003366] px-3 py-2 text-[10px] font-black uppercase tracking-widest transition-all border border-zinc-200 flex items-center gap-1 shadow-sm active:scale-95"
+                disabled={nifLoading || !formData.contribuinte}
+                className="bg-zinc-100 hover:bg-zinc-200 text-[#003366] px-3 py-2 text-[10px] font-black uppercase tracking-widest transition-all border border-zinc-200 flex items-center gap-1 shadow-sm active:scale-95 disabled:opacity-50"
               >
-                <Search size={14} /> NIF
+                {nifLoading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />} NIF
               </button>
             </div>
+            <NifStatusBadge />
           </div>
 
+          {/* ── Name Field ── */}
           <div className="space-y-1 md:col-span-2">
             <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Nome do {isSupplier ? 'Fornecedor' : 'Cliente'} *</label>
-            <input 
-              type="text" 
-              name="name"
-              value={formData.name} 
-              onChange={handleChange} 
-              required 
-              className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold" 
-              placeholder="Ex: Empresa de Serviços Lda" 
-            />
+            <div className="relative">
+              <input 
+                type="text" 
+                name="name"
+                value={formData.name} 
+                onChange={handleChange} 
+                required 
+                className={`w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold ${
+                  nifResult?.exists && nifResult.nome ? 'border-emerald-300 bg-emerald-50/30' : ''
+                }`}
+                placeholder="Ex: Empresa de Serviços Lda" 
+              />
+              {nifResult?.exists && nifResult.nome && (
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  <ShieldCheck size={14} className="text-emerald-600" />
+                </div>
+              )}
+            </div>
+            {nifResult?.exists && nifResult.nome && (
+              <p className="text-[10px] text-emerald-700 font-bold flex items-center gap-1">
+                <Check size={9} /> Preenchido automaticamente pela AGT
+              </p>
+            )}
           </div>
 
           <div className="space-y-1">
@@ -375,17 +489,32 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
             </select>
           </div>
 
+          {/* ── Estado de Actividade ── auto-filled from AGT */}
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Estado de Actividade</label>
+            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+              Estado de Actividade
+              {nifResult?.exists && nifResult.estado && (
+                <span className="text-emerald-600 flex items-center gap-0.5">
+                  <ShieldCheck size={9} /> AGT
+                </span>
+              )}
+            </label>
             <select 
               name="activo"
               value={formData.activo ? 'true' : 'false'} 
               onChange={(e) => setFormData(prev => ({ ...prev, activo: e.target.value === 'true' }))} 
-              className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold uppercase"
+              className={`w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold uppercase ${
+                nifResult?.exists && nifResult.estado ? 'border-emerald-300 bg-emerald-50/30' : ''
+              }`}
             >
               <option value="true">Activo / Operacional</option>
               <option value="false">Inactivo / Suspenso</option>
             </select>
+            {nifResult?.exists && nifResult.estado && (
+              <p className="text-[10px] text-emerald-700 font-bold flex items-center gap-1">
+                <Check size={9} /> Estado: <strong>{nifResult.estado}</strong> (AGT)
+              </p>
+            )}
           </div>
 
           <div className="space-y-1">

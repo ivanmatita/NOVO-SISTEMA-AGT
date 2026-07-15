@@ -5,9 +5,11 @@ import {
   AlertCircle, Loader2, ShieldCheck, CheckCircle2, RefreshCw
 } from 'lucide-react';
 import { AgtElectronicInvoiceModal } from './AgtElectronicInvoiceModal';
+import { DocumentReportModal } from './DocumentReportModal';
 
 interface AgtElectronicInvoicesListModalProps {
   companyNif?: string;
+  companyName?: string;
   userId?: string;
   onClose?: () => void;
   inlineMode?: boolean; // If true, renders as an inline panel instead of a full screen modal overlay
@@ -15,6 +17,7 @@ interface AgtElectronicInvoicesListModalProps {
 
 export const AgtElectronicInvoicesListModal: React.FC<AgtElectronicInvoicesListModalProps> = ({
   companyNif = '5000922200',
+  companyName = 'Minha Empresa',
   userId = '',
   onClose,
   inlineMode = false

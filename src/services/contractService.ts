@@ -29,28 +29,32 @@ export const contractService = {
       const { id, ...dataToSave } = payload;
       
       // Map frontend fields to database columns
+      // Ensure salary is a valid number
+      const parsedSalary = typeof dataToSave.salary === 'string' 
+        ? parseFloat(dataToSave.salary.replace(/\./g, '').replace(',', '.')) 
+        : (dataToSave.salary || 0);
+
       const finalPayload = {
         empresa_id,
-        colaborador_id: dataToSave.employee_id,
-        tipo_contrato: dataToSave.contract_type,
-        data_inicio: dataToSave.start_date || null,
-        fim_contrato: dataToSave.end_date || null,
-        salario_base: dataToSave.salary || 0,
+        colaborador_id: dataToSave.employee_id || null,
+        tipo_contrato: dataToSave.contract_type || 'efetivo',
+        data_inicio: (dataToSave.start_date && dataToSave.start_date.trim() !== '') ? dataToSave.start_date : null,
+        fim_contrato: (dataToSave.end_date && dataToSave.end_date.trim() !== '') ? dataToSave.end_date : null,
+        salario_base: isNaN(parsedSalary) ? 0 : parsedSalary,
         content: dataToSave.content || '',
         status: dataToSave.status || 'ativo',
         representative_name: dataToSave.representative_name,
         representative_role: dataToSave.representative_role,
-        duration_months: dataToSave.duration_months || 0,
-        experimental_days: dataToSave.experimental_days || 0,
-        notice_days: dataToSave.notice_days || 0,
+        duration_months: Number(dataToSave.duration_months) || 0,
+        experimental_days: Number(dataToSave.experimental_days) || 0,
+        notice_days: Number(dataToSave.notice_days) || 0,
         metadata: {
           employee_name: dataToSave.employee_name,
           employee_role: dataToSave.employee_role,
           representative_doc_type: dataToSave.representative_doc_type,
           representative_doc_number: dataToSave.representative_doc_number,
           representative_nationality: dataToSave.representative_nationality
-        },
-        updated_at: new Date().toISOString()
+        }
       };
 
       if (id) {

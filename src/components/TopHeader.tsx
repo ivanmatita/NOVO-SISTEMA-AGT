@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Clock, Plus, Printer, Menu, Bell, Home, ArrowLeft } from 'lucide-react';
+import { Search, Clock, Plus, Printer, Menu, Bell, Home, ArrowLeft, Grid } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 export const TopHeader = ({ 
   fiscalYear, 
   setFiscalYear, 
   onToggleSidebar, 
+  onToggleRightSidebar,
   onAddTask, 
   onPrint, 
   onSearch,
@@ -17,6 +18,7 @@ export const TopHeader = ({
   fiscalYear: string, 
   setFiscalYear: (y: string) => void,
   onToggleSidebar: () => void,
+  onToggleRightSidebar?: () => void,
   onAddTask?: () => void,
   onPrint?: () => void,
   onSearch?: (term: string) => void,
@@ -108,9 +110,8 @@ export const TopHeader = ({
       )}
       <header className="bg-white border-b border-zinc-200 h-16 flex items-center justify-between px-4 shadow-sm">
         <div className="flex items-center gap-4 flex-1">
-          <button onClick={onToggleSidebar} className="p-2 hover:bg-zinc-100 rounded-md lg:hidden">
-            <Menu size={20} />
-          </button>
+          {/* Sidebar Toggle removed as requested */}
+
           
           {showNavButtons && (
             <div className="flex items-center gap-2 mr-2">
@@ -137,6 +138,18 @@ export const TopHeader = ({
         </div>
 
         <div className="flex items-center gap-5">
+          {/* External Tools Icon Button */}
+          {onToggleRightSidebar && (
+            <button
+              onClick={onToggleRightSidebar}
+              className="p-2 bg-zinc-100 text-zinc-600 hover:bg-[#003366] hover:text-white rounded-md transition-colors"
+              title="Ferramentas Externas"
+            >
+              <Grid size={18} />
+            </button>
+          )}
+
+
           {/* Alerts Bell */}
           <div className="relative cursor-pointer text-zinc-500 hover:text-amber-600 transition-colors">
             <Bell size={20} />
@@ -174,18 +187,18 @@ export const TopHeader = ({
           <div className="flex items-center gap-2">
             <button 
               onClick={onAddTask}
-              className="hidden sm:flex items-center gap-2 bg-white border border-zinc-200 text-zinc-700 hover:text-emerald-600 hover:border-emerald-600 hover:bg-emerald-50 px-3 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-colors"
+              className="hidden sm:flex items-center gap-2 bg-white border border-zinc-200 text-zinc-700 hover:text-emerald-600 hover:border-emerald-600 hover:bg-emerald-50 px-4 py-2 rounded-md text-sm font-bold uppercase tracking-wider transition-colors"
               title="Adicionar Tarefa"
             >
-              <Plus size={16} /> Tarefa
+              <Plus size={20} /> Tarefa
             </button>
             
             <button 
               onClick={() => { if(onPrint) onPrint(); else window.print(); }}
-              className="flex items-center gap-2 bg-white border border-zinc-200 text-zinc-700 hover:text-[#003366] hover:border-[#003366] hover:bg-blue-50 px-3 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-colors"
+              className="flex items-center gap-2 bg-white border border-zinc-200 text-zinc-700 hover:text-[#003366] hover:border-[#003366] hover:bg-blue-50 px-4 py-2 rounded-md text-sm font-bold uppercase tracking-wider transition-colors"
               title="Imprimir Página"
             >
-              <Printer size={16} /> <span className="hidden sm:inline">Imprimir</span>
+              <Printer size={20} /> <span className="hidden sm:inline">Imprimir</span>
             </button>
           </div>
         </div>

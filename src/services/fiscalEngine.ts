@@ -17,7 +17,7 @@ export async function emitirDocumentoFiscal(payload: any) {
     const nifCliente = payload.cliente_nif || payload.client_nif;
     if (nifCliente && nifCliente !== "999999999" && nifCliente !== "Consumidor Final") {
       const nifStatus = await validarNIFAGT(nifCliente);
-      if (!nifStatus.valido) {
+      if (!nifStatus.exists) {
         throw new Error(`NIF suspenso/inválido pela AGT: ${nifCliente}`);
       }
     }

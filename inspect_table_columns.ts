@@ -9,17 +9,17 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 async function run() {
   const { data, error } = await supabase
-    .from('series_fiscais')
+    .from('compras')
     .select('*')
     .limit(1);
     
   if (error) {
-    console.error("Error fetching serie:", error);
+    console.error("Error fetching compras:", error);
   } else {
     if (data && data.length > 0) {
-        console.log("Columns:", Object.keys(data[0]));
+        console.log("compras Columns:", Object.keys(data[0]));
     } else {
-        console.log("No data in table");
+        console.log("No data in compras table or table is empty");
     }
   }
 }

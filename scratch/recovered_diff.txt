@@ -1,0 +1,162 @@
+Created At: 2026-07-01T13:23:21Z
+Completed At: 2026-07-01T13:23:23Z
+
+				The command completed successfully.
+				Output:
+				<truncated 1610 lines>
++          total: Number(d.total || 0),
++          imposto: Number(d.imposto || 0),
++          items,
++          client_email: d.cliente_email || d.client_email,
++          document_type: d.tipo_documento || d.document_type,
++          retencao_fonte_total
++        };
++      });
+       setInvoices(mappedInvoices);
+     } catch (err) {
+       console.error('Erro ao carregar documentos emitidos do Supabase:', err);
+@@ -28009,13 +28104,31 @@ export default function App() {
+         .order('created_at', { ascending: false });
+ 
+       if (error) throw error;
+-      setPurchases(data?.map(p => ({
+-        ...p,
+-        id: p.id,
+-        purchase_number: p.numero_compra || p.purchase_number,
+-        total: Number(p.total || 0),
+-        date: p.data || p.date
+-      })) || []);
++      setPurchases((data || []).map((p: any) => {
++        const parsedItems = (() => {
++          try {
++            const rawItems = p.items || p.itens || p.detalhes?.items || p.detalhes?.itens;
++            return Array.isArray(rawItems) ? rawItems : (rawItems ? JSON.parse(rawItems) : []);
++          } catch {
++            return [];
++          }
++        })();
++        return {
++          ...p,
++          id: p.id,
++          supplier_name: p.supplier_name || p.nome_fornecedor || p.fornecedor_nome || p.fornecedor?.nome || 'Fornecedor Desconhecido',
++          supplier_id: p.supplier_id || p.fornecedor_id || null,
++          supplier_nif: p.supplier_nif || p.nif || p.fornecedor?.nif || '',
++          purchase_number: p.purchase_number || p.numero_compra || p.numero_documento || p.numero_fatura || `COMP-${p.id}`,
++          invoice_number: p.invoice_number || p.numero_fatura || p.numero_documento || '',
++          document_type: p.document_type || p.tipo_documento || 'Fatura de Compra',
++          total: Number(p.total ?? p.valor_total ?? p.detalhes?.total ?? 0),
++          date: p.date || p.data || p.data_compra || p.data_emissao || p.created_at?.split('T')[0] || '',
++          items: parsedItems,
++          retencao_fonte: Number(p.vat_withholding || p.retencao_fonte || p.withholding_total || p.taxa_retencao || 0),
++          status: p.status || p.estado || 'completed'
++        };
++      }));
+     } catch (err) {
+       console.error('Erro ao carregar compras:', err);
+     }
+@@ -28503,7 +28616,7 @@ export default function App() {
+ 
+   const handleDocumentAction = async (action: string, doc: IssuedDocument) => {
+     // Validação de Integridade Fiscal antes de abrir (Regra 18)
+-    if (doc.is_certified && ['edit', 'export_pdf', 'print_a4', 'preview_a4', 'preview_receipt'].includes(action)) {
++    if (doc.is_certified && ['edit', 'export_pdf', 'print_a4', 'print_p80', 'print_p24', 'print_p24xl', 'preview_a4', 'preview_receipt'].includes(action)) {
+       try {
+         const { data, error } = await supabase.rpc('validar_integridade_documento', {
+           p_documento_id: doc.id
+@@ -28525,8 +28638,8 @@ export default function App() {
+     }
+ 
+     // These actions require full document data (e.g., items)
+-    if (['edit', 'credit_note', 'delivery_guide', 'export_pdf', 'draft', 'foreign_draft', 'print_a4', 'preview_a4'].includes(action)) {
+-      if (['export_pdf', 'print_a4', 'preview_a4', 'draft', 'foreign_draft'].includes(action)) {
++    if (['edit', 'credit_note', 'delivery_guide', 'export_pdf', 'draft', 'print_foreign_draft', 'print_a4', 'print_p80', 'print_p24', 'print_p24xl', 'preview_a4'].includes(action)) {
++      if (['export_pdf', 'print_a4', 'print_p80', 'print_p24', 'print_p24xl', 'preview_a4', 'draft', 'print_foreign_draft'].includes(action)) {
+         setIsPdfProcessing(true);
+       }
+       try {
+@@ -28539,7 +28652,28 @@ export default function App() {
+           .single();
+ 
+         if (data) {
+-          const invoiceData = data;
++          const invoiceData: any = {
++            ...data,
++            client_id: data.cliente_id || data.client_id,
++            client_name: data.cliente_nome || data.client_name || 'Desconhecido',
++            client_nif: data.client_nif || data.detalhes?.client_nif || data.detalhes?.cliente_nif || '999999999',
++            client_address: data.client_address || data.detalhes?.client_address || data.detalhes?.cliente_morada || data.detalhes?.cliente_endereco || 'Consumidor Final',
++            invoice_number: data.numero_documento || data.invoice_number,
++            date: data.data_emissao || data.created_at,
++            due_date: data.data_vencimento || data.due_date,
++            status: (data.status || data.estado || 'ativo').toLowerCase(),
++            total: Number(data.total || 0),
++            imposto: Number(data.imposto || 0),
++            items: data.detalhes?.items || data.items || [],
++            client_email: data.cliente_email || data.client_email,
++            document_type: data.tipo_documento || data.document_type,
++            is_certified: data.is_certified,
++            hash: data.hash_documento || data.hash,
++            codigo_validacao: data.codigo_validacao,
++            payment_method: data.detalhes?.payment_method || data.payment_method,
++            currency: data.detalhes?.currency || data.moeda || 'AOA',
++            exchange_rate: data.detalhes?.exchange_rate || data.taxa_cambio || 1
++          };
+           
+           if (action === 'edit') {
+             setSelectedDocument(invoiceData);
+@@ -28559,11 +28693,12 @@ export default function App() {
+             setPrintFormat('A4');
+             setIsPrintingDraft(!doc.is_certified);
+             setIsExportingPdf(true);
+-          } else if (action === 'draft' || action === 'foreign_draft' || action === 'preview_a4') {
++          } else if (action === 'draft' || action === 'print_foreign_draft' || action === 'preview_a4') {
+             setPrintingInvoice(invoiceData);
+             setCopyType('Original');
+             setPrintFormat('A4');
+             setIsPrintingDraft(true);
++            setIsPrintingForeignDraft(action === 'print_foreign_draft');
+             if (action !== 'preview_a4') {
+                setTimeout(() => {
+                  setIsPdfProcessing(false);
+@@ -28580,6 +28715,7 @@ export default function App() {
+             }
+             setPrintingInvoice(invoiceData);
+             setIsPrintingDraft(false);
++            setIsPrintingForeignDraft(false);
+             
+             if (action === 'print_p80') {
+               setPrintFormat('P80');
+@@ -28698,6 +28834,7 @@ export default function App() {
+             fiscalYear={fiscalYear} 
+             setFiscalYear={setFiscalYear} 
+             onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
++            onToggleRightSidebar={() => setRightSidebarOpen(!rightSidebarOpen)}
+             onAddTask={() => {
+               setEditingAlertId(null);
+               setTaskFormData({ name: '', type: 'imposto', description: '', responsible: '', startDate: '', endDate: '', advanceTime: '', obs: '' });
+@@ -29397,7 +29534,7 @@ export default function App() {
+           </main>
+         </div>
+         
+-        {(activeTab === 'dashboard' && !isCreatingInvoice && !viewingInvoiceId) && <RightSidebar />}
++        {(activeTab === 'dashboard' && !isCreatingInvoice && !viewingInvoiceId && rightSidebarOpen) && <RightSidebar />}
+         
+         {isClientModalOpen && (
+           <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+@@ -29443,6 +29580,7 @@ export default function App() {
+                   onClick={() => {
+                     setPrintingInvoice(null);
+                     setIsPrintingDraft(false);
++                    setIsPrintingForeignDraft(false);
+                     setIsExportingPdf(false);
+                   }}
+                   className="bg-zinc-700 px-4 py-2 text-sm font-bold"
+@@ -29456,6 +29594,7 @@ export default function App() {
+             <PrintA4 
+               invoice={printingInvoice} 
+               isDraft={isPrintingDraft} 
++              forceForeignDraft={isPrintingForeignDraft}
+               copyType={copyType}
+               printFormat={printFormat}
+               companyData={companyData}
+

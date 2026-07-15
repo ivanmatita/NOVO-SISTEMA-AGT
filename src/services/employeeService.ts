@@ -36,9 +36,7 @@ export const employeeService = {
       if (!employee.empresa_id) throw new Error("empresa_id é obrigatório para criar um colaborador.");
 
       const payload = {
-        ...employee,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        ...employee
       };
 
       console.log('[EmployeeService] Inserindo colaborador:', payload.name);
@@ -63,8 +61,7 @@ export const employeeService = {
   async updateEmployee(id: number | string, employee: Partial<Employee> & { empresa_id: string }): Promise<Employee> {
     try {
       const payload = {
-        ...employee,
-        updated_at: new Date().toISOString()
+        ...employee
       };
 
       console.log('[EmployeeService] Atualizando colaborador ID:', id);

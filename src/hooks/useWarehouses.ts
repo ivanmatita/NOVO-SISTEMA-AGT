@@ -2,34 +2,24 @@ import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Warehouse } from '../types';
 import { realtimeManager } from '../lib/realtimeManager';
+import { useAuth } from '../contexts/AuthContext';
 
 export const useWarehouses = () => {
+  const { user } = useAuth();
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [loading, setLoading] = useState(true);
-  const [empresaId, setEmpresaId] = useState<string | null>(null);
 
   const fetchWarehouses = useCallback(async () => {
+    if (!user?.empresa_id) {
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user;
-      if (!user) return;
-
-      const { data: profile } = await supabase
-        .from('perfis')
-        .select('empresa_id')
-        .eq('id', user.id)
-        .single();
-      
-      const currentEmpresaId = profile?.empresa_id;
-      setEmpresaId(currentEmpresaId);
-
-      if (!currentEmpresaId) return;
-
       const { data, error } = await supabase
         .from('armazens')
         .select('*')
-        .eq('empresa_id', currentEmpresaId)
+        .eq('empresa_id', user.empresa_id)
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -43,13 +33,14 @@ export const useWarehouses = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.empresa_id]);
 
   useEffect(() => {
     fetchWarehouses();
   }, [fetchWarehouses]);
 
   useEffect(() => {
+    const empresaId = user?.empresa_id;
     if (!empresaId) return;
 
     const onUpdate = () => fetchWarehouses();
@@ -58,26 +49,17 @@ export const useWarehouses = () => {
     return () => {
       realtimeManager.unsubscribe('armazens', empresaId, onUpdate);
     };
-  }, [empresaId, fetchWarehouses]);
+  }, [user?.empresa_id, fetchWarehouses]);
 
   const createWarehouse = async (warehouseData: Partial<Warehouse>) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Não autenticado');
-
-      const { data: profile } = await supabase
-        .from('perfis')
-        .select('empresa_id')
-        .eq('id', user.id)
-        .single();
-      const currentEmpresaId = profile?.empresa_id;
-      if (!currentEmpresaId) throw new Error('Empresa não identificada');
+      if (!user?.empresa_id) throw new Error('Não autenticado ou empresa não identificada');
 
       const { data, error } = await supabase
         .from('armazens')
         .insert([{
           ...warehouseData,
-          empresa_id: currentEmpresaId,
+          empresa_id: user.empresa_id,
         }])
         .select()
         .single();
@@ -92,22 +74,13 @@ export const useWarehouses = () => {
 
   const updateWarehouse = async (id: number, updates: Partial<Warehouse>) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Não autenticado');
-
-      const { data: profile } = await supabase
-        .from('perfis')
-        .select('empresa_id')
-        .eq('id', user.id)
-        .single();
-      const currentEmpresaId = profile?.empresa_id;
-      if (!currentEmpresaId) throw new Error('Empresa não identificada');
+      if (!user?.empresa_id) throw new Error('Não autenticado ou empresa não identificada');
 
       const { data, error } = await supabase
         .from('armazens')
         .update(updates)
         .eq('id', id)
-        .eq('empresa_id', currentEmpresaId)
+        .eq('empresa_id', user.empresa_id)
         .select()
         .single();
         
@@ -121,22 +94,13 @@ export const useWarehouses = () => {
 
   const deleteWarehouse = async (id: number) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Não autenticado');
-
-      const { data: profile } = await supabase
-        .from('perfis')
-        .select('empresa_id')
-        .eq('id', user.id)
-        .single();
-      const currentEmpresaId = profile?.empresa_id;
-      if (!currentEmpresaId) throw new Error('Empresa não identificada');
+      if (!user?.empresa_id) throw new Error('Não autenticado ou empresa não identificada');
 
       const { error } = await supabase
         .from('armazens')
         .delete()
         .eq('id', id)
-        .eq('empresa_id', currentEmpresaId);
+        .eq('empresa_id', user.empresa_id);
         
       if (error) throw error;
     } catch (e) {

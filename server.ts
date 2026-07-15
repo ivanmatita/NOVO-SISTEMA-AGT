@@ -4578,6 +4578,8 @@ async function startServer() {
               id: d.id,
               client_id: d.cliente_id || d.client_id,
               client_name: d.cliente_nome || d.client_name || 'Desconhecido',
+              client_nif: d.client_nif || d.detalhes?.client_nif || d.detalhes?.cliente_nif || '999999999',
+              client_address: d.client_address || d.detalhes?.client_address || d.detalhes?.cliente_morada || d.detalhes?.cliente_endereco || 'Consumidor Final',
               invoice_number: d.numero_documento || d.invoice_number,
               date: d.data_emissao || d.created_at,
               due_date: d.data_vencimento || d.due_date,
@@ -4594,6 +4596,9 @@ async function startServer() {
               numero_documento_origem: d.numero_documento_origem || d.detalhes?.documento_origem_numero || null,
               tipo_documento_origem: d.tipo_documento_origem || null,
               documento_origem_id: d.documento_origem_id || d.detalhes?.documento_origem_id || null,
+              payment_method: d.detalhes?.payment_method || d.payment_method,
+              currency: d.detalhes?.currency || d.moeda || 'AOA',
+              exchange_rate: d.detalhes?.exchange_rate || d.taxa_cambio || 1
             };
           });
 
@@ -4641,6 +4646,8 @@ async function startServer() {
             id: d.id,
             client_id: d.cliente_id || d.client_id,
             client_name: d.cliente_nome || d.client_name || 'Desconhecido',
+            client_nif: d.client_nif || d.detalhes?.client_nif || d.detalhes?.cliente_nif || '999999999',
+            client_address: d.client_address || d.detalhes?.client_address || d.detalhes?.cliente_morada || d.detalhes?.cliente_endereco || 'Consumidor Final',
             invoice_number: d.numero_documento || d.invoice_number,
             date: d.data_emissao || d.created_at,
             due_date: d.data_vencimento || d.due_date,
@@ -4651,7 +4658,10 @@ async function startServer() {
             client_email: d.cliente_email || d.client_email,
             document_type: d.tipo_documento || d.document_type,
             is_certified: d.is_certified,
-            hash: d.hash_documento || d.hash
+            hash: d.hash_documento || d.hash,
+            payment_method: d.detalhes?.payment_method || d.payment_method,
+            currency: d.detalhes?.currency || d.moeda || 'AOA',
+            exchange_rate: d.detalhes?.exchange_rate || d.taxa_cambio || 1
           }));
           return res.json(formatted);
         } else if (error) {
@@ -4684,7 +4694,7 @@ async function startServer() {
             client_id: data.cliente_id || data.client_id,
             client_name: data.cliente_nome || data.client_name || 'Desconhecido',
             client_nif: data.detalhes?.client_nif || data.detalhes?.cliente_nif || '999999999',
-            client_address: data.detalhes?.client_address || data.detalhes?.cliente_morada || 'Consumidor Final',
+            client_address: data.detalhes?.client_address || data.detalhes?.cliente_morada || data.detalhes?.cliente_endereco || 'Consumidor Final',
             invoice_number: data.numero_documento || data.invoice_number,
             date: data.data_emissao || data.created_at,
             due_date: data.data_vencimento || data.due_date,
@@ -4696,7 +4706,10 @@ async function startServer() {
             document_type: data.tipo_documento || data.document_type,
             is_certified: data.is_certified,
             hash: data.hash_documento || data.hash,
-            codigo_validacao: data.codigo_validacao
+            codigo_validacao: data.codigo_validacao,
+            payment_method: data.detalhes?.payment_method || data.payment_method,
+            currency: data.detalhes?.currency || data.moeda || 'AOA',
+            exchange_rate: data.detalhes?.exchange_rate || data.taxa_cambio || 1
           };
           return res.json(formatted);
         }
@@ -4759,7 +4772,7 @@ async function startServer() {
     } else res.status(404).json({ error: "Document not found" });
   });
 
-  app.put("/api/invoices/:id", (req, res) => {
+  app.put("/api/invoices/:id", async (req, res) => {
     const docId = req.params.id;
     const index = issuedDocuments.findIndex(d => String(d.id) === String(docId));
     if (index !== -1) {
@@ -4773,6 +4786,83 @@ async function startServer() {
         issuedDocuments[index] = { ...existing, ...req.body };
       }
       saveData();
+    }
+
+    if (supabaseAdmin) {
+      try {
+        const { data: existingDoc } = await supabaseAdmin
+          .from('documentos_emitidos')
+          .select('*')
+          .eq('id', docId)
+          .single();
+
+        if (existingDoc) {
+          const totalValue = Number(req.body.total ?? existingDoc.total);
+          const updatePayload: any = {
+            cliente_id: req.body.cliente_id ?? existingDoc.cliente_id,
+            cliente_nome: req.body.client_name ?? req.body.cliente_nome ?? existingDoc.cliente_nome,
+            cliente_email: req.body.client_email ?? existingDoc.cliente_email,
+            total: totalValue,
+            imposto: Number(req.body.imposto ?? existingDoc.imposto),
+            moeda: req.body.currency ?? req.body.moeda ?? existingDoc.moeda,
+            taxa_cambio: req.body.exchange_rate ?? existingDoc.taxa_cambio,
+            valor_original_moeda: req.body.total_original ?? totalValue,
+            detalhes: {
+              ...(typeof existingDoc.detalhes === 'object' ? existingDoc.detalhes : {}),
+              items: req.body.items ?? existingDoc.detalhes?.items ?? [],
+              payment_method: req.body.payment_method ?? existingDoc.detalhes?.payment_method,
+              series_id: req.body.series_id ?? existingDoc.detalhes?.series_id,
+              exchange_rate: req.body.exchange_rate ?? existingDoc.detalhes?.exchange_rate,
+              currency: req.body.currency ?? existingDoc.detalhes?.currency,
+              client_nif: req.body.client_nif ?? req.body.cliente_nif ?? existingDoc.detalhes?.client_nif,
+              client_address: req.body.client_address ?? req.body.cliente_morada ?? req.body.cliente_endereco ?? existingDoc.detalhes?.client_address
+            }
+          };
+
+          const { data: updatedDoc, error: updateErr } = await supabaseAdmin
+            .from('documentos_emitidos')
+            .update(updatePayload)
+            .eq('id', docId)
+            .select()
+            .single();
+
+          if (updateErr) {
+            console.error('[API-PUT-INVOICE] Database update error:', updateErr.message);
+            return res.status(500).json({ error: updateErr.message });
+          }
+
+          const formatted = {
+            ...updatedDoc,
+            id: updatedDoc.id,
+            client_id: updatedDoc.cliente_id || updatedDoc.client_id,
+            client_name: updatedDoc.cliente_nome || updatedDoc.client_name,
+            client_nif: updatedDoc.detalhes?.client_nif || updatedDoc.detalhes?.cliente_nif || '999999999',
+            client_address: updatedDoc.detalhes?.client_address || updatedDoc.detalhes?.cliente_morada || updatedDoc.detalhes?.cliente_endereco || 'Consumidor Final',
+            invoice_number: updatedDoc.numero_documento || updatedDoc.invoice_number,
+            date: updatedDoc.data_emissao || updatedDoc.created_at,
+            due_date: updatedDoc.data_vencimento || updatedDoc.due_date,
+            status: (updatedDoc.status || updatedDoc.estado || 'ativo').toLowerCase(),
+            total: Number(updatedDoc.total || 0),
+            imposto: Number(updatedDoc.imposto || 0),
+            items: updatedDoc.detalhes?.items || updatedDoc.items || [],
+            client_email: updatedDoc.cliente_email || updatedDoc.client_email,
+            document_type: updatedDoc.tipo_documento || updatedDoc.document_type,
+            is_certified: updatedDoc.is_certified,
+            hash: updatedDoc.hash_documento || updatedDoc.hash,
+            codigo_validacao: updatedDoc.codigo_validacao,
+            payment_method: updatedDoc.detalhes?.payment_method || updatedDoc.payment_method,
+            currency: updatedDoc.detalhes?.currency || updatedDoc.moeda || 'AOA',
+            exchange_rate: updatedDoc.detalhes?.exchange_rate || updatedDoc.taxa_cambio || 1
+          };
+
+          return res.json(formatted);
+        }
+      } catch (err: any) {
+        console.error('[API-PUT-INVOICE] Exception during database update:', err.message || err);
+      }
+    }
+
+    if (index !== -1) {
       res.json(issuedDocuments[index]);
     } else {
       res.status(404).json({ error: "Document not found" });
@@ -4879,6 +4969,8 @@ async function startServer() {
         numero_documento_origem: invoice.numero_documento || invoice.invoice_number,
         documento_origem_id: invoice_id,
         tipo_documento_origem: invoice.tipo_documento || invoice.document_type || 'Fatura',
+        client_nif: invoice.client_nif || invoice.detalhes?.client_nif || invoice.detalhes?.cliente_nif || '999999999',
+        client_address: invoice.client_address || invoice.detalhes?.client_address || invoice.detalhes?.cliente_morada || 'Consumidor Final',
         items: [
           {
             description: `Liquidação de Fatura Ref. ${invoice.numero_documento || invoice.invoice_number}`,
@@ -4896,7 +4988,22 @@ async function startServer() {
             unit_price: Number(amount),
             total: Number(amount)
           }
-        ]
+        ],
+        detalhes: {
+          items: [
+            {
+              description: `Liquidação de Fatura Ref. ${invoice.numero_documento || invoice.invoice_number}`,
+              quantity: 1,
+              price: Number(amount),
+              unit_price: Number(amount),
+              total: Number(amount)
+            }
+          ],
+          payment_method: payment_method,
+          referencia_documento: invoice.numero_documento || invoice.invoice_number,
+          client_nif: invoice.client_nif || invoice.detalhes?.client_nif || invoice.detalhes?.cliente_nif || '999999999',
+          client_address: invoice.client_address || invoice.detalhes?.client_address || invoice.detalhes?.cliente_morada || 'Consumidor Final'
+        }
       };
 
       if (supabaseAdmin) {
@@ -5742,7 +5849,9 @@ async function startServer() {
           series_id: req.body.series_id,
           exchange_rate: req.body.exchange_rate,
           currency: req.body.currency,
-          documento_origem_id: req.body.documento_origem_id
+          documento_origem_id: req.body.documento_origem_id,
+          client_nif: req.body.client_nif || req.body.cliente_nif,
+          client_address: req.body.client_address || req.body.cliente_morada || req.body.cliente_endereco
         },
         serie: seriesRef,
         ano: year,
@@ -5757,7 +5866,10 @@ async function startServer() {
         valor_original_moeda: req.body.total_original || totalValue,
         documento_origem_id: req.body.documento_origem_id,
         numero_documento_origem: req.body.numero_documento_origem,
-        criado_por: authUser?.userId || req.body.criado_por
+        criado_por: authUser?.userId || req.body.criado_por,
+        created_by: authUser?.userId || req.body.criado_por,
+        created_by_nome: authUser?.name || 'Utilizador do Sistema',
+        created_by_username: authUser?.username || 'sistema'
       };
 
       if (supabaseAdmin && companyId) {
@@ -5771,12 +5883,13 @@ async function startServer() {
         
         const newDoc = data;
 
-        // Push immediately to the local in-memory array to sync UI dynamically (addresses Rule "lista nao carrega nada")
         const inMemoryDoc = {
           ...newDoc,
           id: newDoc.id,
           client_id: newDoc.cliente_id,
           client_name: newDoc.cliente_nome,
+          client_nif: newDoc.detalhes?.client_nif || newDoc.detalhes?.cliente_nif || '999999999',
+          client_address: newDoc.detalhes?.client_address || newDoc.detalhes?.cliente_morada || 'Consumidor Final',
           invoice_number: newDoc.numero_documento,
           date: newDoc.data_emissao,
           due_date: newDoc.data_vencimento,
@@ -5789,7 +5902,10 @@ async function startServer() {
           is_certified: newDoc.is_certified,
           hash: newDoc.hash_documento,
           ano: newDoc.ano,
-          reference_document: newDoc.numero_documento_origem
+          reference_document: newDoc.numero_documento_origem,
+          payment_method: newDoc.detalhes?.payment_method || newDoc.payment_method,
+          currency: newDoc.detalhes?.currency || newDoc.moeda || 'AOA',
+          exchange_rate: newDoc.detalhes?.exchange_rate || newDoc.taxa_cambio || 1
         };
         issuedDocuments.push(inMemoryDoc);
 
@@ -5816,7 +5932,7 @@ async function startServer() {
         }
 
         // AGT Requirement: Handle automatic secondary RECIBO (RC) generation for Fatura-Recibo (FR)
-        if (docTypeAbbr === 'FR') {
+        if (false && docTypeAbbr === 'FR') {
           try {
             const yr = String(year);
             const p_seriesRef = seriesRef;
@@ -5855,7 +5971,9 @@ async function startServer() {
                   items: req.body.items || [],
                   payment_method: req.body.payment_method,
                   documento_origem_id: newDoc.id,
-                  documento_origem_numero: newDoc.numero_documento
+                  documento_origem_numero: newDoc.numero_documento,
+                  client_nif: req.body.client_nif || req.body.cliente_nif,
+                  client_address: req.body.client_address || req.body.cliente_morada || req.body.cliente_endereco
                 },
                 serie: rcSeriesRef,
                 ano: year,
@@ -6004,7 +6122,7 @@ async function startServer() {
     } else res.status(404).json({ error: "Session not found" });
   });
 
-  app.post("/api/pos/sales", (req, res) => {
+  app.post("/api/pos/sales", async (req, res) => {
     const newSale = {
       ...req.body,
       id: generateId(),
@@ -6014,11 +6132,43 @@ async function startServer() {
     
     // Automatic Inventory Reduction on Sale (Backend security)
     if (req.body.items && Array.isArray(req.body.items)) {
-      req.body.items.forEach((item: any) => {
+      for (const item of req.body.items) {
         const product = products.find(p => Number(p.id) === Number(item.product_id));
         if (product) {
-          product.stock_quantity = Math.max(0, (Number(product.stock_quantity) || 0) - Number(item.quantity));
-          // Record stock movement
+          const previousStock = Number(product.stock_quantity) || 0;
+          product.stock_quantity = Math.max(0, previousStock - Number(item.quantity));
+          
+          // Persist stock reduction in Supabase!
+          if (supabaseAdmin) {
+            try {
+              await supabaseAdmin
+                .from('produtos')
+                .update({ stock_quantity: product.stock_quantity })
+                .eq('id', product.id)
+                .eq('empresa_id', req.body.empresa_id);
+
+              // Record stock movement in database
+              await supabaseAdmin
+                .from('movimentacoes_stock')
+                .insert({
+                  empresa_id: req.body.empresa_id,
+                  product_id: product.id,
+                  type: 'exit',
+                  quantity: Number(item.quantity),
+                  previous_stock: previousStock,
+                  current_stock: product.stock_quantity,
+                  description: `Venda POS Doc: ${req.body.invoice_number || 'N/A'}`,
+                  created_by: req.body.criado_por || '1',
+                  created_by_nome: req.body.operator_name || 'Operador Central',
+                  created_by_username: 'sistema',
+                  criado_por: req.body.criado_por || '1'
+                });
+            } catch (err: any) {
+              console.error("[POS-STOCK] Erro ao sincronizar com Supabase:", err.message || err);
+            }
+          }
+
+          // Record in-memory stock movement
           stockMovements.push({
             id: generateId(),
             product_id: product.id,
@@ -6030,7 +6180,7 @@ async function startServer() {
             empresa_id: req.body.empresa_id
           });
         }
-      });
+      }
     }
 
     saveData();

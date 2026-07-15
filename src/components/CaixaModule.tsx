@@ -144,8 +144,9 @@ export const CaixaModule = () => {
       });
 
       showToast('Transferência concluída com sucesso!');
+      setSelectedCaixaId(transferData.from);
       setTransferData({ from: '', to: '', amount: 0, description: '' });
-      setActiveSection('list');
+      setActiveSection('movements');
     } catch (error: any) {
       console.error('Error in transfer:', error);
       showToast(`Erro ao realizar transferência: ${error.message}`, 'error');
@@ -172,8 +173,9 @@ export const CaixaModule = () => {
       });
 
       showToast('Operação registada com sucesso!');
+      setSelectedCaixaId(paymentData.caixaId);
       setPaymentData({ caixaId: '', amount: 0, description: '', type: 'outros' });
-      setActiveSection('list');
+      setActiveSection('movements');
     } catch (error: any) {
       console.error('Error in payment:', error);
       showToast(`Erro ao realizar operação: ${error.message}`, 'error');
@@ -198,9 +200,10 @@ export const CaixaModule = () => {
         description: `Conciliação: ${reconData.description}`,
       });
 
-      showToast('Conciliação efetuada com sucesso!');
+      showToast('Conciliação registada com sucesso!');
+      setSelectedCaixaId(reconData.caixaId);
       setReconData({ caixaId: '', actualBalance: 0, description: '' });
-      setActiveSection('list');
+      setActiveSection('movements');
     } catch (error: any) {
       console.error('Error in reconciliation:', error);
       showToast(`Erro ao realizar conciliação: ${error.message}`, 'error');

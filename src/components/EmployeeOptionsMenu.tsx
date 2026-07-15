@@ -76,38 +76,55 @@ export const EmployeeOptionsMenu = ({
     
     setIsDismissing(true);
     try {
+      let supaSuccess = false;
       // Sincronizar com o Supabase na tabela colaboradores
       if (user?.empresa_id) {
-        try {
-          await supabase
-            .from('colaboradores')
-            .update({
-              status: 'dismissed',
-              dismissed_at: dismissData.date,
-              dismissal_reason: dismissData.reason,
-              dismissal_ordered_by: dismissData.orderedBy,
-              dismissal_observations: dismissData.observations
-            })
-            .eq('id', employee.id)
-            .eq('empresa_id', user.empresa_id);
-        } catch (supaErr) {
-          console.error('[DismissEmployee] Erro ao sincronizar com Supabase:', supaErr);
+        const { error } = await supabase
+          .from('colaboradores')
+          .update({
+            status: 'dismissed',
+            dismissed_at: dismissData.date,
+            dismissal_reason: dismissData.reason,
+            dismissal_ordered_by: dismissData.orderedBy,
+            dismissal_observations: dismissData.observations
+          })
+          .eq('id', employee.id)
+          .eq('empresa_id', user.empresa_id);
+          
+        if (!error) {
+          supaSuccess = true;
+        } else {
+          console.error('[DismissEmployee] Erro Supabase:', error.message);
         }
       }
 
-      const res = await fetchWithAuth(`/api/employees/dismiss/${employee.id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(dismissData)
-      });
-      
-      if (res.ok) {
-        alert('Funcionário demitido de forma segura com sucesso!');
-        onRefreshHRData();
-        onClose();
-      } else {
-        alert('Erro ao processar demissão no servidor de backend.');
+      const isNumericId = !isNaN(Number(employee.id));
+      if (isNumericId) {
+        try {
+          const res = await fetchWithAuth(`/api/employees/dismiss/${employee.id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(dismissData)
+          });
+          if (!res.ok && !supaSuccess) {
+            alert('Erro ao processar demissão no servidor de backend.');
+            return;
+          }
+        } catch (localErr) {
+          console.warn('[Sync] Falha local:', localErr);
+          if (!supaSuccess) {
+            alert('Erro de conexão ao processar demissão.');
+            return;
+          }
+        }
+      } else if (!supaSuccess) {
+        alert('Erro ao processar demissão na base de dados (Supabase).');
+        return;
       }
+      
+      alert('Funcionário demitido de forma segura com sucesso!');
+      onRefreshHRData();
+      onClose();
     } catch (err) {
       console.error('Error dismissing employee:', err);
       alert('Ocorreu um erro ao demitir o funcionário.');

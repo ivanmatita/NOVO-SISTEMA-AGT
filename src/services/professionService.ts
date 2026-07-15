@@ -25,8 +25,7 @@ export const professionService = {
       const { id, ...dataToSave } = payload;
       const finalPayload = {
         ...dataToSave,
-        empresa_id,
-        updated_at: new Date().toISOString()
+        empresa_id
       };
 
       if (id) {

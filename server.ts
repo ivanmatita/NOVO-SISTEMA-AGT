@@ -2692,43 +2692,34 @@ async function startServer() {
      
      if (supabaseAdmin) {
          try {
-             // Query by both empresa_id and company_id to catch all users (including admin/owner)
-             let { data: perfisListA, error: errorPerfisA } = await supabaseAdmin
+             // perfis table only has empresa_id (no company_id column)
+             let { data: perfisList, error: errorPerfis } = await supabaseAdmin
                  .from('perfis')
                  .select('*')
                  .eq('empresa_id', empresa_id);
-             let { data: perfisListB, error: errorPerfisB } = await supabaseAdmin
-                 .from('perfis')
-                 .select('*')
-                 .eq('company_id', empresa_id);
-             if (errorPerfisA) {
-                 console.warn("[SERVER] PostgREST GET perfis (empresa_id) fail...", errorPerfisA.message || errorPerfisA);
+             if (errorPerfis) {
+                 console.warn("[SERVER] PostgREST GET perfis fail...", errorPerfis.message || errorPerfis);
              }
-             if (errorPerfisB) {
-                 console.warn("[SERVER] PostgREST GET perfis (company_id) fail...", errorPerfisB.message || errorPerfisB);
-             }
-             // Merge and deduplicate by id
-             const perfisMap = new Map<string, any>();
-             for (const p of [...(perfisListA || []), ...(perfisListB || [])]) {
-                 if (p?.id && !perfisMap.has(String(p.id))) perfisMap.set(String(p.id), p);
-             }
-             const perfisList = Array.from(perfisMap.values());
 
+             // system_users: try empresa_id first, then company_id as fallback
              let { data: sysUsersListA, error: errorSysA } = await supabaseAdmin
                  .from('system_users')
                  .select('*')
                  .eq('empresa_id', empresa_id);
-             let { data: sysUsersListB, error: errorSysB } = await supabaseAdmin
-                 .from('system_users')
-                 .select('*')
-                 .eq('company_id', empresa_id);
+             let sysUsersListB: any[] = [];
+             let errorSysB: any = null;
+             try {
+                 const res2 = await supabaseAdmin
+                     .from('system_users')
+                     .select('*')
+                     .eq('company_id', empresa_id);
+                 sysUsersListB = res2.data || [];
+                 errorSysB = res2.error;
+             } catch(_) { /* company_id column may not exist */ }
              if (errorSysA) {
                  console.warn("[SERVER] PostgREST GET system_users (empresa_id) fail:", errorSysA.message || errorSysA);
              }
-             if (errorSysB) {
-                 console.warn("[SERVER] PostgREST GET system_users (company_id) fail:", errorSysB.message || errorSysB);
-             }
-             // Merge and deduplicate
+             // Merge and deduplicate system_users by id
              const sysMap = new Map<string, any>();
              for (const s of [...(sysUsersListA || []), ...(sysUsersListB || [])]) {
                  if (s?.id && !sysMap.has(String(s.id))) sysMap.set(String(s.id), s);

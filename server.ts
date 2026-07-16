@@ -2690,7 +2690,7 @@ async function startServer() {
              let { data: perfisList, error: errorPerfis } = await supabaseAdmin
                  .from('perfis')
                  .select('*')
-                 .eq('company_id', empresa_id);
+                 .eq('empresa_id', empresa_id);
              if (errorPerfis) {
                  console.warn("[SERVER] PostgREST GET perfis fail...", errorPerfis.message || errorPerfis);
              }
@@ -2698,7 +2698,7 @@ async function startServer() {
              let { data: sysUsersList, error: errorSys } = await supabaseAdmin
                  .from('system_users')
                  .select('*')
-                 .eq('company_id', empresa_id);
+                 .eq('empresa_id', empresa_id);
              if (errorSys) {
                  console.warn("[SERVER] PostgREST GET system_users fail:", errorSys.message || errorSys);
              }
@@ -2724,8 +2724,8 @@ async function startServer() {
                      ...su,
                      ...p, 
                      name: p.nome || su.name || p.name,
-                     company_id: p.company_id || su.company_id,
-                     empresa_id: p.company_id || su.company_id,
+                     company_id: p.empresa_id || p.company_id || su.company_id,
+                     empresa_id: p.empresa_id || p.company_id || su.company_id,
                      permission_areas: p.permission_areas || su.permission_areas || [],
                      level: p.level !== undefined ? p.level : (su.level !== undefined ? su.level : (p.role === 'admin' ? 10 : 1)),
                      contact: p.contact || su.contact || '',

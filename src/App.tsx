@@ -18488,7 +18488,7 @@ const InvoiceList = ({
             </div>
 
             {/* Table Section */}
-            {activeSubTab === 'emitidos' && (
+            {(activeSubTab === 'emitidos' || activeSubTab === 'recibos') && (
               <IssuedDocumentsList 
                 documents={filteredIssuedDocuments} 
                 onAction={onAction}
@@ -20174,7 +20174,9 @@ const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack, employ
     doc.save(`colaboradores_${(workSite?.title || 'lista').replace(/ /g, '_')}.pdf`);
   };
   
-  const siteInvoices = (invoices ?? []).filter(inv => (inv.work_site_id?.toString() === workSite.id?.toString()));
+  // Show all certified issued documents for the company in the work site view
+  // (documentos_emitidos does not have a work_site_id column, so we show all certified docs)
+  const siteInvoices = (invoices ?? []).filter(inv => inv.is_certified === true || (inv as any).estado_documento === 'CERTIFICADO' || (inv as any).estado === 'ATIVO' || (inv as any).estado_documento === 'ativo');
   const totalInvoiced = (siteInvoices ?? []).reduce((sum, inv) => sum + (inv.contravalor || inv.total || 0), 0);
   const totalPaid = (siteInvoices ?? []).filter(inv => inv.status === 'paid' || (inv.estado_documento as string) === 'pago' || (inv.estado_documento as string) === 'ativo' || inv.payment_status === 'paid').reduce((sum, inv) => sum + (inv.contravalor || inv.total || 0), 0);
   const totalPending = totalInvoiced - totalPaid;
@@ -24822,7 +24824,6 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                   caixa_id: finalCaixaId,
                   metodo_pagamento: rMethod,
                   itens: showReceiptModal.itens || showReceiptModal.items || [{ description: `Liquidação de Fatura de Compra ${showReceiptModal.purchase_number}`, quantity: 1, unit_price: rAmount, total: rAmount }],
-                  items: showReceiptModal.itens || showReceiptModal.items || [{ description: `Liquidação de Fatura de Compra ${showReceiptModal.purchase_number}`, quantity: 1, unit_price: rAmount, total: rAmount }],
                   hash: 'RC-SHA256-' + Math.random().toString(36).substring(7).toUpperCase(),
                   descricao: rObs || `Pagamento de FT nº ${showReceiptModal.purchase_number} - Recibo ${receiptNum}`,
                   created_by: user?.id,
@@ -24871,7 +24872,6 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                   data_emissao: new Date().toISOString(),
                   documento_origem_id: showReceiptModal.id,
                   estado: 'EMITIDO',
-                  origem: 'COMPRA',
                   ano: showReceiptModal.ano || year,
                   detalhes: receiptPayload.detalhes
                 };

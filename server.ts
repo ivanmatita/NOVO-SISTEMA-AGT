@@ -2629,8 +2629,9 @@ async function startServer() {
         });
 
       if (profileError) {
-        console.error("[SERVER-AUTH] Erro ao criar perfil admin:", profileError);
-        return res.status(400).json({ error: `Erro na Tabela Perfis: ${profileError.message}` });
+        // Soft warning: não bloqueia o registo. O fallback em GET /api/system-users
+        // vai detectar e reparar o perfil em falta automaticamente.
+        console.warn("[SERVER-AUTH] Aviso ao criar perfil admin (não-bloqueante):", profileError.message);
       }
 
       // 4. Inserir também na tabela system_users para total consistência (com colunas corretas!)
@@ -2655,6 +2656,7 @@ async function startServer() {
 
       console.log(`[SERVER-AUTH] Registo SaaS concluído com sucesso para ${email}`);
       res.json({ success: true, userId });
+
     } catch (err: any) {
       console.error("[SERVER-AUTH] Falha crítica no endpoint:", err);
       res.status(500).json({ error: "Erro interno no servidor de autenticação." });
@@ -2810,6 +2812,78 @@ async function startServer() {
                      seenIds.add(u.id);
                      uniqueUsers.push(u);
                  }
+             }
+
+             // --- GARANTIR QUE O DONO DA EMPRESA ESTÁ SEMPRE INCLUÍDO ---
+             // Busca o auth_user_id da empresa para incluir o dono, mesmo que
+             // o perfil/system_user não tenha sido criado durante o registo.
+             try {
+                 const { data: empresaOwnerData } = await supabaseAdmin
+                     .from('empresas')
+                     .select('auth_user_id, nome_empresa, id')
+                     .eq('id', empresa_id)
+                     .maybeSingle();
+
+                 if (empresaOwnerData?.auth_user_id && !seenIds.has(empresaOwnerData.auth_user_id)) {
+                     // Dono não está na lista — buscar info do auth e incluir
+                     const { data: ownerAuthData } = await supabaseAdmin.auth.admin.getUserById(empresaOwnerData.auth_user_id);
+                     if (ownerAuthData?.user) {
+                         const ownerUser = ownerAuthData.user;
+                         const ownerName = ownerUser.user_metadata?.full_name
+                             || ownerUser.user_metadata?.nome
+                             || ownerUser.email?.split('@')[0]
+                             || 'Admin';
+
+                         uniqueUsers.push({
+                             id: ownerUser.id,
+                             empresa_id: empresa_id,
+                             company_id: empresa_id,
+                             name: ownerName,
+                             nome: ownerName,
+                             email: ownerUser.email || '',
+                             role: 'admin',
+                             is_admin: true,
+                             level: 10,
+                             is_active: true,
+                             username: ownerUser.email?.split('@')[0] || '',
+                             contact: '',
+                             morada: '',
+                             validade: '',
+                             profession: '',
+                             permission_areas: []
+                         });
+                         seenIds.add(ownerUser.id);
+
+                         // Auto-reparar: criar perfil e system_user em falta silenciosamente
+                         console.log(`[SERVER] Auto-reparando perfil/system_user em falta para dono: ${ownerUser.email}`);
+                         supabaseAdmin.from('perfis').upsert({
+                             id: ownerUser.id,
+                             empresa_id: empresa_id,
+                             email: ownerUser.email,
+                             nome: ownerName,
+                             role: 'admin',
+                             is_admin: true,
+                             level: 10,
+                             username: ownerUser.email?.split('@')[0]
+                         }, { onConflict: 'id' }).then(({ error }) => {
+                             if (error) console.warn('[SERVER] Auto-repair perfil error:', error.message);
+                         });
+                         supabaseAdmin.from('system_users').upsert({
+                             id: ownerUser.id,
+                             empresa_id: empresa_id,
+                             company_name: empresaOwnerData.nome_empresa || '',
+                             nome: ownerName,
+                             email: ownerUser.email || '',
+                             is_admin: true,
+                             level: 10,
+                             username: ownerUser.email?.split('@')[0]
+                         }, { onConflict: 'id' }).then(({ error }) => {
+                             if (error) console.warn('[SERVER] Auto-repair system_user error:', error.message);
+                         });
+                     }
+                 }
+             } catch (ownerErr: any) {
+                 console.warn('[SERVER] Erro ao verificar dono da empresa:', ownerErr.message);
              }
 
              res.json(uniqueUsers);

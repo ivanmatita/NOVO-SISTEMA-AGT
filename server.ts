@@ -2383,9 +2383,12 @@ async function startServer() {
         .upsert({
           id: user.id,
           company_id: empresa.id,
+          empresa_id: empresa.id,
           email: user.email,
           nome: user.user_metadata?.full_name || empresa.nome_empresa || user.email?.split('@')[0],
           role: 'admin',
+          is_admin: true,
+          level: 10,
           username: user.email?.split('@')[0]
         }, {
           onConflict: 'id'
@@ -2402,12 +2405,14 @@ async function startServer() {
         .upsert({
           id: user.id,
           company_id: empresa.id,
+          empresa_id: empresa.id,
           company_name: empresa.nome_empresa,
           name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário',
           email: user.email || '',
           role: 'admin',
           is_active: true,
-          is_admin: true
+          is_admin: true,
+          level: 10
         }, {
           onConflict: 'id'
         });
@@ -2687,21 +2692,48 @@ async function startServer() {
      
      if (supabaseAdmin) {
          try {
-             let { data: perfisList, error: errorPerfis } = await supabaseAdmin
+             // Query by both empresa_id and company_id to catch all users (including admin/owner)
+             let { data: perfisListA, error: errorPerfisA } = await supabaseAdmin
                  .from('perfis')
                  .select('*')
                  .eq('empresa_id', empresa_id);
-             if (errorPerfis) {
-                 console.warn("[SERVER] PostgREST GET perfis fail...", errorPerfis.message || errorPerfis);
+             let { data: perfisListB, error: errorPerfisB } = await supabaseAdmin
+                 .from('perfis')
+                 .select('*')
+                 .eq('company_id', empresa_id);
+             if (errorPerfisA) {
+                 console.warn("[SERVER] PostgREST GET perfis (empresa_id) fail...", errorPerfisA.message || errorPerfisA);
              }
+             if (errorPerfisB) {
+                 console.warn("[SERVER] PostgREST GET perfis (company_id) fail...", errorPerfisB.message || errorPerfisB);
+             }
+             // Merge and deduplicate by id
+             const perfisMap = new Map<string, any>();
+             for (const p of [...(perfisListA || []), ...(perfisListB || [])]) {
+                 if (p?.id && !perfisMap.has(String(p.id))) perfisMap.set(String(p.id), p);
+             }
+             const perfisList = Array.from(perfisMap.values());
 
-             let { data: sysUsersList, error: errorSys } = await supabaseAdmin
+             let { data: sysUsersListA, error: errorSysA } = await supabaseAdmin
                  .from('system_users')
                  .select('*')
                  .eq('empresa_id', empresa_id);
-             if (errorSys) {
-                 console.warn("[SERVER] PostgREST GET system_users fail:", errorSys.message || errorSys);
+             let { data: sysUsersListB, error: errorSysB } = await supabaseAdmin
+                 .from('system_users')
+                 .select('*')
+                 .eq('company_id', empresa_id);
+             if (errorSysA) {
+                 console.warn("[SERVER] PostgREST GET system_users (empresa_id) fail:", errorSysA.message || errorSysA);
              }
+             if (errorSysB) {
+                 console.warn("[SERVER] PostgREST GET system_users (company_id) fail:", errorSysB.message || errorSysB);
+             }
+             // Merge and deduplicate
+             const sysMap = new Map<string, any>();
+             for (const s of [...(sysUsersListA || []), ...(sysUsersListB || [])]) {
+                 if (s?.id && !sysMap.has(String(s.id))) sysMap.set(String(s.id), s);
+             }
+             const sysUsersList = Array.from(sysMap.values());
              let finalPerfisList = perfisList;
              if (!finalPerfisList || finalPerfisList.length === 0) {
                  // Fallback to memory if database is completely unavailable or empty (safeguard)

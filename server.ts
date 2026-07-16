@@ -2145,11 +2145,11 @@ async function startServer() {
           // Se não for dono, verificar se está num perfil
           const { data: profile } = await supabaseAdmin
             .from('perfis')
-            .select('company_id')
+            .select('empresa_id')
             .eq('id', authUser.id)
             .maybeSingle();
           
-          companyId = profile?.company_id;
+          companyId = profile?.empresa_id;
         }
 
         // Se ainda não tiver empresa, criar uma Empresa Padrão (Auto-Onboarding)
@@ -2181,9 +2181,11 @@ async function startServer() {
           .from('perfis')
           .upsert({
             id: authUser.id,
-            company_id: companyId,
+            empresa_id: companyId,
             email: authUser.email,
             role: 'admin',
+            is_admin: true,
+            level: 10,
             nome: authUser.user_metadata?.full_name || authUser.email?.split('@')[0]
           }, { onConflict: 'id' });
 
@@ -2244,11 +2246,11 @@ async function startServer() {
         // Load permission_areas from system_users for normal user restriction
         const { data: sysUser } = await supabaseAdmin
           .from('system_users')
-          .select('permission_areas, is_active, is_admin, level')
+          .select('permission_areas, is_admin, level')
           .eq('id', user.id)
           .maybeSingle();
 
-        if ((sysUser && sysUser.is_active === false) || (perfil && perfil.is_active === false)) {
+        if (perfil && perfil.is_active === false) {
           return res.status(403).json({ error: "CONTA_BLOQUEADA", message: "Esta conta foi desativada pelo administrador." });
         }
 
@@ -2382,7 +2384,6 @@ async function startServer() {
         .from('perfis')
         .upsert({
           id: user.id,
-          company_id: empresa.id,
           empresa_id: empresa.id,
           email: user.email,
           nome: user.user_metadata?.full_name || empresa.nome_empresa || user.email?.split('@')[0],
@@ -2399,20 +2400,18 @@ async function startServer() {
         return res.status(400).json({ error: `Falha ao vincular perfil seguro: ${perfErr.message}` });
       }
 
-      // 4. Inserir também na tabela system_users para total consistência
+      // 4. Inserir também na tabela system_users para total consistência (com colunas corretas!)
       const { error: sysError } = await supabaseAdmin
         .from('system_users')
         .upsert({
           id: user.id,
-          company_id: empresa.id,
           empresa_id: empresa.id,
           company_name: empresa.nome_empresa,
-          name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário',
+          nome: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuário',
           email: user.email || '',
-          role: 'admin',
-          is_active: true,
           is_admin: true,
-          level: 10
+          level: 10,
+          username: user.email?.split('@')[0]
         }, {
           onConflict: 'id'
         });
@@ -2620,16 +2619,38 @@ async function startServer() {
         .from('perfis')
         .upsert({
           id: userId,
-          company_id: company.id, // Inclusão obrigatória para compatibilidade com o banco
+          empresa_id: company.id,
           email: email,
           nome: (formData.nome_administrador || formData.nome_empresa || '').trim(),
           role: 'admin',
+          is_admin: true,
+          level: 10,
           username: (formData.username || email.split('@')[0] || '').trim()
         });
 
       if (profileError) {
         console.error("[SERVER-AUTH] Erro ao criar perfil admin:", profileError);
         return res.status(400).json({ error: `Erro na Tabela Perfis: ${profileError.message}` });
+      }
+
+      // 4. Inserir também na tabela system_users para total consistência (com colunas corretas!)
+      const { error: sysError } = await supabaseAdmin
+        .from('system_users')
+        .upsert({
+          id: userId,
+          empresa_id: company.id,
+          company_name: formData.nome_empresa,
+          nome: (formData.nome_administrador || formData.nome_empresa || '').trim(),
+          email: email,
+          is_admin: true,
+          level: 10,
+          username: (formData.username || email.split('@')[0] || '').trim()
+        }, {
+          onConflict: 'id'
+        });
+
+      if (sysError) {
+        console.warn("[SERVER-AUTH] Alerta menor de system_users ao registrar empresa:", sysError.message);
       }
 
       console.log(`[SERVER-AUTH] Registo SaaS concluído com sucesso para ${email}`);
@@ -2949,7 +2970,7 @@ async function startServer() {
       const insertObj: any = {
           id: userId,
           empresa_id: empresa_id,
-          name,
+          nome: name,
           profession: profession || null,
           date: validade || date || null,
           permission_areas: permission_areas || [],
@@ -2959,9 +2980,7 @@ async function startServer() {
           username: username || email.split('@')[0],
           level: level !== undefined && level !== null ? Number(level) : (is_admin ? 5 : 1),
           is_admin: !!is_admin,
-          validade: validade || null,
-          role: targetRole,
-          is_active: true
+          validade: validade || null
       };
       if (authCtx.userId) {
           insertObj.created_by = authCtx.userId;
@@ -3099,7 +3118,7 @@ async function startServer() {
 
           // Safe fallback write to system_users
           const updateObj: any = {
-              name,
+              nome: name,
               email,
               username: username || email.split('@')[0],
               level: level !== undefined && level !== null ? Number(level) : (is_admin ? 5 : 1),
@@ -3109,9 +3128,7 @@ async function startServer() {
               date: validade || date || null,
               permission_areas: permission_areas || [],
               contact: contact || null,
-              morada: morada || null,
-              role: targetRole,
-              is_active: is_active !== undefined ? !!is_active : true
+              morada: morada || null
           };
 
           try {
@@ -3327,11 +3344,15 @@ async function startServer() {
               try {
                   const { data } = await supabaseAdmin
                       .from('system_users')
-                      .select('company_id, email, is_active')
+                      .select('empresa_id, email')
                       .eq('id', userId)
                       .maybeSingle();
                   if (data) {
-                      targetUser = data as any;
+                      targetUser = {
+                          empresa_id: data.empresa_id,
+                          email: data.email,
+                          is_active: true
+                      };
                   }
               } catch (e) {}
           }

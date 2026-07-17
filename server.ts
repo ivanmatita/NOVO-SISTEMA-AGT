@@ -2385,6 +2385,7 @@ async function startServer() {
         .upsert({
           id: user.id,
           empresa_id: empresa.id,
+          company_id: empresa.id, // Always save both for compatibility
           email: user.email,
           nome: user.user_metadata?.full_name || empresa.nome_empresa || user.email?.split('@')[0],
           role: 'admin',
@@ -2620,6 +2621,7 @@ async function startServer() {
         .upsert({
           id: userId,
           empresa_id: company.id,
+          company_id: company.id, // Always save both columns for compatibility
           email: email,
           nome: (formData.nome_administrador || formData.nome_empresa || '').trim(),
           role: 'admin',
@@ -2715,14 +2717,50 @@ async function startServer() {
      
      if (supabaseAdmin) {
          try {
-             // perfis table only has empresa_id (no company_id column)
-             let { data: perfisList, error: errorPerfis } = await supabaseAdmin
+             // perfis table: query by empresa_id (main column)
+             let { data: perfisByEmpresaId, error: errorPerfis } = await supabaseAdmin
                  .from('perfis')
                  .select('*')
                  .eq('empresa_id', empresa_id);
              if (errorPerfis) {
-                 console.warn("[SERVER] PostgREST GET perfis fail...", errorPerfis.message || errorPerfis);
+                 console.warn("[SERVER] PostgREST GET perfis (empresa_id) fail...", errorPerfis.message || errorPerfis);
              }
+
+             // perfis table: ALSO query by company_id (old column used by trigger/legacy data)
+             // This fixes the case where rows have empresa_id=NULL and company_id=correct_id
+             let perfisByCompanyId: any[] = [];
+             try {
+                 const res3 = await supabaseAdmin
+                     .from('perfis')
+                     .select('*')
+                     .eq('company_id', empresa_id)
+                     .is('empresa_id', null); // Only fetch rows where empresa_id is missing
+                 perfisByCompanyId = res3.data || [];
+                 if (perfisByCompanyId.length > 0) {
+                     console.log(`[SERVER] Found ${perfisByCompanyId.length} perfis via company_id fallback. Auto-fixing empresa_id...`);
+                     // Auto-repair: set empresa_id for these rows so they show up correctly next time
+                     supabaseAdmin.from('perfis')
+                         .update({ empresa_id: empresa_id })
+                         .eq('company_id', empresa_id)
+                         .is('empresa_id', null)
+                         .then(({ error: fixErr }) => {
+                             if (fixErr) console.warn('[SERVER] Auto-fix empresa_id error:', fixErr.message);
+                             else console.log('[SERVER] Auto-fixed empresa_id for company_id-only perfis.');
+                         });
+                 }
+             } catch(_) { /* company_id column may not exist in some schemas */ }
+
+             // Merge perfis from both queries, deduplicate by id
+             const perfisMap = new Map<string, any>();
+             for (const p of [...(perfisByEmpresaId || []), ...perfisByCompanyId]) {
+                 if (p?.id && !perfisMap.has(String(p.id))) {
+                     // Normalize: ensure empresa_id is always populated
+                     if (!p.empresa_id && p.company_id) p.empresa_id = p.company_id;
+                     if (!p.company_id && p.empresa_id) p.company_id = p.empresa_id;
+                     perfisMap.set(String(p.id), p);
+                 }
+             }
+             let perfisList: any[] = Array.from(perfisMap.values());
 
              // system_users: try empresa_id first, then company_id as fallback
              let { data: sysUsersListA, error: errorSysA } = await supabaseAdmin
@@ -2730,14 +2768,12 @@ async function startServer() {
                  .select('*')
                  .eq('empresa_id', empresa_id);
              let sysUsersListB: any[] = [];
-             let errorSysB: any = null;
              try {
                  const res2 = await supabaseAdmin
                      .from('system_users')
                      .select('*')
                      .eq('company_id', empresa_id);
                  sysUsersListB = res2.data || [];
-                 errorSysB = res2.error;
              } catch(_) { /* company_id column may not exist */ }
              if (errorSysA) {
                  console.warn("[SERVER] PostgREST GET system_users (empresa_id) fail:", errorSysA.message || errorSysA);
@@ -2748,7 +2784,7 @@ async function startServer() {
                  if (s?.id && !sysMap.has(String(s.id))) sysMap.set(String(s.id), s);
              }
              const sysUsersList = Array.from(sysMap.values());
-             let finalPerfisList = perfisList;
+             let finalPerfisList: any[] | null = perfisList;
              if (!finalPerfisList || finalPerfisList.length === 0) {
                  // Fallback to memory if database is completely unavailable or empty (safeguard)
                  const localUsers = systemUsers.filter((u: any) => String(u.empresa_id || u.company_id) === String(empresa_id));
@@ -2859,6 +2895,7 @@ async function startServer() {
                          supabaseAdmin.from('perfis').upsert({
                              id: ownerUser.id,
                              empresa_id: empresa_id,
+                             company_id: empresa_id,
                              email: ownerUser.email,
                              nome: ownerName,
                              role: 'admin',
@@ -3012,9 +3049,12 @@ async function startServer() {
       });
       
       // 2. Create Profile Record primarily (using existing columns of perfis)
+      // NOTE: Always save BOTH empresa_id AND company_id to prevent users being invisible
+      // in the list (old trigger used company_id, new code uses empresa_id).
       const perfilObj = {
           id: userId,
           empresa_id: empresa_id,
+          company_id: empresa_id, // Always save both columns for compatibility
           nome: (name || '').trim(),
           email,
           role: targetRole,

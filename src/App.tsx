@@ -23168,59 +23168,71 @@ const PurchaseActionsModal = ({ purchase, onClose, onAction }: {
             </div>
           </button>
 
-          {['Fatura de Compra', 'Compra', 'FT', 'Fatura'].includes((purchase as any).tipo_documento || purchase.document_type || '') && (
-            (() => {
-              const totalDoc = Number(purchase.total || (purchase as any).valor_total || 0);
-              const paidDoc = Number(purchase.valor_pago || 0);
-              const pendDoc = (purchase as any).saldo_pendente !== undefined && (purchase as any).saldo_pendente !== null
-                ? Number((purchase as any).saldo_pendente)
-                : Math.max(0, totalDoc - paidDoc);
-              const isPaid = purchase.recibo_emitido || purchase.status === 'pago' || (purchase as any).estado === 'PAGO' || (pendDoc <= 0 && totalDoc > 0);
+          {(() => {
+            const rawType = String((purchase as any).tipo_documento || purchase.document_type || '').toUpperCase();
+            const isReceiptDoc = rawType.includes('RECIBO') || rawType.includes('PAGAMENTO');
+            const isCreditDoc = rawType.includes('CRÉDITO') || rawType.includes('CREDITO');
+            
+            if (isReceiptDoc || isCreditDoc) return null;
 
-              return (
-                <button 
-                  disabled={isPaid}
-                  onClick={() => !isPaid && handleAction('receipt')} 
-                  className={`flex items-center gap-4 p-4 border transition-all text-left ${isPaid ? 'bg-zinc-100 border-zinc-200 opacity-60 cursor-not-allowed' : 'bg-emerald-50/10 border-emerald-100 hover:bg-emerald-50 hover:shadow-md group'}`}
-                >
-                  <div className={`w-10 h-10 border flex items-center justify-center ${isPaid ? 'bg-zinc-200 border-zinc-300 text-zinc-400' : 'bg-white border-emerald-100 text-emerald-600'}`}>
-                     <FileCheck size={20} />
-                  </div>
-                  <div>
-                    <span className={`block text-xs font-black uppercase tracking-wider ${isPaid ? 'text-zinc-500' : 'text-emerald-700'}`}>
-                      {isPaid ? 'Recibo Emitido (Bloqueado)' : 'Emitir Recibo'}
-                    </span>
-                    <span className={`text-[9px] font-bold uppercase ${isPaid ? 'text-zinc-400' : 'text-emerald-500'}`}>
-                      {isPaid 
-                        ? 'Fatura totalmente liquidada (Opção bloqueada)' 
-                        : paidDoc > 0 
-                          ? `Registar Pagamento Parcial (Saldo: ${formatCurrency(pendDoc)})` 
-                          : 'Registar recibo de pagamento'}
-                    </span>
-                  </div>
-                </button>
-              );
-            })()
-          )}
+            const totalDoc = Number(purchase.total || (purchase as any).valor_total || 0);
+            const paidDoc = Number(purchase.valor_pago || 0);
+            const pendDoc = (purchase as any).saldo_pendente !== undefined && (purchase as any).saldo_pendente !== null
+              ? Number((purchase as any).saldo_pendente)
+              : Math.max(0, totalDoc - paidDoc);
+            const isPaid = purchase.recibo_emitido || purchase.status === 'pago' || (purchase as any).estado === 'PAGO' || (pendDoc <= 0.01 && totalDoc > 0);
 
-          {['Fatura de Compra', 'Compra', 'FT', 'Fatura'].includes(purchase.document_type || '') && (
-            <button 
-              onClick={() => {
-                if(confirm('Tem a certeza que deseja anular este documento?')) {
-                  handleAction('void_document');
-                }
-              }} 
-              className="flex items-center gap-4 p-4 bg-amber-50/10 border border-amber-100 hover:bg-amber-50 hover:shadow-md transition-all group text-left"
-            >
-              <div className="w-10 h-10 bg-white border border-amber-100 flex items-center justify-center text-amber-600">
-                 <XCircle size={20} />
-              </div>
-              <div>
-                <span className="block text-xs font-black uppercase tracking-wider text-amber-700">Anular Documento</span>
-                <span className="text-[9px] font-bold text-amber-500 uppercase tracking-tight">Marcar como anulado/inválido</span>
-              </div>
-            </button>
-          )}
+            return (
+              <button 
+                onClick={() => handleAction('receipt')} 
+                className={`flex items-center gap-4 p-4 border transition-all text-left group ${
+                  isPaid ? 'bg-emerald-50/30 border-emerald-200 hover:bg-emerald-100/50' : 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700 shadow-md'
+                }`}
+              >
+                <div className={`w-10 h-10 border flex items-center justify-center ${
+                  isPaid ? 'bg-emerald-100 border-emerald-300 text-emerald-800' : 'bg-white/20 border-white/30 text-white'
+                }`}>
+                   <FileCheck size={20} />
+                </div>
+                <div>
+                  <span className={`block text-xs font-black uppercase tracking-wider ${isPaid ? 'text-emerald-900' : 'text-white'}`}>
+                    Emitir Recibo / Liquidação
+                  </span>
+                  <span className={`text-[9px] font-bold uppercase ${isPaid ? 'text-emerald-700' : 'text-emerald-100'}`}>
+                    {isPaid 
+                      ? `Fatura Liquidada (Total: ${formatCurrency(totalDoc)}) - Clique para emitir recibo` 
+                      : paidDoc > 0 
+                        ? `Registar Pagamento (Saldo Pendente: ${formatCurrency(pendDoc)})` 
+                        : 'Registar recibo de pagamento'}
+                  </span>
+                </div>
+              </button>
+            );
+          })()}
+
+          {(() => {
+            const rawType = String((purchase as any).tipo_documento || purchase.document_type || '').toUpperCase();
+            if (rawType.includes('RECIBO')) return null;
+
+            return (
+              <button 
+                onClick={() => {
+                  if(confirm('Tem a certeza que deseja anular este documento?')) {
+                    handleAction('void_document');
+                  }
+                }} 
+                className="flex items-center gap-4 p-4 bg-amber-50/10 border border-amber-100 hover:bg-amber-50 hover:shadow-md transition-all group text-left"
+              >
+                <div className="w-10 h-10 bg-white border border-amber-100 flex items-center justify-center text-amber-600">
+                   <XCircle size={20} />
+                </div>
+                <div>
+                  <span className="block text-xs font-black uppercase tracking-wider text-amber-700">Anular Documento</span>
+                  <span className="text-[9px] font-bold text-amber-500 uppercase tracking-tight">Marcar como anulado/inválido</span>
+                </div>
+              </button>
+            );
+          })()}
 
           <button onClick={() => handleAction('reports')} className="flex items-center gap-4 p-4 bg-white border border-zinc-100 hover:shadow-md hover:border-blue-500/30 transition-all group text-left">
             <div className="w-10 h-10 bg-zinc-50 flex items-center justify-center text-zinc-400 group-hover:text-blue-600">
@@ -24196,20 +24208,30 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                       <td className="px-6 py-4 text-center text-zinc-600 font-medium">{p.currency || 'AOA'}</td>
                       <td className="px-6 py-4 text-right font-black text-[#003366] text-sm">{formatCurrency(p.total)}</td>
                       <td className="px-6 py-4 border-l border-zinc-50">
-                        <div className="flex items-center justify-center gap-2">
-                           <div className={`w-2 h-2 rounded-full ${
-                             (p.recibo_emitido || p.status === 'pago') ? 'bg-emerald-500 animate-pulse' :
-                             p.status === 'parcial' ? 'bg-blue-500' :
-                             p.status === 'anulado' ? 'bg-red-600' : 'bg-amber-500'
-                           }`} />
-                           <span className={`font-black uppercase text-[9px] ${
-                             (p.recibo_emitido || p.status === 'pago') ? 'text-emerald-600' :
-                             p.status === 'parcial' ? 'text-blue-600' :
-                             p.status === 'anulado' ? 'text-red-600' : 'text-amber-600'
-                           }`}>
-                             {(p.recibo_emitido || p.status === 'pago') ? 'PAGO' : (p.status || 'pendente')}
-                           </span>
-                        </div>
+                        {(() => {
+                          const totalDoc = Number(p.total || (p as any).valor_total || 0);
+                          const paidDoc = Number(p.valor_pago || 0);
+                          const pendBalance = (p as any).saldo_pendente !== undefined && (p as any).saldo_pendente !== null
+                            ? Number((p as any).saldo_pendente)
+                            : Math.max(0, totalDoc - paidDoc);
+                          const isFullyPaid = p.recibo_emitido === true || p.status === 'pago' || (p as any).estado === 'PAGO' || (pendBalance <= 0.01 && totalDoc > 0);
+                          const isPartial = !isFullyPaid && paidDoc > 0 && pendBalance > 0.01;
+                          const isAnulado = ['anulado', 'cancelled'].includes((p.status || '').toLowerCase());
+
+                          const label = isAnulado ? 'ANULADO' : isFullyPaid ? 'PAGO' : isPartial ? 'PARCIAL' : 'PENDENTE';
+                          const dotColor = isAnulado ? 'bg-red-600' : isFullyPaid ? 'bg-emerald-500 animate-pulse' : isPartial ? 'bg-blue-500 animate-pulse' : 'bg-amber-500 animate-pulse';
+                          const textColor = isAnulado ? 'text-red-600' : isFullyPaid ? 'text-emerald-600' : isPartial ? 'text-blue-600' : 'text-amber-600';
+                          const bgColor = isAnulado ? 'bg-red-50 border border-red-200' : isFullyPaid ? 'bg-emerald-50 border border-emerald-200' : isPartial ? 'bg-blue-50 border border-blue-200' : 'bg-amber-50 border border-amber-200';
+
+                          return (
+                            <div className={`flex items-center justify-center gap-1.5 px-2 py-1 rounded-none ${bgColor}`}>
+                              <div className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
+                              <span className={`font-black uppercase text-[9px] tracking-widest ${textColor}`}>
+                                {label}
+                              </span>
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="px-6 py-4 text-center">
                         <button 

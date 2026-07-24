@@ -23244,15 +23244,51 @@ const PurchaseActionsModal = ({ purchase, onClose, onAction }: {
             </div>
           </button>
 
-          <button onClick={() => handleAction('delete_purchase')} className="flex items-center gap-4 p-4 bg-red-50/10 border border-red-50 hover:bg-red-50 hover:shadow-md transition-all group text-left">
-            <div className="w-10 h-10 bg-white border border-red-100 flex items-center justify-center text-red-600">
-               <Trash2 size={20} />
-            </div>
-            <div>
-              <span className="block text-xs font-black uppercase tracking-wider text-red-700">Apagar Documento</span>
-              <span className="text-[9px] font-bold text-red-300 uppercase">Remover do sistema</span>
-            </div>
-          </button>
+          {(() => {
+            const isAnulado = ['anulado', 'cancelled'].includes((purchase.status || '').toLowerCase()) || 
+                              ['anulado', 'cancelled'].includes(((purchase as any).estado || '').toLowerCase());
+            const hasReceipt = purchase.recibo_emitido === true || (purchase as any).tem_recibo === true;
+
+            if (isAnulado) {
+              return (
+                <div className="flex items-center gap-4 p-4 bg-zinc-100 border border-zinc-200 text-left opacity-60 cursor-not-allowed">
+                  <div className="w-10 h-10 bg-zinc-200 border border-zinc-300 flex items-center justify-center text-zinc-400">
+                    <Trash2 size={20} />
+                  </div>
+                  <div>
+                    <span className="block text-xs font-black uppercase tracking-wider text-zinc-500">Apagar Bloqueado</span>
+                    <span className="text-[9px] font-bold text-zinc-400 uppercase">Documentos anulados não podem ser eliminados</span>
+                  </div>
+                </div>
+              );
+            }
+
+            if (hasReceipt) {
+              return (
+                <div className="flex items-center gap-4 p-4 bg-amber-50 border border-amber-200 text-left opacity-75 cursor-not-allowed">
+                  <div className="w-10 h-10 bg-amber-100 border border-amber-300 flex items-center justify-center text-amber-500">
+                    <Trash2 size={20} />
+                  </div>
+                  <div>
+                    <span className="block text-xs font-black uppercase tracking-wider text-amber-700">Apagar Bloqueado (Recibo Emitido)</span>
+                    <span className="text-[9px] font-bold text-amber-500 uppercase">Elimine primeiro o Recibo associado</span>
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <button onClick={() => handleAction('delete_purchase')} className="flex items-center gap-4 p-4 bg-red-50/10 border border-red-50 hover:bg-red-50 hover:shadow-md transition-all group text-left">
+                <div className="w-10 h-10 bg-white border border-red-100 flex items-center justify-center text-red-600">
+                   <Trash2 size={20} />
+                </div>
+                <div>
+                  <span className="block text-xs font-black uppercase tracking-wider text-red-700">Apagar Documento</span>
+                  <span className="text-[9px] font-bold text-red-300 uppercase">Remover do sistema</span>
+                </div>
+              </button>
+            );
+          })()}
         </div>
 
         <div className="p-6 bg-zinc-50 border-t border-zinc-100 text-center">
@@ -23639,13 +23675,42 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
   };
 
   const handleDeletePurchase = async (id: any) => {
-    if (!window.confirm('Tem a certeza que deseja eliminar DEFINITIVAMENTE esta compra do sistema (DELETE real no Supabase com todos os anexos)?')) return;
     try {
       const eid = user?.empresa_id || user?.company_id;
-      console.log('[DELETE compras] REAL DELETE request for ID:', id, 'empresa_id:', eid);
-      
       if (!id) throw new Error('ID do documento inválido para eliminação.');
       if (!eid) throw new Error('Empresa não identificada.');
+
+      // --- REGRAS DE NEGÓCIO: verificar bloqueios antes de confirmar ---
+      const docToDelete = purchases.find(p => p.id === id);
+      if (docToDelete) {
+        // Regra 1: Documentos anulados não podem ser apagados
+        if (['anulado', 'cancelled'].includes((docToDelete.status || '').toLowerCase()) ||
+            ['anulado', 'cancelled'].includes(((docToDelete as any).estado || '').toLowerCase())) {
+          toast.error('Documentos ANULADOS não podem ser eliminados. Contacte o administrador do sistema.');
+          return;
+        }
+        // Regra 2: Faturas com recibo emitido só podem ser apagadas após apagar o recibo
+        if (docToDelete.recibo_emitido === true || (docToDelete as any).tem_recibo === true) {
+          toast.error('Não é possível eliminar esta fatura pois já tem um Recibo emitido. Elimine primeiro o Recibo associado.');
+          return;
+        }
+        // Verificação adicional: buscar recibos/pagamentos vinculados à fatura na BD
+        const { data: linkedReceipts } = await supabase
+          .from('compras')
+          .select('id, purchase_number, document_type')
+          .eq('empresa_id', eid)
+          .in('document_type', ['Recibo de Compra', 'Fatura Recibo de Compra', 'RCT', 'Pagamento'])
+          .or(`numero_fatura.eq.${docToDelete.purchase_number},invoice_number.eq.${docToDelete.purchase_number}`);
+        if (linkedReceipts && linkedReceipts.length > 0) {
+          const reciboNums = linkedReceipts.map((r: any) => r.purchase_number).join(', ');
+          toast.error(`Não é possível eliminar esta fatura. Existe(m) Recibo(s) associado(s): ${reciboNums}. Elimine primeiro os Recibos.`);
+          return;
+        }
+      }
+
+      if (!window.confirm('Tem a certeza que deseja eliminar DEFINITIVAMENTE esta compra do sistema (DELETE real no Supabase com todos os anexos)?')) return;
+
+      console.log('[DELETE compras] REAL DELETE request for ID:', id, 'empresa_id:', eid);
 
       // 1. Buscar anexos relacionados na tabela 'media_arquivos' para eliminar do Storage
       try {
@@ -24214,9 +24279,11 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                           const pendBalance = (p as any).saldo_pendente !== undefined && (p as any).saldo_pendente !== null
                             ? Number((p as any).saldo_pendente)
                             : Math.max(0, totalDoc - paidDoc);
-                          const isFullyPaid = p.recibo_emitido === true || p.status === 'pago' || (p as any).estado === 'PAGO' || (pendBalance <= 0.01 && totalDoc > 0);
+                          // PAGO só quando recibo foi formalmente emitido
+                          const isFullyPaid = p.recibo_emitido === true || p.status === 'pago' || (p as any).estado === 'PAGO';
+                          // PARCIAL: tem pagamento parcial mas ainda sem recibo total emitido
                           const isPartial = !isFullyPaid && paidDoc > 0 && pendBalance > 0.01;
-                          const isAnulado = ['anulado', 'cancelled'].includes((p.status || '').toLowerCase());
+                          const isAnulado = ['anulado', 'cancelled'].includes((p.status || '').toLowerCase()) || ['anulado', 'cancelled'].includes(((p as any).estado || '').toLowerCase());
 
                           const label = isAnulado ? 'ANULADO' : isFullyPaid ? 'PAGO' : isPartial ? 'PARCIAL' : 'PENDENTE';
                           const dotColor = isAnulado ? 'bg-red-600' : isFullyPaid ? 'bg-emerald-500 animate-pulse' : isPartial ? 'bg-blue-500 animate-pulse' : 'bg-amber-500 animate-pulse';
@@ -24251,13 +24318,31 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                           >
                             <Edit size={16} />
                           </button>
-                          <button 
-                            onClick={() => handleDeletePurchase(p.id)}
-                            className="bg-red-100 text-red-600 p-2 hover:bg-red-200 transition-all"
-                            title="Eliminar"
-                          >
-                            <Trash2 size={16} />
-                          </button>
+                          {(() => {
+                            const isAnuladoRow = ['anulado', 'cancelled'].includes((p.status || '').toLowerCase()) || 
+                                                 ['anulado', 'cancelled'].includes(((p as any).estado || '').toLowerCase());
+                            const hasReceiptRow = p.recibo_emitido === true || (p as any).tem_recibo === true;
+                            if (isAnuladoRow || hasReceiptRow) {
+                              return (
+                                <button
+                                  disabled
+                                  title={isAnuladoRow ? 'Documento anulado — não pode ser eliminado' : 'Recibo emitido — elimine primeiro o recibo'}
+                                  className="bg-zinc-100 text-zinc-300 p-2 cursor-not-allowed"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              );
+                            }
+                            return (
+                              <button 
+                                onClick={() => handleDeletePurchase(p.id)}
+                                className="bg-red-100 text-red-600 p-2 hover:bg-red-200 transition-all"
+                                title="Eliminar"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            );
+                          })()}
                           <button 
                             onClick={() => setSelectedPurchase(p)}
                             className="bg-blue-600 text-white p-2 shadow-lg hover:bg-blue-700 active:scale-95 transition-all"

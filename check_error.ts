@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
+import * as dotenv from 'dotenv';
+dotenv.config();
 
-const rawUrl = process.env.SUPABASE_URL || '';
+const rawUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').replace(/\/rest\/v1\/?$/, '');
 const rawKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const supabase = createClient(rawUrl, rawKey);
 

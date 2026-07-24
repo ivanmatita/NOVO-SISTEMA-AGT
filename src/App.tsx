@@ -1692,6 +1692,7 @@ const HRModule = ({
   const [attendanceMap, setAttendanceMap] = useState<Record<string, any>>({});
   const [manualHE, setManualHE] = useState<Record<string, number>>({});
   const [manualHP, setManualHP] = useState<Record<string, number>>({});
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<number | null>(null);
   
   // Load attendance && payroll map from Supabase for the selected month
   useEffect(() => {
@@ -1982,15 +1983,35 @@ const HRModule = ({
   const calculateAttendanceTotals = (empId: number) => {
     const empAttendance = attendanceMap[empId] || {};
     let fj = 0, fi = 0, fe = 0, he = 0, hp = 0, p = 0, d = 0;
-    for (let day = 1; day <= 31; day++) {
-      const status = empAttendance[day] || (day % 7 === 0 ? 'D' : 'P');
+
+    // Dynamically calculate days in month
+    const parts = selectedMonth.split('/');
+    const name = parts[0]?.trim() || '';
+    const yr = Number(parts[1]?.trim() || new Date().getFullYear());
+    const monthMap: Record<string, number> = {
+      "Janeiro": 0, "Fevereiro": 1, "Março": 2, "Abril": 3, "Maio": 4, "Junho": 5,
+      "Julho": 6, "Agosto": 7, "Setembro": 8, "Outubro": 9, "Novembro": 10, "Dezembro": 11
+    };
+    const mIndex = monthMap[name] !== undefined ? monthMap[name] : new Date().getMonth();
+    const daysInMonth = new Date(yr, mIndex + 1, 0).getDate();
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dt = new Date(yr, mIndex, day);
+      const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
+      const defaultStatus = isWeekend ? 'D' : 'P';
+      const status = empAttendance[day] || defaultStatus;
+
       if (status === 'FJ') fj++;
       else if (status === 'FI') fi++;
       else if (status === 'FE') fe++;
-      else if (status === 'HE') he++;
-      else if (status === 'HP') hp++;
       else if (status === 'P') p++;
       else if (status === 'D') d++;
+
+      // HE and HP sum from the single-employee grid inputs
+      const dayHe = Number(empAttendance[day + '_he'] || 0);
+      const dayHp = Number(empAttendance[day + '_hp'] || 0);
+      he += dayHe;
+      hp += dayHp;
     }
     
     // Override with manual inputs for the current period if they exist
@@ -2017,6 +2038,12 @@ const HRModule = ({
 
   // Funcionários ativos para processamentos (Salário, Assiduidade)
   const activeEmployees = Array.isArray(localEmployees) ? localEmployees.filter(emp => emp.status !== 'dismissed') : [];
+
+  useEffect(() => {
+    if (selectedEmployeeId === null && activeEmployees.length > 0) {
+      setSelectedEmployeeId(activeEmployees[0].id);
+    }
+  }, [activeEmployees, selectedEmployeeId]);
 
   const payrollFiltered = activeEmployees.filter(emp => {
     const matchesWorkSite = !payrollWorkSiteId || String(emp.local_trabalho_id) === String(payrollWorkSiteId);
@@ -4726,101 +4753,298 @@ const HRModule = ({
           </div>
         )}
 
-        {activeTab === 'attendance_map' && (
-          <div className="space-y-6">
-            {/* Header Bar */}
-            <div className="bg-[#003366] text-white p-4 flex items-center justify-between shadow-md">
-              <div className="flex items-center gap-4">
-                <div className="bg-white/10 p-2 rounded-none">
-                  <Calculator size={24} />
-                </div>
-                <div>
-                  <h2 className="text-xl font-bold uppercase tracking-widest">Mapa de Assiduidade dos Funcionários</h2>
-                  <p className="text-[10px] text-white/60 uppercase tracking-tighter">Gestão de Presenças e Faltas</p>
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <button className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 text-xs font-black uppercase tracking-widest transition-all">
-                  <Printer size={16} />
-                </button>
-              </div>
-            </div>
+        {activeTab === 'attendance_map' && (() => {
+          // Parse month and year from selectedMonth (format: "Mês / Ano", e.g. "Janeiro / 2026")
+          const parts = selectedMonth.split('/');
+          const name = parts[0]?.trim() || '';
+          const yr = Number(parts[1]?.trim() || new Date().getFullYear());
+          const monthMap: Record<string, number> = {
+            "Janeiro": 0, "Fevereiro": 1, "Março": 2, "Abril": 3, "Maio": 4, "Junho": 5,
+            "Julho": 6, "Agosto": 7, "Setembro": 8, "Outubro": 9, "Novembro": 10, "Dezembro": 11
+          };
+          const mIndex = monthMap[name] !== undefined ? monthMap[name] : new Date().getMonth();
+          const daysInMonth = new Date(yr, mIndex + 1, 0).getDate();
+          const daysArray = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
-            {/* Filters Section */}
-            <div className="bg-white p-6 border border-zinc-200 shadow-sm flex flex-wrap items-end gap-6">
-              <div className="flex-1 min-w-[200px]">
-                <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Empresa:</label>
-                <select className="w-full border border-zinc-200 px-4 py-2 text-xs focus:outline-none focus:border-[#003366] font-bold text-[#003366]">
-                  <option>Grupo TecnoSys</option>
-                </select>
-              </div>
-              <div className="flex-1 min-w-[200px]">
-                <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Local de Trabalho:</label>
-                <select className="w-full border border-zinc-200 px-4 py-2 text-xs focus:outline-none focus:border-[#003366] font-bold text-[#003366]">
-                  <option>Filial Lisboa</option>
-                  <option>Sede Luanda</option>
-                </select>
-              </div>
-              <div className="flex-1 min-w-[200px]">
-                <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Mês/Ano:</label>
-                <select 
-                  value={selectedMonth}
-                  onChange={(e) => setSelectedMonth(e.target.value)}
-                  className="w-full border border-zinc-200 px-4 py-2 text-xs focus:outline-none focus:border-[#003366] font-bold text-[#003366]"
-                >
-                  {[
-                    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-                    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
-                  ].map(m => `${m} / ${fiscalYear}`).map(m => <option key={m} value={m}>{m}</option>)}
-                </select>
-              </div>
-              <div className="flex gap-2">
-                <button 
-                  onClick={async () => {
-                    const selectedEmpList = activeEmployees.filter(emp => selectedEmployeesToProcess[emp.id]);
-                    if (selectedEmpList.length === 0) {
-                      alert("Atenção: Selecione funcionários para apagar assiduidade.");
+          const empId = selectedEmployeeId || (activeEmployees[0]?.id) || null;
+          const selectedEmployee = activeEmployees.find(e => e.id === empId) || null;
+          const empMap = empId ? (attendanceMap[empId] || {}) : {};
+
+          // Calculate filled days count
+          const filledDaysCount = daysArray.filter(day => {
+            const status = empMap[day];
+            return status === 'D' || status === 'P' || status === 'FJ' || status === 'FI' || status === 'FE';
+          }).length;
+
+          const countFolga = daysArray.filter(day => empMap[day] === 'D').length;
+          const countServico = daysArray.filter(day => empMap[day] === 'P').length;
+          const countJustificada = daysArray.filter(day => empMap[day] === 'FJ').length;
+          const countInjustificada = daysArray.filter(day => empMap[day] === 'FI').length;
+          const countFerias = daysArray.filter(day => empMap[day] === 'FE').length;
+
+          const totalHe = daysArray.reduce((sum, day) => sum + Number(empMap[day + '_he'] || 0), 0);
+          const totalHp = daysArray.reduce((sum, day) => sum + Number(empMap[day + '_hp'] || 0), 0);
+
+          const handleSelectStatus = async (day: number, nextStatus: string) => {
+            if (!empId) return;
+            const currentEmpMap = attendanceMap[empId] || {};
+            const newEmpMap = {
+              ...currentEmpMap,
+              [day]: nextStatus
+            };
+
+            setAttendanceMap(prev => ({
+              ...prev,
+              [empId]: newEmpMap
+            }));
+
+            if (user?.empresa_id) {
+              try {
+                await attendanceService.saveAttendanceMap(
+                  user.empresa_id,
+                  String(empId),
+                  selectedMonth,
+                  newEmpMap
+                );
+              } catch (err) {
+                console.error("[Attendance] Error saving:", err);
+              }
+            }
+          };
+
+          const renderRadioCell = (day: number, targetStatus: string, colorClass: string, dotClass: string) => {
+            const status = empMap[day];
+            const isSelected = status === targetStatus;
+            const isLocked = empId ? !!attendanceDone[`${empId}_${selectedMonth}`] : false;
+
+            return (
+              <td key={day} className="px-1 py-3 text-center border-r border-zinc-100">
+                <div 
+                  onClick={() => {
+                    if (isLocked) {
+                      toast.error("Esta assiduidade está bloqueada (já processada).");
                       return;
                     }
-                    if (!confirm("Tem certeza que deseja apagar os dados de assiduidade dos selecionados?")) return;
+                    handleSelectStatus(day, targetStatus);
+                  }}
+                  className={`w-6 h-6 rounded-full border-2 m-auto flex items-center justify-center transition-all duration-200 cursor-pointer ${
+                    isSelected 
+                      ? `${colorClass} bg-white` 
+                      : 'border-zinc-200 hover:border-zinc-300 bg-white hover:scale-105'
+                  }`}
+                >
+                  {isSelected && (
+                    <div className={`w-3 h-3 rounded-full ${dotClass}`} />
+                  )}
+                </div>
+              </td>
+            );
+          };
 
-                    for (const emp of selectedEmpList) {
-                      if (attendanceDone[`${emp.id}_${selectedMonth}`]) {
-                         continue; // Ignora se processado
+          return (
+            <div className="space-y-6">
+              {/* Header Legend and Action Buttons Card */}
+              <div className="bg-white p-4 rounded-xl border border-zinc-200 shadow-sm flex items-center justify-between flex-wrap gap-4">
+                {/* Legend of States */}
+                <div className="flex items-center gap-5 flex-wrap">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-[#003366] flex items-center gap-1.5">
+                    <span className="inline-block w-1.5 h-1.5 bg-[#003366] rounded-full"></span>
+                    Legenda de Estados:
+                  </span>
+                  
+                  <div className="flex items-center gap-2">
+                    <span className="w-3.5 h-3.5 bg-emerald-500 rounded-full border border-emerald-600/20 block shadow-sm"></span>
+                    <span className="text-xs font-black text-zinc-600 tracking-wide uppercase">FOLGA</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-3.5 h-3.5 bg-blue-500 rounded-full border border-blue-600/20 block shadow-sm"></span>
+                    <span className="text-xs font-black text-zinc-600 tracking-wide uppercase">SERVIÇO</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-3.5 h-3.5 bg-purple-500 rounded-full border border-purple-600/20 block shadow-sm"></span>
+                    <span className="text-xs font-black text-zinc-600 tracking-wide uppercase">JUSTIFICADA</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-3.5 h-3.5 bg-red-500 rounded-full border border-red-600/20 block shadow-sm"></span>
+                    <span className="text-xs font-black text-zinc-600 tracking-wide uppercase">INJUSTIFICADA</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-3.5 h-3.5 bg-amber-500 rounded-full border border-amber-600/20 block shadow-sm"></span>
+                    <span className="text-xs font-black text-zinc-600 tracking-wide uppercase">FÉRIAS</span>
+                  </div>
+                </div>
+
+                {/* Grid Management Actions */}
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={async () => {
+                      if (!empId) {
+                        toast.error("Por favor, selecione um colaborador.");
+                        return;
                       }
+                      if (attendanceDone[`${empId}_${selectedMonth}`]) {
+                        toast.error("Esta assiduidade está bloqueada (já processada).");
+                        return;
+                      }
+                      if (!confirm("Tem certeza que deseja limpar toda a grelha deste colaborador para este mês?")) return;
+
+                      const newMap = {};
+                      setAttendanceMap(prev => ({
+                        ...prev,
+                        [empId]: newMap
+                      }));
+
+                      if (user?.empresa_id) {
+                        try {
+                          await attendanceService.saveAttendanceMap(user.empresa_id, String(empId), selectedMonth, newMap);
+                          toast.success("Grelha limpa com sucesso!");
+                        } catch (err) {
+                          toast.error("Erro ao guardar grelha limpa.");
+                        }
+                      }
+                    }}
+                    disabled={empId ? !!attendanceDone[`${empId}_${selectedMonth}`] : false}
+                    className="flex items-center gap-2 px-4 py-2 border border-zinc-200 text-zinc-600 hover:bg-zinc-50 rounded-lg text-xs font-black uppercase tracking-wider transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    <Trash2 size={14} className="stroke-[2.5]" />
+                    <span>Limpar Grelha</span>
+                  </button>
+                  
+                  <button 
+                    onClick={async () => {
+                      if (!empId) {
+                        toast.error("Por favor, selecione um colaborador.");
+                        return;
+                      }
+                      if (attendanceDone[`${empId}_${selectedMonth}`]) {
+                        toast.error("Esta assiduidade está bloqueada (já processada).");
+                        return;
+                      }
+                      
+                      const newMap = { ...(attendanceMap[empId] || {}) };
+                      for (let d = 1; d <= daysInMonth; d++) {
+                        const dt = new Date(yr, mIndex, d);
+                        const wDay = dt.getDay(); // 0 = Sunday, 6 = Saturday
+                        if (wDay === 0 || wDay === 6) {
+                          newMap[d] = 'D'; // FOLGA
+                        } else {
+                          newMap[d] = 'P'; // SERVIÇO
+                        }
+                        newMap[d + '_he'] = 0;
+                        newMap[d + '_hp'] = 0;
+                      }
+
+                      setAttendanceMap(prev => ({
+                        ...prev,
+                        [empId]: newMap
+                      }));
+
+                      if (user?.empresa_id) {
+                        try {
+                          await attendanceService.saveAttendanceMap(user.empresa_id, String(empId), selectedMonth, newMap);
+                          toast.success("Preenchimento inteligente aplicado com sucesso!");
+                        } catch (err) {
+                          toast.error("Erro ao guardar preenchimento inteligente.");
+                        }
+                      }
+                    }}
+                    disabled={empId ? !!attendanceDone[`${empId}_${selectedMonth}`] : false}
+                    className="flex items-center gap-2 px-4 py-2 border border-blue-200 bg-blue-50/50 hover:bg-blue-100/50 text-blue-600 rounded-lg text-xs font-black uppercase tracking-wider transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    <RefreshCw size={14} className="stroke-[2.5]" />
+                    <span>Preenchimento Inteligente</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Filter Controls Card */}
+              <div className="bg-white px-4 py-2.5 rounded-xl border border-zinc-200 shadow-sm flex flex-wrap items-end gap-4">
+                <div className="flex-1 min-w-[200px]">
+                  <label className="block text-[9px] font-black uppercase tracking-wider text-zinc-400 mb-1">Colaborador:</label>
+                  <select 
+                    value={empId || ''} 
+                    onChange={(e) => setSelectedEmployeeId(Number(e.target.value))}
+                    className="w-full border border-zinc-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#003366] font-bold text-[#003366] bg-zinc-50/50"
+                  >
+                    {activeEmployees.map(emp => (
+                      <option key={emp.id} value={emp.id}>
+                        {emp.name} (Nº {1000 + emp.id} - {emp.role})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div className="w-[155px]">
+                  <label className="block text-[9px] font-black uppercase tracking-wider text-zinc-400 mb-1">Mês/Ano:</label>
+                  <select 
+                    value={selectedMonth}
+                    onChange={(e) => setSelectedMonth(e.target.value)}
+                    className="w-full border border-zinc-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#003366] font-bold text-[#003366] bg-zinc-50/50"
+                  >
+                    {[
+                      "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+                      "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+                    ].map(m => `${m} / ${fiscalYear}`).map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+
+                <div className="w-[155px]">
+                  <label className="block text-[9px] font-black uppercase tracking-wider text-zinc-400 mb-1">Local de Trabalho:</label>
+                  <select className="w-full border border-zinc-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-[#003366] bg-zinc-50/50 opacity-70 cursor-not-allowed" disabled>
+                    <option>
+                      {(() => {
+                        const ws = workSites.find(w => String(w.id) === String(selectedEmployee?.local_trabalho_id));
+                        return ws?.title || ws?.name || 'Sede Luanda';
+                      })()}
+                    </option>
+                  </select>
+                </div>
+
+                <div className="flex gap-2 ml-auto">
+                  <button 
+                    onClick={async () => {
+                      if (!empId) return;
+                      if (!confirm("Tem certeza que deseja apagar todos os dados de assiduidade deste colaborador para este mês?")) return;
+                      
                       setAttendanceMap(prev => {
                         const copy = { ...prev };
-                        delete copy[emp.id];
+                        delete copy[empId];
                         return copy;
                       });
+
+                      setAttendanceDone(prev => {
+                        const copy = { ...prev };
+                        delete copy[`${empId}_${selectedMonth}`];
+                        return copy;
+                      });
+
                       if (user?.empresa_id) {
-                         try {
-                           await attendanceService.clearAttendance(user.empresa_id, String(emp.id), selectedMonth);
-                         } catch(e) {}
+                        try {
+                          await attendanceService.clearAttendance(user.empresa_id, String(empId), selectedMonth);
+                          toast.success("Dados de assiduidade apagados com sucesso!");
+                        } catch(e) {
+                          toast.error("Erro ao apagar registo.");
+                        }
                       }
-                    }
-                  }}
-                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 text-xs font-black uppercase tracking-widest transition-all shadow-lg h-[38px]"
-                >
-                  Apagar
-                </button>
-                <button 
-                  onClick={async () => {
-                    const selectedEmpList = activeEmployees.filter(emp => selectedEmployeesToProcess[emp.id]);
-                    if (selectedEmpList.length === 0) {
-                      alert("Atenção: Selecione funcionários para desprocessar assiduidade.");
-                      return;
-                    }
-                    
-                    for (const emp of selectedEmpList) {
+                    }}
+                    className="bg-red-50 hover:bg-red-100 text-red-600 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all border border-red-100 cursor-pointer"
+                  >
+                    Apagar
+                  </button>
+                  
+                  <button 
+                    onClick={async () => {
+                      if (!empId) return;
+                      
                       setAttendanceDone(prev => {
                         const n = { ...prev };
-                        delete n[`${emp.id}_${selectedMonth}`];
+                        delete n[`${empId}_${selectedMonth}`];
                         return n;
                       });
+
                       setPayrollInputs(prev => {
                          const n = { ...prev };
-                         delete n[`${emp.id}_${selectedMonth}`];
+                         delete n[`${empId}_${selectedMonth}`];
                          return n;
                       });
 
@@ -4828,402 +5052,396 @@ const HRModule = ({
                          try {
                            await attendanceService.setAttendanceProcessed(
                              user.empresa_id,
-                             String(emp.id),
+                             String(empId),
                              selectedMonth,
                              false
                            );
-                         } catch (err) {}
+                           toast.success("Assiduidade desprocessada / desbloqueada com sucesso!");
+                         } catch (err) {
+                           toast.error("Erro ao desprocessar assiduidade.");
+                         }
                       }
-                    }
-                  }}
-                  className="bg-zinc-600 hover:bg-zinc-700 text-white px-4 py-2 text-xs font-black uppercase tracking-widest transition-all shadow-lg h-[38px]"
-                >
-                  Desprocessar
-                </button>
-                <button 
-                  onClick={async () => {
-                    const selectedEmpList = activeEmployees.filter(emp => selectedEmployeesToProcess[emp.id]);
-                    if (selectedEmpList.length === 0) {
-                      alert("Erro: Seleção de funcionário obrigatória! Por favor, selecione pelo menos um funcionário na lista abaixo (ou marque a opção 'Seldet' para selecionar todos).");
-                      return;
-                    }
-                    
-                    for (const emp of selectedEmpList) {
-                      // Se já estiver processado, não processa novamente
-                      if (attendanceDone[`${emp.id}_${selectedMonth}`]) continue;
+                    }}
+                    className="bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer"
+                  >
+                    Desprocessar
+                  </button>
+                </div>
+              </div>
 
-                      const totals = calculateAttendanceTotals(emp.id);
-                      setPayrollInputs(prev => ({
-                        ...prev,
-                        [`${emp.id}_${selectedMonth}`]: {
-                          ...(prev[`${emp.id}_${selectedMonth}`] || { 
-                            premios: 0, gratificacoes: 0, abonos: 0, subsidioNatal: 0, alojamento: 0, outrosSubsidios: 0,
-                            subsidioTransporte: 0, subsidioAlimentacao: 0, adiantamentos: 0, acertos: 0, diasTrabalho: 22, diasFolga: 8
-                          }),
-                          faltasJustificadas: totals.fj,
-                          faltasInjustificadas: totals.fi,
-                          ferias: totals.fe,
-                          horasExtras: totals.he,
-                          horasPerdidas: totals.hp,
-                          diasTrabalho: totals.p,
-                          diasFolga: totals.d
-                        }
-                      }));
-                      setAttendanceDone(prev => ({ ...prev, [`${emp.id}_${selectedMonth}`]: true }));
+              {/* Attendance Grid Card — all days visible without scroll */}
+              {selectedEmployee ? (
+                <div className="bg-white border border-zinc-200 rounded-xl shadow-sm overflow-hidden">
+                  {/* Grid Header */}
+                  <div className="px-4 py-2.5 bg-[#003366] flex items-center justify-between flex-wrap gap-3">
+                    <div>
+                      <h3 className="text-[10px] font-black text-white uppercase tracking-widest">Mapa Mensal de Atividade</h3>
+                      <p className="text-[9px] font-semibold text-blue-200 uppercase tracking-tight mt-0.5">
+                        {selectedEmployee.name} · {selectedEmployee.role}
+                      </p>
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
+                      <span className="bg-white/10 text-white px-2 py-0.5 rounded-full text-[8px] font-black uppercase">
+                        {daysInMonth} dias
+                      </span>
+                      <span className="bg-white/10 text-white px-2 py-0.5 rounded-full text-[8px] font-black uppercase">
+                        Preenchidos: <span className="text-emerald-300">{filledDaysCount}</span>
+                      </span>
+                      <span className="bg-white/10 text-white px-2 py-0.5 rounded-full text-[8px] font-black uppercase">
+                        Serviço: <span className="text-blue-300">{countServico}</span>
+                      </span>
+                      <span className="bg-white/10 text-white px-2 py-0.5 rounded-full text-[8px] font-black uppercase">
+                        Folga: <span className="text-emerald-300">{countFolga}</span>
+                      </span>
+                    </div>
+                  </div>
 
+                  {/* Non-scrolling grid — table-fixed fits all days */}
+                  <div className="w-full">
+                    <table className="w-full text-left border-collapse table-fixed">
+                      <thead>
+                        <tr className="bg-zinc-50 border-b border-zinc-200">
+                          {/* Category column */}
+                          <th className="py-2 px-2 border-r border-zinc-200 w-[108px] text-[7.5px] font-black uppercase text-zinc-500 tracking-wider">
+                            Categoria
+                          </th>
+                          
+                          {/* Day columns — no fixed width, flex-fills remaining space */}
+                          {daysArray.map(day => {
+                            const dt = new Date(yr, mIndex, day);
+                            const daysOfWeek = ["D", "S", "T", "Q", "Q", "S", "S"];
+                            const wDay = daysOfWeek[dt.getDay()];
+                            const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
+
+                            return (
+                              <th 
+                                key={day} 
+                                className={`py-1.5 border-r border-zinc-100 text-center select-none ${
+                                  isWeekend ? 'bg-orange-50/40' : ''
+                                }`}
+                              >
+                                <div className={`text-[7px] font-bold uppercase leading-none ${ isWeekend ? 'text-orange-400' : 'text-zinc-400' }`}>
+                                  {wDay}
+                                </div>
+                                <div className={`text-[8.5px] font-black mt-0.5 leading-none ${ isWeekend ? 'text-orange-500' : 'text-zinc-600' }`}>
+                                  {day}
+                                </div>
+                              </th>
+                            );
+                          })}
+                          
+                          {/* Totals Header */}
+                          <th className="py-2 text-center w-[28px] bg-zinc-800 text-white font-black uppercase text-[7px] tracking-wider">
+                            Tot.
+                          </th>
+                        </tr>
+                      </thead>
+                      
+                      <tbody className="divide-y divide-zinc-100">
+                        {/* 1. FOLGA Row */}
+                        <tr className="hover:bg-emerald-50/20 transition-colors">
+                          <td className="py-1.5 px-2 border-r border-zinc-200 bg-white z-10">
+                            <div className="flex items-center gap-1.5">
+                              <span className="w-2 h-2 bg-emerald-500 rounded-full shrink-0"></span>
+                              <span className="text-[7.5px] font-black text-zinc-600 uppercase tracking-wide">FOLGA</span>
+                            </div>
+                          </td>
+                          {daysArray.map(day => {
+                            const status = empMap[day];
+                            const isSelected = status === 'D';
+                            const isLocked = empId ? !!attendanceDone[`${empId}_${selectedMonth}`] : false;
+                            const dt = new Date(yr, mIndex, day);
+                            const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
+                            return (
+                              <td key={day} className={`py-1.5 text-center border-r border-zinc-100 ${isWeekend ? 'bg-orange-50/20' : ''}`}>
+                                <div 
+                                  onClick={() => { if (isLocked) { toast.error("Esta assiduidade está bloqueada."); return; } handleSelectStatus(day, 'D'); }}
+                                  className={`w-4 h-4 rounded-full border m-auto flex items-center justify-center transition-all duration-150 cursor-pointer ${ isSelected ? 'border-emerald-500 bg-emerald-500' : 'border-zinc-200 hover:border-emerald-300 bg-white' }`}
+                                >
+                                  {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                                </div>
+                              </td>
+                            );
+                          })}
+                          <td className="py-1.5 border-l border-zinc-200 bg-zinc-800 text-white text-center font-black text-[8px]">{countFolga}</td>
+                        </tr>
+
+                        {/* 2. SERVIÇO Row */}
+                        <tr className="hover:bg-blue-50/20 transition-colors">
+                          <td className="py-1.5 px-2 border-r border-zinc-200 bg-white z-10">
+                            <div className="flex items-center gap-1.5">
+                              <span className="w-2 h-2 bg-blue-500 rounded-full shrink-0"></span>
+                              <span className="text-[7.5px] font-black text-zinc-600 uppercase tracking-wide">SERVIÇO</span>
+                            </div>
+                          </td>
+                          {daysArray.map(day => {
+                            const status = empMap[day];
+                            const isSelected = status === 'P';
+                            const isLocked = empId ? !!attendanceDone[`${empId}_${selectedMonth}`] : false;
+                            const dt = new Date(yr, mIndex, day);
+                            const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
+                            return (
+                              <td key={day} className={`py-1.5 text-center border-r border-zinc-100 ${isWeekend ? 'bg-orange-50/20' : ''}`}>
+                                <div 
+                                  onClick={() => { if (isLocked) { toast.error("Esta assiduidade está bloqueada."); return; } handleSelectStatus(day, 'P'); }}
+                                  className={`w-4 h-4 rounded-full border m-auto flex items-center justify-center transition-all duration-150 cursor-pointer ${ isSelected ? 'border-blue-500 bg-blue-500' : 'border-zinc-200 hover:border-blue-300 bg-white' }`}
+                                >
+                                  {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                                </div>
+                              </td>
+                            );
+                          })}
+                          <td className="py-1.5 border-l border-zinc-200 bg-zinc-800 text-white text-center font-black text-[8px]">{countServico}</td>
+                        </tr>
+
+                        {/* 3. JUSTIFICADA Row */}
+                        <tr className="hover:bg-purple-50/20 transition-colors">
+                          <td className="py-1.5 px-2 border-r border-zinc-200 bg-white z-10">
+                            <div className="flex items-center gap-1.5">
+                              <span className="w-2 h-2 bg-purple-500 rounded-full shrink-0"></span>
+                              <span className="text-[7.5px] font-black text-zinc-600 uppercase tracking-wide">JUSTIFICADA</span>
+                            </div>
+                          </td>
+                          {daysArray.map(day => {
+                            const status = empMap[day];
+                            const isSelected = status === 'FJ';
+                            const isLocked = empId ? !!attendanceDone[`${empId}_${selectedMonth}`] : false;
+                            const dt = new Date(yr, mIndex, day);
+                            const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
+                            return (
+                              <td key={day} className={`py-1.5 text-center border-r border-zinc-100 ${isWeekend ? 'bg-orange-50/20' : ''}`}>
+                                <div 
+                                  onClick={() => { if (isLocked) { toast.error("Esta assiduidade está bloqueada."); return; } handleSelectStatus(day, 'FJ'); }}
+                                  className={`w-4 h-4 rounded-full border m-auto flex items-center justify-center transition-all duration-150 cursor-pointer ${ isSelected ? 'border-purple-500 bg-purple-500' : 'border-zinc-200 hover:border-purple-300 bg-white' }`}
+                                >
+                                  {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                                </div>
+                              </td>
+                            );
+                          })}
+                          <td className="py-1.5 border-l border-zinc-200 bg-zinc-800 text-white text-center font-black text-[8px]">{countJustificada}</td>
+                        </tr>
+
+                        {/* 4. INJUSTIFICADA Row */}
+                        <tr className="hover:bg-red-50/20 transition-colors">
+                          <td className="py-1.5 px-2 border-r border-zinc-200 bg-white z-10">
+                            <div className="flex items-center gap-1.5">
+                              <span className="w-2 h-2 bg-red-500 rounded-full shrink-0"></span>
+                              <span className="text-[7.5px] font-black text-zinc-600 uppercase tracking-wide leading-tight">INJUSTIF.</span>
+                            </div>
+                          </td>
+                          {daysArray.map(day => {
+                            const status = empMap[day];
+                            const isSelected = status === 'FI';
+                            const isLocked = empId ? !!attendanceDone[`${empId}_${selectedMonth}`] : false;
+                            const dt = new Date(yr, mIndex, day);
+                            const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
+                            return (
+                              <td key={day} className={`py-1.5 text-center border-r border-zinc-100 ${isWeekend ? 'bg-orange-50/20' : ''}`}>
+                                <div 
+                                  onClick={() => { if (isLocked) { toast.error("Esta assiduidade está bloqueada."); return; } handleSelectStatus(day, 'FI'); }}
+                                  className={`w-4 h-4 rounded-full border m-auto flex items-center justify-center transition-all duration-150 cursor-pointer ${ isSelected ? 'border-red-500 bg-red-500' : 'border-zinc-200 hover:border-red-300 bg-white' }`}
+                                >
+                                  {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                                </div>
+                              </td>
+                            );
+                          })}
+                          <td className="py-1.5 border-l border-zinc-200 bg-zinc-800 text-white text-center font-black text-[8px]">{countInjustificada}</td>
+                        </tr>
+
+                        {/* 5. FÉRIAS Row */}
+                        <tr className="hover:bg-amber-50/20 transition-colors">
+                          <td className="py-1.5 px-2 border-r border-zinc-200 bg-white z-10">
+                            <div className="flex items-center gap-1.5">
+                              <span className="w-2 h-2 bg-amber-500 rounded-full shrink-0"></span>
+                              <span className="text-[7.5px] font-black text-zinc-600 uppercase tracking-wide">FÉRIAS</span>
+                            </div>
+                          </td>
+                          {daysArray.map(day => {
+                            const status = empMap[day];
+                            const isSelected = status === 'FE';
+                            const isLocked = empId ? !!attendanceDone[`${empId}_${selectedMonth}`] : false;
+                            const dt = new Date(yr, mIndex, day);
+                            const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
+                            return (
+                              <td key={day} className={`py-1.5 text-center border-r border-zinc-100 ${isWeekend ? 'bg-orange-50/20' : ''}`}>
+                                <div 
+                                  onClick={() => { if (isLocked) { toast.error("Esta assiduidade está bloqueada."); return; } handleSelectStatus(day, 'FE'); }}
+                                  className={`w-4 h-4 rounded-full border m-auto flex items-center justify-center transition-all duration-150 cursor-pointer ${ isSelected ? 'border-amber-500 bg-amber-500' : 'border-zinc-200 hover:border-amber-300 bg-white' }`}
+                                >
+                                  {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                                </div>
+                              </td>
+                            );
+                          })}
+                          <td className="py-1.5 border-l border-zinc-200 bg-zinc-800 text-white text-center font-black text-[8px]">{countFerias}</td>
+                        </tr>
+
+                        {/* 6. HORAS EXTRA Row */}
+                        <tr className="bg-blue-50/30 hover:bg-blue-50/50 transition-colors">
+                          <td className="py-1.5 px-2 border-r border-zinc-200 bg-blue-50/80 z-10">
+                            <span className="text-[7.5px] font-black text-blue-700 uppercase tracking-wide">H. EXTRA</span>
+                          </td>
+                          {daysArray.map(day => {
+                            const isLocked = !!attendanceDone[`${empId}_${selectedMonth}`];
+                            const dt = new Date(yr, mIndex, day);
+                            const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
+                            return (
+                              <td key={day} className={`py-1 text-center border-r border-blue-100/40 ${isWeekend ? 'bg-orange-50/20' : ''}`}>
+                                <input 
+                                  type="text"
+                                  placeholder="0"
+                                  value={empMap[day + '_he'] !== undefined && empMap[day + '_he'] !== 0 ? String(empMap[day + '_he']) : ''}
+                                  disabled={isLocked}
+                                  onChange={async (e) => {
+                                    const val = e.target.value.replace(/\D/g, '');
+                                    const numVal = val ? Number(val) : 0;
+                                    const currentEmpMap = attendanceMap[empId] || {};
+                                    const newEmpMap = { ...currentEmpMap, [day + '_he']: numVal };
+                                    setAttendanceMap(prev => ({ ...prev, [empId]: newEmpMap }));
+                                    if (user?.empresa_id) {
+                                      try { await attendanceService.saveAttendanceMap(user.empresa_id, String(empId), selectedMonth, newEmpMap); }
+                                      catch (err) { console.error(err); }
+                                    }
+                                  }}
+                                  className="w-full h-5 border-0 border-b border-blue-200/70 text-center text-[8px] font-black text-blue-700 focus:outline-none focus:border-blue-400 bg-transparent transition-all px-0"
+                                />
+                              </td>
+                            );
+                          })}
+                          <td className="py-1.5 border-l border-zinc-200 bg-blue-800 text-white text-center font-black text-[8px]">{totalHe}</td>
+                        </tr>
+
+                        {/* 7. HORAS PERDIDAS Row */}
+                        <tr className="bg-red-50/30 hover:bg-red-50/50 transition-colors">
+                          <td className="py-1.5 px-2 border-r border-zinc-200 bg-red-50/80 z-10">
+                            <span className="text-[7.5px] font-black text-red-700 uppercase tracking-wide">H. PERDIDAS</span>
+                          </td>
+                          {daysArray.map(day => {
+                            const isLocked = !!attendanceDone[`${empId}_${selectedMonth}`];
+                            const dt = new Date(yr, mIndex, day);
+                            const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
+                            return (
+                              <td key={day} className={`py-1 text-center border-r border-red-100/40 ${isWeekend ? 'bg-orange-50/20' : ''}`}>
+                                <input 
+                                  type="text"
+                                  placeholder="0"
+                                  value={empMap[day + '_hp'] !== undefined && empMap[day + '_hp'] !== 0 ? String(empMap[day + '_hp']) : ''}
+                                  disabled={isLocked}
+                                  onChange={async (e) => {
+                                    const val = e.target.value.replace(/\D/g, '');
+                                    const numVal = val ? Number(val) : 0;
+                                    const currentEmpMap = attendanceMap[empId] || {};
+                                    const newEmpMap = { ...currentEmpMap, [day + '_hp']: numVal };
+                                    setAttendanceMap(prev => ({ ...prev, [empId]: newEmpMap }));
+                                    if (user?.empresa_id) {
+                                      try { await attendanceService.saveAttendanceMap(user.empresa_id, String(empId), selectedMonth, newEmpMap); }
+                                      catch (err) { console.error(err); }
+                                    }
+                                  }}
+                                  className="w-full h-5 border-0 border-b border-red-200/70 text-center text-[8px] font-black text-red-700 focus:outline-none focus:border-red-400 bg-transparent transition-all px-0"
+                                />
+                              </td>
+                            );
+                          })}
+                          <td className="py-1.5 border-l border-zinc-200 bg-red-800 text-white text-center font-black text-[8px]">{totalHp}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-white border border-zinc-200 rounded-2xl p-8 text-center text-zinc-400 font-bold uppercase text-xs">
+                  Nenhum colaborador ativo encontrado no sistema.
+                </div>
+              )}
+
+              {/* Validation State and Save Confirmation footer */}
+              {selectedEmployee && (
+                <div className="flex items-center justify-between flex-wrap gap-4 bg-white p-4 border border-zinc-200 rounded-xl shadow-sm">
+                  {/* Left: Validation Status */}
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-full shadow-sm ${attendanceDone[`${empId}_${selectedMonth}`] ? 'bg-amber-100 text-amber-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                      <Check size={16} className="stroke-[3]" />
+                    </div>
+                    <div>
+                      <div className="text-[8px] font-black text-zinc-400 uppercase tracking-widest leading-none">Estado de Validação</div>
+                      <div className={`text-[10px] font-black uppercase tracking-wide mt-1 leading-none ${attendanceDone[`${empId}_${selectedMonth}`] ? 'text-amber-600' : 'text-emerald-600'}`}>
+                        {attendanceDone[`${empId}_${selectedMonth}`] 
+                          ? "Processo já concluído e bloqueado" 
+                          : "Processo pronto para faturamento"}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right: Confirmation and Processing Button */}
+                  <button 
+                    onClick={async () => {
+                      if (!empId) {
+                        toast.error("Por favor, selecione um colaborador.");
+                        return;
+                      }
+                      
+                      const isLocked = !!attendanceDone[`${empId}_${selectedMonth}`];
+                      if (isLocked) {
+                        toast.error("Esta assiduidade já foi processada e está bloqueada.");
+                        return;
+                      }
+
+                      const currentEmpMap = attendanceMap[empId] || {};
+                      
                       if (user?.empresa_id) {
                         try {
-                           await attendanceService.setAttendanceProcessed(
-                             user.empresa_id,
-                             String(emp.id),
-                             selectedMonth,
-                             true
-                           );
+                          // 1. Save attendance map
+                          await attendanceService.saveAttendanceMap(user.empresa_id, String(empId), selectedMonth, currentEmpMap);
+                          
+                          // 2. Mark as processed (lock)
+                          await attendanceService.setAttendanceProcessed(user.empresa_id, String(empId), selectedMonth, true);
+                          
+                          // Update local states
+                          setAttendanceDone(prev => ({
+                            ...prev,
+                            [`${empId}_${selectedMonth}`]: true
+                          }));
+
+                          // Calculate totals for payroll processing
+                          const totals = calculateAttendanceTotals(empId);
+                          setPayrollInputs(prev => ({
+                            ...prev,
+                            [`${empId}_${selectedMonth}`]: {
+                              ...(prev[`${empId}_${selectedMonth}`] || { 
+                                premios: 0, gratificacoes: 0, abonos: 0, subsidioNatal: 0, alojamento: 0, outrosSubsidios: 0,
+                                subsidioTransporte: 0, subsidioAlimentacao: 0, adiantamentos: 0, acertos: 0, diasTrabalho: 22, diasFolga: 8
+                              }),
+                              faltasJustificadas: totals.fj,
+                              faltasInjustificadas: totals.fi,
+                              ferias: totals.fe,
+                              horasExtras: totals.he,
+                              horasPerdidas: totals.hp,
+                              diasTrabalho: totals.p,
+                              diasFolga: totals.d
+                            }
+                          }));
+
+                          toast.success(`Efetividade de ${selectedEmployee.name} processada e confirmada com sucesso!`);
                         } catch (err) {
-                           console.error("[Attendance] Error locking attendance", err);
+                          console.error(err);
+                          toast.error("Erro ao processar e confirmar efetividade.");
                         }
                       }
-                    }
-                    setActiveTab('payroll');
-                  }}
-                  className="bg-[#F27D26] hover:bg-[#d96a1a] text-white px-8 py-2 text-xs font-black uppercase tracking-widest transition-all shadow-lg h-[38px]"
-                >
-                  Processar Assiduidade
-                </button>
-              </div>
+                    }}
+                    disabled={empId ? !!attendanceDone[`${empId}_${selectedMonth}`] : false}
+                    className="bg-[#003366] hover:bg-[#002244] disabled:bg-zinc-300 text-white font-black uppercase text-xs tracking-widest px-6 py-3 rounded-lg flex items-center gap-2.5 transition-all shadow-md active:scale-95 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    <Save size={16} className="stroke-[2.5]" />
+                    <span>Confirmar e Processar Efetividade</span>
+                  </button>
+                </div>
+              )}
             </div>
-
-            {/* Attendance Grid */}
-            <div className="bg-white border border-zinc-200 shadow-sm overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse min-w-[1500px]">
-                  <thead>
-                    <tr className="bg-[#003366] text-white text-[10px] uppercase tracking-widest font-black">
-                      <th className="px-4 py-4 border-r border-white/10 sticky left-0 bg-[#003366] z-10" rowSpan={2}>Funcionário</th>
-                      <th className="px-2 py-2 border-r border-white/10 text-center" colSpan={5}>Resumo</th>
-                      {[...Array(31)].map((_, i) => {
-                        const day = i + 1;
-                        // Weeks parsing in Portuguese LGT Angola
-                        const parts = selectedMonth.split('/');
-                        const name = parts[0]?.trim() || '';
-                        const yr = Number(parts[1]?.trim() || new Date().getFullYear());
-                        const monthMap: Record<string, number> = {
-                          "Janeiro": 0, "Fevereiro": 1, "Março": 2, "Abril": 3, "Maio": 4, "Junho": 5,
-                          "Julho": 6, "Agosto": 7, "Setembro": 8, "Outubro": 9, "Novembro": 10, "Dezembro": 11
-                        };
-                        const mIndex = monthMap[name] !== undefined ? monthMap[name] : new Date().getMonth();
-                        const dt = new Date(yr, mIndex, day);
-                        const daysOfWeek = ["DOM", "SEG", "TER", "QUA", "QUI", "SEX", "SÁB"];
-                        const wDay = daysOfWeek[dt.getDay()];
-                        
-                        // Calculate week of the month
-                        const weekOfMonth = Math.ceil((day + new Date(yr, mIndex, 1).getDay()) / 7);
-
-                        return (
-                          <th key={i} className="px-1.5 py-3 border-r border-white/10 text-center w-14 min-w-[50px] bg-[#002244]">
-                            <div className="font-black text-base text-white leading-none">{day}</div>
-                            <div className="text-xs font-black text-white block tracking-wider uppercase mt-1 leading-none">{wDay}</div>
-                            <div className="text-[10px] font-bold text-white/80 block tracking-tighter uppercase mt-1 leading-none">Sem. {weekOfMonth}</div>
-                          </th>
-                        );
-                      })}
-                    </tr>
-                    <tr className="bg-[#003366]/90 text-white text-[9px] uppercase tracking-tighter font-bold">
-                      <th className="px-2 py-2 border-r border-[#ffffff]/10 text-center">FJ</th>
-                      <th className="px-2 py-2 border-r border-[#ffffff]/10 text-center">FI</th>
-                      <th className="px-2 py-2 border-r border-[#ffffff]/10 text-center">FE</th>
-                      <th className="px-2 py-2 border-r border-[#ffffff]/10 text-center">HE</th>
-                      <th className="px-2 py-2 border-r border-[#ffffff]/10 text-center">HP</th>
-                      {[...Array(31)].map((_, i) => (
-                        <th key={i} className="px-2 py-2 border-r border-white/10 text-center">
-                          <input type="checkbox" className="rounded-none accent-[#F27D26]" defaultChecked />
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-100">
-                    {/* Select All Row */}
-                    <tr className="bg-zinc-50 text-[10px] font-black uppercase text-zinc-400">
-                      <td className="px-4 py-3 border-r border-zinc-200 sticky left-0 bg-zinc-50 z-10 flex items-center gap-2">
-                        <input 
-                          type="checkbox" 
-                          id="seldet-checkbox"
-                          className="rounded-none accent-[#003366] cursor-pointer" 
-                          checked={activeEmployees.length > 0 && activeEmployees.every(emp => !!selectedEmployeesToProcess[emp.id])}
-                          onChange={(e) => {
-                            const checked = e.target.checked;
-                            const nextSelected: Record<number, boolean> = {};
-                            if (checked) {
-                              activeEmployees.forEach(emp => {
-                                nextSelected[emp.id] = true;
-                              });
-                            }
-                            setSelectedEmployeesToProcess(nextSelected);
-                          }}
-                        />
-                        <span 
-                          className="cursor-pointer hover:text-[#003366] select-none transition-colors"
-                          onClick={() => {
-                            const currentlyAllChecked = activeEmployees.length > 0 && activeEmployees.every(emp => !!selectedEmployeesToProcess[emp.id]);
-                            const nextSelected: Record<number, boolean> = {};
-                            if (!currentlyAllChecked) {
-                              activeEmployees.forEach(emp => {
-                                nextSelected[emp.id] = true;
-                              });
-                            }
-                            setSelectedEmployeesToProcess(nextSelected);
-                          }}
-                        >
-                          Seldet (Selec. Todos)
-                        </span>
-                        <select 
-                          className="bg-transparent border-none text-[10px] font-black text-[#003366] focus:outline-none"
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            if (val === 'all') {
-                              const next: Record<number, boolean> = {};
-                              activeEmployees.forEach(emp => { next[emp.id] = true; });
-                              setSelectedEmployeesToProcess(next);
-                            } else if (val === 'none') {
-                              setSelectedEmployeesToProcess({});
-                            }
-                          }}
-                        >
-                          <option value="">Selecionar funcionários</option>
-                          <option value="all">Selecionar Todos</option>
-                          <option value="none">Limpar Seleção</option>
-                        </select>
-                      </td>
-                      <td className="px-2 py-3 border-r border-zinc-200 text-center"></td>
-                      <td className="px-2 py-3 border-r border-zinc-200 text-center"></td>
-                      <td className="px-2 py-3 border-r border-zinc-200 text-center"></td>
-                      <td className="px-2 py-3 border-r border-zinc-200 text-center"></td>
-                      <td className="px-2 py-3 border-r border-zinc-200 text-center"></td>
-                      {[...Array(31)].map((_, i) => (
-                        <td key={i} className="px-2 py-3 border-r border-zinc-200 text-center">
-                          <div className="w-6 h-6 bg-emerald-600 text-white flex items-center justify-center mx-auto rounded-sm">
-                            <Check size={12} />
-                          </div>
-                        </td>
-                      ))}
-                    </tr>
-
-                    {/* Employee Rows */}
-                    {activeEmployees.map(emp => (
-                      <tr key={emp.id} className="hover:bg-zinc-50 transition-colors group">
-                        <td className="px-4 py-4 border-r border-zinc-200 sticky left-0 bg-white group-hover:bg-zinc-50 z-10">
-                          <div className="flex items-center gap-3">
-                            <input 
-                              type="checkbox" 
-                              className="rounded-none accent-[#003366]" 
-                              checked={!!selectedEmployeesToProcess[emp.id]}
-                              onChange={(e) => {
-                                setSelectedEmployeesToProcess(prev => ({
-                                  ...prev,
-                                  [emp.id]: e.target.checked
-                                }));
-                              }}
-                            />
-                            <div className="w-10 h-10 bg-zinc-100 rounded-none overflow-hidden border border-zinc-200">
-                              {emp.image_url ? <img src={emp.image_url} className="w-full h-full object-cover" /> : <UserIcon size={16} className="text-zinc-300 m-auto mt-3" />}
-                            </div>
-                            <div>
-                              <div className="font-black text-[#003366] uppercase text-xs">{emp.name}</div>
-                              <div className="text-[9px] text-zinc-400 uppercase">Nº {1000 + emp.id} • {emp.role}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-2 py-4 border-r border-zinc-200 text-center font-bold text-xs">
-                          {calculateAttendanceTotals(emp.id).fj}
-                        </td>
-                        <td className="px-2 py-4 border-r border-zinc-200 text-center font-bold text-xs">
-                          {calculateAttendanceTotals(emp.id).fi}
-                        </td>
-                        <td className="px-2 py-4 border-r border-zinc-200 text-center font-bold text-xs">
-                          {calculateAttendanceTotals(emp.id).fe}
-                        </td>
-                        <td className="px-2 py-4 border-r border-zinc-200 text-center font-bold text-xs">
-                          {calculateAttendanceTotals(emp.id).he}
-                        </td>
-                        <td className="px-2 py-4 border-r border-zinc-200 text-center font-bold text-xs">
-                          {calculateAttendanceTotals(emp.id).hp}
-                        </td>
-                        {[...Array(31)].map((_, i) => {
-                          const day = i + 1;
-                          const status = attendanceMap[emp.id]?.[day] || (day % 7 === 0 ? 'D' : 'P');
-                          const colors: Record<string, string> = {
-                            'P': 'bg-emerald-500',
-                            'FJ': 'bg-blue-400',
-                            'FI': 'bg-red-500',
-                            'FE': 'bg-indigo-500',
-                            'HE': 'bg-amber-400',
-                            'HP': 'bg-zinc-400',
-                            'D': 'bg-orange-500'
-                          };
-                          return (
-                            <td key={i} className="px-1 py-4 border-r border-zinc-200 text-center relative">
-                              <select 
-                                value={status}
-                                disabled={attendanceDone[`${emp.id}_${selectedMonth}`]}
-                                onChange={async (e) => {
-                                  const nextStatus = e.target.value;
-                                  const currentEmpMap = attendanceMap[emp.id] || {};
-                                  const newEmpMap = {
-                                    ...currentEmpMap,
-                                    [day]: nextStatus
-                                  };
-
-                                  // Update local state for immediate feedback
-                                  setAttendanceMap(prev => ({
-                                    ...prev,
-                                    [emp.id]: newEmpMap
-                                  }));
-
-                                  // Persist to Supabase
-                                  if (user?.empresa_id) {
-                                    try {
-                                      await attendanceService.saveAttendanceMap(
-                                        user.empresa_id,
-                                        String(emp.id),
-                                        selectedMonth,
-                                        newEmpMap
-                                      );
-                                    } catch (err) {
-                                      console.error("[Attendance] Error saving:", err);
-                                    }
-                                  }
-                                }}
-                                className={`w-8 h-8 ${colors[status]} text-white text-[9px] font-black rounded-sm appearance-none text-center focus:outline-none cursor-pointer hover:scale-110 transition-transform`}
-                              >
-                                <option value="P">P</option>
-                                <option value="FJ">FJ</option>
-                                <option value="FI">FI</option>
-                                <option value="FE">FE</option>
-                                <option value="HE">HE</option>
-                                <option value="HP">HP</option>
-                                <option value="D">D</option>
-                              </select>
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="bg-zinc-50 font-black text-[#003366] text-xs">
-                      <td className="px-4 py-4 border-r border-zinc-200 sticky left-0 bg-zinc-50 z-10 uppercase tracking-widest">Total Geral:</td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center font-mono text-xs text-blue-600">
-                        {activeEmployees.reduce((sum, emp) => sum + calculateAttendanceTotals(emp.id).fj, 0)} FJ
-                      </td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center font-mono text-xs text-red-600">
-                        {activeEmployees.reduce((sum, emp) => sum + calculateAttendanceTotals(emp.id).fi, 0)} FI
-                      </td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center font-mono text-xs text-indigo-600">
-                        {activeEmployees.reduce((sum, emp) => sum + calculateAttendanceTotals(emp.id).fe, 0)} FE
-                      </td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center font-mono text-xs text-amber-600">
-                        {activeEmployees.reduce((sum, emp) => sum + calculateAttendanceTotals(emp.id).he, 0)} HE
-                      </td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center font-mono text-xs text-zinc-500">
-                        {activeEmployees.reduce((sum, emp) => sum + calculateAttendanceTotals(emp.id).hp, 0)} HP
-                      </td>
-                      {[...Array(31)].map((_, i) => {
-                        const day = i + 1;
-                        const presentsCount = activeEmployees.filter(emp => (attendanceMap[emp.id]?.[day] || (day % 7 === 0 ? 'D' : 'P')) === 'P').length;
-                        return (
-                          <td key={i} className="px-2 py-4 border-r border-zinc-200 text-center text-[10px] font-bold text-emerald-600">
-                            {presentsCount} P
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-              <div className="p-8 bg-zinc-50 border-t border-zinc-200 flex flex-col items-center justify-center text-center w-full">
-                <h4 className="text-[#003366] text-xs font-black uppercase tracking-widest mb-4">Legenda de Assiduidade de Colaboradores</h4>
-                <div className="flex flex-wrap justify-center gap-x-8 gap-y-4 text-xs font-black uppercase tracking-wider text-zinc-700">
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 bg-blue-400 rounded-sm"></div> 
-                    <span>FJ - {companyName || "Grupo TecnoSys"}: Falta Justificada</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 bg-red-500 rounded-sm"></div> 
-                    <span>FI - {companyName || "Grupo TecnoSys"}: Falta Injustificada</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 bg-indigo-500 rounded-sm"></div> 
-                    <span>FE - {companyName || "Grupo TecnoSys"}: Férias</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 bg-orange-500 rounded-sm"></div> 
-                    <span>D - {companyName || "Grupo TecnoSys"}: Descanso / Folga</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 bg-amber-400 rounded-sm"></div> 
-                    <span>HE - {companyName || "Grupo TecnoSys"}: Hora Extra</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 bg-zinc-400 rounded-sm"></div> 
-                    <span>HP - {companyName || "Grupo TecnoSys"}: Hora Perdida</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 bg-emerald-500 rounded-sm"></div> 
-                    <span>P - {companyName || "Grupo TecnoSys"}: Presente</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Footer Summary */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-8">
-              <div className="space-y-4">
-                <div className="flex justify-between border-b border-zinc-100 pb-2">
-                  <span className="text-xs font-bold text-[#003366] uppercase tracking-widest">Horas Extraordinárias Totais (HE):</span>
-                  <span className="text-sm font-black font-mono">
-                    {activeEmployees.reduce((sum, emp) => sum + calculateAttendanceTotals(emp.id).he, 0)} Horas
-                  </span>
-                </div>
-                <div className="flex justify-between border-b border-zinc-100 pb-2">
-                  <span className="text-xs font-bold text-[#003366] uppercase tracking-widest">Horas Perdidas Totais (HP):</span>
-                  <span className="text-sm font-black font-mono">
-                    {activeEmployees.reduce((sum, emp) => sum + calculateAttendanceTotals(emp.id).hp, 0)} Horas
-                  </span>
-                </div>
-              </div>
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Base Legal:</span>
-                  <span className="text-xs font-bold text-zinc-600">Lei Geral do Trabalho de Angola</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-xs font-bold text-[#003366] uppercase tracking-widest">Desconto de Faltas Injustificadas Totais:</span>
-                  <span className="text-sm font-black text-red-600 font-mono">
-                    -{formatCurrency(activeEmployees.reduce((sum, emp) => {
-                      const totals = calculateAttendanceTotals(emp.id);
-                      const dailyRate = emp.salary / 22;
-                      return sum + (totals.fi * dailyRate);
-                    }, 0))}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center bg-[#003366]/5 p-4 border border-[#003366]/10">
-                  <span className="text-sm font-black text-[#003366] uppercase tracking-widest">Vencimento Base Estimado a Pagar (com acréscimos/descontos):</span>
-                  <span className="text-xl font-black text-[#003366] font-mono">
-                    {formatCurrency(activeEmployees.reduce((sum, emp) => {
-                      const totals = calculateAttendanceTotals(emp.id);
-                      const dailyRate = emp.salary / 22;
-                      const hourlyRate = emp.salary / 173.33;
-                      const overtimePay = totals.he * (hourlyRate * 1.5);
-                      const lostHoursDeduction = totals.hp * hourlyRate;
-                      const absenceDeduction = totals.fi * dailyRate;
-                      return sum + (emp.salary + overtimePay - lostHoursDeduction - absenceDeduction);
-                    }, 0))}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+          );
+        })()}
 
         {activeTab === 'payroll' && (
           <div className="space-y-6">
@@ -5461,16 +5679,16 @@ const HRModule = ({
               </button>
             </div>
 
-            <div className="bg-white border border-zinc-200 shadow-sm overflow-hidden">
-              <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse min-w-[1500px]">
+            <div className="bg-white border border-zinc-200 shadow-sm overflow-hidden rounded-lg">
+              <div className="w-full">
+                  <table className="w-full text-left border-collapse table-fixed text-xs">
                     <thead>
-                      <tr className="bg-[#1e293b] text-white text-[9px] uppercase tracking-widest font-black">
-                        <th className="px-4 py-4 border-r border-white/10 w-10 sticky left-0 bg-[#1e293b] z-20">
+                      <tr className="bg-[#1e293b] text-white text-[8px] uppercase tracking-wider font-black">
+                        <th className="px-2 py-3 border-r border-white/10 w-8 text-center">
                           <input 
                             type="checkbox" 
                             id="selectAllEmployees"
-                            className="rounded-none accent-[#F27D26] w-4 h-4 cursor-pointer" 
+                            className="rounded-none accent-[#F27D26] w-3.5 h-3.5 cursor-pointer" 
                             checked={payrollFiltered.length > 0 && payrollFiltered.filter(emp => !processedAttendance[`${emp.id}_${selectedMonth}`]).length > 0 && payrollFiltered.filter(emp => !processedAttendance[`${emp.id}_${selectedMonth}`]).every(emp => !!selectedEmployeesToProcess[emp.id])}
                             onChange={(e) => {
                               const checked = e.target.checked;
@@ -5489,34 +5707,23 @@ const HRModule = ({
                             }}
                           />
                         </th>
-                        <th className="px-4 py-4 border-r border-white/10 sticky left-10 bg-[#1e293b] z-20 min-w-[250px] group">
-                          <label htmlFor="selectAllEmployees" className="cursor-pointer">FUNCIONÁRIO (Selecionar Todos)</label>
+                        <th className="px-2 py-3 border-r border-white/10 w-44">
+                          <label htmlFor="selectAllEmployees" className="cursor-pointer">FUNCIONÁRIO</label>
                         </th>
-                        <th className="px-2 py-4 border-r border-white/10 text-center">DIAS TRAB.</th>
-                        <th className="px-2 py-4 border-r border-white/10 text-center">DIAS FOLGA</th>
-                        <th className="px-2 py-4 border-r border-white/10 text-center">F. JUST.</th>
-                        <th className="px-2 py-4 border-r border-white/10 text-center">F. INJUST.</th>
-                        <th className="px-2 py-4 border-r border-white/10 text-center">FÉRIAS</th>
-                        <th className="px-2 py-4 border-r border-white/10 text-center">H. EXTRAS</th>
-                        <th className="px-2 py-4 border-r border-white/10 text-center">H. PERDIDAS</th>
-                        <th className="px-2 py-4 border-r border-white/10 text-center">PREMIOS</th>
-                        <th className="px-2 py-4 border-r border-white/10 text-center">GRATIFICAÇÕES</th>
-                        <th className="px-2 py-4 border-r border-white/10 text-center">ABONOS</th>
-                        <th className="px-2 py-4 border-r border-white/10 text-center">SUBS. NATAL</th>
-                        <th className="px-2 py-4 border-r border-white/10 text-center">ALOJAMENTO</th>
-                        <th className="px-2 py-4 border-r border-white/10 text-center">SUBS. TRANSP.</th>
-                        <th className="px-2 py-4 border-r border-white/10 text-center">SUBS. ALIM.</th>
-                        <th className="px-2 py-4 border-r border-white/10 text-center">OUTROS SUBS.</th>
-                        <th className="px-2 py-4 border-r border-white/10 text-center">ADIANTAMENTOS</th>
-                        <th className="px-2 py-4 border-r border-white/10 text-center">ACERTOS</th>
-                        <th className="px-4 py-4 border-r border-white/10 text-center sticky right-0 bg-[#1e293b] z-20">VALOR PROCESSADO</th>
-                        <th className="px-4 py-4 text-center">OPÇÕES</th>
+                        <th className="px-1.5 py-3 border-r border-white/10 text-center w-20">DIAS TRAB. / FOLGA</th>
+                        <th className="px-1.5 py-3 border-r border-white/10 text-center w-24">FALTAS (JUST. / INJUST.)</th>
+                        <th className="px-1.5 py-3 border-r border-white/10 text-center w-24">FÉRIAS / ABONOS</th>
+                        <th className="px-1.5 py-3 border-r border-white/10 text-center w-28">H. EXTRA / H. PERD. / PRÉMIOS</th>
+                        <th className="px-1.5 py-3 border-r border-white/10 text-center w-32">SUBSÍDIOS (TRANSP. / ALIM. / NATAL)</th>
+                        <th className="px-1.5 py-3 border-r border-white/10 text-center w-32">ADIANT. / ACERTO / ALOJ.</th>
+                        <th className="px-2 py-3 border-r border-white/10 text-center w-32">VALOR PROCESSADO</th>
+                        <th className="px-2 py-3 text-center w-20">OPÇÕES</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-100">
-                      <tr className="bg-zinc-50/50 text-[9px] font-black text-zinc-400 uppercase">
-                        <td className="px-4 py-2 border-r border-zinc-200"></td>
-                        <td className="px-4 py-2 border-r border-zinc-200" colSpan={11}>Empresa: Grupo TecnoSys • Caixa: {selectedPaymentCaixa ? selectedPaymentCaixa.replace('_', ' ').toUpperCase() : 'NÃO SELECIONADO'}</td>
+                      <tr className="bg-zinc-50/80 text-[8.5px] font-black text-zinc-500 uppercase border-b border-zinc-200">
+                        <td className="px-2 py-1.5 text-center"></td>
+                        <td className="px-2 py-1.5" colSpan={9}>Empresa: Grupo TecnoSys • Caixa: {selectedPaymentCaixa ? selectedPaymentCaixa.replace('_', ' ').toUpperCase() : 'NÃO SELECIONADO'}</td>
                       </tr>
                       {payrollFiltered.map(emp => {
                       const baseInputs = payrollInputs[`${emp.id}_${selectedMonth}`] || { 
@@ -5582,11 +5789,11 @@ const HRModule = ({
                       };
                       
                       return (
-                        <tr key={emp.id} className="hover:bg-zinc-50 transition-colors group">
-                          <td className="px-4 py-4 border-r border-zinc-200 sticky left-0 bg-white group-hover:bg-zinc-50 z-10 w-10">
+                        <tr key={emp.id} className="hover:bg-zinc-50 transition-colors group border-b border-zinc-100">
+                          <td className="px-2 py-3 border-r border-zinc-200 text-center">
                             <input 
                               type="checkbox" 
-                              className="rounded-none accent-[#003366] w-4 h-4 cursor-pointer" 
+                              className="rounded-none accent-[#003366] w-3.5 h-3.5 cursor-pointer" 
                               checked={isProcessed || !!selectedEmployeesToProcess[emp.id]}
                               disabled={isProcessed}
                               onChange={(e) => {
@@ -5597,188 +5804,223 @@ const HRModule = ({
                               }}
                             />
                           </td>
-                          <td className="px-4 py-4 border-r border-zinc-200 sticky left-10 bg-white group-hover:bg-zinc-50 z-10">
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 bg-zinc-100 rounded-none overflow-hidden border border-zinc-200 flex items-center justify-center">
-                                {emp.image_url ? <img src={emp.image_url} className="w-full h-full object-cover" /> : <UserIcon size={16} className="text-zinc-300" />}
+                          <td className="px-2 py-3 border-r border-zinc-200">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 bg-zinc-100 rounded-none overflow-hidden border border-zinc-200 flex items-center justify-center shrink-0">
+                                {emp.image_url ? <img src={emp.image_url} className="w-full h-full object-cover" /> : <UserIcon size={14} className="text-zinc-300" />}
                               </div>
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <div className="font-black text-[#003366] uppercase text-xs">{emp.name}</div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <div className="font-black text-[#003366] uppercase text-[11px] truncate">{emp.name}</div>
                                   {isProcessed && (
-                                    <span className={`px-2 py-0.5 text-[8px] font-black uppercase tracking-widest border ${
+                                    <span className={`px-1.5 py-0.2 text-[7.5px] font-black uppercase tracking-wider border ${
                                       isPaid
                                         ? 'bg-blue-100 text-blue-600 border-blue-200'
                                         : 'bg-emerald-100 text-emerald-600 border-emerald-200'
                                     }`}>
-                                    {isPaid ? 'PAGO' : 'Processado'}
+                                    {isPaid ? 'PAGO' : 'Proc.'}
                                     </span>
                                   )}
                                 </div>
-                                <div className="text-[9px] text-zinc-400 uppercase">Nº {String(emp.id).padStart(3, '0')} • {emp.role}</div>
+                                <div className="text-[8.5px] text-zinc-400 uppercase truncate">Nº {String(emp.id).padStart(3, '0')} • {emp.role}</div>
                               </div>
                             </div>
                           </td>
-                          <td className="px-2 py-4 border-r border-zinc-200">
-                            <input 
-                              type="number" 
-                              value={inputs.diasTrabalho ?? 22}
-                              disabled={isProcessed}
-                              onChange={(e) => updatePayrollInput(emp.id, 'diasTrabalho', Number(e.target.value))}
-                              className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
-                            />
+
+                          {/* 1. DIAS TRABALHO / FOLGA STACKED */}
+                          <td className="p-1 border-r border-zinc-200">
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center justify-between text-[7.5px] font-black text-zinc-600 uppercase">
+                                <span>Trab:</span>
+                                <input 
+                                  type="number" 
+                                  value={inputs.diasTrabalho ?? 22}
+                                  disabled={isProcessed}
+                                  onChange={(e) => updatePayrollInput(emp.id, 'diasTrabalho', Number(e.target.value))}
+                                  className="w-9 border border-zinc-200 px-0.5 py-0.5 text-center text-[10px] font-bold focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
+                                />
+                              </div>
+                              <div className="flex items-center justify-between text-[7.5px] font-black text-zinc-400 uppercase">
+                                <span>Folga:</span>
+                                <input 
+                                  type="number" 
+                                  value={inputs.diasFolga ?? 8}
+                                  disabled={isProcessed}
+                                  onChange={(e) => updatePayrollInput(emp.id, 'diasFolga', Number(e.target.value))}
+                                  className="w-9 border border-zinc-200 px-0.5 py-0.5 text-center text-[10px] font-bold focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
+                                />
+                              </div>
+                            </div>
                           </td>
-                          <td className="px-2 py-4 border-r border-zinc-200">
-                            <input 
-                              type="number" 
-                              value={inputs.diasFolga ?? 8}
-                              disabled={isProcessed}
-                              onChange={(e) => updatePayrollInput(emp.id, 'diasFolga', Number(e.target.value))}
-                              className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
-                            />
+
+                          {/* 2. FALTAS (JUSTIFICADAS / INJUSTIFICADAS STACKED) */}
+                          <td className="p-1 border-r border-zinc-200">
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center justify-between text-[7.5px] font-black text-purple-700 uppercase">
+                                <span>Just.:</span>
+                                <input 
+                                  type="number" 
+                                  value={inputs.faltasJustificadas ?? 0}
+                                  disabled={isProcessed}
+                                  onChange={(e) => updatePayrollInput(emp.id, 'faltasJustificadas', Number(e.target.value))}
+                                  className="w-9 border border-purple-200 text-purple-800 px-0.5 py-0.5 text-center text-[10px] font-bold focus:outline-none focus:border-purple-600 disabled:bg-zinc-100" 
+                                />
+                              </div>
+                              <div className="flex items-center justify-between text-[7.5px] font-black text-red-700 uppercase">
+                                <span>Injust:</span>
+                                <input 
+                                  type="number" 
+                                  value={inputs.faltasInjustificadas ?? 0}
+                                  disabled={isProcessed}
+                                  onChange={(e) => updatePayrollInput(emp.id, 'faltasInjustificadas', Number(e.target.value))}
+                                  className="w-9 border border-red-200 text-red-800 px-0.5 py-0.5 text-center text-[10px] font-bold focus:outline-none focus:border-red-600 disabled:bg-zinc-100" 
+                                />
+                              </div>
+                            </div>
                           </td>
-                          <td className="px-2 py-4 border-r border-zinc-200">
-                            <input 
-                              type="number" 
-                              value={inputs.faltasJustificadas ?? 0}
-                              disabled={isProcessed}
-                              onChange={(e) => updatePayrollInput(emp.id, 'faltasJustificadas', Number(e.target.value))}
-                              className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
-                            />
+
+                          {/* 3. FÉRIAS / ABONOS STACKED */}
+                          <td className="p-1 border-r border-zinc-200">
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center justify-between text-[7.5px] font-black text-amber-700 uppercase">
+                                <span>Férias:</span>
+                                <input 
+                                  type="number" 
+                                  value={inputs.ferias ?? 0}
+                                  disabled={isProcessed}
+                                  onChange={(e) => updatePayrollInput(emp.id, 'ferias', Number(e.target.value))}
+                                  className="w-9 border border-amber-200 text-amber-800 px-0.5 py-0.5 text-center text-[10px] font-bold focus:outline-none focus:border-amber-600 disabled:bg-zinc-100" 
+                                />
+                              </div>
+                              <div className="flex items-center justify-between text-[7.5px] font-black text-blue-700 uppercase">
+                                <span>Abono:</span>
+                                <input 
+                                  type="number" 
+                                  value={inputs.abonos ?? 0}
+                                  disabled={isProcessed}
+                                  onChange={(e) => updatePayrollInput(emp.id, 'abonos', Number(e.target.value))}
+                                  className="w-12 border border-zinc-200 px-0.5 py-0.5 text-center text-[10px] font-bold focus:outline-none focus:border-[#003366] disabled:bg-zinc-100" 
+                                />
+                              </div>
+                            </div>
                           </td>
-                          <td className="px-2 py-4 border-r border-zinc-200">
-                            <input 
-                              type="number" 
-                              value={inputs.faltasInjustificadas ?? 0}
-                              disabled={isProcessed}
-                              onChange={(e) => updatePayrollInput(emp.id, 'faltasInjustificadas', Number(e.target.value))}
-                              className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
-                            />
+
+                          {/* 4. HORAS EXTRA, HORAS PERDIDAS, PREMIOS STACKED */}
+                          <td className="p-1 border-r border-zinc-200">
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center justify-between text-[7.5px] font-black text-blue-800 uppercase">
+                                <span>H.Ext:</span>
+                                <input 
+                                  type="number" 
+                                  value={inputs.horasExtras ?? 0}
+                                  disabled={isProcessed}
+                                  onChange={(e) => updatePayrollInput(emp.id, 'horasExtras', Number(e.target.value))}
+                                  className="w-12 border border-blue-200 text-blue-800 px-0.5 py-0.5 text-center text-[10px] font-bold focus:outline-none focus:border-blue-600 disabled:bg-zinc-100" 
+                                />
+                              </div>
+                              <div className="flex items-center justify-between text-[7.5px] font-black text-red-800 uppercase">
+                                <span>H.Perd:</span>
+                                <input 
+                                  type="number" 
+                                  value={inputs.horasPerdidas ?? 0}
+                                  disabled={isProcessed}
+                                  onChange={(e) => updatePayrollInput(emp.id, 'horasPerdidas', Number(e.target.value))}
+                                  className="w-12 border border-red-200 text-red-800 px-0.5 py-0.5 text-center text-[10px] font-bold focus:outline-none focus:border-red-600 disabled:bg-zinc-100" 
+                                />
+                              </div>
+                              <div className="flex items-center justify-between text-[7.5px] font-black text-emerald-700 uppercase">
+                                <span>Prémio:</span>
+                                <input 
+                                  type="number" 
+                                  value={inputs.premios ?? 0}
+                                  disabled={isProcessed}
+                                  onChange={(e) => updatePayrollInput(emp.id, 'premios', Number(e.target.value))}
+                                  className="w-12 border border-zinc-200 px-0.5 py-0.5 text-center text-[10px] font-bold focus:outline-none focus:border-[#003366] disabled:bg-zinc-100" 
+                                />
+                              </div>
+                            </div>
                           </td>
-                          <td className="px-2 py-4 border-r border-zinc-200">
-                            <input 
-                              type="number" 
-                              value={inputs.ferias ?? 0}
-                              disabled={isProcessed}
-                              onChange={(e) => updatePayrollInput(emp.id, 'ferias', Number(e.target.value))}
-                              className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
-                            />
+
+                          {/* 5. SUBSÍDIOS (TRANSPORTE / ALIMENTAÇÃO / NATAL / OUTROS STACKED) */}
+                          <td className="p-1 border-r border-zinc-200">
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center justify-between text-[7.5px] font-black text-zinc-600 uppercase">
+                                <span>Transp:</span>
+                                <input 
+                                  type="number" 
+                                  value={inputs.subsidioTransporte ?? 0}
+                                  disabled={isProcessed}
+                                  onChange={(e) => updatePayrollInput(emp.id, 'subsidioTransporte', Number(e.target.value))}
+                                  className="w-14 border border-zinc-200 px-0.5 py-0.5 text-center text-[10px] font-bold focus:outline-none focus:border-[#003366] disabled:bg-zinc-100" 
+                                />
+                              </div>
+                              <div className="flex items-center justify-between text-[7.5px] font-black text-zinc-600 uppercase">
+                                <span>Alim.:</span>
+                                <input 
+                                  type="number" 
+                                  value={inputs.subsidioAlimentacao ?? 0}
+                                  disabled={isProcessed}
+                                  onChange={(e) => updatePayrollInput(emp.id, 'subsidioAlimentacao', Number(e.target.value))}
+                                  className="w-14 border border-zinc-200 px-0.5 py-0.5 text-center text-[10px] font-bold focus:outline-none focus:border-[#003366] disabled:bg-zinc-100" 
+                                />
+                              </div>
+                              <div className="flex items-center justify-between text-[7.5px] font-black text-zinc-500 uppercase">
+                                <span>Natal:</span>
+                                <input 
+                                  type="number" 
+                                  value={inputs.subsidioNatal ?? 0}
+                                  disabled={isProcessed}
+                                  onChange={(e) => updatePayrollInput(emp.id, 'subsidioNatal', Number(e.target.value))}
+                                  className="w-14 border border-zinc-200 px-0.5 py-0.5 text-center text-[10px] font-bold focus:outline-none focus:border-[#003366] disabled:bg-zinc-100" 
+                                />
+                              </div>
+                            </div>
                           </td>
-                          <td className="px-2 py-4 border-r border-zinc-200">
-                            <input 
-                              type="number" 
-                              value={inputs.horasExtras ?? 0}
-                              disabled={isProcessed}
-                              onChange={(e) => updatePayrollInput(emp.id, 'horasExtras', Number(e.target.value))}
-                              className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
-                            />
+
+                          {/* 6. ADIANTAMENTO / ACERTO / ALOJAMENTO STACKED */}
+                          <td className="p-1 border-r border-zinc-200">
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center justify-between text-[7.5px] font-black text-amber-800 uppercase">
+                                <span>Adiant:</span>
+                                <input 
+                                  type="number" 
+                                  value={inputs.adiantamentos ?? 0}
+                                  disabled={isProcessed}
+                                  onChange={(e) => updatePayrollInput(emp.id, 'adiantamentos', Number(e.target.value))}
+                                  className="w-14 border border-zinc-200 px-0.5 py-0.5 text-center text-[10px] font-bold focus:outline-none focus:border-[#003366] disabled:bg-zinc-100" 
+                                />
+                              </div>
+                              <div className="flex items-center justify-between text-[7.5px] font-black text-blue-700 uppercase">
+                                <span>Acerto:</span>
+                                <input 
+                                  type="number" 
+                                  value={inputs.acertos ?? 0}
+                                  disabled={isProcessed}
+                                  onChange={(e) => updatePayrollInput(emp.id, 'acertos', Number(e.target.value))}
+                                  className="w-14 border border-zinc-200 px-0.5 py-0.5 text-center text-[10px] font-bold focus:outline-none focus:border-[#003366] disabled:bg-zinc-100" 
+                                />
+                              </div>
+                              <div className="flex items-center justify-between text-[7.5px] font-black text-zinc-600 uppercase">
+                                <span>Aloj.:</span>
+                                <input 
+                                  type="number" 
+                                  value={inputs.alojamento ?? 0}
+                                  disabled={isProcessed}
+                                  onChange={(e) => updatePayrollInput(emp.id, 'alojamento', Number(e.target.value))}
+                                  className="w-14 border border-zinc-200 px-0.5 py-0.5 text-center text-[10px] font-bold focus:outline-none focus:border-[#003366] disabled:bg-zinc-100" 
+                                />
+                              </div>
+                            </div>
                           </td>
-                          <td className="px-2 py-4 border-r border-zinc-200">
-                            <input 
-                              type="number" 
-                              value={inputs.horasPerdidas ?? 0}
-                              disabled={isProcessed}
-                              onChange={(e) => updatePayrollInput(emp.id, 'horasPerdidas', Number(e.target.value))}
-                              className="w-16 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
-                            />
-                          </td>
-                          <td className="px-2 py-4 border-r border-zinc-200">
-                            <input 
-                              type="number" 
-                              value={inputs.premios ?? 0}
-                              disabled={isProcessed}
-                              onChange={(e) => updatePayrollInput(emp.id, 'premios', Number(e.target.value))}
-                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
-                            />
-                          </td>
-                          <td className="px-2 py-4 border-r border-zinc-200">
-                            <input 
-                              type="number" 
-                              value={inputs.gratificacoes ?? 0}
-                              disabled={isProcessed}
-                              onChange={(e) => updatePayrollInput(emp.id, 'gratificacoes', Number(e.target.value))}
-                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
-                            />
-                          </td>
-                          <td className="px-2 py-4 border-r border-zinc-200">
-                            <input 
-                              type="number" 
-                              value={inputs.abonos ?? 0}
-                              disabled={isProcessed}
-                              onChange={(e) => updatePayrollInput(emp.id, 'abonos', Number(e.target.value))}
-                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
-                            />
-                          </td>
-                          <td className="px-2 py-4 border-r border-zinc-200">
-                            <input 
-                              type="number" 
-                              value={inputs.subsidioNatal ?? 0}
-                              disabled={isProcessed}
-                              onChange={(e) => updatePayrollInput(emp.id, 'subsidioNatal', Number(e.target.value))}
-                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
-                            />
-                          </td>
-                          <td className="px-2 py-4 border-r border-zinc-200">
-                            <input 
-                              type="number" 
-                              value={inputs.alojamento ?? 0}
-                              disabled={isProcessed}
-                              onChange={(e) => updatePayrollInput(emp.id, 'alojamento', Number(e.target.value))}
-                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
-                            />
-                          </td>
-                          <td className="px-2 py-4 border-r border-zinc-200">
-                            <input 
-                              type="number" 
-                              value={inputs.subsidioTransporte ?? 0}
-                              disabled={isProcessed}
-                              onChange={(e) => updatePayrollInput(emp.id, 'subsidioTransporte', Number(e.target.value))}
-                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
-                            />
-                          </td>
-                          <td className="px-2 py-4 border-r border-zinc-200">
-                            <input 
-                              type="number" 
-                              value={inputs.subsidioAlimentacao ?? 0}
-                              disabled={isProcessed}
-                              onChange={(e) => updatePayrollInput(emp.id, 'subsidioAlimentacao', Number(e.target.value))}
-                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
-                            />
-                          </td>
-                          <td className="px-2 py-4 border-r border-zinc-200">
-                            <input 
-                              type="number" 
-                              value={inputs.outrosSubsidios ?? 0}
-                              disabled={isProcessed}
-                              onChange={(e) => updatePayrollInput(emp.id, 'outrosSubsidios', Number(e.target.value))}
-                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
-                            />
-                          </td>
-                          <td className="px-2 py-4 border-r border-zinc-200">
-                            <input 
-                              type="number" 
-                              value={inputs.adiantamentos ?? 0}
-                              disabled={isProcessed}
-                              onChange={(e) => updatePayrollInput(emp.id, 'adiantamentos', Number(e.target.value))}
-                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
-                            />
-                          </td>
-                          <td className="px-2 py-4 border-r border-zinc-200">
-                            <input 
-                              type="number" 
-                              value={inputs.acertos ?? 0}
-                              disabled={isProcessed}
-                              onChange={(e) => updatePayrollInput(emp.id, 'acertos', Number(e.target.value))}
-                              className="w-20 border border-zinc-200 px-1 py-1 text-center text-xs focus:outline-none focus:border-[#003366] disabled:bg-zinc-100 disabled:text-zinc-500" 
-                            />
-                          </td>
-                          <td className="px-4 py-4 border-r border-zinc-200 text-right sticky right-0 bg-white group-hover:bg-zinc-50 z-10 font-mono text-xs">
+
+                          {/* VALOR PROCESSADO */}
+                          <td className="px-2 py-3 border-r border-zinc-200 text-right bg-white group-hover:bg-zinc-50 font-mono text-xs">
                             <div className="flex flex-col items-end">
-                              <div className="font-black text-[#16A34A] font-mono">
+                              <div className="font-black text-[#16A34A] font-mono text-[11px]">
                                 {isProcessed ? formatCurrency(totalNet) : formatCurrency(totalNet) + ' (Prev)'}
                               </div>
                               {isProcessed ? (
-                                <span className={`inline-flex items-center gap-1 text-[8px] font-black px-2 py-0.5 mt-1 uppercase tracking-widest border ${
+                                <span className={`inline-flex items-center gap-1 text-[7.5px] font-black px-1.5 py-0.2 mt-1 uppercase tracking-widest border ${
                                   isPaid
                                     ? 'bg-blue-100 text-blue-800 border-blue-200'
                                     : 'bg-emerald-100 text-emerald-800 border-emerald-200'
@@ -5788,9 +6030,9 @@ const HRModule = ({
                               ) : (
                                 <button 
                                   onClick={() => setDraftReceipt(receipt)}
-                                  className="flex items-center gap-1 text-[8px] text-[#003366] hover:text-[#F27D26] mt-1 uppercase font-black cursor-pointer"
+                                  className="flex items-center gap-1 text-[7.5px] text-[#003366] hover:text-[#F27D26] mt-1 uppercase font-black cursor-pointer"
                                 >
-                                  <Eye size={10} /> Visualizar Recibo
+                                  <Eye size={10} /> Recibo
                                 </button>
                               )}
                             </div>
@@ -5830,47 +6072,32 @@ const HRModule = ({
                     })}
                   </tbody>
                   <tfoot>
-                    <tr className="bg-zinc-50 font-black text-[#003366] text-[10px] uppercase tracking-widest">
-                      <td className="px-4 py-4 border-r border-zinc-200 sticky left-0 bg-zinc-50 z-10"></td>
-                      <td className="px-4 py-4 border-r border-zinc-200 sticky left-10 bg-zinc-50 z-10">TOTAL GERAL</td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{(payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.diasTrabalho || 22), 0)}</td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{(payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.diasFolga || 8), 0)}</td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{(payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.faltasJustificadas || 0), 0)}</td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{(payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.faltasInjustificadas || 0), 0)}</td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{(payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.ferias || 0), 0)}</td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{(payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.horasExtras || 0), 0)}</td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center">{(payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.horasPerdidas || 0), 0)}</td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center">
-                        {formatCurrency((payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.premios || 0), 0)).replace('€', '')} Kz
+                    <tr className="bg-zinc-50 font-black text-[#003366] text-[8.5px] uppercase tracking-wider border-t border-zinc-200">
+                      <td className="px-2 py-3 text-center"></td>
+                      <td className="px-2 py-3">TOTAL GERAL ({payrollFiltered.length})</td>
+                      <td className="px-1 py-3 text-center">
+                        <div className="text-zinc-700">T: {(payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.diasTrabalho || 22), 0)}</div>
+                        <div className="text-zinc-400">F: {(payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.diasFolga || 8), 0)}</div>
                       </td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center">
-                        {formatCurrency((payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.gratificacoes || 0), 0)).replace('€', '')} Kz
+                      <td className="px-1 py-3 text-center">
+                        <div className="text-purple-700">J: {(payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.faltasJustificadas || 0), 0)}</div>
+                        <div className="text-red-700">I: {(payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.faltasInjustificadas || 0), 0)}</div>
                       </td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center">
-                        {formatCurrency((payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.abonos || 0), 0)).replace('€', '')} Kz
+                      <td className="px-1 py-3 text-center">
+                        <div className="text-amber-700">F: {(payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.ferias || 0), 0)}</div>
+                        <div className="text-blue-700">A: {formatCurrency((payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.abonos || 0), 0))}</div>
                       </td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center">
-                        {formatCurrency((payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.subsidioNatal || 0), 0)).replace('€', '')} Kz
+                      <td className="px-1 py-3 text-center">
+                        <div className="text-blue-800">HE: {(payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.horasExtras || 0), 0)}</div>
+                        <div className="text-emerald-700">P: {formatCurrency((payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.premios || 0), 0))}</div>
                       </td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center">
-                        {formatCurrency((payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.alojamento || 0), 0)).replace('€', '')} Kz
+                      <td className="px-1 py-3 text-center">
+                        <div className="text-zinc-700">{formatCurrency((payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.subsidioTransporte || 0) + (payrollInputs[`${emp.id}_${selectedMonth}`]?.subsidioAlimentacao || 0), 0))}</div>
                       </td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center">
-                        {formatCurrency((payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.subsidioTransporte || 0), 0)).replace('€', '')} Kz
+                      <td className="px-1 py-3 text-center">
+                        <div className="text-amber-800">{formatCurrency((payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.adiantamentos || 0) + (payrollInputs[`${emp.id}_${selectedMonth}`]?.acertos || 0), 0))}</div>
                       </td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center">
-                        {formatCurrency((payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.subsidioAlimentacao || 0), 0)).replace('€', '')} Kz
-                      </td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center">
-                        {formatCurrency((payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.outrosSubsidios || 0), 0))}
-                      </td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center">
-                        {formatCurrency((payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.adiantamentos || 0), 0))}
-                      </td>
-                      <td className="px-2 py-4 border-r border-zinc-200 text-center">
-                        {formatCurrency((payrollFiltered || []).reduce((sum, emp) => sum + (payrollInputs[`${emp.id}_${selectedMonth}`]?.acertos || 0), 0))}
-                      </td>
-                      <td className="px-4 py-4 border-r border-zinc-200 text-center text-[#F27D26] sticky right-0 bg-zinc-50 z-10">
+                      <td className="px-2 py-3 text-right text-[#F27D26] font-mono text-[11px] font-black">
                         {formatCurrency((payrollFiltered || []).reduce((sum, emp) => {
                           const inputs = payrollInputs[`${emp.id}_${selectedMonth}`] || { 
                             premios: 0, gratificacoes: 0, abonos: 0, subsidioNatal: 0, alojamento: 0, outrosSubsidios: 0,
@@ -5901,7 +6128,7 @@ const HRModule = ({
                           return sum + totalNet;
                         }, 0))}
                       </td>
-                      <td className="px-4 py-4"></td>
+                      <td className="px-2 py-3"></td>
                     </tr>
                   </tfoot>
                 </table>
@@ -16882,21 +17109,33 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
 
         const year = fiscalYear || new Date().getFullYear().toString();
 
-        // Load Purchases
+        // Load Purchases for the selected company and filter by fiscal year locally
         const { data: purData } = await supabase
           .from('compras')
           .select('*')
-          .eq('empresa_id', user.empresa_id)
-          .gte('created_at', `${year}-01-01T00:00:00Z`)
-          .lte('created_at', `${year}-12-31T23:59:59Z`)
-          .order('created_at', { ascending: false });
+          .eq('empresa_id', user.empresa_id);
         
         if (purData) {
-          setPurchases(purData.map((p: any) => ({
+          const yearNum = Number(year);
+          const filteredByYear = purData.filter((p: any) => {
+            const pAno = p.ano ? Number(p.ano) : (p.data_compra ? new Date(p.data_compra).getFullYear() : (p.created_at ? new Date(p.created_at).getFullYear() : null));
+            return pAno === yearNum;
+          });
+
+          // Mapear campos correctos da tabela 'compras' e filtrar apenas documentos de compra reais
+          // (excluir Recibos e Pagamentos que reduzem o saldo, não representam custo)
+          const purchaseDocsOnly = filteredByYear.filter((p: any) => {
+            const tipo = (p.tipo_documento || p.document_type || '').toLowerCase();
+            return tipo.includes('fatura') || tipo === 'fatura de compra' || tipo === 'fatura recibo de compra' || tipo === '';
+          });
+          setPurchases(purchaseDocsOnly.map((p: any) => ({
             ...p,
-            purchase_number: p.numero_compra || p.purchase_number,
-            total: Number(p.total || 0),
-            date: p.data || p.date
+            supplier_id: p.fornecedor_id || p.supplier_id,
+            supplier_name: p.fornecedor_nome || p.supplier_name || '',
+            purchase_number: p.numero_documento || p.numero_compra || p.purchase_number,
+            total: Number(p.valor_total ?? p.total ?? 0),
+            date: p.data_compra || p.data || p.date || p.created_at,
+            document_type: p.tipo_documento || p.document_type || 'Fatura de Compra'
           })));
         }
 
@@ -16921,10 +17160,20 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
     loadAccountingData();
   }, [user?.empresa_id, fiscalYear]);
 
-  const totalSales = (invoices || []).reduce((sum, inv) => sum + inv.total, 0);
-  const totalPurchases = (purchases || []).reduce((sum, pur) => sum + pur.total, 0);
-  const vatLiquidated = (invoices || []).reduce((sum, inv) => sum + (inv.total * 0.14), 0);
-  const vatDeductible = (purchases || []).reduce((sum, pur) => sum + (pur.total * 0.14), 0);
+  // Calcular totais correctos: apenas documentos de venda certificados para vendas,
+  // e apenas faturas de compra reais (já filtradas no useEffect) para compras
+  const totalSales = (issuedDocuments || []).reduce((sum, inv) => {
+    const tipo = (inv.tipo_documento || inv.document_type || '').toUpperCase();
+    // Excluir Notas de Crédito e anulados do total de vendas
+    if (tipo.includes('CRÉDITO') || tipo.includes('CREDITO') || tipo === 'NC') return sum;
+    if (inv.status === 'anulado' || (inv as any).estado === 'ANULADO') return sum;
+    return sum + Number(inv.total || (inv as any).contravalor || 0);
+  }, 0);
+  const totalPurchases = (purchases || []).reduce((sum, pur) => sum + Number(pur.total || 0), 0);
+  // IVA liquidado = IVA cobrado nas vendas (14%)
+  const vatLiquidated = totalSales * 0.14;
+  // IVA dedutível = IVA suportado nas compras (14%)
+  const vatDeductible = totalPurchases * 0.14;
   const vatToPay = vatLiquidated - vatDeductible;
 
   const sections = [
@@ -18072,6 +18321,15 @@ const InvoiceList = ({
   }
 
   const filteredIssuedDocuments = Array.isArray(issuedDocuments) ? issuedDocuments.filter(doc => {
+    // SEGURANÇA: Excluir recibos que vieram de compras (documentos de fornecedores)
+    // Estes documentos NÃO devem aparecer na Faturação Electrónica / Vendas.
+    // São identificados por: documento_origem_id preenchido (referencia um doc de compra)
+    // e por não terem cliente_id real (o "cliente_nome" é na verdade um fornecedor).
+    const docOrigem = (doc as any).documento_origem_id;
+    const docTipo = (doc.tipo_documento || doc.document_type || '').toUpperCase();
+    // Se o tipo é 'RECIBO' (maiúsculas - forma inserida pelos recibos de compra) e tem origem de compra, excluir
+    if (docOrigem && docTipo === 'RECIBO' && !(doc as any).cliente_id) return false;
+
     const getNormalizedTypeForCheck = (type: string) => {
       const t = String(type || '').trim().toUpperCase();
       if (t === 'PP' || t.includes('PROFORMA')) return 'PP';
@@ -21966,15 +22224,23 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
       const purchaseDataFields: any = {
         empresa_id: user.empresa_id,
         fornecedor_id: finalSupplierId || null,
+        supplier_id: finalSupplierId || null,
         data_compra: date,
+        data: date,
         valor_total: Number(finalTotal),
+        total: Number(finalTotal),
         tipo_documento: documentType,
+        document_type: documentType,
         numero_documento: documentNumber || invoiceNumber,
+        numero_compra: documentNumber || invoiceNumber,
+        invoice_number: invoiceNumber || documentNumber,
         data_vencimento: dueDate || null,
+        due_date: dueDate || null,
         taxa_cambio: Number(exchangeRate || 1),
         moeda: currency || 'Kwanza',
         caixa_id: finalCaixaId,
         itens: items,
+        items: items,
         descricao: `${documentType} nº ${invoiceNumber || documentNumber}`,
         ano: Number(new Date(date).getFullYear()),
         created_by: user.id,
@@ -22282,11 +22548,10 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
                 value={documentType} 
                 onChange={(e) => setDocumentType(e.target.value)}
                 required
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold"
               >
                 <option value="Fatura de Compra">Fatura de Compra</option>
                 <option value="Fatura Recibo de Compra">Fatura Recibo de Compra</option>
-                <option value="Pagamento">Recibo</option>
                 <option value="Nota de Crédito de Fornecedor">Nota de Crédito de Fornecedor</option>
                 <option value="Nota de Débito de Fornecedor">Nota de Débito de Fornecedor</option>
                 <option value="Guia de Entrada">Guia de Entrada</option>
@@ -22903,16 +23168,39 @@ const PurchaseActionsModal = ({ purchase, onClose, onAction }: {
             </div>
           </button>
 
-          {['Fatura de Compra', 'Compra', 'FT', 'Fatura'].includes(purchase.document_type || '') && (
-            <button onClick={() => handleAction('receipt')} className="flex items-center gap-4 p-4 bg-emerald-50/10 border border-emerald-100 hover:bg-emerald-50 hover:shadow-md transition-all group text-left">
-              <div className="w-10 h-10 bg-white border border-emerald-100 flex items-center justify-center text-emerald-600">
-                 <FileCheck size={20} />
-              </div>
-              <div>
-                <span className="block text-xs font-black uppercase tracking-wider text-emerald-700">Liquidado / Pago</span>
-                <span className="text-[9px] font-bold text-emerald-400 uppercase">Registar recibo de pagamento</span>
-              </div>
-            </button>
+          {['Fatura de Compra', 'Compra', 'FT', 'Fatura'].includes((purchase as any).tipo_documento || purchase.document_type || '') && (
+            (() => {
+              const totalDoc = Number(purchase.total || (purchase as any).valor_total || 0);
+              const paidDoc = Number(purchase.valor_pago || 0);
+              const pendDoc = (purchase as any).saldo_pendente !== undefined && (purchase as any).saldo_pendente !== null
+                ? Number((purchase as any).saldo_pendente)
+                : Math.max(0, totalDoc - paidDoc);
+              const isPaid = purchase.recibo_emitido || purchase.status === 'pago' || (purchase as any).estado === 'PAGO' || (pendDoc <= 0 && totalDoc > 0);
+
+              return (
+                <button 
+                  disabled={isPaid}
+                  onClick={() => !isPaid && handleAction('receipt')} 
+                  className={`flex items-center gap-4 p-4 border transition-all text-left ${isPaid ? 'bg-zinc-100 border-zinc-200 opacity-60 cursor-not-allowed' : 'bg-emerald-50/10 border-emerald-100 hover:bg-emerald-50 hover:shadow-md group'}`}
+                >
+                  <div className={`w-10 h-10 border flex items-center justify-center ${isPaid ? 'bg-zinc-200 border-zinc-300 text-zinc-400' : 'bg-white border-emerald-100 text-emerald-600'}`}>
+                     <FileCheck size={20} />
+                  </div>
+                  <div>
+                    <span className={`block text-xs font-black uppercase tracking-wider ${isPaid ? 'text-zinc-500' : 'text-emerald-700'}`}>
+                      {isPaid ? 'Recibo Emitido (Bloqueado)' : 'Emitir Recibo'}
+                    </span>
+                    <span className={`text-[9px] font-bold uppercase ${isPaid ? 'text-zinc-400' : 'text-emerald-500'}`}>
+                      {isPaid 
+                        ? 'Fatura totalmente liquidada (Opção bloqueada)' 
+                        : paidDoc > 0 
+                          ? `Registar Pagamento Parcial (Saldo: ${formatCurrency(pendDoc)})` 
+                          : 'Registar recibo de pagamento'}
+                    </span>
+                  </div>
+                </button>
+              );
+            })()
           )}
 
           {['Fatura de Compra', 'Compra', 'FT', 'Fatura'].includes(purchase.document_type || '') && (
@@ -23431,7 +23719,6 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
       console.log('[DELETE compras SUCCESS]');
       setPurchases((prev: any) => prev.filter((p: any) => p.id !== id));
       toast.success('Compra eliminada permanentemente (incluindo ficheiros do Supabase) com sucesso!');
-      
       // Atualizar lista local
       fetchPurchases();
       console.log('[DELETE compras] State updated, document removed from local view.');
@@ -23489,7 +23776,6 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
 
   const handleStartCreate = (data: Purchase | null = null, type: string | undefined = undefined) => {
     if (!data && !type) {
-      // New purchase
       const nextNum = nextPurchaseNumber();
       setCreateData({ purchase_number: nextNum } as any);
     } else {
@@ -23498,6 +23784,10 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
     setCreateType(type);
     setIsCreating(true);
   };
+
+  const [filterDocType, setFilterDocType] = useState<string>('');
+  const [filterSupplierId, setFilterSupplierId] = useState<string>('');
+  const [filterWorkSiteId, setFilterWorkSiteId] = useState<string>('');
 
   if (isCreating) {
     return (
@@ -23545,6 +23835,186 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
     );
   }
 
+  const handleDownloadPurchasesPDF = (listToExport: Purchase[], titleName = "Relatório da Gestão de Compras") => {
+    const win = window.open('', '_blank');
+    if (!win) return;
+
+    const totalSum = listToExport.reduce((acc, p) => acc + Number(p.total || (p as any).valor_total || 0), 0);
+    const totalPaid = listToExport.reduce((acc, p) => acc + Number(p.valor_pago || 0), 0);
+    const totalPending = listToExport.reduce((acc, p) => {
+      const tot = Number(p.total || (p as any).valor_total || 0);
+      const paid = Number(p.valor_pago || 0);
+      const pend = (p as any).saldo_pendente !== undefined && (p as any).saldo_pendente !== null ? Number((p as any).saldo_pendente) : Math.max(0, tot - paid);
+      return acc + pend;
+    }, 0);
+
+    const selectedSup = suppliers.find(s => String(s.id) === String(filterSupplierId));
+    const selectedWS = workSites.find(w => String(w.id) === String(filterWorkSiteId));
+
+    win.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>${titleName}</title>
+          <meta charset="utf-8" />
+          <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 11px; margin: 20px; color: #1e293b; }
+            .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #003366; padding-bottom: 12px; margin-bottom: 16px; }
+            .header h1 { color: #003366; margin: 0; font-size: 18px; text-transform: uppercase; }
+            .header p { margin: 2px 0 0 0; color: #64748b; font-size: 10px; }
+            .filters { background: #f8fafc; border: 1px solid #cbd5e1; padding: 10px; margin-bottom: 16px; font-size: 10px; display: flex; flex-wrap: wrap; gap: 15px; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+            th { background: #003366; color: #ffffff; text-transform: uppercase; font-size: 9px; padding: 8px 6px; text-align: left; }
+            td { padding: 7px 6px; border-bottom: 1px solid #e2e8f0; font-size: 10px; }
+            tr:nth-child(even) { background-color: #f8fafc; }
+            .text-right { text-align: right; }
+            .text-center { text-align: center; }
+            .font-bold { font-weight: bold; }
+            .summary { display: flex; justify-content: flex-end; gap: 20px; margin-top: 16px; font-size: 11px; }
+            .summary-box { background: #f1f5f9; padding: 8px 14px; border: 1px solid #cbd5e1; text-align: right; }
+            .footer { text-align: center; margin-top: 30px; font-size: 9px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 8px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div>
+              <h1>${companyData?.nome || companyData?.name || 'SISTEMA DE GESTÃO'}</h1>
+              <p>${titleName.toUpperCase()} • NIF: ${companyData?.nif || '-'}</p>
+            </div>
+            <div style="text-align: right;">
+              <p><strong>Data:</strong> ${new Date().toLocaleDateString('pt-PT')} ${new Date().toLocaleTimeString('pt-PT')}</p>
+              <p><strong>Exercício:</strong> ${fiscalYear}</p>
+            </div>
+          </div>
+
+          <div class="filters">
+            <div><strong>Filtro Documento:</strong> ${filterDocType || 'Todos'}</div>
+            <div><strong>Filtro Fornecedor:</strong> ${selectedSup ? selectedSup.name : 'Todos'}</div>
+            <div><strong>Filtro Centro de Custo:</strong> ${selectedWS ? selectedWS.name : 'Todos'}</div>
+            ${searchTerm ? `<div><strong>Pesquisa:</strong> "${searchTerm}"</div>` : ''}
+            <div><strong>Total Registos:</strong> ${listToExport.length}</div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Tipo / Nº Doc Fornecedor</th>
+                <th>Nº Interno</th>
+                <th>Fornecedor</th>
+                <th>Centro de Custo</th>
+                <th class="text-center">Moeda</th>
+                <th class="text-right">Valor Pago</th>
+                <th class="text-right">Valor Total</th>
+                <th class="text-center">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${listToExport.map(p => `
+                <tr>
+                  <td>${new Date(p.date).toLocaleDateString('pt-PT')}</td>
+                  <td><strong>${p.tipo_documento || p.document_type || 'Compra'}</strong><br/><small>${p.invoice_number || '-'}</small></td>
+                  <td>${p.purchase_number || p.codigo || '-'}</td>
+                  <td><strong>${p.supplier_name || '-'}</strong></td>
+                  <td>${p.work_site || (p as any).work_site_name || '-'}</td>
+                  <td class="text-center">${p.currency || 'AOA'}</td>
+                  <td class="text-right" style="color: #059669;">${formatCurrency(p.valor_pago || 0)}</td>
+                  <td class="text-right font-bold">${formatCurrency(p.total || (p as any).valor_total || 0)}</td>
+                  <td class="text-center"><strong>${(p.recibo_emitido || p.status === 'pago') ? 'PAGO' : (p.status || 'pendente').toUpperCase()}</strong></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+
+          <div class="summary">
+            <div class="summary-box">
+              <div>TOTAL GERAL</div>
+              <strong style="font-size: 13px; color: #003366;">${formatCurrency(totalSum)}</strong>
+            </div>
+            <div class="summary-box">
+              <div>TOTAL PAGO</div>
+              <strong style="font-size: 13px; color: #059669;">${formatCurrency(totalPaid)}</strong>
+            </div>
+            <div class="summary-box">
+              <div>SALDO PENDENTE</div>
+              <strong style="font-size: 13px; color: #dc2626;">${formatCurrency(totalPending)}</strong>
+            </div>
+          </div>
+
+          <div class="footer">
+            Documento gerado automaticamente pelo Sistema de Gestão AGT.
+          </div>
+
+          <script>
+            window.onload = function() { window.print(); }
+          </script>
+        </body>
+      </html>
+    `);
+    win.document.close();
+  };
+
+  const filteredHistoricoPurchases = purchases.filter(p => {
+    if (filterDocType) {
+      const docType = (p.tipo_documento || p.document_type || '').toLowerCase();
+      if (docType !== filterDocType.toLowerCase()) return false;
+    }
+    if (filterSupplierId) {
+      const supId = String((p as any).fornecedor_id || p.supplier_id || '');
+      const supName = String(p.supplier_name || (p as any).fornecedor_nome || '');
+      const targetSup = suppliers.find(s => String(s.id) === String(filterSupplierId));
+      if (supId !== String(filterSupplierId) && targetSup && !supName.toLowerCase().includes(targetSup.name.toLowerCase())) {
+        return false;
+      }
+    }
+    if (filterWorkSiteId) {
+      const wsId = String((p as any).work_site_id || (p as any).work_site || '');
+      const wsName = String((p as any).work_site_name || (p as any).work_site || '');
+      const targetWS = workSites.find(w => String(w.id) === String(filterWorkSiteId));
+      if (wsId !== String(filterWorkSiteId) && targetWS && !wsName.toLowerCase().includes(targetWS.name.toLowerCase())) {
+        return false;
+      }
+    }
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      const supMatch = (p.supplier_name || '').toLowerCase().includes(term);
+      const numMatch = (p.purchase_number || '').toLowerCase().includes(term);
+      const codMatch = (p.codigo || '').toLowerCase().includes(term);
+      const invMatch = (p.invoice_number || '').toLowerCase().includes(term);
+      if (!supMatch && !numMatch && !codMatch && !invMatch) return false;
+    }
+    return true;
+  });
+
+  const filteredPendingPurchases = purchases.filter(p => {
+    if (['cancelled', 'anulado'].includes((p.status || '').toLowerCase())) return false;
+
+    const docType = (p.tipo_documento || p.document_type || '').toUpperCase();
+    const isInvoice = docType.includes('FATURA') || docType.includes('FT') || docType.includes('COMPRA');
+    const isReceiptOrCredit = docType.includes('RECIBO') || docType.includes('PAGAMENTO') || docType.includes('CRÉDITO') || docType.includes('CREDITO');
+    if (!isInvoice || isReceiptOrCredit) return false;
+
+    const totalDoc = Number(p.total || (p as any).valor_total || 0);
+    const paidDoc = Number(p.valor_pago || 0);
+    const pendingBalance = (p as any).saldo_pendente !== undefined && (p as any).saldo_pendente !== null
+      ? Number((p as any).saldo_pendente)
+      : Math.max(0, totalDoc - paidDoc);
+
+    const isFullyPaid = p.recibo_emitido === true || p.status === 'pago' || (p as any).estado === 'PAGO' || (pendingBalance <= 0.01 && totalDoc > 0);
+
+    if (isFullyPaid || pendingBalance <= 0.01) return false;
+
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      const supMatch = (p.supplier_name || '').toLowerCase().includes(term);
+      const numMatch = (p.purchase_number || '').toLowerCase().includes(term);
+      const invMatch = (p.invoice_number || '').toLowerCase().includes(term);
+      if (!supMatch && !numMatch && !invMatch) return false;
+    }
+
+    return true;
+  });
+
   const tabs = [
     { id: 'historico', label: 'Gestão de Compras', icon: History },
     { id: 'pendentes', label: 'Compras Pendentes', icon: Clock },
@@ -23555,23 +24025,23 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
   ];
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-[#003366] text-white flex items-center justify-center shadow-lg">
-            <ShoppingCart size={24} />
+    <div className="space-y-8 min-h-screen">
+      <div className="flex justify-between items-center py-2">
+        <div className="flex items-center gap-6">
+          <div className="w-16 h-16 bg-[#003366] text-white flex items-center justify-center shadow-xl">
+            <ShoppingCart size={32} />
           </div>
           <div>
-            <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Gestão de Compras</h2>
-            <p className="text-zinc-400 text-xs font-medium uppercase tracking-widest">Controlo de entrada de mercadorias e fornecedores</p>
+            <h2 className="text-4xl font-black text-[#003366] tracking-tight">Gestão de Compras</h2>
+            <p className="text-zinc-400 text-sm font-bold uppercase tracking-widest mt-1">Controlo de entrada de mercadorias e fornecedores</p>
           </div>
         </div>
         <div className="flex gap-3">
           <button 
             onClick={() => handleStartCreate(null, undefined)}
-            className="bg-[#003366] hover:bg-[#002244] text-white font-bold px-6 py-2.5 rounded-none flex items-center gap-2 transition-all shadow-sm text-sm"
+            className="bg-[#003366] hover:bg-[#002244] text-white font-black px-8 py-4 rounded-none flex items-center gap-3 transition-all shadow-lg text-base uppercase tracking-widest"
           >
-            <Plus size={18} />
+            <Plus size={22} />
             Registar Compra
           </button>
         </div>
@@ -23582,13 +24052,13 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
           <button
             key={tab.id}
             onClick={() => setActiveSubTab(tab.id)}
-            className={`flex items-center gap-2 pb-4 text-xs font-bold uppercase tracking-widest transition-all relative ${
+            className={`flex items-center gap-2 pb-5 text-sm font-bold uppercase tracking-widest transition-all relative ${
               activeSubTab === tab.id 
                 ? 'text-[#003366]' 
                 : 'text-zinc-400 hover:text-zinc-600'
             }`}
           >
-            <tab.icon size={16} className={activeSubTab === tab.id ? 'text-[#003366]' : 'text-zinc-400'} />
+            <tab.icon size={18} className={activeSubTab === tab.id ? 'text-[#003366]' : 'text-zinc-400'} />
             {tab.label}
             {activeSubTab === tab.id && (
               <motion.div 
@@ -23603,50 +24073,94 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
       {activeSubTab === 'historico' && (
         <>
           <div className="bg-white border border-zinc-200 rounded-none shadow-sm flex flex-wrap gap-4 items-end p-4">
-            <div className="flex-1 min-w-[200px] space-y-1.5">
+            <div className="space-y-1.5 flex-1 min-w-[180px]">
+              <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Tipo de Documento</label>
+              <select 
+                value={filterDocType} 
+                onChange={(e) => setFilterDocType(e.target.value)}
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-xs font-bold text-zinc-800 focus:outline-none focus:border-[#003366]"
+              >
+                <option value="">Todos os Tipos</option>
+                <option value="Fatura de Compra">Fatura de Compra</option>
+                <option value="Fatura Recibo de Compra">Fatura Recibo de Compra</option>
+                <option value="Recibo">Recibo</option>
+                <option value="Nota de Crédito de Fornecedor">Nota de Crédito de Fornecedor</option>
+                <option value="Nota de Débito de Fornecedor">Nota de Débito de Fornecedor</option>
+                <option value="Guia de Entrada">Guia de Entrada</option>
+              </select>
+            </div>
+
+            <div className="space-y-1.5 flex-1 min-w-[180px]">
+              <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Fornecedor</label>
+              <select 
+                value={filterSupplierId} 
+                onChange={(e) => setFilterSupplierId(e.target.value)}
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-xs font-bold text-zinc-800 focus:outline-none focus:border-[#003366]"
+              >
+                <option value="">Todos os Fornecedores</option>
+                {(suppliers || []).map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5 flex-1 min-w-[180px]">
+              <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Centro de Custo / Local</label>
+              <select 
+                value={filterWorkSiteId} 
+                onChange={(e) => setFilterWorkSiteId(e.target.value)}
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-xs font-bold text-zinc-800 focus:outline-none focus:border-[#003366]"
+              >
+                <option value="">Todos os Centros de Custo</option>
+                {(workSites || []).map(w => (
+                  <option key={w.id} value={w.id}>{w.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5 flex-1 min-w-[180px]">
               <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Pesquisar Compra</label>
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
                 <input 
                   type="text" 
-                  placeholder="Fornecedor, Nº Compra..." 
+                  placeholder="Nº Compra, Ref..." 
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 bg-zinc-50 border border-zinc-200 rounded-none text-sm focus:outline-none focus:border-[#003366] transition-all"
+                  className="w-full pl-9 pr-4 py-2 bg-zinc-50 border border-zinc-200 rounded-none text-xs font-medium focus:outline-none focus:border-[#003366]"
                 />
               </div>
             </div>
-            <button className="bg-zinc-100 text-zinc-600 font-bold px-4 py-2 rounded-none flex items-center gap-2 hover:bg-zinc-200 transition-all text-sm">
-              <Filter size={16} />
-              Filtrar
+
+            <button 
+              onClick={() => handleDownloadPurchasesPDF(filteredHistoricoPurchases, "Relatório da Gestão de Compras")}
+              className="bg-[#003366] text-white font-bold px-4 py-2 rounded-none flex items-center gap-2 hover:bg-[#002244] transition-all text-xs uppercase tracking-wider shadow-md"
+            >
+              <FileDown size={16} />
+              Baixar Lista em PDF
             </button>
           </div>
 
           <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm overflow-x-auto">
             <table className="w-full text-left border-collapse whitespace-nowrap">
               <thead>
-                <tr className="bg-[#003366] text-white text-[11px] uppercase tracking-wider font-bold">
-                  <th className="px-6 py-4">Data Emissão /<br/>Vencimento</th>
-                  <th className="px-6 py-4 border-r border-[#004488]">Tipo /<br/>Nº Doc Fornecedor</th>
-                  <th className="px-6 py-4">Nº Interno</th>
-                  <th className="px-6 py-4">Fornecedor</th>
-                  <th className="px-6 py-4">Centro de Custo /<br/>Local Trabalho</th>
-                  <th className="px-6 py-4 text-center">M</th>
-                  <th className="px-6 py-4 text-right">Valor Total</th>
-                  <th className="px-6 py-4 border-l border-[#004488] text-center">Status</th>
-                  <th className="px-6 py-4 text-center">PDF</th>
-                  <th className="px-6 py-4 text-right px-8">Ações</th>
+                <tr className="bg-[#003366] text-white text-[13px] uppercase tracking-wider font-bold">
+                  <th className="px-6 py-5">Data Emissão /<br/>Vencimento</th>
+                  <th className="px-6 py-5 border-r border-[#004488]">Tipo /<br/>Nº Doc Fornecedor</th>
+                  <th className="px-6 py-5">Nº Interno</th>
+                  <th className="px-6 py-5">Fornecedor</th>
+                  <th className="px-6 py-5">Centro de Custo /<br/>Local Trabalho</th>
+                  <th className="px-6 py-5 text-center">M</th>
+                  <th className="px-6 py-5 text-right">Valor Total</th>
+                  <th className="px-6 py-5 border-l border-[#004488] text-center">Status</th>
+                  <th className="px-6 py-5 text-center">PDF</th>
+                  <th className="px-6 py-5 text-right">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
-                {purchases
-                  .filter(p => 
-                    (p.supplier_name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) || 
-                    (p.purchase_number || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
-                    (p.codigo || '').toLowerCase().includes((searchTerm || '').toLowerCase())
-                  )
+                {filteredHistoricoPurchases
                   .map((p, pIndex) => (
-                    <tr key={p.id || pIndex} className={`hover:bg-zinc-50 transition-colors text-[11px] border-b border-zinc-50 group ${p.status === 'cancelled' ? 'opacity-50' : ''}`}>
+                    <tr key={p.id || pIndex} className={`hover:bg-zinc-50 transition-colors text-[13px] border-b border-zinc-50 group ${p.status === 'cancelled' ? 'opacity-50' : ''}`}>
                        <td className="px-6 py-4">
                         <div className="font-bold text-zinc-900">{new Date(p.date).toLocaleDateString('pt-PT')}</div>
                         <div className="text-red-600 font-bold mt-1">{p.due_date ? new Date(p.due_date).toLocaleDateString('pt-PT') : '-'}</div>
@@ -23674,7 +24188,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                       <td className="px-6 py-4 font-mono text-[#003366] font-black">{p.purchase_number || p.codigo || '-'}</td>
                       <td className="px-6 py-4 font-black text-zinc-900 uppercase">{p.supplier_name || p.client_name || '-'}</td>
                       <td className="px-6 py-4">
-                        <div className="text-zinc-600 uppercase font-black">{p.work_site || p.work_site_name || '-'}</div>
+                        <div className="text-zinc-600 uppercase font-black">{p.work_site || (p as any).work_site_name || '-'}</div>
                         <div className="text-zinc-400 font-mono text-[9px] uppercase mt-1">
                           {p.hash ? 'H • ' + p.hash.substring(0, 8) : '-'}
                         </div>
@@ -23735,8 +24249,8 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                   ))}
               </tbody>
             </table>
-            {purchases.filter(p => !['Pagamento', 'Recibo'].includes(p.document_type || '')).length === 0 && (
-              <div className="p-12 text-center text-zinc-400 text-sm italic uppercase font-black tracking-widest bg-zinc-50/20">Nenhuma compra registada no sistema.</div>
+            {filteredHistoricoPurchases.length === 0 && (
+              <div className="p-12 text-center text-zinc-400 text-sm italic uppercase font-black tracking-widest bg-zinc-50/20">Nenhuma compra encontrada com os filtros selecionados.</div>
             )}
           </div>
         </>
@@ -23758,74 +24272,81 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                 />
               </div>
             </div>
-            <button className="bg-zinc-100 text-zinc-600 font-bold px-4 py-2 rounded-none flex items-center gap-2 hover:bg-zinc-200 transition-all text-sm">
-              <Filter size={16} />
-              Filtrar Pendentes
+            <button 
+              onClick={() => handleDownloadPurchasesPDF(filteredPendingPurchases, "Relatório de Compras Pendentes")}
+              className="bg-[#003366] text-white font-bold px-4 py-2 rounded-none flex items-center gap-2 hover:bg-[#002244] transition-all text-sm uppercase tracking-wider shadow-md"
+            >
+              <FileDown size={16} />
+              Baixar Pendentes em PDF
             </button>
           </div>
 
           <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm overflow-x-auto">
             <table className="w-full text-left border-collapse whitespace-nowrap">
               <thead>
-                <tr className="bg-[#003366] text-white text-[11px] uppercase tracking-wider font-bold">
-                  <th className="px-6 py-4">Data Emissão /<br/>Vencimento</th>
-                  <th className="px-6 py-4 border-r border-[#004488]">Tipo /<br/>Nº Doc Fornecedor</th>
-                  <th className="px-6 py-4">Nº Interno</th>
-                  <th className="px-6 py-4">Fornecedor</th>
-                  <th className="px-6 py-4 text-center">M</th>
-                  <th className="px-6 py-4 text-right">Valor Pago</th>
-                  <th className="px-6 py-4 text-right">Valor Total</th>
-                  <th className="px-6 py-4 text-right px-8">Ações</th>
+                <tr className="bg-[#003366] text-white text-[13px] uppercase tracking-wider font-bold">
+                  <th className="px-6 py-5">Data Emissão /<br/>Vencimento</th>
+                  <th className="px-6 py-5 border-r border-[#004488]">Tipo /<br/>Nº Doc Fornecedor</th>
+                  <th className="px-6 py-5">Nº Interno</th>
+                  <th className="px-6 py-5">Fornecedor</th>
+                  <th className="px-6 py-5 text-center">M</th>
+                  <th className="px-6 py-5 text-right">Valor Pago</th>
+                  <th className="px-6 py-5 text-right">Saldo Pendente</th>
+                  <th className="px-6 py-5 text-right">Valor Total</th>
+                  <th className="px-6 py-5 text-right px-8">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100 italic">
-                {purchases
-                  .filter(p => !['cancelled', 'anulado'].includes(p.status || ''))
-                  .filter(p => !p.recibo_emitido && p.status !== 'pago')
-                  .filter(p => (['Fatura Recibo de Compra', 'Fatura de Compra', 'Fatura'].includes(p.document_type || '')))
-                  .filter(p => {
-                    const linkedReceipt = purchases.find((pur: any) => 
-                      (['Pagamento', 'Recibo', 'Recibo de Pagamento'].includes(pur.document_type || '')) && 
-                      (pur.reference_purchase_number === p.purchase_number || pur.reference_document === p.purchase_number)
+                {filteredPendingPurchases
+                  .map((p, pIndex) => {
+                    const totalDoc = Number(p.total || (p as any).valor_total || 0);
+                    const paidDoc = Number(p.valor_pago || 0);
+                    const pendingBalance = (p as any).saldo_pendente !== undefined && (p as any).saldo_pendente !== null
+                      ? Number((p as any).saldo_pendente)
+                      : Math.max(0, totalDoc - paidDoc);
+
+                    return (
+                      <tr key={p.id || pIndex} className="hover:bg-amber-50/50 transition-colors text-[13px] border-b border-zinc-50 group">
+                        <td className="px-6 py-4">
+                          <div className="font-bold text-zinc-900">{new Date(p.date).toLocaleDateString('pt-PT')}</div>
+                          <div className="text-red-500 font-bold mt-1">{p.due_date ? new Date(p.due_date).toLocaleDateString('pt-PT') : '-'}</div>
+                        </td>
+                        <td className="px-6 py-4 border-r border-zinc-100">
+                          <div className="font-black text-[#003366] uppercase whitespace-nowrap">{p.document_type || 'Compra'}</div>
+                          <div className="text-zinc-500 font-bold mt-1">{p.invoice_number || '-'}</div>
+                        </td>
+                        <td className="px-6 py-4 font-mono text-zinc-500">{p.codigo || p.purchase_number}</td>
+                        <td className="px-6 py-4 font-bold text-zinc-900">{p.supplier_name}</td>
+                        <td className="px-6 py-4 text-center text-zinc-600 font-medium">{p.currency || 'AOA'}</td>
+                        <td className="px-6 py-4 text-right font-bold text-emerald-600">{formatCurrency(paidDoc)}</td>
+                        <td className="px-6 py-4 text-right font-black text-amber-600 text-sm italic">{formatCurrency(pendingBalance)}</td>
+                        <td className="px-6 py-4 text-right font-black text-[#003366] text-sm">{formatCurrency(totalDoc)}</td>
+                        <td className="px-6 py-4 text-right pr-8">
+                          <div className="flex items-center justify-end gap-3 font-sans">
+                            <UserIssuerButton doc={p} globalUsers={globalUsers} />
+                            <button 
+                              onClick={() => setShowReceiptModal(p)}
+                              className="bg-emerald-600 text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 shadow-md transition-all flex items-center gap-1.5"
+                            >
+                              <FileCheck size={14} />
+                              Emitir Recibo
+                            </button>
+                            <button 
+                              onClick={() => setSelectedPurchase(p)}
+                              className="bg-[#003366] text-white p-2 hover:bg-[#002244] shadow-sm transition-all"
+                              title="Opções do Documento"
+                            >
+                              <MoreHorizontal size={16} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
                     );
-                    return !linkedReceipt;
-                  })
-                  .filter(p => 
-                    (p.supplier_name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) || 
-                    (p.purchase_number || '').toLowerCase().includes((searchTerm || '').toLowerCase())
-                  )
-                  .map((p, pIndex) => (
-                    <tr key={p.id || pIndex} className="hover:bg-amber-50/50 transition-colors text-[11px] border-b border-zinc-50 group">
-                      <td className="px-6 py-4">
-                        <div className="font-bold text-zinc-900">{new Date(p.date).toLocaleDateString('pt-PT')}</div>
-                        <div className="text-red-500 font-bold mt-1">{p.due_date ? new Date(p.due_date).toLocaleDateString('pt-PT') : '-'}</div>
-                      </td>
-                      <td className="px-6 py-4 border-r border-zinc-100">
-                        <div className="font-black text-[#003366] uppercase whitespace-nowrap">{p.document_type || 'Compra'}</div>
-                        <div className="text-zinc-500 font-bold mt-1">{p.invoice_number || '-'}</div>
-                      </td>
-                      <td className="px-6 py-4 font-mono text-zinc-500">{p.codigo || p.purchase_number}</td>
-                      <td className="px-6 py-4 font-bold text-zinc-900">{p.supplier_name}</td>
-                      <td className="px-6 py-4 text-center text-zinc-600 font-medium">{p.currency || 'AOA'}</td>
-                      <td className="px-6 py-4 text-right font-bold text-emerald-600">{formatCurrency(0)}</td>
-                      <td className="px-6 py-4 text-right font-black text-red-600 text-sm italic">{formatCurrency(p.total)}</td>
-                      <td className="px-6 py-4 text-right pr-8">
-                        <div className="flex items-center justify-end gap-3 font-sans">
-                          <UserIssuerButton doc={p} globalUsers={globalUsers} />
-                          <button 
-                            onClick={() => setSelectedPurchase(p)}
-                            className="bg-[#003366] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-[#002244] shadow-sm transition-all"
-                          >
-                            Liquidar
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  })}
               </tbody>
             </table>
-            {purchases.filter(p => p.status === 'pending').length === 0 && (
-              <div className="p-12 text-center text-zinc-400 text-sm italic">Não existem faturas pendentes.</div>
+            {filteredPendingPurchases.length === 0 && (
+              <div className="p-12 text-center text-zinc-400 text-sm italic uppercase font-black tracking-widest bg-zinc-50/20">Não existem faturas de compras pendentes de pagamento no sistema.</div>
             )}
           </div>
         </>
@@ -23850,15 +24371,15 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
           <div className="bg-white border border-zinc-200 overflow-hidden shadow-sm overflow-x-auto">
             <table className="w-full text-left border-collapse whitespace-nowrap">
               <thead>
-                <tr className="bg-zinc-100/50 text-[#003366] text-[11px] uppercase tracking-wider font-black border-b border-zinc-200">
-                  <th className="px-6 py-4">Fornecedor</th>
-                  <th className="px-6 py-4">NIF / Contribuinte</th>
-                  <th className="px-6 py-4">Contacto / Email</th>
-                  <th className="px-6 py-4">Localização (País/Prov)</th>
-                  <th className="px-6 py-4">Tipo Fornecedor</th>
-                  <th className="px-6 py-4">Banco / IBAN</th>
-                  <th className="px-6 py-4 text-right">Crédito/Saldo</th>
-                  <th className="px-6 py-4">Ações</th>
+                <tr className="bg-zinc-100/50 text-[#003366] text-[14px] uppercase tracking-wider font-black border-b border-zinc-200">
+                  <th className="px-6 py-5">Fornecedor</th>
+                  <th className="px-6 py-5">NIF / Contribuinte</th>
+                  <th className="px-6 py-5">Contacto / Email</th>
+                  <th className="px-6 py-5">Localização (País/Prov)</th>
+                  <th className="px-6 py-5">Tipo Fornecedor</th>
+                  <th className="px-6 py-5">Banco / IBAN</th>
+                  <th className="px-6 py-5 text-right">Crédito/Saldo</th>
+                  <th className="px-6 py-5">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
@@ -24747,12 +25268,26 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                 const rAmount = Number(target.receipt_amount.value);
                 const rObs = target.receipt_obs.value;
 
+                const docTotal = Number(showReceiptModal.total || showReceiptModal.valor_total || 0);
+                const alreadyPaid = Number(showReceiptModal.valor_pago || 0);
+                const currentPending = showReceiptModal.saldo_pendente !== undefined && showReceiptModal.saldo_pendente !== null 
+                  ? Number(showReceiptModal.saldo_pendente) 
+                  : Math.max(0, docTotal - alreadyPaid);
+
                 if (!rCaixa) {
                   alert('Por favor selecione uma caixa de pagamento.');
                   return;
                 }
                 if (!rMethod) {
                   alert('Por favor selecione a forma de pagamento.');
+                  return;
+                }
+                if (rAmount <= 0) {
+                  alert('O valor do recibo deve ser superior a 0.');
+                  return;
+                }
+                if (rAmount > currentPending + 0.01) {
+                  alert(`O valor do recibo (${formatCurrency(rAmount)}) não pode exceder o saldo pendente da fatura (${formatCurrency(currentPending)}).`);
                   return;
                 }
 
@@ -24776,18 +25311,22 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                 const nextNum = (purchases || []).filter(p => (p.tipo_documento === 'Recibo' || p.document_type === 'Recibo')).length + 1;
                 const receiptNum = `R-FT-${year}/${nextNum.toString().padStart(3, '0')}`;
 
+                const newTotalPaid = alreadyPaid + rAmount;
+                const newPendingBalance = Math.max(0, docTotal - newTotalPaid);
+                const isFullyPaid = newPendingBalance <= 0.01;
+
                 const updatePayload = {
-                  recibo_emitido: true,
+                  recibo_emitido: isFullyPaid,
                   numero_recibo: receiptNum,
                   data_recibo: new Date().toISOString(),
                   caixa_id: finalCaixaId,
                   forma_pagamento: rMethod,
-                  valor_pago: rAmount,
-                  saldo_pendente: 0,
+                  valor_pago: newTotalPaid,
+                  saldo_pendente: newPendingBalance,
                   atualizado_em: new Date().toISOString(),
                   atualizado_por: user?.id,
-                  status: 'pago',
-                  estado: 'PAGO'
+                  status: isFullyPaid ? 'pago' : 'parcial',
+                  estado: isFullyPaid ? 'PAGO' : 'PARCIAL'
                 };
 
                 console.log('[UPDATE compras recibo] original document ID:', showReceiptModal.id, 'fields:', updatePayload);
@@ -24804,17 +25343,27 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                 console.log('[UPDATE compras recibo SUCCESS] updated fatura ID:', showReceiptModal.id);
 
                 // Criar o documento de Recibo separado no sistema
+                const companyIdVal = user?.empresa_id || user?.company_id;
                 const receiptPayload = {
-                  empresa_id: user?.empresa_id,
+                  empresa_id: companyIdVal,
+                  company_id: companyIdVal,
                   ano: year,
                   fornecedor_id: showReceiptModal.supplier_id || showReceiptModal.fornecedor_id || null,
+                  supplier_id: showReceiptModal.supplier_id || showReceiptModal.fornecedor_id || null,
                   fornecedor_nome: showReceiptModal.supplier_name || showReceiptModal.fornecedor_nome || '',
+                  supplier_name: showReceiptModal.supplier_name || showReceiptModal.fornecedor_nome || '',
                   data_compra: rDate,
+                  data: rDate,
                   valor_total: rAmount,
+                  total: rAmount,
                   tipo_documento: 'Recibo',
+                  document_type: 'Recibo',
                   numero_documento: receiptNum,
+                  numero_compra: receiptNum,
                   numero_fatura: showReceiptModal.purchase_number,
+                  invoice_number: showReceiptModal.purchase_number,
                   data_vencimento: rDate,
+                  due_date: rDate,
                   taxa_retencao: Number(showReceiptModal.taxa_retencao || 0),
                   taxa_cambio: Number(showReceiptModal.taxa_cambio || 1),
                   moeda: showReceiptModal.moeda || 'Kwanza',
@@ -24824,6 +25373,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                   caixa_id: finalCaixaId,
                   metodo_pagamento: rMethod,
                   itens: showReceiptModal.itens || showReceiptModal.items || [{ description: `Liquidação de Fatura de Compra ${showReceiptModal.purchase_number}`, quantity: 1, unit_price: rAmount, total: rAmount }],
+                  items: showReceiptModal.itens || showReceiptModal.items || [{ description: `Liquidação de Fatura de Compra ${showReceiptModal.purchase_number}`, quantity: 1, unit_price: rAmount, total: rAmount }],
                   hash: 'RC-SHA256-' + Math.random().toString(36).substring(7).toUpperCase(),
                   descricao: rObs || `Pagamento de FT nº ${showReceiptModal.purchase_number} - Recibo ${receiptNum}`,
                   created_by: user?.id,
@@ -24859,33 +25409,6 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                 }
                 console.log('[INSERT compras recibo SUCCESS] Registered new Recibo:', receiptNum);
 
-                // 2. Criar automaticamente um documento RECIBO em documentos_emitidos
-                const eid = user?.empresa_id || user?.company_id;
-                const docEmitidoPayload = {
-                  empresa_id: eid,
-                  tipo_documento: 'RECIBO',
-                  numero_documento: receiptNum,
-                  referencia_documento: showReceiptModal.purchase_number || '',
-                  cliente_nome: showReceiptModal.supplier_name || showReceiptModal.fornecedor_nome || 'Fornecedor',
-                  total: rAmount,
-                  moeda: showReceiptModal.moeda || 'Kwanza',
-                  data_emissao: new Date().toISOString(),
-                  documento_origem_id: showReceiptModal.id,
-                  estado: 'EMITIDO',
-                  ano: showReceiptModal.ano || year,
-                  detalhes: receiptPayload.detalhes
-                };
-                
-                const { error: docError } = await supabase
-                  .from('documentos_emitidos')
-                  .insert([docEmitidoPayload]);
-
-                if (docError) {
-                  console.warn('[DOCS_EMITIDOS ERROR] Falha ao registar espelho do recibo:', docError);
-                } else {
-                  console.log('[DOCS_EMITIDOS SUCCESS] Recibo RECIBO criado com referências de origem.');
-                }
-
                 // Registrar o movimento de Caixa automática (saída)
                 if (addMovement) {
                   await addMovement({
@@ -24897,7 +25420,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                   });
                 }
 
-                toast.success(`Recibo ${receiptNum} registado com sucesso no sistema!`);
+                toast.success(`Recibo ${receiptNum} (${formatCurrency(rAmount)}) registado com sucesso! ${isFullyPaid ? 'Fatura totalmente liquidadad.' : 'Saldo restante: ' + formatCurrency(newPendingBalance)}`);
                 
                 // 3. Atualizar estado local e sincronizar com o pai
                 fetchPurchases();
@@ -24908,6 +25431,32 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                 alert('Erro ao registar recibo: ' + err.message);
               }
             }} className="p-6 space-y-4">
+
+              {/* Resumo do Saldo da Fatura */}
+              {(() => {
+                const totalDoc = Number(showReceiptModal.total || showReceiptModal.valor_total || 0);
+                const alreadyPaid = Number(showReceiptModal.valor_pago || 0);
+                const currentPending = showReceiptModal.saldo_pendente !== undefined && showReceiptModal.saldo_pendente !== null 
+                  ? Number(showReceiptModal.saldo_pendente) 
+                  : Math.max(0, totalDoc - alreadyPaid);
+                return (
+                  <div className="grid grid-cols-3 gap-2 bg-zinc-50 border border-zinc-200 p-3 mb-2 text-center font-mono">
+                    <div className="border-r border-zinc-200 pr-2">
+                      <div className="text-[9px] text-zinc-500 font-bold uppercase">Total Fatura</div>
+                      <div className="text-xs font-black text-zinc-800">{formatCurrency(totalDoc)}</div>
+                    </div>
+                    <div className="border-r border-zinc-200 pr-2">
+                      <div className="text-[9px] text-emerald-600 font-bold uppercase">Já Pago</div>
+                      <div className="text-xs font-black text-emerald-700">{formatCurrency(alreadyPaid)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[9px] text-amber-600 font-bold uppercase">Saldo Pendente</div>
+                      <div className="text-xs font-black text-amber-700">{formatCurrency(currentPending)}</div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-zinc-400 uppercase tracking-wider">Referência da Fatura de Compra</label>
                 <input 
@@ -24972,15 +25521,17 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-wider">Valor do Documento</label>
+                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-wider">Valor do Recibo (Pagamento Actual)</label>
                 <div className="relative">
                   <input 
                     type="number" 
                     name="receipt_amount"
                     step="0.01"
-                    defaultValue={showReceiptModal.total}
+                    min="0.01"
+                    max={showReceiptModal.saldo_pendente !== undefined && showReceiptModal.saldo_pendente !== null ? Number(showReceiptModal.saldo_pendente) : Math.max(0, Number(showReceiptModal.total || showReceiptModal.valor_total || 0) - Number(showReceiptModal.valor_pago || 0))}
+                    defaultValue={showReceiptModal.saldo_pendente !== undefined && showReceiptModal.saldo_pendente !== null ? Number(showReceiptModal.saldo_pendente) : Math.max(0, Number(showReceiptModal.total || showReceiptModal.valor_total || 0) - Number(showReceiptModal.valor_pago || 0))}
                     required
-                    className="w-full bg-white border border-zinc-200 px-4 py-2 text-xs font-black text-zinc-800 rounded-none focus:outline-none focus:border-[#003366]" 
+                    className="w-full bg-white border border-zinc-200 px-4 py-2 text-xs font-black text-emerald-700 rounded-none focus:outline-none focus:border-[#003366]" 
                   />
                   <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-zinc-400">AOA (Kz)</div>
                 </div>
@@ -24990,7 +25541,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                 <label className="text-[10px] font-black text-zinc-500 uppercase tracking-wider">Observações / Notas</label>
                 <textarea 
                   name="receipt_obs"
-                  placeholder="Ex: Pagamento integral efetuado..."
+                  placeholder="Ex: Pagamento parcial / efetuado..."
                   rows={2}
                   className="w-full bg-white border border-zinc-200 px-4 py-2 text-xs text-zinc-800 rounded-none focus:outline-none focus:border-[#003366] font-medium"
                 />
@@ -27867,11 +28418,16 @@ export default function App() {
           empresa_id: user.empresa_id,
           caixa_id: movement.caixaId,
           target_caixa_id: movement.targetCaixaId,
+          tipo: movement.type,
           type: movement.type,
           amount: movement.amount,
+          valor: movement.amount,
           moeda: movement.moeda || 'AOA',
           description: movement.description,
-          date: movement.date || new Date().toISOString()
+          descricao: movement.description,
+          date: movement.date || new Date().toISOString(),
+          data: movement.date ? new Date(movement.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+          ano: new Date(movement.date || new Date()).getFullYear()
         });
 
       if (movError && movError.code === 'PGRST205') {
@@ -27879,10 +28435,13 @@ export default function App() {
           empresa_id: user.empresa_id,
           caixa_id: movement.caixaId,
           target_caixa_id: movement.targetCaixaId,
+          tipo: movement.type,
           type: movement.type,
           amount: movement.amount,
+          valor: movement.amount,
           moeda: movement.moeda || 'AOA',
           description: movement.description,
+          descricao: movement.description,
           date: movement.date || new Date().toISOString()
          });
          movError = fallback.error;

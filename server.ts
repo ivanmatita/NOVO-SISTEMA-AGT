@@ -13,8 +13,8 @@ import { startAgtQueueWorker } from "./agt/agtQueueWorker.js";
 
 // Carregar variáveis de ambiente do ficheiro .env
 import { fileURLToPath } from "url";
-const __filename = fileURLToPath(import.meta.url);
-const __dirname_server = path.dirname(__filename);
+const __filename = typeof import.meta !== "undefined" && import.meta.url ? fileURLToPath(import.meta.url) : (typeof __filename !== "undefined" ? __filename : "");
+const __dirname_server = typeof __dirname !== "undefined" ? __dirname : (__filename ? path.dirname(__filename) : process.cwd());
 dotenv.config({ override: true, path: path.resolve(__dirname_server, ".env") });
 
 // --- Supabase Admin (Bypasses Rate Limits) ---
@@ -567,7 +567,7 @@ if (!supabaseAdmin) {
 
               -- Gravar Auditoria (Regra 15)
               BEGIN
-                  INSERT INTO public.logs_auditoria (company_id, user_id, acao, created_at)
+                  INSERT INTO public.logs_auditoria (empresa_id, user_id, acao, created_at)
                   VALUES (v_doc.empresa_id, p_usuario_id, 'ANULAÇÃO DE DOCUMENTO FISCAL - DOC: ' || COALESCE(v_doc.numero_documento, p_documento_id::text) || ' | MOTIVO: ' || p_motivo, now());
               EXCEPTION WHEN OTHERS THEN
                   NULL;
@@ -1701,7 +1701,7 @@ async function addAuditLog(userId: string | null, email: string | null, action: 
                 
                 if (userId) logObj.user_id = userId;
                 if (email) logObj.email = email;
-                if (empresaId) logObj.company_id = empresaId;
+                if (empresaId) logObj.empresa_id = empresaId;
                 if (ip) logObj.ip = ip;
                 if (browser) logObj.navegador = browser;
 

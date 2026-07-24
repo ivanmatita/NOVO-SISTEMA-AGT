@@ -69,9 +69,9 @@ export const useCaixas = () => {
           caixaId: m.caixa_id,
           targetCaixaId: m.target_caixa_id,
           type: m.type as any,
-          amount: Number(m.amount),
+          amount: Number(m.amount ?? m.valor ?? m.valor_movimento ?? 0),
           description: m.description,
-          date: m.date,
+          date: m.date || m.created_at,
           empresa_id: m.empresa_id,
           moeda: m.moeda
         })));
@@ -315,7 +315,7 @@ export const useCaixas = () => {
       const currentEmpresaId = authUser?.empresa_id;
       if (!currentEmpresaId) throw new Error('Empresa não identificada');
 
-      const { error: movError } = await supabase
+      let { error: movError } = await supabase
         .from('caixa_movimentacoes')
         .insert({
           empresa_id: currentEmpresaId,
@@ -326,6 +326,22 @@ export const useCaixas = () => {
           moeda: movement.moeda || 'AOA',
           description: movement.description
         });
+
+      if (movError && (movError.message?.includes("'amount'") || movError.code === 'PGRST204')) {
+        console.warn('[caixa_movimentacoes] Retrying with "valor" column fallback due to schema variation:', movError.message);
+        const { error: retryErr } = await supabase
+          .from('caixa_movimentacoes')
+          .insert({
+            empresa_id: currentEmpresaId,
+            caixa_id: movement.caixaId,
+            target_caixa_id: movement.targetCaixaId || null,
+            type: movement.type,
+            valor: movement.amount,
+            moeda: movement.moeda || 'AOA',
+            description: movement.description
+          });
+        movError = retryErr;
+      }
 
       if (movError) throw movError;
 

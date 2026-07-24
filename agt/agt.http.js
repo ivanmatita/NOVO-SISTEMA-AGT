@@ -25,7 +25,8 @@ function getAuthHeader() {
  * Verifica se o sistema está em modo Sandbox de simulação local
  */
 function isSandboxMode() {
-  return process.env.VITE_AGT_MODE === "SANDBOX" || process.env.AGT_MODE === "SANDBOX" || !process.env.AGT_USERNAME;
+  const mode = (process.env.VITE_AGT_MODE || process.env.AGT_MODE || '').toUpperCase();
+  return mode === "SANDBOX" || mode === "SIMULACAO" || mode === "SIMULATION" || !process.env.AGT_USERNAME;
 }
 
 /**

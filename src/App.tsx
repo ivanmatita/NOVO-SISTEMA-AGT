@@ -23180,30 +23180,51 @@ const PurchaseActionsModal = ({ purchase, onClose, onAction }: {
             const pendDoc = (purchase as any).saldo_pendente !== undefined && (purchase as any).saldo_pendente !== null
               ? Number((purchase as any).saldo_pendente)
               : Math.max(0, totalDoc - paidDoc);
-            const isPaid = purchase.recibo_emitido || purchase.status === 'pago' || (purchase as any).estado === 'PAGO' || (pendDoc <= 0.01 && totalDoc > 0);
+            
+            const isFullyPaid = purchase.recibo_emitido === true || purchase.status === 'pago' || (purchase as any).estado === 'PAGO' || (pendDoc <= 0.01 && paidDoc > 0);
+            const isPartial = !isFullyPaid && (paidDoc > 0 || purchase.status === 'parcial' || (purchase as any).estado === 'PARCIAL');
+
+            if (isFullyPaid) {
+              return (
+                <button 
+                  disabled
+                  className="flex items-center gap-4 p-4 bg-zinc-100 border border-zinc-200 opacity-60 cursor-not-allowed text-left group"
+                >
+                  <div className="w-10 h-10 bg-zinc-200 border border-zinc-300 flex items-center justify-center text-zinc-400">
+                     <FileCheck size={20} />
+                  </div>
+                  <div>
+                    <span className="block text-xs font-black uppercase tracking-wider text-zinc-500">
+                      Recibo Emitido (Fatura Liquidada)
+                    </span>
+                    <span className="text-[9px] font-bold text-zinc-400 uppercase">
+                      Fatura 100% paga. Já não é possível emitir mais recibos.
+                    </span>
+                  </div>
+                </button>
+              );
+            }
 
             return (
               <button 
                 onClick={() => handleAction('receipt')} 
                 className={`flex items-center gap-4 p-4 border transition-all text-left group ${
-                  isPaid ? 'bg-emerald-50/30 border-emerald-200 hover:bg-emerald-100/50' : 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700 shadow-md'
+                  isPartial 
+                    ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700 shadow-md' 
+                    : 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700 shadow-md'
                 }`}
               >
-                <div className={`w-10 h-10 border flex items-center justify-center ${
-                  isPaid ? 'bg-emerald-100 border-emerald-300 text-emerald-800' : 'bg-white/20 border-white/30 text-white'
-                }`}>
+                <div className="w-10 h-10 bg-white/20 border border-white/30 flex items-center justify-center text-white">
                    <FileCheck size={20} />
                 </div>
                 <div>
-                  <span className={`block text-xs font-black uppercase tracking-wider ${isPaid ? 'text-emerald-900' : 'text-white'}`}>
-                    Emitir Recibo / Liquidação
+                  <span className="block text-xs font-black uppercase tracking-wider text-white">
+                    {isPartial ? 'Emitir Recibo (Saldo Restante)' : 'Emitir Recibo / Liquidação'}
                   </span>
-                  <span className={`text-[9px] font-bold uppercase ${isPaid ? 'text-emerald-700' : 'text-emerald-100'}`}>
-                    {isPaid 
-                      ? `Fatura Liquidada (Total: ${formatCurrency(totalDoc)}) - Clique para emitir recibo` 
-                      : paidDoc > 0 
-                        ? `Registar Pagamento (Saldo Pendente: ${formatCurrency(pendDoc)})` 
-                        : 'Registar recibo de pagamento'}
+                  <span className="text-[9px] font-bold uppercase text-white/80">
+                    {isPartial 
+                      ? `Registar Liquidação Parcial (Saldo Pendente: ${formatCurrency(pendDoc)})` 
+                      : 'Registar recibo de pagamento ao fornecedor'}
                   </span>
                 </div>
               </button>
@@ -23997,7 +24018,16 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                   <td class="text-center">${p.currency || 'AOA'}</td>
                   <td class="text-right" style="color: #059669;">${formatCurrency(p.valor_pago || 0)}</td>
                   <td class="text-right font-bold">${formatCurrency(p.total || (p as any).valor_total || 0)}</td>
-                  <td class="text-center"><strong>${(p.recibo_emitido || p.status === 'pago') ? 'PAGO' : (p.status || 'pendente').toUpperCase()}</strong></td>
+                  <td class="text-center"><strong>${(() => {
+                    const isAnul = ['anulado', 'cancelled'].includes((p.status || '').toLowerCase());
+                    const isRec = ['recibo', 'pagamento'].includes(String(p.document_type || p.tipo_documento || '').toLowerCase());
+                    const tot = Number(p.total || (p as any).valor_total || 0);
+                    const pd = Number(p.valor_pago || 0);
+                    const pend = (p as any).saldo_pendente !== undefined && (p as any).saldo_pendente !== null ? Number((p as any).saldo_pendente) : Math.max(0, tot - pd);
+                    const isPaid = isRec || p.recibo_emitido === true || p.status === 'pago' || (p as any).estado === 'PAGO' || (pend <= 0.01 && pd > 0);
+                    const isPart = !isPaid && pd > 0 && pend > 0.01;
+                    return isAnul ? 'ANULADO' : isPaid ? 'PAGO' : isPart ? 'PARCIAL' : 'PENDENTE';
+                  })()}</strong></td>
                 </tr>
               `).join('')}
             </tbody>
@@ -24421,6 +24451,15 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                         <td className="px-6 py-4 border-r border-zinc-100">
                           <div className="font-black text-[#003366] uppercase whitespace-nowrap">{p.document_type || 'Compra'}</div>
                           <div className="text-zinc-500 font-bold mt-1">{p.invoice_number || '-'}</div>
+                          {paidDoc > 0 ? (
+                            <span className="inline-block mt-1 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider bg-blue-100 text-blue-800 border border-blue-200">
+                              PARCIAL
+                            </span>
+                          ) : (
+                            <span className="inline-block mt-1 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200">
+                              PENDENTE
+                            </span>
+                          )}
                         </td>
                         <td className="px-6 py-4 font-mono text-zinc-500">{p.codigo || p.purchase_number}</td>
                         <td className="px-6 py-4 font-bold text-zinc-900">{p.supplier_name}</td>
@@ -24433,10 +24472,10 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                             <UserIssuerButton doc={p} globalUsers={globalUsers} />
                             <button 
                               onClick={() => setShowReceiptModal(p)}
-                              className="bg-emerald-600 text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 shadow-md transition-all flex items-center gap-1.5"
+                              className={`${paidDoc > 0 ? 'bg-blue-600 hover:bg-blue-700' : 'bg-emerald-600 hover:bg-emerald-700'} text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest shadow-md transition-all flex items-center gap-1.5`}
                             >
                               <FileCheck size={14} />
-                              Emitir Recibo
+                              {paidDoc > 0 ? 'Emitir Recibo (Saldo)' : 'Emitir Recibo'}
                             </button>
                             <button 
                               onClick={() => setSelectedPurchase(p)}

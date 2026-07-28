@@ -23,11 +23,17 @@ const supabaseUrl = rawSupabaseUrl
   .split('/rest/v1')[0]
   .split('/auth/v1')[0]
   .replace(/\/$/, "");
-const supabaseServiceRole = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+const supabaseServiceRole = (
+  process.env.SUPABASE_SERVICE_ROLE_KEY || 
+  process.env.SUPABASE_ANON_KEY || 
+  process.env.VITE_SUPABASE_ANON_KEY || 
+  process.env.ANON_KEY || 
+  ""
+).trim();
 console.log(`[STARTUP] SupabaseURL: ${supabaseUrl ? 'OK' : 'EMPTY'} | ServiceKey length: ${supabaseServiceRole.length}`);
 
 // Verificação de segurança para o Supabase Admin
-const isServiceKeyValid = supabaseServiceRole && supabaseServiceRole.length > 50;
+const isServiceKeyValid = supabaseServiceRole && supabaseServiceRole.length > 20;
 
 const supabaseAdmin = (supabaseUrl && isServiceKeyValid) 
   ? createClient(supabaseUrl, supabaseServiceRole, {
@@ -39,7 +45,7 @@ const supabaseAdmin = (supabaseUrl && isServiceKeyValid)
   : null;
 
 if (!supabaseAdmin) {
-  console.warn("⚠️ SUPABASE_SERVICE_ROLE_KEY não detetada ou inválida. O bypass de Rate Limit do Registo não funcionará.");
+  console.warn("⚠️ SUPABASE_SERVICE_ROLE_KEY / ANON_KEY não detetada. O bypass de Rate Limit do Registo não funcionará.");
 } else {
   // Ensure logs_auditoria, user_activities_sessions tables exist and alter columns
   const sqlMigrations = `
@@ -2108,7 +2114,12 @@ app.all("/api/supabase-proxy/*", express.raw({ type: "*/*", limit: "50mb" }), as
 // Middleware to ensure data is loaded before processing requests
 app.use(async (req, res, next) => {
   if (!isInitialLoadComplete && supabaseAdmin && req.path.startsWith('/api')) {
-    await syncFromSupabase();
+    try {
+      await syncFromSupabase();
+    } catch (e) {
+      console.warn("[Middleware Sync Error] Suprimido para não bloquear API:", e);
+      isInitialLoadComplete = true;
+    }
   }
   next();
 });

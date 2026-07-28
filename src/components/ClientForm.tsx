@@ -226,9 +226,9 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
     }
     return (
       <div className="flex items-center gap-1.5 mt-1.5 text-[10px] font-bold text-emerald-700">
-        <ShieldCheck size={11} />
+        <ShieldCheck size={11} className={nifResult.isOfflineValid ? "text-blue-600" : "text-emerald-600"} />
         <span>
-          NIF válido · <span className="text-[#003366]">{nifResult.estado}</span>
+          NIF válido {nifResult.isOfflineValid ? '(Formato AGT)' : ''} · <span className="text-[#003366]">{nifResult.estado || 'Activo'}</span>
         </span>
       </div>
     );

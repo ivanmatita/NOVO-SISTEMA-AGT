@@ -416,19 +416,19 @@ const writeValorPorExtenso = (n: number) => {
   return result.charAt(0).toUpperCase() + result.slice(1);
 };
 
-const calculateIRT = (salary: number | null | undefined) => {
-  const s = salary || 0;
+const calculateIRT = (salary: number | null | undefined): number => {
+  const s = Math.max(0, salary || 0);
   if (s <= 100000) return 0;
-  if (s <= 150000) return (s - 100000) * 0.10;
-  if (s <= 200000) return 5000 + (s - 150000) * 0.13;
-  if (s <= 300000) return 11500 + (s - 200000) * 0.16;
-  if (s <= 500000) return 27500 + (s - 300000) * 0.18;
-  if (s <= 1000000) return 63500 + (s - 500000) * 0.19;
-  if (s <= 1500000) return 158500 + (s - 1000000) * 0.20;
-  if (s <= 2000000) return 258500 + (s - 1500000) * 0.21;
-  if (s <= 5000000) return 363500 + (s - 2000000) * 0.22;
-  if (s <= 10000000) return 1023500 + (s - 5000000) * 0.23;
-  return 2173500 + (s - 10000000) * 0.25;
+  if (s <= 150000) return (s - 100000) * 0.13;
+  if (s <= 200000) return 6500 + (s - 150000) * 0.16;
+  if (s <= 300000) return 14500 + (s - 200000) * 0.18;
+  if (s <= 500000) return 32500 + (s - 300000) * 0.19;
+  if (s <= 1000000) return 70500 + (s - 500000) * 0.20;
+  if (s <= 1500000) return 170500 + (s - 1000000) * 0.21;
+  if (s <= 2000000) return 275500 + (s - 1500000) * 0.22;
+  if (s <= 5000000) return 385500 + (s - 2000000) * 0.23;
+  if (s <= 10000000) return 1075500 + (s - 5000000) * 0.245;
+  return 2300500 + (s - 10000000) * 0.25;
 };
 
 const PrintP89 = ({ sale, clientName }: { sale: any, clientName?: string }) => {
@@ -8447,33 +8447,45 @@ const HRModule = ({
 
         {activeTab === 'irt_table' && (
           <div className="bg-white border border-zinc-200 p-8 space-y-6">
-            <h3 className="text-lg font-black text-[#003366] uppercase tracking-[0.1em] border-b border-zinc-100 pb-4">Escalões de IRT (Imposto sobre o Rendimento de Trabalho)</h3>
+            <div className="border-b border-zinc-100 pb-4">
+              <h3 className="text-lg font-black text-[#003366] uppercase tracking-[0.1em]">Escalões de IRT (Imposto sobre o Rendimento de Trabalho - Grupo A)</h3>
+              <p className="text-xs text-zinc-500 font-medium mt-1">Conforme a Lei nº 28/20 de 22 de Julho / Legislação AGT República de Angola</p>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-[11px]">
                 <thead>
-                  <tr className="bg-zinc-50 font-black uppercase tracking-widest text-[#003366]">
+                  <tr className="bg-[#003366] text-white font-black uppercase tracking-widest">
                     <th className="px-4 py-3 border-b">Escalão</th>
-                    <th className="px-4 py-3 border-b">Limite Mínimo</th>
-                    <th className="px-4 py-3 border-b">Limite Máximo</th>
-                    <th className="px-4 py-3 border-b">Taxa Fixa</th>
-                    <th className="px-4 py-3 border-b">Taxa Variável (%)</th>
+                    <th className="px-4 py-3 border-b">Matéria Colectável (Kz)</th>
+                    <th className="px-4 py-3 border-b text-right">Parcela Fixa (Kz)</th>
+                    <th className="px-4 py-3 border-b text-center">Taxa (%)</th>
+                    <th className="px-4 py-3 border-b text-right">Excesso de (Kz)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
                   {[
-                    { e: '1', min: 0, max: 100000, fixed: 0, var: 0 },
-                    { e: '2', min: 100001, max: 150000, fixed: 0, var: 10 },
-                    { e: '3', min: 150001, max: 200000, fixed: 5000, var: 13 },
-                    { e: '4', min: 200001, max: 300000, fixed: 11500, var: 16 },
-                    { e: '5', min: 300001, max: 500000, fixed: 27500, var: 18 },
-                    { e: '6', min: 500001, max: Infinity, fixed: 63500, var: 25 },
+                    { e: '1', min: 0, max: 100000, fixed: 0, var: 0, excess: 0 },
+                    { e: '2', min: 100001, max: 150000, fixed: 0, var: 13, excess: 100000 },
+                    { e: '3', min: 150001, max: 200000, fixed: 6500, var: 16, excess: 150000 },
+                    { e: '4', min: 200001, max: 300000, fixed: 14500, var: 18, excess: 200000 },
+                    { e: '5', min: 300001, max: 500000, fixed: 32500, var: 19, excess: 300000 },
+                    { e: '6', min: 500001, max: 1000000, fixed: 70500, var: 20, excess: 500000 },
+                    { e: '7', min: 1000001, max: 1500000, fixed: 170500, var: 21, excess: 1000000 },
+                    { e: '8', min: 1500001, max: 2000000, fixed: 275500, var: 22, excess: 1500000 },
+                    { e: '9', min: 2000001, max: 5000000, fixed: 385500, var: 23, excess: 2000000 },
+                    { e: '10', min: 500001, max: 10000000, fixed: 1075500, var: 24.5, excess: 5000000 },
+                    { e: '11', min: 10000001, max: Infinity, fixed: 2300500, var: 25, excess: 10000000 },
                   ].map((row, i) => (
                     <tr key={i} className="hover:bg-zinc-50 font-bold">
-                      <td className="px-4 py-4">#{row.e}</td>
-                      <td className="px-4 py-4 font-mono">{formatCurrency(row.min)}</td>
-                      <td className="px-4 py-4 font-mono">{row.max === Infinity ? '---' : formatCurrency(row.max)}</td>
-                      <td className="px-4 py-4 font-mono text-zinc-500">{formatCurrency(row.fixed)}</td>
-                      <td className="px-4 py-4 font-mono text-[#F27D26]">{row.var}%</td>
+                      <td className="px-4 py-3 text-[#003366] font-mono">#{row.e}</td>
+                      <td className="px-4 py-3 font-mono">
+                        {row.max === Infinity 
+                          ? `Superior a ${formatCurrency(row.excess)}` 
+                          : `${formatCurrency(row.min)} a ${formatCurrency(row.max)}`}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-right text-zinc-700">{formatCurrency(row.fixed)}</td>
+                      <td className="px-4 py-3 font-mono text-center text-[#F27D26]">{row.var}%</td>
+                      <td className="px-4 py-3 font-mono text-right text-zinc-500">{row.excess > 0 ? formatCurrency(row.excess) : '---'}</td>
                     </tr>
                   ))}
                 </tbody>

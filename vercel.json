@@ -3,6 +3,10 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/api-agt-nif/(.*)",
+      "destination": "https://portaldocontribuinte.minfin.gov.ao/$1"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/index"
     },

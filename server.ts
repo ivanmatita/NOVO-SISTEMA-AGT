@@ -8,7 +8,7 @@ import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
 import crypto from "crypto";
 import { validateDocumentController } from "./agt/validate-document.controller.js";
-import { validateDocumentControllerNew, registerInvoiceController, validateNifController, solicitarSerieController, consultarFacturaController, listarSeriesController, obterEstadoController, listarFacturasController } from "./agt/agt.controllers.js";
+import { validateDocumentControllerNew, registerInvoiceController, validateNifController, solicitarSerieController, consultarFacturaController, listarSeriesController, obterEstadoController, listarFacturasController, agtWebhookController } from "./agt/agt.controllers.js";
 import { startAgtQueueWorker } from "./agt/agtQueueWorker.js";
 
 // Carregar variáveis de ambiente do ficheiro .env
@@ -162,6 +162,30 @@ if (!supabaseAdmin) {
               created_at TIMESTAMPTZ DEFAULT now(),
               updated_at TIMESTAMPTZ DEFAULT now()
           );
+
+          -- AGT Webhook Logs
+          CREATE TABLE IF NOT EXISTS public.agt_webhook_logs (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              empresa_id UUID,
+              event_type TEXT,
+              payload JSONB,
+              headers JSONB,
+              ip_address TEXT,
+              signature_valid BOOLEAN DEFAULT true,
+              status TEXT DEFAULT 'SUCCESS',
+              error_message TEXT,
+              created_at TIMESTAMPTZ DEFAULT now()
+          );
+
+          ALTER TABLE public.agt_webhook_logs ADD COLUMN IF NOT EXISTS empresa_id UUID;
+          ALTER TABLE public.agt_webhook_logs ADD COLUMN IF NOT EXISTS event_type TEXT;
+          ALTER TABLE public.agt_webhook_logs ADD COLUMN IF NOT EXISTS payload JSONB;
+          ALTER TABLE public.agt_webhook_logs ADD COLUMN IF NOT EXISTS headers JSONB;
+          ALTER TABLE public.agt_webhook_logs ADD COLUMN IF NOT EXISTS ip_address TEXT;
+          ALTER TABLE public.agt_webhook_logs ADD COLUMN IF NOT EXISTS signature_valid BOOLEAN DEFAULT true;
+          ALTER TABLE public.agt_webhook_logs ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'SUCCESS';
+          ALTER TABLE public.agt_webhook_logs ADD COLUMN IF NOT EXISTS error_message TEXT;
+          ALTER TABLE public.agt_webhook_logs ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
 
           -- AGT READY new columns (Ensure they exist)
           ALTER TABLE public.documentos_emitidos ADD COLUMN IF NOT EXISTS numero_fiscal TEXT;
@@ -5811,6 +5835,15 @@ async function startServer() {
   app.post("/api/agt/obter-estado", obterEstadoController);
   app.post("/api/agt/listar-facturas", listarFacturasController);
 
+  // Endpoint HTTP POST público para integração Webhook da AGT
+  app.post("/api/agt/webhook", agtWebhookController);
+  app.all("/api/agt/webhook", (req, res) => {
+    return res.status(405).json({
+      success: false,
+      message: "Método não permitido. Apenas requisições HTTP POST são aceites."
+    });
+  });
+
   // ... (existing code, keeping it for context)
   app.post("/api/agt/sign", async (req, res) => {
     try {
@@ -6791,17 +6824,29 @@ async function startServer() {
       const companyId = req.body.company_id || req.body.empresa_id || authUser?.empresaId || '11111111-1111-1111-1111-111111111111';
       (async () => {
         try {
+          const isCash = docType === 'Fatura Recibo de Compra' || docType === 'FRC';
+          const totalVal = Number(req.body.total || req.body.valor_total || 0);
+
           const { error } = await supabaseAdmin.from('compras').insert([{
             empresa_id: companyId,
+            company_id: companyId,
             ano: year,
             fornecedor_id: req.body.supplier_id || req.body.fornecedor_id || null,
+            supplier_id: req.body.supplier_id || req.body.fornecedor_id || null,
             fornecedor_nome: req.body.supplier_name || req.body.fornecedor_nome || '',
+            supplier_name: req.body.supplier_name || req.body.fornecedor_nome || '',
             data_compra: req.body.date || new Date().toISOString().split('T')[0],
-            valor_total: Number(req.body.total || req.body.valor_total || 0),
+            data: req.body.date || new Date().toISOString().split('T')[0],
+            valor_total: totalVal,
+            total: totalVal,
             tipo_documento: docType,
+            document_type: docType,
             numero_documento: purchaseNumber,
+            numero_compra: purchaseNumber,
+            invoice_number: req.body.invoice_number || '',
             numero_fatura: req.body.invoice_number || '',
             data_vencimento: req.body.due_date || null,
+            due_date: req.body.due_date || null,
             taxa_retencao: Number(req.body.vat_withholding || 0),
             taxa_cambio: Number(req.body.exchange_rate || 1),
             moeda: req.body.currency || 'Kwanza',
@@ -6810,7 +6855,13 @@ async function startServer() {
             data_servico: req.body.service_date || req.body.date || null,
             caixa_id: req.body.caixa || null,
             metodo_pagamento: req.body.payment_method || null,
+            status: isCash ? 'pago' : 'pendente',
+            estado: isCash ? 'PAGO' : 'pendente',
+            recibo_emitido: isCash ? true : false,
+            valor_pago: isCash ? totalVal : 0,
+            saldo_pendente: isCash ? 0 : totalVal,
             itens: req.body.items || [],
+            items: req.body.items || [],
             hash: req.body.hash || null,
             created_at: newPurchase.created_at,
             created_by: authUser?.userId,

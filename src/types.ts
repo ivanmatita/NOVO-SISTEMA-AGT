@@ -157,6 +157,7 @@ export interface InvoiceItem {
   warehouse_id?: number;
   warehouse_responsible?: string;
   data_validade?: string;
+  unidade_medida?: string;
 }
 
 export interface Invoice {

@@ -7,8 +7,11 @@ import { listSeriesService } from "./listSeries.service.js";
 import { listarSeriesAGT, sincronizarSeriesAGT } from "./listarSeriesAGT.js";
 import { obterEstadoService } from "./obterEstado.service.js";
 import { listarFacturasService } from "./listarFacturas.service.js";
+import { agtWebhookController } from "./agtWebhook.controller.js";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
+
+export { agtWebhookController };
 
 // Inicialização lazy do Supabase — evita crash no arranque se as variáveis não estiverem configuradas
 let _supabase = null;

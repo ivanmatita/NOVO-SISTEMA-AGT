@@ -42,6 +42,7 @@ import {
   Trash2, 
   Trash,
   Edit,
+  Pencil,
   CheckCircle, 
   Clock, 
   ChevronRight,
@@ -149,7 +150,6 @@ import {
   Star,
   Shield,
   KeyRound,
-  Pencil,
   FolderOpen
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -196,6 +196,7 @@ import { CRMModule } from './components/CRMModule';
 import { AgtValidationModal } from './components/AgtValidationModal';
 import { AgtElectronicInvoiceModal } from './components/AgtElectronicInvoiceModal';
 import { AgtElectronicInvoicesListModal } from './components/AgtElectronicInvoicesListModal';
+import { AgtItemModal, AgtItemData } from './components/AgtItemModal';
 
 // --- Helpers ---
 
@@ -11098,6 +11099,20 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
                       return badge;
                     })()}
                     {doc.document_type || doc.tipo_documento}
+                    {/* PAGO badge: shown when doc is a receipt, fatura-recibo, or payment_status=paid */}
+                    {(() => {
+                      const tp = (doc.tipo_documento || doc.document_type || '').toLowerCase();
+                      const isPago =
+                        tp.includes('recibo') ||
+                        tp.includes('fatura recibo') ||
+                        tp.includes('fatura-recibo') ||
+                        doc.payment_status === 'paid';
+                      return isPago ? (
+                        <span className="ml-1.5 inline-block text-[8px] font-black bg-green-600 text-white px-1.5 py-0.5 rounded-none uppercase tracking-widest align-middle">
+                          PAGO
+                        </span>
+                      ) : null;
+                    })()}
                   </div>
                   {(doc.reference_document || doc.numero_documento_origem || doc.associated_document) && (
                     <div className="text-[8px] text-zinc-600 bg-zinc-100 border border-zinc-200 font-black px-1.5 py-0.5 mt-1 rounded-none w-fit uppercase tracking-tight flex items-center gap-1">
@@ -19120,7 +19135,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
   useEffect(() => {
     if (user?.empresa_id && (documentType === 'Nota de Crédito' || documentType === 'Recibo' || documentType === 'NC' || documentType === 'RC')) {
       supabase.from('documentos_emitidos')
-        .select('id, numero_documento, total, cliente_nome, data_emissao')
+        .select('id, numero_documento, total, cliente_nome, cliente_id, data_emissao, items')
         .eq('empresa_id', user.empresa_id)
         .in('tipo_documento', ['FT', 'FR', 'Fatura', 'Fatura Recibo'])
         .eq('status', 'ativo')
@@ -19163,6 +19178,12 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [documentNumberManual, setDocumentNumberManual] = useState('');
   const [referenceManual, setReferenceManual] = useState('');
+
+  // AGT Item Modal state
+  const [isAgtItemModalOpen, setIsAgtItemModalOpen] = useState(false);
+  const [editingAgtItemIndex, setEditingAgtItemIndex] = useState<number | null>(null);
+  const [editingAgtItemData, setEditingAgtItemData] = useState<AgtItemData | null>(null);
+  const [clientNifSearch, setClientNifSearch] = useState('');
 
    // Helper to match series type with currently selected documentType
   const filteredSeries = fiscalSeries.filter(s => {
@@ -19463,9 +19484,52 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
             {['NC', 'RC', 'Nota de Crédito', 'Recibo'].includes(documentType) && (
               <div className="space-y-2">
                 <label className="text-xs font-bold text-zinc-600">Documento de Origem (Obrigatório)</label>
-                <select 
+                <select
                   value={originDocId}
-                  onChange={(e) => setOriginDocId(e.target.value)}
+                  onChange={(e) => {
+                    const selectedId = e.target.value;
+                    setOriginDocId(selectedId);
+                    if (selectedId) {
+                      // Find the selected invoice and auto-populate items and client
+                      const selectedDoc = originDocs.find(d => String(d.id) === String(selectedId));
+                      if (selectedDoc) {
+                        // Auto-select client
+                        if (selectedDoc.cliente_id) {
+                          setClientId(Number(selectedDoc.cliente_id));
+                        }
+                        // Auto-populate items from the selected fatura
+                        if (Array.isArray(selectedDoc.items) && selectedDoc.items.length > 0) {
+                          setItems(selectedDoc.items.map((item: any) => ({
+                            description: item.description || item.descricao || '',
+                            quantity: Number(item.quantity || item.quantidade || 1),
+                            unit_price: Number(item.unit_price || item.preco_unitario || 0),
+                            total: Number(item.total || 0),
+                            tax_id: item.tax_id || null,
+                            tax_rate: Number(item.tax_rate || item.taxa_imposto || 0),
+                            tax: item.tax || item.tax_type || '',
+                            desconto: Number(item.desconto || 0),
+                            tipo_artigo: item.tipo_artigo || 'produto',
+                            unidade_medida: item.unidade_medida || item.unidade || 'QUANTIDADE (Qtd)',
+                            tipologia: item.tipologia || 'Mercadoria',
+                          })));
+                        } else {
+                          // Fallback: create a single item from the invoice total
+                          setItems([{
+                            description: `Referente a ${selectedDoc.numero_documento}`,
+                            quantity: 1,
+                            unit_price: Number(selectedDoc.total || 0),
+                            total: Number(selectedDoc.total || 0),
+                            tax_id: activeTaxes.length > 0 ? activeTaxes[0].id : null,
+                            tax_rate: 0,
+                            desconto: 0,
+                            tipo_artigo: 'serviço',
+                          }]);
+                        }
+                      }
+                    } else {
+                      setItems([]);
+                    }
+                  }}
                   required
                   className="w-full bg-amber-50 border border-amber-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-amber-600 text-sm"
                 >
@@ -19474,6 +19538,12 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                     <option key={d.id} value={d.id}>{d.numero_documento} - {d.cliente_nome} ({new Date(d.data_emissao).toLocaleDateString()})</option>
                   ))}
                 </select>
+                {originDocId && originDocs.find(d => String(d.id) === String(originDocId)) && (
+                  <div className="mt-1 p-2 bg-amber-50 border border-amber-100 text-[10px] text-amber-700 font-bold uppercase tracking-wide flex items-center gap-2">
+                    <CheckCircle size={12} className="text-amber-500" />
+                    {items.length} ite{items.length === 1 ? 'm importado' : 'ns importados'} automaticamente da fatura selecionada
+                  </div>
+                )}
               </div>
             )}
             <div className="space-y-2">
@@ -19652,267 +19722,216 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
           </div>
         </div>
 
-        {/* Section 2: Informações do adquirente */}
+        {/* Section 2: Informações do adquirente - form11.PNG style */}
         <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-6">
-          <h3 className="text-lg font-bold text-[#003366] border-b border-zinc-100 pb-4">Informações do adquirente (Cliente)</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-600">Código do país <span className="text-red-500">*</span></label>
-              <select 
-                value={countryCode} 
+          <h3 className="text-sm font-bold text-[#0f2a4a] border-b border-zinc-100 pb-3 uppercase tracking-wide">Informações do adquirente</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {/* Código do país */}
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-zinc-600">Código do país <span className="text-red-500">*</span></label>
+              <select
+                value={countryCode}
                 onChange={(e) => setCountryCode(e.target.value)}
                 required
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+                className="w-full bg-white border border-zinc-300 rounded-none px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#0f2a4a] text-sm"
               >
-                <option value="Angola">Angola</option>
-                <option value="Portugal">Portugal</option>
-                <option value="Brasil">Brasil</option>
+                <option value="AO">AO - Angola</option>
+                <option value="PT">PT - Portugal</option>
+                <option value="BR">BR - Brasil</option>
+                <option value="US">US - Estados Unidos</option>
+                <option value="GB">GB - Reino Unido</option>
+                <option value="FR">FR - França</option>
+                <option value="DE">DE - Alemanha</option>
+                <option value="CN">CN - China</option>
+                <option value="ZA">ZA - África do Sul</option>
+                <option value="NG">NG - Nigéria</option>
               </select>
             </div>
-            <div className="space-y-2 md:col-span-2">
-              <label className="text-xs font-bold text-zinc-600">Selecionar cliente <span className="text-red-500">*</span></label>
-              <select 
-                value={isNaN(Number(clientId)) ? '' : clientId} 
-                onChange={(e) => setClientId(e.target.value ? Number(e.target.value) : '')}
+            {/* NIF com botão de pesquisa */}
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-zinc-600">Nº de identificação fiscal <span className="text-red-500">*</span></label>
+              <div className="flex">
+                <input
+                  type="text"
+                  value={clientNifSearch}
+                  onChange={(e) => {
+                    setClientNifSearch(e.target.value);
+                    // Auto-select client by NIF
+                    const found = clients.find(c => c.contribuinte && c.contribuinte.toString() === e.target.value);
+                    if (found) setClientId(Number(found.id));
+                  }}
+                  placeholder="Ex: 5000000001"
+                  className="flex-1 bg-white border border-zinc-300 border-r-0 rounded-none px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#0f2a4a] text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const found = clients.find(c => c.contribuinte && c.contribuinte.toString().includes(clientNifSearch));
+                    if (found) setClientId(Number(found.id));
+                  }}
+                  className="bg-[#0f2a4a] hover:bg-[#1a3f6f] text-white px-4 py-2 transition-colors flex items-center justify-center"
+                  title="Pesquisar por NIF"
+                >
+                  <Search size={16} />
+                </button>
+              </div>
+            </div>
+            {/* Nome */}
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-zinc-600">Nome <span className="text-red-500">*</span></label>
+              <select
+                value={isNaN(Number(clientId)) ? '' : clientId}
+                onChange={(e) => {
+                  const val = e.target.value ? Number(e.target.value) : '';
+                  setClientId(val);
+                  if (val) {
+                    const c = clients.find(cl => cl.id === val);
+                    if (c && c.contribuinte) setClientNifSearch(c.contribuinte.toString());
+                  }
+                }}
                 required
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+                className="w-full bg-white border border-zinc-300 rounded-none px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#0f2a4a] text-sm"
               >
-                <option value="">Selecione um cliente</option>
-                {clients.map(c => <option key={c.id} value={c.id}>{c.name} ({c.contribuinte})</option>)}
+                <option value="">Selecione o adquirente...</option>
+                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
-            <div className="space-y-2 md:col-span-3">
-              <label className="text-xs font-bold text-zinc-600">Local de prestação de bens/serviços</label>
-              <input 
-                type="text" 
-                value={serviceLocation} 
-                onChange={(e) => setServiceLocation(e.target.value)}
-                placeholder="Rua, Cidade, etc."
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-600">Data prestação de bens/serviços <span className="text-red-500">*</span></label>
-              <input 
-                type="date" 
-                value={serviceDate} 
+            {/* Data prestação */}
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-zinc-600">Data prestação de bens/serviços <span className="text-red-500">*</span></label>
+              <input
+                type="date"
+                value={serviceDate}
                 onChange={(e) => setServiceDate(e.target.value)}
                 required
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+                className="w-full bg-white border border-zinc-300 rounded-none px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#0f2a4a] text-sm"
+              />
+            </div>
+            {/* Local de prestação */}
+            <div className="space-y-1 md:col-span-2">
+              <label className="text-xs font-semibold text-zinc-600">Local de prestação de bens/serviços <span className="text-red-500">*</span></label>
+              <input
+                type="text"
+                value={serviceLocation}
+                onChange={(e) => setServiceLocation(e.target.value)}
+                placeholder="Ex: Luanda, Angola"
+                className="w-full bg-white border border-zinc-300 rounded-none px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#0f2a4a] text-sm"
               />
             </div>
           </div>
         </div>
 
-        {/* Section 3: Bens e serviços */}
+        {/* Section 3: Bens e serviços - form11.PNG style AGT table */}
         <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-6">
           <div className="flex justify-between items-center border-b border-zinc-100 pb-4">
-            <h3 className="text-lg font-bold text-[#003366]">Bens e serviços</h3>
-            <button 
+            <h3 className="text-sm font-bold text-[#0f2a4a] uppercase tracking-wide">Bens e serviços</h3>
+            <button
               type="button"
               disabled={isCertified}
-              onClick={addItem}
-              className={`bg-[#003366] text-white px-6 py-2.5 font-bold flex items-center gap-2 hover:bg-[#002244] transition-all text-sm shadow-sm rounded-none ${isCertified ? 'opacity-50 cursor-not-allowed' : ''}`}
+              onClick={() => {
+                setEditingAgtItemIndex(null);
+                setEditingAgtItemData(null);
+                setIsAgtItemModalOpen(true);
+              }}
+              className={`bg-[#0f2a4a] text-white px-5 py-2 font-semibold flex items-center gap-2 hover:bg-[#1a3f6f] transition-all text-sm rounded-none ${isCertified ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
-              <Plus size={18} /> Adicionar a lista
+              <Plus size={16} /> Adicionar a lista
             </button>
           </div>
-           
-           <div className="space-y-4">
-             {items.map((item, idx) => (
-               <div key={idx} className="bg-zinc-50 p-4 border border-zinc-100 space-y-4">
-                 <div className="grid grid-cols-12 gap-4 items-end">
-                   <div className="col-span-2 space-y-1">
-                     <label className="text-[10px] font-bold text-zinc-400 uppercase">Produto/Serviço</label>
-                     <select 
-                       disabled={isCertified}
-                       value={item.product_id || ''} 
-                       onChange={(e) => updateItem(idx, 'product_id', e.target.value)}
-                       className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
-                     >
-                       <option value="">Manual...</option>
-                       {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                     </select>
-                   </div>
-                   <div className="col-span-4 space-y-1">
-                     <label className="text-[10px] font-bold text-zinc-400 uppercase">Descrição</label>
-                     <input 
-                       disabled={isCertified}
-                       type="text" 
-                       value={item.description} 
-                       onChange={(e) => updateItem(idx, 'description', e.target.value)}
-                       className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
-                     />
-                   </div>
-                   <div className="col-span-1 space-y-1">
-                     <label className="text-[10px] font-bold text-zinc-400 uppercase">Referência</label>
-                     <input 
-                       disabled={isCertified}
-                       type="text" 
-                       value={item.referencia || ''} 
-                       onChange={(e) => updateItem(idx, 'referencia', e.target.value)}
-                       className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
-                     />
-                   </div>
-                   <div className="col-span-2 space-y-1">
-                     <label className="text-[10px] font-bold text-zinc-400 uppercase">Tipologia</label>
-                     <select 
-                       disabled={isCertified}
-                       value={item.tipologia || 'S/T'}
-                       onChange={(e) => updateItem(idx, 'tipologia', e.target.value)}
-                       className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
-                     >
-                       <option value="Mercadoria">Mercadoria</option>
-                       {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                     </select>
-                   </div>
-                   <div className="col-span-1 space-y-1">
-                     <label className="text-[10px] font-bold text-zinc-400 uppercase">Tipo</label>
-                     <select 
-                       disabled={isCertified}
-                       value={item.tipo_artigo || 'produto'}
-                       onChange={(e) => updateItem(idx, 'tipo_artigo', e.target.value)}
-                       className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
-                     >
-                       <option value="produto">Produto</option>
-                       <option value="servico">Serviço</option>
-                       <option value="impostos_especiais">Impostos Especiais de Consumo</option>
-                       <option value="impostos_taxas_encargos">Impostos, Taxas e Encargos</option>
-                       <option value="outros">Outros</option>
-                     </select>
-                   </div>
-                   {item.tipo_artigo === 'produto' && (
-                     <div className="col-span-1 space-y-1">
-                       <label className="text-[10px] font-bold text-zinc-400 uppercase">Validade</label>
-                       <input 
-                         disabled={isCertified}
-                         type="date" 
-                         value={item.data_validade || ''} 
-                         onChange={(e) => updateItem(idx, 'data_validade', e.target.value)}
-                         className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
-                       />
-                     </div>
-                   )}
-                   <div className="col-span-1 space-y-1">
-                     <label className="text-[10px] font-bold text-zinc-400 uppercase">Taxa</label>
-                     <select 
-                        disabled={isCertified}
-                        value={isNaN(Number(item.tax_id)) ? '' : item.tax_id}
-                        onChange={(e) => updateItem(idx, 'tax_id', e.target.value)}
-                        className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
-                      >
-                        {activeTaxes.map((t) => (
-                          <option key={t.id} value={t.id}>{t.nome} ({t.taxa}%)</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  {showCalculator && (
-                    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4">
-                       <div className="bg-white p-6 rounded-lg w-full max-w-sm space-y-4">
-                          <div className="flex justify-between items-center">
-                             <h3 className="font-bold text-[#003366]">Calculo Separação IVA</h3>
-                             <X className="cursor-pointer" onClick={() => setShowCalculator(false)} />
-                          </div>
-                          <div className="space-y-1">
-                             <label className="text-xs">Taxa de IVA</label>
-                             <input type="number" className="w-full border p-2" onChange={(e) => setCalcData({...calcData, iva: Number(e.target.value)})} />
-                          </div>
-                          <div className="space-y-1">
-                             <label className="text-xs">Valor Com IVA</label>
-                             <input type="number" className="w-full border p-2" onChange={(e) => setCalcData({...calcData, total: Number(e.target.value)})} />
-                          </div>
-                          <div className="space-y-1">
-                             <label className="text-xs">Valor Sem IVA</label>
-                             <input type="number" className="w-full border p-2" disabled value={(calcData.total / (1 + (calcData.iva / 100))).toFixed(2)} />
-                          </div>
-                          <button className="w-full bg-[#003366] text-white p-2" onClick={() => setShowCalculator(false)}>Fechar</button>
-                       </div>
-                    </div>
-                  )}
-                  <div className="grid grid-cols-12 gap-4 items-end bg-white p-3 border border-zinc-100">
-                    <div className="col-span-2 space-y-1">
-                       <label className="text-[10px] font-bold text-zinc-400 uppercase">Qtd</label>
-                       <input 
-                         disabled={isCertified}
-                         type="number" 
-                         value={item.quantity} 
-                         onChange={e => updateItem(idx, 'quantity', e.target.value)} 
-                         className="w-full border-none focus:ring-0 text-sm font-bold text-[#003366]" 
-                       />
-                    </div>
-                    <div className="col-span-2 space-y-1">
-                       <label className="text-[10px] font-bold text-zinc-400 uppercase">Desconto</label>
-                       <input 
-                         disabled={isCertified}
-                         type="number" 
-                         value={item.desconto || 0} 
-                         onChange={e => updateItem(idx, 'desconto', e.target.value)} 
-                         className="w-full border-none focus:ring-0 text-sm font-bold text-red-500" 
-                       />
-                    </div>
-                    <div className="col-span-3 space-y-1">
-                       <label className="text-[10px] font-bold text-zinc-400 uppercase flex items-center justify-between">
-                         P. Unitário
-                         <Calculator size={12} className="cursor-pointer text-[#003366]" onClick={() => setShowCalculator(true)} />
-                       </label>
-                       <input 
-                         disabled={isCertified}
-                         type="number" 
-                         value={item.unit_price} 
-                         onChange={e => updateItem(idx, 'unit_price', e.target.value)} 
-                         className="w-full border-none focus:ring-0 text-sm font-bold text-[#003366]" 
-                       />
-                    </div>
-                    <div className="col-span-3 space-y-1 border-l pl-4">
-                       <label className="text-[10px] font-bold text-zinc-400 uppercase">Subtotal Líquido</label>
-                       <p className="text-sm font-black text-[#003366]">{formatCurrency(item.total || 0)}</p>
-                    </div>
-                    <div className="col-span-2 space-y-1 flex items-end justify-end gap-2 pr-2 pb-1">
-                      <button 
-                        type="button"
-                        onClick={() => setExpandedDimensions(expandedDimensions === idx ? null : idx)}
-                        title="Configurar Dimensões"
-                        className={`p-1.5 rounded-none transition-all flex items-center justify-center border ${expandedDimensions === idx ? 'bg-[#003366] border-[#003366] text-white shadow-lg' : 'bg-white border-zinc-200 text-zinc-400 hover:text-[#003366] hover:border-[#003366]'}`}
-                      >
-                        <Layers size={14} />
-                      </button>
-                      <button 
-                        type="button"
-                        disabled={isCertified}
-                        onClick={() => removeItem(idx)}
-                        title="Remover Item"
-                        className="p-1.5 rounded-none bg-white border border-zinc-200 text-zinc-400 hover:text-red-600 hover:border-red-600 transition-all flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                 </div>
-                 {expandedDimensions === idx && (
-                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="grid grid-cols-3 gap-4 pt-2">
-                     <div className="space-y-1">
-                        <label className="text-[9px] font-bold text-zinc-400 uppercase">Comprimento</label>
-                        <input type="number" value={item.comprimento || 0} onChange={e => updateItem(idx, 'comprimento', e.target.value)} className="w-full bg-white border border-zinc-100 p-2 text-xs focus:border-[#003366] outline-none" />
-                     </div>
-                     <div className="space-y-1">
-                        <label className="text-[9px] font-bold text-zinc-400 uppercase">Largura</label>
-                        <input type="number" value={item.largura || 0} onChange={e => updateItem(idx, 'largura', e.target.value)} className="w-full bg-white border border-zinc-100 p-2 text-xs focus:border-[#003366] outline-none" />
-                     </div>
-                     <div className="space-y-1">
-                        <label className="text-[9px] font-bold text-zinc-400 uppercase">Altura</label>
-                        <input type="number" value={item.altura || 0} onChange={e => updateItem(idx, 'altura', e.target.value)} className="w-full bg-white border border-zinc-100 p-2 text-xs focus:border-[#003366] outline-none" />
-                     </div>
-                  </motion.div>
+
+          {/* AGT-style table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="bg-[#0f2a4a] text-white">
+                  <th className="px-3 py-2.5 text-left font-semibold w-10">#</th>
+                  <th className="px-3 py-2.5 text-left font-semibold">Descrição do produto</th>
+                  <th className="px-3 py-2.5 text-center font-semibold w-24">Quantidade</th>
+                  <th className="px-3 py-2.5 text-center font-semibold w-28">Preço Unit</th>
+                  <th className="px-3 py-2.5 text-center font-semibold w-28">Desconto (%)</th>
+                  <th className="px-3 py-2.5 text-center font-semibold w-32">Imposto aplicado</th>
+                  <th className="px-3 py-2.5 text-center font-semibold w-24">Acção</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="py-16 text-center text-zinc-300 font-semibold uppercase tracking-widest text-xs italic border border-dashed border-zinc-200">
+                      Nenhum bem ou serviço adicionado
+                    </td>
+                  </tr>
+                ) : (
+                  items.map((item, idx) => (
+                    <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-zinc-50/60'}>
+                      <td className="px-3 py-2.5 text-zinc-500 border-b border-zinc-100">{idx + 1}</td>
+                      <td className="px-3 py-2.5 border-b border-zinc-100">
+                        <div className="font-medium text-zinc-800">{item.description || '—'}</div>
+                        {item.referencia && <div className="text-zinc-400 text-[10px]">Ref: {item.referencia}</div>}
+                      </td>
+                      <td className="px-3 py-2.5 text-center border-b border-zinc-100 text-zinc-700">{item.quantity}</td>
+                      <td className="px-3 py-2.5 text-center border-b border-zinc-100 text-zinc-700">{formatCurrency(Number(item.unit_price) || 0)}</td>
+                      <td className="px-3 py-2.5 text-center border-b border-zinc-100 text-zinc-700">{item.desconto || 0}%</td>
+                      <td className="px-3 py-2.5 text-center border-b border-zinc-100">
+                        {(() => {
+                          const tax = activeTaxes.find(t => t.id === item.tax_id || String(t.id) === String(item.tax_id));
+                          return tax ? (
+                            <span className="inline-block bg-blue-50 text-blue-700 px-2 py-0.5 text-[10px] font-semibold border border-blue-100">
+                              {tax.nome} {tax.taxa}%
+                            </span>
+                          ) : <span className="text-zinc-400">—</span>;
+                        })()}
+                      </td>
+                      <td className="px-3 py-2.5 border-b border-zinc-100">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            type="button"
+                            disabled={isCertified}
+                            onClick={() => {
+                              setEditingAgtItemIndex(idx);
+                              const tax = activeTaxes.find(t => t.id === item.tax_id || String(t.id) === String(item.tax_id));
+                              setEditingAgtItemData({
+                                tipo_operacao: item.tipo_artigo || 'produto',
+                                quantity: Number(item.quantity) || 1,
+                                description: item.description || '',
+                                unidade_medida: item.unidade_medida || 'QUANTIDADE (Qtd)',
+                                unit_price: Number(item.unit_price) || 0,
+                                preco_com_desconto: Number(item.unit_price) || 0,
+                                valor_credito: 0,
+                                has_imposto: true,
+                                tipo_imposto: tax ? (tax.nome?.includes('IVA') ? 'IVA' : 'IS') : 'IS',
+                                tem_isencao: false,
+                                codigo_imposto: tax ? (String(tax.taxa) === '14' ? 'IVA_14' : 'IS_1') : 'IS_1',
+                                taxa_imposto: tax ? Number(tax.taxa) : 14,
+                                valor_imposto: 0,
+                                desconto: Number(item.desconto) || 0,
+                                total: Number(item.total) || 0,
+                              });
+                              setIsAgtItemModalOpen(true);
+                            }}
+                            title="Editar"
+                            className="p-1.5 bg-white border border-zinc-200 text-zinc-500 hover:text-[#0f2a4a] hover:border-[#0f2a4a] transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isCertified}
+                            onClick={() => removeItem(idx)}
+                            title="Remover"
+                            className="p-1.5 bg-white border border-zinc-200 text-zinc-500 hover:text-red-600 hover:border-red-300 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
                 )}
-              </div>
-            ))}
-            
-            {items.length === 0 && (
-              <div className="py-20 text-center border-2 border-dashed border-zinc-100 text-zinc-300 font-bold uppercase tracking-widest text-sm italic">
-                Aguardando itens para furação...
-              </div>
-            )}
+              </tbody>
+            </table>
           </div>
+
+
 
           <div className="flex justify-end pt-8">
             <div className="w-full max-w-sm space-y-3 bg-zinc-50 p-6 border border-zinc-100">
@@ -19983,6 +20002,59 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
           </button>
         </div>
       </form>
+
+      {/* AgtItemModal - FORM 2.PNG style */}
+      {isAgtItemModalOpen && (
+        <AgtItemModal
+          isOpen={isAgtItemModalOpen}
+          onClose={() => {
+            setIsAgtItemModalOpen(false);
+            setEditingAgtItemIndex(null);
+            setEditingAgtItemData(null);
+          }}
+          initialItem={editingAgtItemData}
+          activeTaxes={activeTaxes}
+          products={products}
+          onSave={(data: AgtItemData) => {
+            // Map AgtItemData fields to InvoiceItem schema
+            const matchedTax = activeTaxes.find(t => Number(t.taxa) === Number(data.taxa_imposto));
+            const taxId = matchedTax ? matchedTax.id : (activeTaxes[0]?.id ?? '');
+            const taxRate = Number(data.taxa_imposto) || 0;
+            const qty = Number(data.quantity) || 1;
+            const unitPrice = Number(data.unit_price) || 0;
+            const descontoVal = Number(data.desconto) || 0;
+            const basePrice = unitPrice * (1 - descontoVal / 100);
+            const lineTotal = basePrice * qty + (data.valor_imposto || 0);
+
+            const newItem: Partial<InvoiceItem> = {
+              description: data.description,
+              quantity: qty,
+              unit_price: unitPrice,
+              tax_id: taxId,
+              tax_rate: taxRate,
+              desconto: descontoVal,
+              total: lineTotal,
+              tipo_artigo: data.tipo_operacao || 'produto',
+              unidade_medida: data.unidade_medida || 'UN',
+            };
+
+            if (editingAgtItemIndex !== null) {
+              // Edit existing item
+              const updated = [...items];
+              updated[editingAgtItemIndex] = { ...updated[editingAgtItemIndex], ...newItem };
+              setItems(updated);
+            } else {
+              // Add new item
+              setItems(prev => [...prev, newItem]);
+            }
+
+            setIsAgtItemModalOpen(false);
+            setEditingAgtItemIndex(null);
+            setEditingAgtItemData(null);
+          }}
+        />
+      )}
+
     </div>
   );
 };
@@ -22221,6 +22293,8 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
       }
 
       // Objeto limpo apenas com campos que existem na tabela 'compras'
+      const isCashPurchase = documentType === 'Fatura Recibo de Compra';
+      
       const purchaseDataFields: any = {
         empresa_id: user.empresa_id,
         fornecedor_id: finalSupplierId || null,
@@ -22243,6 +22317,11 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
         items: items,
         descricao: `${documentType} nº ${invoiceNumber || documentNumber}`,
         ano: Number(new Date(date).getFullYear()),
+        status: isCashPurchase ? 'pago' : 'pendente',
+        estado: isCashPurchase ? 'PAGO' : 'pendente',
+        recibo_emitido: isCashPurchase ? true : false,
+        valor_pago: isCashPurchase ? Number(finalTotal) : 0,
+        saldo_pendente: isCashPurchase ? 0 : Number(finalTotal),
         created_by: user.id,
         created_by_username: user.username,
         created_by_nome: user.nome || user.username || 'Operador',
@@ -23059,6 +23138,137 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
   );
 };
 
+const getPurchaseStatus = (p: any): {
+  label: 'ANULADO' | 'PAGO' | 'PARCIAL' | 'PENDENTE';
+  isFullyPaid: boolean;
+  isPartial: boolean;
+  isPending: boolean;
+  isAnulado: boolean;
+  pendBalance: number;
+  paidDoc: number;
+  totalDoc: number;
+  dotColor: string;
+  textColor: string;
+  bgColor: string;
+} => {
+  if (!p) {
+    return { label: 'PENDENTE', isFullyPaid: false, isPartial: false, isPending: true, isAnulado: false, pendBalance: 0, paidDoc: 0, totalDoc: 0, dotColor: 'bg-amber-500 animate-pulse', textColor: 'text-amber-600', bgColor: 'bg-amber-50 border border-amber-200' };
+  }
+
+  const rawDocType = String(p.tipo_documento || p.document_type || '').toUpperCase();
+  const isReceiptDoc = rawDocType.includes('RECIBO') || rawDocType.includes('PAGAMENTO');
+  const isAnulado = ['anulado', 'cancelled'].includes(String(p.status || '').toLowerCase()) || 
+                    ['anulado', 'cancelled'].includes(String((p as any).estado || '').toLowerCase());
+
+  const totalDoc = Number(p.total || (p as any).valor_total || 0);
+  const paidDoc = Number(p.valor_pago || 0);
+
+  if (isAnulado) {
+    return {
+      label: 'ANULADO',
+      isFullyPaid: false,
+      isPartial: false,
+      isPending: false,
+      isAnulado: true,
+      pendBalance: 0,
+      paidDoc,
+      totalDoc,
+      dotColor: 'bg-red-600',
+      textColor: 'text-red-600',
+      bgColor: 'bg-red-50 border border-red-200'
+    };
+  }
+
+  // Recibo / Pagamento / Fatura Recibo documents are ALWAYS PAGO by definition
+  if (isReceiptDoc) {
+    return {
+      label: 'PAGO',
+      isFullyPaid: true,
+      isPartial: false,
+      isPending: false,
+      isAnulado: false,
+      pendBalance: 0,
+      paidDoc: totalDoc,
+      totalDoc,
+      dotColor: 'bg-emerald-500 animate-pulse',
+      textColor: 'text-emerald-600',
+      bgColor: 'bg-emerald-50 border border-emerald-200'
+    };
+  }
+
+  // For credit purchase invoices ('Fatura de Compra', 'FTC', 'Compra', 'Fatura'):
+  // Must start as PENDENTE upon registration and can only become PAGO after emitting a receipt.
+  const isCreditInvoice = rawDocType === 'FATURA DE COMPRA' || rawDocType === 'FTC' || rawDocType === 'COMPRA' || rawDocType === 'FATURA';
+
+  let pendBalance = (p as any).saldo_pendente !== undefined && (p as any).saldo_pendente !== null
+    ? Number((p as any).saldo_pendente)
+    : Math.max(0, totalDoc - paidDoc);
+
+  // Fix for legacy database records where saldo_pendente defaulted to 0 without receipt or payment
+  if (isCreditInvoice && p.recibo_emitido !== true && paidDoc <= 0.01) {
+    pendBalance = totalDoc;
+  }
+
+  // A Fatura de Compra is fully paid (PAGO) ONLY if:
+  // 1. recibo_emitido flag is true
+  // 2. OR paid amount is >= total amount - 0.01 (when total > 0 AND paidDoc > 0)
+  // 3. OR pending balance <= 0.01 AND (paidDoc > 0 OR recibo_emitido === true)
+  const isFullyPaid = p.recibo_emitido === true || 
+                      (totalDoc > 0 && paidDoc > 0 && paidDoc >= totalDoc - 0.01) ||
+                      (totalDoc > 0 && pendBalance <= 0.01 && (paidDoc > 0 || p.recibo_emitido === true));
+
+  if (isFullyPaid) {
+    return {
+      label: 'PAGO',
+      isFullyPaid: true,
+      isPartial: false,
+      isPending: false,
+      isAnulado: false,
+      pendBalance: 0,
+      paidDoc: Math.max(paidDoc, totalDoc),
+      totalDoc,
+      dotColor: 'bg-emerald-500 animate-pulse',
+      textColor: 'text-emerald-600',
+      bgColor: 'bg-emerald-50 border border-emerald-200'
+    };
+  }
+
+  // A Fatura de Compra is partially paid (PARCIAL) if:
+  // Paid amount > 0 and < totalDoc - 0.01
+  const isPartial = paidDoc > 0.01 && paidDoc < totalDoc - 0.01;
+
+  if (isPartial) {
+    return {
+      label: 'PARCIAL',
+      isFullyPaid: false,
+      isPartial: true,
+      isPending: false,
+      isAnulado: false,
+      pendBalance: Math.max(0, totalDoc - paidDoc),
+      paidDoc,
+      totalDoc,
+      dotColor: 'bg-blue-500 animate-pulse',
+      textColor: 'text-blue-600',
+      bgColor: 'bg-blue-50 border border-blue-200'
+    };
+  }
+
+  // Otherwise, it is pending (PENDENTE)
+  return {
+    label: 'PENDENTE',
+    isFullyPaid: false,
+    isPartial: false,
+    isPending: true,
+    isAnulado: false,
+    pendBalance: totalDoc,
+    paidDoc: 0,
+    totalDoc,
+    dotColor: 'bg-amber-500 animate-pulse',
+    textColor: 'text-amber-600',
+    bgColor: 'bg-amber-50 border border-amber-200'
+  };
+};
+
 const PurchaseActionsModal = ({ purchase, onClose, onAction }: { 
   purchase: Purchase, 
   onClose: () => void,
@@ -23175,16 +23385,9 @@ const PurchaseActionsModal = ({ purchase, onClose, onAction }: {
             
             if (isReceiptDoc || isCreditDoc) return null;
 
-            const totalDoc = Number(purchase.total || (purchase as any).valor_total || 0);
-            const paidDoc = Number(purchase.valor_pago || 0);
-            const pendDoc = (purchase as any).saldo_pendente !== undefined && (purchase as any).saldo_pendente !== null
-              ? Number((purchase as any).saldo_pendente)
-              : Math.max(0, totalDoc - paidDoc);
-            
-            const isFullyPaid = purchase.recibo_emitido === true || purchase.status === 'pago' || (purchase as any).estado === 'PAGO' || (pendDoc <= 0.01 && paidDoc > 0);
-            const isPartial = !isFullyPaid && (paidDoc > 0 || purchase.status === 'parcial' || (purchase as any).estado === 'PARCIAL');
+            const st = getPurchaseStatus(purchase);
 
-            if (isFullyPaid) {
+            if (st.isFullyPaid) {
               return (
                 <button 
                   disabled
@@ -23209,7 +23412,7 @@ const PurchaseActionsModal = ({ purchase, onClose, onAction }: {
               <button 
                 onClick={() => handleAction('receipt')} 
                 className={`flex items-center gap-4 p-4 border transition-all text-left group ${
-                  isPartial 
+                  st.isPartial 
                     ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700 shadow-md' 
                     : 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700 shadow-md'
                 }`}
@@ -23219,11 +23422,11 @@ const PurchaseActionsModal = ({ purchase, onClose, onAction }: {
                 </div>
                 <div>
                   <span className="block text-xs font-black uppercase tracking-wider text-white">
-                    {isPartial ? 'Emitir Recibo (Saldo Restante)' : 'Emitir Recibo / Liquidação'}
+                    {st.isPartial ? 'Emitir Recibo (Saldo Restante)' : 'Emitir Recibo / Liquidação'}
                   </span>
                   <span className="text-[9px] font-bold uppercase text-white/80">
-                    {isPartial 
-                      ? `Registar Liquidação Parcial (Saldo Pendente: ${formatCurrency(pendDoc)})` 
+                    {st.isPartial 
+                      ? `Registar Liquidação Parcial (Saldo Pendente: ${formatCurrency(st.pendBalance)})` 
                       : 'Registar recibo de pagamento ao fornecedor'}
                   </span>
                 </div>
@@ -24018,16 +24221,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                   <td class="text-center">${p.currency || 'AOA'}</td>
                   <td class="text-right" style="color: #059669;">${formatCurrency(p.valor_pago || 0)}</td>
                   <td class="text-right font-bold">${formatCurrency(p.total || (p as any).valor_total || 0)}</td>
-                  <td class="text-center"><strong>${(() => {
-                    const isAnul = ['anulado', 'cancelled'].includes((p.status || '').toLowerCase());
-                    const isRec = ['recibo', 'pagamento'].includes(String(p.document_type || p.tipo_documento || '').toLowerCase());
-                    const tot = Number(p.total || (p as any).valor_total || 0);
-                    const pd = Number(p.valor_pago || 0);
-                    const pend = (p as any).saldo_pendente !== undefined && (p as any).saldo_pendente !== null ? Number((p as any).saldo_pendente) : Math.max(0, tot - pd);
-                    const isPaid = isRec || p.recibo_emitido === true || p.status === 'pago' || (p as any).estado === 'PAGO' || (pend <= 0.01 && pd > 0);
-                    const isPart = !isPaid && pd > 0 && pend > 0.01;
-                    return isAnul ? 'ANULADO' : isPaid ? 'PAGO' : isPart ? 'PARCIAL' : 'PENDENTE';
-                  })()}</strong></td>
+                  <td class="text-center"><strong>${getPurchaseStatus(p).label}</strong></td>
                 </tr>
               `).join('')}
             </tbody>
@@ -24094,22 +24288,13 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
   });
 
   const filteredPendingPurchases = purchases.filter(p => {
-    if (['cancelled', 'anulado'].includes((p.status || '').toLowerCase())) return false;
+    const st = getPurchaseStatus(p);
+    if (st.isAnulado || st.isFullyPaid) return false;
 
     const docType = (p.tipo_documento || p.document_type || '').toUpperCase();
     const isInvoice = docType.includes('FATURA') || docType.includes('FT') || docType.includes('COMPRA');
     const isReceiptOrCredit = docType.includes('RECIBO') || docType.includes('PAGAMENTO') || docType.includes('CRÉDITO') || docType.includes('CREDITO');
     if (!isInvoice || isReceiptOrCredit) return false;
-
-    const totalDoc = Number(p.total || (p as any).valor_total || 0);
-    const paidDoc = Number(p.valor_pago || 0);
-    const pendingBalance = (p as any).saldo_pendente !== undefined && (p as any).saldo_pendente !== null
-      ? Number((p as any).saldo_pendente)
-      : Math.max(0, totalDoc - paidDoc);
-
-    const isFullyPaid = p.recibo_emitido === true || p.status === 'pago' || (p as any).estado === 'PAGO' || (pendingBalance <= 0.01 && totalDoc > 0);
-
-    if (isFullyPaid || pendingBalance <= 0.01) return false;
 
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
@@ -24304,27 +24489,12 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                       <td className="px-6 py-4 text-right font-black text-[#003366] text-sm">{formatCurrency(p.total)}</td>
                       <td className="px-6 py-4 border-l border-zinc-50">
                         {(() => {
-                          const totalDoc = Number(p.total || (p as any).valor_total || 0);
-                          const paidDoc = Number(p.valor_pago || 0);
-                          const pendBalance = (p as any).saldo_pendente !== undefined && (p as any).saldo_pendente !== null
-                            ? Number((p as any).saldo_pendente)
-                            : Math.max(0, totalDoc - paidDoc);
-                          // PAGO só quando recibo foi formalmente emitido
-                          const isFullyPaid = p.recibo_emitido === true || p.status === 'pago' || (p as any).estado === 'PAGO';
-                          // PARCIAL: tem pagamento parcial mas ainda sem recibo total emitido
-                          const isPartial = !isFullyPaid && paidDoc > 0 && pendBalance > 0.01;
-                          const isAnulado = ['anulado', 'cancelled'].includes((p.status || '').toLowerCase()) || ['anulado', 'cancelled'].includes(((p as any).estado || '').toLowerCase());
-
-                          const label = isAnulado ? 'ANULADO' : isFullyPaid ? 'PAGO' : isPartial ? 'PARCIAL' : 'PENDENTE';
-                          const dotColor = isAnulado ? 'bg-red-600' : isFullyPaid ? 'bg-emerald-500 animate-pulse' : isPartial ? 'bg-blue-500 animate-pulse' : 'bg-amber-500 animate-pulse';
-                          const textColor = isAnulado ? 'text-red-600' : isFullyPaid ? 'text-emerald-600' : isPartial ? 'text-blue-600' : 'text-amber-600';
-                          const bgColor = isAnulado ? 'bg-red-50 border border-red-200' : isFullyPaid ? 'bg-emerald-50 border border-emerald-200' : isPartial ? 'bg-blue-50 border border-blue-200' : 'bg-amber-50 border border-amber-200';
-
+                          const st = getPurchaseStatus(p);
                           return (
-                            <div className={`flex items-center justify-center gap-1.5 px-2 py-1 rounded-none ${bgColor}`}>
-                              <div className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
-                              <span className={`font-black uppercase text-[9px] tracking-widest ${textColor}`}>
-                                {label}
+                            <div className={`flex items-center justify-center gap-1.5 px-2 py-1 rounded-none ${st.bgColor}`}>
+                              <div className={`w-1.5 h-1.5 rounded-full ${st.dotColor}`} />
+                              <span className={`font-black uppercase text-[9px] tracking-widest ${st.textColor}`}>
+                                {st.label}
                               </span>
                             </div>
                           );
@@ -24436,11 +24606,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
               <tbody className="divide-y divide-zinc-100 italic">
                 {filteredPendingPurchases
                   .map((p, pIndex) => {
-                    const totalDoc = Number(p.total || (p as any).valor_total || 0);
-                    const paidDoc = Number(p.valor_pago || 0);
-                    const pendingBalance = (p as any).saldo_pendente !== undefined && (p as any).saldo_pendente !== null
-                      ? Number((p as any).saldo_pendente)
-                      : Math.max(0, totalDoc - paidDoc);
+                    const st = getPurchaseStatus(p);
 
                     return (
                       <tr key={p.id || pIndex} className="hover:bg-amber-50/50 transition-colors text-[13px] border-b border-zinc-50 group">
@@ -24451,7 +24617,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                         <td className="px-6 py-4 border-r border-zinc-100">
                           <div className="font-black text-[#003366] uppercase whitespace-nowrap">{p.document_type || 'Compra'}</div>
                           <div className="text-zinc-500 font-bold mt-1">{p.invoice_number || '-'}</div>
-                          {paidDoc > 0 ? (
+                          {st.isPartial ? (
                             <span className="inline-block mt-1 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider bg-blue-100 text-blue-800 border border-blue-200">
                               PARCIAL
                             </span>
@@ -24464,18 +24630,24 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                         <td className="px-6 py-4 font-mono text-zinc-500">{p.codigo || p.purchase_number}</td>
                         <td className="px-6 py-4 font-bold text-zinc-900">{p.supplier_name}</td>
                         <td className="px-6 py-4 text-center text-zinc-600 font-medium">{p.currency || 'AOA'}</td>
-                        <td className="px-6 py-4 text-right font-bold text-emerald-600">{formatCurrency(paidDoc)}</td>
-                        <td className="px-6 py-4 text-right font-black text-amber-600 text-sm italic">{formatCurrency(pendingBalance)}</td>
-                        <td className="px-6 py-4 text-right font-black text-[#003366] text-sm">{formatCurrency(totalDoc)}</td>
+                        <td className="px-6 py-4 text-right font-bold text-emerald-600">{formatCurrency(st.paidDoc)}</td>
+                        <td className="px-6 py-4 text-right font-black text-amber-600 text-sm italic">{formatCurrency(st.pendBalance)}</td>
+                        <td className="px-6 py-4 text-right font-black text-[#003366] text-sm">{formatCurrency(st.totalDoc)}</td>
                         <td className="px-6 py-4 text-right pr-8">
                           <div className="flex items-center justify-end gap-3 font-sans">
                             <UserIssuerButton doc={p} globalUsers={globalUsers} />
                             <button 
-                              onClick={() => setShowReceiptModal(p)}
-                              className={`${paidDoc > 0 ? 'bg-blue-600 hover:bg-blue-700' : 'bg-emerald-600 hover:bg-emerald-700'} text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest shadow-md transition-all flex items-center gap-1.5`}
+                              onClick={() => {
+                                if (st.isFullyPaid) {
+                                  alert('Esta fatura de compra já se encontra totalmente paga (PAGO). Não é possível emitir mais recibos.');
+                                  return;
+                                }
+                                setShowReceiptModal(p);
+                              }}
+                              className={`${st.isPartial ? 'bg-blue-600 hover:bg-blue-700' : 'bg-emerald-600 hover:bg-emerald-700'} text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest shadow-md transition-all flex items-center gap-1.5`}
                             >
                               <FileCheck size={14} />
-                              {paidDoc > 0 ? 'Emitir Recibo (Saldo)' : 'Emitir Recibo'}
+                              {st.isPartial ? 'Emitir Recibo (Saldo)' : 'Emitir Recibo'}
                             </button>
                             <button 
                               onClick={() => setSelectedPurchase(p)}
@@ -25194,76 +25366,15 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                 const { error } = await supabase.from('compras').update({ status: 'anulado', estado: 'anulado' }).eq('id', p.id);
                 if (!error) { toast.success('Documento anulado com sucesso!'); fetchPurchases(); }
                 setSelectedPurchase(null);
-             } else if (action === 'receipt') {
-                setShowReceiptModal(p);
+             } else if (action === 'receipt' || action === 'pay') {
+                const st = getPurchaseStatus(p);
+                if (st.isFullyPaid) {
+                  alert('Esta fatura de compra já se encontra totalmente paga (PAGO). Não é possível emitir mais recibos.');
+                } else {
+                  setShowReceiptModal(p);
+                }
                 setSelectedPurchase(null);
-             } else if (action === 'credit_note') {
-                const draft = { ...p, id: undefined, purchase_number: '' };
-                handleStartCreate(draft, 'Nota de Crédito de Fornecedor');
-             } else if (action === 'clone') {
-                const cloned = { ...p, id: undefined, purchase_number: '' };
-                handleStartCreate(cloned, p.document_type);
-             } else if (action === 'change_hash') {
-                setShowHashModal(p);
-                setSelectedPurchase(null);
-             } else if (action === 'reports') {
-                setShowReportModal(p);
-                setSelectedPurchase(null);
-             } else if (action === 'whatsapp') {
-                const text = `Documento de Compra ${p.purchase_number}\nFornecedor: ${p.supplier_name}\nData: ${p.date}\nTotal: ${formatCurrency(p.total)}`;
-                window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
-             } else if (action === 'email') {
-                const subject = `Documento de Compra ${p.purchase_number}`;
-                const body = `Documento de Compra ${p.purchase_number}\nFornecedor: ${p.supplier_name}\nData: ${p.date}\nTotal: ${formatCurrency(p.total)}`;
-                window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
-             } else if (action === 'print') { 
-                setShowA4PrintModal(p); 
-                setSelectedPurchase(null);
-             } else if (action === 'upload') {
-               const input = document.createElement('input');
-               input.type = 'file';
-               input.onchange = async (e) => {
-                 const file = (e.target as HTMLInputElement).files?.[0];
-                 if (file && p) {
-                    try {
-                      const { error } = await supabase
-                        .from('compras')
-                        .update({ 
-                          document_url: file.name, 
-                          atualizado_em: new Date().toISOString(),
-                          atualizado_por: user?.id 
-                        })
-                        .eq('id', p.id);
-
-                      if (error) throw error;
-                      alert('Documento associado com sucesso: ' + file.name);
-                      fetchPurchases();
-                    } catch (err) {
-                      console.error('Upload error:', err);
-                      alert('Erro ao anexar arquivo.');
-                    }
-                 }
-               };
-               input.click();
-            } else if (action === 'download_doc') {
-               if (p.document_url) {
-                 window.open(p.document_url, '_blank');
-               } else {
-                 alert('Nenhum documento anexado.');
-               }
-            } else if (action === 'delete_doc') {
-              if (confirm('Remover anexo?')) {
-                supabase
-                  .from('compras')
-                  .update({ document_url: null, atualizado_em: new Date().toISOString(), atualizado_por: user?.id })
-                  .eq('id', p.id)
-                  .then(() => fetchPurchases())
-                  .catch(err => console.error(err));
-              }
-            } else if (action === 'pay') {
-               setShowReceiptModal(p);
-               setSelectedPurchase(null);
-            }
+             }
           }}
         />
       )}
@@ -25504,6 +25615,11 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                   total: rAmount,
                   tipo_documento: 'Recibo',
                   document_type: 'Recibo',
+                  status: 'pago',
+                  estado: 'PAGO',
+                  recibo_emitido: true,
+                  saldo_pendente: 0,
+                  valor_pago: rAmount,
                   numero_documento: receiptNum,
                   numero_compra: receiptNum,
                   numero_fatura: showReceiptModal.purchase_number,
@@ -30267,6 +30383,7 @@ export default function App() {
         />
       )}
 
+
       <AnimatePresence>
         {isCreatingInvoice && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 md:p-12">
@@ -30288,7 +30405,7 @@ export default function App() {
                   <FilePlus size={18} />
                   Emitir Novo Documento
                 </h3>
-                <button 
+                <button
                   onClick={() => setIsCreatingInvoice(false)}
                   className="p-2 hover:bg-zinc-200 rounded-full transition-colors text-zinc-400 hover:text-zinc-600"
                 >
@@ -30297,17 +30414,16 @@ export default function App() {
               </div>
               <div className="flex-1 overflow-y-auto p-8">
                 <div key={(selectedDocument?.id || 'new-sub') + (fixedDocumentType || 'none')}>
-                  <CreateInvoice 
-                    clients={clients} 
-                    products={products} 
+                  <CreateInvoice
+                    clients={clients}
+                    products={products}
                     workSites={workSites}
                     fiscalSeries={fiscalSeries}
                     activeTaxes={activeTaxes}
-                    onBack={() => setIsCreatingInvoice(false)} 
+                    onBack={() => setIsCreatingInvoice(false)}
                     onSaveDocument={saveDocumentoEmitido}
                     onSuccess={async () => {
                       setIsCreatingInvoice(false);
-                      // Add a small delay to ensure backend has processed the transaction
                       await new Promise(resolve => setTimeout(resolve, 500));
                       await fetchData();
                       setActiveTab('invoices');
@@ -30323,6 +30439,7 @@ export default function App() {
           </div>
         )}
       </AnimatePresence>
+
       {isContractModalOpen && (appSelectedEmployee || selectedContract) && (
         <ContractModal 
           user={user}

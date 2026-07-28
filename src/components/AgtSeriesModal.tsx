@@ -41,30 +41,43 @@ export const AgtSeriesModal: React.FC<AgtSeriesModalProps> = ({ onClose, onSucce
     setError(null);
     setResult(null);
 
+    const payload = {
+      ...formData,
+      empresa_id: user?.empresa_id,
+      utilizador_id: user?.id
+    };
+
+    console.log("AGT REQUEST", payload);
+
     try {
       const response = await fetch('/api/agt/solicitar-serie', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...formData,
-          empresa_id: user?.empresa_id,
-          utilizador_id: user?.id
-        })
+        body: JSON.stringify(payload)
       });
 
       const data = await response.json();
+      console.log("AGT RESPONSE", data);
+
+      let retornoObj = null;
+      if (data && data.retorno) {
+        retornoObj = data.retorno;
+      }
 
       if (response.ok && data.success) {
-        setResult(data.data);
+        setResult(data.data || (retornoObj ? retornoObj.dados : null));
         if (onSuccess) onSuccess();
       } else {
-        const errorList = data.errorList || [];
+        const errorList = data.errorList || (retornoObj && retornoObj.erros ? retornoObj.erros : []);
         const errorMsg = errorList.length > 0 
-          ? errorList.map((e: any) => `[${e.idError}] ${e.descriptionError}`).join(' | ')
-          : data.error || 'Erro ao solicitar série.';
+          ? errorList.map((e: any) => `[${e.idError || e.codigo || "ERR"}] ${e.descriptionError || e.mensagem || "Erro"}`).join(' | ')
+          : (retornoObj ? retornoObj.mensagem : null) || data.error || 'Erro ao solicitar série.';
+        
+        console.error("AGT ERROR", errorMsg);
         setError(errorMsg);
       }
     } catch (err: any) {
+      console.error("AGT ERROR", err.message);
       setError(err.message || 'Erro de conexão.');
     } finally {
       setLoading(false);

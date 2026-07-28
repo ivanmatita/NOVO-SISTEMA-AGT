@@ -24301,7 +24301,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
 
   const filteredPendingPurchases = purchases.filter(p => {
     const st = getPurchaseStatus(p);
-    if (st.isAnulado || st.isFullyPaid) return false;
+    if (st.isAnulado || st.isFullyPaid || p.recibo_emitido === true || String(p.status || '').toLowerCase() === 'pago' || String(p.estado || '').toUpperCase() === 'PAGO') return false;
 
     const docType = (p.tipo_documento || p.document_type || '').toUpperCase();
     const isInvoice = docType.includes('FATURA') || docType.includes('FT') || docType.includes('COMPRA');

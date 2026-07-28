@@ -14,12 +14,13 @@ const getEnvVar = (name: string): string => {
   return '';
 };
 
-const rawUrl = getEnvVar('VITE_SUPABASE_URL').trim();
+const rawUrl = (getEnvVar('VITE_SUPABASE_URL') || getEnvVar('SUPABASE_URL')).trim();
 if (!rawUrl) {
-  console.error("VITE_SUPABASE_URL não encontrada");
+  console.error("VITE_SUPABASE_URL / SUPABASE_URL não encontrada");
 }
-if (!getEnvVar('VITE_SUPABASE_ANON_KEY')) {
-  console.error("VITE_SUPABASE_ANON_KEY não encontrada");
+const rawKey = (getEnvVar('VITE_SUPABASE_ANON_KEY') || getEnvVar('ANON_KEY') || getEnvVar('SUPABASE_ANON_KEY')).trim();
+if (!rawKey) {
+  console.error("VITE_SUPABASE_ANON_KEY / ANON_KEY não encontrada");
 }
 
 // Robust cleaning & premium browser proxy selection to defeat regional routing delays/blocks
@@ -28,7 +29,7 @@ const supabaseUrl = rawUrl
   .replace(/\/rest\/v1\/?$/, "")
   .replace(/\/auth\/v1\/?$/, "")
   .replace(/\/$/, "");
-const supabaseAnonKey = getEnvVar('VITE_SUPABASE_ANON_KEY').trim();
+const supabaseAnonKey = rawKey;
 
 // Connection status exported for UI inspection
 export const supabaseStatus = {

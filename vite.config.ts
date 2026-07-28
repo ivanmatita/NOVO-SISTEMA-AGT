@@ -6,6 +6,17 @@ import {defineConfig, loadEnv} from 'vite';
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   return {
+    define: {
+      'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(
+        env.VITE_SUPABASE_URL || env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || ''
+      ),
+      'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(
+        env.VITE_SUPABASE_ANON_KEY || env.SUPABASE_ANON_KEY || env.ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || process.env.ANON_KEY || ''
+      ),
+      'import.meta.env.VITE_AGT_MODE': JSON.stringify(
+        env.VITE_AGT_MODE || process.env.VITE_AGT_MODE || 'SIMULACAO'
+      ),
+    },
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {

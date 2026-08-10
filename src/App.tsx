@@ -58,6 +58,7 @@ import {
   ShieldCheck,
   UserMinus,
   BadgeCheck,
+  Scale,
   Layers,
   Maximize,
   Filter,
@@ -150,7 +151,9 @@ import {
   Star,
   Shield,
   KeyRound,
-  FolderOpen
+  FolderOpen,
+  Bell,
+  HelpCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
@@ -184,6 +187,7 @@ import RegimeExclusaoForm from './components/RegimeExclusaoForm';
 import ImpostoPorContaForm from './components/ImpostoPorContaForm';
 import DeclaracaoAnualForm from './components/DeclaracaoAnualForm';
 import SaftExportForm from './components/SaftExportForm';
+import { ExerciciosFiscaisManager } from './components/ExerciciosFiscaisManager';
 import { TopHeader } from './components/TopHeader';
 import { RightSidebar } from './components/RightSidebar';
 import { ClientForm } from './components/ClientForm';
@@ -197,6 +201,7 @@ import { AgtValidationModal } from './components/AgtValidationModal';
 import { AgtElectronicInvoiceModal } from './components/AgtElectronicInvoiceModal';
 import { AgtElectronicInvoicesListModal } from './components/AgtElectronicInvoicesListModal';
 import { AgtItemModal, AgtItemData } from './components/AgtItemModal';
+
 
 // --- Helpers ---
 
@@ -333,9 +338,10 @@ const ALL_TAXES = [
   "IVA - Regime de não Sujeição"
 ];
 
-const formatCurrency = (value: number | null | undefined) => {
-  const val = value || 0;
-  return new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(val).replace('AOA', 'Kz');
+const formatCurrency = (value: number | string | null | undefined) => {
+  const val = typeof value === 'string' ? parseFloat(value) : (value || 0);
+  const finalVal = isNaN(val) ? 0 : val;
+  return new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(finalVal).replace('AOA', 'Kz');
 };
 
 const formatDate = (date: any) => {
@@ -866,6 +872,7 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
   companyData: any
 }) => {
   const { user } = useAuth();
+
   const [profileImg, setProfileImg] = useState<string | null>(null);
   const [companyLogo, setCompanyLogo] = useState<string | null>(null);
 
@@ -912,7 +919,7 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
             .eq('ativo', true)
             .order('created_at', { ascending: false })
             .limit(1)
-            .single();
+            .maybeSingle();
             
           if (avatarData?.url_publica) {
             setProfileImg(avatarData.url_publica);
@@ -927,7 +934,7 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
             .eq('ativo', true)
             .order('created_at', { ascending: false })
             .limit(1)
-            .single();
+            .maybeSingle();
             
           if (logoData?.url_publica) {
             setCompanyLogo(logoData.url_publica);
@@ -11111,14 +11118,19 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
                       return badge;
                     })()}
                     {doc.document_type || doc.tipo_documento}
-                    {/* PAGO badge: shown when doc is a receipt, fatura-recibo, or payment_status=paid */}
+                    {/* PAGO badge: shown on Fatura Recibo type, or Faturas with payment_status=paid */}
                     {(() => {
                       const tp = (doc.tipo_documento || doc.document_type || '').toLowerCase();
-                      const isPago =
-                        tp.includes('recibo') ||
-                        tp.includes('fatura recibo') ||
-                        tp.includes('fatura-recibo') ||
-                        doc.payment_status === 'paid';
+                      // "Fatura Recibo" (FR) docs are always paid upon issuance
+                      const isFaturaRecibo = tp === 'fr' || tp === 'fatura recibo' || tp === 'fatura-recibo';
+                      // Standalone Recibo (RC) is a receipt itself - do NOT show PAGO on it
+                      // PAGO shows on origin Fatura that got paid (payment_status updated)
+                      const isPaid =
+                        doc.payment_status === 'paid' ||
+                        (doc as any).payment_status === 'pago' ||
+                        (doc as any).estado_pagamento === 'pago' ||
+                        (doc as any).status_pagamento === 'pago';
+                      const isPago = isFaturaRecibo || isPaid;
                       return isPago ? (
                         <span className="ml-1.5 inline-block text-[8px] font-black bg-green-600 text-white px-1.5 py-0.5 rounded-none uppercase tracking-widest align-middle">
                           PAGO
@@ -11702,7 +11714,7 @@ const SpecializedManagementModule = ({ activeTab, setActiveTab }: { activeTab?: 
   if (activeModule === 'school') return (
     <div>
       <button onClick={() => setActiveModule(null)} className="mb-4 text-[#003366] font-bold text-xs uppercase hover:underline flex items-center gap-1">← Voltar para Gestão Especializada</button>
-      <SchoolModule />
+      <SchoolModule onNavigate={setActiveTab} onEmitirFatura={() => setActiveTab && setActiveTab('invoices')} />
     </div>
   );
   
@@ -16017,36 +16029,635 @@ const DailyMovementsModule = ({ onBack }: { onBack: () => void }) => {
   );
 };
 
-const ClassifyMovementsModule = ({ invoices, purchases, onBack }: { invoices: Invoice[], purchases: Purchase[], onBack: () => void }) => {
+const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurchases, onBack }: { invoices: Invoice[], purchases: Purchase[], onBack: () => void }) => {
   const { user } = useAuth();
-  const [activeSubView, setActiveSubView] = useState<'vendas' | 'compras' | null>(null);
-  const [selectedMonth, setSelectedMonth] = useState('05');
+  const [activeSubView, setActiveSubView] = useState<'vendas' | 'compras' | 'classificar_vendas' | 'classificar_compras' | 'classificar_salario' | 'classificar_pag_salario' | 'classificar_pag_impostos'>('classificar_vendas');
+  const [salarioData, setSalarioData] = useState<any[]>([]);
+  const [salarioLines, setSalarioLines] = useState<any[]>([]);
+  const [salarioModal, setSalarioModal] = useState<any | null>(null);
+  const [salarioDate, setSalarioDate] = useState('');
+  const [salarioDiario, setSalarioDiario] = useState('0005');
+  const [savingSalario, setSavingSalario] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState(() => String(new Date().getMonth() + 1).padStart(2, '0'));
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [selectedIds, setSelectedIds] = useState<any[]>([]);
   const [pgcAccounts, setPgcAccounts] = useState<any[]>([]);
+  const [diarios, setDiarios] = useState<any[]>([]);
+  const [selectedDiarioCode, setSelectedDiarioCode] = useState('0001');
   const [targetRubrica, setTargetRubrica] = useState('');
   const [showPgcList, setShowPgcList] = useState(false);
 
-  useEffect(() => {
-    fetchJson(`/api/accounting/pgc?empresa_id=${user?.empresa_id}`)
-      .then(setPgcAccounts)
-      .catch(err => console.error('Error fetching PGC accounts:', err));
-  }, []);
+  const [vendasData, setVendasData] = useState<any[]>([]);
+  const [comprasData, setComprasData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  const handleClassify = () => {
-    if (selectedIds.length === 0) {
-      alert('Por favor, seleccione pelo menos um movimento para classificar.');
-      return;
+  // Modal de Classificação Manual
+  const [classifyModalItem, setClassifyModalItem] = useState<any | null>(null);
+  const [classifyDate, setClassifyDate] = useState('');
+  const [modalSelectedDiario, setModalSelectedDiario] = useState('0001');
+  const [classifyLines, setClassifyLines] = useState<any[]>([]);
+  const [savingClassify, setSavingClassify] = useState(false);
+
+  // Carregar Diários e PGC
+  const loadDiariosAndPgc = async () => {
+    try {
+      // Carregar Diários
+      let fetchedDiarios: any[] = [];
+      if (user?.empresa_id) {
+        const { data: dData } = await supabase
+          .from('diarios')
+          .select('*')
+          .eq('empresa_id', user.empresa_id)
+          .order('codigo', { ascending: true });
+        if (dData && dData.length > 0) fetchedDiarios = dData;
+      }
+      if (fetchedDiarios.length === 0) {
+        fetchedDiarios = [
+          { codigo: '0000', descricao: 'Diário 0000 Abertura' },
+          { codigo: '0001', descricao: 'Diário 0001 Vendas' },
+          { codigo: '0002', descricao: 'Diário 0002 Compras' },
+          { codigo: '0003', descricao: 'Diário 0003 Caixa' },
+          { codigo: '0004', descricao: 'Diário 0004 Bancos' },
+          { codigo: '0005', descricao: 'Diário 0005 Operações Diversas' }
+        ];
+      }
+      setDiarios(fetchedDiarios);
+
+      // Carregar PGC
+      let fetchedPgc: any[] = [];
+      const { data: pData } = await supabase.from('pgc').select('*').order('codigo', { ascending: true });
+      if (pData && pData.length > 0) {
+        fetchedPgc = pData.map((p: any) => ({
+          id: p.codigo || p.id,
+          codigo: p.codigo || p.id,
+          description: p.descricao || p.description || p.nome || ''
+        }));
+      }
+      if (fetchedPgc.length === 0) {
+        fetchedPgc = [
+          { id: '31.1.2.1.2', codigo: '31.1.2.1.2', description: 'Consumidor Final' },
+          { id: '31.01.02.01.0001', codigo: '31.01.02.01.0001', description: 'Clientes Correntes Nacionais' },
+          { id: '31.01.02.01.0008', codigo: '31.01.02.01.0008', description: 'HIPERMÁQUINAS - ANGOLA' },
+          { id: '32.01.02.01.0001', codigo: '32.01.02.01.0001', description: 'Fornecedores Nacionais' },
+          { id: '34.05.03.01', codigo: '34.05.03.01', description: 'IVA liquidado Operações Gerais' },
+          { id: '34.05.02.01', codigo: '34.05.02.01', description: 'IVA dedutível Operações Gerais' },
+          { id: '61.01.01', codigo: '61.01.01', description: 'Mercado Nacional' },
+          { id: '75.1.01', codigo: '75.1.01', description: 'Compras de Mercadorias Mercado Nacional' },
+          { id: '45.2.1.1', codigo: '45.2.1.1', description: 'Caixa Central' },
+          { id: '43.1.01', codigo: '43.1.01', description: 'Depósitos à Ordem BFA' }
+        ];
+      }
+      setPgcAccounts(fetchedPgc);
+    } catch (e) {
+      console.error('Erro ao carregar Diários/PGC:', e);
     }
-    if (!targetRubrica) {
-      alert('Por favor, seleccione a rubrica de destino.');
-      return;
-    }
-    alert(`Sucesso: ${selectedIds.length} movimentos classificados com a rubrica ${targetRubrica}`);
-    setSelectedIds([]);
   };
 
-  const filteredData = (activeSubView === 'vendas' ? invoices : (purchases as any)).filter((item: any) => {
+  const loadData = async () => {
+    if (!user?.empresa_id) return;
+    setLoading(true);
+    try {
+      await loadDiariosAndPgc();
+
+      const { data: vData } = await supabase
+        .from('documentos_emitidos')
+        .select('*')
+        .eq('empresa_id', user.empresa_id)
+        .order('data_emissao', { ascending: true });
+
+      if (vData && vData.length > 0) {
+        setVendasData(vData.map((d: any) => ({
+          id: d.id,
+          date: d.data_emissao ? d.data_emissao.split('T')[0] : (d.created_at ? d.created_at.split('T')[0] : ''),
+          invoice_number: d.numero_documento || d.documento_formatado || d.id,
+          client_name: d.cliente_nome || 'Consumidor Final',
+          client_pgc: d.conta_cliente_pgc || '31.01.02.01.0001',
+          total: Number(d.total || 0),
+          imposto: Number(d.imposto || 0),
+          conta_pgc: d.conta_pgc || d.rubrica || '31.1.2.1',
+          document_type: d.tipo_documento || (d.numero_documento?.includes('FR') ? 'FR' : 'FT'),
+          status: d.status || 'pendente',
+          ori: d.documento_origem_id ? 'FR' : (d.numero_documento?.includes('FR') ? 'FR' : '')
+        })));
+      } else {
+        setVendasData(propInvoices || []);
+      }
+
+      const { data: cData } = await supabase
+        .from('compras')
+        .select('*')
+        .eq('empresa_id', user.empresa_id)
+        .order('data_compra', { ascending: true });
+
+      if (cData && cData.length > 0) {
+        setComprasData(cData.map((c: any) => ({
+          id: c.id,
+          date: c.data || c.data_compra || (c.created_at ? c.created_at.split('T')[0] : ''),
+          purchase_number: c.numero_documento || c.numero_compra || `CMP-${c.id}`,
+          supplier_name: c.fornecedor_nome || c.supplier_name || 'Fornecedor',
+          supplier_pgc: c.conta_fornecedor_pgc || '32.01.02.01.0001',
+          total: Number(c.total || c.valor_total || 0),
+          imposto: Number(c.tax || c.iva || 0),
+          conta_pgc: c.conta_pgc || c.rubrica || '32.1.2.1',
+          document_type: c.tipo_documento || 'CMP',
+          status: c.status || 'pendente',
+          ori: ''
+        })));
+      } else {
+        setComprasData(propPurchases || []);
+      }
+    } catch (err) {
+      setVendasData(propInvoices || []);
+      setComprasData(propPurchases || []);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadData(); }, [user?.empresa_id]);
+
+  // Atualiza selectedDiarioCode por padrão quando a vista muda
+  useEffect(() => {
+    if (activeSubView.includes('vendas')) {
+      setSelectedDiarioCode('0001');
+    } else {
+      setSelectedDiarioCode('0002');
+    }
+  }, [activeSubView]);
+
+  // Carregar dados de funcionários/salários
+  const loadSalarioData = async () => {
+    if (!user?.empresa_id) return;
+    try {
+      const { data } = await supabase.from('funcionarios').select('*').eq('empresa_id', user.empresa_id).order('nome', { ascending: true });
+      if (data && data.length > 0) {
+        setSalarioData(data.map((f: any) => ({
+          id: f.id,
+          nome: f.nome || f.name || 'Funcionário',
+          cargo: f.cargo || f.funcao || 'Trabalhador',
+          salario_base: Number(f.salario_base || f.salario || 0),
+          irt: Number(f.irt || 0),
+          inss: Number(f.inss || 0),
+          liquido: Number(f.salario_liquido || f.liquido || 0),
+          status: f.status || 'pendente'
+        })));
+      } else {
+        setSalarioData([]);
+      }
+    } catch (e) {
+      setSalarioData([]);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSubView === 'classificar_salario' || activeSubView === 'classificar_pag_salario') {
+      loadSalarioData();
+    }
+  }, [activeSubView]);
+
+  const openSalarioModal = (item: any, tipo: 'movimento' | 'pagamento') => {
+    const salario = Number(item.salario_base || 0);
+    const irt = Number(item.irt || salario * 0.12);
+    const inss = Number(item.inss || salario * 0.03);
+    const liquido = salario - irt - inss;
+    setSalarioModal({ ...item, _tipo: tipo });
+    setSalarioDate(new Date().toISOString().split('T')[0]);
+    setSalarioDiario('0005');
+    if (tipo === 'movimento') {
+      setSalarioLines([
+        { id: 'desc', descricao: `Processamento de Salário — ${item.nome}`, debito: salario, credito: salario, readonly: true },
+        { id: 'salario', descricao: `65.01.01 - Salários e Ordenados — ${item.nome}`, debito: salario, credito: 0, conta: '65.01.01' },
+        { id: 'irt', descricao: '34.07.01 - IRT a Reter na Fonte', debito: 0, credito: irt, conta: '34.07.01' },
+        { id: 'inss', descricao: '34.06.01 - INSS a Pagar', debito: 0, credito: inss, conta: '34.06.01' },
+        { id: 'liquido', descricao: '27.01.01 - Remunerações a Pagar', debito: 0, credito: liquido, conta: '27.01.01' },
+      ]);
+    } else {
+      setSalarioLines([
+        { id: 'desc', descricao: `Pagamento de Salário — ${item.nome}`, debito: liquido, credito: liquido, readonly: true },
+        { id: 'remun', descricao: `27.01.01 - Remunerações a Pagar — ${item.nome}`, debito: liquido, credito: 0, conta: '27.01.01' },
+        { id: 'caixa', descricao: '45.2.1.1 - Caixa Central', debito: 0, credito: liquido, conta: '45.2.1.1' },
+      ]);
+    }
+  };
+
+  const handleSaveSalario = async () => {
+    if (!salarioModal || !user?.empresa_id) return;
+    setSavingSalario(true);
+    try {
+      const lancamentos = salarioLines
+        .filter(l => !l.readonly)
+        .map(l => ({
+          empresa_id: user.empresa_id,
+          origem_id: String(salarioModal.id),
+          origem_tipo: salarioModal._tipo === 'movimento' ? 'SALARIO_MOVIMENTO' : 'SALARIO_PAGAMENTO',
+          conta_pgc: l.conta || '',
+          descricao: l.descricao,
+          debito: Number(l.debito || 0),
+          credito: Number(l.credito || 0),
+          data_lancamento: salarioDate,
+          tipo: 'SALARIO',
+          diario: salarioDiario,
+          created_at: new Date().toISOString()
+        }));
+      const { error } = await supabase.from('lancamentos_contabeis').insert(lancamentos);
+      if (error) throw error;
+      alert('✅ Lançamento de salário registado com sucesso!');
+      setSalarioModal(null);
+    } catch (err: any) {
+      alert('Erro ao registar lançamento de salário: ' + (err?.message || 'desconhecido'));
+    } finally {
+      setSavingSalario(false);
+    }
+  };
+
+  // Classificar Pagamento de Impostos
+  const [impostosLines, setImpostosLines] = useState<any[]>([
+    { id: 'iva', label: 'IVA a Pagar', conta_debito: '34.05.04.01', conta_credito: '45.2.1.1', valor: 0, mes: new Date().getMonth() + 1, ano: new Date().getFullYear(), status: 'pendente' },
+    { id: 'irt', label: 'IRT Retido na Fonte a Entregar', conta_debito: '34.07.01', conta_credito: '45.2.1.1', valor: 0, mes: new Date().getMonth() + 1, ano: new Date().getFullYear(), status: 'pendente' },
+    { id: 'inss', label: 'INSS a Entregar', conta_debito: '34.06.01', conta_credito: '45.2.1.1', valor: 0, mes: new Date().getMonth() + 1, ano: new Date().getFullYear(), status: 'pendente' },
+    { id: 'ii', label: 'Imposto Industrial a Pagar', conta_debito: '36.01.01', conta_credito: '45.2.1.1', valor: 0, mes: new Date().getMonth() + 1, ano: new Date().getFullYear(), status: 'pendente' },
+    { id: 'selo', label: 'Imposto de Selo a Pagar', conta_debito: '34.08.01', conta_credito: '45.2.1.1', valor: 0, mes: new Date().getMonth() + 1, ano: new Date().getFullYear(), status: 'pendente' },
+  ]);
+  const [impostoDiario, setImpostoDiario] = useState('0003');
+  const [impostoDate, setImpostoDate] = useState(new Date().toISOString().split('T')[0]);
+  const [savingImposto, setSavingImposto] = useState(false);
+
+  const handleSaveImpostos = async () => {
+    if (!user?.empresa_id) return;
+    const toPay = impostosLines.filter(l => Number(l.valor) > 0);
+    if (toPay.length === 0) { alert('Insira pelo menos um valor de imposto.'); return; }
+    setSavingImposto(true);
+    try {
+      const lancamentos: any[] = [];
+      for (const imp of toPay) {
+        lancamentos.push(
+          { empresa_id: user.empresa_id, origem_id: imp.id, origem_tipo: 'IMPOSTO_PAGAMENTO', conta_pgc: imp.conta_debito, descricao: `${imp.conta_debito} - ${imp.label}`, debito: Number(imp.valor), credito: 0, data_lancamento: impostoDate, tipo: 'IMPOSTO', diario: impostoDiario, created_at: new Date().toISOString() },
+          { empresa_id: user.empresa_id, origem_id: imp.id, origem_tipo: 'IMPOSTO_PAGAMENTO', conta_pgc: imp.conta_credito, descricao: `${imp.conta_credito} - Caixa / Banco`, debito: 0, credito: Number(imp.valor), data_lancamento: impostoDate, tipo: 'IMPOSTO', diario: impostoDiario, created_at: new Date().toISOString() }
+        );
+      }
+      const { error } = await supabase.from('lancamentos_contabeis').insert(lancamentos);
+      if (error) throw error;
+      alert('✅ Pagamento de impostos registado com sucesso!');
+    } catch (err: any) {
+      alert('Erro ao registar pagamento de impostos: ' + (err?.message || 'desconhecido'));
+    } finally {
+      setSavingImposto(false);
+    }
+  };
+
+  // Classificar em lote (Classificar Seleccionados)
+  const handleClassify = async () => {
+    if (selectedIds.length === 0) { alert('Seleccione pelo menos um movimento.'); return; }
+    const rubrica = targetRubrica || (activeSubView.includes('vendas') ? '61.01.01' : '75.1.01');
+    const diarioCode = selectedDiarioCode || '0001';
+
+    try {
+      if (user?.empresa_id) {
+        const isVenda = activeSubView.includes('vendas');
+        const listToClassify = (isVenda ? vendasData : comprasData).filter(item => selectedIds.includes(item.id));
+
+        // 1. Atualizar status nos documentos
+        if (isVenda) {
+          await supabase.from('documentos_emitidos')
+            .update({ conta_pgc: rubrica, rubrica: rubrica, status: 'classificado' })
+            .eq('empresa_id', user.empresa_id)
+            .in('id', selectedIds);
+        } else {
+          await supabase.from('compras')
+            .update({ conta_pgc: rubrica, rubrica: rubrica, status: 'classificado' })
+            .eq('empresa_id', user.empresa_id)
+            .in('id', selectedIds);
+        }
+
+        // 2. Gerar lançamentos contabilísticos automáticos em lancamentos_contabeis
+        const newLancamentos: any[] = [];
+        for (const item of listToClassify) {
+          const total = Number(item.total || 0);
+          const iva = Number(item.imposto || 0);
+          const base = total - iva;
+          const docNum = item.invoice_number || item.purchase_number || `DOC-${item.id}`;
+          const isFR = (item.document_type || '').toUpperCase().includes('FR') || (item.ori || '').toUpperCase().includes('FR');
+
+          const itemDate = item.date || new Date().toISOString().split('T')[0];
+          const dObj = new Date(itemDate);
+          const anoVal = isNaN(dObj.getTime()) ? new Date().getFullYear() : dObj.getFullYear();
+          const mesVal = isNaN(dObj.getTime()) ? (new Date().getMonth() + 1) : (dObj.getMonth() + 1);
+
+          const makeEntry = (conta: string, desc: string, debito: number, credito: number, tipoStr: string) => {
+            const deb = Number(debito || 0);
+            const cred = Number(credito || 0);
+            const val = deb > 0 ? deb : cred;
+            const movTipo = deb > 0 ? 'DEBITO' : 'CREDITO';
+            return {
+              empresa_id: user.empresa_id,
+              origem_id: String(item.id),
+              origem_tipo: tipoStr,
+              conta_pgc: conta,
+              descricao: desc,
+              descricao_conta: desc,
+              descricao_lancamento: desc,
+              debito: deb,
+              credito: cred,
+              valor: val,
+              tipo_movimento: movTipo,
+              data_lancamento: itemDate,
+              ano: anoVal,
+              mes: mesVal,
+              tipo: tipoStr,
+              diario: diarioCode,
+              status: 'activo',
+              created_at: new Date().toISOString()
+            };
+          };
+
+          if (isVenda) {
+            if (isFR) {
+              // FR Venda: Cliente, IVA, Mercado Nacional, Caixa Central
+              newLancamentos.push(
+                makeEntry(item.client_pgc || '31.1.2.1.2', `${item.client_pgc || '31.1.2.1.2'} - ${item.client_name || 'Consumidor Final'}`, base, 0, 'VENDA'),
+                makeEntry('34.05.03.01', '34.05.03.01 - IVA liquidado Operações Gerais', 0, iva, 'VENDA'),
+                makeEntry(rubrica, `${rubrica} - Mercado Nacional`, 0, base, 'VENDA'),
+                makeEntry('45.2.1.1', '45.2.1.1 - Caixa Central', base, 0, 'VENDA')
+              );
+            } else {
+              // FT Venda: Cliente, IVA, Mercado Nacional
+              newLancamentos.push(
+                makeEntry(item.client_pgc || '31.01.02.01.0001', `${item.client_pgc || '31.01.02.01.0001'} - ${item.client_name || 'Cliente'}`, total, 0, 'VENDA'),
+                makeEntry('34.05.03.01', '34.05.03.01 - IVA liquidado Operações Gerais', 0, iva, 'VENDA'),
+                makeEntry(rubrica, `${rubrica} - Mercado Nacional`, 0, base, 'VENDA')
+              );
+            }
+          } else {
+            // Compras
+            newLancamentos.push(
+              makeEntry(item.supplier_pgc || '32.01.02.01.0001', `${item.supplier_pgc || '32.01.02.01.0001'} - ${item.supplier_name || 'Fornecedor'}`, 0, total, 'COMPRA'),
+              makeEntry('34.05.02.01', '34.05.02.01 - IVA dedutível Operações Gerais', iva, 0, 'COMPRA'),
+              makeEntry(rubrica, `${rubrica} - Compras de Mercadorias`, base, 0, 'COMPRA')
+            );
+          }
+        }
+
+        if (newLancamentos.length > 0) {
+          await supabase.from('lancamentos_contabeis').insert(newLancamentos);
+        }
+      }
+      alert(`✅ ${selectedIds.length} movimento(s) classificados com sucesso no Diário ${diarioCode}!`);
+      setSelectedIds([]); await loadData();
+    } catch (err: any) { alert('Erro ao classificar: ' + (err?.message || 'desconhecido')); }
+  };
+
+  // Apagar classificação (reverter para pendente)
+  const handleUnclassifySelected = async () => {
+    if (selectedIds.length === 0) { alert('Seleccione pelo menos um movimento para apagar classificação.'); return; }
+    if (!window.confirm(`Deseja apagar a classificação de ${selectedIds.length} movimento(s)? Eles voltarão ao estado "pendente".`)) return;
+
+    try {
+      if (user?.empresa_id) {
+        const isVenda = activeSubView.includes('vendas');
+        if (isVenda) {
+          await supabase.from('documentos_emitidos')
+            .update({ status: 'pendente', conta_pgc: null, rubrica: null })
+            .eq('empresa_id', user.empresa_id)
+            .in('id', selectedIds);
+        } else {
+          await supabase.from('compras')
+            .update({ status: 'pendente', conta_pgc: null, rubrica: null })
+            .eq('empresa_id', user.empresa_id)
+            .in('id', selectedIds);
+        }
+
+        // Apagar os registos de lancamentos_contabeis associados
+        await supabase.from('lancamentos_contabeis')
+          .delete()
+          .eq('empresa_id', user.empresa_id)
+          .in('origem_id', selectedIds.map(String));
+      }
+      alert(`✅ Classificação de ${selectedIds.length} movimento(s) apagada com sucesso.`);
+      setSelectedIds([]); await loadData();
+    } catch (err: any) { alert('Erro: ' + (err?.message || 'desconhecido')); }
+  };
+
+  const handleDeleteMovements = async () => {
+    if (selectedIds.length === 0) { alert('Seleccione pelo menos um movimento para apagar.'); return; }
+    if (!window.confirm(`Apagar permanentemente ${selectedIds.length} movimentos do sistema?`)) return;
+    try {
+      if (user?.empresa_id) {
+        if (activeSubView.includes('vendas')) {
+          await supabase.from('documentos_emitidos').delete().eq('empresa_id', user.empresa_id).in('id', selectedIds);
+        } else {
+          await supabase.from('compras').delete().eq('empresa_id', user.empresa_id).in('id', selectedIds);
+        }
+        await supabase.from('lancamentos_contabeis').delete().eq('empresa_id', user.empresa_id).in('origem_id', selectedIds.map(String));
+      }
+      alert(`${selectedIds.length} movimentos removidos com sucesso.`);
+      setSelectedIds([]); await loadData();
+    } catch (err: any) { alert('Erro: ' + err.message); }
+  };
+
+  // Verificar se o item já foi classificado no período corrente (impede re-classificação)
+  const isAlreadyClassifiedThisPeriod = (item: any) => {
+    if (!item) return false;
+    const itemMonth = item.date ? item.date.split('-')[1] : '';
+    return item.status === 'classificado' && itemMonth === selectedMonth;
+  };
+
+  // Abrir Modal de Classificação Manual (Exemplos exactos pedidos pelo utilizador)
+  const openClassifyModal = (item: any) => {
+    const isVenda = activeSubView === 'classificar_vendas';
+    const total = Number(item.total || 0);
+    const iva = Number(item.imposto || 0);
+    const base = total - iva;
+    const docRef = item.invoice_number || item.purchase_number || `DOC-${item.id}`;
+    const clientSupplier = item.client_name || item.supplier_name || '';
+    const clientPgc = item.client_pgc || item.supplier_pgc || (isVenda ? '31.1.2.1.2' : '32.01.02.01.0001');
+    const date = item.date || new Date().toISOString().split('T')[0];
+    const isFR = (item.document_type || '').toUpperCase().includes('FR') || (item.ori || '').toUpperCase().includes('FR');
+
+    setClassifyModalItem(item);
+    setClassifyDate(date);
+    setModalSelectedDiario(selectedDiarioCode || (isVenda ? '0001' : '0002'));
+
+    if (isVenda) {
+      if (isFR) {
+        // Exemplo Factura/Recibo Emitida FR (Total 40.000,00 AOA)
+        // Linhas de Débito e Crédito conforme solicitado
+        setClassifyLines([
+          {
+            id: 'desc',
+            descricao: `Factura/Recibo Emitida ${item.document_type || 'FR'} ${docRef}`,
+            debito: total,
+            credito: total,
+            readonly: true
+          },
+          {
+            id: 'client',
+            descricao: `${clientPgc} - ${clientSupplier || 'Consumidor Final'}`,
+            debito: base,
+            credito: base,
+            conta: clientPgc
+          },
+          {
+            id: 'iva',
+            descricao: '34.05.03.01 - IVA liquidado Operações Gerais',
+            debito: 0,
+            credito: iva,
+            conta: '34.05.03.01'
+          },
+          {
+            id: 'revenue',
+            descricao: '61.01.01 - Mercado Nacional',
+            debito: 0,
+            credito: base,
+            conta: '61.01.01'
+          },
+          {
+            id: 'cash',
+            descricao: '45.2.1.1 - Caixa Central',
+            debito: base,
+            credito: 0,
+            conta: '45.2.1.1'
+          }
+        ]);
+      } else {
+        // Exemplo Factura Emitida FT (Total 571.000,00 AOA)
+        setClassifyLines([
+          {
+            id: 'desc',
+            descricao: `Factura Emitida ${item.document_type || 'FT'} ${docRef}`,
+            debito: total,
+            credito: total,
+            readonly: true
+          },
+          {
+            id: 'client',
+            descricao: `${clientPgc || '31.01.02.01.0008'} - ${clientSupplier || 'HIPERMÁQUINAS - ANGOLA'}`,
+            debito: total,
+            credito: 0,
+            conta: clientPgc || '31.01.02.01.0008'
+          },
+          {
+            id: 'iva',
+            descricao: '34.05.03.01 - IVA liquidado Operações Gerais',
+            debito: 0,
+            credito: iva,
+            conta: '34.05.03.01'
+          },
+          {
+            id: 'revenue',
+            descricao: '61.01.01 - Mercado Nacional',
+            debito: 0,
+            credito: base,
+            conta: '61.01.01'
+          }
+        ]);
+      }
+    } else {
+      // Classificação para Compras Fornecedor
+      setClassifyLines([
+        {
+          id: 'desc',
+          descricao: `Factura de Compra ${item.document_type || 'CMP'} ${docRef}`,
+          debito: total,
+          credito: total,
+          readonly: true
+        },
+        {
+          id: 'supplier',
+          descricao: `${clientPgc || '32.01.02.01.0001'} - ${clientSupplier || 'Fornecedor'}`,
+          debito: 0,
+          credito: total,
+          conta: clientPgc || '32.01.02.01.0001'
+        },
+        {
+          id: 'iva',
+          descricao: '34.05.02.01 - IVA dedutível Operações Gerais',
+          debito: iva,
+          credito: 0,
+          conta: '34.05.02.01'
+        },
+        {
+          id: 'purchase',
+          descricao: '75.1.01 - Compras de Mercadorias',
+          debito: base,
+          credito: 0,
+          conta: '75.1.01'
+        }
+      ]);
+    }
+  };
+
+  const handleSaveClassify = async () => {
+    if (!classifyModalItem || !user?.empresa_id) return;
+    setSavingClassify(true);
+    try {
+      const isVenda = activeSubView === 'classificar_vendas';
+      const diarioObj = diarios.find(d => d.codigo === modalSelectedDiario);
+      const diarioStr = diarioObj ? `${diarioObj.codigo}` : modalSelectedDiario;
+
+      const dateStr = classifyDate || new Date().toISOString().split('T')[0];
+      const dObj = new Date(dateStr);
+      const anoVal = isNaN(dObj.getTime()) ? new Date().getFullYear() : dObj.getFullYear();
+      const mesVal = isNaN(dObj.getTime()) ? (new Date().getMonth() + 1) : (dObj.getMonth() + 1);
+
+      // 1. Inserir todos os lançamentos de débito/crédito na tabela lancamentos_contabeis
+      const lancamentos = classifyLines
+        .filter(l => !l.readonly)
+        .map(l => {
+          const deb = Number(l.debito || 0);
+          const cred = Number(l.credito || 0);
+          const val = deb > 0 ? deb : cred;
+          const movTipo = deb > 0 ? 'DEBITO' : 'CREDITO';
+          return {
+            empresa_id: user.empresa_id,
+            origem_id: String(classifyModalItem.id),
+            origem_tipo: isVenda ? 'VENDA' : 'COMPRA',
+            conta_pgc: l.conta || '',
+            descricao: l.descricao || '',
+            descricao_conta: l.descricao || '',
+            descricao_lancamento: l.descricao || '',
+            debito: deb,
+            credito: cred,
+            valor: val,
+            tipo_movimento: movTipo,
+            data_lancamento: dateStr,
+            ano: anoVal,
+            mes: mesVal,
+            tipo: isVenda ? 'VENDA' : 'COMPRA',
+            diario: diarioStr,
+            status: 'activo',
+            created_at: new Date().toISOString()
+          };
+        });
+
+      const { error } = await supabase.from('lancamentos_contabeis').insert(lancamentos);
+      if (error) throw error;
+
+      // 2. Atualizar documento como classificado
+      const clientAccount = classifyLines.find(l => l.id === 'client' || l.id === 'supplier')?.conta || '';
+      if (isVenda) {
+        await supabase.from('documentos_emitidos')
+          .update({ status: 'classificado', conta_pgc: clientAccount, rubrica: clientAccount })
+          .eq('id', classifyModalItem.id)
+          .eq('empresa_id', user.empresa_id);
+      } else {
+        await supabase.from('compras')
+          .update({ status: 'classificado', conta_pgc: clientAccount, rubrica: clientAccount })
+          .eq('id', classifyModalItem.id)
+          .eq('empresa_id', user.empresa_id);
+      }
+
+      alert('✅ Lançamento contabilístico registado com sucesso! Os movimentos foram enviados para APAGAR MOVIMENTOS.');
+      setClassifyModalItem(null);
+      await loadData();
+    } catch (err: any) {
+      alert('Erro ao registar lançamento: ' + (err?.message || 'desconhecido'));
+    } finally {
+      setSavingClassify(false);
+    }
+  };
+
+  const currentList = activeSubView.includes('vendas') ? vendasData : comprasData;
+  const filteredData = currentList.filter((item: any) => {
     const month = item.date ? item.date.split('-')[1] : '';
     const matchesMonth = month === selectedMonth;
     const matchesSearch = ((item.invoice_number || item.purchase_number || '') as string).toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -16054,176 +16665,858 @@ const ClassifyMovementsModule = ({ invoices, purchases, onBack }: { invoices: In
     return matchesMonth && matchesSearch;
   });
 
-  const renderRubricasView = (title: string) => (
-    <div className="space-y-4 animate-in fade-in slide-in-from-top-4 duration-300">
+  const isAllSelected = filteredData.length > 0 && filteredData.every((item: any) => selectedIds.includes(item.id));
+  const toggleSelectAll = () => {
+    if (isAllSelected) {
+      const filteredSet = new Set(filteredData.map((item: any) => item.id));
+      setSelectedIds(selectedIds.filter(id => !filteredSet.has(id)));
+    } else {
+      setSelectedIds(Array.from(new Set([...selectedIds, ...filteredData.map((item: any) => item.id)])));
+    }
+  };
+
+  // Cálculos para rodapé das páginas Classificar
+  const totalDebito = filteredData.reduce((s, i) => {
+    const isNC = (i.document_type || '').toUpperCase().includes('NC');
+    return s + (isNC ? 0 : (i.total || 0));
+  }, 0);
+  const ajustamentosContabilísticos = filteredData.reduce((s, i) => {
+    const isNC = (i.document_type || '').toUpperCase().includes('NC');
+    return s + (isNC ? (i.total || 0) : 0);
+  }, 0);
+  const devolucoes = ajustamentosContabilísticos;
+  const valorGestaoLiquido = totalDebito - devolucoes;
+  const currentMonthLabel = new Date(2025, parseInt(selectedMonth) - 1).toLocaleString('pt-PT', { month: 'long' }).toUpperCase();
+  const selectedDiarioObj = diarios.find(d => d.codigo === selectedDiarioCode);
+
+  // ─────────────────────────────────────────────
+  // RENDER: Ajustar Movimento (tabela original simples)
+  // ─────────────────────────────────────────────
+  const renderAjustarView = (type: 'vendas' | 'compras') => (
+    <div className="space-y-4 animate-in fade-in duration-300">
       <div className="bg-[#f0f0f0] p-4 border border-zinc-300 shadow-sm">
-        <div className="flex flex-wrap items-center gap-6 mb-4">
-           <div className="relative flex-1 min-w-[300px]">
-              <label className="text-[10px] font-black text-[#003366] uppercase mb-1 block tracking-widest italic">Selecione Rubrica de destino</label>
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <input 
-                    type="text" 
-                    placeholder="Pesquisar conta no PGC..." 
-                    className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#003366]/20 transition-all shadow-inner"
-                    value={targetRubrica}
-                    onChange={(e) => { setTargetRubrica(e.target.value); setShowPgcList(true); }}
-                  />
-                  {showPgcList && targetRubrica && (
-                    <div className="absolute top-full left-0 right-0 z-[100] bg-white border-2 border-[#003366] shadow-2xl max-h-64 overflow-y-auto">
-                      {pgcAccounts.filter(a => (a.id || '').includes(targetRubrica) || (a.description || '').toLowerCase().includes(targetRubrica.toLowerCase())).map(a => (
-                        <div 
-                          key={a.id} 
-                          className="p-3 hover:bg-zinc-100 cursor-pointer text-xs font-black border-b border-zinc-100 flex justify-between group"
-                          onClick={() => { setTargetRubrica(a.id); setShowPgcList(false); }}
-                        >
-                          <span className="text-[#003366]">{a.id}</span>
-                          <span className="text-zinc-500 group-hover:text-zinc-800">{a.description}</span>
-                        </div>
-                      ))}
+        <div className="flex flex-wrap items-center gap-4 mb-4">
+          <div className="relative flex-1 min-w-[220px]">
+            <label className="text-[10px] font-black text-[#003366] uppercase mb-1 block tracking-widest italic">Rubrica PGC de Destino</label>
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Pesquisar conta PGC (ex: 61.01.01, 75.1.01)..."
+                className="w-full bg-white border border-zinc-300 px-4 py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#003366]/20 shadow-inner"
+                value={targetRubrica}
+                onChange={e => { setTargetRubrica(e.target.value); setShowPgcList(true); }}
+              />
+              {showPgcList && targetRubrica && (
+                <div className="absolute top-full left-0 right-0 z-[100] bg-white border-2 border-[#003366] shadow-2xl max-h-56 overflow-y-auto">
+                  {pgcAccounts.filter(a => (a.codigo || a.id || '').includes(targetRubrica) || (a.description || '').toLowerCase().includes(targetRubrica.toLowerCase())).map(a => (
+                    <div key={a.id} className="p-2 text-xs font-black hover:bg-zinc-100 cursor-pointer border-b border-zinc-100 flex justify-between" onClick={() => { setTargetRubrica(a.codigo || a.id); setShowPgcList(false); }}>
+                      <span className="text-[#003366]">{a.codigo || a.id}</span><span className="text-zinc-500">{a.description}</span>
                     </div>
-                  )}
+                  ))}
                 </div>
-                
-                <div className="flex items-center gap-2 bg-white px-4 border border-zinc-300 shadow-inner">
-                    <Calendar size={14} className="text-blue-500" />
-                    <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="bg-transparent text-[10px] font-black focus:outline-none uppercase tracking-widest text-[#003366]">
-                      {[1,2,3,4,5,6,7,8,9,10,11,12].map((i) => (
-                        <option key={i} value={i.toString().padStart(2, '0')}>
-                          {new Date(2025, i-1).toLocaleString('pt-PT', { month: 'long' }).toUpperCase()}
-                        </option>
-                      ))}
-                    </select>
-                </div>
+              )}
+            </div>
+          </div>
 
-                <div className="flex items-center gap-2 bg-white px-2 border border-zinc-300 shadow-inner">
-                   <select 
-                     className="bg-transparent text-[10px] font-black focus:outline-none uppercase tracking-tighter text-[#003366] py-2"
-                     onChange={(e) => { if(e.target.value === 'Alterar Rubrica') handleClassify(); }}
-                   >
-                      <option>Seleccionar Acção...</option>
-                      <option value="Alterar Rubrica">Alterar Rubrica</option>
-                   </select>
-                   <ChevronDown size={14} className="text-green-500" />
-                </div>
+          {/* Diário de Destino */}
+          <div className="flex items-center gap-2 bg-white px-3 py-1.5 border border-zinc-300 shadow-inner h-[38px]">
+            <span className="text-[10px] font-black text-zinc-500 uppercase">Diário:</span>
+            <select value={selectedDiarioCode} onChange={e => setSelectedDiarioCode(e.target.value)} className="bg-transparent text-[10px] font-black text-[#003366] focus:outline-none cursor-pointer">
+              {diarios.map(d => (
+                <option key={d.codigo} value={d.codigo}>{d.codigo} - {d.descricao}</option>
+              ))}
+            </select>
+          </div>
 
-                <button onClick={() => window.print()} className="bg-green-600 text-white p-2 border-2 border-white shadow-lg hover:rotate-12 transition-transform"><Printer size={18} /></button>
-              </div>
-           </div>
+          <div className="flex items-center gap-2 bg-white px-4 border border-zinc-300 shadow-inner h-[38px]">
+            <Calendar size={14} className="text-blue-500" />
+            <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="bg-transparent text-[10px] font-black focus:outline-none uppercase tracking-widest text-[#003366]">
+              {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => (
+                <option key={m} value={m.toString().padStart(2,'0')}>{new Date(2025, m-1).toLocaleString('pt-PT', { month: 'long' }).toUpperCase()}</option>
+              ))}
+            </select>
+          </div>
+          <button onClick={handleClassify} className="bg-[#003366] hover:bg-[#002244] text-white px-4 py-2 text-[10px] font-black uppercase tracking-wider transition-colors flex items-center gap-1 h-[38px]">
+            <Edit size={14} /> Classificar Seleccionados
+          </button>
+          <button onClick={() => window.print()} className="bg-green-600 text-white p-2 border-2 border-white shadow-lg hover:rotate-12 transition-transform h-[38px] w-[38px] flex items-center justify-center">
+            <Printer size={16} />
+          </button>
         </div>
 
-        <div className="bg-white border border-zinc-300 p-2 text-center relative overflow-hidden">
-           <div className="absolute top-0 left-0 w-1 h-full bg-[#003366]"></div>
-           <h3 className="text-sm font-black text-[#003366] uppercase tracking-tighter">{title}</h3>
-           <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest">Periodo Seleccionado: {new Date(2025, parseInt(selectedMonth)-1).toLocaleString('pt-PT', { month: 'long' }).toUpperCase()}</p>
+        <div className="bg-white border border-zinc-300 p-2 text-center relative overflow-hidden mb-4">
+          <div className="absolute top-0 left-0 w-1 h-full bg-[#003366]"></div>
+          <h3 className="text-sm font-black text-[#003366] uppercase tracking-tighter">
+            {type === 'vendas' ? 'Ajustamento de Rubricas nas Vendas' : 'Ajustamento de Rubricas nas Compras'}
+          </h3>
+          <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest">
+            Período: {new Date(2025, parseInt(selectedMonth)-1).toLocaleString('pt-PT', { month: 'long' }).toUpperCase()} 2026
+          </p>
         </div>
 
-        <div className="overflow-x-auto mt-4 bg-white border border-zinc-200">
-           <table className="w-full text-left text-[9px] border-collapse font-bold uppercase tracking-tight">
-              <thead>
-                 <tr className="bg-zinc-100/50 text-zinc-600 border-b border-zinc-300 italic">
-                    <td className="p-3 border-r border-zinc-200">Data</td>
-                    <td className="p-3 border-r border-zinc-200 text-center">Doc ID</td>
-                    <td className="p-3 border-r border-zinc-200 text-center">ST</td>
-                    <td className="p-3 border-r border-zinc-200">Doc No</td>
-                    <td className="p-3 border-r border-zinc-200">Cliente/Fornecedor</td>
-                    <td className="p-3 border-r border-zinc-200">Rubrica</td>
-                    <td className="p-3 border-r border-zinc-200">Artigo</td>
-                    <td className="p-3 border-r border-zinc-200 text-right">Quantidade</td>
-                    <td className="p-3 border-r border-zinc-200 text-center">PS</td>
-                    <td className="p-3 border-r border-zinc-200 text-right">Valor Unit</td>
-                    <td className="p-3 border-r border-zinc-200 text-right">IVA</td>
-                    <td className="p-3 border-r border-zinc-200 text-right">Total</td>
-                    <td className="p-3 text-center w-8"><input type="checkbox" className="rounded-none" /></td>
-                 </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
-                {filteredData.length === 0 ? (
-                  <tr><td colSpan={13} className="py-24 text-center text-zinc-300 italic uppercase font-black tracking-widest opacity-50">Nenhum movimento encontrado para este período</td></tr>
-                ) : filteredData.map((item: any, i) => (
-                 <tr key={i} className="hover:bg-blue-50 transition-colors group">
+        <div className="overflow-x-auto bg-white border border-zinc-200">
+          <table className="w-full text-left text-[9px] border-collapse font-bold uppercase tracking-tight">
+            <thead>
+              <tr className="bg-zinc-100/50 text-zinc-600 border-b border-zinc-300 italic">
+                <td className="p-3 border-r border-zinc-200">Data</td>
+                <td className="p-3 border-r border-zinc-200 text-center">Doc ID</td>
+                <td className="p-3 border-r border-zinc-200 text-center">ST</td>
+                <td className="p-3 border-r border-zinc-200">Doc No</td>
+                <td className="p-3 border-r border-zinc-200">{type === 'vendas' ? 'Cliente' : 'Fornecedor'}</td>
+                <td className="p-3 border-r border-zinc-200">Rubrica</td>
+                <td className="p-3 border-r border-zinc-200">Artigo</td>
+                <td className="p-3 border-r border-zinc-200 text-right">Quantidade</td>
+                <td className="p-3 border-r border-zinc-200 text-center">PS</td>
+                <td className="p-3 border-r border-zinc-200 text-right">Valor Unit</td>
+                <td className="p-3 border-r border-zinc-200 text-right">IVA</td>
+                <td className="p-3 border-r border-zinc-200 text-right">Total</td>
+                <td className="p-3 text-center w-8">
+                  <input type="checkbox" checked={isAllSelected} onChange={toggleSelectAll} className="rounded-none cursor-pointer" />
+                </td>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+              {loading ? (
+                <tr><td colSpan={13} className="py-16 text-center text-zinc-400 italic uppercase font-bold">A carregar...</td></tr>
+              ) : filteredData.length === 0 ? (
+                <tr><td colSpan={13} className="py-16 text-center text-zinc-300 italic uppercase font-black opacity-50">Nenhum movimento neste período</td></tr>
+              ) : filteredData.map((item: any, i: number) => {
+                const isSelected = selectedIds.includes(item.id);
+                const displayRubrica = isSelected && targetRubrica ? targetRubrica : (item.conta_pgc || item.rubrica || (type === 'vendas' ? '61.01.01' : '75.1.01'));
+                return (
+                  <tr key={i} className={`hover:bg-blue-50 transition-colors ${isSelected ? 'bg-blue-50/50' : ''}`}>
                     <td className="p-3 border-r border-zinc-100 text-zinc-500">{item.date}</td>
-                    <td className="p-3 border-r border-zinc-100 text-zinc-500 text-center">0</td>
-                    <td className="p-3 border-r border-zinc-100 text-zinc-500 text-center">{activeSubView === 'vendas' ? 'C' : 'N'}</td>
-                    <td className="p-3 border-r border-zinc-100 font-black text-[#003366]">{item.invoice_number || `PUR-${item.id}`}</td>
+                    <td className="p-3 border-r border-zinc-100 text-zinc-500 text-center">{item.id}</td>
+                    <td className="p-3 border-r border-zinc-100 text-zinc-500 text-center">{type === 'vendas' ? 'C' : 'N'}</td>
+                    <td className="p-3 border-r border-zinc-100 font-black text-[#003366]">{item.invoice_number || item.purchase_number}</td>
                     <td className="p-3 border-r border-zinc-100 text-zinc-800">{item.client_name || item.supplier_name}</td>
-                    <td className="p-3 border-r border-zinc-100 text-blue-600 font-mono font-black">
-                      {targetRubrica && selectedIds.includes(item.id) ? (
-                        <span className="flex items-center gap-1">
-                           <Edit size={10} className="text-green-500" />
-                           {targetRubrica}
-                        </span>
-                      ) : '61.01.01'}
+                    <td className="p-3 border-r border-zinc-100 font-mono font-black text-blue-600">
+                      {isSelected && targetRubrica ? (
+                        <span className="flex items-center gap-1 text-emerald-600"><Edit size={10} />{displayRubrica}</span>
+                      ) : displayRubrica}
                     </td>
-                    <td className="p-3 border-r border-zinc-100 text-zinc-600">{activeSubView === 'vendas' ? 'Vendas de Mercadorias' : 'Compras Diversas'}</td>
+                    <td className="p-3 border-r border-zinc-100 text-zinc-600">{type === 'vendas' ? 'Vendas de Mercadorias' : 'Compras Diversas'}</td>
                     <td className="p-3 border-r border-zinc-100 text-right">1 Un</td>
                     <td className="p-3 border-r border-zinc-100 text-center">P</td>
-                    <td className="p-3 border-r border-zinc-100 text-right font-mono">{formatCurrency(item.total / 1.14).replace('AOA', '').trim()}</td>
+                    <td className="p-3 border-r border-zinc-100 text-right font-mono">{formatCurrency((item.total || 0) / 1.14).replace('AOA','').trim()}</td>
                     <td className="p-3 border-r border-zinc-100 text-right text-emerald-600">14,00%</td>
-                    <td className="p-3 border-r border-zinc-100 text-right font-black text-[#003366] font-mono">{formatCurrency(item.total).replace('AOA', '').trim()}</td>
+                    <td className="p-3 border-r border-zinc-100 text-right font-black text-[#003366] font-mono">{formatCurrency(item.total || 0).replace('AOA','').trim()}</td>
                     <td className="p-3 text-center">
-                      <input 
-                        type="checkbox" 
-                        checked={selectedIds.includes(item.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) setSelectedIds([...selectedIds, item.id]);
-                          else setSelectedIds(selectedIds.filter(id => id !== item.id));
-                        }}
-                        className="rounded-none border-zinc-400 checked:bg-[#003366]"
-                      />
+                      <input type="checkbox" checked={isSelected}
+                        onChange={e => { if (e.target.checked) setSelectedIds([...selectedIds, item.id]); else setSelectedIds(selectedIds.filter(id => id !== item.id)); }}
+                        className="rounded-none border-zinc-400 cursor-pointer" />
                     </td>
-                 </tr>
-                ))}
-              </tbody>
-              <tfoot className="bg-zinc-50 font-black border-t-2 border-[#003366]">
-                 <tr>
-                    <td colSpan={7} className="p-3 text-right text-[#003366] uppercase italic tracking-tighter">Valores Totais do Período</td>
-                    <td colSpan={5} className="p-3 text-right text-[#003366] text-sm font-mono">
-                      {formatCurrency(filteredData.reduce((s, i) => s + (i.total || 0), 0)).replace('Kz', '').trim()}
-                    </td>
-                    <td></td>
-                 </tr>
-              </tfoot>
-           </table>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot className="bg-zinc-50 font-black border-t-2 border-[#003366]">
+              <tr>
+                <td colSpan={7} className="p-3 text-right text-[#003366] uppercase italic tracking-tighter">Valores Totais do Período</td>
+                <td colSpan={5} className="p-3 text-right text-[#003366] text-sm font-mono">
+                  {formatCurrency(filteredData.reduce((s: number, i: any) => s + (i.total || 0), 0)).replace('Kz','').trim()}
+                </td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
         </div>
         <div className="p-2 text-right text-[8px] font-black italic text-zinc-300 uppercase tracking-widest mt-2">Fim de Listagem</div>
       </div>
     </div>
   );
 
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4 bg-zinc-50 p-4 border border-zinc-200">
-        <button onClick={onBack} className="p-2 hover:bg-zinc-100 rounded-none text-zinc-400">
-          <ChevronLeft size={24} />
-        </button>
-        <h2 className="text-xl font-black text-[#003366] uppercase tracking-tighter">Classificar Movimentos</h2>
+  // ─────────────────────────────────────────────
+  // RENDER: Classificar Vendas / Classificar Compras Fornecedor
+  // ─────────────────────────────────────────────
+  const renderClassificarView = (type: 'classificar_vendas' | 'classificar_compras') => (
+    <div className="bg-white border border-zinc-300 p-6 shadow-sm animate-in fade-in duration-300">
+      {/* Toolbar */}
+      <div className="flex justify-between items-center border-b border-zinc-200 pb-4 mb-6">
+        <div>
+          <h3 className="text-xs font-black text-zinc-500 uppercase tracking-[0.2em] italic">Contabilidade Geral Angolana</h3>
+          <div className="flex items-center gap-2 mt-1">
+            <span className="text-[10px] font-bold text-zinc-500 uppercase">Diário de Destino:</span>
+            <select
+              value={selectedDiarioCode}
+              onChange={e => setSelectedDiarioCode(e.target.value)}
+              className="bg-zinc-50 border border-zinc-300 text-[10px] font-black text-[#003366] px-2 py-1 focus:outline-none cursor-pointer"
+            >
+              {diarios.map(d => (
+                <option key={d.codigo} value={d.codigo}>{d.codigo} - {d.descricao}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {/* Mês */}
+          <div className="relative">
+            <button className="w-11 h-11 rounded-full bg-gradient-to-tr from-green-600 to-lime-400 text-white font-black text-[10px] shadow-lg hover:brightness-110 flex items-center justify-center border-2 border-white transform hover:scale-105 transition-all">
+              {new Date(2025, parseInt(selectedMonth)-1).toLocaleString('pt-PT', { month: 'short' }).substring(0,3).toUpperCase()}
+            </button>
+            <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full">
+              {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => (
+                <option key={m} value={m.toString().padStart(2,'0')}>{new Date(2025,m-1).toLocaleString('pt-PT',{month:'long'}).toUpperCase()}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Classificar em lote */}
+          <button onClick={handleClassify} title="Classificar Seleccionados Automático" className="w-11 h-11 rounded-full bg-gradient-to-tr from-green-600 to-lime-400 text-white shadow-lg hover:brightness-110 flex items-center justify-center border-2 border-white transform hover:scale-105 transition-all">
+            <Edit size={16} />
+          </button>
+
+          {/* Menu Escolher com Funcionalidade: Classificar | Apagar Classificação */}
+          <div className="flex items-center bg-zinc-50 border border-zinc-300 px-3 py-1.5 gap-2">
+            <span className="text-[10px] font-black text-zinc-500 uppercase tracking-tighter">Com os Seleccionados</span>
+            <select
+              onChange={async e => {
+                const action = e.target.value;
+                if (action === 'classificar') await handleClassify();
+                else if (action === 'apagar_classificacao') await handleUnclassifySelected();
+                else if (action === 'apagar') await handleDeleteMovements();
+                e.target.value = '';
+              }}
+              className="bg-transparent text-[10px] font-black text-[#003366] focus:outline-none uppercase cursor-pointer"
+            >
+              <option value="">Escolha...</option>
+              <option value="classificar">✨ Classificar Automático</option>
+              <option value="apagar_classificacao">↩️ Apagar Classificação</option>
+              <option value="apagar">🗑️ Apagar Movimento</option>
+            </select>
+          </div>
+
+          {/* Campo Conta PGC Destino */}
+          <div className="relative min-w-[170px]">
+            <input
+              type="text"
+              placeholder="Conta PGC destino..."
+              value={targetRubrica}
+              onChange={e => { setTargetRubrica(e.target.value); setShowPgcList(true); }}
+              className="bg-zinc-50 border border-zinc-300 px-3 py-1.5 text-xs font-bold text-[#003366] w-full focus:outline-none"
+            />
+            {showPgcList && targetRubrica && (
+              <div className="absolute top-full left-0 right-0 z-50 bg-white border border-[#003366] shadow-xl max-h-48 overflow-y-auto">
+                {pgcAccounts.filter(a => (a.codigo || a.id || '').includes(targetRubrica) || (a.description || '').toLowerCase().includes(targetRubrica.toLowerCase())).map(a => (
+                  <div key={a.id} className="p-2 text-[10px] font-bold hover:bg-zinc-100 cursor-pointer flex justify-between border-b border-zinc-100"
+                    onClick={() => { setTargetRubrica(a.codigo || a.id); setShowPgcList(false); }}>
+                    <span className="text-[#003366]">{a.codigo || a.id}</span><span className="text-zinc-400 truncate max-w-[120px]">{a.description}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Imprimir */}
+          <button onClick={() => window.print()} className="w-11 h-11 rounded-full bg-gradient-to-tr from-cyan-600 to-emerald-400 text-white shadow-lg hover:brightness-110 flex items-center justify-center border-2 border-white transform hover:scale-105 transition-all">
+            <Printer size={16} />
+          </button>
+        </div>
       </div>
 
+      {/* Título central */}
+      <div className="text-center mb-6 space-y-0.5">
+        <h2 className="text-sm font-black text-zinc-700 uppercase tracking-widest">
+          {type === 'classificar_vendas' ? 'Mapa de Gestão de 31 - Clientes' : 'Mapa de Gestão de 32 - Fornecedores'}
+        </h2>
+        <p className="text-[10px] font-bold text-zinc-400 uppercase">Período Contabilístico</p>
+        <p className="text-[11px] font-black text-zinc-600 uppercase">de {currentMonthLabel} a Fim — 2026</p>
+        <div className="flex justify-between text-[8px] font-bold text-zinc-400 pt-1 px-2">
+          <span>OPERADOR: {user?.nome?.toUpperCase() || 'OPERADOR'}</span>
+          <span>MAPA EMITIDO EM: {new Date().toLocaleString('pt-PT')}</span>
+        </div>
+      </div>
+
+      {/* Tabela */}
+      <div className="overflow-x-auto border border-zinc-300">
+        <table className="w-full text-[9px] border-collapse font-bold uppercase tracking-tight">
+          <thead>
+            <tr className="bg-zinc-100 text-zinc-600 border-b-2 border-zinc-300 italic text-center">
+              <th className="p-2 border-r border-zinc-200">Nº Diário</th>
+              <th className="p-2 border-r border-zinc-200">Nº Mov</th>
+              <th className="p-2 border-r border-zinc-200">Data Valor</th>
+              <th className="p-2 border-r border-zinc-200">Data</th>
+              <th className="p-2 border-r border-zinc-200">DocNo</th>
+              <th className="p-2 border-r border-zinc-200">Class</th>
+              <th className="p-2 border-r border-zinc-200">Ck</th>
+              <th className="p-2 border-r border-zinc-200">Arq</th>
+              <th className="p-2 border-r border-zinc-200">Tipo</th>
+              <th className="p-2 border-r border-zinc-200">ORI</th>
+              <th className="p-2 border-r border-zinc-200">Status</th>
+              <th className="p-2 border-r border-zinc-200">AccountID</th>
+              <th className="p-2 border-r border-zinc-200 text-left">{type === 'classificar_vendas' ? 'Cliente' : 'Fornecedor'}</th>
+              <th className="p-2 border-r border-zinc-200 text-right">Débito</th>
+              <th className="p-2 border-r border-zinc-200 text-right">Crédito</th>
+              <th className="p-2 border-r border-zinc-200 text-right">IVA</th>
+              <th className="p-2 text-center w-8">
+                <input type="checkbox" checked={isAllSelected} onChange={toggleSelectAll} className="cursor-pointer" />
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-200 text-center">
+            {loading ? (
+              <tr><td colSpan={17} className="py-14 text-zinc-400 italic">A carregar dados contabilísticos...</td></tr>
+            ) : filteredData.length === 0 ? (
+              <tr><td colSpan={17} className="py-14 text-zinc-300 font-black italic uppercase tracking-widest">Nenhum movimento encontrado para este período</td></tr>
+            ) : filteredData.map((item, idx) => {
+              const isSelected = selectedIds.includes(item.id);
+              const displayRubrica = item.conta_pgc || item.rubrica || (type === 'classificar_vendas' ? '31.1.2.1.2' : '32.01.02.01.0001');
+              const isNC = (item.document_type || '').toUpperCase().includes('NC');
+              const isClassified = item.status === 'classificado';
+              return (
+                <tr key={item.id} className={`hover:bg-blue-50/50 transition-colors ${isClassified ? 'bg-emerald-50/40' : isSelected ? 'bg-blue-50' : ''}`}>
+                  <td className="p-2 border-r border-zinc-200 text-zinc-500 font-bold">{selectedDiarioCode}</td>
+                  <td className="p-2 border-r border-zinc-200 text-zinc-400">{idx + 1}</td>
+                  <td className="p-2 border-r border-zinc-200 font-mono text-zinc-500">{item.date}</td>
+                  <td className="p-2 border-r border-zinc-200 font-mono text-zinc-500">{item.date}</td>
+                  <td className="p-2 border-r border-zinc-200 font-black text-blue-600 font-mono">{item.invoice_number || item.purchase_number}</td>
+                  {/* CLASS — abre modal de classificação */}
+                  <td className="p-2 border-r border-zinc-200">
+                    {isClassified ? (
+                      <span className="text-emerald-600 font-black text-[8px] flex flex-col items-center gap-0.5">
+                        <CheckCircle size={14} />
+                        <span>OK</span>
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => openClassifyModal(item)}
+                        title="Classificar Manualmente este Documento"
+                        className="w-6 h-6 rounded-full text-white flex items-center justify-center mx-auto shadow hover:brightness-110 hover:scale-110 transition-all bg-gradient-to-br from-amber-400 to-orange-500"
+                      >
+                        <UserIcon size={11} />
+                      </button>
+                    )}
+                  </td>
+                  <td className="p-2 border-r border-zinc-200 text-zinc-400">0</td>
+                  <td className="p-2 border-r border-zinc-200 text-zinc-400">0</td>
+                  <td className="p-2 border-r border-zinc-200 font-black">{item.document_type}</td>
+                  <td className="p-2 border-r border-zinc-200 text-zinc-400 font-black">{item.ori || ''}</td>
+                  <td className="p-2 border-r border-zinc-200 font-black">
+                    <span className={`px-1.5 py-0.5 rounded text-[8px] ${isClassified ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                      {isClassified ? 'CLASSIFICADO' : 'PENDENTE'}
+                    </span>
+                  </td>
+                  <td className="p-2 border-r border-zinc-200 font-mono font-black text-[#003366] text-left">{displayRubrica}</td>
+                  <td className="p-2 border-r border-zinc-200 text-left text-zinc-800 truncate max-w-[130px]" title={item.client_name || item.supplier_name}>
+                    {item.client_name || item.supplier_name}
+                  </td>
+                  <td className="p-2 border-r border-zinc-200 text-right font-mono text-zinc-600">
+                    {isNC ? '0,00' : formatCurrency(item.total).replace('AOA','').replace('Kz','').trim()}
+                  </td>
+                  <td className="p-2 border-r border-zinc-200 text-right font-mono text-zinc-600">
+                    {formatCurrency(item.total).replace('AOA','').replace('Kz','').trim()}
+                  </td>
+                  <td className="p-2 border-r border-zinc-200 text-right font-mono text-emerald-600">
+                    {formatCurrency(item.imposto || 0).replace('AOA','').replace('Kz','').trim()}
+                  </td>
+                  <td className="p-2 text-center">
+                    <input type="checkbox" checked={isSelected}
+                      onChange={e => { if (e.target.checked) setSelectedIds([...selectedIds, item.id]); else setSelectedIds(selectedIds.filter(id => id !== item.id)); }}
+                      className="cursor-pointer" />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Bloco de Cálculos */}
+      <div className="flex justify-end mt-6">
+        <div className="w-80 space-y-1.5 text-[10px] font-black text-zinc-600 uppercase tracking-tighter">
+          <div className="flex justify-between border-b border-zinc-200 pb-1">
+            <span>Valor Bruto</span>
+            <span className="font-mono text-[#003366]">{formatCurrency(totalDebito).replace('AOA','').replace('Kz','').trim()}</span>
+          </div>
+          <div className="flex justify-between border-b border-zinc-200 pb-1">
+            <span>Descontos Concedidos</span>
+            <span className="font-mono text-zinc-400">0,00</span>
+          </div>
+          <div className="flex justify-between border-b border-zinc-200 pb-1">
+            <span>Ajustamentos Contabilísticos</span>
+            <span className="font-mono text-zinc-500">{formatCurrency(ajustamentosContabilísticos).replace('AOA','').replace('Kz','').trim()}</span>
+          </div>
+          <div className="flex justify-between border-b border-zinc-200 pb-1">
+            <span>Devoluções</span>
+            <span className="font-mono text-zinc-500">{formatCurrency(devolucoes).replace('AOA','').replace('Kz','').trim()}</span>
+          </div>
+          <div className="flex justify-between text-xs font-black text-[#003366] pt-1">
+            <span>Valor de Gestão Líquido c/ imposto</span>
+            <span className="font-mono">{formatCurrency(valorGestaoLiquido).replace('AOA','').replace('Kz','').trim()}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ─────────────────────────────────────────────
+  // MODAL: Classificar Documento
+  // ─────────────────────────────────────────────
+  const renderClassifyModal = () => {
+    if (!classifyModalItem) return null;
+    const isVenda = activeSubView === 'classificar_vendas';
+    const totalDebLancamentos = classifyLines.filter(l => !l.readonly).reduce((s, l) => s + Number(l.debito || 0), 0);
+    const totalCredLancamentos = classifyLines.filter(l => !l.readonly).reduce((s, l) => s + Number(l.credito || 0), 0);
+    const balanced = Math.abs(totalDebLancamentos - totalCredLancamentos) < 0.01;
+
+    return (
+      <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div className="bg-[#e8f5e8] border-2 border-[#6db36d] shadow-2xl w-full max-w-2xl rounded-none relative animate-in fade-in zoom-in-95 duration-200">
+          {/* Header */}
+          <div className="bg-[#d4ead4] border-b-2 border-[#6db36d] p-3 text-center">
+            <h2 className="text-base font-black text-zinc-700 tracking-tight">Classificar Documento</h2>
+          </div>
+
+          {/* Sub-header: Diário (Seleccionável de Diários) | Data Valor */}
+          <div className="grid grid-cols-2 border-b border-[#6db36d] bg-[#c8e6c8]">
+            <div className="p-3 border-r border-[#6db36d]">
+              <div className="text-[10px] font-black text-zinc-600 uppercase text-center bg-[#b8dcb8] py-1 mb-2">Diário de Destino</div>
+              <select
+                value={modalSelectedDiario}
+                onChange={e => setModalSelectedDiario(e.target.value)}
+                className="w-full bg-white border border-[#6db36d] px-2 py-1 text-xs font-black text-[#003366] focus:outline-none"
+              >
+                {diarios.map(d => (
+                  <option key={d.codigo} value={d.codigo}>{d.codigo} - {d.descricao}</option>
+                ))}
+              </select>
+            </div>
+            <div className="p-3">
+              <div className="text-[10px] font-black text-zinc-600 uppercase text-center bg-[#b8dcb8] py-1 mb-2">Data Valor do Movimento</div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={classifyDate}
+                  onChange={e => setClassifyDate(e.target.value)}
+                  className="bg-white border border-[#6db36d] px-2 py-1 text-sm font-bold text-zinc-700 focus:outline-none focus:ring-1 focus:ring-[#003366] flex-1"
+                />
+                <button onClick={() => window.print()} className="p-1.5 bg-white border border-[#6db36d] text-zinc-500 hover:bg-zinc-50">
+                  <Printer size={14} />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Tabela de Lançamentos */}
+          <div className="p-3">
+            <table className="w-full text-[10px] border-collapse">
+              <thead>
+                <tr className="bg-[#b8dcb8] text-zinc-700 font-black">
+                  <th className="p-2 border border-[#6db36d] text-left">Descrição / Conta PGC do Movimento</th>
+                  <th className="p-2 border border-[#6db36d] text-right w-32">Débito</th>
+                  <th className="p-2 border border-[#6db36d] text-right w-32">Crédito</th>
+                </tr>
+              </thead>
+              <tbody>
+                {classifyLines.map((line, idx) => (
+                  <tr key={idx} className="bg-white">
+                    <td className="p-1 border border-[#6db36d]">
+                      {line.readonly ? (
+                        <span className="font-bold text-zinc-700">{line.descricao}</span>
+                      ) : (
+                        <div className="flex flex-col gap-1">
+                          <input
+                            type="text"
+                            value={line.descricao}
+                            onChange={e => { const nl = [...classifyLines]; nl[idx].descricao = e.target.value; setClassifyLines(nl); }}
+                            className="w-full bg-transparent focus:outline-none font-bold text-zinc-700 text-[10px]"
+                          />
+                          {/* Selector de Contas PGC da Página PGC */}
+                          <div className="flex items-center gap-1 bg-zinc-50 border border-zinc-200 px-1 py-0.5">
+                            <span className="text-[8px] font-black text-zinc-400 uppercase">Conta:</span>
+                            <select
+                              value={line.conta || ''}
+                              onChange={e => {
+                                const selCode = e.target.value;
+                                const accObj = pgcAccounts.find(a => (a.codigo || a.id) === selCode);
+                                const nl = [...classifyLines];
+                                nl[idx].conta = selCode;
+                                if (accObj) {
+                                  nl[idx].descricao = `${selCode} - ${accObj.description}`;
+                                }
+                                setClassifyLines(nl);
+                              }}
+                              className="bg-transparent text-[9px] font-bold text-[#003366] focus:outline-none w-full"
+                            >
+                              <option value={line.conta || ''}>{line.conta || 'Seleccionar conta PGC...'}</option>
+                              {pgcAccounts.map(a => (
+                                <option key={a.id} value={a.codigo || a.id}>
+                                  {a.codigo || a.id} - {a.description}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      )}
+                    </td>
+                    <td className="p-1 border border-[#6db36d]">
+                      {line.readonly ? (
+                        <span className="font-mono text-zinc-700 block text-right">{Number(line.debito).toLocaleString('pt-PT', {minimumFractionDigits:2})} AOA</span>
+                      ) : (
+                        <input
+                          type="number"
+                          value={line.debito}
+                          onChange={e => { const nl = [...classifyLines]; nl[idx].debito = Number(e.target.value); setClassifyLines(nl); }}
+                          className="w-full text-right font-mono text-zinc-700 bg-white border border-red-300 px-1 py-0.5 focus:outline-none focus:border-[#003366] text-[10px]"
+                        />
+                      )}
+                    </td>
+                    <td className="p-1 border border-[#6db36d]">
+                      {line.readonly ? (
+                        <span className="font-mono text-zinc-700 block text-right">{Number(line.credito).toLocaleString('pt-PT', {minimumFractionDigits:2})} AOA</span>
+                      ) : (
+                        <input
+                          type="number"
+                          value={line.credito}
+                          onChange={e => { const nl = [...classifyLines]; nl[idx].credito = Number(e.target.value); setClassifyLines(nl); }}
+                          className="w-full text-right font-mono text-zinc-700 bg-white border border-red-300 px-1 py-0.5 focus:outline-none focus:border-[#003366] text-[10px]"
+                        />
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {/* Adicionar Linha */}
+            <button
+              onClick={() => setClassifyLines([...classifyLines, { id: `line_${Date.now()}`, descricao: '', debito: 0, credito: 0, conta: '' }])}
+              className="mt-2 px-3 py-1.5 border border-zinc-400 bg-white text-xs font-black text-zinc-600 hover:bg-zinc-50 transition-colors"
+            >
+              Adicionar Linha
+            </button>
+
+            {/* Aviso de Balanceamento */}
+            {!balanced && (
+              <div className="mt-2 text-[10px] font-black text-red-500 uppercase">
+                ⚠ Débito ({totalDebLancamentos.toLocaleString('pt-PT',{minimumFractionDigits:2})}) ≠ Crédito ({totalCredLancamentos.toLocaleString('pt-PT',{minimumFractionDigits:2})}) — O lançamento deve estar balanceado.
+              </div>
+            )}
+          </div>
+
+          {/* Rodapé: Registar Lançamento */}
+          <div className="p-3 border-t border-[#6db36d] flex items-center justify-between bg-[#d4ead4]">
+            <button
+              onClick={handleSaveClassify}
+              disabled={savingClassify}
+              className="flex items-center gap-2 text-red-500 hover:text-red-600 font-black text-base tracking-tight disabled:opacity-50 transition-colors cursor-pointer"
+            >
+              <span>Registar Lançamento</span>
+              <CheckSquare size={22} className="text-green-600" />
+            </button>
+            <button
+              onClick={() => setClassifyModalItem(null)}
+              className="px-4 py-1.5 bg-zinc-200 hover:bg-zinc-300 text-zinc-700 text-xs font-black uppercase tracking-wider transition-colors border border-zinc-300 cursor-pointer"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ─────────────────────────────────────────────
+  // MAIN RENDER
+  // ─────────────────────────────────────────────
+  return (
+    <div className="space-y-6">
+      {/* Modal de Classificação */}
+      {renderClassifyModal()}
+
+      {/* Botões do Topo — Linha 1 */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: 'Ajustar Movimento Vendas', view: 'vendas' as const, icon: <LayoutList size={20} /> },
           { label: 'Ajustar Movimento Compras Fornecedor', view: 'compras' as const, icon: <ShoppingBag size={20} /> },
-          { label: 'Classificar Vendas', view: 'vendas' as const, icon: <CheckSquare size={20} /> },
-          { label: 'Classificar Compras Fornecedor', view: 'compras' as const, icon: <PackageCheck size={20} /> },
-        ].map((btn, i) => (
-          <button 
-            key={i}
-            onClick={() => btn.view && setActiveSubView(btn.view)}
-            className={`p-6 border shadow-sm transition-all text-center space-y-2 group rounded-none flex flex-col items-center justify-center ${activeSubView === btn.view && i < 2 ? 'bg-[#003366] border-[#003366]' : 'bg-white border-zinc-200 hover:border-[#003366]'}`}
-          >
-            <div className={`w-12 h-12 rounded-none flex items-center justify-center transition-colors ${activeSubView === btn.view && i < 2 ? 'bg-white text-[#003366]' : 'bg-zinc-50 text-zinc-400 group-hover:bg-[#003366] group-hover:text-white'}`}>
-               {btn.icon}
-            </div>
-            <p className={`text-[10px] font-black uppercase tracking-tight leading-tight ${activeSubView === btn.view && i < 2 ? 'text-white' : 'text-zinc-600 group-hover:text-[#003366]'}`}>{btn.label}</p>
-          </button>
-        ))}
+          { label: 'Classificar Vendas', view: 'classificar_vendas' as const, icon: <CheckSquare size={20} /> },
+          { label: 'Classificar Compras Fornecedor', view: 'classificar_compras' as const, icon: <PackageCheck size={20} /> },
+        ].map((btn, i) => {
+          const isActive = activeSubView === btn.view;
+          return (
+            <button key={i} onClick={() => setActiveSubView(btn.view)}
+              className={`p-6 border shadow-sm transition-all text-center space-y-2 group rounded-none flex flex-col items-center justify-center ${isActive ? 'bg-[#003366] border-[#003366]' : 'bg-white border-zinc-200 hover:border-[#003366]'}`}>
+              <div className={`w-12 h-12 rounded-none flex items-center justify-center transition-colors ${isActive ? 'bg-white text-[#003366]' : 'bg-zinc-50 text-zinc-400 group-hover:bg-[#003366] group-hover:text-white'}`}>
+                {btn.icon}
+              </div>
+              <p className={`text-[10px] font-black uppercase tracking-tight leading-tight ${isActive ? 'text-white' : 'text-zinc-600 group-hover:text-[#003366]'}`}>{btn.label}</p>
+            </button>
+          );
+        })}
       </div>
 
-      {activeSubView && renderRubricasView(activeSubView === 'vendas' ? 'Ajustamento de Rubricas nas Vendas' : 'Ajustamento de Rubricas nas Compras')}
+      {/* Botões do Topo — Linha 2 (Salário e Impostos) */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {[
+          { label: 'Classificar Movimento Salário', view: 'classificar_salario' as const, icon: <Users size={20} />, color: 'from-violet-600 to-purple-500' },
+          { label: 'Classificar Pagamento Salário', view: 'classificar_pag_salario' as const, icon: <CreditCard size={20} />, color: 'from-indigo-600 to-blue-500' },
+          { label: 'Classificar Pagamento Impostos', view: 'classificar_pag_impostos' as const, icon: <Receipt size={20} />, color: 'from-rose-600 to-pink-500' },
+        ].map((btn, i) => {
+          const isActive = activeSubView === btn.view;
+          return (
+            <button key={i} onClick={() => setActiveSubView(btn.view)}
+              className={`p-5 border shadow-sm transition-all text-center space-y-2 group rounded-none flex flex-col items-center justify-center ${isActive ? 'bg-[#003366] border-[#003366]' : 'bg-white border-zinc-200 hover:border-[#003366]'}`}>
+              <div className={`w-10 h-10 rounded-none flex items-center justify-center transition-colors bg-gradient-to-br ${btn.color} text-white`}>
+                {btn.icon}
+              </div>
+              <p className={`text-[10px] font-black uppercase tracking-tight leading-tight ${isActive ? 'text-white' : 'text-zinc-600 group-hover:text-[#003366]'}`}>{btn.label}</p>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Conteúdo dinâmico conforme a vista activa */}
+      {activeSubView === 'vendas' && renderAjustarView('vendas')}
+      {activeSubView === 'compras' && renderAjustarView('compras')}
+      {activeSubView === 'classificar_vendas' && renderClassificarView('classificar_vendas')}
+      {activeSubView === 'classificar_compras' && renderClassificarView('classificar_compras')}
+
+      {/* CLASSIFICAR MOVIMENTO SALÁRIO */}
+      {(activeSubView === 'classificar_salario' || activeSubView === 'classificar_pag_salario') && (
+        <div className="bg-white border border-zinc-300 p-6 shadow-sm animate-in fade-in duration-300">
+          {/* Modal de lançamento salário */}
+          {salarioModal && (
+            <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+              <div className="bg-[#e8f0ff] border-2 border-[#5577cc] shadow-2xl w-full max-w-2xl rounded-none relative animate-in fade-in zoom-in-95 duration-200">
+                <div className="bg-[#ccdaf5] border-b-2 border-[#5577cc] p-3 text-center">
+                  <h2 className="text-base font-black text-zinc-700 tracking-tight">
+                    {salarioModal._tipo === 'movimento' ? 'Classificar Movimento Salário' : 'Classificar Pagamento Salário'} — {salarioModal.nome}
+                  </h2>
+                </div>
+                <div className="grid grid-cols-2 border-b border-[#5577cc] bg-[#b8ccee]">
+                  <div className="p-3 border-r border-[#5577cc]">
+                    <div className="text-[10px] font-black text-zinc-600 uppercase text-center bg-[#a0b8e0] py-1 mb-2">Diário de Destino</div>
+                    <select value={salarioDiario} onChange={e => setSalarioDiario(e.target.value)} className="w-full bg-white border border-[#5577cc] px-2 py-1 text-xs font-black text-[#003366] focus:outline-none">
+                      {diarios.map(d => (<option key={d.codigo} value={d.codigo}>{d.codigo} - {d.descricao}</option>))}
+                    </select>
+                  </div>
+                  <div className="p-3">
+                    <div className="text-[10px] font-black text-zinc-600 uppercase text-center bg-[#a0b8e0] py-1 mb-2">Data do Movimento</div>
+                    <input type="date" value={salarioDate} onChange={e => setSalarioDate(e.target.value)} className="w-full bg-white border border-[#5577cc] px-2 py-1 text-sm font-bold text-zinc-700 focus:outline-none" />
+                  </div>
+                </div>
+                <div className="p-3">
+                  <table className="w-full text-[10px] border-collapse">
+                    <thead>
+                      <tr className="bg-[#a0b8e0] text-zinc-700 font-black">
+                        <th className="p-2 border border-[#5577cc] text-left">Descrição / Conta PGC</th>
+                        <th className="p-2 border border-[#5577cc] text-right w-32">Débito (AOA)</th>
+                        <th className="p-2 border border-[#5577cc] text-right w-32">Crédito (AOA)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {salarioLines.map((line, idx) => (
+                        <tr key={idx} className="bg-white">
+                          <td className="p-1 border border-[#5577cc]">
+                            {line.readonly ? (
+                              <span className="font-bold text-zinc-700">{line.descricao}</span>
+                            ) : (
+                              <div className="flex flex-col gap-1">
+                                <input type="text" value={line.descricao}
+                                  onChange={e => { const nl = [...salarioLines]; nl[idx].descricao = e.target.value; setSalarioLines(nl); }}
+                                  className="w-full bg-transparent focus:outline-none font-bold text-zinc-700 text-[10px]" />
+                                <div className="flex items-center gap-1 bg-zinc-50 border border-zinc-200 px-1 py-0.5">
+                                  <span className="text-[8px] font-black text-zinc-400 uppercase">Conta:</span>
+                                  <select value={line.conta || ''} onChange={e => { const nl = [...salarioLines]; nl[idx].conta = e.target.value; const acc = pgcAccounts.find((a:any) => (a.codigo||a.id) === e.target.value); if (acc) nl[idx].descricao = `${e.target.value} - ${acc.description}`; setSalarioLines(nl); }} className="bg-transparent text-[9px] font-bold text-[#003366] focus:outline-none w-full">
+                                    <option value={line.conta || ''}>{line.conta || 'Conta PGC...'}</option>
+                                    {pgcAccounts.map((a:any) => (<option key={a.id} value={a.codigo||a.id}>{a.codigo||a.id} - {a.description}</option>))}
+                                  </select>
+                                </div>
+                              </div>
+                            )}
+                          </td>
+                          <td className="p-1 border border-[#5577cc]">
+                            {line.readonly ? (<span className="font-mono text-zinc-700 block text-right">{Number(line.debito).toLocaleString('pt-PT',{minimumFractionDigits:2})} AOA</span>) : (
+                              <input type="number" value={line.debito} onChange={e => { const nl=[...salarioLines]; nl[idx].debito=Number(e.target.value); setSalarioLines(nl); }} className="w-full text-right font-mono text-zinc-700 bg-white border border-[#5577cc] px-1 focus:outline-none text-[10px]" />
+                            )}
+                          </td>
+                          <td className="p-1 border border-[#5577cc]">
+                            {line.readonly ? (<span className="font-mono text-zinc-700 block text-right">{Number(line.credito).toLocaleString('pt-PT',{minimumFractionDigits:2})} AOA</span>) : (
+                              <input type="number" value={line.credito} onChange={e => { const nl=[...salarioLines]; nl[idx].credito=Number(e.target.value); setSalarioLines(nl); }} className="w-full text-right font-mono text-zinc-700 bg-white border border-[#5577cc] px-1 focus:outline-none text-[10px]" />
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="p-3 border-t border-[#5577cc] flex items-center justify-between bg-[#ccdaf5]">
+                  <button onClick={handleSaveSalario} disabled={savingSalario} className="flex items-center gap-2 text-red-500 hover:text-red-600 font-black text-base tracking-tight disabled:opacity-50">
+                    <span>Registar Lançamento</span>
+                    <CheckSquare size={22} className="text-green-600" />
+                  </button>
+                  <button onClick={() => setSalarioModal(null)} className="px-4 py-1.5 bg-zinc-200 hover:bg-zinc-300 text-zinc-700 text-xs font-black uppercase tracking-wider border border-zinc-300">Cancelar</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-between items-center border-b border-zinc-200 pb-4 mb-6">
+            <div>
+              <h3 className="text-xs font-black text-zinc-500 uppercase tracking-[0.2em] italic">Contabilidade Geral Angolana</h3>
+              <h2 className="text-lg font-black text-[#003366] uppercase">
+                {activeSubView === 'classificar_salario' ? 'Classificar Movimento de Salário' : 'Classificar Pagamento de Salário'}
+              </h2>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <button className="w-11 h-11 rounded-full bg-gradient-to-tr from-violet-600 to-purple-400 text-white font-black text-[10px] shadow-lg flex items-center justify-center border-2 border-white">
+                  {new Date(2025, parseInt(selectedMonth)-1).toLocaleString('pt-PT', { month: 'short' }).substring(0,3).toUpperCase()}
+                </button>
+                <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full">
+                  {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => (<option key={m} value={m.toString().padStart(2,'0')}>{new Date(2025,m-1).toLocaleString('pt-PT',{month:'long'}).toUpperCase()}</option>))}
+                </select>
+              </div>
+              <button onClick={() => window.print()} className="w-11 h-11 rounded-full bg-gradient-to-tr from-cyan-600 to-emerald-400 text-white shadow-lg flex items-center justify-center border-2 border-white">
+                <Printer size={16} />
+              </button>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto border border-zinc-300">
+            <table className="w-full text-[9px] border-collapse font-bold uppercase tracking-tight">
+              <thead>
+                <tr className="bg-zinc-100 text-zinc-600 border-b-2 border-zinc-300 italic text-center">
+                  <th className="p-2 border-r border-zinc-200 text-left">Nº</th>
+                  <th className="p-2 border-r border-zinc-200 text-left">Funcionário</th>
+                  <th className="p-2 border-r border-zinc-200">Cargo</th>
+                  <th className="p-2 border-r border-zinc-200 text-right">Salário Base</th>
+                  <th className="p-2 border-r border-zinc-200 text-right">IRT (12%)</th>
+                  <th className="p-2 border-r border-zinc-200 text-right">INSS (3%)</th>
+                  <th className="p-2 border-r border-zinc-200 text-right">Líquido</th>
+                  <th className="p-2 text-center">Classificar</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-200">
+                {salarioData.length === 0 ? (
+                  <tr><td colSpan={8} className="py-14 text-center text-zinc-300 font-black italic uppercase tracking-widest">Nenhum funcionário encontrado. Adicione funcionários na secção de Recursos Humanos.</td></tr>
+                ) : salarioData.map((f, idx) => {
+                  const sal = Number(f.salario_base || 0);
+                  const irt = Number(f.irt || sal * 0.12);
+                  const inss = Number(f.inss || sal * 0.03);
+                  const liquido = sal - irt - inss;
+                  return (
+                    <tr key={f.id} className="hover:bg-blue-50/50 transition-colors">
+                      <td className="p-2 border-r border-zinc-100 text-zinc-400">{idx+1}</td>
+                      <td className="p-2 border-r border-zinc-100 font-black text-[#003366] text-left">{f.nome}</td>
+                      <td className="p-2 border-r border-zinc-100 text-zinc-600 text-center">{f.cargo}</td>
+                      <td className="p-2 border-r border-zinc-100 text-right font-mono">{sal.toLocaleString('pt-PT',{minimumFractionDigits:2})}</td>
+                      <td className="p-2 border-r border-zinc-100 text-right font-mono text-red-600">{irt.toLocaleString('pt-PT',{minimumFractionDigits:2})}</td>
+                      <td className="p-2 border-r border-zinc-100 text-right font-mono text-orange-600">{inss.toLocaleString('pt-PT',{minimumFractionDigits:2})}</td>
+                      <td className="p-2 border-r border-zinc-100 text-right font-mono font-black text-emerald-700">{liquido.toLocaleString('pt-PT',{minimumFractionDigits:2})}</td>
+                      <td className="p-2 text-center">
+                        <button onClick={() => openSalarioModal(f, activeSubView === 'classificar_salario' ? 'movimento' : 'pagamento')}
+                          className="w-6 h-6 rounded-full text-white flex items-center justify-center mx-auto shadow hover:brightness-110 hover:scale-110 transition-all bg-gradient-to-br from-violet-500 to-purple-600">
+                          <UserIcon size={11} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot className="bg-zinc-50 font-black border-t-2 border-[#003366]">
+                <tr>
+                  <td colSpan={3} className="p-2 text-right text-[#003366] uppercase italic">Totais do Período</td>
+                  <td className="p-2 text-right font-mono text-[#003366]">{salarioData.reduce((s,f) => s+Number(f.salario_base||0),0).toLocaleString('pt-PT',{minimumFractionDigits:2})}</td>
+                  <td className="p-2 text-right font-mono text-red-600">{salarioData.reduce((s,f) => { const sal=Number(f.salario_base||0); return s+(f.irt||sal*0.12); },0).toLocaleString('pt-PT',{minimumFractionDigits:2})}</td>
+                  <td className="p-2 text-right font-mono text-orange-600">{salarioData.reduce((s,f) => { const sal=Number(f.salario_base||0); return s+(f.inss||sal*0.03); },0).toLocaleString('pt-PT',{minimumFractionDigits:2})}</td>
+                  <td className="p-2 text-right font-mono text-emerald-700">{salarioData.reduce((s,f) => { const sal=Number(f.salario_base||0); const irt=Number(f.irt||sal*0.12); const inss=Number(f.inss||sal*0.03); return s+(sal-irt-inss); },0).toLocaleString('pt-PT',{minimumFractionDigits:2})}</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* CLASSIFICAR PAGAMENTO DE IMPOSTOS */}
+      {activeSubView === 'classificar_pag_impostos' && (
+        <div className="bg-white border border-zinc-300 p-6 shadow-sm animate-in fade-in duration-300">
+          <div className="flex justify-between items-center border-b border-zinc-200 pb-4 mb-6">
+            <div>
+              <h3 className="text-xs font-black text-zinc-500 uppercase tracking-[0.2em] italic">Contabilidade Geral Angolana</h3>
+              <h2 className="text-lg font-black text-[#003366] uppercase">Classificar Pagamento de Impostos</h2>
+              <p className="text-[10px] font-bold text-zinc-400 uppercase">Lançamento da liquidação e pagamento de impostos ao Estado</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 bg-zinc-50 border border-zinc-300 px-3 py-1.5">
+                <span className="text-[10px] font-black text-zinc-500 uppercase">Diário:</span>
+                <select value={impostoDiario} onChange={e => setImpostoDiario(e.target.value)} className="bg-transparent text-[10px] font-black text-[#003366] focus:outline-none">
+                  {diarios.map(d => (<option key={d.codigo} value={d.codigo}>{d.codigo} - {d.descricao}</option>))}
+                </select>
+              </div>
+              <input type="date" value={impostoDate} onChange={e => setImpostoDate(e.target.value)} className="border border-zinc-300 px-2 py-1.5 text-xs font-bold text-zinc-700 focus:outline-none bg-zinc-50" />
+              <button onClick={() => window.print()} className="w-11 h-11 rounded-full bg-gradient-to-tr from-cyan-600 to-emerald-400 text-white shadow-lg flex items-center justify-center border-2 border-white">
+                <Printer size={16} />
+              </button>
+            </div>
+          </div>
+
+          <div className="text-center mb-6">
+            <h2 className="text-sm font-black text-zinc-700 uppercase tracking-widest">Mapa de Pagamento de Impostos — Estado Angolano</h2>
+            <p className="text-[10px] font-bold text-zinc-400 uppercase">Período: {new Date(2025, parseInt(selectedMonth)-1).toLocaleString('pt-PT',{month:'long'}).toUpperCase()} — 2026</p>
+          </div>
+
+          <div className="overflow-x-auto border border-zinc-300">
+            <table className="w-full text-[10px] border-collapse font-bold uppercase tracking-tight">
+              <thead>
+                <tr className="bg-zinc-100 text-zinc-600 border-b-2 border-zinc-300 italic">
+                  <th className="p-3 border-r border-zinc-200 text-left">Imposto</th>
+                  <th className="p-3 border-r border-zinc-200">Conta Débito</th>
+                  <th className="p-3 border-r border-zinc-200">Conta Crédito</th>
+                  <th className="p-3 border-r border-zinc-200">Mês</th>
+                  <th className="p-3 border-r border-zinc-200">Ano</th>
+                  <th className="p-3 text-right">Valor (AOA)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {impostosLines.map((imp, idx) => (
+                  <tr key={imp.id} className="hover:bg-rose-50/30 transition-colors">
+                    <td className="p-3 border-r border-zinc-100 font-black text-[#003366]">{imp.label}</td>
+                    <td className="p-3 border-r border-zinc-100 font-mono text-zinc-600 text-center">{imp.conta_debito}</td>
+                    <td className="p-3 border-r border-zinc-100 font-mono text-zinc-600 text-center">{imp.conta_credito}</td>
+                    <td className="p-3 border-r border-zinc-100 text-center">
+                      <select value={imp.mes} onChange={e => { const nl=[...impostosLines]; nl[idx].mes=Number(e.target.value); setImpostosLines(nl); }} className="bg-transparent font-black text-[#003366] focus:outline-none text-[10px]">
+                        {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => (<option key={m} value={m}>{m.toString().padStart(2,'0')}</option>))}
+                      </select>
+                    </td>
+                    <td className="p-3 border-r border-zinc-100 text-center">
+                      <input type="number" value={imp.ano} onChange={e => { const nl=[...impostosLines]; nl[idx].ano=Number(e.target.value); setImpostosLines(nl); }} className="w-16 bg-transparent text-center font-black text-[#003366] focus:outline-none text-[10px]" />
+                    </td>
+                    <td className="p-3 text-right">
+                      <input type="number" min="0" value={imp.valor} onChange={e => { const nl=[...impostosLines]; nl[idx].valor=Number(e.target.value); setImpostosLines(nl); }} className="w-full text-right font-mono text-[#003366] bg-white border border-zinc-300 px-2 py-0.5 focus:outline-none focus:border-[#003366] text-[10px]" placeholder="0,00" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="bg-zinc-50 font-black border-t-2 border-[#003366]">
+                <tr>
+                  <td colSpan={5} className="p-3 text-right text-[#003366] uppercase italic">Total a Pagar</td>
+                  <td className="p-3 text-right font-mono text-[#003366] text-sm">
+                    {impostosLines.reduce((s,i) => s+Number(i.valor||0),0).toLocaleString('pt-PT',{minimumFractionDigits:2})} AOA
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          <div className="flex justify-end mt-6 gap-4">
+            <button onClick={() => setImpostosLines(impostosLines.map(l => ({...l, valor: 0})))} className="px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 text-xs font-black uppercase border border-zinc-300">
+              Limpar Valores
+            </button>
+            <button onClick={handleSaveImpostos} disabled={savingImposto} className="flex items-center gap-2 px-6 py-2 bg-[#003366] hover:bg-[#002244] text-white text-xs font-black uppercase tracking-wider disabled:opacity-50">
+              <CheckSquare size={16} />
+              {savingImposto ? 'A Registar...' : 'Registar Pagamento de Impostos'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
+
 
 const StampTaxModule = ({ invoices, onBack, companyData }: { invoices: Invoice[], onBack: () => void, companyData?: any }) => {
   const [selectedMonth, setSelectedMonth] = useState('05');
@@ -16244,8 +17537,8 @@ const StampTaxModule = ({ invoices, onBack, companyData }: { invoices: Invoice[]
         <div className="flex items-center gap-4">
           <button onClick={onBack} className="p-2 hover:bg-zinc-100 text-zinc-400"><ChevronLeft size={24} /></button>
           <div className="flex flex-col">
-            <h2 className="text-xl font-black text-[#003366] uppercase tracking-tighter">Imposto Selo Verba 23.3</h2>
-            <p className="text-[10px] font-bold text-zinc-400 uppercase">Art. 7º n.º 1 Dec. Lei 7/19</p>
+            <h2 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">Imposto Selo Verba 23.3</h2>
+            <p className="text-sm font-bold text-zinc-400 uppercase">Art. 7º n.º 1 Dec. Lei 7/19</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -16259,8 +17552,8 @@ const StampTaxModule = ({ invoices, onBack, companyData }: { invoices: Invoice[]
         </div>
       </div>
 
-      <div className="bg-white border border-zinc-300 overflow-hidden shadow-xl max-w-5xl mx-auto">
-         <div className="bg-[#003366] text-white p-1 text-[10px] font-bold uppercase border-b border-white flex justify-between items-center px-4">
+      <div className="bg-white border border-zinc-300 overflow-hidden shadow-xl w-full mx-auto">
+         <div className="bg-[#003366] text-white p-1.5 text-xs font-bold uppercase border-b border-white flex justify-between items-center px-4">
             <div className="flex items-center gap-2">
               <span className="bg-white text-[#003366] px-1.5 py-0.5">01-</span>
               <span>PERÍODO DA DECLARAÇÃO</span>
@@ -16279,13 +17572,13 @@ const StampTaxModule = ({ invoices, onBack, companyData }: { invoices: Invoice[]
             <div className="col-span-4 p-4 border-r border-zinc-200">
                <div className="flex gap-4">
                   <div>
-                     <p className="text-[8px] font-bold text-zinc-400 mb-1">Ano:</p>
+                     <p className="text-xs font-bold text-zinc-400 mb-1">Ano:</p>
                      <div className="flex gap-1">
                         {'2025'.split('').map((d, i) => <div key={i} className="w-6 h-6 border border-zinc-300 bg-zinc-50 flex items-center justify-center font-bold">{d}</div>)}
                      </div>
                   </div>
                   <div>
-                     <p className="text-[8px] font-bold text-zinc-400 mb-1">Mês:</p>
+                     <p className="text-xs font-bold text-zinc-400 mb-1">Mês:</p>
                      <div className="flex gap-1">
                         {selectedMonth.split('').map((d, i) => <div key={i} className="w-6 h-6 border border-zinc-300 bg-zinc-50 flex items-center justify-center font-bold">{d}</div>)}
                      </div>
@@ -16293,10 +17586,10 @@ const StampTaxModule = ({ invoices, onBack, companyData }: { invoices: Invoice[]
                </div>
             </div>
             <div className="col-span-4 p-4 border-r border-zinc-200 flex items-center justify-center">
-               <p className="font-black text-[#003366] text-[10px] uppercase">REGIME DE NÃO SUJEIÇÃO</p>
+               <p className="font-black text-[#003366] text-xs uppercase">REGIME DE NÃO SUJEIÇÃO</p>
             </div>
             <div className="col-span-4 p-4">
-               <p className="text-[10px] font-bold text-zinc-400 mb-1 uppercase tracking-widest text-right">NIF: {companyData?.nif || "5000922200"}</p>
+               <p className="text-xs font-bold text-zinc-400 mb-1 uppercase tracking-widest text-right">NIF: {companyData?.nif || "5000922200"}</p>
                <div className="flex border border-zinc-200 bg-zinc-50 divide-x divide-zinc-200">
                  {digits.map((digit, i) => (
                     <div key={i} className="flex-1 h-8 flex items-center justify-center font-mono font-bold text-zinc-700">{digit}</div>
@@ -16305,21 +17598,21 @@ const StampTaxModule = ({ invoices, onBack, companyData }: { invoices: Invoice[]
             </div>
          </div>
 
-         <div className="bg-[#003366] text-white p-1 text-[10px] font-bold uppercase border-t border-white">
+         <div className="bg-[#003366] text-white p-1.5 text-xs font-bold uppercase border-t border-white">
             <span className="bg-white text-[#003366] px-2 py-0.5 mr-2">04-</span> IDENTIFICAÇÃO DO CONTRIBUINTE
          </div>
          <div className="p-4 grid grid-cols-12 gap-4">
-            <div className="col-span-3 text-[10px] font-bold text-zinc-400">NOME/DESIGNAÇÃO</div>
+            <div className="col-span-3 text-xs font-bold text-zinc-400">NOME/DESIGNAÇÃO</div>
             <div className="col-span-9 text-sm font-black text-[#003366] uppercase border-b border-zinc-400 pb-1">
               {companyData?.name || companyData?.nome_empresa || "ROYAL CARS - COMERCIO E PRESTAÇÃO DE SERVIÇOS, LDA"}
             </div>
          </div>
 
-         <div className="bg-[#003366] text-white p-1 text-[10px] font-bold uppercase border-t border-white">
+         <div className="bg-[#003366] text-white p-1.5 text-xs font-bold uppercase border-t border-white">
             <span className="bg-white text-[#003366] px-2 py-0.5 mr-2">05-</span> RELAÇÃO DAS FACTURAS E DOCUMENTOS EQUIVALENTES GERADORES DE IMPOSTO
          </div>
 
-         <table className="w-full text-[9px] border-collapse font-bold uppercase">
+         <table className="w-full text-[11px] border-collapse font-bold uppercase">
             <thead>
                <tr className="bg-zinc-50 text-zinc-500 border-b border-zinc-200">
                   <th className="p-2 border-r border-zinc-200">N ORDEM</th>
@@ -16372,21 +17665,21 @@ const IncomeTaxAdvanceModule = ({ invoices, onBack, companyData }: { invoices: I
   
   // Total of invoices for the first 6 months
   const h1SalesList = invoices.filter(inv => {
-    const month = parseInt(inv.date.split('-')[1]);
+    const month = parseInt((inv.date || '').split('-')[1]);
     return month <= 6;
   });
   
-  const h1Sales = h1SalesList.reduce((s, i) => s + i.total, 0);
+  const h1Sales = h1SalesList.reduce((s, i) => s + (i.total || 0), 0);
   const taxDue = h1Sales * 0.02;
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center bg-white p-4 border border-zinc-200">
+    <div className="space-y-6 w-full max-w-7xl mx-auto p-2 md:p-4">
+      <div className="flex justify-between items-center bg-white p-4 border border-zinc-200 shadow-sm">
         <div className="flex items-center gap-4">
           <button onClick={onBack} className="p-2 hover:bg-zinc-100 text-zinc-400 font-bold"><ChevronLeft size={24} /></button>
           <div className="flex flex-col">
-            <h2 className="text-xl font-black text-[#003366] uppercase tracking-tighter">Imposto por Conta</h2>
-            <p className="text-[10px] font-bold text-zinc-400 uppercase">Auto-liquidação Provisória</p>
+            <h2 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">Imposto por Conta</h2>
+            <p className="text-xs font-bold text-zinc-400 uppercase">Auto-liquidação Provisória</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -16395,93 +17688,93 @@ const IncomeTaxAdvanceModule = ({ invoices, onBack, companyData }: { invoices: I
                 <option key={i} value={i.toString().padStart(2, '0')}>MÊS DE {new Date(2025, i-1).toLocaleString('pt-PT', { month: 'long' }).toUpperCase()}</option>
               ))}
            </select>
-           <button className="p-2 bg-zinc-100 text-zinc-600 border border-zinc-200 hover:bg-zinc-200"><Printer size={18} /></button>
-           <button className="p-2 bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 font-bold text-xs uppercase">Baixar PDF</button>
+           <button onClick={() => window.print()} className="p-2.5 bg-zinc-100 text-zinc-600 border border-zinc-200 hover:bg-zinc-200"><Printer size={18} /></button>
+           <button onClick={() => window.print()} className="p-2.5 bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 font-bold text-xs uppercase">Baixar PDF</button>
         </div>
       </div>
 
-      <div className="bg-[#fffdf0] border border-yellow-300 p-6 space-y-4 shadow-sm text-[10px] italic text-zinc-600 max-w-5xl mx-auto">
+      <div className="bg-[#fffdf0] border border-yellow-300 p-6 space-y-4 shadow-sm text-xs italic text-zinc-700 w-full">
           <div className="flex items-start gap-4">
-            <AlertCircle className="text-yellow-500 shrink-0" size={20} />
+            <AlertCircle className="text-yellow-500 shrink-0" size={22} />
             <div className="space-y-2">
-              <p className="font-black text-zinc-800 uppercase underline">Lei n.º 26/20 de 20 de Julho - ARTIGO 66.º (Liquidação e pagamento provisórios sobre vendas)</p>
-              <p>O Imposto Industrial relativo aos contribuintes do regime geral é objecto de autoliquidação provisória e pagamento devido, até ao último dia útil do mês de Agosto, por referência ao próprio exercício em que a actividade tenha lugar.</p>
-              <p>O imposto a pagar é calculado sobre o volume total de vendas realizadas no 1º semestre do exercício fiscal. A liquidação a que se refere o n.º 1 do presente artigo pode incidir, a título facultativo, sobre o valor efectivamente recebido das vendas não sujeitas à retenção na fonte, nos primeiros seis meses do exercício fiscal, mediante a aplicação de uma taxa de 2% sobre o respectivo valor...</p>
-              <p className="text-red-600 font-black uppercase">Os contribuintes que tenham apresentado prejuízo no exercício anterior estão dispensados da liquidação provisória.</p>
+              <p className="font-black text-zinc-800 uppercase underline text-xs">Lei n.º 26/20 de 20 de Julho - ARTIGO 66.º (Liquidação e pagamento provisórios sobre vendas)</p>
+              <p className="text-xs leading-relaxed">O Imposto Industrial relativo aos contribuintes do regime geral é objecto de autoliquidação provisória e pagamento devido, até ao último dia útil do mês de Agosto, por referência ao próprio exercício em que a actividade tenha lugar.</p>
+              <p className="text-xs leading-relaxed">O imposto a pagar é calculado sobre o volume total de vendas realizadas no 1º semestre do exercício fiscal. A liquidação a que se refere o n.º 1 do presente artigo pode incidir, a título facultativo, sobre o valor efectivamente recebido das vendas não sujeitas à retenção na fonte, nos primeiros seis meses do exercício fiscal, mediante a aplicação de uma taxa de 2% sobre o respectivo valor...</p>
+              <p className="text-red-600 font-black uppercase text-xs">Os contribuintes que tenham apresentado prejuízo no exercício anterior estão dispensados da liquidação provisória.</p>
             </div>
           </div>
       </div>
 
-      <div className="bg-white border border-zinc-300 shadow-2xl overflow-hidden max-w-5xl mx-auto">
-         <div className="bg-[#003366] text-white p-2 font-bold text-[10px] uppercase border-b border-white flex justify-between px-6">
+      <div className="bg-white border border-zinc-300 shadow-2xl overflow-hidden w-full">
+         <div className="bg-[#003366] text-white p-3 font-bold text-xs uppercase border-b border-white flex justify-between px-6">
             <div className="flex items-center gap-2">
-              <span className="bg-white text-[#003366] px-1.5 py-0.5">01-</span>
+              <span className="bg-white text-[#003366] px-2 py-0.5 rounded-sm">01-</span>
               <span>PERÍODO DA DECLARAÇÃO</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="bg-white text-[#003366] px-1.5 py-0.5">02-</span>
+              <span className="bg-white text-[#003366] px-2 py-0.5 rounded-sm">02-</span>
               <span>APURAMENTO DE IMPOSTO (TAXA 2%)</span>
             </div>
          </div>
          
-         <div className="grid grid-cols-12 text-[10px] font-bold uppercase">
+         <div className="grid grid-cols-12 text-xs font-bold uppercase">
             <div className="col-span-3 p-6 border-r border-zinc-200">
-               <p className="text-zinc-400 mb-2">Ano:</p>
-               <div className="flex gap-1">
-                  {'2025'.split('').map((d, i) => <div key={i} className="w-8 h-8 border border-zinc-300 bg-zinc-50 flex items-center justify-center text-lg">{d}</div>)}
-               </div>
+                <p className="text-zinc-500 mb-2">Ano:</p>
+                <div className="flex gap-1">
+                  {'2026'.split('').map((d, i) => <div key={i} className="w-9 h-9 border border-zinc-300 bg-zinc-50 flex items-center justify-center text-lg font-mono">{d}</div>)}
+                </div>
             </div>
             <div className="col-span-9 p-6 bg-zinc-50/50">
                <div className="grid grid-cols-12 gap-4 items-center">
-                  <div className="col-span-8 text-[#003366] text-[10px] leading-relaxed">
+                  <div className="col-span-8 text-[#003366] text-xs leading-relaxed font-bold">
                     (a) Volume total de vendas realizadas no 1º semestre do exercício (Nº2 do artigo 66º do CII)
                   </div>
                   <div className="col-span-4 text-right">
-                    <p className="text-zinc-400 text-[8px] mb-1">VALOR TRIBUTÁVEL</p>
-                    <p className="text-xl font-black text-[#003366]">{formatCurrency(h1Sales).replace('AOA', '')}</p>
-                    <p className="text-[10px] font-black text-blue-600 mt-1">IMPOSTO (2%): {formatCurrency(taxDue).replace('AOA', '')}</p>
+                    <p className="text-zinc-500 text-[10px] mb-1">VALOR TRIBUTÁVEL</p>
+                    <p className="text-2xl font-black text-[#003366]">{formatCurrency(h1Sales).replace('AOA', '')}</p>
+                    <p className="text-xs font-black text-blue-600 mt-1">IMPOSTO (2%): {formatCurrency(taxDue).replace('AOA', '')}</p>
                   </div>
                </div>
                <div className="h-px bg-zinc-200 my-4"></div>
                <div className="grid grid-cols-12 gap-4 items-center">
-                  <div className="col-span-8 text-[#003366] text-[10px] leading-relaxed opacity-50">
+                  <div className="col-span-8 text-[#003366] text-xs leading-relaxed opacity-50 font-bold">
                     (b) Prestações de serviços realizadas no 1º semestre do exercício (Nº4 do artigo 66 e Nº13 do artigo 67º ambos do CII)
                   </div>
                   <div className="col-span-4 text-right opacity-50">
-                    <p className="text-xl font-black text-zinc-400">0,00</p>
-                    <p className="text-[10px] font-black text-zinc-400 mt-1">IMPOSTO (2%): 0,00</p>
+                    <p className="text-2xl font-black text-zinc-400">0,00</p>
+                    <p className="text-xs font-black text-zinc-400 mt-1">IMPOSTO (2%): 0,00</p>
                   </div>
                </div>
             </div>
          </div>
 
-         <div className="bg-[#003366] text-white p-1 text-[10px] font-bold uppercase border-t border-b border-white">
-            <span className="bg-white text-[#003366] px-2 py-0.5 mr-2">04-</span> IDENTIFICAÇÃO DO CONTRIBUINTE
+         <div className="bg-[#003366] text-white p-2 text-xs font-bold uppercase border-t border-b border-white">
+            <span className="bg-white text-[#003366] px-2 py-0.5 mr-2 rounded-sm">04-</span> IDENTIFICAÇÃO DO CONTRIBUINTE
          </div>
          <div className="p-4 bg-zinc-50 flex justify-between items-center px-10">
-            <p className="text-sm font-black text-[#003366] uppercase">{companyData?.name || companyData?.nome_empresa || "ROYAL CARS - COMERCIO E PRESTAÇÃO DE SERVIÇOS, LDA"}</p>
-            <p className="text-sm font-black text-zinc-500 font-mono tracking-tighter">NIF: {companyData?.nif || "5000922200"}</p>
+            <p className="text-base font-black text-[#003366] uppercase">{companyData?.name || companyData?.nome_empresa || "EMPRESA REGISTADA"}</p>
+            <p className="text-base font-black text-zinc-600 font-mono tracking-tight">NIF: {companyData?.nif || "---"}</p>
          </div>
 
-         <div className="bg-[#003366] text-white p-1 text-[10px] font-bold uppercase border-t border-b border-white">
-            <span className="bg-white text-[#003366] px-2 py-0.5 mr-2">05-</span> RELAÇÃO DAS FACTURAS E DOC. EQUIVALENTES DO PERÍODO
+         <div className="bg-[#003366] text-white p-2 text-xs font-bold uppercase border-t border-b border-white">
+            <span className="bg-white text-[#003366] px-2 py-0.5 mr-2 rounded-sm">05-</span> RELAÇÃO DAS FACTURAS E DOC. EQUIVALENTES DO PERÍODO
          </div>
 
-         <div className="max-h-[400px] overflow-y-auto">
-           <table className="w-full text-[9px] border-collapse font-bold uppercase">
-              <thead className="sticky top-0 z-10">
-                 <tr className="bg-zinc-100 text-zinc-500 border-b border-zinc-200">
-                    <th className="p-2 border-r border-zinc-200 text-center">N ORDEM</th>
-                    <th className="p-2 border-r border-zinc-200">IDENTIFICAÇÃO FISCAL</th>
-                    <th className="p-2 border-r border-zinc-200">NOME/FIRMA</th>
-                    <th className="p-2 border-r border-zinc-200 text-center">DOC</th>
-                    <th className="p-2 border-r border-zinc-200 text-center">DATA</th>
-                    <th className="p-2 border-r border-zinc-200">NÚMERO DOC</th>
-                    <th className="p-2 border-r border-zinc-200 text-right">VALOR FACTURA</th>
-                    <th className="p-2 border-r border-zinc-200 text-right">SUJEITO (a)</th>
-                    <th className="p-2 text-right">IMPOSTO GERADO</th>
-                 </tr>
-              </thead>
+         <div className="max-h-[500px] overflow-y-auto">
+            <table className="w-full text-xs border-collapse font-bold uppercase">
+               <thead className="sticky top-0 z-10">
+                  <tr className="bg-zinc-100 text-zinc-600 border-b border-zinc-200">
+                     <th className="p-2.5 border-r border-zinc-200 text-center">N ORDEM</th>
+                     <th className="p-2.5 border-r border-zinc-200">IDENTIFICAÇÃO FISCAL</th>
+                     <th className="p-2.5 border-r border-zinc-200">NOME/FIRMA</th>
+                     <th className="p-2.5 border-r border-zinc-200 text-center">DOC</th>
+                     <th className="p-2.5 border-r border-zinc-200 text-center">DATA</th>
+                     <th className="p-2.5 border-r border-zinc-200">NÚMERO DOC</th>
+                     <th className="p-2.5 border-r border-zinc-200 text-right">VALOR FACTURA</th>
+                     <th className="p-2.5 border-r border-zinc-200 text-right">SUJEITO (a)</th>
+                     <th className="p-2.5 text-right">IMPOSTO GERADO</th>
+                  </tr>
+               </thead>
               <tbody className="divide-y divide-zinc-200">
                  {h1SalesList.map((inv, idx) => (
                     <tr key={idx} className="hover:bg-zinc-50">
@@ -16517,10 +17810,40 @@ const IncomeTaxAdvanceModule = ({ invoices, onBack, companyData }: { invoices: I
 
 const AccountingMapsModule = ({ onBack, companyData }: { onBack: () => void, companyData?: any }) => {
   const { user } = useAuth();
-  const [initialMonth, setInitialMonth] = useState('0'); // Jan
-  const [finalMonth, setFinalMonth] = useState('11'); // Dec
-  const [year, setYear] = useState('2025');
+  const [initialMonth, setInitialMonth] = useState('0');
+  const [finalMonth, setFinalMonth] = useState('11');
+  const [year, setYear] = useState(String(new Date().getFullYear()));
   const [viewDetail, setViewDetail] = useState<any | null>(null);
+  const [balanceteData, setBalanceteData] = useState<any>({ accounts: [], totais: { totalDebitoP: 0, totalCreditoP: 0, totalDebitoS: 0, totalCreditoS: 0 } });
+  const [loadingBal, setLoadingBal] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+
+  const fetchBalancete = async (y?: string) => {
+    if (!user?.empresa_id) return;
+    setLoadingBal(true);
+    try {
+      const data = await fetchJson(`/api/accounting/balancete?empresa_id=${user.empresa_id}&year=${y || year}`);
+      setBalanceteData(data);
+    } catch (e) {
+      console.error('Erro ao carregar balancete:', e);
+    } finally {
+      setLoadingBal(false);
+    }
+  };
+
+  useEffect(() => { fetchBalancete(); }, [user?.empresa_id, year]);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      await fetchWithAuth('/api/accounting/sync', { method: 'POST' });
+      await fetchBalancete();
+    } catch (e) { console.error('Erro sync:', e); }
+    finally { setSyncing(false); }
+  };
+
+  const accountsData = balanceteData.accounts || [];
+  const totais = balanceteData.totais || {};
 
   if (viewDetail) {
     return <AccountMovementsPage account={viewDetail} onBack={() => setViewDetail(null)} companyData={companyData} />;
@@ -16541,9 +17864,6 @@ const AccountingMapsModule = ({ onBack, companyData }: { onBack: () => void, com
     { value: '10', label: 'Novembro' },
     { value: '11', label: 'Dezembro' },
   ];
-
-  // Helper to format accounts hierarchically
-  const accountsData: any[] = [];
 
   return (
     <div className="space-y-6">
@@ -16589,7 +17909,15 @@ const AccountingMapsModule = ({ onBack, companyData }: { onBack: () => void, com
                  className="w-16 bg-white border border-zinc-200 px-3 py-1.5 text-xs focus:outline-none"
                />
             </div>
-            <button className="mt-4 bg-[#003366] text-white p-2.5 flex items-center gap-2 hover:bg-[#002244] shadow-md transition-all">
+            <button
+              onClick={handleSync}
+              disabled={syncing}
+              className="mt-4 bg-amber-500 text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-amber-600 shadow-md transition-all disabled:opacity-50"
+            >
+              <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
+              {syncing ? 'Sincronizando...' : 'Sincronizar'}
+            </button>
+            <button onClick={() => window.print()} className="mt-4 bg-[#003366] text-white p-2.5 flex items-center gap-2 hover:bg-[#002244] shadow-md transition-all">
               <Printer size={16} />
             </button>
           </div>
@@ -16638,39 +17966,50 @@ const AccountingMapsModule = ({ onBack, companyData }: { onBack: () => void, com
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-50">
-            {accountsData.map((acc, i) => (
-              <tr key={acc.code + i} className={`hover:bg-zinc-50/50 ${acc.level === 0 ? 'bg-zinc-50/30' : ''}`}>
-                <td 
-                  className={`px-2 py-2 whitespace-nowrap font-mono font-black cursor-pointer hover:underline ${acc.level === 0 ? 'text-[#003366]' : 'text-zinc-500'}`}
-                  onClick={() => setViewDetail(acc)}
-                >
-                  {acc.code}
-                </td>
-                <td className={`px-2 py-2 font-bold uppercase ${acc.level === 0 ? 'text-[#003366]' : 'text-zinc-600'}`} style={{ paddingLeft: `${acc.level * 1}rem` }}>
-                  {acc.desc}
-                </td>
-                <td className={`px-2 py-2 text-right font-mono ${acc.debitoP > 0 ? (acc.level === 0 ? 'font-black text-zinc-900' : 'text-zinc-600') : 'text-zinc-300'}`}>
-                  {acc.debitoP > 0 ? formatCurrency(acc.debitoP).replace('AOA', '').trim() : '0,00'}
-                </td>
-                <td className={`px-2 py-2 text-right font-mono ${acc.creditoP > 0 ? (acc.level === 0 ? 'font-black text-zinc-900' : 'text-zinc-600') : 'text-zinc-300'}`}>
-                  {acc.creditoP > 0 ? formatCurrency(acc.creditoP).replace('AOA', '').trim() : '0,00'}
-                </td>
-                <td className={`px-2 py-2 text-right font-mono ${acc.debitoS > 0 ? 'font-black text-[#003366]' : 'text-zinc-300'}`}>
-                  {acc.debitoS > 0 ? formatCurrency(acc.debitoS).replace('AOA', '').trim() : '0,00'}
-                </td>
-                <td className={`px-2 py-2 text-right font-mono ${acc.creditoS > 0 ? 'font-black text-red-600' : 'text-zinc-300'}`}>
-                  {acc.creditoS > 0 ? formatCurrency(acc.creditoS).replace('AOA', '').trim() : '0,00'}
-                </td>
-              </tr>
-            ))}
+            {loadingBal ? (
+              <tr><td colSpan={6} className="py-20 text-center text-zinc-300 italic">A carregar balancete...</td></tr>
+            ) : accountsData.length === 0 ? (
+              <tr><td colSpan={6} className="py-20 text-center text-zinc-300 italic">
+                Sem movimentos contabilísticos registados. Clique em <strong>Sincronizar</strong> para gerar a partir dos documentos existentes.
+              </td></tr>
+            ) : accountsData.map((acc: any, i: number) => {
+              const isGR = acc.tipo === 'GR';
+              const isGA = acc.tipo === 'GA';
+              const indentPx = isGR ? 0 : isGA ? 12 : 24;
+              return (
+                <tr key={acc.conta + i} className={`hover:bg-zinc-50/50 transition-colors ${isGR ? 'bg-[#003366]/5 border-t border-zinc-200' : ''}`}>
+                  <td
+                    className={`px-2 py-2 whitespace-nowrap font-mono font-black cursor-pointer hover:underline ${isGR ? 'text-[#003366]' : 'text-zinc-500'}`}
+                    onClick={() => setViewDetail({ ...acc, code: acc.conta, desc: acc.descricao })}
+                  >
+                    {acc.conta}
+                  </td>
+                  <td className={`px-2 py-2 font-bold uppercase ${isGR ? 'text-[#003366]' : 'text-zinc-600'}`} style={{ paddingLeft: `${indentPx}px` }}>
+                    {acc.descricao}
+                  </td>
+                  <td className={`px-2 py-2 text-right font-mono ${acc.debitoP > 0 ? (isGR ? 'font-black text-zinc-900' : 'text-zinc-600') : 'text-zinc-300'}`}>
+                    {acc.debitoP > 0 ? formatCurrency(acc.debitoP).replace('AOA', '').trim() : '0,00'}
+                  </td>
+                  <td className={`px-2 py-2 text-right font-mono ${acc.creditoP > 0 ? (isGR ? 'font-black text-zinc-900' : 'text-zinc-600') : 'text-zinc-300'}`}>
+                    {acc.creditoP > 0 ? formatCurrency(acc.creditoP).replace('AOA', '').trim() : '0,00'}
+                  </td>
+                  <td className={`px-2 py-2 text-right font-mono ${acc.debitoS > 0 ? 'font-black text-[#003366]' : 'text-zinc-300'}`}>
+                    {acc.debitoS > 0 ? formatCurrency(acc.debitoS).replace('AOA', '').trim() : '0,00'}
+                  </td>
+                  <td className={`px-2 py-2 text-right font-mono ${acc.creditoS > 0 ? 'font-black text-red-600' : 'text-zinc-300'}`}>
+                    {acc.creditoS > 0 ? formatCurrency(acc.creditoS).replace('AOA', '').trim() : '0,00'}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
           <tfoot>
              <tr className="border-t-2 border-zinc-200 bg-zinc-50">
                 <td colSpan={2} className="px-2 py-4 font-black uppercase text-center text-[#003366] tracking-widest text-[10px]">Saldos Totais Acumulados</td>
-                <td className="px-2 py-4 text-right font-black text-[#003366] border-l border-white">1.021.794.093,26</td>
-                <td className="px-2 py-4 text-right font-black text-[#003366] border-l border-white">1.021.794.093,26</td>
-                <td className="px-2 py-4 text-right font-black text-[#003366] border-l border-white bg-zinc-100">531.488.610,70</td>
-                <td className="px-2 py-4 text-right font-black text-red-600 border-l border-white bg-zinc-100">531.488.610,70</td>
+                <td className="px-2 py-4 text-right font-black text-[#003366] border-l border-white">{formatCurrency(totais.totalDebitoP || 0).replace('AOA','').trim()}</td>
+                <td className="px-2 py-4 text-right font-black text-[#003366] border-l border-white">{formatCurrency(totais.totalCreditoP || 0).replace('AOA','').trim()}</td>
+                <td className="px-2 py-4 text-right font-black text-[#003366] border-l border-white bg-zinc-100">{formatCurrency(totais.totalDebitoS || 0).replace('AOA','').trim()}</td>
+                <td className="px-2 py-4 text-right font-black text-red-600 border-l border-white bg-zinc-100">{formatCurrency(totais.totalCreditoS || 0).replace('AOA','').trim()}</td>
              </tr>
           </tfoot>
         </table>
@@ -16814,6 +18153,206 @@ const AccountMovementsPage = ({ account, onBack, companyData }: { account: any, 
   );
 };
 
+const PREDEFINED_PGC_STATIC = [
+  { id: '01', conta: '01', type: 'GR', tipo: 'GR', description: 'Meios Fixos e Investimentos', descricao: 'Meios Fixos e Investimentos', justification: '-', layout: '-', is_system: true },
+  { id: '02', conta: '02', type: 'GR', tipo: 'GR', description: 'Existências', descricao: 'Existências', justification: '-', layout: '-', is_system: true },
+  { id: '03', conta: '03', type: 'GR', tipo: 'GR', description: 'Terceiros', descricao: 'Terceiros', justification: '-', layout: '-', is_system: true },
+  { id: '04', conta: '04', type: 'GR', tipo: 'GR', description: 'Meios Monetários', descricao: 'Meios Monetários', justification: '-', layout: '-', is_system: true },
+  { id: '05', conta: '05', type: 'GR', tipo: 'GR', description: 'Capital e Reservas', descricao: 'Capital e Reservas', justification: '-', layout: '-', is_system: true },
+  { id: '06', conta: '06', type: 'GR', tipo: 'GR', description: 'Proveitos por Natureza', descricao: 'Proveitos por Natureza', justification: '-', layout: '-', is_system: true },
+  { id: '07', conta: '07', type: 'GR', tipo: 'GR', description: 'Custos por Natureza', descricao: 'Custos por Natureza', justification: '-', layout: '-', is_system: true },
+  { id: '08', conta: '08', type: 'GR', tipo: 'GR', description: 'Resultados', descricao: 'Resultados', justification: '-', layout: '-', is_system: true },
+  { id: '11', conta: '11', type: 'GA', tipo: 'GA', description: 'IMOBILIZAÇÕES CORPOREAS', descricao: 'IMOBILIZAÇÕES CORPOREAS', justification: '-', layout: '-', is_system: true },
+  { id: '11.01', conta: '11.01', type: 'GA', tipo: 'GA', description: 'Terrenos e recursos naturais', descricao: 'Terrenos e recursos naturais', justification: '-', layout: '-', is_system: true },
+  { id: '11.01.01', conta: '11.01.01', type: 'GM', tipo: 'GM', description: 'Terrenos em bruto', descricao: 'Terrenos em bruto', justification: '-', layout: '-', is_system: true },
+  { id: '11.01.02', conta: '11.01.02', type: 'GM', tipo: 'GM', description: 'Terrenos com arranjos', descricao: 'Terrenos com arranjos', justification: '-', layout: '-', is_system: true },
+  { id: '11.01.03', conta: '11.01.03', type: 'GM', tipo: 'GM', description: 'Subsolos', descricao: 'Subsolos', justification: '-', layout: '-', is_system: true },
+  { id: '11.01.04', conta: '11.01.04', type: 'GA', tipo: 'GA', description: 'Terrenos com edificios', descricao: 'Terrenos com edificios', justification: '-', layout: '-', is_system: true },
+  { id: '11.01.04.01', conta: '11.01.04.01', type: 'GM', tipo: 'GM', description: 'Relativos a edificios industriais', descricao: 'Relativos a edificios industriais', justification: '-', layout: '-', is_system: true },
+  { id: '11.01.04.02', conta: '11.01.04.02', type: 'GM', tipo: 'GM', description: 'Relativo a edificios administrativos e comerciais', descricao: 'Relativo a edificios administrativos e comerciais', justification: '-', layout: '-', is_system: true },
+  { id: '11.01.04.03', conta: '11.01.04.03', type: 'GM', tipo: 'GM', description: 'Relactivos a outros edificios', descricao: 'Relactivos a outros edificios', justification: '-', layout: '-', is_system: true },
+  { id: '11.02', conta: '11.02', type: 'GA', tipo: 'GA', description: 'Edificios e outras construções', descricao: 'Edificios e outras construções', justification: '-', layout: '-', is_system: true },
+  { id: '11.02.01', conta: '11.02.01', type: 'GA', tipo: 'GA', description: 'Edificios', descricao: 'Edificios', justification: '-', layout: '-', is_system: true },
+  { id: '11.02.01.01', conta: '11.02.01.01', type: 'GM', tipo: 'GM', description: 'Integrados em conjuntos industriais', descricao: 'Integrados em conjuntos industriais', justification: '-', layout: '-', is_system: true },
+  { id: '11.02.01.02', conta: '11.02.01.02', type: 'GM', tipo: 'GM', description: 'Integrado em conjuntos administrativos e comerciais', descricao: 'Integrado em conjuntos administrativos e comerciais', justification: '-', layout: '-', is_system: true },
+  { id: '11.02.01.03', conta: '11.02.01.03', type: 'GM', tipo: 'GM', description: 'Outros conjuntos industriais', descricao: 'Outros conjuntos industriais', justification: '-', layout: '-', is_system: true },
+  { id: '11.02.01.04', conta: '11.02.01.04', type: 'GM', tipo: 'GM', description: 'Implantados em propriedade alheia', descricao: 'Implantados em propriedade alheia', justification: '-', layout: '-', is_system: true },
+  { id: '11.02.02', conta: '11.02.02', type: 'GM', tipo: 'GM', description: 'Outras construções', descricao: 'Outras construções', justification: '-', layout: '-', is_system: true },
+  { id: '11.02.03', conta: '11.02.03', type: 'GM', tipo: 'GM', description: 'Instalações', descricao: 'Instalações', justification: '-', layout: '-', is_system: true },
+  { id: '11.03', conta: '11.03', type: 'GA', tipo: 'GA', description: 'Equipamento basico', descricao: 'Equipamento basico', justification: '-', layout: '-', is_system: true },
+  { id: '11.03.01', conta: '11.03.01', type: 'GM', tipo: 'GM', description: 'Material Industrial', descricao: 'Material Industrial', justification: '-', layout: '-', is_system: true },
+  { id: '11.03.02', conta: '11.03.02', type: 'GM', tipo: 'GM', description: 'Ferramentas industriais', descricao: 'Ferramentas industriais', justification: '-', layout: '-', is_system: true },
+  { id: '11.03.03', conta: '11.03.03', type: 'GM', tipo: 'GM', description: 'Melhoramentos em equipamentos basicos', descricao: 'Melhoramentos em equipamentos basicos', justification: '-', layout: '-', is_system: true },
+  { id: '11.04', conta: '11.04', type: 'GM', tipo: 'GM', description: 'Equipamento de carga e transporte', descricao: 'Equipamento de carga e transporte', justification: '-', layout: '-', is_system: true },
+  { id: '11.05', conta: '11.05', type: 'GM', tipo: 'GM', description: 'Equipamento administrativo', descricao: 'Equipamento administrativo', justification: '-', layout: '-', is_system: true },
+  { id: '11.06', conta: '11.06', type: 'GM', tipo: 'GM', description: 'Taras e vasilhame', descricao: 'Taras e vasilhame', justification: '-', layout: '-', is_system: true },
+  { id: '11.09', conta: '11.09', type: 'GM', tipo: 'GM', description: 'Outras imobilizações corpóreas', descricao: 'Outras imobilizações corpóreas', justification: '-', layout: '-', is_system: true },
+  { id: '12', conta: '12', type: 'GA', tipo: 'GA', description: 'IMOBILIZAÇÕES INCORPOREAS', descricao: 'IMOBILIZAÇÕES INCORPOREAS', justification: '-', layout: '-', is_system: true },
+  { id: '12.01', conta: '12.01', type: 'GA', tipo: 'GA', description: 'Trespasses', descricao: 'Trespasses', justification: '-', layout: '-', is_system: true },
+  { id: '12.02', conta: '12.02', type: 'GA', tipo: 'GA', description: 'Despesas de investigação e desenvolvimento', descricao: 'Despesas de investigação e desenvolvimento', justification: '-', layout: '-', is_system: true },
+  { id: '12.03', conta: '12.03', type: 'GA', tipo: 'GA', description: 'Propriedade industrial e outros direitos e contratos', descricao: 'Propriedade industrial e outros direitos e contratos', justification: '-', layout: '-', is_system: true },
+  { id: '12.04', conta: '12.04', type: 'GA', tipo: 'GA', description: 'Despesas de constituição', descricao: 'Despesas de constituição', justification: '-', layout: '-', is_system: true },
+  { id: '12.09', conta: '12.09', type: 'GA', tipo: 'GA', description: 'Outras imobilizações incorpóreas', descricao: 'Outras imobilizações incorpóreas', justification: '-', layout: '-', is_system: true },
+  { id: '12.122', conta: '12.122', type: 'GM', tipo: 'GM', description: 'LAISA', descricao: 'LAISA', justification: '-', layout: '-', is_system: true },
+  { id: '13', conta: '13', type: 'GA', tipo: 'GA', description: 'INVESTIMENTOS FINANCEIROS', descricao: 'INVESTIMENTOS FINANCEIROS', justification: '-', layout: '-', is_system: true },
+  { id: '13.01', conta: '13.01', type: 'GA', tipo: 'GA', description: 'Empresas Subsidiárias', descricao: 'Empresas Subsidiárias', justification: '-', layout: '-', is_system: true },
+  { id: '13.01.01', conta: '13.01.01', type: 'GM', tipo: 'GM', description: 'Partes de Capital', descricao: 'Partes de Capital', justification: '-', layout: '-', is_system: true },
+  { id: '13.01.02', conta: '13.01.02', type: 'GM', tipo: 'GM', description: 'Obrigações e títulos de participação', descricao: 'Obrigações e títulos de participação', justification: '-', layout: '-', is_system: true },
+  { id: '13.01.03', conta: '13.01.03', type: 'GM', tipo: 'GM', description: 'Empréstimos', descricao: 'Empréstimos', justification: '-', layout: '-', is_system: true },
+  { id: '13.02', conta: '13.02', type: 'GA', tipo: 'GA', description: 'Empresas associadas', descricao: 'Empresas associadas', justification: '-', layout: '-', is_system: true },
+  { id: '13.02.01', conta: '13.02.01', type: 'GM', tipo: 'GM', description: 'Partes de Capital', descricao: 'Partes de Capital', justification: '-', layout: '-', is_system: true },
+  { id: '13.02.02', conta: '13.02.02', type: 'GM', tipo: 'GM', description: 'Obrigações e títulos de participação', descricao: 'Obrigações e títulos de participação', justification: '-', layout: '-', is_system: true },
+  { id: '13.02.03', conta: '13.02.03', type: 'GM', tipo: 'GM', description: 'Empréstimos', descricao: 'Empréstimos', justification: '-', layout: '-', is_system: true },
+  { id: '13.03', conta: '13.03', type: 'GA', tipo: 'GA', description: 'Outras Empresas', descricao: 'Outras Empresas', justification: '-', layout: '-', is_system: true },
+  { id: '13.03.01', conta: '13.03.01', type: 'GM', tipo: 'GM', description: 'Partes de Capital', descricao: 'Partes de Capital', justification: '-', layout: '-', is_system: true },
+  { id: '13.03.02', conta: '13.03.02', type: 'GM', tipo: 'GM', description: 'Obrigações e títulos de participação', descricao: 'Obrigações e títulos de participação', justification: '-', layout: '-', is_system: true },
+  { id: '13.03.03', conta: '13.03.03', type: 'GM', tipo: 'GM', description: 'Empréstimos', descricao: 'Empréstimos', justification: '-', layout: '-', is_system: true },
+  { id: '13.04', conta: '13.04', type: 'GA', tipo: 'GA', description: 'Investimentos em Imóveis', descricao: 'Investimentos em Imóveis', justification: '-', layout: '-', is_system: true },
+  { id: '13.05', conta: '13.05', type: 'GA', tipo: 'GA', description: 'Fundos', descricao: 'Fundos', justification: '-', layout: '-', is_system: true },
+  { id: '13.09', conta: '13.09', type: 'GA', tipo: 'GA', description: 'Outros investimentos financeiros', descricao: 'Outros investimentos financeiros', justification: '-', layout: '-', is_system: true },
+  { id: '13.09.01', conta: '13.09.01', type: 'GM', tipo: 'GM', description: 'Diamantes', descricao: 'Diamantes', justification: '-', layout: '-', is_system: true },
+  { id: '13.09.02', conta: '13.09.02', type: 'GM', tipo: 'GM', description: 'Ouro', descricao: 'Ouro', justification: '-', layout: '-', is_system: true },
+  { id: '13.09.03', conta: '13.09.03', type: 'GM', tipo: 'GM', description: 'Depósitos Bancários', descricao: 'Depósitos Bancários', justification: '-', layout: '-', is_system: true },
+  { id: '14', conta: '14', type: 'GA', tipo: 'GA', description: 'IMOBILIZAÇÕES EM CURSO', descricao: 'IMOBILIZAÇÕES EM CURSO', justification: '-', layout: '-', is_system: true },
+  { id: '14.01', conta: '14.01', type: 'GA', tipo: 'GA', description: 'Obras em curso', descricao: 'Obras em curso', justification: '-', layout: '-', is_system: true },
+  { id: '14.02', conta: '14.02', type: 'GA', tipo: 'GA', description: 'Obras em curso', descricao: 'Obras em curso', justification: '-', layout: '-', is_system: true },
+  { id: '14.07', conta: '14.07', type: 'GA', tipo: 'GA', description: 'Adiantamentos por conta de imobilizado corpóreo', descricao: 'Adiantamentos por conta de imobilizado corpóreo', justification: '-', layout: '-', is_system: true },
+  { id: '14.08', conta: '14.08', type: 'GA', tipo: 'GA', description: 'Adiantamentos por conta de imobilizado incorpóreo', descricao: 'Adiantamentos por conta de imobilizado incorpóreo', justification: '-', layout: '-', is_system: true },
+  { id: '14.09', conta: '14.09', type: 'GA', tipo: 'GA', description: 'Adiantamento por conta de investimentos financeiros', descricao: 'Adiantamento por conta de investimentos financeiros', justification: '-', layout: '-', is_system: true },
+  { id: '18', conta: '18', type: 'GA', tipo: 'GA', description: 'AMORTIZAÇÕES ACUMULADAS', descricao: 'AMORTIZAÇÕES ACUMULADAS', justification: '-', layout: '-', is_system: true },
+  { id: '18.01', conta: '18.01', type: 'GA', tipo: 'GA', description: 'Imobilizações Corpóreas', descricao: 'Imobilizações Corpóreas', justification: '-', layout: '-', is_system: true },
+  { id: '18.01.01', conta: '18.01.01', type: 'GA', tipo: 'GA', description: 'Terrenos e recursos naturais', descricao: 'Terrenos e recursos naturais', justification: '-', layout: '-', is_system: true },
+  { id: '18.01.02', conta: '18.01.02', type: 'GA', tipo: 'GA', description: 'Edifícios e outras construções', descricao: 'Edifícios e outras construções', justification: '-', layout: '-', is_system: true },
+  { id: '18.01.03', conta: '18.01.03', type: 'GA', tipo: 'GA', description: 'Equipamento básico', descricao: 'Equipamento básico', justification: '-', layout: '-', is_system: true },
+  { id: '18.01.04', conta: '18.01.04', type: 'GA', tipo: 'GA', description: 'Equipamento de carga e transporte', descricao: 'Equipamento de carga e transporte', justification: '-', layout: '-', is_system: true },
+  { id: '18.01.05', conta: '18.01.05', type: 'GA', tipo: 'GA', description: 'Equipamentos Administrativos', descricao: 'Equipamentos Administrativos', justification: '-', layout: '-', is_system: true },
+  { id: '18.01.06', conta: '18.01.06', type: 'GA', tipo: 'GA', description: 'Taras e vasilhame', descricao: 'Taras e vasilhame', justification: '-', layout: '-', is_system: true },
+  { id: '18.01.09', conta: '18.01.09', type: 'GA', tipo: 'GA', description: 'Outras Imobilizações corpóreas', descricao: 'Outras Imobilizações corpóreas', justification: '-', layout: '-', is_system: true },
+  { id: '18.02', conta: '18.02', type: 'GA', tipo: 'GA', description: 'Imobilizações incorpóreas', descricao: 'Imobilizações incorpóreas', justification: '-', layout: '-', is_system: true },
+  { id: '18.02.01', conta: '18.02.01', type: 'GM', tipo: 'GM', description: 'Trespasses', descricao: 'Trespasses', justification: '-', layout: '-', is_system: true },
+  { id: '18.02.02', conta: '18.02.02', type: 'GM', tipo: 'GM', description: 'Despesas de investigação e desenvolvimento', descricao: 'Despesas de investigação e desenvolvimento', justification: '-', layout: '-', is_system: true },
+  { id: '18.02.03', conta: '18.02.03', type: 'GM', tipo: 'GM', description: 'Propriedade industrial e outros direitos e contratos', descricao: 'Propriedade industrial e outros direitos e contratos', justification: '-', layout: '-', is_system: true },
+  { id: '18.02.04', conta: '18.02.04', type: 'GM', tipo: 'GM', description: 'Despesas de constituição', descricao: 'Despesas de constituição', justification: '-', layout: '-', is_system: true },
+  { id: '18.02.09', conta: '18.02.09', type: 'GM', tipo: 'GM', description: 'Outras Imobilizações incorpóreas', descricao: 'Outras Imobilizações incorpóreas', justification: '-', layout: '-', is_system: true },
+  { id: '18.03', conta: '18.03', type: 'GA', tipo: 'GA', description: 'Investimentos financeiros em imóveis', descricao: 'Investimentos financeiros em imóveis', justification: '-', layout: '-', is_system: true },
+  { id: '18.03.01', conta: '18.03.01', type: 'GM', tipo: 'GM', description: 'Terrenos e recursos naturais', descricao: 'Terrenos e recursos naturais', justification: '-', layout: '-', is_system: true },
+  { id: '18.03.02', conta: '18.03.02', type: 'GM', tipo: 'GM', description: 'Edifícios e outras construções', descricao: 'Edifícios e outras construções', justification: '-', layout: '-', is_system: true },
+  { id: '19', conta: '19', type: 'GA', tipo: 'GA', description: 'PROVISÕES PARA INVESTIMENTOS FINANCEIROS', descricao: 'PROVISÕES PARA INVESTIMENTOS FINANCEIROS', justification: '-', layout: '-', is_system: true },
+  { id: '19.01', conta: '19.01', type: 'GA', tipo: 'GA', description: 'Empresas Subsidiárias', descricao: 'Empresas Subsidiárias', justification: '-', layout: '-', is_system: true },
+  { id: '19.01.01', conta: '19.01.01', type: 'GM', tipo: 'GM', description: 'Partes de capital', descricao: 'Partes de capital', justification: '-', layout: '-', is_system: true },
+  { id: '19.01.02', conta: '19.01.02', type: 'GM', tipo: 'GM', description: 'Obrigações e títulos de participação', descricao: 'Obrigações e títulos de participação', justification: '-', layout: '-', is_system: true },
+  { id: '19.01.03', conta: '19.01.03', type: 'GM', tipo: 'GM', description: 'Empréstimos', descricao: 'Empréstimos', justification: '-', layout: '-', is_system: true },
+  { id: '19.02', conta: '19.02', type: 'GA', tipo: 'GA', description: 'Empresas associadas', descricao: 'Empresas associadas', justification: '-', layout: '-', is_system: true },
+  { id: '19.02.01', conta: '19.02.01', type: 'GM', tipo: 'GM', description: 'Partes de capital', descricao: 'Partes de capital', justification: '-', layout: '-', is_system: true },
+  { id: '19.02.02', conta: '19.02.02', type: 'GM', tipo: 'GM', description: 'Obrigações e títulos de participação', descricao: 'Obrigações e títulos de participação', justification: '-', layout: '-', is_system: true },
+  { id: '19.02.03', conta: '19.02.03', type: 'GM', tipo: 'GM', description: 'Empréstimos', descricao: 'Empréstimos', justification: '-', layout: '-', is_system: true },
+  { id: '19.03', conta: '19.03', type: 'GA', tipo: 'GA', description: 'Outras empresas', descricao: 'Outras empresas', justification: '-', layout: '-', is_system: true },
+  { id: '19.03.01', conta: '19.03.01', type: 'GM', tipo: 'GM', description: 'Partes de capital', descricao: 'Partes de capital', justification: '-', layout: '-', is_system: true },
+  { id: '19.03.02', conta: '19.03.02', type: 'GM', tipo: 'GM', description: 'Obrigações e títulos de participação', descricao: 'Obrigações e títulos de participação', justification: '-', layout: '-', is_system: true },
+  { id: '19.03.03', conta: '19.03.03', type: 'GM', tipo: 'GM', description: 'Empréstimos', descricao: 'Empréstimos', justification: '-', layout: '-', is_system: true },
+  { id: '19.04', conta: '19.04', type: 'GA', tipo: 'GA', description: 'Fundos', descricao: 'Fundos', justification: '-', layout: '-', is_system: true },
+  { id: '19.04.01', conta: '19.04.01', type: 'GM', tipo: 'GM', description: 'Partes de capital', descricao: 'Partes de capital', justification: '-', layout: '-', is_system: true },
+  { id: '19.09', conta: '19.09', type: 'GA', tipo: 'GA', description: 'Outros investimentos financeiros', descricao: 'Outros investimentos financeiros', justification: '-', layout: '-', is_system: true },
+  { id: '19.09.01', conta: '19.09.01', type: 'GM', tipo: 'GM', description: 'Diamantes', descricao: 'Diamantes', justification: '-', layout: '-', is_system: true },
+  { id: '19.09.02', conta: '19.09.02', type: 'GM', tipo: 'GM', description: 'Ouro', descricao: 'Ouro', justification: '-', layout: '-', is_system: true },
+  { id: '19.09.03', conta: '19.09.03', type: 'GM', tipo: 'GM', description: 'Depósitos bancários', descricao: 'Depósitos bancários', justification: '-', layout: '-', is_system: true },
+  { id: '21', conta: '21', type: 'GR', tipo: 'GR', description: 'COMPRAS', descricao: 'COMPRAS', justification: '-', layout: '-', is_system: true },
+  { id: '21.01', conta: '21.01', type: 'GM', tipo: 'GM', description: 'Matérias-primas, subsidiárias e de consumo', descricao: 'Matérias-primas, subsidiárias e de consumo', justification: '-', layout: '-', is_system: true },
+  { id: '21.01.01', conta: '21.01.01', type: 'GM', tipo: 'GM', description: 'Compras e gastos', descricao: 'Compras e gastos', justification: '-', layout: '-', is_system: true },
+  { id: '21.02', conta: '21.02', type: 'GM', tipo: 'GM', description: 'Mercadorias', descricao: 'Mercadorias', justification: '-', layout: '-', is_system: true },
+  { id: '21.07', conta: '21.07', type: 'GM', tipo: 'GM', description: 'Devoluções de compras', descricao: 'Devoluções de compras', justification: '-', layout: '-', is_system: true },
+  { id: '21.08', conta: '21.08', type: 'GM', tipo: 'GM', description: 'Descontos e abatimentos em compras', descricao: 'Descontos e abatimentos em compras', justification: '-', layout: '-', is_system: true },
+  { id: '22', conta: '22', type: 'GA', tipo: 'GA', description: 'MATÉRIAS-PRIMAS, SUBSIDIÁRIAS E DE CONSUMO', descricao: 'MATÉRIAS-PRIMAS, SUBSIDIÁRIAS E DE CONSUMO', justification: '-', layout: '-', is_system: true },
+  { id: '22.01', conta: '22.01', type: 'GM', tipo: 'GM', description: 'Matérias-primas', descricao: 'Matérias-primas', justification: '-', layout: '-', is_system: true },
+  { id: '22.02', conta: '22.02', type: 'GM', tipo: 'GM', description: 'Matérias subsidiárias', descricao: 'Matérias subsidiárias', justification: '-', layout: '-', is_system: true },
+  { id: '22.03', conta: '22.03', type: 'GM', tipo: 'GM', description: 'Materiais diversos', descricao: 'Materiais diversos', justification: '-', layout: '-', is_system: true },
+  { id: '22.04', conta: '22.04', type: 'GM', tipo: 'GM', description: 'Embalagens de consumo', descricao: 'Embalagens de consumo', justification: '-', layout: '-', is_system: true },
+  { id: '22.05', conta: '22.05', type: 'GM', tipo: 'GM', description: 'Outros materiais', descricao: 'Outros materiais', justification: '-', layout: '-', is_system: true },
+  { id: '23', conta: '23', type: 'GA', tipo: 'GA', description: 'PRODUTOS E TRABALHOS EM CURSO', descricao: 'PRODUTOS E TRABALHOS EM CURSO', justification: '-', layout: '-', is_system: true },
+  { id: '24', conta: '24', type: 'GA', tipo: 'GA', description: 'PRODUTOS ACABADOS E INTERMÉDIOS', descricao: 'PRODUTOS ACABADOS E INTERMÉDIOS', justification: '-', layout: '-', is_system: true },
+  { id: '24.01', conta: '24.01', type: 'GM', tipo: 'GM', description: 'Produtos acabados', descricao: 'Produtos acabados', justification: '-', layout: '-', is_system: true },
+  { id: '24.02', conta: '24.02', type: 'GM', tipo: 'GM', description: 'Produtos intermédios', descricao: 'Produtos intermédios', justification: '-', layout: '-', is_system: true },
+  { id: '24.09', conta: '24.09', type: 'GM', tipo: 'GM', description: 'Em poder de terceiros', descricao: 'Em poder de terceiros', justification: '-', layout: '-', is_system: true },
+  { id: '25', conta: '25', type: 'GA', tipo: 'GA', description: 'SUBPRODUTOS, DESPERDÍCIOS, RESÍDUOS E REFUGOS', descricao: 'SUBPRODUTOS, DESPERDÍCIOS, RESÍDUOS E REFUGOS', justification: '-', layout: '-', is_system: true },
+  { id: '25.01', conta: '25.01', type: 'GM', tipo: 'GM', description: 'Subprodutos', descricao: 'Subprodutos', justification: '-', layout: '-', is_system: true },
+  { id: '25.02', conta: '25.02', type: 'GM', tipo: 'GM', description: 'Desperdícios, resíduos e refugos', descricao: 'Desperdícios, resíduos e refugos', justification: '-', layout: '-', is_system: true },
+  { id: '26', conta: '26', type: 'GA', tipo: 'GA', description: 'MERCADORIAS', descricao: 'MERCADORIAS', justification: '-', layout: '-', is_system: true },
+  { id: '26.01', conta: '26.01', type: 'GM', tipo: 'GM', description: 'Mercadorias Diversas', descricao: 'Mercadorias Diversas', justification: '-', layout: '-', is_system: true },
+  { id: '26.09', conta: '26.09', type: 'GM', tipo: 'GM', description: 'Em poder de terceiros', descricao: 'Em poder de terceiros', justification: '-', layout: '-', is_system: true },
+  { id: '27', conta: '27', type: 'GA', tipo: 'GA', description: 'MATÉRIAS-PRIMAS, MERCADORIAS E OUTROS MATERIAIS EM TRÂNSITO', descricao: 'MATÉRIAS-PRIMAS, MERCADORIAS E OUTROS MATERIAIS EM TRÂNSITO', justification: '-', layout: '-', is_system: true },
+  { id: '27.01', conta: '27.01', type: 'GM', tipo: 'GM', description: 'Matérias-primas', descricao: 'Matérias-primas', justification: '-', layout: '-', is_system: true },
+  { id: '27.02', conta: '27.02', type: 'GM', tipo: 'GM', description: 'Outros materiais', descricao: 'Outros materiais', justification: '-', layout: '-', is_system: true },
+  { id: '27.03', conta: '27.03', type: 'GM', tipo: 'GM', description: 'Marcadorias', descricao: 'Marcadorias', justification: '-', layout: '-', is_system: true },
+  { id: '28', conta: '28', type: 'GA', tipo: 'GA', description: 'ADIANTAMENTO POR CONTA DE COMPRAS', descricao: 'ADIANTAMENTO POR CONTA DE COMPRAS', justification: '-', layout: '-', is_system: true },
+  { id: '28.01', conta: '28.01', type: 'GM', tipo: 'GM', description: 'Matérias-primas e outros materiais', descricao: 'Matérias-primas e outros materiais', justification: '-', layout: '-', is_system: true },
+  { id: '28.02', conta: '28.02', type: 'GM', tipo: 'GM', description: 'Mercadorias', descricao: 'Mercadorias', justification: '-', layout: '-', is_system: true },
+  { id: '29', conta: '29', type: 'GA', tipo: 'GA', description: 'PROVISÕES PARA DEPRECIAÇÃO DE EXISTÊNCIAS', descricao: 'PROVISÕES PARA DEPRECIAÇÃO DE EXISTÊNCIAS', justification: '-', layout: '-', is_system: true },
+  { id: '29.02', conta: '29.02', type: 'GM', tipo: 'GM', description: 'Matérias-primas, subsidiárias e de consumo', descricao: 'Matérias-primas, subsidiárias e de consumo', justification: '-', layout: '-', is_system: true },
+  { id: '29.03', conta: '29.03', type: 'GM', tipo: 'GM', description: 'Produtos e trabalhos em curso', descricao: 'Produtos e trabalhos em curso', justification: '-', layout: '-', is_system: true },
+  { id: '29.04', conta: '29.04', type: 'GM', tipo: 'GM', description: 'Produtos acabados e intermédios', descricao: 'Produtos acabados e intermédios', justification: '-', layout: '-', is_system: true },
+  { id: '29.05', conta: '29.05', type: 'GM', tipo: 'GM', description: 'Subprodutos, desperdícios, resíduos e refugos', descricao: 'Subprodutos, desperdícios, resíduos e refugos', justification: '-', layout: '-', is_system: true },
+  { id: '29.06', conta: '29.06', type: 'GM', tipo: 'GM', description: 'Mercadorias', descricao: 'Mercadorias', justification: '-', layout: '-', is_system: true },
+  { id: '31', conta: '31', type: 'GR', tipo: 'GR', description: 'CLIENTES', descricao: 'CLIENTES', justification: '-', layout: '-', is_system: true },
+  { id: '31.01', conta: '31.01', type: 'GA', tipo: 'GA', description: 'Clientes-correntes', descricao: 'Clientes-correntes', justification: '-', layout: '-', is_system: true },
+  { id: '31.01.01', conta: '31.01.01', type: 'GA', tipo: 'GA', description: 'Grupo', descricao: 'Grupo', justification: '-', layout: '-', is_system: true },
+  { id: '31.01.01.01', conta: '31.01.01.01', type: 'GM', tipo: 'GM', description: 'Subsidiárias', descricao: 'Subsidiárias', justification: '-', layout: '-', is_system: true },
+  { id: '31.01.01.02', conta: '31.01.01.02', type: 'GM', tipo: 'GM', description: 'Associadas', descricao: 'Associadas', justification: '-', layout: '-', is_system: true },
+  { id: '31.01.02', conta: '31.01.02', type: 'GA', tipo: 'GA', description: 'Não grupo', descricao: 'Não grupo', justification: '-', layout: '-', is_system: true },
+  { id: '32', conta: '32', type: 'GR', tipo: 'GR', description: 'FORNECEDORES', descricao: 'FORNECEDORES', justification: '-', layout: '-', is_system: true },
+  { id: '32.01', conta: '32.01', type: 'GA', tipo: 'GA', description: 'Fornecedores - correntes', descricao: 'Fornecedores - correntes', justification: '-', layout: '-', is_system: true },
+  { id: '33', conta: '33', type: 'GA', tipo: 'GA', description: 'EMPRÉSTIMOS', descricao: 'EMPRÉSTIMOS', justification: '-', layout: '-', is_system: true },
+  { id: '34', conta: '34', type: 'GR', tipo: 'GR', description: 'ESTADO', descricao: 'ESTADO', justification: '-', layout: '-', is_system: true },
+  { id: '34.01', conta: '34.01', type: 'GA', tipo: 'GA', description: 'Imposto sobre lucros', descricao: 'Imposto sobre lucros', justification: '-', layout: '-', is_system: true },
+  { id: '34.02', conta: '34.02', type: 'GA', tipo: 'GA', description: 'Imposto de produção e consumo', descricao: 'Imposto de produção e consumo', justification: '-', layout: '-', is_system: true },
+  { id: '34.03', conta: '34.03', type: 'GA', tipo: 'GA', description: 'IRT Imposto de rendimento de trabalho', descricao: 'IRT Imposto de rendimento de trabalho', justification: '-', layout: '-', is_system: true },
+  { id: '34.05', conta: '34.05', type: 'GA', tipo: 'GA', description: 'IVA', descricao: 'IVA', justification: '-', layout: '-', is_system: true },
+  { id: '34.07', conta: '34.07', type: 'GA', tipo: 'GA', description: 'Contribuições para a Segurança Social', descricao: 'Contribuições para a Segurança Social', justification: '-', layout: '-', is_system: true },
+  { id: '35', conta: '35', type: 'GA', tipo: 'GA', description: 'ENTIDADES PARTICIPANTES E PARTICIPADAS', descricao: 'ENTIDADES PARTICIPANTES E PARTICIPADAS', justification: '-', layout: '-', is_system: true },
+  { id: '36', conta: '36', type: 'GR', tipo: 'GR', description: 'PESSOAL', descricao: 'PESSOAL', justification: '-', layout: '-', is_system: true },
+  { id: '37', conta: '37', type: 'GA', tipo: 'GA', description: 'OUTROS VALORES A RECEBER E A PAGAR', descricao: 'OUTROS VALORES A RECEBER E A PAGAR', justification: '-', layout: '-', is_system: true },
+  { id: '38', conta: '38', type: 'GA', tipo: 'GA', description: 'PROVISÕES PARA COBRANÇA DUVIDOSA', descricao: 'PROVISÕES PARA COBRANÇA DUVIDOSA', justification: '-', layout: '-', is_system: true },
+  { id: '39', conta: '39', type: 'GA', tipo: 'GA', description: 'PROVISÕES PARA OUTROS RISCOS E ENCARGOS', descricao: 'PROVISÕES PARA OUTROS RISCOS E ENCARGOS', justification: '-', layout: '-', is_system: true },
+  { id: '41', conta: '41', type: 'GA', tipo: 'GA', description: 'TÍTULOS NEGOCIÁVEIS', descricao: 'TÍTULOS NEGOCIÁVEIS', justification: '-', layout: '-', is_system: true },
+  { id: '42', conta: '42', type: 'GA', tipo: 'GA', description: 'DEPÓSITOS A PRAZO', descricao: 'DEPÓSITOS A PRAZO', justification: '-', layout: '-', is_system: true },
+  { id: '43', conta: '43', type: 'GA', tipo: 'GA', description: 'DEPÓSITOS Á ORDEM', descricao: 'DEPÓSITOS Á ORDEM', justification: '-', layout: '-', is_system: true },
+  { id: '44', conta: '44', type: 'GA', tipo: 'GA', description: 'OUTROS DEPÓSITOS', descricao: 'OUTROS DEPÓSITOS', justification: '-', layout: '-', is_system: true },
+  { id: '45', conta: '45', type: 'GR', tipo: 'GR', description: 'CAIXA', descricao: 'CAIXA', justification: '-', layout: '-', is_system: true },
+  { id: '51', conta: '51', type: 'GR', tipo: 'GR', description: 'CAPITAL', descricao: 'CAPITAL', justification: '-', layout: '-', is_system: true },
+  { id: '52', conta: '52', type: 'GA', tipo: 'GA', description: 'ACÇÕES/QUOTAS PRÓPRIAS', descricao: 'ACÇÕES/QUOTAS PRÓPRIAS', justification: '-', layout: '-', is_system: true },
+  { id: '53', conta: '53', type: 'GA', tipo: 'GA', description: 'PRÉMIOS DE EMISSÃO', descricao: 'PRÉMIOS DE EMISSÃO', justification: '-', layout: '-', is_system: true },
+  { id: '54', conta: '54', type: 'GA', tipo: 'GA', description: 'PRESTAÇÕES SUPLEMENTARES', descricao: 'PRESTAÇÕES SUPLEMENTARES', justification: '-', layout: '-', is_system: true },
+  { id: '55', conta: '55', type: 'GA', tipo: 'GA', description: 'RESERVAS LEGAIS', descricao: 'RESERVAS LEGAIS', justification: '-', layout: '-', is_system: true },
+  { id: '56', conta: '56', type: 'GA', tipo: 'GA', description: 'RESERVAS DE REAVALIAÇÃO', descricao: 'RESERVAS DE REAVALIAÇÃO', justification: '-', layout: '-', is_system: true },
+  { id: '57', conta: '57', type: 'GA', tipo: 'GA', description: 'RESERVAS COM FINS ESPECIAIS', descricao: 'RESERVAS COM FINS ESPECIAIS', justification: '-', layout: '-', is_system: true },
+  { id: '58', conta: '58', type: 'GA', tipo: 'GA', description: 'RESERVAS LIVRES', descricao: 'RESERVAS LIVRES', justification: '-', layout: '-', is_system: true },
+  { id: '61', conta: '61', type: 'GR', tipo: 'GR', description: 'VENDAS', descricao: 'VENDAS', justification: '-', layout: 'Mercadoria MN', is_system: true },
+  { id: '62', conta: '62', type: 'GA', tipo: 'GA', description: 'PRESTAÇÕES DE SERVIÇOS', descricao: 'PRESTAÇÕES DE SERVIÇOS', justification: '-', layout: 'Serviço Nacional', is_system: true },
+  { id: '63', conta: '63', type: 'GA', tipo: 'GA', description: 'OUTROS PROVEITOS OPERACIONAIS', descricao: 'OUTROS PROVEITOS OPERACIONAIS', justification: '-', layout: '-', is_system: true },
+  { id: '64', conta: '64', type: 'GA', tipo: 'GA', description: 'VARIAÇÃO NOS INVENTARIOS DE PRODUTOS ACABADOS E DE PRODUÇÃO EM CURSO', descricao: 'VARIAÇÃO NOS INVENTARIOS DE PRODUTOS ACABADOS E DE PRODUÇÃO EM CURSO', justification: '-', layout: '-', is_system: true },
+  { id: '65', conta: '65', type: 'GA', tipo: 'GA', description: 'TRABALHOS PARA A PRÓPRIA EMPRESA', descricao: 'TRABALHOS PARA A PRÓPRIA EMPRESA', justification: '-', layout: '-', is_system: true },
+  { id: '66', conta: '66', type: 'GA', tipo: 'GA', description: 'PROVEITOS E GANHOS FINANCEIROS GERAIS', descricao: 'PROVEITOS E GANHOS FINANCEIROS GERAIS', justification: '-', layout: '-', is_system: true },
+  { id: '67', conta: '67', type: 'GA', tipo: 'GA', description: 'PROVEITOS E GANHOS FINANCEIROS EM SUBSIDIARIAS E ASSOCIADAS', descricao: 'PROVEITOS E GANHOS FINANCEIROS EM SUBSIDIARIAS E ASSOCIADAS', justification: '-', layout: '-', is_system: true },
+  { id: '68', conta: '68', type: 'GA', tipo: 'GA', description: 'OUTROS PROVEITOS E GANHOS NÃO OPERACIONAIS', descricao: 'OUTROS PROVEITOS E GANHOS NÃO OPERACIONAIS', justification: '-', layout: '-', is_system: true },
+  { id: '69', conta: '69', type: 'GA', tipo: 'GA', description: 'PROVEITOS E GANHOS EXTRAORDINARIOS', descricao: 'PROVEITOS E GANHOS EXTRAORDINARIOS', justification: '-', layout: '-', is_system: true },
+  { id: '71', conta: '71', type: 'GR', tipo: 'GR', description: 'CUSTO DAS EXISTÊNCIAS VENDIDAS', descricao: 'CUSTO DAS EXISTÊNCIAS VENDIDAS', justification: '-', layout: 'Matéria Prima', is_system: true },
+  { id: '72', conta: '72', type: 'GR', tipo: 'GR', description: 'CUSTOS COM PESSOAL', descricao: 'CUSTOS COM PESSOAL', justification: '-', layout: '-', is_system: true },
+  { id: '73', conta: '73', type: 'GR', tipo: 'GR', description: 'AMORTIZAÇÕES DO EXERCICIO', descricao: 'AMORTIZAÇÕES DO EXERCICIO', justification: '-', layout: '-', is_system: true },
+  { id: '75', conta: '75', type: 'GR', tipo: 'GR', description: 'OUTROS CUSTOS E PERDAS OPERACIONAIS', descricao: 'OUTROS CUSTOS E PERDAS OPERACIONAIS', justification: '-', layout: '-', is_system: true },
+  { id: '76', conta: '76', type: 'GA', tipo: 'GA', description: 'CUSTOS E PERDAS FINANCEIRAS GERAIS', descricao: 'CUSTOS E PERDAS FINANCEIRAS GERAIS', justification: '-', layout: '-', is_system: true },
+  { id: '77', conta: '77', type: 'GA', tipo: 'GA', description: 'CUSTOS E PERDAS FINANCEIRAS EM FILIAIS E ASSOCIADAS', descricao: 'CUSTOS E PERDAS FINANCEIRAS EM FILIAIS E ASSOCIADAS', justification: '-', layout: '-', is_system: true },
+  { id: '78', conta: '78', type: 'GA', tipo: 'GA', description: 'OUTROS CUSTOS E PERDAS NÃO OPERACIONAIS', descricao: 'OUTROS CUSTOS E PERDAS NÃO OPERACIONAIS', justification: '-', layout: '-', is_system: true },
+  { id: '79', conta: '79', type: 'GA', tipo: 'GA', description: 'CUSTOS E PERDAS EXTRAORDINÁRIOS', descricao: 'CUSTOS E PERDAS EXTRAORDINÁRIOS', justification: '-', layout: '-', is_system: true },
+  { id: '81', conta: '81', type: 'GA', tipo: 'GA', description: 'RESULTADOS TRANSITADOS', descricao: 'RESULTADOS TRANSITADOS', justification: '-', layout: '-', is_system: true },
+  { id: '82', conta: '82', type: 'GA', tipo: 'GA', description: 'RESULTADOS OPERACIONAIS', descricao: 'RESULTADOS OPERACIONAIS', justification: '-', layout: '-', is_system: true },
+  { id: '83', conta: '83', type: 'GA', tipo: 'GA', description: 'RESULTADOS FINANCEIROS', descricao: 'RESULTADOS FINANCEIROS', justification: '-', layout: '-', is_system: true },
+  { id: '84', conta: '84', type: 'GA', tipo: 'GA', description: 'RESULTADOS FINANCEIROS EM FILIAIS E ASSOCIADAS', descricao: 'RESULTADOS FINANCEIROS EM FILIAIS E ASSOCIADAS', justification: '-', layout: '-', is_system: true },
+  { id: '85', conta: '85', type: 'GA', tipo: 'GA', description: 'RESULTADOS NÃO OPERACIONAIS', descricao: 'RESULTADOS NÃO OPERACIONAIS', justification: '-', layout: '-', is_system: true },
+  { id: '86', conta: '86', type: 'GA', tipo: 'GA', description: 'RESULTADOS EXTRAORDINÁRIOS', descricao: 'RESULTADOS EXTRAORDINÁRIOS', justification: '-', layout: '-', is_system: true },
+  { id: '87', conta: '87', type: 'GA', tipo: 'GA', description: 'IMPOSTOS SOBRE OS LUCROS', descricao: 'IMPOSTOS SOBRE OS LUCROS', justification: '-', layout: '-', is_system: true },
+  { id: '88', conta: '88', type: 'GA', tipo: 'GA', description: 'RESULTADO LIQUIDO DO EXERCICIO', descricao: 'RESULTADO LIQUIDO DO EXERCICIO', justification: '-', layout: '-', is_system: true },
+  { id: '89', conta: '89', type: 'GA', tipo: 'GA', description: 'DIVIDENDOS ANTECIPADOS', descricao: 'DIVIDENDOS ANTECIPADOS', justification: '-', layout: '-', is_system: true }
+];
+
 const PGCModule = ({ onBack }: { onBack: () => void }) => {
   const { user } = useAuth();
   const [accounts, setAccounts] = useState<any[]>([]);
@@ -16821,6 +18360,7 @@ const PGCModule = ({ onBack }: { onBack: () => void }) => {
   const [loading, setLoading] = useState(true);
   const [selectedAccount, setSelectedAccount] = useState<any | null>(null);
   const [viewDetail, setViewDetail] = useState<any | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Form states
   const [formData, setFormData] = useState({
@@ -16834,10 +18374,29 @@ const PGCModule = ({ onBack }: { onBack: () => void }) => {
 
   const fetchAccounts = async () => {
     try {
-      const data = await fetchJson(`/api/accounting/pgc?empresa_id=${user?.empresa_id}`);
-      setAccounts(data);
+      const dbData = await fetchJson(`/api/accounting/pgc?empresa_id=${user?.empresa_id}`);
+      const mapByConta = new globalThis.Map<string, any>();
+      PREDEFINED_PGC_STATIC.forEach(acc => mapByConta.set(String(acc.id || acc.conta), acc));
+      if (Array.isArray(dbData)) {
+        dbData.forEach((item: any) => {
+          mapByConta.set(String(item.conta || item.id), {
+            ...item,
+            id: item.conta || item.id,
+            conta: item.conta || item.id,
+            type: item.tipo || item.type || 'GA',
+            description: item.descricao || item.description || '',
+            justification: item.justificacao || item.justification || '',
+            layout: item.layout || ''
+          });
+        });
+      }
+      const mergedList = Array.from(mapByConta.values()).sort((a: any, b: any) => 
+        String(a.id || a.conta).localeCompare(String(b.id || b.conta), undefined, { numeric: true, sensitivity: 'base' })
+      );
+      setAccounts(mergedList);
     } catch (error) {
       console.error('Error fetching PGC accounts:', error);
+      setAccounts(PREDEFINED_PGC_STATIC);
     } finally {
       setLoading(false);
     }
@@ -16869,30 +18428,94 @@ const PGCModule = ({ onBack }: { onBack: () => void }) => {
     setShowForm(true);
   };
 
+  // Export helpers
+  const exportToCSV = () => {
+    const rows = [['Conta', 'Tipo', 'Descrição', 'Justificação', 'Layout']];
+    filteredAccounts.forEach(acc => rows.push([acc.id || acc.conta || '', acc.type || acc.tipo || '', acc.description || acc.descricao || '', acc.justification || '', acc.layout || '']));
+    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'PGC_Plano_Geral_Contas.csv'; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportToPDF = () => {
+    const printContent = `
+      <html><head><title>PGC - Plano Geral de Contas</title>
+      <style>body{font-family:Arial,sans-serif;font-size:10px} table{width:100%;border-collapse:collapse} th{background:#003366;color:white;padding:6px 8px;text-align:left} td{padding:5px 8px;border-bottom:1px solid #eee} tr:nth-child(even){background:#f8f8f8} h1{color:#003366;font-size:14px;margin-bottom:4px}</style>
+      </head><body>
+      <h1>PGC - Plano Geral de Contas</h1><p style="font-size:9px;color:#666">Emitido em: ${new Date().toLocaleString('pt-PT')}</p>
+      <table><thead><tr><th>Conta</th><th>Tipo</th><th>Descrição</th><th>Justificação</th><th>Layout</th></tr></thead>
+      <tbody>${filteredAccounts.map(acc => `<tr><td>${acc.id||acc.conta||''}</td><td>${acc.type||acc.tipo||''}</td><td>${acc.description||acc.descricao||''}</td><td>${acc.justification||''}</td><td>${acc.layout||''}</td></tr>`).join('')}</tbody>
+      </table></body></html>`;
+    const w = window.open('', '_blank'); if (!w) return;
+    w.document.write(printContent); w.document.close(); w.focus(); w.print(); w.close();
+  };
+
+  const handlePrint = () => window.print();
+
+  const filteredAccounts = searchQuery.trim() === ''
+    ? accounts
+    : accounts.filter(acc => {
+        const q = searchQuery.toLowerCase();
+        return String(acc.id || acc.conta || '').toLowerCase().includes(q) ||
+               String(acc.description || acc.descricao || '').toLowerCase().includes(q) ||
+               String(acc.type || acc.tipo || '').toLowerCase().includes(q) ||
+               String(acc.justification || '').toLowerCase().includes(q);
+      });
+
   if (viewDetail) {
     return <AccountMovementsPage account={viewDetail} onBack={() => setViewDetail(null)} />;
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center bg-zinc-50 p-4 border border-zinc-200">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 bg-zinc-50 p-4 border border-zinc-200">
         <div className="flex items-center gap-4">
           <button onClick={onBack} className="p-2 hover:bg-zinc-100 rounded-none text-zinc-400">
             <ChevronLeft size={24} />
           </button>
           <h2 className="text-xl font-black text-[#003366] uppercase tracking-tighter">PGC - Plano Geral de Contas</h2>
         </div>
-        <div className="flex items-center gap-2">
-          <button 
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Search bar */}
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+            <input
+              type="text"
+              placeholder="Pesquisar conta PGC..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="pl-9 pr-4 py-2 text-xs border border-zinc-200 bg-white focus:outline-none focus:border-[#003366] w-56 font-medium"
+            />
+          </div>
+          <button
             onClick={() => { setShowForm(true); setSelectedAccount(null); }}
-            className="bg-transparent text-zinc-600 p-2 hover:bg-zinc-100 transition-all flex items-center gap-1"
+            className="bg-[#003366] text-white px-3 py-2 hover:bg-[#002244] transition-all flex items-center gap-1.5 text-xs font-bold uppercase"
           >
-            <UserPlus size={20} />
+            <UserPlus size={14} /> Nova Conta
           </button>
-          <button className="text-green-600 p-2 hover:bg-zinc-100"><Users size={20} /></button>
-          <button className="text-zinc-600 p-2 hover:bg-zinc-100 font-bold text-xs">XLSX</button>
-          <button className="text-red-600 p-2 hover:bg-zinc-100 font-bold text-xs">PDF</button>
-          <button className="bg-green-500 text-white p-2 rounded-full shadow-lg"><Printer size={16} /></button>
+          <button
+            onClick={exportToCSV}
+            title="Exportar para Excel/CSV"
+            className="border border-green-500 text-green-700 px-3 py-2 hover:bg-green-50 transition-all flex items-center gap-1.5 text-xs font-bold uppercase"
+          >
+            <FileSpreadsheet size={14} /> Excel
+          </button>
+          <button
+            onClick={exportToPDF}
+            title="Exportar para PDF"
+            className="border border-red-400 text-red-600 px-3 py-2 hover:bg-red-50 transition-all flex items-center gap-1.5 text-xs font-bold uppercase"
+          >
+            <FileText size={14} /> PDF
+          </button>
+          <button
+            onClick={handlePrint}
+            title="Imprimir"
+            className="bg-[#003366] text-white px-3 py-2 hover:bg-[#002244] transition-all flex items-center gap-1.5 text-xs font-bold uppercase"
+          >
+            <Printer size={14} /> Imprimir
+          </button>
         </div>
       </div>
 
@@ -16911,15 +18534,17 @@ const PGCModule = ({ onBack }: { onBack: () => void }) => {
           <tbody className="divide-y divide-zinc-100">
             {loading ? (
               <tr><td colSpan={6} className="py-20 text-center text-zinc-300 italic">Carregando plano de contas...</td></tr>
-            ) : accounts.map((acc) => (
-              <tr key={acc.id} className="hover:bg-zinc-50 transition-colors group">
-                <td className="px-6 py-3 cursor-pointer text-[#003366] font-black group-hover:underline" onClick={() => openEdit(acc)}>{acc.id}</td>
-                <td className="px-6 py-3 text-zinc-500">{acc.type}</td>
-                <td className="px-6 py-3 text-zinc-800">{acc.description}</td>
+            ) : filteredAccounts.length === 0 ? (
+              <tr><td colSpan={6} className="py-20 text-center text-zinc-400 italic">Nenhuma conta encontrada{searchQuery ? ` para "${searchQuery}"` : ''}.</td></tr>
+            ) : filteredAccounts.map((acc) => (
+              <tr key={acc.id || acc.conta} className="hover:bg-zinc-50 transition-colors group">
+                <td className="px-6 py-3 cursor-pointer text-[#003366] font-black group-hover:underline" onClick={() => openEdit(acc)}>{acc.id || acc.conta}</td>
+                <td className="px-6 py-3 text-zinc-500">{acc.type || acc.tipo}</td>
+                <td className="px-6 py-3 text-zinc-800">{acc.description || acc.descricao}</td>
                 <td className="px-6 py-3 text-zinc-400">{acc.justification || '-'}</td>
                 <td className="px-6 py-3 text-zinc-400">{acc.layout || '-'}</td>
                 <td className="px-6 py-3 text-center">
-                  <button onClick={() => setViewDetail(acc)} className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100">
+                  <button onClick={() => setViewDetail({ ...acc, code: acc.id || acc.conta, desc: acc.description || acc.descricao })} className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100">
                     <BarChart3 size={14} />
                   </button>
                 </td>
@@ -17110,6 +18735,2452 @@ const PGCModule = ({ onBack }: { onBack: () => void }) => {
   );
 };
 
+// Lista de Impostos Predefinidos Angolanos (Imagens do Utilizador)
+const PREDEFINED_TAXES_ANGOLA = [
+  "01A-01A - Imposto sobre Aplicação de Capitais - Secção A",
+  "01B-01B - Imposto sobre Rendimento do Trabalho do Grupo A - Conta de Outrém",
+  "01C-01C - Imposto Industrial - Regime Geral",
+  "01D-01D - Imposto Especial de Jogo - Receita Bruta - Casino",
+  "01E-01E - Imposto sobre Rendimento do Petróleo",
+  "01F-01F - Imposto Perdial sobre a Detenção",
+  "01G-01G - Imposto sobre Veiculos Motorizados - Automóveis Ligeiros",
+  "01H-01H - Imposto sobre a Produção de Petróleo",
+  "01I-01I - Imposto sobre o Valor Acrescentado - Cativo",
+  "01J-01J - Imposto Especial de Consumo – Aeronaves e Embarcações de Recreio",
+  "01K-01K - Imposto sobre a Exportação",
+  "01L-01L - Imposto de Selo - contrato de Arrendamento",
+  "01M-01M - Taxa do Gás (LNG)",
+  "01N-01N - Custas de Execuções Fisicais",
+  "01O-01O - Emolumentos",
+  "01P-01P - Multas Fiscais pela não Entrega da Declaração",
+  "01Q-01Q -Contribuições para o Fundo de Desenvolvimento Mineiro",
+  "01R-01R - Rendas de Casa",
+  "01S-01S - Receitas de Serviços Comerciais, Registos e Notariado",
+  "01T-01T - Doações e Ajudas Internacionais Diversas",
+  "01U-01U - Alienação de Participação",
+  "01Y-01Y - Reversão de Saldo Anteriores Apurados",
+  "02A-02A - Imposto sobre Aplicação de Capitais - Secção B - Títulos do Banco Central",
+  "02B-02B - Imposto sobre Rendimento do Trabalho do Grupo B - Conta Própria",
+  "02C-02C - Imposto Industrial - Regime Simplificado",
+  "02D-02D - Imposto Especial de Jogo - Apostas mútuas Desportivas - Totobola",
+  "02E-02E - Imposto sobre Transações de Petróleo",
+  "02F-02F - Imposto Perdial sobre Transmissões Onerosas",
+  "02G-02G - Imposto sobre Veiculos Motoziados - Automóveis Pesados",
+  "02H-02H - Imposto sobre a Produção de Petróleo de Diamantes - Royalty",
+  "02I-02I - Imposto sobre o Valor Acrescentado - Importação",
+  "02J-02J - Imposto Especial de Consumo – Álcool de Outras Bebidas Álcoolicas",
+  "02K-02K - Imposto sobre a Importação",
+  "02L-02L - Imposto de Selo - Operações Bancárias",
+  "02M-02M - Taxa de Superficie de Diamantes",
+  "02N-02N - Custas Judiciais",
+  "02O-02O - Leilões",
+  "02P-02P - Multas Fiscais pelo não Pagamento da Prestação da Divida Tributária",
+  "02Q-02Q - Contribuições para Formação de Quadros Angolanos",
+  "02R-02R - Rendas de Superficie de Petróleo",
+  "02S-02S - Receitas de Serviços Consulares",
+  "02T-02T - Indemnizações e Restituições",
+  "02U-02U - Alienação de Habitação",
+  "03A-03A - Imposto sobre Aplicação de Capitais - Secção B - Bilhetes e Obrigações do Tesouro",
+  "03B-03B - Imposto sobre Rendimento do Trabalho do Grupo C - Industriais e Comerciais",
+  "03C-03C - Imposto industrial - Retenção na Fonte - Residentes",
+  "03D-03D - Imposto Especial de Jogo - Apostas Mútuas Desportivas - Totoloto",
+  "03F-03F - Imposto Perdial sobre Transmissões Gratuitas",
+  "03G-03G - Imposto sobre Veiculos Motoziados - Motociclos, Clitomotores, Triciclos e Quadriciclos",
+  "03H-03H - Imposto sobre a Produção de Petróleo de Ouro - Royalty",
+  "03I-03I - Imposto sobre o Valor Acrescentado - Regime Geral",
+  "03J-03J - Imposto Especial de Consumo - Armas de Fogo",
+  "03L-03L - Imposto de Selo - Recibo de Quitação",
+  "03M-03M - Taxa Estatistica"
+];
+
+// ============================================================
+// 1.1 CONTAS PAGAMENTO DE IMPOSTOS (Conforme Imagem 1 do Utilizador)
+// ============================================================
+const ContasPagImpostosModule = ({ onBack }: { onBack: () => void }) => {
+  const { user } = useAuth();
+  const [taxAccounts, setTaxAccounts] = useState<any[]>([]);
+  const [pgcAccounts, setPgcAccounts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<any | null>(null);
+  const [selectedImportTax, setSelectedImportTax] = useState('');
+  const [formData, setFormData] = useState({
+    cod: '',
+    descricao: '',
+    conta_pgc: '34.1'
+  });
+
+  const fetchTaxAccounts = async () => {
+    if (!user?.empresa_id) return;
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('contas_pag_impostos')
+        .select('*')
+        .eq('empresa_id', user.empresa_id)
+        .order('cod', { ascending: true });
+        
+      if (!error && data && data.length > 0) {
+        setTaxAccounts(data);
+      } else {
+        const fallbackData = await fetchJson(`/api/accounting/tax-payment-accounts?empresa_id=${user.empresa_id}`);
+        setTaxAccounts(fallbackData || []);
+      }
+    } catch (e) {
+      console.error('Erro ao carregar contas de pagamento de impostos:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchPgcAccounts = async () => {
+    if (!user?.empresa_id) return;
+    try {
+      const data = await fetchJson(`/api/accounting/pgc?empresa_id=${user.empresa_id}`);
+      if (data && Array.isArray(data)) {
+        setPgcAccounts(data);
+      }
+    } catch (e) {
+      console.error('Erro ao carregar PGC:', e);
+    }
+  };
+
+  useEffect(() => {
+    fetchTaxAccounts();
+    fetchPgcAccounts();
+  }, [user?.empresa_id]);
+
+  // Ao selecionar um imposto pré-definido, adiciona DIRETAMENTE na tabela/Supabase sem abrir formulário
+  const handleImportPredefined = async (taxDesc: string) => {
+    if (!taxDesc || !user?.empresa_id) return;
+    setSelectedImportTax(taxDesc);
+
+    // Extrair código (ex: "01C-01C - Imposto..." -> "01C")
+    const codeMatch = taxDesc.match(/^([A-Z0-9]+)/i);
+    const extractedCod = codeMatch ? codeMatch[1] : 'IMP';
+
+    // Sugerir conta PGC adequada
+    let pgcAccount = '34.1';
+    if (taxDesc.toLowerCase().includes('industrial')) pgcAccount = '34.01.01';
+    else if (taxDesc.toLowerCase().includes('irt') || taxDesc.toLowerCase().includes('trabalho')) pgcAccount = '34.3';
+    else if (taxDesc.toLowerCase().includes('selo')) pgcAccount = '34.02.04';
+    else if (taxDesc.toLowerCase().includes('iva') || taxDesc.toLowerCase().includes('acrescentado')) pgcAccount = '34.5.3';
+    else if (taxDesc.toLowerCase().includes('segurança social') || taxDesc.toLowerCase().includes('inss')) pgcAccount = '34.9';
+
+    try {
+      const { error } = await supabase.from('contas_pag_impostos').insert([{
+        empresa_id: user.empresa_id,
+        cod: extractedCod,
+        descricao: taxDesc,
+        conta_pgc: pgcAccount
+      }]);
+      if (error) {
+        await fetchWithAuth('/api/accounting/tax-payment-accounts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            empresa_id: user.empresa_id,
+            cod: extractedCod,
+            descricao: taxDesc,
+            conta_pgc: pgcAccount
+          })
+        });
+      }
+      fetchTaxAccounts();
+    } catch (e) {
+      console.error('Erro ao importar imposto pré-definido:', e);
+    } finally {
+      setSelectedImportTax('');
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user?.empresa_id) return;
+    try {
+      if (editingAccount) {
+        const { error } = await supabase
+          .from('contas_pag_impostos')
+          .update(formData)
+          .eq('id', editingAccount.id)
+          .eq('empresa_id', user.empresa_id);
+        if (error) {
+          await fetchWithAuth(`/api/accounting/tax-payment-accounts/${editingAccount.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(formData)
+          });
+        }
+      } else {
+        const { error } = await supabase
+          .from('contas_pag_impostos')
+          .insert([{ ...formData, empresa_id: user.empresa_id }]);
+        if (error) {
+          await fetchWithAuth('/api/accounting/tax-payment-accounts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...formData, empresa_id: user.empresa_id })
+          });
+        }
+      }
+      setShowModal(false);
+      setEditingAccount(null);
+      setSelectedImportTax('');
+      setFormData({ cod: '', descricao: '', conta_pgc: '34.1' });
+      fetchTaxAccounts();
+    } catch (e) {
+      console.error('Erro ao guardar conta de pagamento de imposto:', e);
+    }
+  };
+
+  const handleEdit = (acc: any) => {
+    setEditingAccount(acc);
+    setFormData({
+      cod: acc.cod || '',
+      descricao: acc.descricao || '',
+      conta_pgc: acc.conta_pgc || '34.1'
+    });
+    setShowModal(true);
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Tem certeza que deseja eliminar esta conta de pagamento de imposto?')) return;
+    try {
+      const { error } = await supabase
+        .from('contas_pag_impostos')
+        .delete()
+        .eq('id', id)
+        .eq('empresa_id', user?.empresa_id);
+      if (error) {
+        await fetchWithAuth(`/api/accounting/tax-payment-accounts/${id}`, { method: 'DELETE' });
+      }
+      fetchTaxAccounts();
+    } catch (e) {
+      console.error('Erro ao eliminar conta:', e);
+    }
+  };
+
+  return (
+    <div className="space-y-4 font-sans text-xs bg-white p-6 border border-zinc-200 shadow-sm">
+      {/* Barra de título idêntica à Imagem 1 do Utilizador */}
+      <div className="bg-zinc-200 border-b border-zinc-300 p-2 flex justify-between items-center shadow-sm">
+        <div className="flex items-center gap-3">
+          <button onClick={onBack} className="p-1 hover:bg-zinc-300 text-zinc-600 rounded">
+            <ChevronLeft size={18} />
+          </button>
+          <span className="font-bold text-zinc-700 text-sm italic">Pagamento de Impostos</span>
+        </div>
+        <div className="flex items-center gap-3">
+          {/* Botão verde redondo com + para criar conta */}
+          <button
+            onClick={() => {
+              setEditingAccount(null);
+              setFormData({ cod: '', descricao: '', conta_pgc: pgcAccounts.length > 0 ? (pgcAccounts[0].conta || pgcAccounts[0].id) : '34.1' });
+              setShowModal(true);
+            }}
+            className="w-7 h-7 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center shadow font-bold text-base transition-all cursor-pointer"
+            title="Criar Conta Pag Imposto"
+          >
+            +
+          </button>
+          <button className="w-6 h-6 text-zinc-600 hover:text-zinc-900 flex items-center justify-center font-bold text-sm">?</button>
+          <button className="w-6 h-6 text-zinc-600 hover:text-zinc-900 flex items-center justify-center"><Bell size={16} /></button>
+          <button className="w-6 h-6 text-zinc-600 hover:text-zinc-900 flex items-center justify-center"><HelpCircle size={16} /></button>
+        </div>
+      </div>
+
+      {/* Select: Importar Imposto Pré-Definido (Adiciona diretamente à lista na página) */}
+      <div className="space-y-1">
+        <label className="block text-zinc-600 font-bold text-[11px]">Importar Imposto Pré-Definido</label>
+        <select
+          value={selectedImportTax}
+          onChange={e => handleImportPredefined(e.target.value)}
+          className="w-full border border-zinc-300 p-2 rounded-none bg-white text-zinc-800 font-medium focus:border-[#003366] outline-none cursor-pointer"
+        >
+          <option value="">Importar Imposto Pré-Definido</option>
+          {PREDEFINED_TAXES_ANGOLA.map((t, idx) => (
+            <option key={idx} value={t}>{t}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Tabela de Contas Pag Impostos idêntica à Imagem 1 do Utilizador */}
+      <div className="border border-zinc-200 overflow-x-auto">
+        <table className="w-full text-left border-collapse text-[11px]">
+          <thead>
+            <tr className="border-b border-zinc-300 text-zinc-700 font-bold bg-zinc-50">
+              <th className="px-4 py-2 border-r border-zinc-200 w-24">Cod</th>
+              <th className="px-4 py-2 border-r border-zinc-200">Descrição do Imposto</th>
+              <th className="px-4 py-2 border-r border-zinc-200 w-48">Conta PGC</th>
+              <th className="px-4 py-2 text-center w-24">Ações</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-200 font-medium">
+            {loading ? (
+              <tr><td colSpan={4} className="py-8 text-center text-zinc-400 italic">Carregando contas de pagamento de impostos...</td></tr>
+            ) : taxAccounts.length === 0 ? (
+              <tr><td colSpan={4} className="py-8 text-center text-zinc-400 italic">Nenhuma conta de imposto registada.</td></tr>
+            ) : taxAccounts.map((acc: any) => (
+              <tr key={acc.id} className="hover:bg-zinc-50">
+                <td className="px-4 py-2 border-r border-zinc-200 font-bold text-[#003366]">{acc.cod}</td>
+                <td className="px-4 py-2 border-r border-zinc-200 font-semibold text-zinc-800">{acc.descricao}</td>
+                <td className="px-4 py-2 border-r border-zinc-200 font-mono font-bold text-zinc-700">{acc.conta_pgc}</td>
+                <td className="px-4 py-2 text-center flex justify-center items-center gap-2">
+                  {/* Botão Vermelho Redondo X (Eliminar - Imagem 1) */}
+                  <button
+                    onClick={() => handleDelete(acc.id)}
+                    className="w-5 h-5 rounded-full bg-red-600 hover:bg-red-700 text-white flex items-center justify-center text-[10px] font-bold transition-all"
+                    title="Apagar Registo"
+                  >
+                    ✕
+                  </button>
+                  {/* Botão Azul Redondo E (Editar - Imagem 1) */}
+                  <button
+                    onClick={() => handleEdit(acc)}
+                    className="w-5 h-5 rounded-full bg-cyan-600 hover:bg-cyan-700 text-white flex items-center justify-center text-[10px] font-bold transition-all"
+                    title="Editar Registo"
+                  >
+                    E
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Modal Formulário: Criar / Editar Conta Pag Imposto */}
+      <AnimatePresence>
+        {showModal && (
+          <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowModal(false)} className="absolute inset-0 bg-black/50 backdrop-blur-xs" />
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="relative w-full max-w-md bg-white shadow-2xl border border-zinc-300 p-6 space-y-4">
+              <div className="bg-[#003366] text-white p-3 -m-6 mb-4 flex justify-between items-center">
+                <h3 className="font-bold text-xs uppercase tracking-wide">
+                  {editingAccount ? 'Editar Conta Pag Imposto' : 'Registar Conta Pag Imposto'}
+                </h3>
+                <button onClick={() => setShowModal(false)} className="text-white hover:text-zinc-200"><X size={18} /></button>
+              </div>
+
+              <form onSubmit={handleSubmit} className="space-y-4 text-xs font-bold pt-2">
+                <div>
+                  <label className="block text-zinc-600 mb-1 uppercase text-[10px]">Código do Imposto</label>
+                  <input
+                    type="text"
+                    className="w-full border border-zinc-300 p-2 font-mono uppercase text-[#003366] focus:border-[#003366] outline-none"
+                    value={formData.cod}
+                    onChange={e => setFormData({ ...formData, cod: e.target.value })}
+                    placeholder="Ex: 01C, F71, A12"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-zinc-600 mb-1 uppercase text-[10px]">Descrição do Imposto</label>
+                  <input
+                    type="text"
+                    className="w-full border border-zinc-300 p-2 focus:border-[#003366] outline-none"
+                    value={formData.descricao}
+                    onChange={e => setFormData({ ...formData, descricao: e.target.value })}
+                    placeholder="Ex: 01C - Imposto Industrial - Regime Geral"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-zinc-600 mb-1 uppercase text-[10px]">Selecionar Conta PGC Associada (Plano Geral de Contas)</label>
+                  <select
+                    className="w-full border border-zinc-300 p-2 focus:border-[#003366] outline-none bg-white"
+                    value={formData.conta_pgc}
+                    onChange={e => setFormData({ ...formData, conta_pgc: e.target.value })}
+                    required
+                  >
+                    {pgcAccounts.length > 0 ? (
+                      pgcAccounts.map((p: any) => (
+                        <option key={p.id || p.conta} value={p.conta}>
+                          {p.conta} - {p.descricao || p.description || ''}
+                        </option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="34.01.01">34.01.01 - Imposto Industrial</option>
+                        <option value="34.1">34.1 - Imposto de Selo</option>
+                        <option value="34.3">34.3 - IRT por conta de outrem</option>
+                        <option value="34.02.04">34.02.04 - Imposto de Selo - Outros</option>
+                        <option value="34.5.3">34.5.3 - IVA Liquidado</option>
+                        <option value="34.9">34.9 - Segurança Social (INSS)</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+
+                <div className="pt-4 flex justify-end gap-2 border-t border-zinc-200">
+                  <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 border border-zinc-300 text-zinc-700 font-bold hover:bg-zinc-100">
+                    Cancelar
+                  </button>
+                  <button type="submit" className="px-5 py-2 bg-[#003366] text-white font-bold hover:bg-[#002244]">
+                    Registar
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+// ============================================================
+// 1. PAGAMENTO DE IMPOSTOS (Conforme Imagem 1)
+// ============================================================
+const TaxPaymentsModule = ({ onBack, companyData }: { onBack: () => void; companyData?: any }) => {
+  const { user } = useAuth();
+  const { caixas, addMovement } = useCaixas();
+  const [subTab, setSubTab] = useState<'pagamentos' | 'contas'>('pagamentos');
+  const [payments, setPayments] = useState<any[]>([]);
+  const [taxAccounts, setTaxAccounts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [selectedTaxId, setSelectedTaxId] = useState('');
+  const [formData, setFormData] = useState({
+    cod: '',
+    data: new Date().toISOString().split('T')[0],
+    data_valor: new Date().toISOString().split('T')[0],
+    descricao: '',
+    caixa_nome: '',
+    doc_suporte: '',
+    moeda: 'AOA',
+    valor: ''
+  });
+
+  const fetchPayments = async () => {
+    if (!user?.empresa_id) return;
+    setLoading(true);
+    try {
+      // Canal primário: API servidor (supabaseAdmin, sem RLS)
+      const apiData = await fetchJson(`/api/accounting/tax-payments?empresa_id=${user.empresa_id}`);
+      if (Array.isArray(apiData)) { setPayments(apiData); return; }
+      // Canal secundário: Supabase client
+      const { data, error } = await supabase
+        .from('pagamentos_impostos')
+        .select('*')
+        .eq('empresa_id', user.empresa_id)
+        .order('data', { ascending: false });
+      if (!error) setPayments(data || []);
+    } catch (e) {
+      console.error('[TaxPayments] Erro ao buscar pagamentos:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchTaxAccounts = async () => {
+    if (!user?.empresa_id) return;
+    try {
+      // Canal primário: API servidor (supabaseAdmin, sem RLS)
+      const apiData = await fetchJson(`/api/accounting/tax-payment-accounts?empresa_id=${user.empresa_id}`);
+      if (Array.isArray(apiData) && apiData.length >= 0) { setTaxAccounts(apiData); return; }
+      // Canal secundário: Supabase client
+      const { data, error } = await supabase
+        .from('contas_pag_impostos')
+        .select('*')
+        .eq('empresa_id', user.empresa_id)
+        .order('cod', { ascending: true });
+      if (!error) setTaxAccounts(data || []);
+    } catch (e) {
+      console.error('[TaxPayments] Erro ao buscar contas impostos:', e);
+    }
+  };
+
+  const autoImportTaxIfPredefined = async (taxDesc: string) => {
+    if (!taxDesc || !user?.empresa_id) return null;
+    
+    const codeMatch = taxDesc.match(/^([A-Z0-9]+)/i);
+    const extractedCod = codeMatch ? codeMatch[1] : 'IMP';
+    
+    // Check if already in taxAccounts
+    const exists = taxAccounts.some((t: any) => t.cod === extractedCod);
+    if (exists) {
+      const found = taxAccounts.find((t: any) => t.cod === extractedCod);
+      return found?.id || null;
+    }
+
+    // Suggest suitable PGC account
+    let pgcAccount = '34.1';
+    if (taxDesc.toLowerCase().includes('industrial')) pgcAccount = '34.01.01';
+    else if (taxDesc.toLowerCase().includes('irt') || taxDesc.toLowerCase().includes('trabalho')) pgcAccount = '34.3';
+    else if (taxDesc.toLowerCase().includes('selo')) pgcAccount = '34.02.04';
+    else if (taxDesc.toLowerCase().includes('iva') || taxDesc.toLowerCase().includes('acrescentado')) pgcAccount = '34.5.3';
+    else if (taxDesc.toLowerCase().includes('segurança social') || taxDesc.toLowerCase().includes('inss')) pgcAccount = '34.9';
+
+    try {
+      const { data, error } = await supabase.from('contas_pag_impostos').insert([{
+        empresa_id: user.empresa_id,
+        cod: extractedCod,
+        descricao: taxDesc,
+        conta_pgc: pgcAccount
+      }]).select().single();
+      
+      if (!error && data) {
+        fetchTaxAccounts();
+        return data.id;
+      } else {
+        const fallback = await fetchWithAuth('/api/accounting/tax-payment-accounts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            empresa_id: user.empresa_id,
+            cod: extractedCod,
+            descricao: taxDesc,
+            conta_pgc: pgcAccount
+          })
+        }).then(r => r.json());
+        fetchTaxAccounts();
+        return fallback?.id || null;
+      }
+    } catch (e) {
+      console.error('Erro ao auto-importar imposto pré-definido:', e);
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    fetchPayments();
+    fetchTaxAccounts();
+  }, [user?.empresa_id]);
+
+  // Quando o utilizador escolhe o Tipo de Imposto no dropdown, preenche automaticamente o campo Descrição
+  const handleSelectTaxType = (taxId: string) => {
+    setSelectedTaxId(taxId);
+    const found = taxAccounts.find((t: any) => String(t.id) === String(taxId) || t.cod === taxId);
+    if (found) {
+      setFormData(prev => ({
+        ...prev,
+        cod: found.cod || prev.cod,
+        descricao: found.descricao || prev.descricao
+      }));
+    } else if (taxId) {
+      // É uma string de imposto pré-definido (não importada ainda)
+      const codeMatch = taxId.match(/^([A-Z0-9]+)/i);
+      const extractedCod = codeMatch ? codeMatch[1] : 'IMP';
+      setFormData(prev => ({
+        ...prev,
+        cod: extractedCod,
+        descricao: taxId
+      }));
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user?.empresa_id) { alert('Sessão inválida. Faça login novamente.'); return; }
+    if (!formData.descricao) { alert('Selecione o tipo de imposto.'); return; }
+    if (!formData.valor || parseFloat(formData.valor) <= 0) { alert('Insira um valor válido.'); return; }
+    try {
+      // 1. Se for imposto pré-definido, garantir a importação antes de criar o pagamento
+      let finalTaxId = selectedTaxId;
+      const isPredefinedString = PREDEFINED_TAXES_ANGOLA.includes(selectedTaxId);
+      if (isPredefinedString) {
+        const importedId = await autoImportTaxIfPredefined(selectedTaxId);
+        if (importedId) finalTaxId = importedId;
+      }
+
+      const payload = {
+        ...formData,
+        empresa_id: user.empresa_id,
+        valor: parseFloat(formData.valor) || 0,
+        estado: 'pago'
+      };
+
+      // Canal primário: API servidor (supabaseAdmin, sem RLS)
+      const res = await fetchWithAuth('/api/accounting/tax-payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        // Fallback: Supabase direto
+        const { error } = await supabase.from('pagamentos_impostos').insert([payload]);
+        if (error) {
+          const errBody = await res.json().catch(() => ({}));
+          throw new Error(errBody?.error || error.message);
+        }
+      }
+
+      // 2. Realizar a saída de caixa no caixa selecionado
+      if (formData.caixa_nome) {
+        const targetCaixa = caixas.find((c: any) => c.name === formData.caixa_nome);
+        if (targetCaixa) {
+          await addMovement({
+            caixaId: targetCaixa.id,
+            type: 'saida',
+            amount: parseFloat(formData.valor) || 0,
+            description: `Pagamento de Imposto: ${formData.descricao}`,
+            moeda: formData.moeda || 'AOA',
+            date: formData.data
+          });
+        }
+      }
+
+      setShowModal(false);
+      fetchPayments();
+    } catch (e: any) {
+      console.error('[TaxPayments] Erro ao guardar pagamento:', e);
+      alert('Erro ao guardar pagamento: ' + (e?.message || 'desconhecido'));
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Deseja eliminar este pagamento de imposto?')) return;
+    try {
+      // Canal primário: API servidor
+      const res = await fetchWithAuth(`/api/accounting/tax-payments/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        // Fallback: Supabase direto
+        const { error } = await supabase.from('pagamentos_impostos').delete().eq('id', id).eq('empresa_id', user?.empresa_id);
+        if (error) throw new Error(error.message);
+      }
+      fetchPayments();
+    } catch (e: any) {
+      console.error('[TaxPayments] Erro ao eliminar:', e);
+      alert('Erro ao eliminar: ' + (e?.message || 'desconhecido'));
+    }
+  };
+
+  // ── gestão de ficheiros por pagamento (Supabase media_arquivos) ──
+  const [docFiles, setDocFiles] = React.useState<Record<string, { url: string; name: string; type: string; mediaId?: string; storagePath?: string }>>({});
+  const [docPreview, setDocPreview] = React.useState<{ url: string; name: string; type: string; paymentId: string } | null>(null);
+  const docInputRefs = React.useRef<Record<string, HTMLInputElement | null>>({});
+
+  // Carregar ficheiros já guardados no Supabase ao montar
+  React.useEffect(() => {
+    const loadSavedDocs = async () => {
+      if (!user?.empresa_id) return;
+      try {
+        const { data, error } = await supabase
+          .from('media_arquivos')
+          .select('*')
+          .eq('empresa_id', user.empresa_id)
+          .eq('entidade', 'pagamentos_impostos')
+          .eq('ativo', true);
+        if (!error && data) {
+          const loaded: Record<string, { url: string; name: string; type: string; mediaId?: string; storagePath?: string }> = {};
+          data.forEach((m: any) => {
+            if (m.entidade_id && m.url_publica) {
+              loaded[m.entidade_id] = {
+                url: m.url_publica,
+                name: m.nome_original || m.nome_arquivo || 'Documento',
+                type: m.mime_type || 'application/octet-stream',
+                mediaId: m.id,
+                storagePath: m.caminho_arquivo
+              };
+            }
+          });
+          setDocFiles(prev => ({ ...loaded, ...prev }));
+        }
+      } catch (err) {
+        console.error('[TaxPayments] Erro ao carregar docs salvos:', err);
+      }
+    };
+    loadSavedDocs();
+  }, [user?.empresa_id]);
+
+  const handleDocUpload = async (pid: string, file: File) => {
+    if (!user?.empresa_id) { alert('Sessão inválida.'); return; }
+    try {
+      const fileExt = file.name.split('.').pop();
+      const safeName = file.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9._-]/g, '_');
+      const storagePath = `${user.empresa_id}/impostos-${pid}-${Date.now()}-${safeName}`;
+
+      // 1. Upload para Supabase Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('media')
+        .upload(storagePath, file, { upsert: false });
+      if (uploadError) { alert('Erro no upload: ' + uploadError.message); return; }
+
+      // 2. Obter URL pública
+      const { data: urlData } = supabase.storage.from('media').getPublicUrl(storagePath);
+      const publicUrl = urlData?.publicUrl;
+      if (!publicUrl) { alert('Erro ao obter URL do ficheiro.'); return; }
+
+      // 3. Registar na tabela media_arquivos
+      const { data: mediaRow, error: mediaError } = await supabase.from('media_arquivos').insert({
+        empresa_id: user.empresa_id,
+        utilizador_id: (await supabase.auth.getUser())?.data?.user?.id || null,
+        tipo: 'documento_imposto',
+        nome_arquivo: storagePath,
+        nome_original: file.name,
+        bucket: 'media',
+        caminho_arquivo: uploadData.path,
+        url_publica: publicUrl,
+        mime_type: file.type,
+        tamanho_bytes: file.size,
+        extensao: fileExt,
+        entidade: 'pagamentos_impostos',
+        entidade_id: pid,
+        observacao: `Documento anexo ao pagamento de imposto ${pid}`,
+        ativo: true
+      }).select().single();
+
+      if (mediaError) console.warn('[TaxPayments] Aviso ao registar media_arquivos:', mediaError.message);
+
+      setDocFiles(prev => ({ ...prev, [pid]: { url: publicUrl, name: file.name, type: file.type, mediaId: mediaRow?.id, storagePath: uploadData.path } }));
+    } catch (err: any) {
+      console.error('[TaxPayments] Erro no upload do documento:', err);
+      alert('Erro ao carregar o ficheiro: ' + (err?.message || 'desconhecido'));
+    }
+  };
+
+  const handleDocDelete = async (pid: string) => {
+    if (!confirm('Eliminar o documento anexado?')) return;
+    const doc = docFiles[pid];
+    if (doc) {
+      try {
+        // 1. Remover do Storage
+        if (doc.storagePath) {
+          await supabase.storage.from('media').remove([doc.storagePath]);
+        }
+        // 2. Remover registo da media_arquivos
+        if (doc.mediaId) {
+          await supabase.from('media_arquivos').delete().eq('id', doc.mediaId);
+        } else if (user?.empresa_id) {
+          // Fallback: eliminar por entidade/entidade_id
+          await supabase.from('media_arquivos')
+            .delete()
+            .eq('empresa_id', user.empresa_id)
+            .eq('entidade', 'pagamentos_impostos')
+            .eq('entidade_id', pid);
+        }
+      } catch (err) {
+        console.warn('[TaxPayments] Aviso ao eliminar do Supabase:', err);
+      }
+      if (doc.url.startsWith('blob:')) URL.revokeObjectURL(doc.url);
+    }
+    setDocFiles(prev => { const n = { ...prev }; delete n[pid]; return n; });
+  };
+
+  const handleDocDownload = (doc: { url: string; name: string }) => { const a = document.createElement('a'); a.href = doc.url; a.download = doc.name; a.click(); };
+  const handleDocPrint = (doc: { url: string }) => { const w = window.open(doc.url, '_blank'); if (w) { w.focus(); setTimeout(() => w.print(), 800); } };
+
+  if (subTab === 'contas') {
+    return <ContasPagImpostosModule onBack={() => { setSubTab('pagamentos'); fetchTaxAccounts(); }} />;
+  }
+
+  return (
+    <div className="flex flex-col font-sans text-xs">
+      {/* ══ HEADER FIXO — sempre visível ao fazer scroll ══ */}
+      <div className="sticky top-0 z-40 bg-white shadow-md border-b border-zinc-200">
+        <div className="flex justify-between items-center px-4 py-2.5">
+          <div className="flex items-center gap-3">
+            <button onClick={onBack} className="p-1.5 hover:bg-zinc-100 text-zinc-600 rounded transition-all">
+              <ChevronLeft size={18} />
+            </button>
+            <div>
+              <span className="font-black text-[#003366] text-sm uppercase tracking-tight">Pagamento de Impostos</span>
+              <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest leading-none mt-0.5">Histórico de Pagamentos de Impostos</p>
+            </div>
+          </div>
+          <button onClick={() => setSubTab('contas')} className="bg-[#003366] hover:bg-[#002244] text-white px-4 py-2 flex items-center gap-2 font-bold text-xs transition-all cursor-pointer">
+            <Receipt size={16} /> Contas Pag Impostos
+          </button>
+        </div>
+        <div className="bg-zinc-200 border-t border-zinc-300 px-4 py-1.5 flex justify-between items-center">
+          <span className="font-bold text-zinc-700 text-[11px] uppercase tracking-wide">Lista de Pagamentos</span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { setSelectedTaxId(''); setFormData({ cod: '', data: new Date().toISOString().split('T')[0], data_valor: new Date().toISOString().split('T')[0], descricao: '', caixa_nome: '', doc_suporte: '', moeda: 'AOA', valor: '' }); setShowModal(true); }}
+              className="w-7 h-7 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center font-bold text-base transition-all cursor-pointer shadow"
+              title="Novo Pagamento"
+            >+</button>
+            <span className="text-[#003366] font-bold text-xs">{new Date().getFullYear()}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ══ TABELA ══ */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse text-[12px] bg-white border border-zinc-300" style={{ minWidth: 1150 }}>
+          <thead>
+            <tr className="bg-zinc-100 border-b border-zinc-300 text-zinc-700 font-bold uppercase text-[11px]">
+              <th className="px-3 py-2.5 border-r border-zinc-200 w-16">Cod</th>
+              <th className="px-3 py-2.5 border-r border-zinc-200 w-24">Data</th>
+              <th className="px-3 py-2.5 border-r border-zinc-200 w-24">Data Valor</th>
+              <th className="px-3 py-2.5 border-r border-zinc-200" style={{ minWidth: 300 }}>Descrição</th>
+              <th className="px-3 py-2.5 border-r border-zinc-200 w-36">Caixa</th>
+              <th className="px-3 py-2.5 border-r border-zinc-200 w-36">Doc Suporte</th>
+              <th className="px-3 py-2.5 border-r border-zinc-200 w-16 text-center">Moeda</th>
+              <th className="px-3 py-2.5 border-r border-zinc-200 text-right w-32">Valor</th>
+              <th className="px-3 py-2.5 border-r border-zinc-200 text-center w-32">Doc</th>
+              <th className="px-3 py-2.5 text-center w-12">Opc</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-200">
+            {loading ? (
+              <tr>
+                <td colSpan={10} className="py-8 text-center text-zinc-400 italic">Carregando pagamentos de impostos...</td>
+              </tr>
+            ) : payments.length === 0 ? (
+              <tr>
+                <td colSpan={10} className="py-8 text-center text-zinc-400 italic">Nenhum pagamento de imposto registado. Clique no botão "+" para adicionar.</td>
+              </tr>
+            ) : payments.map((p: any) => {
+              const doc = docFiles[p.id];
+              return (
+                <tr key={p.id} className="hover:bg-blue-50/30 font-medium text-zinc-800 transition-colors">
+                  <td className="px-3 py-2 border-r border-zinc-200 font-bold text-[#003366]">{p.cod || '-'}</td>
+                  <td className="px-3 py-2 border-r border-zinc-200 whitespace-nowrap">{new Date(p.data).toLocaleDateString('pt-PT')}</td>
+                  <td className="px-3 py-2 border-r border-zinc-200 whitespace-nowrap">{new Date(p.data_valor || p.data).toLocaleDateString('pt-PT')}</td>
+                  <td className="px-3 py-2 border-r border-zinc-200 text-[13px] font-semibold text-zinc-900 leading-snug" style={{ minWidth: 300 }}>{p.descricao}</td>
+                  <td className="px-3 py-2 border-r border-zinc-200 text-zinc-600 text-[11px]">{p.caixa_nome || '-'}</td>
+                  <td className="px-3 py-2 border-r border-zinc-200 font-mono text-zinc-700 text-[11px]">{p.doc_suporte || '-'}</td>
+                  <td className="px-3 py-2 border-r border-zinc-200 text-center font-bold text-zinc-600">{p.moeda || 'AOA'}</td>
+                  <td className="px-3 py-2 border-r border-zinc-200 text-right font-mono font-bold text-zinc-900">
+                    {formatCurrency(p.valor).replace('AOA', '').trim()}
+                  </td>
+                  {/* ── Doc: Carregar / Gerir Ficheiro ── */}
+                  <td className="px-2 py-1.5 border-r border-zinc-200 text-center">
+                    <input type="file" accept="application/pdf,image/*" className="hidden"
+                      ref={el => { docInputRefs.current[p.id] = el; }}
+                      onChange={e => { const f = e.target.files?.[0]; if (f) handleDocUpload(p.id, f); e.target.value = ''; }} />
+                    {doc ? (
+                      <div className="flex items-center justify-center gap-0.5">
+                        <button onClick={() => setDocPreview({ ...doc, paymentId: p.id })} title="Visualizar" className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-all"><Eye size={13} /></button>
+                        <button onClick={() => handleDocDownload(doc)} title="Baixar" className="p-1 text-emerald-600 hover:bg-emerald-50 rounded transition-all"><Download size={13} /></button>
+                        <button onClick={() => handleDocPrint(doc)} title="Imprimir" className="p-1 text-zinc-500 hover:bg-zinc-100 rounded transition-all"><Printer size={13} /></button>
+                        <button onClick={() => handleDocDelete(p.id)} title="Eliminar Ficheiro" className="p-1 text-red-500 hover:bg-red-50 rounded transition-all"><Trash2 size={13} /></button>
+                      </div>
+                    ) : (
+                      <button onClick={() => docInputRefs.current[p.id]?.click()} title="Carregar PDF ou Imagem"
+                        className="inline-flex items-center gap-1 px-2 py-1 bg-zinc-100 hover:bg-[#003366] hover:text-white text-zinc-600 rounded text-[10px] font-bold transition-all cursor-pointer">
+                        <Upload size={11} /> Carregar
+                      </button>
+                    )}
+                  </td>
+                  <td className="px-2 py-1.5 text-center">
+                    <button onClick={() => handleDelete(p.id)} title="Eliminar Registo" className="p-1 text-red-500 hover:bg-red-50 rounded transition-all"><Trash2 size={13} /></button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* ══ MODAL VISUALIZAÇÃO DE DOCUMENTO ══ */}
+      <AnimatePresence>
+        {docPreview && (
+          <div className="fixed inset-0 z-[500] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setDocPreview(null)} className="absolute inset-0 bg-black/75" />
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              className="relative w-full max-w-5xl bg-white shadow-2xl rounded-lg overflow-hidden flex flex-col" style={{ height: '90vh' }}>
+              <div className="bg-[#003366] text-white px-5 py-3 flex justify-between items-center shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <FileText size={16} className="shrink-0" />
+                  <span className="font-bold text-sm truncate">{docPreview.name}</span>
+                </div>
+                <div className="flex items-center gap-1 shrink-0 ml-4">
+                  <button onClick={() => handleDocDownload(docPreview)} className="flex items-center gap-1 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded text-xs font-bold transition-all"><Download size={14} /> Baixar</button>
+                  <button onClick={() => handleDocPrint(docPreview)} className="flex items-center gap-1 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded text-xs font-bold transition-all"><Printer size={14} /> Imprimir</button>
+                  <button onClick={() => { handleDocDelete(docPreview.paymentId); setDocPreview(null); }} className="flex items-center gap-1 px-3 py-1.5 bg-red-600/80 hover:bg-red-600 rounded text-xs font-bold transition-all"><Trash2 size={14} /> Eliminar</button>
+                  <button onClick={() => setDocPreview(null)} className="p-1.5 hover:bg-white/20 rounded ml-2 transition-all"><X size={16} /></button>
+                </div>
+              </div>
+              <div className="flex-1 overflow-auto bg-zinc-100 flex items-center justify-center p-6">
+                {docPreview.type === 'application/pdf'
+                  ? <iframe src={docPreview.url} className="w-full h-full rounded shadow-lg border bg-white" title={docPreview.name} />
+                  : <img src={docPreview.url} alt={docPreview.name} className="max-w-full max-h-full object-contain rounded shadow-lg" />}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ══ MODAL NOVO PAGAMENTO ══ */}
+      <AnimatePresence>
+        {showModal && (
+          <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowModal(false)} className="absolute inset-0 bg-black/50 backdrop-blur-xs" />
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="relative w-full max-w-2xl bg-white shadow-2xl rounded-none border border-zinc-300 overflow-hidden">
+              <div className="bg-[#003366] text-white p-4 flex justify-between items-center">
+                <h3 className="font-bold text-sm uppercase tracking-wide">Registar Pagamento de Imposto</h3>
+                <button onClick={() => setShowModal(false)} className="text-white hover:text-zinc-200"><X size={18} /></button>
+              </div>
+              <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs font-bold">
+                {/* Selecionar Tipo de Imposto (Carregado de Contas Pag Impostos e Predefinidos) */}
+                <div>
+                  <label className="block font-bold text-zinc-600 mb-1 uppercase text-[10px]">Selecionar Tipo de Imposto</label>
+                  <select
+                    value={selectedTaxId}
+                    onChange={e => handleSelectTaxType(e.target.value)}
+                    className="w-full border border-zinc-300 p-2 font-bold text-zinc-800 focus:border-[#003366] outline-none bg-white cursor-pointer"
+                  >
+                    <option value="">-- Selecionar Imposto Registado ou Pré-Definido --</option>
+                    {taxAccounts.length > 0 && (
+                      <optgroup label="Impostos Registados / Importados">
+                        {taxAccounts.map((t: any) => (
+                          <option key={t.id} value={t.id}>
+                            {t.cod} - {t.descricao} ({t.conta_pgc})
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    <optgroup label="Impostos Pré-Definidos (Importar Automaticamente)">
+                      {PREDEFINED_TAXES_ANGOLA.map((t: string, idx: number) => {
+                        const codeMatch = t.match(/^([A-Z0-9]+)/i);
+                        const extractedCod = codeMatch ? codeMatch[1] : '';
+                        const isImported = taxAccounts.some((ta: any) => ta.cod === extractedCod);
+                        if (isImported) return null;
+                        
+                        return (
+                          <option key={`pre-${idx}`} value={t}>
+                            {t}
+                          </option>
+                        );
+                      })}
+                    </optgroup>
+                  </select>
+                </div>
+
+                {/* Descrição — campo largo com texto maior */}
+                <div>
+                  <label className="block font-bold text-zinc-600 mb-1 uppercase text-[10px]">Descrição do Imposto <span className="text-red-500">*</span></label>
+                  <input type="text"
+                    className="w-full border-2 border-zinc-300 p-2.5 focus:border-[#003366] outline-none text-[13px] font-semibold text-zinc-800 bg-zinc-50"
+                    value={formData.descricao}
+                    onChange={e => setFormData({ ...formData, descricao: e.target.value })}
+                    required
+                    placeholder="ex: Imposto Selo Verba 23.3  Art. 7º n.º 1 Dec. Lei 7/19" />
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block font-bold text-zinc-600 mb-1 uppercase text-[10px]">Código / Guia</label>
+                    <input type="text" className="w-full border border-zinc-300 p-2.5 font-bold text-[#003366] focus:border-[#003366] outline-none" value={formData.cod} onChange={e => setFormData({ ...formData, cod: e.target.value })} required />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-zinc-600 mb-1 uppercase text-[10px]">Data de Pagamento</label>
+                    <input type="date" className="w-full border border-zinc-300 p-2.5 focus:border-[#003366] outline-none" value={formData.data} onChange={e => setFormData({ ...formData, data: e.target.value })} required />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-zinc-600 mb-1 uppercase text-[10px]">Data Valor</label>
+                    <input type="date" className="w-full border border-zinc-300 p-2.5 focus:border-[#003366] outline-none" value={formData.data_valor} onChange={e => setFormData({ ...formData, data_valor: e.target.value })} required />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Caixa / Banco de Saída */}
+                  <div>
+                    <label className="block font-bold text-zinc-600 mb-1 uppercase text-[10px]">Caixa / Banco de Saída</label>
+                    <select
+                      value={formData.caixa_nome}
+                      onChange={e => setFormData({ ...formData, caixa_nome: e.target.value })}
+                      className="w-full border border-zinc-300 p-2.5 focus:border-[#003366] outline-none bg-white cursor-pointer"
+                      required
+                    >
+                      <option value="">-- Selecionar Caixa / Banco --</option>
+                      {caixas.length > 0 ? (
+                        caixas.map((c: any) => (
+                          <option key={c.id} value={c.name}>
+                            {c.name} {c.codigo_caixa ? `(${c.codigo_caixa})` : ''} - Saldo: {formatCurrency(c.currentBalance)}
+                          </option>
+                        ))
+                      ) : (
+                        <>
+                          <option value="Caixa Central">Caixa Central</option>
+                          <option value="Banco BAI">Banco BAI</option>
+                          <option value="Banco BFA">Banco BFA</option>
+                          <option value="Banco BIC">Banco BIC</option>
+                        </>
+                      )}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-bold text-zinc-600 mb-1 uppercase text-[10px]">Valor Pago (AOA)</label>
+                    <input type="number" step="0.01" className="w-full border border-zinc-300 p-2.5 font-mono font-bold text-[#003366] focus:border-[#003366] outline-none" value={formData.valor} onChange={e => setFormData({ ...formData, valor: e.target.value })} required />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-zinc-600 mb-1 uppercase text-[10px]">Nº Doc Suporte / Recibo Quitação</label>
+                  <input type="text" className="w-full border border-zinc-300 p-2.5 focus:border-[#003366] outline-none" value={formData.doc_suporte} onChange={e => setFormData({ ...formData, doc_suporte: e.target.value })} placeholder="Ex: 250106290179232" />
+                </div>
+
+                <div className="pt-4 flex justify-end gap-2 border-t border-zinc-200">
+                  <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 border border-zinc-300 text-zinc-700 font-bold hover:bg-zinc-100 cursor-pointer">Cancelar</button>
+                  <button type="submit" className="px-5 py-2 bg-[#003366] text-white font-bold hover:bg-[#002244] cursor-pointer">Registar Pagamento</button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+// ============================================================
+// 4. APAGAR MOVIMENTOS (Conforme Imagem do Utilizador)
+// ============================================================
+const DeleteMovementsModule = ({ onBack }: { onBack: () => void }) => {
+  const { user } = useAuth();
+  const [diarios, setDiarios] = useState<any[]>([]);
+  const [movements, setMovements] = useState<any[]>([]);
+  const [selectedDiario, setSelectedDiario] = useState('0000');
+  const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const fetchDiarios = async () => {
+    if (!user?.empresa_id) return;
+    try {
+      const data = await fetchJson(`/api/accounting/diarios?empresa_id=${user.empresa_id}`);
+      if (Array.isArray(data)) setDiarios(data);
+    } catch (e) {
+      console.error('Erro ao carregar diários:', e);
+    }
+  };
+
+  const fetchMovements = async () => {
+    if (!user?.empresa_id) return;
+    setLoading(true);
+    try {
+      const data = await fetchJson(`/api/accounting/movements?empresa_id=${user.empresa_id}&diario=${selectedDiario}&start=${startDate}&end=${endDate}`);
+      if (Array.isArray(data)) setMovements(data);
+      else setMovements([]);
+    } catch (e) {
+      console.error('Erro ao carregar movimentos:', e);
+      setMovements([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDiarios();
+  }, [user?.empresa_id]);
+
+  useEffect(() => {
+    fetchMovements();
+  }, [user?.empresa_id, selectedDiario, startDate, endDate]);
+
+  const filteredMovements = (movements || []).filter(m => {
+    if (!searchTerm) return true;
+    const term = searchTerm.toLowerCase();
+    return (
+      (m.descricao || '').toLowerCase().includes(term) ||
+      (m.conta_pgc || '').toLowerCase().includes(term) ||
+      (m.origem_id || '').toLowerCase().includes(term)
+    );
+  });
+
+  const totalCreditos = filteredMovements.reduce((acc, m) => acc + Number(m.credito || 0), 0);
+  const totalDebitos = filteredMovements.reduce((acc, m) => acc + Number(m.debito || 0), 0);
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedIds(filteredMovements.map(m => m.id));
+    } else {
+      setSelectedIds([]);
+    }
+  };
+
+  const handleSelectRow = (id: string, checked: boolean) => {
+    if (checked) {
+      setSelectedIds(prev => [...prev, id]);
+    } else {
+      setSelectedIds(prev => prev.filter(x => x !== id));
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedIds.length === 0) {
+      alert('Selecione pelo menos um movimento para apagar.');
+      return;
+    }
+    if (!window.confirm(`Tem a certeza que deseja apagar ${selectedIds.length} movimentos selecionados?`)) {
+      return;
+    }
+    try {
+      await fetchWithAuth('/api/accounting/movements/batch-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedIds, empresa_id: user?.empresa_id })
+      });
+      alert('Movimentos apagados com sucesso!');
+      setSelectedIds([]);
+      fetchMovements();
+    } catch (e) {
+      console.error('Erro ao apagar movimentos:', e);
+      alert('Erro ao apagar movimentos.');
+    }
+  };
+
+  const handleExportPDF = () => {
+    window.print();
+  };
+
+  const handleExportExcel = () => {
+    const selectedDiarioObj = diarios.find(d => String(d.codigo) === String(selectedDiario));
+    const header = ['ID', 'Data', 'Diario', 'Conta PGC', 'Descricao', 'Debito', 'Credito'];
+    const csvRows = [
+      header.join(';'),
+      ...filteredMovements.map(m => [
+        m.id || '',
+        m.data_lancamento || '',
+        m.diario || selectedDiario,
+        `"${(m.conta_pgc || '').replace(/"/g, '""')}"`,
+        `"${(m.descricao || '').replace(/"/g, '""')}"`,
+        Number(m.debito || 0).toFixed(2),
+        Number(m.credito || 0).toFixed(2)
+      ].join(';'))
+    ];
+    const blob = new Blob(["\ufeff" + csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `movimentos_diario_${selectedDiario || 'geral'}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const selectedDiarioObj = diarios.find(d => String(d.codigo) === String(selectedDiario));
+
+  return (
+    <div className="space-y-4 font-sans text-xs bg-white p-4 border border-zinc-300 shadow-sm">
+      <div className="flex justify-between items-center border-b border-zinc-200 pb-2">
+        <button onClick={onBack} className="flex items-center gap-1 font-bold text-[#003366] hover:underline">
+          <ChevronLeft size={16} /> Voltar à Contabilidade
+        </button>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 border border-zinc-300 px-2 py-1 bg-zinc-50 shadow-2xs">
+            <FileCheck size={18} className="text-emerald-600" />
+            <span className="text-[10px] font-bold text-zinc-600 uppercase">Validação</span>
+          </div>
+          <div className="flex items-center gap-1 border border-zinc-300 px-2 py-1 bg-zinc-50 shadow-2xs">
+            <Calendar size={18} className="text-emerald-600" />
+            <span className="text-[10px] font-bold text-emerald-700 uppercase font-mono">JAN ✓</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="w-full bg-gradient-to-r from-zinc-200 via-zinc-100 to-zinc-200 border-t border-b border-zinc-300 py-1.5 text-center shadow-xs">
+        <h2 className="font-black text-zinc-800 text-sm tracking-wide uppercase">APAGAR MOVIMENTOS</h2>
+      </div>
+
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-zinc-50 p-4 border border-zinc-200">
+        <div className="space-y-1">
+          <span className="font-bold text-zinc-700 block text-[11px]">Diário</span>
+          <div className="font-bold text-[#003366] text-xs">
+            <select
+              value={selectedDiario}
+              onChange={e => setSelectedDiario(e.target.value)}
+              className="border border-zinc-300 p-1.5 font-bold text-xs bg-white text-[#003366] outline-none min-w-[240px] cursor-pointer"
+            >
+              {diarios.length > 0 ? (
+                diarios.map((d: any) => (
+                  <option key={d.id} value={d.codigo}>
+                    {d.codigo} - {d.descricao}
+                  </option>
+                ))
+              ) : (
+                <option value="0000">Diário de Destino 0000 Abertura</option>
+              )}
+            </select>
+          </div>
+          <div className="text-[11px] font-semibold text-sky-700">
+            {selectedDiarioObj ? `${selectedDiarioObj.descricao}` : 'Diário de Destino 0000 Abertura'}
+          </div>
+        </div>
+
+        <div className="space-y-1 text-center">
+          <span className="font-bold text-zinc-700 block text-[11px]">Periodo Contabilistico</span>
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={startDate}
+              onChange={e => setStartDate(e.target.value)}
+              className="border border-zinc-300 p-1 bg-white font-mono text-[11px]"
+            />
+            <span className="font-bold text-zinc-500">a</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={e => setEndDate(e.target.value)}
+              className="border border-zinc-300 p-1 bg-white font-mono text-[11px]"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center gap-6">
+          <div className="text-right">
+            <span className="font-bold text-zinc-600 block text-[11px]">Total Creditos</span>
+            <span className="font-mono font-bold text-zinc-900 text-xs">{formatCurrency(totalCreditos).replace('AOA', '').trim()}</span>
+          </div>
+
+          <div className="text-right">
+            <span className="font-bold text-zinc-600 block text-[11px]">Total Débitos</span>
+            <span className="font-mono font-bold text-zinc-900 text-xs">{formatCurrency(totalDebitos).replace('AOA', '').trim()}</span>
+          </div>
+
+          <button
+            onClick={handleDeleteSelected}
+            className="bg-emerald-500 hover:bg-emerald-600 text-red-700 hover:text-red-800 font-black italic text-sm px-6 py-2 rounded-full shadow-md uppercase tracking-wider transition-all cursor-pointer border border-emerald-400"
+          >
+            Apagar Movimentos
+          </button>
+        </div>
+      </div>
+
+      <div className="flex justify-between items-center pt-2">
+        <span className="font-bold text-zinc-700 text-xs italic">Movimentos Gerais de Diário</span>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search size={14} className="absolute left-2.5 top-2 text-zinc-400" />
+            <input
+              type="text"
+              placeholder="Pesquisar movimento..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="pl-8 pr-3 py-1 border border-zinc-300 text-xs bg-white focus:border-[#003366] outline-none min-w-[200px]"
+            />
+          </div>
+          <button
+            onClick={handleExportPDF}
+            className="bg-zinc-100 hover:bg-zinc-200 border border-zinc-300 text-zinc-700 px-3 py-1 font-bold text-xs flex items-center gap-1 cursor-pointer"
+          >
+            <Download size={13} /> PDF
+          </button>
+          <button
+            onClick={handleExportExcel}
+            className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 px-3 py-1 font-bold text-xs flex items-center gap-1 cursor-pointer"
+          >
+            <FileSpreadsheet size={13} /> Excel
+          </button>
+        </div>
+      </div>
+
+      <div className="border border-zinc-300 overflow-x-auto shadow-xs">
+        <table className="w-full text-left border-collapse text-[11px]">
+          <thead>
+            <tr className="border-b border-zinc-300 text-zinc-700 font-bold bg-zinc-100">
+              <th className="px-2 py-2 w-8 text-center border-r border-zinc-200">
+                <input
+                  type="checkbox"
+                  checked={filteredMovements.length > 0 && selectedIds.length === filteredMovements.length}
+                  onChange={e => handleSelectAll(e.target.checked)}
+                />
+              </th>
+              <th className="px-3 py-2 border-r border-zinc-200 w-12">Num</th>
+              <th className="px-3 py-2 border-r border-zinc-200 w-24">Diario Periodo</th>
+              <th className="px-3 py-2 border-r border-zinc-200 w-24">Mov Nº / Conta</th>
+              <th className="px-3 py-2 border-r border-zinc-200 w-20">Data Valor</th>
+              <th className="px-3 py-2 border-r border-zinc-200 w-24">Data Documento</th>
+              <th className="px-3 py-2 border-r border-zinc-200">Descrição do Movimento / Nomenclatura Conta</th>
+              <th className="px-3 py-2 border-r border-zinc-200 text-right w-28">Debito</th>
+              <th className="px-3 py-2 border-r border-zinc-200 text-right w-28">Credito</th>
+              <th className="px-3 py-2 text-right w-28">Saldo</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-200 font-medium">
+            {loading ? (
+              <tr><td colSpan={10} className="py-8 text-center text-zinc-400 italic">Carregando movimentos de diário...</td></tr>
+            ) : filteredMovements.length === 0 ? (
+              <tr><td colSpan={10} className="py-8 text-center text-zinc-400 italic">Nenhum movimento encontrado para o diário e período selecionados.</td></tr>
+            ) : (
+              filteredMovements.map((m: any, idx: number) => {
+                const isChecked = selectedIds.includes(m.id);
+                return (
+                  <React.Fragment key={m.id}>
+                    <tr className={`hover:bg-zinc-50 ${isChecked ? 'bg-sky-50/60' : ''}`}>
+                      <td className="px-2 py-1.5 text-center border-r border-zinc-200">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={e => handleSelectRow(m.id, e.target.checked)}
+                        />
+                      </td>
+                      <td className="px-3 py-2 border-r border-zinc-200 text-zinc-600 font-bold text-xs">{idx + 1}</td>
+                      <td className="px-3 py-2 border-r border-zinc-200 font-mono text-zinc-800 text-xs">{m.diario || '0001'}</td>
+                      <td className="px-3 py-2 border-r border-zinc-200 font-bold text-[#003366] text-xs">{m.origem_id || String(m.id).slice(0, 8)}</td>
+                      <td className="px-3 py-2 border-r border-zinc-200 font-mono text-zinc-700 text-xs">{m.data_lancamento || '---'}</td>
+                      <td className="px-3 py-2 border-r border-zinc-200 font-mono text-zinc-700 text-xs">{m.data_lancamento || '---'}</td>
+                      <td className="px-3 py-2 border-r border-zinc-200 font-bold text-zinc-900 text-xs">{m.descricao || m.descricao_lancamento || 'Movimento Contabilístico'}</td>
+                      <td className="px-3 py-2 border-r border-zinc-200 text-right font-mono font-bold text-zinc-900 text-xs">
+                        {formatCurrency(m.debito || 0).replace('AOA', '').trim()}
+                      </td>
+                      <td className="px-3 py-2 border-r border-zinc-200 text-right font-mono font-bold text-zinc-900 text-xs">
+                        {formatCurrency(m.credito || 0).replace('AOA', '').trim()}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono font-bold text-[#003366] text-xs">
+                        {formatCurrency(Math.abs((Number(m.debito || 0) - Number(m.credito || 0)))).replace('AOA', '').trim()}
+                      </td>
+                    </tr>
+
+                    <tr className={`border-b border-zinc-300 ${isChecked ? 'bg-sky-50/30' : 'bg-zinc-50/50'}`}>
+                      <td className="px-2 py-1 text-center border-r border-zinc-200"></td>
+                      <td className="px-3 py-1 border-r border-zinc-200"></td>
+                      <td className="px-3 py-1 border-r border-zinc-200 text-zinc-400 font-mono text-xs">PGC</td>
+                      <td className="px-3 py-1 border-r border-zinc-200 font-mono font-black text-sky-700 text-xs">
+                        {m.conta_pgc || '---'}
+                      </td>
+                      <td className="px-3 py-1 border-r border-zinc-200"></td>
+                      <td className="px-3 py-1 border-r border-zinc-200"></td>
+                      <td className="px-3 py-1 border-r border-zinc-200 font-bold text-zinc-700 pl-4 text-xs">
+                        {m.descricao_conta || m.descricao || 'Rubrica PGC'}
+                      </td>
+                      <td className="px-3 py-1 border-r border-zinc-200 text-right font-mono text-zinc-700 text-xs">
+                        {formatCurrency(m.debito || 0).replace('AOA', '').trim()}
+                      </td>
+                      <td className="px-3 py-1 border-r border-zinc-200 text-right font-mono text-zinc-700 text-xs">
+                        {formatCurrency(m.credito || 0).replace('AOA', '').trim()}
+                      </td>
+                      <td className="px-3 py-1 text-right font-mono text-zinc-400 text-xs"></td>
+                    </tr>
+                  </React.Fragment>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+const VatSettlementModule = ({ onBack, companyData, invoices = [], purchases = [], vatToPay = 0, vatLiquidated = 0, vatDeductible = 0 }: { onBack: () => void; companyData?: any; invoices?: any[]; purchases?: any[]; vatToPay?: number; vatLiquidated?: number; vatDeductible?: number }) => {
+  const { user } = useAuth();
+  const [selectedMonth, setSelectedMonth] = useState(String(new Date().getMonth() + 1));
+  const [selectedYear, setSelectedYear] = useState(String(new Date().getFullYear()));
+  const [data, setData] = useState<any>({ saldosPeriodo: [], apuramentoMovimentos: [], totais: { debito: 0, credito: 0 }, isApurado: false });
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+
+  const months = [
+    { value: '1', label: 'Janeiro' },
+    { value: '2', label: 'Fevereiro' },
+    { value: '3', label: 'Março' },
+    { value: '4', label: 'Abril' },
+    { value: '5', label: 'Maio' },
+    { value: '6', label: 'Junho' },
+    { value: '7', label: 'Julho' },
+    { value: '8', label: 'Agosto' },
+    { value: '9', label: 'Setembro' },
+    { value: '10', label: 'Outubro' },
+    { value: '11', label: 'Novembro' },
+    { value: '12', label: 'Dezembro' },
+  ];
+
+  const fetchVatData = async () => {
+    setLoading(true);
+    try {
+      if (user?.empresa_id) {
+        const resData = await fetchJson(`/api/accounting/vat-settlement?empresa_id=${user.empresa_id}&month=${selectedMonth}&year=${selectedYear}`);
+        if (resData && (resData.saldosPeriodo || resData.apuramentoMovimentos)) {
+          setData(resData);
+        }
+      }
+    } catch (e) {
+      console.error('Erro ao carregar dados de apuramento de IVA:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchVatData();
+  }, [user?.empresa_id, selectedMonth, selectedYear]);
+
+  const handleRegisterApuramento = async () => {
+    if (!user?.empresa_id) return;
+    setSubmitting(true);
+    try {
+      const ivaSuportado = saldosPeriodoList?.find((s: any) => s.conta === '34.5.1.1')?.debito || computedDeductible || 0;
+      const ivaLiquidado = saldosPeriodoList?.find((s: any) => s.conta === '34.5.3.1')?.credito || computedLiquidated || 0;
+
+      await fetchWithAuth('/api/accounting/vat-settlement', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          empresa_id: user.empresa_id,
+          month: selectedMonth,
+          year: selectedYear,
+          ivaSuportado,
+          ivaLiquidado
+        })
+      });
+      alert('Apuramento de IVA registado com sucesso!');
+      fetchVatData();
+    } catch (e) {
+      console.error('Erro ao registar apuramento:', e);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Parsing robusto de datas para faturas e compras
+  const parseDocDate = (doc: any) => {
+    if (!doc) return null;
+    const raw = doc.date || doc.created_at || doc.issue_date || doc.data_emissao || doc.data || '';
+    if (!raw) return null;
+    const d = new Date(raw);
+    return isNaN(d.getTime()) ? null : d;
+  };
+  const targetM = Number(selectedMonth);
+  const targetY = Number(selectedYear);
+
+  const handleExportCSV = () => {
+    const exportData = [
+      ...saldosPeriodoList.map((s: any) => ({
+        Secao: 'Saldos do Periodo',
+        Conta: s.conta,
+        Descricao: s.descricao,
+        Debito: s.debito || 0,
+        Credito: s.credito || 0,
+        SaldoDebito: s.saldoDebito || 0,
+        SaldoCredito: s.saldoCredito || 0
+      })),
+      ...apuramentoMovimentosList.map((m: any) => ({
+        Secao: 'Movimentos de Apuramento',
+        Conta: m.conta,
+        Descricao: m.descricao,
+        Debito: m.debito || 0,
+        Credito: m.credito || 0,
+        SaldoDebito: 0,
+        SaldoCredito: 0
+      }))
+    ];
+    if (exportData.length === 0) return alert('Sem dados para exportar.');
+    const headers = Object.keys(exportData[0]).join(';');
+    const csvContent = [headers, ...exportData.map(r => Object.values(r).map(v => `"${String(v).replace(/"/g, '""')}"`).join(';'))].join('\n');
+    const blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Apuramento_IVA_${monthLabel}_${selectedYear}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const periodInvoices = (invoices || []).filter((inv: any) => {
+    if (!inv) return false;
+    const d = parseDocDate(inv);
+    if (!d) return false;
+    return d.getFullYear() === targetY && (d.getMonth() + 1) === targetM;
+  });
+
+  const periodPurchases = (purchases || []).filter((pur: any) => {
+    if (!pur || !pur.date) return false;
+    const parts = String(pur.date).split('-');
+    return (parts[0] === selectedYear || !parts[0]) && (parts[1] === selectedMonth.padStart(2, '0') || !parts[1]);
+  });
+
+  const computedLiquidated = periodInvoices.reduce((acc: number, inv: any) => acc + (inv ? (inv.tax || (inv.total * 0.14) || 0) : 0), 0) || vatLiquidated || 0;
+  const computedDeductible = periodPurchases.reduce((acc: number, pur: any) => acc + (pur ? (pur.tax || pur.iva || (pur.total * 0.14) || 0) : 0), 0) || vatDeductible || 0;
+  const computedDifference = computedLiquidated - computedDeductible;
+
+  const saldosPeriodoList = (data.saldosPeriodo && data.saldosPeriodo.length > 0) ? data.saldosPeriodo : [
+    { conta: '34.5.1.1', descricao: 'IVA Suportado - Existências / Imobilizado / Serviços', debito: computedDeductible, credito: 0, saldoDebito: computedDeductible, saldoCredito: 0 },
+    { conta: '34.5.2.1', descricao: 'IVA Dedutível - Existências / Imobilizado / Serviços', debito: computedDeductible, credito: 0, saldoDebito: computedDeductible, saldoCredito: 0 },
+    { conta: '34.5.3.1', descricao: 'IVA Liquidado - Operações Gerais (Taxa 14%)', debito: 0, credito: computedLiquidated, saldoDebito: 0, saldoCredito: 0 },
+    { conta: '34.5.4.1', descricao: 'IVA Regularizações (A Favor do Estado / A Favor do Sujeito Passivo)', debito: 0, credito: 0, saldoDebito: 0, saldoCredito: 0 },
+    { conta: '34.5.5.1', descricao: 'Apuramento do IVA do Período', debito: computedDeductible, credito: computedLiquidated, saldoDebito: computedDifference < 0 ? Math.abs(computedDifference) : 0, saldoCredito: computedDifference > 0 ? computedDifference : 0 },
+    { conta: '34.5.6.1', descricao: computedDifference > 0 ? 'IVA a Pagar ao Estado' : 'Crédito de Imposto a Transportar / Recuperar', debito: computedDifference < 0 ? Math.abs(computedDifference) : 0, credito: computedDifference > 0 ? computedDifference : 0, saldoDebito: computedDifference < 0 ? Math.abs(computedDifference) : 0, saldoCredito: computedDifference > 0 ? computedDifference : 0 }
+  ];
+
+  const apuramentoMovimentosList = (data.apuramentoMovimentos && data.apuramentoMovimentos.length > 0) ? data.apuramentoMovimentos : [
+    { conta: '34.5.3.1', descricao: 'IVA Liquidado (Transferência para Apuramento)', debito: computedLiquidated, credito: 0 },
+    { conta: '34.5.2.1', descricao: 'IVA Dedutível (Transferência para Apuramento)', debito: 0, credito: computedDeductible },
+    { conta: '34.5.5.1', descricao: 'Apuramento do IVA (Saldo do Período)', debito: computedDifference > 0 ? computedDifference : 0, credito: computedDifference < 0 ? Math.abs(computedDifference) : 0 },
+    { conta: computedDifference > 0 ? '34.5.6.1' : '34.5.7.1', descricao: computedDifference > 0 ? 'Transferência para IVA a Pagar' : 'Transferência para Crédito de Imposto', debito: 0, credito: Math.abs(computedDifference) }
+  ];
+
+  const totaisDebito = apuramentoMovimentosList.reduce((acc: number, row: any) => acc + (row.debito || 0), 0);
+  const totaisCredito = apuramentoMovimentosList.reduce((acc: number, row: any) => acc + (row.credito || 0), 0);
+
+  const monthLabel = months.find(m => m.value === selectedMonth)?.label || 'Janeiro';
+
+
+  return (
+    <div className="space-y-6 font-sans text-xs bg-white p-8 border border-zinc-200 shadow-xl min-h-screen">
+      {/* Top action bar & selectors */}
+      <div className="flex justify-between items-center border-b border-zinc-200 pb-4 no-print">
+        <button onClick={onBack} className="flex items-center gap-2 text-zinc-500 font-bold uppercase text-[10px] hover:text-zinc-900">
+          <ChevronLeft size={16} /> Voltar à Contabilidade
+        </button>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <label className="font-bold text-zinc-500 uppercase text-[9px]">Mês:</label>
+            <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="border border-zinc-300 px-3 py-1 font-bold text-zinc-700 bg-white">
+              {months.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="font-bold text-zinc-500 uppercase text-[9px]">Ano:</label>
+            <input type="text" value={selectedYear} onChange={e => setSelectedYear(e.target.value)} className="w-16 border border-zinc-300 px-2 py-1 font-bold text-zinc-700 text-center" />
+          </div>
+          <button onClick={() => window.print()} className="p-1.5 border border-zinc-300 text-zinc-600 hover:bg-zinc-100" title="Imprimir">
+            <Printer size={14} /> Imprimir
+          </button>
+          <button onClick={handleExportCSV} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] uppercase flex items-center gap-1.5 rounded-xs shadow-xs" title="Baixar relatório em Excel">
+            <FileSpreadsheet size={14} /> Baixar Excel
+          </button>
+          <button onClick={() => window.print()} className="px-3 py-1.5 bg-blue-900 hover:bg-blue-950 text-white font-bold text-[10px] uppercase flex items-center gap-1.5 rounded-xs shadow-xs" title="Baixar PDF">
+            <Download size={14} /> Baixar PDF
+          </button>
+        </div>
+      </div>
+
+      {/* Header idêntico à Imagem 2 */}
+      <div className="flex justify-between items-start pt-2">
+        <div className="text-center w-full">
+          <h2 className="text-sm font-bold text-zinc-800 uppercase">Apuramento IVA da Firma:</h2>
+          <h3 className="text-sm font-bold text-zinc-800 uppercase mt-0.5">Periodo Contabilistico</h3>
+          <p className="text-xs font-bold text-zinc-600 mt-0.5">{monthLabel} - {selectedYear}</p>
+        </div>
+        <div className="text-right whitespace-nowrap">
+          <p className="font-bold text-zinc-800 uppercase text-[11px]">{companyData?.name || companyData?.nome_empresa || 'MARTENDÊNCIAS COMÉRCIO E PRESTAÇÃO DE SERVIÇOS, LDA'}</p>
+        </div>
+      </div>
+
+      <div className="space-y-1 text-[10px] text-zinc-500 font-bold">
+        <p>Apuramento IVA Emitido em AOA</p>
+        <p>ExchangeRate : 1</p>
+      </div>
+
+      <div className="text-[9px] text-zinc-400 italic text-right">
+        BApuramento de IVAEmitido em {new Date().toLocaleDateString('pt-PT')} {new Date().toLocaleTimeString('pt-PT')}
+      </div>
+
+      {/* Secção 1: Cálculo de Saldos do Período (Imagem 2) */}
+      <div className="space-y-2">
+        <h4 className="text-xs font-bold text-blue-600 uppercase border-b border-blue-600 pb-1">Cálculo de Saldos do Período</h4>
+        <table className="w-full text-left text-[11px] border-collapse">
+          <thead>
+            <tr className="border-b border-zinc-400 text-zinc-700 font-bold">
+              <th className="py-1 w-24">Conta</th>
+              <th className="py-1">Descricao</th>
+              <th className="py-1 text-right w-28">Debito</th>
+              <th className="py-1 text-right w-28">Credito</th>
+              <th colSpan={2} className="py-1 text-center w-56 border-b border-zinc-200">Saldo</th>
+            </tr>
+            <tr className="text-zinc-500 text-[10px] border-b border-zinc-200">
+              <th colSpan={4}></th>
+              <th className="py-1 text-right w-28">Débito</th>
+              <th className="py-1 text-right w-28">Crédito</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-100 font-medium">
+            {loading ? (
+              <tr><td colSpan={6} className="py-4 text-center text-zinc-400 italic">Carregando saldos do período...</td></tr>
+            ) : saldosPeriodoList.map((row: any) => (
+              <tr key={row.conta}>
+                <td className="py-1.5 font-bold font-mono text-zinc-800">{row.conta}</td>
+                <td className="py-1.5 text-zinc-800 font-semibold">{row.descricao}</td>
+                <td className="py-1.5 text-right font-mono font-bold text-zinc-800">{formatCurrency(row.debito).replace('AOA', '').trim()}</td>
+                <td className="py-1.5 text-right font-mono font-bold text-zinc-800">{formatCurrency(row.credito).replace('AOA', '').trim()}</td>
+                <td className="py-1.5 text-right font-mono font-bold text-zinc-800">{formatCurrency(row.saldoDebito).replace('AOA', '').trim()}</td>
+                <td className="py-1.5 text-right font-mono font-bold text-zinc-800">{formatCurrency(row.saldoCredito).replace('AOA', '').trim()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Secção 2: Apuramento de Resultados do Periodo (Movimentos) (Imagem 2) */}
+      <div className="space-y-2 pt-4">
+        <h4 className="text-xs font-bold text-blue-600 uppercase border-b border-blue-600 pb-1">Apuramento de Resultados do Periodo (Movimentos)</h4>
+        <table className="w-full text-left text-[11px] border-collapse">
+          <thead>
+            <tr className="border-b border-zinc-400 text-zinc-700 font-bold">
+              <th className="py-1 w-24">Conta</th>
+              <th className="py-1">Descricao</th>
+              <th className="py-1 text-right w-28">Debito</th>
+              <th className="py-1 text-right w-28">Credito</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-100 font-medium">
+            {loading ? (
+              <tr><td colSpan={4} className="py-4 text-center text-zinc-400 italic">Carregando apuramento de resultados...</td></tr>
+            ) : apuramentoMovimentosList.map((row: any) => (
+              <tr key={row.conta}>
+                <td className="py-1.5 font-bold font-mono text-zinc-800">{row.conta}</td>
+                <td className="py-1.5 text-zinc-800 font-semibold">{row.descricao}</td>
+                <td className="py-1.5 text-right font-mono font-bold text-zinc-800">{formatCurrency(row.debito).replace('AOA', '').trim()}</td>
+                <td className="py-1.5 text-right font-mono font-bold text-zinc-800">{formatCurrency(row.credito).replace('AOA', '').trim()}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t-2 border-zinc-800 font-bold">
+              <td colSpan={2}></td>
+              <td className="py-2 text-right font-mono text-zinc-900">{formatCurrency(totaisDebito || data.totais?.debito || 0).replace('AOA', '').trim()}</td>
+              <td className="py-2 text-right font-mono text-zinc-900">{formatCurrency(totaisCredito || data.totais?.credito || 0).replace('AOA', '').trim()}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      {/* Botão idêntico à Imagem 2 (REGISTAR APURAMENTO verde brilhante) */}
+      <div className="pt-6 flex justify-end no-print">
+        <button
+          onClick={handleRegisterApuramento}
+          disabled={submitting || data.isApurado}
+          className="bg-emerald-500 hover:bg-emerald-600 text-zinc-950 font-black italic text-sm px-6 py-2.5 rounded shadow-lg uppercase tracking-wider transition-all cursor-pointer disabled:opacity-50"
+        >
+          {submitting ? 'A REGISTAR...' : data.isApurado ? 'APURAMENTO JÁ REGISTADO' : 'REGISTAR APURAMENTO'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ============================================================
+// 3. GESTÃO DE DIÁRIOS (Supabase - CRUD & Multi-Tenant)
+// ============================================================
+const DiariosManagementModule = ({ onBack }: { onBack: () => void }) => {
+  const { user } = useAuth();
+  const [diarios, setDiarios] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [editingDiario, setEditingDiario] = useState<any | null>(null);
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+  const [formData, setFormData] = useState({
+    codigo: '',
+    descricao: '',
+    tipo: 'Geral',
+    is_active: true
+  });
+
+  const showToast = (msg: string, type: 'success' | 'error' = 'success') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 4000);
+  };
+
+  const fetchDiarios = async () => {
+    if (!user?.empresa_id) return;
+    setLoading(true);
+    try {
+      // Canal primário: API do servidor (usa supabaseAdmin, sem RLS)
+      const apiData = await fetchJson(`/api/accounting/diarios?empresa_id=${user.empresa_id}`);
+      if (Array.isArray(apiData) && apiData.length >= 0) {
+        setDiarios(apiData);
+        return;
+      }
+      // Canal secundário: Supabase client direto
+      const { data, error } = await supabase
+        .from('diarios_contabeis')
+        .select('*')
+        .eq('empresa_id', user.empresa_id)
+        .order('codigo', { ascending: true });
+      if (!error) setDiarios(data || []);
+      else throw new Error(error.message);
+    } catch (e: any) {
+      console.error('[DiariosModule] Erro ao carregar diários:', e);
+      showToast('Erro ao carregar: ' + (e?.message || 'desconhecido'), 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDiarios();
+  }, [user?.empresa_id]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user?.empresa_id) { showToast('Sessão inválida. Faça login novamente.', 'error'); return; }
+    if (!formData.codigo.trim()) { showToast('O código do diário é obrigatório.', 'error'); return; }
+    if (!formData.descricao.trim()) { showToast('A descrição é obrigatória.', 'error'); return; }
+
+    setSubmitting(true);
+    try {
+      const payload = {
+        ...formData,
+        codigo: formData.codigo.trim().toUpperCase(),
+        descricao: formData.descricao.trim(),
+        empresa_id: user.empresa_id
+      };
+
+      if (editingDiario) {
+        // ── UPDATE via API ──
+        const res = await fetchWithAuth(`/api/accounting/diarios/${editingDiario.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({}));
+          // Fallback: Supabase direto
+          const { error } = await supabase.from('diarios_contabeis')
+            .update({ codigo: payload.codigo, descricao: payload.descricao, tipo: payload.tipo, is_active: payload.is_active })
+            .eq('id', editingDiario.id).eq('empresa_id', user.empresa_id);
+          if (error) throw new Error(errBody?.error || error.message);
+        }
+        showToast('Diário atualizado com sucesso!', 'success');
+      } else {
+        // ── INSERT via API ──
+        const res = await fetchWithAuth('/api/accounting/diarios', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({}));
+          // Fallback: Supabase direto
+          const { error } = await supabase.from('diarios_contabeis').insert([payload]);
+          if (error) throw new Error(errBody?.error || error.message);
+        }
+        showToast('Diário criado com sucesso!', 'success');
+      }
+
+      setShowModal(false);
+      setEditingDiario(null);
+      setFormData({ codigo: '', descricao: '', tipo: 'Geral', is_active: true });
+      fetchDiarios();
+    } catch (e: any) {
+      console.error('[DiariosModule] Erro ao salvar diário:', e);
+      showToast('Erro ao salvar: ' + (e?.message || 'desconhecido'), 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleEdit = (d: any) => {
+    setEditingDiario(d);
+    setFormData({
+      codigo: d.codigo || '',
+      descricao: d.descricao || '',
+      tipo: d.tipo || 'Geral',
+      is_active: d.is_active !== false
+    });
+    setShowModal(true);
+  };
+
+  const handleDelete = async (id: string, codigo: string) => {
+    if (!confirm(`Tem certeza que deseja eliminar o diário "${codigo}"?`)) return;
+    try {
+      // Canal primário: API do servidor
+      const res = await fetchWithAuth(`/api/accounting/diarios/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        // Fallback: Supabase direto
+        const { error } = await supabase.from('diarios_contabeis').delete().eq('id', id).eq('empresa_id', user?.empresa_id);
+        if (error) throw new Error(error.message);
+      }
+      showToast('Diário eliminado.', 'success');
+      fetchDiarios();
+    } catch (e: any) {
+      console.error('[DiariosModule] Erro ao eliminar diário:', e);
+      showToast('Erro ao eliminar: ' + (e?.message || 'desconhecido'), 'error');
+    }
+  };
+
+  return (
+    <div className="space-y-6 relative">
+      {/* Toast de feedback */}
+      {toast && (
+        <div className={`fixed top-6 right-6 z-[500] px-5 py-3 shadow-xl font-bold text-xs rounded flex items-center gap-3 transition-all ${toast.type === 'success' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}>
+          {toast.type === 'success' ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
+          {toast.msg}
+        </div>
+      )}
+
+      {/* Header */}
+      <div className="flex justify-between items-center bg-zinc-50 p-4 border border-zinc-200">
+        <div className="flex items-center gap-4">
+          <button onClick={onBack} className="p-2 hover:bg-zinc-100 rounded-none text-zinc-400">
+            <ChevronLeft size={24} />
+          </button>
+          <div>
+            <h2 className="text-xl font-black text-[#003366] uppercase tracking-tighter">Gestão de Diários Contabilísticos</h2>
+            <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">Base de Dados Supabase • Multi-Tenant</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={fetchDiarios}
+            className="border border-zinc-300 text-zinc-600 px-3 py-2 hover:bg-zinc-100 transition-all flex items-center gap-2 text-xs font-bold uppercase cursor-pointer"
+            title="Recarregar"
+          >
+            <RefreshCw size={14} />
+          </button>
+          <button
+            onClick={() => {
+              setEditingDiario(null);
+              setFormData({ codigo: '', descricao: '', tipo: 'Geral', is_active: true });
+              setShowModal(true);
+            }}
+            className="bg-[#003366] text-white px-4 py-2 hover:bg-[#002244] transition-all flex items-center gap-2 text-xs font-bold uppercase cursor-pointer"
+          >
+            <UserPlus size={16} /> Novo Diário
+          </button>
+        </div>
+      </div>
+
+      {/* Tabela */}
+      <div className="bg-white border border-zinc-200 shadow-md">
+        <table className="w-full text-left text-xs border-collapse font-bold uppercase tracking-tight">
+          <thead>
+            <tr className="text-zinc-500 border-b border-zinc-200 bg-zinc-50">
+              <th className="px-6 py-3 w-28">Código</th>
+              <th className="px-6 py-3">Descrição do Diário</th>
+              <th className="px-6 py-3 w-40">Tipo</th>
+              <th className="px-6 py-3 w-28 text-center">Estado</th>
+              <th className="px-6 py-3 text-center w-28">Opções</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-100">
+            {loading ? (
+              <tr><td colSpan={5} className="py-12 text-center text-zinc-400 italic">A carregar diários contabilísticos...</td></tr>
+            ) : diarios.length === 0 ? (
+              <tr><td colSpan={5} className="py-12 text-center text-zinc-400 italic">Nenhum diário registado. Clique em "Novo Diário" para começar.</td></tr>
+            ) : diarios.map((d: any) => (
+              <tr key={d.id} className="hover:bg-zinc-50 transition-colors">
+                <td className="px-6 py-3 text-[#003366] font-mono font-black">{d.codigo}</td>
+                <td className="px-6 py-3 text-zinc-800">{d.descricao}</td>
+                <td className="px-6 py-3 text-zinc-500">{d.tipo}</td>
+                <td className="px-6 py-3 text-center">
+                  <span className={`px-2 py-0.5 text-[9px] font-black rounded-full ${d.is_active !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-100 text-zinc-600'}`}>
+                    {d.is_active !== false ? 'ATIVO' : 'INATIVO'}
+                  </span>
+                </td>
+                <td className="px-6 py-3 text-center space-x-2">
+                  <button onClick={() => handleEdit(d)} className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100" title="Editar">
+                    <Edit size={14} />
+                  </button>
+                  <button onClick={() => handleDelete(d.id, d.codigo)} className="p-1.5 bg-red-50 text-red-600 hover:bg-red-100" title="Eliminar">
+                    <Trash2 size={14} />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Modal */}
+      <AnimatePresence>
+        {showModal && (
+          <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowModal(false)} className="absolute inset-0 bg-black/50 backdrop-blur-xs" />
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="relative w-full max-w-md bg-white shadow-2xl border border-zinc-200 p-6 space-y-6">
+              <div className="flex justify-between items-center border-b border-zinc-100 pb-3">
+                <h3 className="font-black text-[#003366] uppercase tracking-tight text-base">{editingDiario ? 'Editar Diário' : 'Novo Diário Contábil'}</h3>
+                <button onClick={() => setShowModal(false)} className="text-zinc-400 hover:text-zinc-600"><X size={20} /></button>
+              </div>
+              <form onSubmit={handleSubmit} className="space-y-4 text-xs font-bold">
+                <div>
+                  <label className="block text-zinc-500 mb-1 uppercase text-[10px]">Código do Diário <span className="text-red-500">*</span> (ex: VD, CP, CX)</label>
+                  <input
+                    type="text"
+                    className="w-full border border-zinc-200 p-2.5 font-mono uppercase text-[#003366] focus:border-[#003366] outline-none"
+                    value={formData.codigo}
+                    onChange={e => setFormData({ ...formData, codigo: e.target.value.toUpperCase() })}
+                    required
+                    maxLength={10}
+                    placeholder="ex: VD"
+                  />
+                </div>
+                <div>
+                  <label className="block text-zinc-500 mb-1 uppercase text-[10px]">Descrição <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    className="w-full border border-zinc-200 p-2.5 focus:border-[#003366] outline-none"
+                    value={formData.descricao}
+                    onChange={e => setFormData({ ...formData, descricao: e.target.value })}
+                    required
+                    placeholder="ex: Diário de Vendas"
+                  />
+                </div>
+                <div>
+                  <label className="block text-zinc-500 mb-1 uppercase text-[10px]">Tipo de Diário</label>
+                  <select className="w-full border border-zinc-200 p-2.5 focus:border-[#003366] outline-none" value={formData.tipo} onChange={e => setFormData({ ...formData, tipo: e.target.value })}>
+                    <option value="Vendas">Vendas</option>
+                    <option value="Compras">Compras</option>
+                    <option value="Caixa">Caixa</option>
+                    <option value="Bancos">Bancos</option>
+                    <option value="Salários">Salários</option>
+                    <option value="Geral">Geral / Operações Diversas</option>
+                    <option value="Apuramentos">Apuramentos / Abertura</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-2 pt-2">
+                  <input type="checkbox" id="is_active" checked={formData.is_active} onChange={e => setFormData({ ...formData, is_active: e.target.checked })} />
+                  <label htmlFor="is_active" className="text-zinc-700 uppercase text-[10px]">Diário Ativo</label>
+                </div>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="w-full bg-[#003366] text-white py-3 font-black uppercase tracking-widest hover:bg-[#002244] transition-all pt-3 disabled:opacity-60 flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {submitting ? (
+                    <><RefreshCw size={14} className="animate-spin" /> A guardar...</>
+                  ) : editingDiario ? 'Atualizar Diário' : 'Criar Diário'}
+                </button>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+const BalanceteRazaoModule = ({ onBack, companyData }: { onBack: () => void, companyData?: any }) => {
+  const { user } = useAuth();
+  const [lancamentos, setLancamentos] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [year, setYear] = useState(String(new Date().getFullYear()));
+  const [exchangeRate, setExchangeRate] = useState(1);
+
+  const fetchLancamentos = async () => {
+    if (!user?.empresa_id) return;
+    setLoading(true);
+    try {
+      const { data } = await supabase
+        .from('lancamentos_contabeis')
+        .select('*')
+        .eq('empresa_id', user.empresa_id)
+        .order('conta_pgc', { ascending: true });
+      setLancamentos(data || []);
+    } catch (e) {
+      console.error('Erro ao carregar lançamentos:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchLancamentos(); }, [user?.empresa_id, year]);
+
+  // Group by top-level account (first 2 digits)
+  const grouped = lancamentos.reduce((acc: any, l: any) => {
+    const conta = (l.conta_pgc || '').split('.')[0] || l.conta_pgc || '??';
+    if (!acc[conta]) acc[conta] = { conta, descricao: '', linhas: [] };
+    acc[conta].linhas.push(l);
+    return acc;
+  }, {} as Record<string, { conta: string, descricao: string, linhas: any[] }>);
+
+  const contaNomes: Record<string, string> = {
+    '11':'CAIXA','12':'DEPÓSITOS À ORDEM','13':'OUTROS DEPÓSITOS BANCÁRIOS',
+    '21':'IMOBILIZAÇÕES CORPÓREAS','22':'IMOBILIZAÇÕES INCORPÓREAS',
+    '31':'CLIENTES','32':'FORNECEDORES','34':'ESTADO E OUTROS ENTES PÚBLICOS',
+    '45':'CAIXA','43':'BANCOS','61':'VENDAS','62':'PRESTAÇÕES DE SERVIÇOS',
+    '65':'GASTOS COM PESSOAL','72':'FORNECIMENTOS E SERVIÇOS EXTERNOS',
+    '75':'COMPRAS','81':'RESULTADOS OPERACIONAIS'
+  };
+
+  const groups = Object.values(grouped).sort((a: any, b: any) => a.conta.localeCompare(b.conta));
+
+  let totalDebGeral = 0, totalCredGeral = 0, totalSaldoDebGeral = 0, totalSaldoCredGeral = 0;
+
+  const now = new Date();
+  const emitidoEm = now.toLocaleDateString('pt-PT') + ' ' + now.toLocaleTimeString('pt-PT', {hour:'2-digit', minute:'2-digit'});
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex justify-between items-center bg-white p-4 border border-zinc-200 shadow-sm">
+        <div className="flex items-center gap-4">
+          <button onClick={onBack} className="p-2 hover:bg-zinc-100 text-zinc-400"><ChevronLeft size={24} /></button>
+          <div>
+            <h2 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">Balancete Razão</h2>
+            <p className="text-sm font-bold text-zinc-400 uppercase">Contabilidade Geral Angolana</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 bg-zinc-50 border border-zinc-200 px-3 py-1.5">
+            <span className="text-[10px] font-black text-zinc-500 uppercase">Ano:</span>
+            <select value={year} onChange={e => setYear(e.target.value)} className="bg-transparent text-sm font-black text-[#003366] focus:outline-none">
+              {[2024,2025,2026,2027].map(y => <option key={y} value={String(y)}>{y}</option>)}
+            </select>
+          </div>
+          <div className="flex items-center gap-2 bg-zinc-50 border border-zinc-200 px-3 py-1.5">
+            <span className="text-[10px] font-black text-zinc-500 uppercase">ExchangeRate:</span>
+            <input type="number" min="1" value={exchangeRate} onChange={e => setExchangeRate(Number(e.target.value))} className="w-14 bg-transparent text-sm font-black text-[#003366] focus:outline-none text-center" />
+          </div>
+          <button onClick={() => window.print()} className="w-10 h-10 rounded-full bg-gradient-to-tr from-green-600 to-lime-400 text-white shadow flex items-center justify-center border-2 border-white hover:brightness-110">
+            <Printer size={16} />
+          </button>
+          <button onClick={() => { try { const wb = (window as any).XLSX?.utils?.book_new?.(); if (!wb) throw new Error('XLSX not available'); alert('Exportar XLSX — funcionalidade disponível com XLSX.js'); } catch(e) { window.print(); } }} className="px-3 py-2 bg-[#1D6F42] text-white text-[10px] font-black uppercase tracking-wider hover:bg-[#155232] flex items-center gap-1">
+            XLSX
+          </button>
+        </div>
+      </div>
+
+      {/* Report */}
+      <div className="bg-white border border-zinc-200 shadow-sm p-6">
+        {/* Firm Header */}
+        <div className="grid grid-cols-2 mb-2 text-sm">
+          <div>
+            <div className="font-black text-zinc-800 underline">Balancete Razão da Firma:</div>
+            <div className="font-black text-zinc-700 underline">Período Contabilístico</div>
+            <div className="text-zinc-600">de Janeiro a Dezembro — {year}</div>
+          </div>
+          <div className="text-right">
+            <div className="font-black text-zinc-800 uppercase">{companyData?.nome || companyData?.name || user?.nome?.toUpperCase() || 'EMPRESA'}</div>
+          </div>
+        </div>
+        <div className="text-xs text-zinc-500 mb-1">Balancete Emitido em AOA</div>
+        <div className="text-xs text-zinc-500 mb-1">ExchangeRate: {exchangeRate}</div>
+        <div className="text-[10px] text-zinc-400 italic mb-4 text-center">Balancete Razão Emitido em {emitidoEm}</div>
+
+        {/* Table */}
+        <div className="overflow-x-auto border border-zinc-200">
+          <table className="w-full text-[10px] border-collapse font-bold">
+            <thead>
+              <tr className="bg-zinc-50 border-b border-zinc-200">
+                <th className="p-2 text-left border-r border-zinc-200 w-16">Conta</th>
+                <th className="p-2 text-left border-r border-zinc-200">Descrição</th>
+                <th colSpan={2} className="p-2 text-center border-r border-zinc-200 bg-zinc-100">Movimentos do Período</th>
+                <th colSpan={2} className="p-2 text-center bg-zinc-100">Saldo</th>
+              </tr>
+              <tr className="bg-zinc-50 border-b-2 border-zinc-300 text-zinc-500 uppercase text-[9px]">
+                <th className="p-2 border-r border-zinc-200"></th>
+                <th className="p-2 border-r border-zinc-200"></th>
+                <th className="p-2 text-right border-r border-zinc-200">Débito</th>
+                <th className="p-2 text-right border-r border-zinc-200">Crédito</th>
+                <th className="p-2 text-right border-r border-zinc-200">Débito</th>
+                <th className="p-2 text-right">Crédito</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={6} className="py-16 text-center text-zinc-300 italic">A carregar balancete razão...</td></tr>
+              ) : groups.length === 0 ? (
+                <tr><td colSpan={6} className="py-16 text-center text-zinc-300 italic uppercase font-black">Sem lançamentos contabilísticos registados</td></tr>
+              ) : groups.map((g: any) => {
+                const totalDeb = g.linhas.reduce((s: number, l: any) => s + Number(l.debito || 0), 0);
+                const totalCred = g.linhas.reduce((s: number, l: any) => s + Number(l.credito || 0), 0);
+                const saldoDeb = totalDeb > totalCred ? totalDeb - totalCred : 0;
+                const saldoCred = totalCred > totalDeb ? totalCred - totalDeb : 0;
+                totalDebGeral += totalDeb;
+                totalCredGeral += totalCred;
+                totalSaldoDebGeral += saldoDeb;
+                totalSaldoCredGeral += saldoCred;
+                const nomeGrupo = contaNomes[g.conta] || g.conta;
+                return (
+                  <React.Fragment key={g.conta}>
+                    <tr className="border-t border-zinc-200">
+                      <td className="p-2 border-r border-zinc-200 font-black text-[#003366]">{g.conta}</td>
+                      <td className="p-2 border-r border-zinc-200 font-black text-zinc-700 uppercase">{nomeGrupo}</td>
+                      <td className="p-2 border-r border-zinc-200 text-right font-mono">{(totalDeb / exchangeRate).toLocaleString('pt-PT', {minimumFractionDigits:2})}</td>
+                      <td className="p-2 border-r border-zinc-200 text-right font-mono">{(totalCred / exchangeRate).toLocaleString('pt-PT', {minimumFractionDigits:2})}</td>
+                      <td className="p-2 border-r border-zinc-200 text-right font-mono text-[#003366]">{(saldoDeb / exchangeRate).toLocaleString('pt-PT', {minimumFractionDigits:2})}</td>
+                      <td className="p-2 text-right font-mono text-[#003366]">{(saldoCred / exchangeRate).toLocaleString('pt-PT', {minimumFractionDigits:2})}</td>
+                    </tr>
+                    <tr className="bg-zinc-50 border-b-2 border-zinc-200">
+                      <td className="p-1 border-r border-zinc-200"></td>
+                      <td className="p-1 border-r border-zinc-200 text-zinc-400 italic text-[9px] pl-4">Soma Líquida</td>
+                      <td className="p-1 border-r border-zinc-200 text-right font-mono text-zinc-500">{(totalDeb / exchangeRate).toLocaleString('pt-PT', {minimumFractionDigits:2})}</td>
+                      <td className="p-1 border-r border-zinc-200 text-right font-mono text-zinc-500">{(totalCred / exchangeRate).toLocaleString('pt-PT', {minimumFractionDigits:2})}</td>
+                      <td className="p-1 border-r border-zinc-200 text-right font-mono text-zinc-500">{(saldoDeb / exchangeRate).toLocaleString('pt-PT', {minimumFractionDigits:2})}</td>
+                      <td className="p-1 text-right font-mono text-zinc-500">{(saldoCred / exchangeRate).toLocaleString('pt-PT', {minimumFractionDigits:2})}</td>
+                    </tr>
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+            {groups.length > 0 && (
+              <tfoot className="bg-zinc-100 border-t-2 border-zinc-400">
+                <tr>
+                  <td className="p-2 border-r border-zinc-200"></td>
+                  <td className="p-2 border-r border-zinc-200 font-black text-zinc-600 italic text-[9px] uppercase">Soma Líquida</td>
+                  <td className="p-2 border-r border-zinc-200 text-right font-mono font-black text-[#003366]">{(totalDebGeral / exchangeRate).toLocaleString('pt-PT', {minimumFractionDigits:2})}</td>
+                  <td className="p-2 border-r border-zinc-200 text-right font-mono font-black text-[#003366]">{(totalCredGeral / exchangeRate).toLocaleString('pt-PT', {minimumFractionDigits:2})}</td>
+                  <td className="p-2 border-r border-zinc-200 text-right font-mono font-black text-[#003366]">{(totalSaldoDebGeral / exchangeRate).toLocaleString('pt-PT', {minimumFractionDigits:2})}</td>
+                  <td className="p-2 text-right font-mono font-black text-[#003366]">{(totalSaldoCredGeral / exchangeRate).toLocaleString('pt-PT', {minimumFractionDigits:2})}</td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+        <div className="text-right text-[8px] text-zinc-300 italic mt-2 uppercase">Fim de Listagem — Balancete Razão {year}</div>
+      </div>
+    </div>
+  );
+};
+
+const BalancoModule = ({ onBack, companyData, invoices, purchases }: { onBack: () => void, companyData?: any, invoices: any[], purchases: any[] }) => {
+  const { user } = useAuth();
+  const [lancamentos, setLancamentos] = useState<any[]>([]);
+  const [lancamentosAnterior, setLancamentosAnterior] = useState<any[]>([]);
+  const [year, setYear] = useState(String(new Date().getFullYear()));
+  const [loading, setLoading] = useState(false);
+
+  const fetchData = async () => {
+    if (!user?.empresa_id) return;
+    setLoading(true);
+    try {
+      const { data: curr } = await supabase
+        .from('lancamentos_contabeis')
+        .select('*')
+        .eq('empresa_id', user.empresa_id);
+      setLancamentos(curr || []);
+      const prevYear = String(Number(year) - 1);
+      const { data: prev } = await supabase
+        .from('lancamentos_contabeis')
+        .select('*')
+        .eq('empresa_id', user.empresa_id)
+        .like('data_lancamento', `${prevYear}%`);
+      setLancamentosAnterior(prev || []);
+    } catch (e) {
+      console.error('Erro:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchData(); }, [user?.empresa_id, year]);
+
+  // Helper: sum net (debito - credito) for specific account prefixes
+  const netByPrefix = (data: any[], prefixes: string[]) => {
+    return data.filter(l => prefixes.some(p => (l.conta_pgc || '').startsWith(p)))
+      .reduce((s, l) => s + Number(l.debito || 0) - Number(l.credito || 0), 0);
+  };
+  const creditByPrefix = (data: any[], prefixes: string[]) => {
+    return data.filter(l => prefixes.some(p => (l.conta_pgc || '').startsWith(p)))
+      .reduce((s, l) => s + Number(l.credito || 0) - Number(l.debito || 0), 0);
+  };
+
+  // Current year figures
+  const existencias = Math.max(0, netByPrefix(lancamentos, ['15','16','17','18']));
+  const contasReceber = Math.max(0, netByPrefix(lancamentos, ['31']));
+  const disponibilidades = Math.max(0, netByPrefix(lancamentos, ['43','45','11','12']));
+  const outrosActivosCorr = Math.max(0, netByPrefix(lancamentos, ['34','35','38']));
+  const imobCorpóreas = Math.max(0, netByPrefix(lancamentos, ['21']));
+  const imobIncorpóreas = Math.max(0, netByPrefix(lancamentos, ['22']));
+  const investSubsid = Math.max(0, netByPrefix(lancamentos, ['41']));
+  const outrosActivosFin = Math.max(0, netByPrefix(lancamentos, ['42']));
+  const outrosActivosNCorr = Math.max(0, netByPrefix(lancamentos, ['26','29']));
+
+  const totalActivoCorr = existencias + contasReceber + disponibilidades + outrosActivosCorr;
+  const totalActivoNCorr = imobCorpóreas + imobIncorpóreas + investSubsid + outrosActivosFin + outrosActivosNCorr;
+  const totalActivo = totalActivoCorr + totalActivoNCorr;
+
+  // Capital Próprio
+  const capital = Math.max(0, creditByPrefix(lancamentos, ['51']));
+  const reservas = Math.max(0, creditByPrefix(lancamentos, ['52','53','54']));
+  const resultTransitados = creditByPrefix(lancamentos, ['59']);
+  const vendas = Math.max(0, creditByPrefix(lancamentos, ['61','62']));
+  const custos = Math.max(0, netByPrefix(lancamentos, ['61','62','65','72','75','81']));
+  const resultadoExercicio = vendas - Math.max(0, netByPrefix(lancamentos, ['65','72','75']));
+  const totalCapProprio = capital + reservas + resultTransitados + resultadoExercicio;
+
+  // Passivo
+  const emprestimosMLPrazo = Math.max(0, creditByPrefix(lancamentos, ['25']));
+  const impostosDiferidos = Math.max(0, creditByPrefix(lancamentos, ['36']));
+  const provisoesPensoes = Math.max(0, creditByPrefix(lancamentos, ['28']));
+  const outrosPassNCorr = Math.max(0, creditByPrefix(lancamentos, ['27']));
+  const totalPassivoNCorr = emprestimosMLPrazo + impostosDiferidos + provisoesPensoes + outrosPassNCorr;
+
+  const contasPagar = Math.max(0, creditByPrefix(lancamentos, ['32']));
+  const emprestCurtoPrazo = Math.max(0, creditByPrefix(lancamentos, ['23']));
+  const partCorrenteLPrazo = 0;
+  const outrosPassCorr = Math.max(0, creditByPrefix(lancamentos, ['33','34']));
+  const totalPassivoCorr = contasPagar + emprestCurtoPrazo + partCorrenteLPrazo + outrosPassCorr;
+  const totalPassivo = totalPassivoNCorr + totalPassivoCorr;
+  const totalCapPassivo = totalCapProprio + totalPassivo;
+
+  // Prior year figures
+  const existenciasP = Math.max(0, netByPrefix(lancamentosAnterior, ['15','16','17','18']));
+  const contasReceberP = Math.max(0, netByPrefix(lancamentosAnterior, ['31']));
+  const disponibilidadesP = Math.max(0, netByPrefix(lancamentosAnterior, ['43','45','11','12']));
+  const outrosActivosCorrP = Math.max(0, netByPrefix(lancamentosAnterior, ['34','35','38']));
+  const imobCorpóreasP = Math.max(0, netByPrefix(lancamentosAnterior, ['21']));
+  const totalActivoCorrP = existenciasP + contasReceberP + disponibilidadesP + outrosActivosCorrP;
+  const totalActivoP = totalActivoCorrP + imobCorpóreasP;
+  const capitalP = Math.max(0, creditByPrefix(lancamentosAnterior, ['51']));
+  const resultadoP = Math.max(0, creditByPrefix(lancamentosAnterior, ['61','62'])) - Math.max(0, netByPrefix(lancamentosAnterior, ['65','72','75']));
+  const totalCapProprioP = capitalP + resultadoP;
+  const contasPagarP = Math.max(0, creditByPrefix(lancamentosAnterior, ['32']));
+  const totalCapPassivoP = totalCapProprioP + contasPagarP;
+
+  const fmt = (v: number) => Math.abs(v).toLocaleString('pt-PT', {minimumFractionDigits: 2});
+  const fmtV = (v: number) => v === 0 ? '0,00' : fmt(v);
+
+  const handleExportCSV = () => {
+    if (!rows || rows.length === 0) return alert('Sem dados para exportar.');
+    const csvRows = rows.map((r: any) => ({
+      Rubrica: r.label,
+      Nota: r.nota || '',
+      ExercicioAtual: r.curr || 0,
+      ExercicioAnterior: r.prev || 0
+    }));
+    const headers = Object.keys(csvRows[0]).join(';');
+    const csvContent = [headers, ...csvRows.map(r => Object.values(r).map(v => `"${String(v).replace(/"/g, '""')}"`).join(';'))].join('\n');
+    const blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Balanco_${year}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  type BalRow = { label: string; nota?: number | string; curr: number; prev: number; isGroup?: boolean; isTotal?: boolean; isSectionHeader?: boolean; isBlank?: boolean };
+
+  const rows: BalRow[] = [
+    { label: 'ACTIVO', isSectionHeader: true, curr: 0, prev: 0 },
+    { label: 'Activos não correntes', isGroup: true, curr: 0, prev: 0 },
+    { label: 'Imobilizações corpóreas', nota: 4, curr: imobCorpóreas, prev: imobCorpóreasP },
+    { label: 'Imobilizações incorpóreas', nota: 5, curr: imobIncorpóreas, prev: 0 },
+    { label: 'Investimentos em subsidiárias e associadas', nota: 6, curr: investSubsid, prev: 0 },
+    { label: 'Outros activos financeiros', nota: 7, curr: outrosActivosFin, prev: 0 },
+    { label: 'Outros activos não correntes', nota: 9, curr: outrosActivosNCorr, prev: 0 },
+    { label: '', isBlank: true, curr: totalActivoNCorr, prev: imobCorpóreasP },
+    { label: 'Activos Correntes', isGroup: true, curr: 0, prev: 0 },
+    { label: 'Existências', nota: 8, curr: existencias, prev: existenciasP },
+    { label: 'Contas a receber', nota: 9, curr: contasReceber, prev: contasReceberP },
+    { label: 'Disponibilidades', nota: 10, curr: disponibilidades, prev: disponibilidadesP },
+    { label: 'Outros activos correntes', nota: 11, curr: outrosActivosCorr, prev: outrosActivosCorrP },
+    { label: '', isBlank: true, curr: totalActivoCorr, prev: totalActivoCorrP },
+    { label: 'Total do Activo', isTotal: true, curr: totalActivo, prev: totalActivoP },
+    { label: 'CAPITAL PROPRIO E PASSIVO', isSectionHeader: true, curr: 0, prev: 0 },
+    { label: 'Capital próprio', isGroup: true, curr: 0, prev: 0 },
+    { label: 'Capital', nota: 12, curr: capital, prev: capitalP },
+    { label: 'Reservas', nota: 13, curr: reservas, prev: 0 },
+    { label: 'Resultados transitados', nota: 14, curr: resultTransitados, prev: 0 },
+    { label: 'Resultados do exercício', curr: resultadoExercicio, prev: resultadoP },
+    { label: '', isBlank: true, curr: totalCapProprio, prev: totalCapProprioP },
+    { label: 'Passivo não corrente', isGroup: true, curr: 0, prev: 0 },
+    { label: 'Empréstimos de médio e longo prazos', nota: 15, curr: emprestimosMLPrazo, prev: 0 },
+    { label: 'Impostos diferidos', nota: 16, curr: impostosDiferidos, prev: 0 },
+    { label: 'Provisões para pensões', nota: 17, curr: provisoesPensoes, prev: 0 },
+    { label: 'Provisões para outros riscos e encargos', nota: 18, curr: 0, prev: 0 },
+    { label: 'Outros passivos não correntes', nota: 19, curr: outrosPassNCorr, prev: 0 },
+    { label: '', isBlank: true, curr: totalPassivoNCorr, prev: 0 },
+    { label: 'Passivo corrente', isGroup: true, curr: 0, prev: 0 },
+    { label: 'Contas a pagar', nota: 19, curr: contasPagar, prev: contasPagarP },
+    { label: 'Empréstimos de curto prazo', nota: 20, curr: emprestCurtoPrazo, prev: 0 },
+    { label: 'Parte corrente dos empréstimos a médio e longo prazos', nota: 15, curr: partCorrenteLPrazo, prev: 0 },
+    { label: 'Outros passivos correntes', nota: 21, curr: outrosPassCorr, prev: 0 },
+    { label: '', isBlank: true, curr: totalPassivoCorr, prev: 0 },
+    { label: 'Total do capital próprio e passivo', isTotal: true, curr: totalCapPassivo, prev: totalCapPassivoP },
+  ];
+
+  const nifStr = String(companyData?.nif || companyData?.numero_fiscal || '—');
+  const empresaNome = companyData?.nome || companyData?.name || user?.nome?.toUpperCase() || 'EMPRESA';
+
+  return (
+    <div className="space-y-4">
+      {/* Header toolbar */}
+      <div className="flex justify-between items-center bg-white p-4 border border-zinc-200 shadow-sm">
+        <div className="flex items-center gap-4">
+          <button onClick={onBack} className="p-2 hover:bg-zinc-100 text-zinc-400"><ChevronLeft size={24} /></button>
+          <div>
+            <h2 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">Balanço</h2>
+            <p className="text-sm font-bold text-zinc-400 uppercase">Contabilidade Geral Angolana</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 bg-zinc-50 border border-zinc-200 px-3 py-1.5">
+            <span className="text-[10px] font-black text-zinc-500 uppercase">Exercício:</span>
+            <select value={year} onChange={e => setYear(e.target.value)} className="bg-transparent text-sm font-black text-[#003366] focus:outline-none">
+              {[2023,2024,2025,2026,2027].map(y => <option key={y} value={String(y)}>{y}</option>)}
+            </select>
+          </div>
+          <button onClick={() => window.print()} className="px-3 py-2 bg-white border border-zinc-300 text-zinc-700 text-[10px] font-black uppercase tracking-wider hover:bg-zinc-50 flex items-center gap-1.5 rounded-sm">
+            <Printer size={14} /> Imprimir
+          </button>
+          <button onClick={handleExportCSV} className="px-3 py-2 bg-[#1D6F42] text-white text-[10px] font-black uppercase tracking-wider hover:bg-[#155232] flex items-center gap-1.5 rounded-sm shadow-xs">
+            <FileSpreadsheet size={14} /> Baixar Excel
+          </button>
+          <button onClick={() => window.print()} className="px-3 py-2 bg-[#003366] text-white text-[10px] font-black uppercase tracking-wider hover:bg-[#002244] flex items-center gap-1.5 rounded-sm shadow-xs">
+            <Download size={14} /> Baixar PDF
+          </button>
+
+
+
+        </div>
+      </div>
+
+      {/* Balanço Report */}
+      <div className="bg-white border border-zinc-200 shadow-sm">
+        {/* Company Header */}
+        <div className="p-4 border-b border-zinc-200">
+          <div className="text-base font-black text-zinc-800 uppercase">Balanço</div>
+          <div className="text-sm font-black text-zinc-700">Empresa: {empresaNome}</div>
+          <div className="text-xs font-bold text-zinc-500">NIF: {nifStr}</div>
+          <div className="text-xs text-zinc-400 mt-1">Balanço à data de {new Date().toLocaleDateString('pt-PT')}</div>
+        </div>
+
+        {/* Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-[10px] border-collapse">
+            <thead>
+              <tr className="border-b-2 border-zinc-300">
+                <th className="p-3 text-left font-black text-zinc-700 uppercase tracking-wide w-[55%]">Designação</th>
+                <th className="p-3 text-center font-black text-zinc-600 w-16">Notas</th>
+                <th colSpan={2} className="p-3 text-center font-black text-zinc-700 uppercase tracking-wide border-l border-zinc-200">EXERCICIOS</th>
+              </tr>
+              <tr className="border-b border-zinc-200 bg-zinc-50">
+                <th className="p-2"></th>
+                <th className="p-2"></th>
+                <th className="p-2 text-right font-black text-zinc-700 border-l border-zinc-200 w-32">{year}</th>
+                <th className="p-2 text-right font-black text-zinc-700 w-32">{Number(year)-1}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={4} className="py-16 text-center text-zinc-300 italic">A carregar balanço...</td></tr>
+              ) : rows.map((row, idx) => {
+                if (row.isSectionHeader) {
+                  return (
+                    <tr key={idx} className="bg-blue-50 border-t-2 border-[#003366]">
+                      <td colSpan={4} className="p-2 font-black text-[#003366] uppercase tracking-wide text-xs">{row.label}</td>
+                    </tr>
+                  );
+                }
+                if (row.isTotal) {
+                  return (
+                    <tr key={idx} className="bg-zinc-100 border-t-2 border-zinc-400">
+                      <td className="p-2 font-black text-zinc-800 uppercase text-[11px]">{row.label}</td>
+                      <td className="p-2"></td>
+                      <td className="p-2 text-right font-mono font-black text-[#003366] text-[11px] border-l border-zinc-200">{fmtV(row.curr)}</td>
+                      <td className="p-2 text-right font-mono font-black text-[#003366] text-[11px]">{fmtV(row.prev)}</td>
+                    </tr>
+                  );
+                }
+                if (row.isBlank) {
+                  return (
+                    <tr key={idx} className="border-t border-zinc-200 bg-zinc-50">
+                      <td className="p-1.5"></td>
+                      <td className="p-1.5"></td>
+                      <td className="p-1.5 text-right font-mono font-black text-zinc-600 border-l border-zinc-200">{fmtV(row.curr)}</td>
+                      <td className="p-1.5 text-right font-mono font-black text-zinc-600">{fmtV(row.prev)}</td>
+                    </tr>
+                  );
+                }
+                if (row.isGroup) {
+                  return (
+                    <tr key={idx} className="border-t border-zinc-100">
+                      <td className="p-2 font-black text-zinc-700 pl-3 text-[11px]">{row.label}</td>
+                      <td colSpan={3}></td>
+                    </tr>
+                  );
+                }
+                return (
+                  <tr key={idx} className="border-t border-zinc-100 hover:bg-zinc-50">
+                    <td className="p-2 text-blue-600 pl-6 font-bold">{row.label}</td>
+                    <td className="p-2 text-center text-zinc-500">{row.nota ?? ''}</td>
+                    <td className="p-2 text-right font-mono text-zinc-700 border-l border-zinc-200">{fmtV(row.curr)}</td>
+                    <td className="p-2 text-right font-mono text-zinc-700">{fmtV(row.prev)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div className="p-2 text-right text-[8px] text-zinc-300 italic uppercase">Fim do Balanço — Exercício {year}</div>
+      </div>
+    </div>
+  );
+};
+
+
+const RegimeGeralModule = ({ 
+  invoices, 
+  purchases, 
+  suppliers = [], 
+  clients = [], 
+  companyData, 
+  fiscalYear, 
+  onBack 
+}: { 
+  invoices: Invoice[]; 
+  purchases: Purchase[]; 
+  suppliers?: Supplier[]; 
+  clients?: Client[]; 
+  companyData?: any; 
+  fiscalYear: string; 
+  onBack: () => void; 
+}) => {
+  const [activeRegimeTab, setActiveRegimeTab] = useState<'modelo7' | 'fornecedores' | 'clientes'>('modelo7');
+
+  return (
+    <div className="space-y-6 p-6">
+      {/* Header with back button & title */}
+      <div className="flex justify-between items-center bg-white p-4 border border-zinc-200 shadow-sm">
+        <div className="flex items-center gap-4">
+          <button onClick={onBack} className="p-2 hover:bg-zinc-100 text-zinc-400 rounded-full transition-colors">
+            <ChevronLeft size={24} />
+          </button>
+          <div>
+            <h2 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">Regime Geral</h2>
+            <p className="text-sm font-bold text-zinc-400 uppercase">Declaração de IVA, Modelo 7, Anexo de Fornecedores e Clientes</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Sub-tab Navigation */}
+      <div className="flex border-b border-zinc-200 bg-white px-4 pt-2 shadow-sm">
+        <button
+          onClick={() => setActiveRegimeTab('modelo7')}
+          className={`px-6 py-3 text-xs font-black uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all ${
+            activeRegimeTab === 'modelo7'
+              ? 'text-[#003366] border-[#003366] bg-blue-50/50'
+              : 'text-zinc-400 border-transparent hover:text-zinc-600'
+          }`}
+        >
+          <FileText size={16} /> Modelo 7 / IVA
+        </button>
+        <button
+          onClick={() => setActiveRegimeTab('fornecedores')}
+          className={`px-6 py-3 text-xs font-black uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all ${
+            activeRegimeTab === 'fornecedores'
+              ? 'text-[#003366] border-[#003366] bg-blue-50/50'
+              : 'text-zinc-400 border-transparent hover:text-zinc-600'
+          }`}
+        >
+          <Truck size={16} /> Anexo Fornecedores
+        </button>
+        <button
+          onClick={() => setActiveRegimeTab('clientes')}
+          className={`px-6 py-3 text-xs font-black uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all ${
+            activeRegimeTab === 'clientes'
+              ? 'text-[#003366] border-[#003366] bg-blue-50/50'
+              : 'text-zinc-400 border-transparent hover:text-zinc-600'
+          }`}
+        >
+          <Users size={16} /> Regularização Clientes
+        </button>
+      </div>
+
+      {/* Sub-tab Content */}
+      <div className="mt-4">
+        {activeRegimeTab === 'modelo7' && (
+          <Modelo7Form
+            invoices={invoices}
+            purchases={purchases}
+            companyData={companyData}
+            selectedYear={fiscalYear}
+          />
+        )}
+        {activeRegimeTab === 'fornecedores' && (
+          <AnexoFornecedoresForm
+            purchases={purchases}
+            suppliers={suppliers}
+            companyData={companyData}
+            selectedYear={fiscalYear}
+          />
+        )}
+        {activeRegimeTab === 'clientes' && (
+          <RegularizacaoClientesForm
+            invoices={invoices}
+            clients={clients}
+            companyData={companyData}
+            selectedYear={fiscalYear}
+          />
+        )}
+      </div>
+    </div>
+  );
+};
 const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employees, issuedDocuments, fiscalYear, companyData, setFiscalYear }: { 
   invoices: Invoice[], 
   clients: Client[], 
@@ -17150,7 +21221,6 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
           });
 
           // Mapear campos correctos da tabela 'compras' e filtrar apenas documentos de compra reais
-          // (excluir Recibos e Pagamentos que reduzem o saldo, não representam custo)
           const purchaseDocsOnly = filteredByYear.filter((p: any) => {
             const tipo = (p.tipo_documento || p.document_type || '').toLowerCase();
             return tipo.includes('fatura') || tipo === 'fatura de compra' || tipo === 'fatura recibo de compra' || tipo === '';
@@ -17190,23 +21260,27 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
   // Calcular totais correctos: apenas documentos de venda certificados para vendas,
   // e apenas faturas de compra reais (já filtradas no useEffect) para compras
   const totalSales = (issuedDocuments || []).reduce((sum, inv) => {
+    if (!inv) return sum;
     const tipo = (inv.tipo_documento || inv.document_type || '').toUpperCase();
-    // Excluir Notas de Crédito e anulados do total de vendas
     if (tipo.includes('CRÉDITO') || tipo.includes('CREDITO') || tipo === 'NC') return sum;
     if (inv.status === 'anulado' || (inv as any).estado === 'ANULADO') return sum;
     return sum + Number(inv.total || (inv as any).contravalor || 0);
   }, 0);
-  const totalPurchases = (purchases || []).reduce((sum, pur) => sum + Number(pur.total || 0), 0);
-  // IVA liquidado = IVA cobrado nas vendas (14%)
+  const totalPurchases = (purchases || []).reduce((sum, pur) => sum + Number(pur ? (pur.total || 0) : 0), 0);
   const vatLiquidated = totalSales * 0.14;
-  // IVA dedutível = IVA suportado nas compras (14%)
   const vatDeductible = totalPurchases * 0.14;
   const vatToPay = vatLiquidated - vatDeductible;
 
   const sections = [
-    { id: 'daily-movements', label: 'Movimento Diário', icon: <History size={24} />, description: 'Registo cronológico de todos os movimentos contabilísticos diários.' },
+    { id: 'tax-payments', label: 'Pagamento de Impostos', icon: <Receipt size={24} />, description: 'Registo e consulta dos comprovativos e guias de pagamento de impostos.' },
+    { id: 'contas-pag-impostos', label: 'Contas Pag Impostos', icon: <Receipt size={24} />, description: 'Gestão das contas de pagamento de impostos associadas ao Plano Geral de Contas.' },
+    { id: 'delete-movements', label: 'Apagar Movimentos', icon: <Trash2 size={24} />, description: 'Apagar movimentos contabilísticos em lote por diário e período, com exportação PDF/Excel.' },
+    { id: 'vat-settlement', label: 'Apuramento de IVA', icon: <Calculator size={24} />, description: 'Apuramento periódico do IVA (suportado vs liquidado) com apuramento automático.' },
+    { id: 'diarios-management', label: 'Gestão de Diários', icon: <FolderKanban size={24} />, description: 'Gestão de Diários Contabilísticos no Supabase com isolamento de dados.' },
     { id: 'pgc', label: 'PGC Plano de Contas', icon: <Book size={24} />, description: 'Consulta e gestão do Plano Geral de Contas angolano.' },
     { id: 'accounting-maps', label: 'Balancete Analítico', icon: <BarChart3 size={24} />, description: 'Emissão de balancetes, balanços e demonstrações de resultados.' },
+    { id: 'balancete-razao', label: 'Balancete Razão', icon: <BarChart3 size={24} />, description: 'Balancete Razão da firma por período contabilístico com movimentos de débito/crédito e saldos por conta PGC.' },
+    { id: 'balanco', label: 'Balanço', icon: <Scale size={24} />, description: 'Balanço Patrimonial Angolano (Activo, Capital Próprio e Passivo) com comparativo de exercícios.' },
     { id: 'classify-movements', label: 'Classificar Movimentos', icon: <CheckSquare size={24} />, description: 'Ajustamento e classificação de rubricas contabilísticas de vendas e compras.' },
     { id: 'stamp-tax', label: 'Imposto de Selo', icon: <ShieldCheck size={24} />, description: 'Mapa de liquidação e controlo de Imposto de Selo sobre recebimentos.' },
     { id: 'income-tax-advance', label: 'Imposto por Conta', icon: <CreditCard size={24} />, description: 'Autoliquidação provisória do Imposto Industrial (2% sobre vendas).' },
@@ -17220,42 +21294,24 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
     { id: 'retencao-receber', label: 'Retenção na Fonte a Receber', icon: <FileText size={24} />, description: 'Gestão de retenções na fonte a receber.' },
   ];
 
-  if (!activeSubTab) {
-    return (
-      <div className="space-y-8">
-        <header>
-          <Breadcrumbs paths={['Home', 'Área Reservada', 'Contabilidade']} />
-          <h2 className="text-3xl font-black text-[#003366] tracking-tight uppercase">Contabilidade</h2>
-          <p className="text-zinc-500 text-sm">Selecione uma secção para gerir a contabilidade da sua empresa.</p>
-        </header>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {sections.map((section) => (
-            <button
-              key={section.id}
-              onClick={() => setActiveSubTab(section.id)}
-              className="group bg-white border border-zinc-200 p-8 text-left hover:border-[#003366] hover:shadow-xl transition-all flex flex-col items-center text-center space-y-4"
-            >
-              <div className="text-[#003366] group-hover:scale-110 transition-transform duration-300">
-                {section.icon}
-              </div>
-              <div className="space-y-2">
-                <h3 className="text-lg font-bold text-[#003366] uppercase tracking-tight">{section.label}</h3>
-                <p className="text-xs text-zinc-500 leading-relaxed">{section.description}</p>
-              </div>
-            </button>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
   const renderContent = () => {
     switch (activeSubTab) {
-      case 'daily-movements':
-        return <DailyMovementsModule onBack={() => setActiveSubTab(null)} />;
+      case 'tax-payments':
+        return <TaxPaymentsModule onBack={() => setActiveSubTab(null)} companyData={companyData} />;
+      case 'contas-pag-impostos':
+        return <ContasPagImpostosModule onBack={() => setActiveSubTab(null)} />;
+      case 'delete-movements':
+        return <DeleteMovementsModule onBack={() => setActiveSubTab(null)} />;
+      case 'vat-settlement':
+        return <VatSettlementModule invoices={issuedDocuments} purchases={purchases} onBack={() => setActiveSubTab(null)} companyData={companyData} vatToPay={vatToPay} vatLiquidated={vatLiquidated} vatDeductible={vatDeductible} />;
+      case 'diarios-management':
+        return <DiariosManagementModule onBack={() => setActiveSubTab(null)} />;
       case 'accounting-maps':
         return <AccountingMapsModule onBack={() => setActiveSubTab(null)} companyData={companyData} />;
+      case 'balancete-razao':
+        return <BalanceteRazaoModule onBack={() => setActiveSubTab(null)} companyData={companyData} />;
+      case 'balanco':
+        return <BalancoModule onBack={() => setActiveSubTab(null)} companyData={companyData} invoices={invoices} purchases={purchases} />;
       case 'pgc':
         return <PGCModule onBack={() => setActiveSubTab(null)} />;
       case 'classify-movements':
@@ -17274,202 +21330,85 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
         return <CalculosImpostosForm invoices={invoices} purchases={purchases} onBack={() => setActiveSubTab(null)} companyData={companyData} />;
       case 'regime-exclusao':
         return <RegimeExclusaoForm />;
-      case 'imposto-por-conta':
-        return <ImpostoPorContaForm />;
+      case 'general-regime':
+        return <RegimeGeralModule invoices={invoices} purchases={purchases} suppliers={suppliers} clients={clients} companyData={companyData} fiscalYear={fiscalYear} onBack={() => setActiveSubTab(null)} />;
+      case 'accounting-settings':
+        return <ExerciciosFiscaisManager onFiscalYearChange={setFiscalYear} />;
       case 'annual-declarations':
         return <DeclaracaoAnualForm />;
       case 'saft':
-        return <SaftExportForm invoices={invoices} purchases={purchases} />;
-      case 'general-regime':
-        if (selectedClient) {
-          const clientDocs = invoices.filter(i => i.client_id === selectedClient.id).map(i => ({
-            ...i,
-            tipo_documento: i.document_type || 'Fatura',
-            data_emissao: i.date,
-            numero_documento: i.invoice_number,
-            contravalor: i.total
-          }));
-          return <ClientAccount client={selectedClient} documents={clientDocs as any} onBack={() => setSelectedClient(null)} />;
-        }
-        if (selectedSupplier) {
-          // Reusing ClientAccount for SupplierAccount for simplicity, mapping fields
-          const supplierDocs = purchases.filter(p => p.supplier_id === selectedSupplier.id).map(p => ({
-            ...p,
-            tipo_documento: p.document_type || 'Fatura de Compra',
-            data_emissao: p.date,
-            numero_documento: p.invoice_number || `COMP-${p.id}`,
-            contravalor: p.total
-          }));
-          return <ClientAccount client={{...selectedSupplier, tipo_cliente: 'Fornecedor'} as any} documents={supplierDocs as any} onBack={() => setSelectedSupplier(null)} />;
-        }
-        return (
-          <div className="space-y-6">
-            <div className="flex items-center gap-4 mb-6">
-              <button onClick={() => setActiveSubTab(null)} className="p-2 hover:bg-zinc-100 rounded-none text-zinc-400 transition-colors">
-                <ChevronLeft size={24} />
-              </button>
-              <h2 className="text-xl font-bold text-[#003366]">Regime Geral</h2>
-            </div>
-            
-            <div className="flex gap-4 border-b border-zinc-200 mb-6">
-              <button 
-                onClick={() => setActiveRegimeTab('geral')}
-                className={`px-6 py-3 text-sm font-bold uppercase tracking-widest ${activeRegimeTab === 'geral' ? 'text-[#003366] border-b-2 border-[#003366]' : 'text-zinc-400 hover:text-zinc-600'}`}
-              >
-                Visão Geral
-              </button>
-              <button 
-                onClick={() => setActiveRegimeTab('fornecedores')}
-                className={`px-6 py-3 text-sm font-bold uppercase tracking-widest flex items-center gap-2 ${activeRegimeTab === 'fornecedores' ? 'text-[#003366] border-b-2 border-[#003366]' : 'text-zinc-400 hover:text-zinc-600'}`}
-              >
-                <Truck size={16} /> Anexo Fornecedores
-              </button>
-              <button 
-                onClick={() => setActiveRegimeTab('clientes')}
-                className={`px-6 py-3 text-sm font-bold uppercase tracking-widest flex items-center gap-2 ${activeRegimeTab === 'clientes' ? 'text-[#003366] border-b-2 border-[#003366]' : 'text-zinc-400 hover:text-zinc-600'}`}
-              >
-                <Users size={16} /> Regularização Clientes
-              </button>
-            </div>
-
-            {activeRegimeTab === 'geral' && (
-              <div className="space-y-8">
-                <Modelo7Form invoices={invoices} purchases={purchases} />
-                <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-8">
-                  <h3 className="text-sm font-bold text-[#003366] uppercase tracking-widest mb-6 flex items-center gap-3">
-                    <BadgeCheck size={18} /> Apuramento de IVA e Totais
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="p-6 border border-zinc-100 bg-zinc-50">
-                      <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Total Vendas</p>
-                      <p className="text-2xl font-bold text-[#003366]">{formatCurrency(totalSales)}</p>
-                    </div>
-                    <div className="p-6 border border-zinc-100 bg-zinc-50">
-                      <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Total Compras</p>
-                      <p className="text-2xl font-bold text-emerald-600">{formatCurrency(totalPurchases)}</p>
-                    </div>
-                    <div className="p-6 border border-zinc-100 bg-zinc-50">
-                      <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">IVA a Pagar/Recuperar</p>
-                      <p className={`text-2xl font-bold ${vatToPay > 0 ? 'text-red-600' : 'text-emerald-600'}`}>{formatCurrency(Math.abs(vatToPay))}</p>
-                      <p className="text-xs text-zinc-500 mt-1">{vatToPay > 0 ? 'A pagar' : 'A recuperar'}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {activeRegimeTab === 'fornecedores' && (
-              <div className="space-y-8">
-                <AnexoFornecedoresForm purchases={purchases} suppliers={suppliers} />
-                <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-6">
-                  <h3 className="text-sm font-bold text-[#003366] uppercase tracking-widest mb-6 flex items-center gap-3">
-                    <Truck size={18} /> Lista de Fornecedores
-                  </h3>
-                  <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-[#003366] text-white text-[11px] uppercase tracking-wider font-bold">
-                      <th className="px-6 py-4">Fornecedor</th>
-                      <th className="px-6 py-4">NIF</th>
-                      <th className="px-6 py-4 text-right">Total Compras</th>
-                      <th className="px-6 py-4 text-right">Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-100">
-                    {suppliers.map(s => {
-                      const supplierPurchases = purchases.filter(p => p.supplier_id === s.id);
-                      const total = (supplierPurchases ?? []).reduce((sum, p) => sum + p.total, 0);
-                      return (
-                        <tr key={s.id} className="hover:bg-zinc-50">
-                          <td className="px-6 py-4 text-sm font-medium text-zinc-900">{s.name}</td>
-                          <td className="px-6 py-4 text-sm text-zinc-500">{s.nif}</td>
-                          <td className="px-6 py-4 text-sm text-right font-bold text-zinc-900">{formatCurrency(total)}</td>
-                          <td className="px-6 py-4 text-sm text-right">
-                            <button onClick={() => setSelectedSupplier(s)} className="text-[#003366] hover:underline font-bold text-xs uppercase">Conta Corrente</button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                </div>
-              </div>
-            )}
-
-            {activeRegimeTab === 'clientes' && (
-              <div className="space-y-8">
-                <RegularizacaoClientesForm invoices={invoices} clients={clients} />
-                <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-6">
-                  <h3 className="text-sm font-bold text-[#003366] uppercase tracking-widest mb-6 flex items-center gap-3">
-                    <Users size={18} /> Lista de Clientes
-                  </h3>
-                  <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-[#003366] text-white text-[11px] uppercase tracking-wider font-bold">
-                      <th className="px-6 py-4">Cliente</th>
-                      <th className="px-6 py-4">NIF</th>
-                      <th className="px-6 py-4 text-right">Total Vendas</th>
-                      <th className="px-6 py-4 text-right">Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-100">
-                    {clients.map(c => {
-                      const clientInvoices = invoices.filter(i => i.client_id === c.id);
-                      const total = (clientInvoices ?? []).reduce((sum, i) => sum + i.total, 0);
-                      return (
-                        <tr key={c.id} className="hover:bg-zinc-50">
-                          <td className="px-6 py-4 text-sm font-medium text-zinc-900">{c.name}</td>
-                          <td className="px-6 py-4 text-sm text-zinc-500">{c.contribuinte}</td>
-                          <td className="px-6 py-4 text-sm text-right font-bold text-zinc-900">{formatCurrency(total)}</td>
-                          <td className="px-6 py-4 text-sm text-right">
-                            <button onClick={() => setSelectedClient(c)} className="text-[#003366] hover:underline font-bold text-xs uppercase">Conta Corrente</button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                </div>
-              </div>
-            )}
-          </div>
-        );
+        return <SaftExportForm companyData={companyData} invoices={invoices} clients={clients} />;
       default:
-        return (
-          <div className="space-y-6">
-            <div className="flex items-center gap-4 mb-6">
-              <button onClick={() => setActiveSubTab(null)} className="p-2 hover:bg-zinc-100 rounded-none text-zinc-400 transition-colors">
-                <ChevronLeft size={24} />
-              </button>
-              <h2 className="text-xl font-bold text-[#003366] capitalize">{activeSubTab.replace('-', ' ')}</h2>
-            </div>
-            <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm">
-              <div className="p-12 text-center text-zinc-400 italic bg-zinc-50 border border-dashed border-zinc-200">
-                Em desenvolvimento.
-              </div>
-            </div>
-          </div>
-        );
+        return null;
     }
   };
 
-  return renderContent();
+  if (activeSubTab) {
+    return (
+      <div className="min-h-screen bg-zinc-50">
+        {renderContent()}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8 p-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-black text-[#003366] uppercase tracking-tighter">Contabilidade</h1>
+          <p className="text-sm text-zinc-400 font-bold uppercase tracking-widest mt-1">Módulos de Gestão Fiscal e Contabilística</p>
+        </div>
+        <div className="flex items-center gap-4 bg-white border border-zinc-200 px-4 py-2 shadow-sm">
+          <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Exercício Fiscal:</span>
+          <select
+            value={fiscalYear}
+            onChange={e => setFiscalYear(e.target.value)}
+            className="text-sm font-black text-[#003366] bg-transparent focus:outline-none cursor-pointer"
+          >
+            {[2023, 2024, 2025, 2026, 2027].map(y => (
+              <option key={y} value={String(y)}>{y}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        {sections.map(section => (
+          <button
+            key={section.id}
+            onClick={() => setActiveSubTab(section.id)}
+            className="bg-white border border-zinc-200 p-5 text-left hover:border-[#003366] hover:shadow-md transition-all group"
+          >
+            <div className="flex items-start gap-4">
+              <div className="p-2 bg-[#003366]/10 text-[#003366] group-hover:bg-[#003366] group-hover:text-white transition-all">
+                {section.icon}
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-black text-zinc-800 text-sm uppercase tracking-tight group-hover:text-[#003366] transition-colors">{section.label}</h3>
+                <p className="text-[11px] text-zinc-400 mt-1 leading-snug line-clamp-2">{section.description}</p>
+              </div>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 };
 
-interface GraphicConfig {
+export interface GraphicConfig {
   id?: string;
-  empresa_id: string;
-  serie_id: string;
-  tipo: 'logotipo' | 'cabecalho' | 'rodape' | 'marca_dagua';
+  empresa_id?: string;
+  serie_id?: string;
+  tipo: string;
   url_imagem: string;
-  nome: string;
-  descricao?: string;
-  ativo: boolean;
-  posicao_x: number;
-  posicao_y: number;
-  largura: number;
-  altura: number;
-  transparencia: number;
-  alinhamento: 'left' | 'center' | 'right';
+  largura?: number;
+  altura?: number;
+  posicao_x?: number;
+  posicao_y?: number;
+  transparencia?: number;
+  alinhamento?: string;
+  ativo?: boolean;
+  created_at?: string;
 }
 
 const GraphicConfigModule = ({ 
@@ -17477,144 +21416,117 @@ const GraphicConfigModule = ({
   onBack, 
   onRefresh 
 }: { 
-  serie: FiscalSeries, 
-  onBack: () => void, 
-  onRefresh: () => void 
+  serie: FiscalSeries; 
+  onBack: () => void; 
+  onRefresh?: () => void; 
 }) => {
   const { user } = useAuth();
-  const { uploadFile, deleteFile } = useMedia();
   const [configs, setConfigs] = useState<GraphicConfig[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [editingType, setEditingType] = useState<GraphicConfig['tipo'] | null>(null);
-  
-  // Local form state
-  const [form, setForm] = useState<Partial<GraphicConfig>>({
-    ativo: true,
-    posicao_x: 0,
-    posicao_y: 0,
-    largura: 100,
-    altura: 100,
-    transparencia: 1,
-    alinhamento: 'center'
-  });
+  const [editingType, setEditingType] = useState<string | null>(null);
+  const [form, setForm] = useState<Partial<GraphicConfig>>({});
 
-  const loadConfigs = useCallback(async () => {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('setup_grafico_series')
-        .select('*')
-        .eq('serie_id', serie.id);
-      
-      if (error) throw error;
-      setConfigs(data || []);
-    } catch (err) {
-      console.error('Error loading graphic configs:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [serie.id]);
+  const loadConfigs = async () => {
+    if (!serie.id) return;
+    const { data } = await supabase
+      .from('setup_grafico_series')
+      .select('*')
+      .eq('serie_id', serie.id);
+    setConfigs(data || []);
+  };
 
   useEffect(() => {
     loadConfigs();
-  }, [loadConfigs]);
+  }, [serie.id]);
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>, tipo: GraphicConfig['tipo']) => {
-    if (!e.target.files?.[0] || !user?.empresa_id) return;
-    
-    try {
-      const file = e.target.files[0];
-      const media = await uploadFile(file, 'imagem', 'series_fiscais', serie.id.toString());
-      
-      if (media) {
-        const payload: Partial<GraphicConfig> = {
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>, tipo: string) => {
+    const file = e.target.files?.[0];
+    if (!file || !user?.empresa_id) return;
+    const fileName = `graphic_configs/${Date.now()}_${file.name}`;
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('media')
+      .upload(fileName, file);
+    if (uploadError) {
+      alert('Erro ao carregar imagem: ' + uploadError.message);
+      return;
+    }
+    const { data: publicUrlData } = supabase.storage.from('media').getPublicUrl(fileName);
+    const url_imagem = publicUrlData.publicUrl;
+
+    const existing = configs.find(c => c.tipo === tipo);
+    if (existing?.id) {
+      await supabase
+        .from('setup_grafico_series')
+        .update({ url_imagem, ativo: true })
+        .eq('id', existing.id);
+    } else {
+      await supabase
+        .from('setup_grafico_series')
+        .insert([{
           empresa_id: user.empresa_id,
-          serie_id: serie.id.toString(),
+          serie_id: serie.id,
           tipo,
-          url_imagem: media.url_publica,
-          nome: media.nome_original,
-          ativo: true,
+          url_imagem,
+          largura: 100,
+          altura: 100,
           posicao_x: 0,
           posicao_y: 0,
-          largura: 150,
-          altura: 80,
           transparencia: 1,
-          alinhamento: 'center'
-        };
-
-        const { error } = await supabase
-          .from('setup_grafico_series')
-          .insert([payload]);
-
-        if (error) throw error;
-        loadConfigs();
-      }
-    } catch (err) {
-      console.error('Error uploading graphic config:', err);
-      alert('Erro ao carregar imagem');
+          alinhamento: 'center',
+          ativo: true
+        }]);
     }
-  };
-
-  const handleSave = async () => {
-    if (!user?.empresa_id || !editingType) return;
-    
-    try {
-      const current = configs.find(c => c.tipo === editingType);
-      const { error } = await supabase
-        .from('setup_grafico_series')
-        .update({
-          ...form,
-          atualizado_em: new Date().toISOString()
-        })
-        .eq('id', current?.id);
-
-      if (error) throw error;
-      setEditingType(null);
-      loadConfigs();
-      alert('Configuração salva com sucesso!');
-    } catch (err) {
-      console.error('Error saving configs:', err);
-    }
-  };
-
-  const startEditing = (tipo: GraphicConfig['tipo']) => {
-    const config = configs.find(c => c.tipo === tipo);
-    if (config) {
-      setForm(config);
-      setEditingType(tipo);
-    } else {
-      setEditingType(tipo);
-      setForm({
-        tipo,
-        ativo: true,
-        posicao_x: 0,
-        posicao_y: 0,
-        largura: 100,
-        altura: 100,
-        transparencia: 1,
-        alinhamento: 'center'
-      });
-    }
+    loadConfigs();
+    if (onRefresh) onRefresh();
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Deseja realmente excluir esta configuração?')) return;
-    try {
-      const { error } = await supabase
-        .from('setup_grafico_series')
-        .delete()
-        .eq('id', id);
-      if (error) throw error;
-      loadConfigs();
-    } catch (err) {
-      console.error('Error deleting config:', err);
-    }
+    if (!confirm('Tem certeza que deseja remover esta configuração gráfica?')) return;
+    await supabase.from('setup_grafico_series').delete().eq('id', id);
+    loadConfigs();
+    if (onRefresh) onRefresh();
   };
 
-  const TYPES: { label: string; tipo: GraphicConfig['tipo']; icon: any }[] = [
-    { label: 'Logotipo', tipo: 'logotipo', icon: <Image size={24} /> },
-    { label: 'Cabeçalho', tipo: 'cabecalho', icon: <FileText size={24} /> },
-    { label: 'Rodapé', tipo: 'rodape', icon: <FileText size={24} /> },
+  const startEditing = (tipo: string) => {
+    const c = configs.find(conf => conf.tipo === tipo) || {
+      tipo,
+      largura: 100,
+      altura: 100,
+      posicao_x: 0,
+      posicao_y: 0,
+      transparencia: 1,
+      alinhamento: 'center',
+      ativo: true
+    };
+    setForm(c);
+    setEditingType(tipo);
+  };
+
+  const handleSave = async () => {
+    if (!editingType || !user?.empresa_id || !serie.id) return;
+    const existing = configs.find(c => c.tipo === editingType);
+    if (existing?.id) {
+      await supabase
+        .from('setup_grafico_series')
+        .update({
+          largura: form.largura,
+          altura: form.altura,
+          posicao_x: form.posicao_x,
+          posicao_y: form.posicao_y,
+          transparencia: form.transparencia,
+          alinhamento: form.alinhamento,
+          ativo: form.ativo
+        })
+        .eq('id', existing.id);
+    }
+    setEditingType(null);
+    loadConfigs();
+    if (onRefresh) onRefresh();
+  };
+
+  const TYPES = [
+    { label: 'Logótipo Principal', tipo: 'logo', icon: <Layout size={24} /> },
+    { label: 'Cabeçalho Personalizado', tipo: 'cabecalho', icon: <FileText size={24} /> },
+    { label: 'Rodapé Personalizado', tipo: 'rodape', icon: <Receipt size={24} /> },
     { label: 'Marca d\'Água', tipo: 'marca_dagua', icon: <Droplets size={24} /> },
   ];
 
@@ -17667,8 +21579,8 @@ const GraphicConfigModule = ({
                         Editar
                       </button>
                       <button 
-                         onClick={() => handleDelete(config.id!)}
-                         className="flex-1 border border-zinc-200 text-red-500 py-2 text-[10px] font-bold uppercase tracking-widest hover:bg-red-50 transition-colors"
+                        onClick={() => handleDelete(config.id!)}
+                        className="flex-1 border border-zinc-200 text-red-500 py-2 text-[10px] font-bold uppercase tracking-widest hover:bg-red-50 transition-colors"
                       >
                         Remover
                       </button>
@@ -17737,7 +21649,7 @@ const GraphicConfigModule = ({
                       <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Largura (px)</label>
                       <input 
                         type="number" 
-                        value={form.largura} 
+                        value={form.largura || 0} 
                         onChange={e => setForm(f => ({ ...f, largura: Number(e.target.value) }))}
                         className="w-full bg-zinc-50 border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:border-[#003366]"
                       />
@@ -17746,7 +21658,7 @@ const GraphicConfigModule = ({
                       <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Altura (px)</label>
                       <input 
                         type="number" 
-                        value={form.altura}
+                        value={form.altura || 0}
                         onChange={e => setForm(f => ({ ...f, altura: Number(e.target.value) }))}
                         className="w-full bg-zinc-50 border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:border-[#003366]"
                       />
@@ -17758,7 +21670,7 @@ const GraphicConfigModule = ({
                       <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Posição X</label>
                       <input 
                         type="number" 
-                        value={form.posicao_x}
+                        value={form.posicao_x || 0}
                         onChange={e => setForm(f => ({ ...f, posicao_x: Number(e.target.value) }))}
                         className="w-full bg-zinc-50 border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:border-[#003366]"
                       />
@@ -17767,7 +21679,7 @@ const GraphicConfigModule = ({
                       <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Posição Y</label>
                       <input 
                         type="number" 
-                        value={form.posicao_y}
+                        value={form.posicao_y || 0}
                         onChange={e => setForm(f => ({ ...f, posicao_y: Number(e.target.value) }))}
                         className="w-full bg-zinc-50 border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:border-[#003366]"
                       />
@@ -17781,7 +21693,7 @@ const GraphicConfigModule = ({
                       min="0" 
                       max="1" 
                       step="0.1" 
-                      value={form.transparencia}
+                      value={form.transparencia || 1}
                       onChange={e => setForm(f => ({ ...f, transparencia: Number(e.target.value) }))}
                       className="w-full h-2 bg-zinc-200 rounded-lg appearance-none cursor-pointer accent-[#003366]"
                     />
@@ -17849,7 +21761,6 @@ const GraphicConfigModule = ({
     </div>
   );
 };
-
 const FiscalSeriesModule = ({ 
   series, 
   onRefresh, 
@@ -18348,14 +22259,12 @@ const InvoiceList = ({
   }
 
   const filteredIssuedDocuments = Array.isArray(issuedDocuments) ? issuedDocuments.filter(doc => {
-    // SEGURANÇA: Excluir recibos que vieram de compras (documentos de fornecedores)
-    // Estes documentos NÃO devem aparecer na Faturação Electrónica / Vendas.
-    // São identificados por: documento_origem_id preenchido (referencia um doc de compra)
-    // e por não terem cliente_id real (o "cliente_nome" é na verdade um fornecedor).
+    // Recibos emitidos nesta tabela são sempre documentos de venda legítimos.
+    // Excluir apenas se explicitamente marcado como fornecedor sem cliente
     const docOrigem = (doc as any).documento_origem_id;
     const docTipo = (doc.tipo_documento || doc.document_type || '').toUpperCase();
-    // Se o tipo é 'RECIBO' (maiúsculas - forma inserida pelos recibos de compra) e tem origem de compra, excluir
-    if (docOrigem && docTipo === 'RECIBO' && !(doc as any).cliente_id) return false;
+    const hasNoClient = !(doc as any).cliente_id && !(doc as any).client_id && !(doc as any).cliente_nome;
+    if (docOrigem && (docTipo === 'RECIBO_COMPRA' || docTipo === 'RCT') && hasNoClient) return false;
 
     const getNormalizedTypeForCheck = (type: string) => {
       const t = String(type || '').trim().toUpperCase();
@@ -19145,15 +23054,21 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
   }, []);
 
   useEffect(() => {
-    if (user?.empresa_id && (documentType === 'Nota de Crédito' || documentType === 'Recibo' || documentType === 'NC' || documentType === 'RC')) {
+    const isDocWithOrigin = ['Nota de Crédito', 'Recibo', 'NC', 'RC', 'NOTA DE CRÉDITO', 'RECIBO'].some(
+      t => t.toLowerCase() === (documentType || '').trim().toLowerCase()
+    ) || (documentType || '').toLowerCase().includes('recibo') || (documentType || '').toLowerCase().includes('crédito');
+
+    if (user?.empresa_id && isDocWithOrigin) {
       supabase.from('documentos_emitidos')
         .select('id, numero_documento, total, cliente_nome, cliente_id, data_emissao, items')
         .eq('empresa_id', user.empresa_id)
-        .in('tipo_documento', ['FT', 'FR', 'Fatura', 'Fatura Recibo'])
-        .eq('status', 'ativo')
+        .in('tipo_documento', ['FT', 'FR', 'FS', 'Fatura', 'Factura', 'Fatura Recibo', 'Factura Recibo', 'Fatura Simplificada'])
         .order('created_at', { ascending: false })
-        .limit(50)
-        .then(({data}) => setOriginDocs(data || []));
+        .limit(100)
+        .then(({data, error}) => {
+          if (error) console.error('Erro ao buscar documentos de origem:', error);
+          setOriginDocs(data || []);
+        });
     }
   }, [user?.empresa_id, documentType]);
   
@@ -19366,7 +23281,14 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
       return;
     }
 
-    if (items.length === 0) return;
+    if (['NC', 'RC', 'Nota de Crédito', 'Recibo'].includes(documentType) && !originDocId) {
+      alert('Por favor, selecione o Documento de Origem vinculado para emitir ' + documentType + '.');
+      return;
+    }
+    if (items.length === 0) {
+      alert('Por favor, adicione pelo menos um item ou selecione uma fatura de origem.');
+      return;
+    }
     if (!selectedSerieFiscal) {
       alert('Por favor, selecione uma série.');
       return;
@@ -19402,8 +23324,8 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
         global_discount: parseFloat(globalDiscount),
         service_date: serviceDate,
         service_location: serviceLocation,
-        cash_box: paymentCondition === 'Pronto Pagamento' ? cashBox : '',
-        payment_method: paymentCondition === 'Pronto Pagamento' ? paymentMethod : 'A Prazo',
+        cash_box: (['Fatura Recibo', 'FR', 'Recibo', 'RC', 'FATURA RECIBO', 'RECIBO'].includes(documentType) || paymentCondition === 'Pronto Pagamento') ? cashBox : '',
+        payment_method: (['Fatura Recibo', 'FR', 'Recibo', 'RC', 'FATURA RECIBO', 'RECIBO'].includes(documentType) || paymentCondition === 'Pronto Pagamento') ? paymentMethod : 'A Prazo',
         documento_origem_id: originDocId || undefined,
         numero_documento_origem: numeroDocOrigem,
         series_id: selectedSerieFiscal,
@@ -19422,7 +23344,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
       const savedDoc = await res.json().catch(() => null);
       
       // Automatic Cash Movement for sales
-      if (savedDoc && (documentType === 'Fatura Recibo' || paymentCondition === 'Pronto Pagamento') && cashBox && addMovement) {
+      if (savedDoc && (['Fatura Recibo', 'FR', 'Recibo', 'RC', 'FATURA RECIBO', 'RECIBO'].includes(documentType) || paymentCondition === 'Pronto Pagamento') && cashBox && addMovement) {
         try {
           const selectedCaixa = caixas.find(c => c.id === cashBox || c.name === cashBox);
           if (selectedCaixa) {
@@ -19439,6 +23361,22 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
         }
       }
 
+      // Update origin invoice payment status to 'pago' when emitting Recibo or Fatura Recibo
+      if (['Fatura Recibo', 'FR', 'Recibo', 'RC', 'FATURA RECIBO', 'RECIBO'].includes(documentType)) {
+        const targetDocId = originDocId || (savedDoc && savedDoc.documento_origem_id);
+        if (targetDocId && user?.empresa_id) {
+          try {
+            await supabase
+              .from('documentos_emitidos')
+              .update({ estado_pagamento: 'pago', status_pagamento: 'pago', payment_status: 'paid' })
+              .eq('id', targetDocId)
+              .eq('empresa_id', user.empresa_id);
+          } catch (stErr) {
+            console.error("Erro ao atualizar estado de pagamento da fatura de origem:", stErr);
+          }
+        }
+      }
+
       if (savedDoc && onSaveDocument) {
         await onSaveDocument(savedDoc);
       }
@@ -19450,7 +23388,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
   };
 
   return (
-    <div className="space-y-8 bg-zinc-50/30 p-4 sm:p-8 min-h-screen">
+    <div className="max-w-[98%] mx-auto space-y-8 bg-zinc-50/30 p-4 sm:p-8 min-h-screen">
       <div className="flex items-center gap-4 mb-8">
         <button onClick={onBack} className="p-2 hover:bg-zinc-100 rounded-none text-zinc-400 transition-colors">
           <ChevronLeft size={24} />
@@ -19699,38 +23637,43 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                 <option value="A Prazo">A Prazo</option>
               </select>
             </div>
-            {documentType === 'Fatura Recibo' && (
-              <>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-zinc-600">Método de Pagamento <span className="text-red-500">*</span></label>
-                  <select 
-                    value={paymentMethod} 
-                    onChange={(e) => setPaymentMethod(e.target.value)}
-                    required
-                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-                  >
-                    <option value="">Selecione...</option>
-                    <option value="Numerário">Numerário / Dinheiro</option>
-                    <option value="Multicaixa">TPA / Multicaixa</option>
-                    <option value="Transferência">Transferência Bancária</option>
-                    <option value="Depósito">Depósito Bancário</option>
-                    <option value="Cheque">Cheque</option>
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-zinc-600">Caixa / Conta <span className="text-red-500">*</span></label>
-                  <select 
-                    value={cashBox || ''} 
-                    onChange={(e) => setCashBox(e.target.value)}
-                    required
-                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-                  >
-                    <option value="">Selecione...</option>
-                    {caixas.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </div>
-              </>
-            )}
+            {(() => {
+              const isPaymentRequiredDoc = ['Fatura Recibo', 'FR', 'Recibo', 'RC', 'FATURA RECIBO', 'RECIBO'].some(
+                t => t.toLowerCase() === (documentType || '').trim().toLowerCase()
+              ) || (documentType || '').toLowerCase().includes('recibo') || paymentCondition === 'Pronto Pagamento';
+              return isPaymentRequiredDoc ? (
+                <>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-zinc-600">Método de Pagamento <span className="text-red-500">*</span></label>
+                    <select 
+                      value={paymentMethod} 
+                      onChange={(e) => setPaymentMethod(e.target.value)}
+                      required={isPaymentRequiredDoc}
+                      className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+                    >
+                      <option value="">Selecione...</option>
+                      <option value="Numerário">Numerário / Dinheiro</option>
+                      <option value="Multicaixa">TPA / Multicaixa</option>
+                      <option value="Transferência">Transferência Bancária</option>
+                      <option value="Depósito">Depósito Bancário</option>
+                      <option value="Cheque">Cheque</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-zinc-600">Caixa / Conta <span className="text-red-500">*</span></label>
+                    <select 
+                      value={cashBox || ''} 
+                      onChange={(e) => setCashBox(e.target.value)}
+                      required={isPaymentRequiredDoc}
+                      className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+                    >
+                      <option value="">Selecione...</option>
+                      {caixas.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </div>
+                </>
+              ) : null;
+            })()}
           </div>
         </div>
 
@@ -22074,29 +26017,29 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
   const isCertified = false;
   const initAny = initialData as any;
   const [supplierId, setSupplierId] = useState<number | string | ''>(
-    initAny?.supplier_id || ''
+    initAny?.supplier_id || initAny?.fornecedor_id || ''
   );
-  const [documentType, setDocumentType] = useState(fixedDocumentType || initAny?.document_type || 'Fatura de Compra');
+  const [documentType, setDocumentType] = useState(fixedDocumentType || initAny?.document_type || initAny?.tipo_documento || 'Fatura de Compra');
   const [selectedSerieFiscal, setSelectedSerieFiscal] = useState<number | null>(null);
-  const [invoiceNumber, setInvoiceNumber] = useState(initAny?.invoice_number || '');
-  const [documentNumber, setDocumentNumber] = useState(initAny?.purchase_number || '');
+  const [invoiceNumber, setInvoiceNumber] = useState(initAny?.invoice_number || initAny?.numero_documento || '');
+  const [documentNumber, setDocumentNumber] = useState(initAny?.purchase_number || initAny?.numero_compra || '');
   const [date, setDate] = useState(() => {
     try {
-      if (initAny?.date) {
-        const d = new Date(initAny.date);
+      if (initAny?.date || initAny?.data_compra) {
+        const d = new Date(initAny.date || initAny.data_compra);
         if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
       }
     } catch {}
     return new Date().toISOString().split('T')[0];
   });
-  const [countryCode, setCountryCode] = useState('Angola');
+  const [countryCode, setCountryCode] = useState('AO');
   const [nif, setNif] = useState(initAny?.supplier_nif || initAny?.nif || '');
-  const [supplierName, setSupplierName] = useState(initAny?.supplier_name || '');
+  const [supplierName, setSupplierName] = useState(initAny?.supplier_name || initAny?.fornecedor_nome || '');
   const [workSiteId, setWorkSiteId] = useState<string>(String(initAny?.work_site_id || initAny?.work_site || ''));
   const [dueDate, setDueDate] = useState<string>(() => {
     try {
-      if (initAny?.due_date) {
-        const d = new Date(initAny.due_date);
+      if (initAny?.due_date || initAny?.data_vencimento) {
+        const d = new Date(initAny.due_date || initAny.data_vencimento);
         if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
       }
     } catch {}
@@ -22105,7 +26048,6 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
   const [vatWithholding, setVatWithholding] = useState<string>(String(initAny?.vat_withholding ?? '0'));
   const [exchangeRate, setExchangeRate] = useState<string>(String(initAny?.exchange_rate ?? '1'));
   const [currency, setCurrency] = useState<string>(initAny?.currency || 'Kwanza');
-  const [counterValue, setCounterValue] = useState<string>(String(initAny?.counter_value ?? '0'));
   const [globalDiscount, setGlobalDiscount] = useState<string>(String(initAny?.global_discount ?? '0'));
   const [serviceDate, setServiceDate] = useState(() => {
     try {
@@ -22119,12 +26061,17 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
   const [items, setItems] = useState<any[]>(
     initAny?.items && fixedDocumentType !== 'Pagamento' ? initAny.items.map((i: any) => ({...i})) : []
   );
-  const [cashBox, setCashBox] = useState(initAny?.caixa || '');
+  const [cashBox, setCashBox] = useState(initAny?.caixa || initAny?.caixa_id || '');
   const [paymentMethod, setPaymentMethod] = useState(initAny?.payment_method || '');
   const [hash, setHash] = useState(initialData?.hash || '');
-  const [expandedDimensions, setExpandedDimensions] = useState<number | null>(null);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // AGT Item Modal state for purchases
+  const [isAgtItemModalOpen, setIsAgtItemModalOpen] = useState(false);
+  const [editingAgtItemIndex, setEditingAgtItemIndex] = useState<number | null>(null);
+  const [editingAgtItemData, setEditingAgtItemData] = useState<AgtItemData | null>(null);
+  const [supplierNifSearch, setSupplierNifSearch] = useState('');
 
   useEffect(() => {
     if (supplierId && suppliers && suppliers.length > 0) {
@@ -22137,76 +26084,61 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
   }, [supplierId, suppliers]);
 
   useEffect(() => {
-    if (user?.empresa_id) {
-      supabase.from('armazens').select('*').eq('empresa_id', user.empresa_id).then(({data}) => setWarehouses(data || [])).catch(console.error);
+    if (user?.empresa_id || user?.company_id) {
+      supabase.from('armazens').select('*').eq('empresa_id', user.empresa_id || user.company_id).then(({data}) => setWarehouses(data || [])).catch(console.error);
     }
-  }, [user?.empresa_id]);
+  }, [user?.empresa_id, user?.company_id]);
+
+  const handleSaveAgtItem = (savedItem: AgtItemData) => {
+    const taxObj = activeTaxes.find(t => String(t.id) === String(savedItem.codigo_imposto) || t.nome === savedItem.tipo_imposto);
+    const taxRate = taxObj ? Number(taxObj.taxa) : (savedItem.taxa_imposto || 0);
+    const itemTaxName = taxObj ? `${taxObj.nome} (${taxObj.taxa}%)` : (savedItem.tax_applied_label || 'IVA (14%)');
+
+    const newItem: Partial<InvoiceItem> = {
+      description: savedItem.description,
+      quantity: savedItem.quantity,
+      unit_price: savedItem.unit_price,
+      desconto: savedItem.desconto || 0,
+      tax_id: taxObj?.id || savedItem.codigo_imposto || undefined,
+      tax: itemTaxName,
+      tax_rate: taxRate,
+      total: savedItem.total,
+      tipologia: savedItem.tipo_operacao || 'Mercadoria',
+      unidade_medida: savedItem.unidade_medida || 'Qtd',
+      referencia: savedItem.referencia || '',
+      tipo_artigo: savedItem.tipo_operacao?.toLowerCase().includes('serviço') ? 'serviço' : 'produto'
+    };
+
+    if (editingAgtItemIndex !== null) {
+      const updated = [...items];
+      updated[editingAgtItemIndex] = { ...updated[editingAgtItemIndex], ...newItem };
+      setItems(updated);
+      setEditingAgtItemIndex(null);
+    } else {
+      setItems([...items, newItem]);
+    }
+    setIsAgtItemModalOpen(false);
+  };
 
   const addItem = () => {
-    setItems([...items, { 
-      description: '', 
-      quantity: 1, 
-      unit_price: 0, 
-      total: 0,
-      tipologia: 'Mercadoria',
-      desconto: 0,
-      tipo_artigo: 'produto',
-      comprimento: 0,
-      largura: 0,
-      altura: 0,
-      tax: activeTaxes.length > 0 ? `${activeTaxes[0].nome} (${activeTaxes[0].taxa}%)` : 'IVA - 0%',
-      tax_id: activeTaxes.length > 0 ? activeTaxes[0].id : null
-    }]);
+    setEditingAgtItemIndex(null);
+    setEditingAgtItemData(null);
+    setIsAgtItemModalOpen(true);
   };
 
   const removeItem = (index: number) => {
     setItems(items.filter((_, i) => i !== index));
   };
 
-  const updateItem = (index: number, field: keyof InvoiceItem, value: any) => {
-    const newItems = [...items];
-    newItems[index] = { ...newItems[index], [field]: value };
-    
-    const q = field === 'quantity' ? Number(value) : (newItems[index].quantity || 0);
-    const p = field === 'unit_price' ? Number(value) : (newItems[index].unit_price || 0);
-    const d = (field === 'desconto' || field === 'desconto_linha') ? Number(value) : (newItems[index].desconto || 0);
-    const taxId = field === 'tax_id' ? value : (newItems[index].tax_id || '');
-    const selectedTax = activeTaxes.find(t => String(t.id) === String(taxId));
-    
-    if (selectedTax) {
-      newItems[index].tax = `${selectedTax.nome} (${selectedTax.taxa}%)`;
-      newItems[index].tax_rate = Number(selectedTax.taxa);
-      newItems[index].tax_id = selectedTax.id;
-      newItems[index].tax_type = selectedTax.tipo;
-    } else {
-      newItems[index].tax_rate = 0;
-      newItems[index].tax_id = null;
-    }
-
-    newItems[index].total = (q * p) - d;
-
-    if (field === 'product_id' && value) {
-      const prod = products.find(p => p.id === Number(value));
-      if (prod) {
-        newItems[index].description = prod.name;
-        newItems[index].unit_price = prod.price;
-        newItems[index].total = ((newItems[index].quantity || 1) * prod.price) - (newItems[index].desconto || 0);
-      }
-    }
-    
-    setItems(newItems);
-  };
-
-  const total = (items ?? []).reduce((sum, item) => sum + (item.total || 0), 0);
+  const total = (items ?? []).reduce((sum, item) => sum + (Number(item.total) || 0), 0);
   
   const vatBreakdown: { [key: string]: number } = {};
   const retencaoBreakdown: { [key: string]: number } = {};
   (items ?? []).forEach(item => {
     const rate = item.tax_rate || 0;
-    const itemTaxAmount = (item.total || 0) * (rate / 100);
+    const itemTaxAmount = (Number(item.total) || 0) * (rate / 100);
     const label = item.tax || 'Outros';
     
-    // If tax_type is 'Retencao' or 'Retenção'
     const typeStr = item.tax_type?.toLowerCase() || '';
     if (typeStr.includes('retencao') || typeStr.includes('retenção')) {
       retencaoBreakdown[label] = (retencaoBreakdown[label] || 0) + itemTaxAmount;
@@ -22221,33 +26153,30 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
   const finalTotal = total + vatAmount - vatWithholdingAmount - Number(globalDiscount || 0) - retencaoTaxesAmount;
 
   const handleSearchSupplier = () => {
-    const client = suppliers.find(c => c.nif === nif);
+    const client = suppliers.find(c => c.nif && c.nif.includes(supplierNifSearch || nif));
     if (client) {
       setSupplierId(client.id);
       setSupplierName(client.name);
+      setNif(client.nif || '');
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;
-    if (items.length === 0) return;
-
-    // Validate warehouse for all product items - OPTIONAL NOW
-    /*
-    const missingWarehouse = items.find(i => i.tipo_artigo === 'produto' && !i.warehouse_id && (documentType === 'Compra' || documentType === 'Fatura de Compra'));
-    if (missingWarehouse) {
-      alert('Por favor, selecione um armazém para todos os produtos.');
+    if (items.length === 0) {
+      alert('Por favor adicione pelo menos um bem ou serviço.');
       return;
     }
-    */
 
     setLoading(true);
 
     let finalSupplierId = supplierId;
+
     if (!finalSupplierId && supplierName) {
       try {
-        if (!user?.empresa_id) {
+        const companyIdVal = user?.empresa_id || user?.company_id;
+        if (!companyIdVal) {
           alert('Sessão expirada ou sem empresa associada.');
           setLoading(false);
           return;
@@ -22256,7 +26185,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
         const { data: newSup, error: supErr } = await supabase
           .from('fornecedores')
           .insert({
-            empresa_id: user.empresa_id,
+            empresa_id: companyIdVal,
             nome: supplierName,
             nif: nif,
             email: '',
@@ -22274,20 +26203,20 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
       }
     }
 
-    if (!finalSupplierId) {
+    if (!finalSupplierId && !supplierName) {
       alert('Por favor, selecione um fornecedor ou digite o nome de um novo fornecedor.');
       setLoading(false);
       return;
     }
 
     try {
-      if (!user?.empresa_id) {
+      const companyIdVal = user?.empresa_id || user?.company_id;
+      if (!companyIdVal) {
         alert('Sessão expirada ou sem empresa associada.');
         setLoading(false);
         return;
       }
 
-      // Resolve cashBox to a UUID if it's 'Banco'
       let finalCaixaId = cashBox || null;
       if (cashBox === 'Banco') {
         const bankCaixa = caixas.find(c => c.name.toLowerCase().includes('banco'));
@@ -22300,17 +26229,30 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
         }
       }
 
-      if (!isValidUUID(finalCaixaId)) {
+      if (finalCaixaId && !isValidUUID(finalCaixaId)) {
         finalCaixaId = null;
       }
 
-      // Objeto limpo apenas com campos que existem na tabela 'compras'
-      const isCashPurchase = documentType === 'Fatura Recibo de Compra';
+      if (!initialData?.id && invoiceNumber) {
+        const { data: dupCheck } = await supabase
+          .from('compras')
+          .select('id')
+          .eq('empresa_id', companyIdVal)
+          .eq('fornecedor_id', finalSupplierId)
+          .eq('numero_documento', invoiceNumber.trim())
+          .limit(1);
+
+        if (dupCheck && dupCheck.length > 0) {
+          alert(`Já existe um documento de compra registado com o número "${invoiceNumber}" para este fornecedor.`);
+          setLoading(false);
+          return;
+        }
+      }
+
+      const isCashPurchase = documentType === 'Fatura Recibo de Compra' || documentType === 'Fatura Recibo';
       
       const purchaseDataFields: any = {
-        empresa_id: user.empresa_id,
-        fornecedor_id: finalSupplierId || null,
-        supplier_id: finalSupplierId || null,
+        empresa_id: companyIdVal,
         data_compra: date,
         data: date,
         valor_total: Number(finalTotal),
@@ -22324,7 +26266,6 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
         due_date: dueDate || null,
         taxa_cambio: Number(exchangeRate || 1),
         moeda: currency || 'Kwanza',
-        caixa_id: finalCaixaId,
         itens: items,
         items: items,
         descricao: `${documentType} nº ${invoiceNumber || documentNumber}`,
@@ -22334,41 +26275,50 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
         recibo_emitido: isCashPurchase ? true : false,
         valor_pago: isCashPurchase ? Number(finalTotal) : 0,
         saldo_pendente: isCashPurchase ? 0 : Number(finalTotal),
-        created_by: user.id,
-        created_by_username: user.username,
-        created_by_nome: user.nome || user.username || 'Operador',
-        criado_por: user.id
+        metodo_pagamento: paymentMethod || (isCashPurchase ? 'Numerário' : ''),
+        forma_pagamento: paymentMethod || (isCashPurchase ? 'Numerário' : ''),
+        created_by_username: user?.username || 'admin',
+        created_by_nome: user?.nome || user?.username || 'Operador',
       };
 
-      let result;
-      if (initialData?.id && !fixedDocumentType) { // If it's a real update of a purchase
-        purchaseDataFields.atualizado_em = new Date().toISOString();
-        purchaseDataFields.atualizado_por = user.id;
+      if (isValidUUID(finalSupplierId)) {
+        purchaseDataFields.fornecedor_id = finalSupplierId;
+        purchaseDataFields.supplier_id = finalSupplierId;
+      }
+      if (isValidUUID(finalCaixaId)) {
+        purchaseDataFields.caixa_id = finalCaixaId;
+      }
+      if (isValidUUID(user?.id)) {
+        purchaseDataFields.created_by = user.id;
+        purchaseDataFields.criado_por = user.id;
+      }
 
-        console.log('[UPDATE compras] Updating existing purchase:', purchaseDataFields);
+      let result;
+      if (initialData?.id && !fixedDocumentType) {
+        purchaseDataFields.atualizado_em = new Date().toISOString();
+        if (isValidUUID(user?.id)) {
+          purchaseDataFields.atualizado_por = user.id;
+        }
+
         result = await supabase
           .from('compras')
           .update(purchaseDataFields)
           .eq('id', initialData.id)
-          .eq('empresa_id', user.empresa_id)
           .select()
           .single();
-      } else { // New Purchase or Pagamento
+      } else {
         if (fixedDocumentType === 'Pagamento') {
-          // If it's a Pagamento, keep the relationship
           purchaseDataFields.reference_purchase_number = initialData?.purchase_number || '';
           purchaseDataFields.reference_document = initialData?.purchase_number || '';
           purchaseDataFields.descricao = `Recibo de Fornecedor referente a ${initialData?.purchase_number || invoiceNumber}`;
         }
 
-        console.log('[INSERT compras] Creating new record:', purchaseDataFields);
         result = await supabase
           .from('compras')
           .insert([purchaseDataFields])
           .select()
           .single();
 
-        // If it's a Pagamento, update the original Purchase
         if (!result.error && fixedDocumentType === 'Pagamento' && initialData?.id) {
           const valorJaPago = Number(initialData.valor_pago || 0) + Number(finalTotal);
           const valorTotalDoc = Number(initialData.valor_total || initialData.total || 0);
@@ -22381,18 +26331,14 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
               valor_pago: valorJaPago,
               saldo_pendente: saldo
             })
-            .eq('id', initialData.id)
-            .eq('empresa_id', user.empresa_id);
+            .eq('id', initialData.id);
         }
       }
 
-      console.log('Supabase result:', result);
       if (result.error) {
-        console.error('Supabase error:', result.error);
         throw result.error;
       }
 
-      // Automatic Cash Movement for purchases (SAÍDA)
       if (result.data && (documentType === 'Fatura Recibo de Compra' || documentType === 'Pagamento') && cashBox && addMovement) {
           try {
               const selectedCaixa = caixas.find(c => c.id === cashBox || c.name === cashBox);
@@ -22410,6 +26356,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
           }
       }
 
+      toast.success('Documento de compra salvo com sucesso!');
       onSuccess(result.data);
     } catch (err: any) {
       console.error('Erro ao emitir documento:', err);
@@ -22420,7 +26367,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
   };
 
   if (fixedDocumentType === 'Pagamento') {
-    const amountToPay = initialData?.total || 0;
+    const amountToPay = initialData?.total || initialData?.valor_total || 0;
     const [liquidarValue, setLiquidarValue] = useState(amountToPay);
     const [receiptNumber, setReceiptNumber] = useState('');
     const [receiptCode, setReceiptCode] = useState('');
@@ -22434,8 +26381,11 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
           animate={{ opacity: 1, scale: 1, y: 0 }}
           className="bg-white w-full max-w-lg shadow-2xl border border-zinc-200"
         >
-          <div className="p-8 border-b border-zinc-100 flex justify-between items-center">
-            <h3 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">Emitir Recibo</h3>
+          <div className="p-8 border-b border-zinc-100 flex justify-between items-center bg-zinc-50/50">
+            <h3 className="text-2xl font-black text-[#003366] uppercase tracking-tighter flex items-center gap-2">
+              <FileCheck size={22} className="text-emerald-600" />
+              Emitir Recibo de Fatura
+            </h3>
             <button onClick={onBack} className="p-2 hover:bg-zinc-100 transition-colors text-zinc-400 group">
               <X size={24} className="group-hover:rotate-90 transition-transform" />
             </button>
@@ -22444,14 +26394,13 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
           <form onSubmit={handleSubmit} className="p-8 space-y-6">
             <div className="bg-zinc-50/50 p-6 border border-zinc-100 flex justify-between items-start">
                <div>
-                  <label className="text-[10px] font-black uppercase text-zinc-400 tracking-widest mb-1 block">Documento</label>
-                  <p className="text-sm font-bold text-zinc-600">{initialData?.supplier_name}</p>
+                  <label className="text-[10px] font-black uppercase text-zinc-400 tracking-widest mb-1 block">Fornecedor</label>
+                  <p className="text-sm font-bold text-zinc-600">{initialData?.supplier_name || initialData?.fornecedor_nome}</p>
                </div>
                <div className="text-right">
                   <label className="text-[10px] font-black uppercase text-zinc-400 tracking-widest mb-1 block">Saldo em falta</label>
                   <p className="text-xl font-black text-red-600">
-                     <span className="text-sm mr-1">{liquidarValue.toLocaleString('pt-PT', { minimumFractionDigits: 2 }).split(',')[0]}</span>
-                     {liquidarValue.toLocaleString('pt-PT', { minimumFractionDigits: 2 }).split(',').length > 1 ? ',' + liquidarValue.toLocaleString('pt-PT', { minimumFractionDigits: 2 }).split(',')[1] : ''} Kz
+                     {formatCurrency(liquidarValue)}
                   </p>
                </div>
             </div>
@@ -22501,7 +26450,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
                 onChange={(e) => {
                   const val = parseFloat(e.target.value) || 0;
                   setLiquidarValue(val);
-                  setItems([{ description: 'Recibo: ' + initialData?.purchase_number, quantity: 1, unit_price: val, total: val }]);
+                  setItems([{ description: 'Recibo: ' + (initialData?.purchase_number || initialData?.invoice_number || ''), quantity: 1, unit_price: val, total: val }]);
                 }}
               />
             </div>
@@ -22509,7 +26458,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
             <div className="p-4 bg-blue-50/20 border border-blue-100/30">
                <label className="text-[9px] font-black uppercase text-blue-400 tracking-widest mb-1 block italic text-center">Valor por extenso</label>
                <p className="text-xs font-bold text-blue-900 italic text-center">
-                  {liquidarValue.toLocaleString('pt-PT', { style: 'currency', currency: 'AOA' }).replace('Kz', '')} Kwanzas...
+                  {writeValorPorExtenso(liquidarValue)}
                </p>
             </div>
 
@@ -22520,8 +26469,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
                   value={paymentMethod} 
                   onChange={(e) => setPaymentMethod(e.target.value)}
                   required
-                  className="w-full bg-white border border-zinc-200 px-4 py-3 text-sm font-bold focus:border-[#003366] outline-none transition-colors appearance-none"
-                  style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 24 24\' stroke=\'currentColor\'%3E%3Cpath stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'2\' d=\'M19 9l-7 7-7-7\' /%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 1rem center', backgroundSize: '1.2em' }}
+                  className="w-full bg-white border border-zinc-200 px-4 py-3 text-sm font-bold focus:border-[#003366] outline-none transition-colors"
                 >
                   <option value="">Selecione...</option>
                   <option value="Numerário">Numerário</option>
@@ -22536,8 +26484,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
                   value={cashBox} 
                   onChange={(e) => setCashBox(e.target.value)}
                   required
-                  className="w-full bg-white border border-zinc-200 px-4 py-3 text-sm font-bold focus:border-[#003366] outline-none transition-colors appearance-none"
-                  style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 24 24\' stroke=\'currentColor\'%3E%3Cpath stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'2\' d=\'M19 9l-7 7-7-7\' /%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 1rem center', backgroundSize: '1.2em' }}
+                  className="w-full bg-white border border-zinc-200 px-4 py-3 text-sm font-bold focus:border-[#003366] outline-none transition-colors"
                 >
                   <option value="">Selecione...</option>
                   {caixas.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -22568,7 +26515,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
                 className="flex-[2] bg-[#003366] text-white font-black py-4 uppercase text-[11px] tracking-widest hover:bg-[#002244] shadow-xl shadow-blue-900/10 active:scale-[0.98] transition-all"
                 onClick={() => {
                    if (items.length === 0) {
-                     setItems([{ description: 'Recibo: ' + initialData?.purchase_number, quantity: 1, unit_price: liquidarValue, total: liquidarValue }]);
+                     setItems([{ description: 'Recibo: ' + (initialData?.purchase_number || ''), quantity: 1, unit_price: liquidarValue, total: liquidarValue }]);
                    }
                 }}
               >
@@ -22582,26 +26529,19 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
   }
 
   return (
-    <div className="space-y-8 bg-zinc-50/30 p-4 sm:p-8 min-h-screen">
-      <div className="flex justify-between items-center bg-white p-6 border border-zinc-200 mb-8 rounded-none shadow-sm">
-        <div className="flex items-center gap-4">
-          <button onClick={onBack} className="p-2 hover:bg-zinc-100 rounded-none text-zinc-400 transition-colors">
-            <ChevronLeft size={24} />
-          </button>
-          <div className="flex items-center gap-2">
-            <div className="w-10 h-10 bg-[#003366] flex items-center justify-center text-white shadow-lg">
-              <FilePlus size={20} />
-            </div>
-            <h2 className="text-xl font-bold text-[#003366] uppercase tracking-tighter italic">Registar Nova Compra</h2>
-          </div>
-        </div>
-        <button 
-          type="button"
-          onClick={() => setShowSupplierModal(true)}
-          className="bg-[#003366] text-white px-6 py-2.5 text-[10px] font-black uppercase tracking-widest hover:bg-[#002244] transition-all shadow-xl flex items-center gap-2 border-b-4 border-blue-900 active:translate-y-1"
-        >
-          <UserPlus size={16} /> Registar Fornecedor
+    <div className="max-w-[98%] mx-auto space-y-8 bg-zinc-50/30 p-4 sm:p-8 min-h-screen">
+      <div className="flex items-center gap-4 mb-8">
+        <button onClick={onBack} className="p-2 hover:bg-zinc-100 rounded-none text-zinc-400 transition-colors">
+          <ChevronLeft size={24} />
         </button>
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-zinc-100 flex items-center justify-center text-zinc-500">
+            <FileText size={18} />
+          </div>
+          <h2 className="text-xl font-bold text-[#003366]">
+            {fixedDocumentType ? `Emitir ${fixedDocumentType}` : 'Informações do documento de compra'}
+          </h2>
+        </div>
       </div>
 
       {showSupplierModal && (
@@ -22629,8 +26569,22 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
         </div>
       )}
 
+      {isAgtItemModalOpen && (
+        <AgtItemModal
+          isOpen={isAgtItemModalOpen}
+          initialItem={editingAgtItemData}
+          products={products}
+          activeTaxes={activeTaxes}
+          onClose={() => {
+            setIsAgtItemModalOpen(false);
+            setEditingAgtItemIndex(null);
+            setEditingAgtItemData(null);
+          }}
+          onSave={handleSaveAgtItem}
+        />
+      )}
+
       <form onSubmit={handleSubmit} className="space-y-8">
-        {/* Section 1: Informações do documento */}
         <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="space-y-2">
@@ -22666,7 +26620,8 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
                 <input 
                   type="date" 
                   value={date} 
-                  disabled
+                  onChange={(e) => setDate(e.target.value)}
+                  required
                   className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
                 />
               </div>
@@ -22681,135 +26636,94 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
                 />
               </div>
             </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-600">Cativação de IVA</label>
-              <select 
-                value={vatWithholding} 
-                onChange={(e) => setVatWithholding(e.target.value)}
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-              >
-                <option value="0">Sem cativação</option>
-                <option value="0.5">50%</option>
-                <option value="1">100%</option>
-              </select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-600">Câmbio</label>
-              <input 
-                type="number" 
-                value={exchangeRate} 
-                onChange={(e) => setExchangeRate(e.target.value)}
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-600">Moeda</label>
-              <select 
-                value={currency} 
-                onChange={(e) => setCurrency(e.target.value)}
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-              >
-                <option value="Kwanza">Kwanza</option>
-                <option value="USD">USD</option>
-                <option value="Euro">Euro</option>
-              </select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-600">Contravalor</label>
-              <input 
-                type="number" 
-                value={counterValue} 
-                onChange={(e) => setCounterValue(e.target.value)}
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-600">Local de Trabalho <span className="text-red-500">*</span></label>
-              <select 
-                value={workSiteId || ''} 
-                onChange={(e) => setWorkSiteId(e.target.value)}
-                required
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-              >
-                <option value="">Selecione o local</option>
-                {workSites.map(ws => (
-                  <option key={ws.id} value={ws.id}>{ws.title || ws.name}</option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-600">Desconto global</label>
-              <input 
-                type="number" 
-                value={globalDiscount} 
-                onChange={(e) => setGlobalDiscount(e.target.value)}
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-              />
-            </div>
-            {(documentType === 'Fatura Recibo de Compra' || documentType === 'Pagamento') && (
-              <>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-zinc-600">Selecionar caixa de pagamento</label>
-                  <select 
-                    value={cashBox || ''} 
-                    onChange={(e) => setCashBox(e.target.value)}
-                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-                  >
-                    <option value="">Selecione a caixa</option>
-                    {caixas.map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                    <option value="Banco">Banco</option>
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-zinc-600">Selecionar forma de pagamento</label>
-                  <select 
-                    value={paymentMethod} 
-                    onChange={(e) => setPaymentMethod(e.target.value)}
-                    className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-                  >
-                    <option value="">Selecione o pagamento</option>
-                    <option value="Numerário">Numerário</option>
-                    <option value="Multicaixa">Multicaixa</option>
-                    <option value="Transferência">Transferência</option>
-                    <option value="Depósito">Depósito</option>
-                  </select>
-                </div>
-              </>
-            )}
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-600">Código Hash do Documento</label>
-              <input 
-                type="text" 
-                value={hash} 
-                onChange={(e) => setHash(e.target.value)}
-                placeholder="Ex: aB3dE..."
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-mono"
-              />
-            </div>
           </div>
+
+          {(documentType === 'Fatura Recibo de Compra' || documentType === 'Fatura Recibo') && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-zinc-100 bg-emerald-50/40 p-4 border border-emerald-200">
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-[#003366] uppercase tracking-wider">Caixa de Pagamento <span className="text-red-500">*</span></label>
+                <select 
+                  value={cashBox} 
+                  onChange={(e) => setCashBox(e.target.value)}
+                  required
+                  className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold shadow-sm"
+                >
+                  <option value="">Selecione a Caixa</option>
+                  {(caixas || []).map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                  <option value="Banco">Banco de Testes</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-[#003366] uppercase tracking-wider">Forma de Pagamento <span className="text-red-500">*</span></label>
+                <select 
+                  value={paymentMethod} 
+                  onChange={(e) => setPaymentMethod(e.target.value)}
+                  required
+                  className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold shadow-sm"
+                >
+                  <option value="">Selecione a Forma de Pagamento</option>
+                  <option value="Numerário">Numerário</option>
+                  <option value="Multicaixa">Multicaixa</option>
+                  <option value="Transferência">Transferência</option>
+                  <option value="Depósito">Depósito</option>
+                </select>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Section 2: Informações do fornecedor */}
         <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-6">
-          <h3 className="text-lg font-bold text-[#003366] border-b border-zinc-100 pb-4">Informações do fornecedor</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-600">Código do país <span className="text-red-500">*</span></label>
+          <h3 className="text-sm font-bold text-[#0f2a4a] border-b border-zinc-100 pb-3 uppercase tracking-wide">Informações do fornecedor</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-zinc-600">Código do país <span className="text-red-500">*</span></label>
               <select 
                 value={countryCode} 
                 onChange={(e) => setCountryCode(e.target.value)}
                 required
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+                className="w-full bg-white border border-zinc-300 rounded-none px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#0f2a4a] text-sm"
               >
-                <option value="Angola">Angola</option>
-                <option value="Portugal">Portugal</option>
-                <option value="Brasil">Brasil</option>
+                <option value="AO">AO - Angola</option>
+                <option value="PT">PT - Portugal</option>
+                <option value="BR">BR - Brasil</option>
+                <option value="US">US - Estados Unidos</option>
               </select>
             </div>
-            <div className="space-y-2 md:col-span-2">
-              <label className="text-xs font-bold text-zinc-600">Selecionar fornecedor <span className="text-red-500">*</span></label>
+
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-zinc-600">Nº de identificação fiscal (NIF) <span className="text-red-500">*</span></label>
+              <div className="flex">
+                <input
+                  type="text"
+                  value={supplierNifSearch || nif}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setSupplierNifSearch(val);
+                    setNif(val);
+                    const found = suppliers.find(c => c.nif && String(c.nif) === val);
+                    if (found) {
+                      setSupplierId(found.id);
+                      setSupplierName(found.name);
+                    }
+                  }}
+                  placeholder="Ex: 5000000001"
+                  className="flex-1 bg-white border border-zinc-300 border-r-0 rounded-none px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#0f2a4a] text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={handleSearchSupplier}
+                  className="bg-[#0f2a4a] hover:bg-[#1a3f6f] text-white px-4 py-2 transition-colors flex items-center justify-center"
+                  title="Pesquisar por NIF"
+                >
+                  <Search size={16} />
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-zinc-600">Nome do Fornecedor <span className="text-red-500">*</span></label>
               <div className="flex gap-2">
                 <select 
                   value={supplierId || ''} 
@@ -22820,12 +26734,13 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
                     if (client) {
                       setSupplierName(client.name);
                       setNif(client.nif || '');
+                      setSupplierNifSearch(client.nif || '');
                     } else {
                       setSupplierName('');
                       setNif('');
                     }
                   }}
-                  className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+                  className="flex-1 bg-white border border-zinc-300 rounded-none px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#0f2a4a] text-sm"
                 >
                   <option value="">Selecione um fornecedor</option>
                   {suppliers.map(c => <option key={String(c.id)} value={c.id}>{c.name} ({c.nif})</option>)}
@@ -22833,21 +26748,22 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
                 <button 
                   type="button"
                   onClick={() => setShowSupplierModal(true)}
-                  className="p-2.5 bg-zinc-100 text-[#003366] hover:bg-zinc-200 transition-all border border-zinc-200 flex items-center justify-center min-w-[45px]"
+                  className="p-2 bg-zinc-100 text-[#0f2a4a] hover:bg-zinc-200 transition-all border border-zinc-300 flex items-center justify-center min-w-[42px]"
                   title="Registar novo fornecedor"
                 >
-                  <UserPlus size={20} />
+                  <UserPlus size={18} />
                 </button>
               </div>
             </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-600">Data prestação de bens/serviços <span className="text-red-500">*</span></label>
+            
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-zinc-600">Data prestação de bens/serviços <span className="text-red-500">*</span></label>
               <input 
                 type="date" 
                 value={serviceDate} 
                 onChange={(e) => setServiceDate(e.target.value)}
                 required
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+                className="w-full bg-white border border-zinc-300 rounded-none px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#0f2a4a] text-sm"
               />
             </div>
           </div>
@@ -22855,276 +26771,145 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
 
         {/* Section 3: Bens e serviços */}
         <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-6">
-          <div className="flex justify-between items-center border-b border-zinc-100 pb-4">
-            <h3 className="text-lg font-bold text-[#003366]">Bens e serviços</h3>
+          <div className="flex justify-between items-center border-b border-zinc-100 pb-3">
+            <h3 className="text-sm font-bold text-[#0f2a4a] uppercase tracking-wide">Bens e serviços</h3>
             <button 
               type="button"
-              disabled={isCertified}
               onClick={addItem}
-              className={`bg-[#003366] text-white px-6 py-2.5 font-bold flex items-center gap-2 hover:bg-[#002244] transition-all text-sm shadow-sm rounded-none ${isCertified ? 'opacity-50 cursor-not-allowed' : ''}`}
+              className="bg-[#0f2a4a] hover:bg-[#1a3f6f] text-white px-4 py-2 font-bold flex items-center gap-2 transition-all text-xs shadow-sm rounded-none"
             >
-              <Plus size={18} /> Adicionar a lista
+              <Plus size={16} /> Adicionar Bem ou Serviço
             </button>
           </div>
           
-          <div className="space-y-4">
-            {items.map((item, idx) => (
-              <div key={idx} className="bg-zinc-50 p-4 border border-zinc-100 space-y-4">
-                <div className="grid grid-cols-12 gap-4 items-end">
-                  <div className="col-span-6 space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Descrição</label>
-                    <input 
-                      type="text" 
-                      value={item.description} 
-                      onChange={(e) => updateItem(idx, 'description', e.target.value)}
-                      placeholder="Descrição do item"
-                      required
-                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
-                    />
-                  </div>
-                  <div className="col-span-2 space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Tipologia</label>
-                    <select 
-                      value={item.tipologia || 'Mercadoria'} 
-                      onChange={(e) => updateItem(idx, 'tipologia', e.target.value)}
-                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
-                    >
-                      <option value="Mercadoria">Mercadoria</option>
-                      <option value="importação">Importação</option>
-                      <option value="serviços no estrangeiro">Serviços no estrangeiro</option>
-                      <option value="outro">Outro</option>
-                    </select>
-                  </div>
-                  <div className="col-span-2 space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Armazém</label>
-                    <select 
-                      value={item.warehouse_id || ''} 
-                      onChange={(e) => updateItem(idx, 'warehouse_id', e.target.value ? Number(e.target.value) : undefined)}
-                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
-                    >
-                      <option value="">Nenhum</option>
-                      {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-                    </select>
-                    {item.warehouse_id && (
-                      <div className="mt-1">
-                        <label className="text-[9px] font-bold text-zinc-400 uppercase">Responsável</label>
-                        <input 
-                          type="text"
-                          value={item.warehouse_responsible || ''}
-                          onChange={(e) => updateItem(idx, 'warehouse_responsible', e.target.value)}
-                          placeholder="Nome do responsável"
-                          className="w-full bg-white border border-zinc-200 rounded-none px-2 py-1 text-[10px] text-zinc-800 focus:outline-none focus:border-[#003366]"
-                        />
-                      </div>
-                    )}
-                  </div>
-                  <div className="col-span-2 space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Tipo Artigo</label>
-                    <select 
-                      value={item.tipo_artigo || 'produto'} 
-                      onChange={(e) => updateItem(idx, 'tipo_artigo', e.target.value)}
-                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
-                    >
-                      <option value="produto">Produto</option>
-                      <option value="serviço">Serviço</option>
-                      <option value="outro">Outro</option>
-                    </select>
-                  </div>
-                  <div className="col-span-2 space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Taxa</label>
-                    <select 
-                      value={item.tax_id || ''}
-                      onChange={(e) => updateItem(idx, 'tax_id', e.target.value)}
-                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
-                    >
-                      <option value="">Selecionar Taxa</option>
-                      {activeTaxes.map((t) => (
-                        <option key={t.id} value={t.id}>{t.nome} ({t.taxa}%)</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="col-span-1 border-l border-zinc-200 pl-4 flex flex-col gap-2 justify-end pb-1">
-                    <button 
-                      type="button" 
-                      onClick={() => removeItem(idx)}
-                      title="Excluir item"
-                      className="text-zinc-300 hover:text-red-500 transition-colors p-1"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                    <button 
-                      type="button" 
-                      onClick={() => updateItem(idx, 'showDimensions', !item.showDimensions)}
-                      title="Dimensões"
-                      className={`transition-colors p-1 ${item.showDimensions ? 'text-blue-600' : 'text-zinc-300 hover:text-blue-400'}`}
-                    >
-                      <Maximize size={16} />
-                    </button>
-                  </div>
-                </div>
-
-                {item.showDimensions && (
-                  <div className="grid grid-cols-3 gap-4 p-4 bg-blue-50/50 border-t border-blue-100">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Comprimento (m)</label>
-                      <input 
-                        type="number" 
-                        value={item.comprimento || 0} 
-                        onChange={(e) => updateItem(idx, 'comprimento', Number(e.target.value))}
-                        className="w-full bg-white border border-blue-200 px-3 py-2 text-xs font-bold text-blue-900 focus:outline-none focus:border-blue-500" 
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Largura (m)</label>
-                      <input 
-                        type="number" 
-                        value={item.largura || 0} 
-                        onChange={(e) => updateItem(idx, 'largura', Number(e.target.value))}
-                        className="w-full bg-white border border-blue-200 px-3 py-2 text-xs font-bold text-blue-900 focus:outline-none focus:border-blue-500" 
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Altura (m)</label>
-                      <input 
-                        type="number" 
-                        value={item.altura || 0} 
-                        onChange={(e) => updateItem(idx, 'altura', Number(e.target.value))}
-                        className="w-full bg-white border border-blue-200 px-3 py-2 text-xs font-bold text-blue-900 focus:outline-none focus:border-blue-500" 
-                      />
-                    </div>
-                  </div>
+          {/* AGT-style table for Purchase Items */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="bg-[#0f2a4a] text-white">
+                  <th className="px-3 py-2.5 text-left font-semibold w-10">#</th>
+                  <th className="px-3 py-2.5 text-left font-semibold">Descrição do produto / serviço</th>
+                  <th className="px-3 py-2.5 text-center font-semibold w-24">Quantidade</th>
+                  <th className="px-3 py-2.5 text-center font-semibold w-28">Preço Unit</th>
+                  <th className="px-3 py-2.5 text-center font-semibold w-28">Desconto (%)</th>
+                  <th className="px-3 py-2.5 text-center font-semibold w-32">Imposto aplicado</th>
+                  <th className="px-3 py-2.5 text-center font-semibold w-28">Armazém</th>
+                  <th className="px-3 py-2.5 text-center font-semibold w-24">Acção</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="py-12 text-center text-zinc-400 font-semibold uppercase tracking-widest text-xs italic border border-dashed border-zinc-200">
+                      Nenhum bem ou serviço adicionado. Clique no botão acima para adicionar.
+                    </td>
+                  </tr>
+                ) : (
+                  items.map((item, idx) => (
+                    <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-zinc-50/60'}>
+                      <td className="px-3 py-2.5 text-zinc-500 border-b border-zinc-100">{idx + 1}</td>
+                      <td className="px-3 py-2.5 border-b border-zinc-100">
+                        <div className="font-medium text-zinc-800">{item.description || '—'}</div>
+                        {item.referencia && <div className="text-zinc-400 text-[10px]">Ref: {item.referencia}</div>}
+                      </td>
+                      <td className="px-3 py-2.5 text-center border-b border-zinc-100 text-zinc-700 font-bold">{item.quantity}</td>
+                      <td className="px-3 py-2.5 text-center border-b border-zinc-100 text-zinc-700 font-bold">{formatCurrency(Number(item.unit_price) || 0)}</td>
+                      <td className="px-3 py-2.5 text-center border-b border-zinc-100 text-zinc-700">{item.desconto || 0}%</td>
+                      <td className="px-3 py-2.5 text-center border-b border-zinc-100">
+                        {(() => {
+                          const tax = activeTaxes.find(t => t.id === item.tax_id || String(t.id) === String(item.tax_id));
+                          return tax ? (
+                            <span className="inline-block bg-blue-50 text-blue-700 px-2 py-0.5 text-[10px] font-semibold border border-blue-100">
+                              {tax.nome} {tax.taxa}%
+                            </span>
+                          ) : <span className="text-zinc-400">{item.tax || '—'}</span>;
+                        })()}
+                      </td>
+                      <td className="px-3 py-2.5 text-center border-b border-zinc-100 text-zinc-600 text-[11px]">
+                        {(() => {
+                          const wh = warehouses.find(w => w.id === item.warehouse_id || String(w.id) === String(item.warehouse_id));
+                          return wh ? wh.name : '—';
+                        })()}
+                      </td>
+                      <td className="px-3 py-2.5 border-b border-zinc-100">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingAgtItemIndex(idx);
+                              const tax = activeTaxes.find(t => t.id === item.tax_id || String(t.id) === String(item.tax_id));
+                              setEditingAgtItemData({
+                                tipo_operacao: item.tipologia || 'Mercadoria',
+                                quantity: Number(item.quantity) || 1,
+                                description: item.description || '',
+                                unidade_medida: item.unidade_medida || 'QUANTIDADE (Qtd)',
+                                unit_price: Number(item.unit_price) || 0,
+                                preco_com_desconto: Number(item.unit_price) || 0,
+                                valor_credito: 0,
+                                has_imposto: true,
+                                tipo_imposto: tax ? (tax.nome?.includes('IVA') ? 'IVA' : 'IS') : 'IVA',
+                                tem_isencao: false,
+                                codigo_imposto: tax ? String(tax.id) : '',
+                                taxa_imposto: tax ? Number(tax.taxa) : 14,
+                                valor_imposto: 0,
+                                desconto: Number(item.desconto) || 0,
+                                total: Number(item.total) || 0,
+                              });
+                              setIsAgtItemModalOpen(true);
+                            }}
+                            title="Editar Item"
+                            className="p-1.5 bg-white border border-zinc-200 text-zinc-500 hover:text-[#0f2a4a] hover:border-[#0f2a4a] transition-all"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeItem(idx)}
+                            title="Remover Item"
+                            className="p-1.5 bg-white border border-zinc-200 text-zinc-500 hover:text-red-600 hover:border-red-300 transition-all"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
                 )}
-
-                <div className="grid grid-cols-12 gap-4 items-end">
-                  <div className="col-span-2 space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Referência</label>
-                    <input 
-                      type="text" 
-                      value={item.referencia || ''} 
-                      onChange={(e) => updateItem(idx, 'referencia', e.target.value)}
-                      placeholder="Ref..."
-                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
-                    />
-                  </div>
-                  <div className="col-span-2 space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Qtd</label>
-                    <input 
-                      type="number" 
-                      value={item.quantity} 
-                      onChange={(e) => updateItem(idx, 'quantity', Number(e.target.value))}
-                      required
-                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
-                    />
-                  </div>
-                  <div className="col-span-3 space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Preço Un.</label>
-                    <input 
-                      type="number" 
-                      step="0.01"
-                      value={item.unit_price} 
-                      onChange={(e) => updateItem(idx, 'unit_price', Number(e.target.value))}
-                      required
-                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
-                    />
-                  </div>
-                  <div className="col-span-2 space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase">Desconto Linha</label>
-                    <input 
-                      type="number" 
-                      step="0.01"
-                      value={item.desconto_linha !== undefined ? item.desconto_linha : (item.desconto || 0)} 
-                      onChange={(e) => updateItem(idx, 'desconto_linha', Number(e.target.value))}
-                      className="w-full bg-white border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
-                    />
-                  </div>
-                  <div className="col-span-1 text-right pb-2">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Total</label>
-                    <p className="text-zinc-800 font-bold text-sm">
-                      {formatCurrency(item.total || 0)}
-                    </p>
-                  </div>
-                  <div className="col-span-2 flex justify-end items-center gap-2 pb-1 pr-4">
-                    <button 
-                      type="button"
-                      onClick={() => setExpandedDimensions(expandedDimensions === idx ? null : idx)}
-                      className="p-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 transition-colors"
-                      title="Dimensões"
-                    >
-                      <Layers size={16} />
-                    </button>
-                    <span className="text-[10px] text-zinc-400 font-medium">Dimensões</span>
-                  </div>
-                </div>
-
-                {expandedDimensions === idx && (
-                  <div className="grid grid-cols-3 gap-4 p-4 bg-white border border-zinc-200 animate-in fade-in slide-in-from-top-2">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-zinc-400 uppercase">Comprimento</label>
-                      <input 
-                        type="number" 
-                        value={item.comprimento || 0} 
-                        onChange={(e) => updateItem(idx, 'comprimento', Number(e.target.value))}
-                        className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-zinc-400 uppercase">Largura</label>
-                      <input 
-                        type="number" 
-                        value={item.largura || 0} 
-                        onChange={(e) => updateItem(idx, 'largura', Number(e.target.value))}
-                        className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-zinc-400 uppercase">Altura</label>
-                      <input 
-                        type="number" 
-                        value={item.altura || 0} 
-                        onChange={(e) => updateItem(idx, 'altura', Number(e.target.value))}
-                        className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-xs text-zinc-800 focus:outline-none focus:border-[#003366]"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-            {items.length === 0 && (
-              <div className="text-center py-12 text-zinc-400 border-2 border-dashed border-zinc-100 rounded-none text-sm bg-white">
-                Nenhum item adicionado. Clique em "Adicionar a lista" para começar.
-              </div>
-            )}
+              </tbody>
+            </table>
           </div>
 
           <div className="flex justify-end pt-6">
-            <div className="bg-zinc-50 p-6 space-y-4 border border-zinc-200 min-w-[320px]">
-              <div className="flex justify-between text-zinc-500 text-[10px] font-bold uppercase tracking-wider">
-                <span>Subtotal</span>
-                <span>{formatCurrency(total)}</span>
-              </div>
-              {Number(globalDiscount) > 0 && (
-                <div className="flex justify-between text-red-500 text-[10px] font-bold uppercase tracking-wider">
-                  <span>Desconto Global</span>
-                  <span>-{formatCurrency(Number(globalDiscount))}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-zinc-500 text-[10px] font-bold uppercase tracking-wider">
-                <span>Impostos (IVA, etc)</span>
-                <span>{formatCurrency(vatAmount)}</span>
-              </div>
-              {retencaoTaxesAmount > 0 && (
-                <div className="flex justify-between text-red-500 text-[10px] font-bold uppercase tracking-wider">
-                  <span>Retenções</span>
-                  <span>-{formatCurrency(retencaoTaxesAmount)}</span>
-                </div>
-              )}
-              <div className="pt-4 border-t border-zinc-200 flex justify-between items-center">
-                <span className="text-xs font-bold text-[#003366] uppercase tracking-widest">Total Final</span>
-                <span className="text-3xl font-black text-[#003366]">{formatCurrency(finalTotal)}</span>
-              </div>
-              <div className="text-[9px] text-zinc-400 text-right italic mt-2">
-                * Valores calculados em tempo real
-              </div>
+            <div className="w-full max-w-sm space-y-3 bg-zinc-50 p-6 border border-zinc-100">
+               <div className="flex justify-between text-xs font-bold text-zinc-500">
+                 <span>Subtotal:</span>
+                 <span>{formatCurrency(total)}</span>
+               </div>
+               {Number(globalDiscount || 0) > 0 && (
+                 <div className="flex justify-between text-xs font-bold text-amber-600">
+                   <span>Desconto Global:</span>
+                   <span>-{formatCurrency(Number(globalDiscount))}</span>
+                 </div>
+               )}
+               {vatAmount > 0 && (
+                 <div className="flex justify-between text-xs font-bold text-blue-600">
+                   <span>Total IVA:</span>
+                   <span>+{formatCurrency(vatAmount)}</span>
+                 </div>
+               )}
+               {retencaoTaxesAmount > 0 && (
+                 <div className="flex justify-between text-xs font-bold text-red-600">
+                   <span>Retenção na fonte:</span>
+                   <span>-{formatCurrency(retencaoTaxesAmount)}</span>
+                 </div>
+               )}
+               <div className="border-t border-zinc-200 pt-3 flex justify-between text-sm font-black text-[#0f2a4a]">
+                 <span>Total Final:</span>
+                 <span>{formatCurrency(finalTotal)}</span>
+               </div>
+               <div className="text-[10px] text-zinc-400 italic text-right">
+                 {writeValorPorExtenso(finalTotal)}
+               </div>
             </div>
           </div>
         </div>
@@ -23875,7 +27660,20 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
         };
       });
 
-      setPurchases(normalized);
+      // Garantir que não existam documentos duplicados na lista de Gestão de Compras
+      const uniqueNormalized = normalized.reduce((acc: any[], current: any) => {
+        const isDuplicate = acc.some(item => 
+          (item.id && current.id && item.id === current.id) ||
+          (item.purchase_number && current.purchase_number && 
+           item.purchase_number.trim() === current.purchase_number.trim() && 
+           item.document_type === current.document_type &&
+           String(item.supplier_id) === String(current.supplier_id))
+        );
+        if (!isDuplicate) acc.push(current);
+        return acc;
+      }, []);
+
+      setPurchases(uniqueNormalized);
     } catch (err: any) {
       console.error('[SELECT compras EXCEPTION] fetchPurchases failed:', err);
       toast.error(`Falha ao obter lista de compras: ${err.message}`);
@@ -24104,47 +27902,25 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
 
   if (isCreating) {
     return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm shadow-2xl animate-in fade-in duration-200">
-        <motion.div 
-          initial={{ scale: 0.95, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="w-full max-w-6xl bg-white shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
-        >
-          <div className="p-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
-             <h3 className="font-bold text-[#003366] flex items-center gap-2">
-                <ShoppingCart size={18} />
-                {createData && createType === undefined ? 'Editar Documento' : 
-                 createData && createType === 'Pagamento' ? 'Emitir Recibo' :
-                 createData && createType === 'Nota de Crédito de Fornecedor' ? 'Emitir Nota de Crédito' :
-                 createData ? 'Clonar Documento' : 'Registar Nova Compra'}
-             </h3>
-             <button onClick={() => setIsCreating(false)} className="text-zinc-400 hover:text-zinc-600">
-                <X size={20} />
-             </button>
-          </div>
-          <div className="flex-1 overflow-y-auto">
-            <CreatePurchase 
-              suppliers={suppliers} 
-              products={products} 
-              workSites={workSites} 
-              fiscalSeries={fiscalSeries} 
-              activeTaxes={activeTaxes}
-              onBack={() => setIsCreating(false)} 
-              onSuccess={(savedData) => {
-                setIsCreating(false);
-                fetchPurchases();
-                if (createType === 'Pagamento' && savedData) {
-                  setCompletedReceipt(savedData);
-                }
-              }} 
-              caixas={caixas}
-              initialData={createData}
-              fixedDocumentType={createType}
-              addMovement={addMovement}
-            />
-          </div>
-        </motion.div>
-      </div>
+      <CreatePurchase 
+        suppliers={suppliers} 
+        products={products} 
+        workSites={workSites} 
+        fiscalSeries={fiscalSeries} 
+        activeTaxes={activeTaxes}
+        onBack={() => setIsCreating(false)} 
+        onSuccess={(savedData) => {
+          setIsCreating(false);
+          fetchPurchases();
+          if (createType === 'Pagamento' && savedData) {
+            setCompletedReceipt(savedData);
+          }
+        }} 
+        caixas={caixas}
+        initialData={createData}
+        fixedDocumentType={createType}
+        addMovement={addMovement}
+      />
     );
   }
 
@@ -24326,6 +28102,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
     { id: 'lista_documentos', label: 'Lista de Documentos Compras', icon: FileText },
     { id: 'antiguidades', label: 'Antiguidades de Dívidas', icon: FileClock },
     { id: 'movimentos', label: 'Contas Correntes Fornecedores', icon: ArrowRightLeft },
+    { id: 'relatorio_compras', label: 'Relatório da Gestão de Compras', icon: FileSpreadsheet },
   ];
 
   return (
@@ -24648,19 +28425,37 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                         <td className="px-6 py-4 text-right pr-8">
                           <div className="flex items-center justify-end gap-3 font-sans">
                             <UserIssuerButton doc={p} globalUsers={globalUsers} />
-                            <button 
-                              onClick={() => {
-                                if (st.isFullyPaid) {
-                                  alert('Esta fatura de compra já se encontra totalmente paga (PAGO). Não é possível emitir mais recibos.');
-                                  return;
-                                }
-                                setShowReceiptModal(p);
-                              }}
-                              className={`${st.isPartial ? 'bg-blue-600 hover:bg-blue-700' : 'bg-emerald-600 hover:bg-emerald-700'} text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest shadow-md transition-all flex items-center gap-1.5`}
-                            >
-                              <FileCheck size={14} />
-                              {st.isPartial ? 'Emitir Recibo (Saldo)' : 'Emitir Recibo'}
-                            </button>
+                            {(() => {
+                              const rawType = String(p.tipo_documento || p.document_type || '').toUpperCase();
+                              const isReceiptDoc = rawType.includes('RECIBO') || rawType.includes('PAGAMENTO') || rawType.includes('FATURA RECIBO') || rawType === 'FR';
+
+                              // Requisito 4: Faturas Recibo (e Recibos) NÃO podem ter recibo associado
+                              if (isReceiptDoc) return null;
+
+                              // Requisito 3: Se a fatura estiver totalmente paga, não permite emitir mais recibos sobre a mesma fatura
+                              if (st.isFullyPaid || p.recibo_emitido === true || st.pendBalance <= 0.01) {
+                                return (
+                                  <button 
+                                    disabled
+                                    title="Fatura totalmente paga - Não é possível emitir mais recibos"
+                                    className="bg-zinc-100 text-zinc-400 border border-zinc-200 px-4 py-2 text-[10px] font-black uppercase tracking-widest cursor-not-allowed flex items-center gap-1.5 opacity-70"
+                                  >
+                                    <FileCheck size={14} />
+                                    Recibo Emitido (Pago)
+                                  </button>
+                                );
+                              }
+
+                              return (
+                                <button 
+                                  onClick={() => setShowReceiptModal(p)}
+                                  className={`${st.isPartial ? 'bg-blue-600 hover:bg-blue-700' : 'bg-emerald-600 hover:bg-emerald-700'} text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest shadow-md transition-all flex items-center gap-1.5`}
+                                >
+                                  <FileCheck size={14} />
+                                  {st.isPartial ? 'Emitir Recibo (Saldo)' : 'Emitir Recibo'}
+                                </button>
+                              );
+                            })()}
                             <button 
                               onClick={() => setSelectedPurchase(p)}
                               className="bg-[#003366] text-white p-2 hover:bg-[#002244] shadow-sm transition-all"
@@ -25042,6 +28837,190 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
           </table>
         </div>
       )}
+
+      {activeSubTab === 'relatorio_compras' && (() => {
+        const [rptSearch, setRptSearch] = (window as any).__rptSearchState || ['',(v:string)=>{(window as any).__rptSearchState=[v,(window as any).__rptSearchState?.[1]||((s:string)=>{})]; }];
+
+        const reportPurchases = purchases.filter(p => {
+          if (!rptSearch) return true;
+          const t = rptSearch.toLowerCase();
+          return (
+            (p.supplier_name || '').toLowerCase().includes(t) ||
+            (p.purchase_number || '').toLowerCase().includes(t) ||
+            (p.invoice_number || '').toLowerCase().includes(t) ||
+            (p.document_type || '').toLowerCase().includes(t)
+          );
+        });
+
+        const totalCompras = purchases.reduce((s, p) => {
+          const dt = (p.document_type || '').toLowerCase();
+          if (dt.includes('fatura') || dt.includes('compra')) return s + (p.total || 0);
+          return s;
+        }, 0);
+        const totalPago = purchases.reduce((s, p) => {
+          const dt = (p.document_type || '').toLowerCase();
+          if (dt.includes('pagamento') || dt.includes('recibo')) return s + (p.total || 0);
+          return s;
+        }, 0);
+        const saldoPendente = totalCompras - totalPago;
+
+        const handlePrintReport = () => {
+          const printContent = document.getElementById('relatorio-compras-print');
+          if (!printContent) return;
+          const w = window.open('', '_blank');
+          if (!w) return;
+          w.document.write(`<html><head><title>Relatório da Gestão de Compras</title>
+            <style>
+              body { font-family: Arial, sans-serif; font-size: 11px; margin: 20px; }
+              h1 { font-size: 16px; text-align: center; text-transform: uppercase; color: #003366; margin-bottom: 4px; }
+              h2 { font-size: 12px; text-align: center; color: #555; margin-bottom: 16px; }
+              table { width: 100%; border-collapse: collapse; }
+              th { background: #003366; color: white; padding: 6px 8px; text-align: left; font-size: 10px; }
+              td { padding: 5px 8px; border-bottom: 1px solid #ddd; }
+              .kpi-row { display: flex; gap: 16px; margin-bottom: 16px; }
+              .kpi { flex: 1; background: #f4f8ff; border: 1px solid #c8d8f0; padding: 10px; border-radius: 4px; }
+              .kpi-label { font-size: 9px; color: #666; text-transform: uppercase; font-weight: bold; }
+              .kpi-value { font-size: 14px; font-weight: 900; color: #003366; }
+              @media print { button { display: none; } }
+            </style></head><body>${printContent.innerHTML}</body></html>`);
+          w.document.close();
+          w.focus();
+          w.print();
+        };
+
+        const handleExportPDF = () => {
+          handlePrintReport();
+        };
+
+        return (
+          <div className="space-y-4">
+            {/* Header */}
+            <div className="bg-[#003366] text-white p-5 shadow-lg">
+              <div className="text-center">
+                <div className="text-xs font-bold tracking-[0.3em] uppercase text-blue-200 mb-1">Sistema de Gestão</div>
+                <h2 className="text-2xl font-black tracking-tight uppercase">Relatório da Gestão de Compras</h2>
+                <div className="text-xs text-blue-300 mt-1">{new Date().toLocaleDateString('pt-PT', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
+              </div>
+            </div>
+
+            {/* Toolbar */}
+            <div className="bg-white border border-zinc-200 shadow-sm p-3 flex flex-wrap gap-3 items-center justify-between">
+              {/* Search */}
+              <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+                <Search size={16} className="text-zinc-400 shrink-0" />
+                <input
+                  type="text"
+                  placeholder="Pesquisar por fornecedor, número, documento..."
+                  value={(window as any).__rptSearch || ''}
+                  onChange={e => { (window as any).__rptSearch = e.target.value; setActiveSubTab('relatorio_compras'); }}
+                  className="flex-1 border border-zinc-300 px-3 py-1.5 text-xs focus:outline-none focus:border-[#003366]"
+                />
+              </div>
+              {/* Action buttons */}
+              <div className="flex gap-2">
+                <button
+                  onClick={handleExportPDF}
+                  className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 text-xs font-bold hover:bg-red-700 transition-colors"
+                >
+                  <FileText size={14} />
+                  Exportar PDF
+                </button>
+                <button
+                  onClick={handlePrintReport}
+                  className="flex items-center gap-2 bg-[#003366] text-white px-4 py-2 text-xs font-bold hover:bg-[#004488] transition-colors"
+                >
+                  <Printer size={14} />
+                  Imprimir
+                </button>
+              </div>
+            </div>
+
+            <div id="relatorio-compras-print">
+              <div className="grid grid-cols-3 gap-4">
+                <div className="bg-white border border-zinc-200 shadow-sm p-4">
+                  <div className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Total de Compras</div>
+                  <div className="text-2xl font-black text-[#003366]">{formatCurrency(totalCompras)}</div>
+                  <div className="text-[10px] text-zinc-400 mt-1">{purchases.filter(p => ((p as any).document_type||'').toLowerCase().includes('fatura') || ((p as any).document_type||'').toLowerCase().includes('compra')).length} faturas</div>
+                </div>
+                <div className="bg-white border border-zinc-200 shadow-sm p-4">
+                  <div className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Total Pago</div>
+                  <div className="text-2xl font-black text-emerald-600">{formatCurrency(totalPago)}</div>
+                  <div className="text-[10px] text-zinc-400 mt-1">{purchases.filter(p => ((p as any).document_type||'').toLowerCase().includes('pagamento') || ((p as any).document_type||'').toLowerCase().includes('recibo')).length} pagamentos</div>
+                </div>
+                <div className="bg-white border border-zinc-200 shadow-sm p-4">
+                  <div className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Saldo Pendente</div>
+                  <div className={`text-2xl font-black ${saldoPendente > 0 ? 'text-red-600' : 'text-emerald-600'}`}>{formatCurrency(Math.abs(saldoPendente))}</div>
+                  <div className="text-[10px] text-zinc-400 mt-1">{saldoPendente > 0 ? 'Em dívida' : 'Liquidado'}</div>
+                </div>
+              </div>
+
+              <div className="bg-white border border-zinc-200 shadow-sm overflow-x-auto mt-4">
+                <div className="p-3 border-b border-zinc-200 bg-zinc-50 flex justify-between items-center">
+                  <span className="text-xs font-black text-zinc-600 uppercase tracking-widest">Lista de Compras</span>
+                  <span className="text-xs text-zinc-400">{reportPurchases.length} registos</span>
+                </div>
+                <table className="w-full text-left text-xs border-collapse whitespace-nowrap">
+                  <thead>
+                    <tr className="bg-[#003366] text-white">
+                      <th className="px-4 py-3 font-bold">Data</th>
+                      <th className="px-4 py-3 font-bold">Tipo Doc.</th>
+                      <th className="px-4 py-3 font-bold">N.º Documento</th>
+                      <th className="px-4 py-3 font-bold">Fornecedor</th>
+                      <th className="px-4 py-3 font-bold">Centro Custo</th>
+                      <th className="px-4 py-3 font-bold text-right">Subtotal</th>
+                      <th className="px-4 py-3 font-bold text-right">IVA</th>
+                      <th className="px-4 py-3 font-bold text-right">Total</th>
+                      <th className="px-4 py-3 font-bold text-center">Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100">
+                    {reportPurchases.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="text-center py-10 text-zinc-400 italic">Nenhum registo encontrado...</td>
+                      </tr>
+                    ) : reportPurchases.map((p, idx) => {
+                      const st = getPurchaseStatus(p);
+                      return (
+                        <tr key={p.id || idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-zinc-50'}>
+                          <td className="px-4 py-2.5">{new Date(p.date).toLocaleDateString('pt-PT')}</td>
+                          <td className="px-4 py-2.5 font-bold text-[#003366]">{p.document_type || p.tipo_documento || 'Compra'}</td>
+                          <td className="px-4 py-2.5 font-mono">{p.purchase_number || p.invoice_number || '-'}</td>
+                          <td className="px-4 py-2.5 uppercase font-bold">{p.supplier_name || '-'}</td>
+                          <td className="px-4 py-2.5 text-zinc-500">{p.work_site || '-'}</td>
+                          <td className="px-4 py-2.5 text-right">{formatCurrency((p as any).subtotal || 0)}</td>
+                          <td className="px-4 py-2.5 text-right text-orange-600">{formatCurrency((p as any).tax || (p as any).iva || 0)}</td>
+                          <td className="px-4 py-2.5 text-right font-black text-[#003366]">{formatCurrency(p.total || 0)}</td>
+                          <td className="px-4 py-2.5 text-center">
+                            <span className={`px-2 py-0.5 text-[10px] font-black uppercase rounded-sm ${
+                              st.isAnulado ? 'bg-zinc-200 text-zinc-600' :
+                              st.isFullyPaid ? 'bg-emerald-100 text-emerald-700' :
+                              'bg-amber-100 text-amber-700'
+                            }`}>
+                              {st.isAnulado ? 'Anulado' : st.isFullyPaid ? 'Pago' : 'Pendente'}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  {reportPurchases.length > 0 && (
+                    <tfoot>
+                      <tr className="bg-[#003366] text-white font-black text-xs">
+                        <td colSpan={5} className="px-4 py-3 text-right uppercase">TOTAIS</td>
+                        <td className="px-4 py-3 text-right">{formatCurrency(reportPurchases.reduce((s,p)=>s+((p as any).subtotal||0),0))}</td>
+                        <td className="px-4 py-3 text-right">{formatCurrency(reportPurchases.reduce((s,p)=>s+((p as any).tax||(p as any).iva||0),0))}</td>
+                        <td className="px-4 py-3 text-right">{formatCurrency(reportPurchases.reduce((s,p)=>s+(p.total||0),0))}</td>
+                        <td></td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
 
       {showFileModal && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
@@ -25539,9 +29518,8 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
 
                 const docTotal = Number(showReceiptModal.total || showReceiptModal.valor_total || 0);
                 const alreadyPaid = Number(showReceiptModal.valor_pago || 0);
-                const currentPending = showReceiptModal.saldo_pendente !== undefined && showReceiptModal.saldo_pendente !== null 
-                  ? Number(showReceiptModal.saldo_pendente) 
-                  : Math.max(0, docTotal - alreadyPaid);
+                const rawPending = (showReceiptModal.saldo_pendente !== undefined && showReceiptModal.saldo_pendente !== null) ? Number(showReceiptModal.saldo_pendente) : NaN;
+                const currentPending = (!isNaN(rawPending) && rawPending > 0) ? rawPending : Math.max(0, docTotal - alreadyPaid);
 
                 if (!rCaixa) {
                   alert('Por favor selecione uma caixa de pagamento.');
@@ -25583,20 +29561,25 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                 const newTotalPaid = alreadyPaid + rAmount;
                 const newPendingBalance = Math.max(0, docTotal - newTotalPaid);
                 const isFullyPaid = newPendingBalance <= 0.01;
+                const companyIdVal = showReceiptModal.empresa_id || showReceiptModal.company_id || user?.empresa_id || user?.company_id;
 
-                const updatePayload = {
-                  recibo_emitido: isFullyPaid,
+                const updatePayload: any = {
+                  recibo_emitido: true,
                   numero_recibo: receiptNum,
                   data_recibo: new Date().toISOString(),
-                  caixa_id: finalCaixaId,
                   forma_pagamento: rMethod,
                   valor_pago: newTotalPaid,
                   saldo_pendente: newPendingBalance,
                   atualizado_em: new Date().toISOString(),
-                  atualizado_por: user?.id,
                   status: isFullyPaid ? 'pago' : 'parcial',
                   estado: isFullyPaid ? 'PAGO' : 'PARCIAL'
                 };
+                if (isValidUUID(finalCaixaId)) {
+                  updatePayload.caixa_id = finalCaixaId;
+                }
+                if (isValidUUID(user?.id)) {
+                  updatePayload.atualizado_por = user?.id;
+                }
 
                 console.log('[UPDATE compras recibo] original document ID:', showReceiptModal.id, 'fields:', updatePayload);
 
@@ -25607,20 +29590,18 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
 
                 if (error) {
                   console.error('[UPDATE compras recibo ERROR]', error);
-                  throw error;
+                  throw new Error('Falha ao atualizar fatura no banco de dados: ' + error.message);
                 }
                 console.log('[UPDATE compras recibo SUCCESS] updated fatura ID:', showReceiptModal.id);
 
                 // Criar o documento de Recibo separado no sistema
-                const companyIdVal = user?.empresa_id || user?.company_id;
-                const receiptPayload = {
+                const supplierIdVal = showReceiptModal.supplier_id || showReceiptModal.fornecedor_id;
+
+                const receiptPayload: any = {
                   empresa_id: companyIdVal,
-                  company_id: companyIdVal,
                   ano: year,
-                  fornecedor_id: showReceiptModal.supplier_id || showReceiptModal.fornecedor_id || null,
-                  supplier_id: showReceiptModal.supplier_id || showReceiptModal.fornecedor_id || null,
-                  fornecedor_nome: showReceiptModal.supplier_name || showReceiptModal.fornecedor_nome || '',
-                  supplier_name: showReceiptModal.supplier_name || showReceiptModal.fornecedor_nome || '',
+                  fornecedor_nome: showReceiptModal.supplier_name || showReceiptModal.fornecedor_nome || 'Fornecedor',
+                  supplier_name: showReceiptModal.supplier_name || showReceiptModal.fornecedor_nome || 'Fornecedor',
                   data_compra: rDate,
                   data: rDate,
                   valor_total: rAmount,
@@ -25634,8 +29615,8 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                   valor_pago: rAmount,
                   numero_documento: receiptNum,
                   numero_compra: receiptNum,
-                  numero_fatura: showReceiptModal.purchase_number,
-                  invoice_number: showReceiptModal.purchase_number,
+                  numero_fatura: showReceiptModal.purchase_number || showReceiptModal.invoice_number || showReceiptModal.numero_compra || '',
+                  invoice_number: showReceiptModal.purchase_number || showReceiptModal.invoice_number || showReceiptModal.numero_compra || '',
                   data_vencimento: rDate,
                   due_date: rDate,
                   taxa_retencao: Number(showReceiptModal.taxa_retencao || 0),
@@ -25644,20 +29625,18 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                   valor_contravalor: rAmount,
                   desconto_global: Number(showReceiptModal.desconto_global || 0),
                   data_servico: rDate,
-                  caixa_id: finalCaixaId,
                   metodo_pagamento: rMethod,
-                  itens: showReceiptModal.itens || showReceiptModal.items || [{ description: `Liquidação de Fatura de Compra ${showReceiptModal.purchase_number}`, quantity: 1, unit_price: rAmount, total: rAmount }],
-                  items: showReceiptModal.itens || showReceiptModal.items || [{ description: `Liquidação de Fatura de Compra ${showReceiptModal.purchase_number}`, quantity: 1, unit_price: rAmount, total: rAmount }],
+                  forma_pagamento: rMethod,
+                  itens: showReceiptModal.itens || showReceiptModal.items || [{ description: `Liquidação de Fatura de Compra ${showReceiptModal.purchase_number || ''}`, quantity: 1, unit_price: rAmount, total: rAmount }],
+                  items: showReceiptModal.itens || showReceiptModal.items || [{ description: `Liquidação de Fatura de Compra ${showReceiptModal.purchase_number || ''}`, quantity: 1, unit_price: rAmount, total: rAmount }],
                   hash: 'RC-SHA256-' + Math.random().toString(36).substring(7).toUpperCase(),
-                  descricao: rObs || `Pagamento de FT nº ${showReceiptModal.purchase_number} - Recibo ${receiptNum}`,
-                  created_by: user?.id,
-                  criado_por: user?.id,
+                  descricao: rObs || `Pagamento de FT nº ${showReceiptModal.purchase_number || ''} - Recibo ${receiptNum}`,
                   created_by_nome: user?.nome || 'Operador',
                   created_by_username: user?.username || 'admin',
                   detalhes: {
                     supplier_name: showReceiptModal.supplier_name || showReceiptModal.fornecedor_nome || '',
                     purchase_number: receiptNum,
-                    invoice_number: showReceiptModal.purchase_number,
+                    invoice_number: showReceiptModal.purchase_number || showReceiptModal.invoice_number || '',
                     due_date: rDate,
                     vat_withholding: showReceiptModal.taxa_retencao || '0',
                     exchange_rate: showReceiptModal.taxa_cambio || '1',
@@ -25667,9 +29646,21 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                     service_date: rDate,
                     cash_box: finalCaixaId,
                     payment_method: rMethod,
-                    items: showReceiptModal.itens || showReceiptModal.items || [{ description: `Liquidação de Fatura de Compra ${showReceiptModal.purchase_number}`, quantity: 1, unit_price: rAmount, total: rAmount }]
+                    items: showReceiptModal.itens || showReceiptModal.items || [{ description: `Liquidação de Fatura de Compra ${showReceiptModal.purchase_number || ''}`, quantity: 1, unit_price: rAmount, total: rAmount }]
                   }
                 };
+
+                if (isValidUUID(supplierIdVal)) {
+                  receiptPayload.fornecedor_id = supplierIdVal;
+                  receiptPayload.supplier_id = supplierIdVal;
+                }
+                if (isValidUUID(finalCaixaId)) {
+                  receiptPayload.caixa_id = finalCaixaId;
+                }
+                if (isValidUUID(user?.id)) {
+                  receiptPayload.created_by = user?.id;
+                  receiptPayload.criado_por = user?.id;
+                }
 
                 const { data: insertedRecibo, error: insertError } = await supabase
                   .from('compras')
@@ -25710,9 +29701,8 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
               {(() => {
                 const totalDoc = Number(showReceiptModal.total || showReceiptModal.valor_total || 0);
                 const alreadyPaid = Number(showReceiptModal.valor_pago || 0);
-                const currentPending = showReceiptModal.saldo_pendente !== undefined && showReceiptModal.saldo_pendente !== null 
-                  ? Number(showReceiptModal.saldo_pendente) 
-                  : Math.max(0, totalDoc - alreadyPaid);
+                const rawPending = (showReceiptModal.saldo_pendente !== undefined && showReceiptModal.saldo_pendente !== null) ? Number(showReceiptModal.saldo_pendente) : NaN;
+                const currentPending = (!isNaN(rawPending) && rawPending > 0) ? rawPending : Math.max(0, totalDoc - alreadyPaid);
                 return (
                   <div className="grid grid-cols-3 gap-2 bg-zinc-50 border border-zinc-200 p-3 mb-2 text-center font-mono">
                     <div className="border-r border-zinc-200 pr-2">
@@ -25797,16 +29787,24 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-zinc-500 uppercase tracking-wider">Valor do Recibo (Pagamento Actual)</label>
                 <div className="relative">
-                  <input 
-                    type="number" 
-                    name="receipt_amount"
-                    step="0.01"
-                    min="0.01"
-                    max={showReceiptModal.saldo_pendente !== undefined && showReceiptModal.saldo_pendente !== null ? Number(showReceiptModal.saldo_pendente) : Math.max(0, Number(showReceiptModal.total || showReceiptModal.valor_total || 0) - Number(showReceiptModal.valor_pago || 0))}
-                    defaultValue={showReceiptModal.saldo_pendente !== undefined && showReceiptModal.saldo_pendente !== null ? Number(showReceiptModal.saldo_pendente) : Math.max(0, Number(showReceiptModal.total || showReceiptModal.valor_total || 0) - Number(showReceiptModal.valor_pago || 0))}
-                    required
-                    className="w-full bg-white border border-zinc-200 px-4 py-2 text-xs font-black text-emerald-700 rounded-none focus:outline-none focus:border-[#003366]" 
-                  />
+                  {(() => {
+                    const totalDoc = Number(showReceiptModal.total || showReceiptModal.valor_total || 0);
+                    const alreadyPaid = Number(showReceiptModal.valor_pago || 0);
+                    const rawPending = (showReceiptModal.saldo_pendente !== undefined && showReceiptModal.saldo_pendente !== null) ? Number(showReceiptModal.saldo_pendente) : NaN;
+                    const valToPay = (!isNaN(rawPending) && rawPending > 0) ? rawPending : Math.max(0, totalDoc - alreadyPaid);
+                    return (
+                      <input 
+                        type="number" 
+                        name="receipt_amount"
+                        step="0.01"
+                        min="0.01"
+                        max={valToPay}
+                        defaultValue={valToPay}
+                        required
+                        className="w-full bg-white border border-zinc-200 px-4 py-2 text-xs font-black text-emerald-700 rounded-none focus:outline-none focus:border-[#003366]" 
+                      />
+                    );
+                  })()}
                   <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-zinc-400">AOA (Kz)</div>
                 </div>
               </div>
@@ -28462,8 +32460,9 @@ export default function App() {
         total: doc.total
       });
 
-      if (doc?.is_certified || doc?.hash) {
-        console.log('Documento já foi devidamente certificado pelo servidor:', docRef);
+      // If doc already has an id, it was already saved by the /api/invoices endpoint - just refresh the list
+      if (doc?.id || doc?.is_certified || doc?.hash) {
+        console.log('Documento já persistido (id ou certificado):', docRef);
         await fetchData();
         return;
       }
@@ -28584,6 +32583,9 @@ export default function App() {
         id: d.id,
         is_certified: Boolean(d.is_certified),
         status: (d.status || d.estado_certificacao || 'ativo').toLowerCase(),
+        // Explicitly map payment_status so PAGO badge works after a receipt marks the invoice as paid
+        payment_status: d.payment_status || d.estado_pagamento || d.status_pagamento || undefined,
+        estado_pagamento: d.estado_pagamento || d.status_pagamento || d.payment_status || undefined,
         contravalor: Number(d.total || 0),
         date: d.data_emissao || d.created_at,
         client_name: d.cliente_nome || d.client_name || 'Desconhecido',
@@ -29541,7 +33543,7 @@ export default function App() {
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-[#f4f7f9] text-zinc-800 font-sans selection:bg-[#003366]/10 flex overflow-x-hidden">
+      <div className="min-h-screen bg-[#f4f7f9] text-zinc-800 font-sans selection:bg-[#003366]/10 flex" style={{ overflowX: 'clip' }}>
         {sidebarOpen && (
           <Sidebar 
             activeTab={activeTab} 
@@ -30000,12 +34002,16 @@ export default function App() {
                                   employees={employees}
                                   workSites={workSites}
                                   onRefresh={fetchData}
+                                  user={user}
+                                  companyData={companyData}
+                                  onNavigate={setActiveTab}
+                                  onEmitirFatura={() => { setSelectedDocument(null); setFixedDocumentType(undefined); setActiveTab('electronic_invoices'); setIsCreatingInvoice(true); }}
                                 />
                               );
                             case 'fleet':
                               return <FleetManagementModule />;
                             case 'projects':
-                              return <ProjectManagementModule />;
+                              return <ProjectManagementModule user={user} companyData={companyData} onNavigate={setActiveTab} onEmitirFatura={() => { setSelectedDocument(null); setFixedDocumentType(undefined); setActiveTab('electronic_invoices'); setIsCreatingInvoice(true); }} />;
                             case 'business_overview':
                             case 'cost-revenue':
                               return (
@@ -30203,9 +34209,9 @@ export default function App() {
                             case 'cartas':
                               return <CartasModule />;
                             case 'church':
-                              return <ChurchModule />;
+                              return <ChurchModule user={user} companyData={companyData} onNavigate={setActiveTab} onEmitirFatura={() => { setSelectedDocument(null); setFixedDocumentType(undefined); setActiveTab('electronic_invoices'); setIsCreatingInvoice(true); }} />;
                             case 'agrobusiness':
-                              return <AgrobusinessModule />;
+                              return <AgrobusinessModule user={user} companyData={companyData} onNavigate={setActiveTab} onEmitirFatura={() => { setSelectedDocument(null); setFixedDocumentType(undefined); setActiveTab('electronic_invoices'); setIsCreatingInvoice(true); }} />;
                             case 'tax-series':
                               return (
                                 <FiscalSeriesModule 
@@ -30340,7 +34346,7 @@ export default function App() {
               copyType={copyType}
               printFormat={printFormat}
               companyData={companyData}
-              graphicConfigs={printingGraphicConfigs}
+              graphicConfigs={printingGraphicConfigs as any}
             />
           </div>
         </div>
@@ -30396,61 +34402,7 @@ export default function App() {
       )}
 
 
-      <AnimatePresence>
-        {isCreatingInvoice && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 md:p-12">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsCreatingInvoice(false)}
-              className="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm"
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-5xl bg-white rounded-none shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
-            >
-              <div className="p-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
-                <h3 className="font-bold text-[#003366] flex items-center gap-2">
-                  <FilePlus size={18} />
-                  Emitir Novo Documento
-                </h3>
-                <button
-                  onClick={() => setIsCreatingInvoice(false)}
-                  className="p-2 hover:bg-zinc-200 rounded-full transition-colors text-zinc-400 hover:text-zinc-600"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-              <div className="flex-1 overflow-y-auto p-8">
-                <div key={(selectedDocument?.id || 'new-sub') + (fixedDocumentType || 'none')}>
-                  <CreateInvoice
-                    clients={clients}
-                    products={products}
-                    workSites={workSites}
-                    fiscalSeries={fiscalSeries}
-                    activeTaxes={activeTaxes}
-                    onBack={() => setIsCreatingInvoice(false)}
-                    onSaveDocument={saveDocumentoEmitido}
-                    onSuccess={async () => {
-                      setIsCreatingInvoice(false);
-                      await new Promise(resolve => setTimeout(resolve, 500));
-                      await fetchData();
-                      setActiveTab('invoices');
-                    }}
-                    caixas={caixas}
-                    initialData={selectedDocument}
-                    fixedDocumentType={fixedDocumentType}
-                    addMovement={doAddCaixaMovement}
-                  />
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+
 
       {isContractModalOpen && (appSelectedEmployee || selectedContract) && (
         <ContractModal 

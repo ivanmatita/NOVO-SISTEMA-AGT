@@ -2,7 +2,7 @@ import React from 'react';
 
 const ImpostoPorContaForm = () => {
   return (
-    <div className="p-8 bg-white border border-zinc-200 shadow-sm space-y-6">
+    <div className="p-6 md:p-8 bg-white border border-zinc-200 shadow-sm space-y-6 w-full max-w-7xl mx-auto">
       <h2 className="text-xl font-bold text-[#003366] mb-6">Imposto por Conta</h2>
       
       <div className="grid grid-cols-3 gap-4 border-2 border-zinc-800 p-2">

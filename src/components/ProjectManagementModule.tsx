@@ -1,601 +1,542 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { 
-    LayoutDashboard, FileText, Users, Settings, Plus, CheckCircle, Clock, 
-    MoreVertical, Search, Filter, AlertCircle, BarChart3, TrendingUp, DollarSign,
-    Briefcase, Calendar, ChevronRight, Play, Pause, Square, Trash2, Edit,
-    CheckCircle2, Info, X, PieChart, Layers, Target, Activity, Zap, Shield
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  LayoutDashboard, FileText, Users, Settings, Plus, CheckCircle, Clock,
+  MoreVertical, Search, Filter, AlertCircle, BarChart3, TrendingUp, DollarSign,
+  Briefcase, Calendar, ChevronRight, Play, Pause, Square, Trash2, Edit,
+  CheckCircle2, Info, X, PieChart, Layers, Target, Activity, Zap, Shield,
+  Download, MapPin, ChevronLeft, RefreshCw, Save, FolderPlus, UserPlus, FileSpreadsheet
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { fetchWithAuth } from '../lib/fetchWithAuth';
-import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 
-// --- Types & Initial Data ---
-
-type ProjectStatus = 'Planeamento' | 'Em Progresso' | 'Em Revisão' | 'Concluído' | 'Atrasado';
-type TaskStatus = 'Pendente' | 'Em Progresso' | 'Concluído';
-
-interface Project {
-    id: number;
-    name: string;
-    description: string;
-    status: ProjectStatus;
-    deadline: string;
-    budgetTotal: number;
-    budgetSpent: number;
-    progress: number;
-    manager: string;
-    priority: 'Crítica' | 'Alta' | 'Normal';
-    client: string;
-    category: 'Infraestrutura' | 'Digital' | 'Operacional';
+interface ProjectProps {
+  user?: any;
+  companyData?: any;
+  onNavigate?: (tab: string) => void;
+  onEmitirFatura?: () => void;
 }
 
-interface Task {
-    id: number;
-    projectId: number;
-    name: string;
-    status: TaskStatus;
-    assignee: string;
-    priority: 'Alta' | 'Média' | 'Baixa';
-    estimatedHours: number;
-    dueDate: string;
+type TabType = 'dashboard' | 'projetos' | 'kanban' | 'equipa' | 'orcamento' | 'milestones' | 'relatorios';
+type ViewMode = 'list' | 'form';
+
+interface Projeto {
+  id?: string; nome: string; cliente: string; descricao?: string;
+  orcamento_total_aoa: number; orcamento_executado_aoa: number;
+  progresso_pct: number; data_inicio?: string; data_fim_prevista?: string;
+  status: string; prioridade: string; gerente_nome?: string; categoria?: string; provincia?: string;
 }
 
-interface TeamMember {
-    id: number;
-    name: string;
-    role: string;
-    email: string;
-    activeProjects: number;
-    avatar: string;
-    availability: number; // 0-100
+interface TarefaProj {
+  id?: string; projeto_id?: string; nome: string; responsavel_nome?: string;
+  status: string; prioridade: string; horas_estimadas?: number; data_limite?: string; projeto_nome?: string;
 }
 
-const initialProjects: Project[] = [
-  { id: 1, name: 'Expansão de Data Center', description: 'Instalação de novos racks e sistemas de climatização redundantes.', status: 'Em Progresso', deadline: '2026-06-15', budgetTotal: 12500000, budgetSpent: 4500000, progress: 36, manager: 'Telmo Vaz', priority: 'Crítica', client: 'Governo Provincial', category: 'Infraestrutura' },
-  { id: 2, name: 'Portal de Auto-Atendimento', description: 'Migração do sistema legado para aplicação web moderna.', status: 'Atrasado', deadline: '2026-04-20', budgetTotal: 4500000, budgetSpent: 3800000, progress: 85, manager: 'Edna Lemos', priority: 'Alta', client: 'Interno', category: 'Digital' },
-  { id: 3, name: 'Reestruturação Logística Q3', description: 'Otimização das rotas de distribuição.', status: 'Planeamento', deadline: '2026-09-01', budgetTotal: 8900000, budgetSpent: 0, progress: 0, manager: 'Fausto Costa', priority: 'Normal', client: 'Empresa Mãe', category: 'Operacional' },
-  { id: 4, name: 'Auditoria Externa 2026', description: 'Conformidade com normas internacionais.', status: 'Concluído', deadline: '2026-03-31', budgetTotal: 1500000, budgetSpent: 1450000, progress: 100, manager: 'Paula Abreu', priority: 'Alta', client: 'Bancos do Estado', category: 'Operacional' },
+interface RecursoEquipa {
+  id?: string; nome: string; cargo: string; email?: string;
+  custo_hora_aoa: number; disponibilidade_pct: number; projetos_ativos_count: number;
+}
+
+interface CustoProjeto {
+  id?: string; projeto_id?: string; descricao: string; categoria: string;
+  valor_aoa: number; data_custo: string; status_pagamento: string; projeto_nome?: string;
+}
+
+const PROVINCIAS_ANGOLA = [
+  'Bengo','Benguela','Bié','Cabinda','Cuando Cubango','Cuanza Norte',
+  'Cuanza Sul','Cunene','Huambo','Huíla','Luanda','Lunda Norte',
+  'Lunda Sul','Malanje','Moxico','Namibe','Uíge','Zaire'
 ];
 
-const initialTasks: Task[] = [
-  { id: 1, projectId: 1, name: 'Encomenda de Cablagem Óptica', status: 'Concluído', assignee: 'Telmo Vaz', priority: 'Média', estimatedHours: 4, dueDate: '2026-04-01' },
-  { id: 2, projectId: 1, name: 'Montagem de Racks Piso 1', status: 'Em Progresso', assignee: 'Pedro Neto', priority: 'Alta', estimatedHours: 40, dueDate: '2026-04-30' },
-  { id: 3, projectId: 2, name: 'Integração de OAuth2', status: 'Pendente', assignee: 'Tiago Dias', priority: 'Alta', estimatedHours: 16, dueDate: '2026-04-25' },
-];
+const fmtAOA = (v: number) => new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA', maximumFractionDigits: 0 }).format(v || 0);
+const fmtNum = (v: number) => new Intl.NumberFormat('pt-AO').format(v || 0);
 
-const initialTeam: TeamMember[] = [
-    { id: 1, name: 'Telmo Vaz', role: 'Gestor Sénior', email: 'tvaz@corporacao.co.ao', activeProjects: 2, avatar: 'TV', availability: 40 },
-    { id: 2, name: 'Edna Lemos', role: 'Lead Developer', email: 'elemos@corporacao.co.ao', activeProjects: 3, avatar: 'EL', availability: 15 },
-    { id: 3, name: 'Fausto Costa', role: 'COO / Operações', email: 'fcosta@corporacao.co.ao', activeProjects: 1, avatar: 'FC', availability: 80 },
-    { id: 4, name: 'Paula Abreu', role: 'Compliance Officer', email: 'pabreu@corporacao.co.ao', activeProjects: 4, avatar: 'PA', availability: 10 },
-];
-
-// --- Sub-Renders ---
-
-const ProjectManagementModule = () => {
-    const { user } = useAuth();
-    const [activeTab, setActiveTab] = useState<'dashboard' | 'projects' | 'kanban' | 'team' | 'reports'>('dashboard');
-    const [projects, setProjects] = useState<Project[]>(initialProjects);
-    const [tasks, setTasks] = useState<Task[]>([]);
-    const [team, setTeam] = useState<TeamMember[]>(initialTeam);
-    const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
-    const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-
-    const fetchData = async () => {
-        try {
-            const res = await fetchWithAuth(`/api/projects/tasks?empresa_id=${user?.empresa_id}`);
-            if (res.ok) setTasks(await res.json());
-        } catch (err) {
-            console.error('Error fetching project tasks:', err);
-        }
-    };
-
-    useEffect(() => {
-        fetchData();
-        setTasks(initialTasks);
-    }, [user?.empresa_id]);
-
-    const handleAddTask = async (projectId: number, name: string) => {
-        try {
-            const res = await fetchWithAuth('/api/projects/tasks', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    projectId,
-                    name,
-                    status: 'Pendente',
-                    assignee: user?.email,
-                    priority: 'Média',
-                    estimatedHours: 8,
-                    dueDate: new Date(Date.now() + 7*24*60*60*1000).toISOString().split('T')[0],
-                    empresa_id: user?.empresa_id
-                })
-            });
-            if (res.ok) fetchData();
-        } catch (err) {
-            console.error('Error adding task:', err);
-        }
-    };
-
-    const metrics = useMemo(() => {
-        const total = projects.length;
-        const active = projects.filter(p => ['Em Progresso', 'Atrasado', 'Em Revisão'].includes(p.status)).length;
-        const delayed = projects.filter(p => p.status === 'Atrasado').length;
-        const budget = projects.reduce((acc, p) => acc + p.budgetTotal, 0);
-        const spent = projects.reduce((acc, p) => acc + p.budgetSpent, 0);
-        const avgProgress = total ? Math.round(projects.reduce((acc, p) => acc + p.progress, 0) / total) : 0;
-        return { total, active, delayed, budget, spent, avgProgress };
-    }, [projects]);
-
-    const formatCurrency = (val: number) => new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(val);
-
-    const renderProjectDetail = (project: Project) => (
-        <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-            <div className="bg-white p-6 border border-zinc-200 shadow-sm flex flex-col md:flex-row gap-6 items-center">
-                <div className="w-24 h-24 bg-zinc-900 text-white flex items-center justify-center font-bold text-3xl shadow-sm">
-                    {project.name.charAt(0)}
-                </div>
-                <div className="flex-1 text-center md:text-left">
-                    <div className="flex flex-wrap items-center gap-3 mb-2 justify-center md:justify-start">
-                        <h3 className="text-2xl font-bold text-[#003366] uppercase tracking-tight">{project.name}</h3>
-                        <span className={`px-3 py-1 text-[10px] font-bold uppercase tracking-widest border ${
-                            project.status === 'Concluído' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-blue-50 border-blue-200 text-blue-700'
-                        }`}>
-                            {project.status}
-                        </span>
-                    </div>
-                    <p className="text-zinc-500 text-sm font-medium">{project.description}</p>
-                </div>
-                <button onClick={() => setSelectedProject(null)} className="px-6 py-2 bg-zinc-100 border border-zinc-200 text-zinc-600 text-xs font-bold uppercase tracking-widest hover:bg-zinc-200 transition-all flex items-center gap-2">
-                    Voltar ao Monitor
-                </button>
+const ProjBarChart = ({ data, label, color = '#003366' }: { data: { name: string; value: number }[]; label: string; color?: string }) => {
+  const max = Math.max(...data.map(d => d.value), 1);
+  return (
+    <div>
+      <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-3">{label}</p>
+      <div className="space-y-2">
+        {data.map((d, i) => (
+          <div key={i} className="flex items-center gap-3">
+            <span className="text-[10px] text-zinc-600 w-28 truncate font-medium">{d.name}</span>
+            <div className="flex-1 bg-zinc-100 rounded-full h-4 overflow-hidden">
+              <div className="h-4 rounded-full transition-all duration-700" style={{ width: `${(d.value / max) * 100}%`, backgroundColor: color }} />
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="md:col-span-2 space-y-6">
-                    {/* Progress Chart Section */}
-                    <div className="bg-white p-6 border border-zinc-200 shadow-sm">
-                        <div className="flex justify-between items-center mb-6">
-                            <h4 className="text-lg font-bold text-[#003366] uppercase tracking-tight">Timeline de Execução</h4>
-                            <div className="flex items-center gap-2 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
-                                <Clock size={14}/> {project.deadline}
-                            </div>
-                        </div>
-                        <div className="relative h-2 w-full bg-zinc-100 overflow-hidden border border-zinc-200">
-                            <motion.div 
-                                initial={{ width: 0 }}
-                                animate={{ width: `${project.progress}%` }}
-                                className="h-full bg-[#003366]"
-                            />
-                        </div>
-                        <div className="flex justify-between mt-4">
-                            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Início: 01-01-2026</span>
-                            <span className="text-lg font-bold text-zinc-900">{project.progress}% Completo</span>
-                        </div>
-                    </div>
-
-                    {/* Tasks */}
-                    <div className="bg-white p-6 border border-zinc-200 shadow-sm">
-                         <h4 className="text-lg font-bold text-[#003366] uppercase tracking-tight mb-6">Próximos Milestones</h4>
-                         <div className="space-y-4">
-                            {tasks.filter(t => t.projectId === project.id).map(task => (
-                                <div key={task.id} className="p-4 border border-zinc-100 flex items-center justify-between hover:bg-zinc-50 transition-all">
-                                    <div className="flex items-center gap-4">
-                                        <div className={`w-3 h-3 ${task.status === 'Concluído' ? 'bg-emerald-500' : 'bg-orange-500'}`} />
-                                        <div>
-                                            <p className="font-bold text-zinc-800 uppercase text-sm mb-1">{task.name}</p>
-                                            <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">{task.assignee} • {task.dueDate}</p>
-                                        </div>
-                                    </div>
-                                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">{task.estimatedHours}h Est.</span>
-                                </div>
-                            ))}
-                            <button className="w-full py-4 border border-dashed border-zinc-300 text-zinc-500 text-xs font-bold uppercase tracking-widest hover:border-blue-500 hover:text-blue-600 transition-all flex items-center justify-center gap-2">
-                                <Plus size={16}/> Adicionar Milestone Técnico
-                            </button>
-                         </div>
-                    </div>
-                </div>
-
-                <div className="space-y-6">
-                    {/* Financial Summary */}
-                    <div className="bg-[#003366] text-white p-6 shadow-sm relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-5"></div>
-                        <h4 className="text-[10px] font-bold uppercase tracking-widest mb-6 opacity-80">Budget Operation</h4>
-                        <div className="space-y-1 mb-8">
-                            <p className="text-3xl font-bold tracking-tight">{formatCurrency(project.budgetTotal)}</p>
-                            <p className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-50">Dotação Inicial</p>
-                        </div>
-                        <div className="space-y-1 mb-8">
-                            <p className="text-xl font-bold tracking-tight">{formatCurrency(project.budgetSpent)}</p>
-                            <p className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-50">Total Liquidado ({Math.round((project.budgetSpent/project.budgetTotal)*100)}%)</p>
-                        </div>
-                        <button className="w-full py-3 bg-white/10 hover:bg-white/20 text-white text-[10px] font-bold uppercase tracking-widest transition-all">Ver Facturação Associada</button>
-                    </div>
-
-                    {/* Team */}
-                    <div className="bg-white p-6 border border-zinc-200 shadow-sm">
-                        <h4 className="text-lg font-bold text-[#003366] uppercase tracking-tight mb-6">Equipa Alocada</h4>
-                        <div className="flex -space-x-3 mb-6">
-                            {team.slice(0, 3).map(m => (
-                                <div key={m.id} title={m.name} className="w-10 h-10 border-2 border-white bg-zinc-900 text-white flex items-center justify-center font-bold text-xs shadow-sm cursor-pointer hover:scale-110 transition-transform">
-                                    {m.avatar}
-                                </div>
-                            ))}
-                            <div className="w-10 h-10 border-2 border-white bg-zinc-100 text-zinc-500 flex items-center justify-center font-bold text-xs shadow-sm">
-                                +{team.length - 3}
-                            </div>
-                        </div>
-                        <button className="w-full py-2 bg-zinc-50 border border-zinc-200 text-zinc-600 text-[10px] font-bold uppercase tracking-widest hover:bg-zinc-100 transition-all">Gerir Recursos</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-
-    const renderDashboard = () => (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {/* Top Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {[
-                    { title: 'Portfolio Ativo', val: metrics.active, icon: Briefcase, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-100', sub: `Total: ${metrics.total} Projetos` },
-                    { title: 'Progresso Médio', val: `${metrics.avgProgress}%`, icon: Activity, color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-100', sub: 'Calculado em tempo real' },
-                    { title: 'Orçamento Total', val: formatCurrency(metrics.budget), icon: DollarSign, color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-100', sub: `Consumido: ${Math.round((metrics.spent/metrics.budget)*100)}%` },
-                    { title: 'Criticos/Atrasados', val: metrics.delayed, icon: AlertCircle, color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-100', sub: 'Ação necessária imediata' },
-                ].map((c, i) => (
-                    <div key={i} className="bg-white p-6 border border-zinc-200 shadow-sm flex items-start justify-between group">
-                        <div>
-                            <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest mb-1">{c.title}</p>
-                            <p className="text-2xl font-bold text-[#003366]">{c.val}</p>
-                            <p className="text-xs text-zinc-400 mt-1">{c.sub}</p>
-                        </div>
-                        <div className={`p-3 border ${c.bg} ${c.color} ${c.border}`}>
-                            <c.icon size={20} />
-                        </div>
-                    </div>
-                ))}
-            </div>
-
-            {/* Middle Section */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2 bg-white border border-zinc-200 p-6 shadow-sm">
-                    <div className="flex justify-between items-center mb-6">
-                        <div>
-                            <h3 className="text-sm font-bold text-[#003366] uppercase tracking-widest">Projetos em Destaque</h3>
-                        </div>
-                        <button onClick={() => setActiveTab('projects')} className="bg-zinc-100 text-zinc-600 px-4 py-2 border border-zinc-200 text-[10px] font-bold uppercase tracking-widest hover:bg-zinc-200 transition-all">Explorar Portfolio</button>
-                    </div>
-                    <div className="space-y-4">
-                        {projects.slice(0, 3).map(p => (
-                            <div key={p.id} className="p-4 border border-zinc-100 hover:border-blue-100 transition-all group flex flex-col md:flex-row gap-6 items-center">
-                                <div className="flex-1 w-full cursor-pointer" onClick={() => setSelectedProject(p)}>
-                                    <div className="flex items-center gap-3 mb-2">
-                                        <h4 className="font-bold text-zinc-800 uppercase text-sm">{p.name}</h4>
-                                        <span className={`px-2 py-0.5 border text-[10px] font-bold uppercase tracking-widest ${
-                                            p.priority === 'Crítica' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-zinc-50 text-zinc-600 border-zinc-200'
-                                        }`}>{p.priority}</span>
-                                    </div>
-                                    <p className="text-zinc-500 text-xs line-clamp-2 leading-relaxed mb-4">{p.description}</p>
-                                    <div className="flex items-center gap-6">
-                                        <div className="flex items-center gap-2 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
-                                            <Calendar size={14} className="text-[#003366]"/> {p.deadline}
-                                        </div>
-                                        <div className="flex items-center gap-2 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
-                                            <Users size={14} className="text-[#003366]"/> {p.manager}
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="w-full md:w-48 space-y-2">
-                                    <div className="flex justify-between items-end mb-1">
-                                        <span className="text-[10px] font-bold text-[#003366] uppercase tracking-widest">Conclusão</span>
-                                        <span className="text-lg font-bold text-zinc-900 tracking-tight leading-none">{p.progress}%</span>
-                                    </div>
-                                    <div className="h-2 w-full bg-zinc-100 overflow-hidden border border-zinc-200">
-                                        <motion.div 
-                                            initial={{ width: 0 }}
-                                            animate={{ width: `${p.progress}%` }}
-                                            className={`h-full ${p.progress === 100 ? 'bg-emerald-500' : p.status === 'Atrasado' ? 'bg-red-500' : 'bg-[#003366]'}`}
-                                        />
-                                    </div>
-                                    <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest text-right">{p.status}</p>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
-                <div className="bg-white border border-zinc-200 p-6 shadow-sm flex flex-col">
-                    <h3 className="text-sm font-bold text-[#003366] uppercase tracking-widest mb-6">Performance Equipa</h3>
-                    <div className="space-y-4 flex-1">
-                        {team.map(m => (
-                            <div key={m.id} className="flex items-center gap-3 group">
-                                <div className="w-10 h-10 border border-zinc-200 bg-zinc-50 flex items-center justify-center font-bold text-[#003366] text-sm">
-                                     {m.avatar}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <p className="font-bold text-zinc-800 text-sm truncate leading-none mb-1">{m.name}</p>
-                                    <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest truncate">{m.role}</p>
-                                    <div className="mt-2 flex items-center gap-2">
-                                        <div className="flex-1 h-1.5 bg-zinc-100 overflow-hidden">
-                                            <div className="h-full bg-blue-500" style={{ width: `${m.availability}%` }}></div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                    <button onClick={() => setActiveTab('team')} className="mt-6 w-full py-2 bg-zinc-50 border border-zinc-200 text-zinc-600 text-[10px] font-bold uppercase tracking-widest hover:bg-zinc-100 transition-all">Ver Alocação</button>
-                </div>
-            </div>
-        </div>
-    );
-
-    const renderProjectsList = () => (
-        <div className="bg-white border border-zinc-200 shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
-             <div className="p-4 border-b border-zinc-200 bg-white flex flex-col md:flex-row gap-4 justify-between items-center">
-                <div className="relative w-full md:w-96">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
-                    <input type="text" placeholder="Filtrar projetos..." className="w-full pl-10 pr-4 py-2 border border-zinc-300 bg-zinc-50 outline-none focus:border-[#003366] transition-all text-sm" />
-                </div>
-                <div className="flex items-center gap-2 w-full md:w-auto">
-                    <button className="flex-1 md:flex-none p-2 bg-white border border-zinc-300 text-zinc-500 hover:bg-zinc-50 transition-all"><Filter size={18}/></button>
-                    <button onClick={() => setIsProjectModalOpen(true)} className="flex-[2] md:flex-none bg-[#003366] text-white px-6 py-2.5 text-xs font-bold uppercase tracking-widest shadow-sm hover:bg-[#002244] active:scale-95 transition-all flex items-center justify-center gap-2">
-                        <Plus size={16} /> Novo Projeto
-                    </button>
-                </div>
-            </div>
-            <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left">
-                    <thead>
-                        <tr className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 bg-white border-b border-zinc-200">
-                            <th className="px-6 py-4">Detalhes do Projeto</th>
-                            <th className="px-6 py-4">Propriedades</th>
-                            <th className="px-6 py-4">Orçamento Consumido</th>
-                            <th className="px-6 py-4">Fase/Status</th>
-                            <th className="px-6 py-4 text-right">Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-zinc-100">
-                        {projects.map(p => (
-                            <tr key={p.id} className="hover:bg-zinc-50/50 transition-colors group cursor-pointer" onClick={() => setSelectedProject(p)}>
-                                <td className="px-6 py-4">
-                                    <div className="font-bold text-[#003366] uppercase text-sm mb-1">{p.name}</div>
-                                    <div className="text-zinc-500 text-xs font-medium">{p.client}</div>
-                                </td>
-                                <td className="px-6 py-4">
-                                    <div className="text-xs font-bold text-zinc-800 uppercase tracking-widest mb-1">{p.category}</div>
-                                    <div className="flex items-center gap-2 text-[10px] text-zinc-400 font-bold uppercase tracking-widest">
-                                        <CheckCircle2 size={12} className="text-[#003366]"/> Prazo: {p.deadline}
-                                    </div>
-                                </td>
-                                <td className="px-6 py-4 font-mono">
-                                    <div className="text-sm font-bold text-zinc-900">{formatCurrency(p.budgetSpent)}</div>
-                                    <div className="w-full bg-zinc-100 h-1 mt-1.5 overflow-hidden">
-                                        <div className="h-full bg-amber-500" style={{ width: `${(p.budgetSpent/p.budgetTotal)*100}%` }}></div>
-                                    </div>
-                                </td>
-                                <td className="px-6 py-4">
-                                   <div className={`inline-flex items-center gap-2 px-3 py-1 border text-[10px] font-bold uppercase tracking-widest
-                                        ${p.status==='Concluído' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 
-                                          p.status==='Atrasado' ? 'bg-red-50 text-red-700 border-red-200' : 
-                                          p.status==='Planeamento' ? 'bg-zinc-50 text-zinc-600 border-zinc-200' : 
-                                          'bg-blue-50 text-blue-700 border-blue-200'}`}>
-                                        {p.status}
-                                    </div>
-                                    <div className="mt-2 flex items-center gap-2">
-                                        <span className="text-[10px] font-bold text-[#003366]">{p.progress}%</span>
-                                        <div className="flex-1 h-1.5 bg-zinc-100 overflow-hidden">
-                                            <div className="h-full bg-[#003366]" style={{ width: `${p.progress}%` }}></div>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td className="px-6 py-4 text-right">
-                                    <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button className="p-2 bg-zinc-50 border border-zinc-200 text-zinc-500 hover:text-[#003366] transition-all"><Edit size={14}/></button>
-                                        <button className="p-2 bg-zinc-50 border border-zinc-200 text-zinc-500 hover:text-red-600 transition-all"><Trash2 size={14}/></button>
-                                    </div>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    );
-
-    return (
-        <div className="space-y-6">
-             {/* Header Section */}
-             <div className="flex justify-between items-center bg-white p-6 border border-zinc-200 shadow-sm">
-                <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-[#003366] text-white flex items-center justify-center shadow-sm">
-                        <Layers size={24} />
-                    </div>
-                    <div>
-                         <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Gestão de Projetos</h2>
-                         <p className="text-zinc-500 max-w-2xl text-xs font-medium uppercase tracking-widest">Controlo integrado sobre o ciclo de vida dos projetos.</p>
-                    </div>
-                </div>
-                <div className="flex gap-3">
-                    <button onClick={() => setActiveTab('reports')} className="px-6 py-2.5 bg-white border border-zinc-300 text-zinc-700 text-xs font-bold uppercase tracking-widest hover:bg-zinc-50 transition-all flex items-center gap-2">
-                        <PieChart size={16} /> Relatórios
-                    </button>
-                    <button onClick={() => setIsProjectModalOpen(true)} className="px-6 py-2.5 bg-[#003366] text-white text-xs font-bold uppercase tracking-widest shadow-sm hover:bg-[#002244] transition-all flex items-center gap-2">
-                        <Plus size={16}/> Novo Empreendimento
-                    </button>
-                </div>
-            </div>
-
-            {/* Navigation Tabs */}
-            <div className="flex border-b border-zinc-200 bg-white">
-                {[
-                    { id: 'dashboard', label: 'Monitorização', icon: <LayoutDashboard size={16}/> },
-                    { id: 'projects', label: 'Lista de Projetos', icon: <Target size={16}/> },
-                    { id: 'kanban', label: 'Quadro Kanban', icon: <TrendingUp size={16}/> },
-                    { id: 'team', label: 'Matriz de Equipa', icon: <Users size={16}/> },
-                    { id: 'reports', label: 'Analytics', icon: <PieChart size={16}/> }
-                ].map(tab => (
-                    <button 
-                        key={tab.id} 
-                        onClick={() => setActiveTab(tab.id as any)} 
-                        className={`flex items-center gap-2 px-6 py-4 text-xs font-bold tracking-widest transition-all uppercase whitespace-nowrap
-                        ${activeTab === tab.id ? 'text-[#003366] border-b-2 border-[#003366] bg-white' : 'text-zinc-500 hover:text-[#003366] bg-transparent'}`}
-                    >
-                        {tab.icon} {tab.label}
-                    </button>
-                ))}
-            </div>
-
-            <div>
-                {selectedProject ? (
-                    renderProjectDetail(selectedProject)
-                ) : (
-                    <>
-                        {activeTab === 'dashboard' && renderDashboard()}
-                        {activeTab === 'projects' && renderProjectsList()}
-                        {activeTab === 'team' && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 animate-in fade-in zoom-in-95 duration-500">
-                                {team.map(member => (
-                                    <div key={member.id} className="bg-white p-6 border border-zinc-200 shadow-sm flex flex-col items-center">
-                                        <div className="w-20 h-20 bg-zinc-900 border border-zinc-200 text-white flex items-center justify-center font-bold text-2xl mb-4">
-                                            {member.avatar}
-                                        </div>
-                                        <h4 className="text-sm font-bold text-zinc-800 uppercase mb-1">{member.name}</h4>
-                                        <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-6">{member.role}</p>
-                                        
-                                        <div className="w-full space-y-4 pt-4 border-t border-zinc-100">
-                                            <div className="flex justify-between items-center text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-                                                <span>Projetos Ativos</span>
-                                                <span className="text-zinc-800">{member.activeProjects}</span>
-                                            </div>
-                                            <div className="flex justify-between items-center text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-                                                <span>Disponibilidade</span>
-                                                <span className="text-emerald-600">{member.availability}%</span>
-                                            </div>
-                                            <div className="w-full h-1.5 bg-zinc-100 overflow-hidden">
-                                                <div className="h-full bg-blue-500" style={{ width: `${100 - member.availability}%` }}></div>
-                                            </div>
-                                        </div>
-                                        <button className="mt-6 w-full py-2 bg-zinc-50 border border-zinc-200 text-zinc-600 text-[10px] font-bold uppercase tracking-widest hover:bg-zinc-100 transition-all">Ver Ficha Técnica</button>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                        {activeTab === 'reports' && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4">
-                                {[
-                                    { title: 'Status Financeiro Total', desc: 'Cruzamento de orçamentos previstos vs liquidados em todo o portfolio.', icon: DollarSign, trend: '+12.5%' },
-                                    { title: 'Ocorrências e Riscos', desc: 'Relatório detalhado de imprevistos e mitigation plans ativos.', icon: AlertCircle, trend: 'Monitorizado' },
-                                    { title: 'Curva de Produtividade', desc: 'Análise de horas consumidas por tarefa vs estimativa técnica.', icon: TrendingUp, trend: '92% Eficiência' },
-                                    { title: 'Audit Compliance', desc: 'Verificações de normas de qualidade e segurança ocupacional.', icon: Shield, trend: 'OK' },
-                                    { title: 'Forecast Milestone', desc: 'Previsão algorítmica de conclusão baseada no ritmo atual.', icon: Clock, trend: 'Próx. Q3' },
-                                    { title: 'Matriz de Responsabilidade', desc: 'Tabela RACI automatizada de todos os stakeholders.', icon: Layers, trend: 'Atualizado' },
-                                ].map((r, i) => (
-                                    <div key={i} className="bg-white p-6 border border-zinc-200 shadow-sm flex flex-col group hover:border-blue-300 transition-all cursor-pointer">
-                                        <div className="w-12 h-12 bg-blue-50 border border-blue-100 flex items-center justify-center text-[#003366] mb-4">
-                                            <r.icon size={20} />
-                                        </div>
-                                        <div className="flex-1">
-                                            <div className="flex justify-between items-start mb-2">
-                                                <h4 className="text-sm font-bold text-[#003366] uppercase">{r.title}</h4>
-                                                <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">{r.trend}</span>
-                                            </div>
-                                            <p className="text-xs text-zinc-500 leading-relaxed">{r.desc}</p>
-                                        </div>
-                                        <button className="mt-6 self-start text-[10px] font-bold text-blue-600 uppercase tracking-widest flex items-center gap-2 hover:gap-3 transition-all">Extrair Relatório <FileText size={14}/></button>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                        {activeTab === 'kanban' && (
-                            <div className="bg-white border border-zinc-200 p-16 text-center shadow-sm flex flex-col items-center justify-center animate-in fade-in zoom-in-95">
-                                <div className="w-16 h-16 bg-blue-50 text-[#003366] flex items-center justify-center mb-6 border border-blue-100"><Activity size={32}/></div>
-                                <h3 className="text-xl font-bold text-[#003366] uppercase mb-4 tracking-tight">Quadro Kanban Interativo</h3>
-                                <p className="text-zinc-500 max-w-lg mx-auto text-sm">
-                                    O quadro de tarefas está a ser renderizado com base nos cartões de prioridade do sistema. Arraste e solte tarefas para actualizar o estado.
-                                </p>
-                                <div className="mt-8 flex gap-4">
-                                    <button className="px-6 py-2.5 bg-[#003366] text-white text-xs font-bold uppercase tracking-widest shadow-sm hover:bg-[#002244] transition-all">Visualizar Quadro</button>
-                                    <button className="px-6 py-2.5 bg-white border border-zinc-300 text-zinc-700 text-xs font-bold uppercase tracking-widest hover:bg-zinc-50 transition-all">Configurar</button>
-                                </div>
-                            </div>
-                        )}
-                    </>
-                )}
-            </div>
-
-            <AnimatePresence>
-                {isProjectModalOpen && (
-                    <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
-                        <div className="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm" onClick={() => setIsProjectModalOpen(false)}></div>
-                         <motion.div 
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: 10 }}
-                            className="bg-white shadow-xl w-full max-w-3xl border border-zinc-200 relative z-10"
-                        >
-                            <div className="flex justify-between items-center p-6 border-b border-zinc-200 bg-zinc-50">
-                                <h3 className="font-bold text-[#003366] uppercase text-sm tracking-widest flex items-center gap-2"><Plus size={18}/> Novo Empreendimento</h3>
-                                <button onClick={() => setIsProjectModalOpen(false)} className="text-zinc-400 hover:text-red-500 transition-colors"><X size={24}/></button>
-                            </div>
-                            <div className="p-6">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                    <div className="space-y-6">
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Designação Oficial</label>
-                                            <input type="text" className="w-full bg-white border border-zinc-300 px-4 py-2.5 text-sm outline-none focus:border-[#003366] transition-all" placeholder="Nome do Projecto" />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Cliente / Beneficiário</label>
-                                            <input type="text" className="w-full bg-white border border-zinc-300 px-4 py-2.5 text-sm outline-none focus:border-[#003366] transition-all" placeholder="Entidade Contratante" />
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Prioridade</label>
-                                                <select className="w-full bg-white border border-zinc-300 px-4 py-2.5 text-sm outline-none focus:border-[#003366]">
-                                                    <option>Normal</option>
-                                                    <option>Alta</option>
-                                                    <option>Crítica</option>
-                                                </select>
-                                            </div>
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Categoria</label>
-                                                <select className="w-full bg-white border border-zinc-300 px-4 py-2.5 text-sm outline-none focus:border-[#003366]">
-                                                    <option>Digital</option>
-                                                    <option>Infraestrutura</option>
-                                                    <option>Operacional</option>
-                                                </select>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="space-y-6">
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Resumo Executivo</label>
-                                            <textarea rows={4} className="w-full bg-white border border-zinc-300 px-4 py-2.5 text-sm outline-none focus:border-[#003366]" placeholder="Objectivos e entregas esperadas..."></textarea>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Deadline</label>
-                                                <input type="date" className="w-full bg-white border border-zinc-300 px-4 py-2.5 text-sm focus:border-[#003366]" />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Budget (Kz)</label>
-                                                <input type="number" className="w-full bg-white border border-zinc-300 px-4 py-2.5 text-sm focus:border-[#003366]" placeholder="0.00" />
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="mt-8 flex justify-end gap-3 pt-6 border-t border-zinc-100">
-                                    <button onClick={() => setIsProjectModalOpen(false)} className="px-6 py-2 bg-zinc-100 border border-zinc-200 text-zinc-700 text-xs font-bold uppercase tracking-widest hover:bg-zinc-200 transition-all">Cancelar</button>
-                                    <button className="px-6 py-2 bg-[#003366] text-white text-xs font-bold uppercase tracking-widest shadow-sm hover:bg-[#002244] transition-all outline-none">Salvar Projeto</button>
-                                </div>
-                            </div>
-                        </motion.div>
-                    </div>
-                )}
-            </AnimatePresence>
-        </div>
-    );
+            <span className="text-[10px] font-bold text-zinc-700 w-20 text-right">{fmtNum(d.value)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 };
 
-export default ProjectManagementModule;
+export default function ProjectManagementModule({ user, companyData, onNavigate, onEmitirFatura }: ProjectProps) {
+  const empresaId: string = user?.empresa_id || user?.company_id || companyData?.id || user?.id || '00000000-0000-0000-0000-000000000000';
+
+  const [activeTab, setActiveTab] = useState<TabType>('dashboard');
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [editingItem, setEditingItem] = useState<any>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+
+  // States
+  const [projetos, setProjetos] = useState<Projeto[]>([]);
+  const [tarefas, setTarefas] = useState<TarefaProj[]>([]);
+  const [recursos, setRecursos] = useState<RecursoEquipa[]>([]);
+  const [custos, setCustos] = useState<CustoProjeto[]>([]);
+
+  // Form States
+  const emptyProjeto: Projeto = { nome:'', cliente:'', orcamento_total_aoa:0, orcamento_executado_aoa:0, progresso_pct:0, status:'Planeamento', prioridade:'Normal', categoria:'Infraestrutura', provincia:'Luanda' };
+  const emptyTarefa: TarefaProj = { nome:'', status:'Pendente', prioridade:'Média', horas_estimadas:8 };
+  const emptyRecurso: RecursoEquipa = { nome:'', cargo:'Engenheiro de Software', custo_hora_aoa:5000, disponibilidade_pct:100, projetos_ativos_count:1 };
+  const emptyCusto: CustoProjeto = { descricao:'', categoria:'Materiais', valor_aoa:0, data_custo: new Date().toISOString().split('T')[0], status_pagamento:'Pendente' };
+
+  const [formProjeto, setFormProjeto] = useState<Projeto>(emptyProjeto);
+  const [formTarefa, setFormTarefa] = useState<TarefaProj>(emptyTarefa);
+  const [formRecurso, setFormRecurso] = useState<RecursoEquipa>(emptyRecurso);
+  const [formCusto, setFormCusto] = useState<CustoProjeto>(emptyCusto);
+
+  // Fetch
+  const fetchAll = useCallback(async () => {
+    if (!empresaId) return;
+    setLoading(true);
+    try {
+      const [pRes, tRes, rRes, cRes] = await Promise.all([
+        supabase.from('proj_projetos').select('*').eq('empresa_id', empresaId).is('deleted_at', null).order('nome'),
+        supabase.from('proj_tarefas').select('*').eq('empresa_id', empresaId).is('deleted_at', null).order('created_at', { ascending: false }),
+        supabase.from('proj_equipa_recursos').select('*').eq('empresa_id', empresaId).is('deleted_at', null).order('nome'),
+        supabase.from('proj_orcamentos_custos').select('*').eq('empresa_id', empresaId).is('deleted_at', null).order('data_custo', { ascending: false }),
+      ]);
+      if (pRes.data) setProjetos(pRes.data);
+      if (tRes.data) setTarefas(tRes.data.map((t: any) => ({ ...t, projeto_nome: pRes.data?.find((p: any) => p.id === t.projeto_id)?.nome || '' })));
+      if (rRes.data) setRecursos(rRes.data);
+      if (cRes.data) setCustos(cRes.data.map((c: any) => ({ ...c, projeto_nome: pRes.data?.find((p: any) => p.id === c.projeto_id)?.nome || '' })));
+    } catch (e) {
+      console.error('Erro ao carregar dados de Projetos:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, [empresaId]);
+
+  useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  // Save
+  const saveRecord = async (table: string, payload: any, id?: string) => {
+    setSaving(true);
+    try {
+      const row = { ...payload, empresa_id: empresaId };
+      if (id) {
+        const { error } = await supabase.from(table).update(row).eq('id', id).eq('empresa_id', empresaId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from(table).insert({ ...row, created_by: user?.id });
+        if (error) throw error;
+      }
+      await fetchAll();
+      setViewMode('list');
+      setEditingItem(null);
+    } catch (e: any) {
+      alert('Erro ao guardar: ' + (e?.message || JSON.stringify(e)));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Delete
+  const deleteRecord = async (table: string, id: string) => {
+    const { error } = await supabase.from(table).update({ deleted_at: new Date().toISOString() }).eq('id', id).eq('empresa_id', empresaId);
+    if (error) alert('Erro ao apagar: ' + error.message);
+    else { await fetchAll(); setDeleteConfirm(null); }
+  };
+
+  const openNew = () => {
+    setEditingItem(null);
+    if (activeTab === 'projetos') setFormProjeto(emptyProjeto);
+    if (activeTab === 'kanban') setFormTarefa(emptyTarefa);
+    if (activeTab === 'equipa') setFormRecurso(emptyRecurso);
+    if (activeTab === 'orcamento') setFormCusto(emptyCusto);
+    setViewMode('form');
+  };
+
+  const openEdit = (item: any) => {
+    setEditingItem(item);
+    if (activeTab === 'projetos') setFormProjeto(item);
+    if (activeTab === 'kanban') setFormTarefa(item);
+    if (activeTab === 'equipa') setFormRecurso(item);
+    if (activeTab === 'orcamento') setFormCusto(item);
+    setViewMode('form');
+  };
+
+  const filterList = (list: any[]) =>
+    list.filter(item => Object.values(item).some(v => String(v).toLowerCase().includes(searchTerm.toLowerCase())));
+
+  // Dashboard Stats
+  const projetosAtivos = projetos.filter(p => p.status !== 'Concluído').length;
+  const orcamentoTotal = projetos.reduce((s, p) => s + Number(p.orcamento_total_aoa || 0), 0);
+  const orcamentoExecutado = projetos.reduce((s, p) => s + Number(p.orcamento_executado_aoa || 0), 0);
+  const tarefasConcluidas = tarefas.filter(t => t.status === 'Concluído').length;
+
+  const statusBadge = (s: string) => {
+    const map: Record<string, string> = {
+      'Em Progresso':'bg-blue-100 text-blue-800','Concluído':'bg-emerald-100 text-emerald-800','Planeamento':'bg-zinc-100 text-zinc-800',
+      'Atrasado':'bg-red-100 text-red-800','Pendente':'bg-amber-100 text-amber-800','Pago':'bg-emerald-100 text-emerald-800'
+    };
+    return `px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-sm ${map[s] || 'bg-zinc-100 text-zinc-600'}`;
+  };
+
+  // Form View
+  if (viewMode === 'form') {
+    const isEdit = !!editingItem?.id;
+    return (
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+        <div className="bg-white border border-zinc-200 shadow-sm p-5 flex items-center gap-4">
+          <button onClick={() => { setViewMode('list'); setEditingItem(null); }} className="p-2 hover:bg-zinc-100 rounded-sm text-zinc-500">
+            <ChevronLeft size={20} />
+          </button>
+          <div>
+            <h2 className="font-black text-[#003366] text-lg flex items-center gap-2">
+              <Briefcase size={20} /> {isEdit ? 'Editar Registo' : 'Novo Registo'} — {activeTab.toUpperCase()}
+            </h2>
+            <p className="text-xs text-zinc-500">Preencha todos os campos necessários.</p>
+          </div>
+        </div>
+
+        <div className="bg-white border border-zinc-200 shadow-sm p-6">
+          {activeTab === 'projetos' && (
+            <form onSubmit={async e => { e.preventDefault(); await saveRecord('proj_projetos', formProjeto, editingItem?.id); }} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div><label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Nome do Projeto *</label><input required className="w-full bg-zinc-50 border p-2 text-sm" value={formProjeto.nome} onChange={e => setFormProjeto({...formProjeto, nome: e.target.value})} /></div>
+                <div><label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Cliente / Entidade *</label><input required className="w-full bg-zinc-50 border p-2 text-sm" value={formProjeto.cliente} onChange={e => setFormProjeto({...formProjeto, cliente: e.target.value})} /></div>
+                <div><label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Orçamento Total (AOA) *</label><input required type="number" min="0" className="w-full bg-zinc-50 border p-2 text-sm" value={formProjeto.orcamento_total_aoa} onChange={e => setFormProjeto({...formProjeto, orcamento_total_aoa: +e.target.value})} /></div>
+                <div><label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Orçamento Executado (AOA)</label><input type="number" min="0" className="w-full bg-zinc-50 border p-2 text-sm" value={formProjeto.orcamento_executado_aoa} onChange={e => setFormProjeto({...formProjeto, orcamento_executado_aoa: +e.target.value})} /></div>
+                <div><label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Progresso (%)</label><input type="number" min="0" max="100" className="w-full bg-zinc-50 border p-2 text-sm" value={formProjeto.progresso_pct} onChange={e => setFormProjeto({...formProjeto, progresso_pct: +e.target.value})} /></div>
+                <div><label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Status</label>
+                  <select className="w-full bg-zinc-50 border p-2 text-sm" value={formProjeto.status} onChange={e => setFormProjeto({...formProjeto, status: e.target.value})}>
+                    {['Planeamento','Em Progresso','Em Revisão','Concluído','Atrasado'].map(s => <option key={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div><label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Gerente de Projeto</label><input className="w-full bg-zinc-50 border p-2 text-sm" value={formProjeto.gerente_nome||''} onChange={e => setFormProjeto({...formProjeto, gerente_nome: e.target.value})} /></div>
+                <div><label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Província</label>
+                  <select className="w-full bg-zinc-50 border p-2 text-sm" value={formProjeto.provincia||'Luanda'} onChange={e => setFormProjeto({...formProjeto, provincia: e.target.value})}>
+                    {PROVINCIAS_ANGOLA.map(p => <option key={p}>{p}</option>)}
+                  </select>
+                </div>
+                <div><label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Data Início</label><input type="date" className="w-full bg-zinc-50 border p-2 text-sm" value={formProjeto.data_inicio||''} onChange={e => setFormProjeto({...formProjeto, data_inicio: e.target.value})} /></div>
+                <div><label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Previsão Fim</label><input type="date" className="w-full bg-zinc-50 border p-2 text-sm" value={formProjeto.data_fim_prevista||''} onChange={e => setFormProjeto({...formProjeto, data_fim_prevista: e.target.value})} /></div>
+              </div>
+              <div className="flex justify-end gap-3 pt-4 border-t">
+                <button type="button" onClick={() => setViewMode('list')} className="px-6 py-2 bg-zinc-100 font-bold text-xs uppercase">Cancelar</button>
+                <button type="submit" disabled={saving} className="px-8 py-2 bg-[#003366] text-white font-bold text-xs uppercase"><Save size={14} className="inline mr-1"/>Guardar Projeto</button>
+              </div>
+            </form>
+          )}
+
+          {activeTab === 'kanban' && (
+            <form onSubmit={async e => { e.preventDefault(); await saveRecord('proj_tarefas', formTarefa, editingItem?.id); }} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div><label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Nome da Tarefa *</label><input required className="w-full bg-zinc-50 border p-2 text-sm" value={formTarefa.nome} onChange={e => setFormTarefa({...formTarefa, nome: e.target.value})} /></div>
+                <div><label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Projeto</label>
+                  <select className="w-full bg-zinc-50 border p-2 text-sm" value={formTarefa.projeto_id||''} onChange={e => setFormTarefa({...formTarefa, projeto_id: e.target.value})}>
+                    <option value="">— Selecionar —</option>
+                    {projetos.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                  </select>
+                </div>
+                <div><label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Responsável</label><input className="w-full bg-zinc-50 border p-2 text-sm" value={formTarefa.responsavel_nome||''} onChange={e => setFormTarefa({...formTarefa, responsavel_nome: e.target.value})} /></div>
+                <div><label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Status</label>
+                  <select className="w-full bg-zinc-50 border p-2 text-sm" value={formTarefa.status} onChange={e => setFormTarefa({...formTarefa, status: e.target.value})}>
+                    {['Pendente','Em Progresso','Em Revisão','Concluído'].map(s => <option key={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div><label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Prioridade</label>
+                  <select className="w-full bg-zinc-50 border p-2 text-sm" value={formTarefa.prioridade} onChange={e => setFormTarefa({...formTarefa, prioridade: e.target.value})}>
+                    {['Crítica','Alta','Média','Baixa'].map(p => <option key={p}>{p}</option>)}
+                  </select>
+                </div>
+                <div><label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Data Limite</label><input type="date" className="w-full bg-zinc-50 border p-2 text-sm" value={formTarefa.data_limite||''} onChange={e => setFormTarefa({...formTarefa, data_limite: e.target.value})} /></div>
+              </div>
+              <div className="flex justify-end gap-3 pt-4 border-t">
+                <button type="button" onClick={() => setViewMode('list')} className="px-6 py-2 bg-zinc-100 font-bold text-xs uppercase">Cancelar</button>
+                <button type="submit" disabled={saving} className="px-8 py-2 bg-[#003366] text-white font-bold text-xs uppercase"><Save size={14} className="inline mr-1"/>Guardar Tarefa</button>
+              </div>
+            </form>
+          )}
+
+          {activeTab === 'equipa' && (
+            <form onSubmit={async e => { e.preventDefault(); await saveRecord('proj_equipa_recursos', formRecurso, editingItem?.id); }} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div><label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Nome Completo *</label><input required className="w-full bg-zinc-50 border p-2 text-sm" value={formRecurso.nome} onChange={e => setFormRecurso({...formRecurso, nome: e.target.value})} /></div>
+                <div><label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Cargo / Especialidade *</label><input required className="w-full bg-zinc-50 border p-2 text-sm" value={formRecurso.cargo} onChange={e => setFormRecurso({...formRecurso, cargo: e.target.value})} /></div>
+                <div><label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">E-mail</label><input type="email" className="w-full bg-zinc-50 border p-2 text-sm" value={formRecurso.email||''} onChange={e => setFormRecurso({...formRecurso, email: e.target.value})} /></div>
+                <div><label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Custo por Hora (AOA)</label><input type="number" min="0" className="w-full bg-zinc-50 border p-2 text-sm" value={formRecurso.custo_hora_aoa} onChange={e => setFormRecurso({...formRecurso, custo_hora_aoa: +e.target.value})} /></div>
+                <div><label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Disponibilidade (%)</label><input type="number" min="0" max="100" className="w-full bg-zinc-50 border p-2 text-sm" value={formRecurso.disponibilidade_pct} onChange={e => setFormRecurso({...formRecurso, disponibilidade_pct: +e.target.value})} /></div>
+              </div>
+              <div className="flex justify-end gap-3 pt-4 border-t">
+                <button type="button" onClick={() => setViewMode('list')} className="px-6 py-2 bg-zinc-100 font-bold text-xs uppercase">Cancelar</button>
+                <button type="submit" disabled={saving} className="px-8 py-2 bg-[#003366] text-white font-bold text-xs uppercase"><Save size={14} className="inline mr-1"/>Guardar Recurso</button>
+              </div>
+            </form>
+          )}
+
+          {activeTab === 'orcamento' && (
+            <form onSubmit={async e => { e.preventDefault(); await saveRecord('proj_orcamentos_custos', formCusto, editingItem?.id); }} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div><label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Descrição do Custo *</label><input required className="w-full bg-zinc-50 border p-2 text-sm" value={formCusto.descricao} onChange={e => setFormCusto({...formCusto, descricao: e.target.value})} /></div>
+                <div><label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Projeto</label>
+                  <select className="w-full bg-zinc-50 border p-2 text-sm" value={formCusto.projeto_id||''} onChange={e => setFormCusto({...formCusto, projeto_id: e.target.value})}>
+                    <option value="">— Selecionar —</option>
+                    {projetos.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                  </select>
+                </div>
+                <div><label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Categoria</label>
+                  <select className="w-full bg-zinc-50 border p-2 text-sm" value={formCusto.categoria} onChange={e => setFormCusto({...formCusto, categoria: e.target.value})}>
+                    {['Materiais','Mão-de-Obra','Subcontratados','Equipamentos','Licenças','Viagens','Outro'].map(c => <option key={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div><label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Valor (AOA) *</label><input required type="number" min="0" className="w-full bg-zinc-50 border p-2 text-sm" value={formCusto.valor_aoa} onChange={e => setFormCusto({...formCusto, valor_aoa: +e.target.value})} /></div>
+                <div><label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Data</label><input required type="date" className="w-full bg-zinc-50 border p-2 text-sm" value={formCusto.data_custo} onChange={e => setFormCusto({...formCusto, data_custo: e.target.value})} /></div>
+                <div><label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Status Pagamento</label>
+                  <select className="w-full bg-zinc-50 border p-2 text-sm" value={formCusto.status_pagamento} onChange={e => setFormCusto({...formCusto, status_pagamento: e.target.value})}>
+                    <option value="Pago">Pago</option><option value="Pendente">Pendente</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 pt-4 border-t">
+                <button type="button" onClick={() => setViewMode('list')} className="px-6 py-2 bg-zinc-100 font-bold text-xs uppercase">Cancelar</button>
+                <button type="submit" disabled={saving} className="px-8 py-2 bg-[#003366] text-white font-bold text-xs uppercase"><Save size={14} className="inline mr-1"/>Guardar Custo</button>
+              </div>
+            </form>
+          )}
+        </div>
+      </motion.div>
+    );
+  }
+
+  // Header & Lists
+  const tabs = [
+    { id: 'dashboard',  label: 'Resumo Geral',     icon: LayoutDashboard },
+    { id: 'projetos',   label: 'Portfólio',        icon: Briefcase       },
+    { id: 'kanban',     label: 'Quadro & Tarefas',  icon: Layers          },
+    { id: 'equipa',     label: 'Equipa & Recursos',icon: Users           },
+    { id: 'orcamento',  label: 'Orçamento & Custos',icon: DollarSign     },
+    { id: 'relatorios', label: 'Relatórios & Mapa', icon: FileText        },
+  ];
+
+  return (
+    <div className="space-y-5">
+      {/* Top Header */}
+      <div className="bg-white border border-zinc-200 shadow-sm p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h2 className="text-2xl font-black text-[#003366] flex items-center gap-2"><Briefcase size={26}/> Gestão de Projetos & Obras</h2>
+          <p className="text-zinc-500 text-sm mt-1">Planeamento, acompanhamento orçamental, equipas e cronograma de tarefas — Angola</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={fetchAll} disabled={loading} className="p-2 border text-zinc-500 hover:text-[#003366] rounded-sm"><RefreshCw size={16} className={loading ? 'animate-spin' : ''}/></button>
+          <button onClick={() => {
+            if (onEmitirFatura) onEmitirFatura();
+            else if (onNavigate) onNavigate('invoices');
+          }} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 rounded-sm shadow-sm transition-colors">
+            <FileText size={14}/> Emitir Fatura ao Cliente
+          </button>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="bg-white border border-zinc-200 shadow-sm">
+        <div className="flex gap-0 border-b border-zinc-100 overflow-x-auto">
+          {tabs.map(t => (
+            <button key={t.id} onClick={() => { setActiveTab(t.id as TabType); setViewMode('list'); setSearchTerm(''); }}
+              className={`flex items-center gap-1.5 px-4 py-3 text-[11px] font-bold uppercase tracking-wider whitespace-nowrap border-b-2 transition-colors ${
+                activeTab === t.id ? 'text-[#003366] border-[#003366] bg-blue-50/50' : 'text-zinc-500 border-transparent hover:text-zinc-800'
+              }`}>
+              <t.icon size={13}/>{t.label}
+            </button>
+          ))}
+        </div>
+
+        {['projetos','kanban','equipa','orcamento'].includes(activeTab) && (
+          <div className="p-3 flex items-center justify-between gap-3 bg-zinc-50 border-b">
+            <div className="relative flex-1 max-w-sm">
+              <Search size={13} className="absolute left-3 top-2.5 text-zinc-400"/>
+              <input type="text" placeholder="Pesquisar..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 text-sm border bg-white focus:outline-none focus:border-[#003366] rounded-sm"/>
+            </div>
+            <button onClick={openNew} className="bg-[#003366] hover:bg-[#002244] text-white px-4 py-2 text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 rounded-sm">
+              <Plus size={14}/> Novo Registo
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Dashboard */}
+      {activeTab === 'dashboard' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {[
+              { l: 'Projetos Ativos', v: fmtNum(projetosAtivos), icon: Briefcase, c: 'blue' },
+              { l: 'Orçamento Total', v: fmtAOA(orcamentoTotal), icon: DollarSign, c: 'emerald' },
+              { l: 'Execução Orçamental', v: fmtAOA(orcamentoExecutado), icon: TrendingUp, c: 'purple' },
+              { l: 'Tarefas Concluídas', v: fmtNum(tarefasConcluidas), icon: CheckCircle, c: 'amber' },
+            ].map((k, i) => (
+              <div key={i} className="bg-white border border-zinc-200 shadow-sm p-5 flex items-start gap-3">
+                <div className={`p-2.5 rounded bg-${k.c}-100 text-${k.c}-700 shrink-0`}><k.icon size={20}/></div>
+                <div>
+                  <p className="text-[10px] font-bold uppercase text-zinc-500">{k.l}</p>
+                  <p className="text-lg font-black text-zinc-800 mt-0.5">{k.v}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-white border border-zinc-200 shadow-sm p-5">
+              <ProjBarChart label="Orçamento por Projeto (AOA)"
+                data={projetos.slice(0, 6).map(p => ({ name: p.nome, value: p.orcamento_total_aoa }))}
+              />
+            </div>
+            <div className="bg-white border border-zinc-200 shadow-sm p-5 space-y-3">
+              <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">Estado dos Projetos</p>
+              {projetos.slice(0, 5).map(p => (
+                <div key={p.id} className="p-3 bg-zinc-50 border border-zinc-100 flex justify-between items-center">
+                  <div>
+                    <p className="font-bold text-sm text-[#003366]">{p.nome}</p>
+                    <p className="text-[10px] text-zinc-500">Cliente: {p.cliente} • {p.progresso_pct}% Concluído</p>
+                  </div>
+                  <span className={statusBadge(p.status)}>{p.status}</span>
+                </div>
+              ))}
+              {projetos.length === 0 && <p className="text-zinc-400 text-sm">Nenhum projeto registado.</p>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Projetos List */}
+      {activeTab === 'projetos' && (
+        <div className="bg-white border border-zinc-200 shadow-sm overflow-hidden">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-[#003366] text-white text-[11px] uppercase">
+              <tr>
+                <th className="p-3">Projeto</th><th className="p-3">Cliente</th><th className="p-3 text-right">Orçamento</th>
+                <th className="p-3 text-center">Progresso</th><th className="p-3 text-center">Status</th><th className="p-3 text-center">Acções</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+              {filterList(projetos).map(p => (
+                <tr key={p.id} className="hover:bg-zinc-50">
+                  <td className="p-3 font-bold text-zinc-800">{p.nome}</td>
+                  <td className="p-3 text-zinc-600">{p.cliente}</td>
+                  <td className="p-3 text-right font-bold text-[#003366]">{fmtAOA(p.orcamento_total_aoa)}</td>
+                  <td className="p-3 text-center">
+                    <div className="w-full bg-zinc-200 rounded-full h-2 overflow-hidden">
+                      <div className="bg-emerald-600 h-2" style={{ width: `${p.progresso_pct}%` }} />
+                    </div>
+                    <span className="text-[10px] font-bold text-zinc-500">{p.progresso_pct}%</span>
+                  </td>
+                  <td className="p-3 text-center"><span className={statusBadge(p.status)}>{p.status}</span></td>
+                  <td className="p-3 text-center">
+                    <button onClick={() => openEdit(p)} className="p-1 text-zinc-400 hover:text-[#003366] mr-1"><Edit size={13}/></button>
+                    <button onClick={() => setDeleteConfirm(p.id!)} className="p-1 text-zinc-400 hover:text-red-600"><Trash2 size={13}/></button>
+                  </td>
+                </tr>
+              ))}
+              {filterList(projetos).length === 0 && <tr><td colSpan={6} className="p-8 text-center text-zinc-400">Nenhum projeto registado.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Kanban / Tarefas */}
+      {activeTab === 'kanban' && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {['Pendente','Em Progresso','Concluído'].map(st => (
+            <div key={st} className="bg-zinc-50 border border-zinc-200 p-4 rounded-sm space-y-3">
+              <h4 className="font-bold text-xs uppercase text-zinc-600 border-b pb-2 flex justify-between">
+                <span>{st}</span>
+                <span className="bg-zinc-200 px-2 rounded text-[10px]">{tarefas.filter(t => t.status === st).length}</span>
+              </h4>
+              {tarefas.filter(t => t.status === st).map(t => (
+                <div key={t.id} className="bg-white p-3 border shadow-xs space-y-2">
+                  <p className="font-bold text-sm text-zinc-800">{t.nome}</p>
+                  <p className="text-[10px] text-zinc-400">Resp: {t.responsavel_nome || '—'}</p>
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] bg-blue-50 text-blue-800 px-1.5 py-0.5 rounded">{t.prioridade}</span>
+                    <div>
+                      <button onClick={() => openEdit(t)} className="p-1 text-zinc-400 hover:text-[#003366] mr-1"><Edit size={12}/></button>
+                      <button onClick={() => setDeleteConfirm(t.id!)} className="p-1 text-zinc-400 hover:text-red-600"><Trash2 size={12}/></button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Equipa */}
+      {activeTab === 'equipa' && (
+        <div className="bg-white border border-zinc-200 shadow-sm overflow-hidden">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-[#003366] text-white text-[11px] uppercase">
+              <tr>
+                <th className="p-3">Nome</th><th className="p-3">Cargo</th><th className="p-3 text-right">Custo/Hora</th>
+                <th className="p-3 text-center">Disponibilidade</th><th className="p-3 text-center">Acções</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+              {filterList(recursos).map(r => (
+                <tr key={r.id} className="hover:bg-zinc-50">
+                  <td className="p-3 font-bold text-zinc-800">{r.nome}</td>
+                  <td className="p-3 text-zinc-600">{r.cargo}</td>
+                  <td className="p-3 text-right font-bold">{fmtAOA(r.custo_hora_aoa)}</td>
+                  <td className="p-3 text-center font-mono">{r.disponibilidade_pct}%</td>
+                  <td className="p-3 text-center">
+                    <button onClick={() => openEdit(r)} className="p-1 text-zinc-400 hover:text-[#003366] mr-1"><Edit size={13}/></button>
+                    <button onClick={() => setDeleteConfirm(r.id!)} className="p-1 text-zinc-400 hover:text-red-600"><Trash2 size={13}/></button>
+                  </td>
+                </tr>
+              ))}
+              {filterList(recursos).length === 0 && <tr><td colSpan={5} className="p-8 text-center text-zinc-400">Nenhum recurso registado.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Relatórios */}
+      {activeTab === 'relatorios' && (
+        <div className="bg-white border border-zinc-200 shadow-sm p-6 space-y-5">
+          <h3 className="font-bold text-[#003366] text-base">Exportar Dados & Relatórios de Projetos</h3>
+          <div className="flex flex-wrap gap-3">
+            <button onClick={() => {
+              const rows = ['Nome,Cliente,Orcamento Total,Executado,Progresso,Status', ...projetos.map(p => `${p.nome},${p.cliente},${p.orcamento_total_aoa},${p.orcamento_executado_aoa},${p.progresso_pct},${p.status}`)];
+              const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+              const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'projetos.csv'; a.click();
+            }} className="px-5 py-2 bg-emerald-600 text-white font-bold text-xs uppercase flex items-center gap-2 rounded-sm">
+              <Download size={13}/> CSV Projetos
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Modal */}
+      <AnimatePresence>
+        {deleteConfirm && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-zinc-900/60 p-4">
+            <div className="bg-white p-6 max-w-sm w-full text-center space-y-4 shadow-2xl">
+              <Trash2 size={32} className="text-red-600 mx-auto"/>
+              <h3 className="font-bold text-lg">Apagar Registo?</h3>
+              <div className="flex gap-2">
+                <button onClick={() => setDeleteConfirm(null)} className="flex-1 py-2 bg-zinc-100 font-bold text-xs">Cancelar</button>
+                <button onClick={() => {
+                  const map: Record<string, string> = { projetos:'proj_projetos', kanban:'proj_tarefas', equipa:'proj_equipa_recursos', orcamento:'proj_orcamentos_custos' };
+                  deleteRecord(map[activeTab], deleteConfirm);
+                }} className="flex-1 py-2 bg-red-600 text-white font-bold text-xs">Confirmar</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}

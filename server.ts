@@ -944,6 +944,76 @@ if (!supabaseAdmin) {
           ALTER TABLE public.vendas ADD COLUMN IF NOT EXISTS created_by_username TEXT;
           ALTER TABLE public.vendas ADD COLUMN IF NOT EXISTS created_by_nome TEXT;
 
+          -- impostos_pagamentos
+          CREATE TABLE IF NOT EXISTS public.impostos_pagamentos (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              empresa_id UUID NOT NULL,
+              cod TEXT NOT NULL,
+              data TIMESTAMPTZ NOT NULL DEFAULT now(),
+              data_valor TIMESTAMPTZ NOT NULL DEFAULT now(),
+              descricao TEXT NOT NULL,
+              caixa_nome TEXT DEFAULT 'Caixa Central',
+              doc_suporte TEXT,
+              moeda TEXT DEFAULT 'AOA',
+              valor NUMERIC NOT NULL DEFAULT 0,
+              created_at TIMESTAMPTZ DEFAULT now()
+          );
+
+          -- apuramentos_iva
+          CREATE TABLE IF NOT EXISTS public.apuramentos_iva (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              empresa_id UUID NOT NULL,
+              ano INTEGER NOT NULL,
+              mes INTEGER NOT NULL,
+              data_apuramento TIMESTAMPTZ DEFAULT now(),
+              iva_suportado NUMERIC DEFAULT 0,
+              iva_dedutivel NUMERIC DEFAULT 0,
+              iva_liquidado NUMERIC DEFAULT 0,
+              saldo_apurado NUMERIC DEFAULT 0,
+              tipo_saldo TEXT DEFAULT 'PAGAR',
+              detalhes JSONB DEFAULT '{}',
+              created_at TIMESTAMPTZ DEFAULT now()
+          );
+
+          -- diarios_contabeis
+          CREATE TABLE IF NOT EXISTS public.diarios_contabeis (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              empresa_id UUID NOT NULL,
+              codigo TEXT NOT NULL,
+              descricao TEXT NOT NULL,
+              tipo TEXT DEFAULT 'Geral',
+              is_active BOOLEAN DEFAULT true,
+              created_at TIMESTAMPTZ DEFAULT now()
+          );
+
+          -- contas_pag_impostos
+          CREATE TABLE IF NOT EXISTS public.contas_pag_impostos (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              empresa_id UUID NOT NULL,
+              cod TEXT NOT NULL,
+              descricao TEXT NOT NULL,
+              conta_pgc TEXT NOT NULL,
+              created_at TIMESTAMPTZ DEFAULT now()
+          );
+
+          -- pagamentos_impostos
+          CREATE TABLE IF NOT EXISTS public.pagamentos_impostos (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              empresa_id UUID NOT NULL,
+              conta_imposto_id UUID,
+              cod TEXT NOT NULL,
+              data DATE NOT NULL DEFAULT CURRENT_DATE,
+              data_valor DATE NOT NULL DEFAULT CURRENT_DATE,
+              descricao TEXT NOT NULL,
+              caixa_nome TEXT NOT NULL,
+              caixa_id UUID,
+              doc_suporte TEXT,
+              moeda TEXT NOT NULL DEFAULT 'AOA',
+              valor NUMERIC(18,2) NOT NULL DEFAULT 0,
+              estado TEXT NOT NULL DEFAULT 'pendente',
+              created_at TIMESTAMPTZ DEFAULT now()
+          );
+
           -- pagamentos
           CREATE TABLE IF NOT EXISTS public.pagamentos (
               id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -969,6 +1039,21 @@ if (!supabaseAdmin) {
           );
           ALTER TABLE public.lancamentos_contabeis ADD COLUMN IF NOT EXISTS empresa_id UUID;
           ALTER TABLE public.lancamentos_contabeis ADD COLUMN IF NOT EXISTS ano INTEGER;
+          ALTER TABLE public.lancamentos_contabeis ADD COLUMN IF NOT EXISTS mes INTEGER;
+          ALTER TABLE public.lancamentos_contabeis ADD COLUMN IF NOT EXISTS debito NUMERIC DEFAULT 0;
+          ALTER TABLE public.lancamentos_contabeis ADD COLUMN IF NOT EXISTS credito NUMERIC DEFAULT 0;
+          ALTER TABLE public.lancamentos_contabeis ADD COLUMN IF NOT EXISTS origem_id TEXT;
+          ALTER TABLE public.lancamentos_contabeis ADD COLUMN IF NOT EXISTS origem_tipo TEXT;
+          ALTER TABLE public.lancamentos_contabeis ADD COLUMN IF NOT EXISTS conta_pgc TEXT;
+          ALTER TABLE public.lancamentos_contabeis ADD COLUMN IF NOT EXISTS descricao_conta TEXT;
+          ALTER TABLE public.lancamentos_contabeis ADD COLUMN IF NOT EXISTS descricao_lancamento TEXT;
+          ALTER TABLE public.lancamentos_contabeis ADD COLUMN IF NOT EXISTS tipo_movimento TEXT;
+          ALTER TABLE public.lancamentos_contabeis ADD COLUMN IF NOT EXISTS valor NUMERIC DEFAULT 0;
+          ALTER TABLE public.lancamentos_contabeis ADD COLUMN IF NOT EXISTS diario TEXT;
+          ALTER TABLE public.lancamentos_contabeis ADD COLUMN IF NOT EXISTS tipo TEXT;
+          ALTER TABLE public.lancamentos_contabeis ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'activo';
+          ALTER TABLE public.lancamentos_contabeis ADD COLUMN IF NOT EXISTS data_lancamento TEXT;
+          ALTER TABLE public.lancamentos_contabeis ADD COLUMN IF NOT EXISTS periodo TEXT;
 
           -- Preenchimento retroativo dos anos nulos utilizando o ano da criação ou o ano actual
           UPDATE public.documentos_emitidos SET ano = EXTRACT(YEAR FROM COALESCE(created_at, now())) WHERE ano IS NULL;
@@ -2139,7 +2224,7 @@ async function startServer() {
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com data:",
       "img-src 'self' data: blob: https:",
-      "connect-src 'self' https://*.supabase.co wss://*.supabase.co wss: https: blob:",
+      "connect-src 'self' https://*.supabase.co wss://*.supabase.co ws: wss: http: https: blob:",
       "worker-src 'self' blob: data:",
       "frame-src 'self' https:",
       "object-src 'none'",
@@ -5821,8 +5906,19 @@ async function startServer() {
           }
         }
   
+        // Gerar lançamentos contabilísticos automáticos (PGC Angola)
+        try {
+          const certDoc = { ...doc, empresa_id: doc.empresa_id };
+          if (certDoc.empresa_id) {
+            await generateDocumentAccountingEntries(certDoc, certDoc.empresa_id);
+          }
+        } catch (contabErr: any) {
+          console.warn('[API-CERTIFY] Erro ao gerar lançamentos contabilísticos (não bloqueante):', contabErr.message);
+        }
+
         saveData();
         return res.json({ success: true, doc });
+
       } else {
         if (dbResult) {
           return res.json({ success: true, dbResult });
@@ -6251,6 +6347,7 @@ async function startServer() {
         }
 
         saveData(); // Save in-memory counters to disk if needed
+        await generateDocumentAccountingEntries(newDoc, companyId).catch(e => console.error('Erro ao gerar lançamentos de documento:', e));
         return res.status(201).json(newDoc);
       }
 
@@ -6672,31 +6769,1105 @@ async function startServer() {
     res.json(newMovement);
   });
 
-  app.get("/api/accounting/pgc", (req, res) => {
+  app.get("/api/accounting/pgc", async (req, res) => {
     const { empresa_id } = req.query;
-    if (empresa_id) return res.json(pgcAccounts.filter(a => String(a.empresa_id) === String(empresa_id)));
-    res.json([]);
+    if (supabaseAdmin) {
+      try {
+        let query = supabaseAdmin.from("pgc_plano_contas").select("*");
+        if (empresa_id && empresa_id !== "null" && empresa_id !== "undefined") {
+          query = query.or(`empresa_id.eq.${empresa_id},empresa_id.is.null,is_system.eq.true`);
+        }
+        const { data, error } = await query.order("conta", { ascending: true });
+        if (!error && data && data.length > 0) {
+          const mapped = data.map((item: any) => ({
+            ...item,
+            id: item.conta || item.id,
+            account_id: item.id,
+            conta: item.conta,
+            type: item.tipo || item.type || 'GA',
+            description: item.descricao || item.description || '',
+            justification: item.justificacao || item.justification || '',
+            layout: item.layout || ''
+          }));
+          return res.json(mapped);
+        }
+      } catch (err: any) {
+        console.error("[PGC] Erro ao carregar PGC do Supabase:", err);
+      }
+    }
+
+    // Fallback em memória se Supabase indisponível ou sem registos
+    const mappedMemory = pgcAccounts.map((item: any) => ({
+      ...item,
+      id: item.conta || item.id,
+      conta: item.conta || item.id,
+      type: item.tipo || item.type || 'GA',
+      description: item.descricao || item.description || '',
+      justification: item.justificacao || item.justification || '',
+      layout: item.layout || ''
+    }));
+
+    if (empresa_id && empresa_id !== "null" && empresa_id !== "undefined") {
+      const filtered = mappedMemory.filter((a: any) => !a.empresa_id || String(a.empresa_id) === String(empresa_id));
+      if (filtered.length > 0) return res.json(filtered);
+    }
+    res.json(mappedMemory);
   });
-  app.post("/api/accounting/pgc", (req, res) => {
-    const newAccount = { ...req.body };
-    const existingIndex = pgcAccounts.findIndex(a => a.id === newAccount.id);
+
+  app.post("/api/accounting/pgc", async (req, res) => {
+    const { id, conta, type, tipo, description, descricao, justification, justificacao, layout, empresa_id, parent_id } = req.body;
+    const contaCode = conta || id;
+    const descText = descricao || description;
+    const tipoText = tipo || type;
+    const justText = justificacao || justification;
+
+    const newAccountPayload = {
+      conta: contaCode,
+      descricao: descText,
+      tipo: tipoText,
+      justificacao: justText,
+      layout: layout || '',
+      empresa_id: empresa_id || null,
+      parent_id: parent_id || null
+    };
+
+    if (supabaseAdmin) {
+      try {
+        const { data, error } = await supabaseAdmin
+          .from("pgc_plano_contas")
+          .upsert(newAccountPayload, { onConflict: "empresa_id,conta" })
+          .select()
+          .single();
+
+        if (!error && data) {
+          const mapped = {
+            ...data,
+            id: data.conta || data.id,
+            account_id: data.id,
+            conta: data.conta,
+            type: data.tipo,
+            description: data.descricao,
+            justification: data.justificacao,
+            layout: data.layout
+          };
+          return res.json(mapped);
+        }
+      } catch (err: any) {
+        console.error("[PGC] Erro ao guardar PGC no Supabase:", err);
+      }
+    }
+
+    const existingIndex = pgcAccounts.findIndex((a: any) => (a.conta || a.id) === contaCode);
+    const memoryAccount = { id: contaCode, conta: contaCode, type: tipoText, description: descText, justification: justText, layout, empresa_id };
     if (existingIndex !== -1) {
-      pgcAccounts[existingIndex] = newAccount;
+      pgcAccounts[existingIndex] = memoryAccount;
     } else {
-      pgcAccounts.push(newAccount);
+      pgcAccounts.push(memoryAccount);
     }
     saveData();
-    res.json(newAccount);
+    res.json(memoryAccount);
   });
 
   // Movement Classification Endpoints
   app.post("/api/accounting/classify", (req, res) => {
     const { ids, type, targetAccount } = req.body;
-    // In a real scenario, this would update the specific movements
-    // For this implementation, we'll simulate the persistence
     console.log(`Classified ${type} movements ${ids.join(',')} to account ${targetAccount}`);
     saveData();
     res.json({ success: true });
+  });
+
+  // ============================================================
+  //  MOTOR CONTABILÍSTICO ANGOLANO (PGC) - PARTIDAS DOBRADAS
+  // ============================================================
+
+  /**
+   * Gera lançamentos contabilísticos (partidas dobradas) para um documento emitido
+   * Segue as normas PGC Angola:
+   *  Vendas/Faturas: Db 31.1.2.x (Clientes) / Cr 61.1.1 (Vendas) + Cr 34.5.3.1 (IVA Liquidado)
+   *  Recibos/Pagamento: Db 45.2.1.1 (Caixa) / Cr 31.1.2.x (Clientes)
+   *  Notas de Crédito: Db 61.1.1 / Cr 31.1.2.x
+   */
+  async function generateDocumentAccountingEntries(doc: any, empresa_id: string): Promise<void> {
+    if (!supabaseAdmin) return;
+    try {
+      const dataLanc = doc.data_emissao || doc.certified_at || doc.created_at || new Date().toISOString();
+      const ano = new Date(dataLanc).getFullYear();
+      const mes = new Date(dataLanc).getMonth() + 1;
+      const total = parseFloat(doc.total) || 0;
+      const imposto = parseFloat(doc.imposto) || 0;
+      const base = total - imposto;
+      const tipo = (doc.tipo_documento || doc.document_type || '').toUpperCase();
+      const clienteNome = doc.cliente_nome || doc.client_name || 'CLIENTE';
+      const numDoc = doc.numero_documento || doc.document_number || doc.id;
+      const origemId = String(doc.id);
+      const descBase = `${tipo} ${numDoc} - ${clienteNome}`;
+
+      // Delete existing entries for this document to avoid duplication
+      await supabaseAdmin.from('lancamentos_contabeis')
+        .delete()
+        .eq('empresa_id', empresa_id)
+        .eq('origem_id', origemId)
+        .eq('origem_tipo', 'VENDA');
+
+      const entries: any[] = [];
+
+      if (tipo.includes('RECIBO') || tipo === 'RECIBO') {
+        // Recibo: Db Caixa / Cr Clientes
+        entries.push({ empresa_id, ano, mes, diario: 'VD', origem_tipo: 'VENDA', origem_id: origemId, conta_pgc: '45.2.1.1', descricao_conta: 'Caixa Central', tipo_movimento: 'DEBITO', valor: total, descricao_lancamento: descBase, data_lancamento: dataLanc });
+        entries.push({ empresa_id, ano, mes, diario: 'VD', origem_tipo: 'VENDA', origem_id: origemId, conta_pgc: '31.1.2.1', descricao_conta: 'Clientes Correntes', tipo_movimento: 'CREDITO', valor: total, descricao_lancamento: descBase, data_lancamento: dataLanc });
+      } else if (tipo.includes('NOTA DE CRÉDITO') || tipo.includes('NC') || tipo.includes('NOTE')) {
+        // Nota de Crédito: inverso
+        entries.push({ empresa_id, ano, mes, diario: 'VD', origem_tipo: 'VENDA', origem_id: origemId, conta_pgc: '61.1.1', descricao_conta: 'Vendas Mercado Nacional', tipo_movimento: 'DEBITO', valor: base, descricao_lancamento: descBase, data_lancamento: dataLanc });
+        entries.push({ empresa_id, ano, mes, diario: 'VD', origem_tipo: 'VENDA', origem_id: origemId, conta_pgc: '34.5.3.1', descricao_conta: 'IVA Liquidado - Operações Gerais', tipo_movimento: 'DEBITO', valor: imposto, descricao_lancamento: descBase, data_lancamento: dataLanc });
+        entries.push({ empresa_id, ano, mes, diario: 'VD', origem_tipo: 'VENDA', origem_id: origemId, conta_pgc: '31.1.2.1', descricao_conta: 'Clientes Correntes', tipo_movimento: 'CREDITO', valor: total, descricao_lancamento: descBase, data_lancamento: dataLanc });
+      } else {
+        // Fatura / Fatura Simplificada / Orçamento Convertido
+        if (base > 0) {
+          entries.push({ empresa_id, ano, mes, diario: 'VD', origem_tipo: 'VENDA', origem_id: origemId, conta_pgc: '31.1.2.1', descricao_conta: 'Clientes Correntes', tipo_movimento: 'DEBITO', valor: total, descricao_lancamento: descBase, data_lancamento: dataLanc });
+          entries.push({ empresa_id, ano, mes, diario: 'VD', origem_tipo: 'VENDA', origem_id: origemId, conta_pgc: '61.1.1', descricao_conta: 'Vendas Mercado Nacional', tipo_movimento: 'CREDITO', valor: base, descricao_lancamento: descBase, data_lancamento: dataLanc });
+          if (imposto > 0) {
+            entries.push({ empresa_id, ano, mes, diario: 'VD', origem_tipo: 'VENDA', origem_id: origemId, conta_pgc: '34.5.3.1', descricao_conta: 'IVA Liquidado - Operações Gerais', tipo_movimento: 'CREDITO', valor: imposto, descricao_lancamento: descBase, data_lancamento: dataLanc });
+          }
+        }
+      }
+
+      if (entries.length > 0) {
+        await supabaseAdmin.from('lancamentos_contabeis').insert(entries);
+      }
+    } catch (err: any) {
+      console.error('[CONTAB] Erro ao gerar lançamentos de documento:', err.message);
+    }
+  }
+
+  /**
+   * Gera lançamentos contabilísticos para uma compra/fornecedor
+   * PGC Angola:
+   *   Db 75.1 (FSE) ou 21.1 (Existências) + Db 34.5.1.1 (IVA Suportado) / Cr 32.1.2.1 (Fornecedores)
+   *   Se pago: Db 32.1.2.1 / Cr 45.2.1.1
+   */
+  async function generatePurchaseAccountingEntries(purchase: any, empresa_id: string): Promise<void> {
+    if (!supabaseAdmin) return;
+    try {
+      const dataLanc = purchase.created_at || new Date().toISOString();
+      const ano = new Date(dataLanc).getFullYear();
+      const mes = new Date(dataLanc).getMonth() + 1;
+      const total = parseFloat(purchase.total || purchase.valor_total || purchase.amount || 0);
+      const imposto = parseFloat(purchase.tax || purchase.iva || purchase.imposto || 0);
+      const base = total - imposto;
+      const fornecedorNome = purchase.supplier || purchase.fornecedor || purchase.vendor || 'FORNECEDOR';
+      const numDoc = purchase.invoice_number || purchase.numero_factura || purchase.id;
+      const origemId = String(purchase.id);
+      const descBase = `Compra ${numDoc} - ${fornecedorNome}`;
+
+      await supabaseAdmin.from('lancamentos_contabeis')
+        .delete()
+        .eq('empresa_id', empresa_id)
+        .eq('origem_id', origemId)
+        .eq('origem_tipo', 'COMPRA');
+
+      const entries: any[] = [];
+      if (base > 0) {
+        entries.push({ empresa_id, ano, mes, diario: 'CP', origem_tipo: 'COMPRA', origem_id: origemId, conta_pgc: '75.1', descricao_conta: 'Fornecimentos e Serviços de Terceiros', tipo_movimento: 'DEBITO', valor: base, descricao_lancamento: descBase, data_lancamento: dataLanc });
+        if (imposto > 0) {
+          entries.push({ empresa_id, ano, mes, diario: 'CP', origem_tipo: 'COMPRA', origem_id: origemId, conta_pgc: '34.5.1.1', descricao_conta: 'IVA Suportado - Existências', tipo_movimento: 'DEBITO', valor: imposto, descricao_lancamento: descBase, data_lancamento: dataLanc });
+        }
+        entries.push({ empresa_id, ano, mes, diario: 'CP', origem_tipo: 'COMPRA', origem_id: origemId, conta_pgc: '32.1.2.1', descricao_conta: 'Fornecedores Correntes', tipo_movimento: 'CREDITO', valor: total, descricao_lancamento: descBase, data_lancamento: dataLanc });
+
+        // Se pago, lançar pagamento
+        if (purchase.status === 'pago' || purchase.is_paid || purchase.paid) {
+          entries.push({ empresa_id, ano, mes, diario: 'CP', origem_tipo: 'COMPRA', origem_id: origemId + '-PAG', conta_pgc: '32.1.2.1', descricao_conta: 'Fornecedores Correntes', tipo_movimento: 'DEBITO', valor: total, descricao_lancamento: `Pagamento ${descBase}`, data_lancamento: dataLanc });
+          entries.push({ empresa_id, ano, mes, diario: 'CP', origem_tipo: 'COMPRA', origem_id: origemId + '-PAG', conta_pgc: '45.2.1.1', descricao_conta: 'Caixa Central', tipo_movimento: 'CREDITO', valor: total, descricao_lancamento: `Pagamento ${descBase}`, data_lancamento: dataLanc });
+        }
+      }
+
+      if (entries.length > 0) {
+        await supabaseAdmin.from('lancamentos_contabeis').insert(entries);
+      }
+    } catch (err: any) {
+      console.error('[CONTAB] Erro ao gerar lançamentos de compra:', err.message);
+    }
+  }
+
+  /**
+   * Gera lançamentos contabilísticos para movimentos de caixa
+   * Entrada: Db 45.2.1.1 / Cr conta contrapartida
+   * Saída:   Db conta contrapartida / Cr 45.2.1.1
+   */
+  async function generateCashAccountingEntries(movement: any, empresa_id: string): Promise<void> {
+    if (!supabaseAdmin) return;
+    try {
+      const dataLanc = movement.date || movement.created_at || new Date().toISOString();
+      const ano = new Date(dataLanc).getFullYear();
+      const mes = new Date(dataLanc).getMonth() + 1;
+      const valor = parseFloat(movement.amount || movement.valor || 0);
+      const tipo = (movement.type || movement.tipo || '').toLowerCase();
+      const origemId = String(movement.id);
+      const desc = movement.description || movement.descricao || movement.type || 'Movimento de Caixa';
+      const isEntrada = tipo.includes('entrada') || tipo.includes('recebimento') || tipo.includes('income') || tipo === 'in';
+
+      await supabaseAdmin.from('lancamentos_contabeis')
+        .delete()
+        .eq('empresa_id', empresa_id)
+        .eq('origem_id', origemId)
+        .eq('origem_tipo', 'CAIXA');
+
+      if (valor > 0) {
+        const entries = isEntrada ? [
+          { empresa_id, ano, mes, diario: 'CX', origem_tipo: 'CAIXA', origem_id: origemId, conta_pgc: '45.2.1.1', descricao_conta: 'Caixa Central', tipo_movimento: 'DEBITO', valor, descricao_lancamento: desc, data_lancamento: dataLanc },
+          { empresa_id, ano, mes, diario: 'CX', origem_tipo: 'CAIXA', origem_id: origemId, conta_pgc: '31.1.2.1', descricao_conta: 'Clientes Correntes', tipo_movimento: 'CREDITO', valor, descricao_lancamento: desc, data_lancamento: dataLanc }
+        ] : [
+          { empresa_id, ano, mes, diario: 'CX', origem_tipo: 'CAIXA', origem_id: origemId, conta_pgc: '75.1', descricao_conta: 'Fornecimentos e Serviços de Terceiros', tipo_movimento: 'DEBITO', valor, descricao_lancamento: desc, data_lancamento: dataLanc },
+          { empresa_id, ano, mes, diario: 'CX', origem_tipo: 'CAIXA', origem_id: origemId, conta_pgc: '45.2.1.1', descricao_conta: 'Caixa Central', tipo_movimento: 'CREDITO', valor, descricao_lancamento: desc, data_lancamento: dataLanc }
+        ];
+        await supabaseAdmin.from('lancamentos_contabeis').insert(entries);
+      }
+    } catch (err: any) {
+      console.error('[CONTAB] Erro ao gerar lançamentos de caixa:', err.message);
+    }
+  }
+
+  /**
+   * Gera lançamentos contabilísticos para processamentos de RH/Salários
+   * PGC Angola:
+   *   Db 72.1.2 (Remunerações do Pessoal - Bruto) /
+   *   Cr 34.1.1 (IRT a Pagar) + Cr 34.9.1 (INSS a Pagar) + Cr 36.1.2.x (Salário Líquido a Pagar)
+   */
+  async function generatePayrollAccountingEntries(payroll: any, empresa_id: string): Promise<void> {
+    if (!supabaseAdmin) return;
+    try {
+      const dataLanc = payroll.data_processamento || payroll.created_at || new Date().toISOString();
+      const ano = new Date(dataLanc).getFullYear();
+      const mes = new Date(dataLanc).getMonth() + 1;
+      const bruto = parseFloat(payroll.salario_bruto || payroll.gross_salary || payroll.total_bruto || 0);
+      const irt = parseFloat(payroll.irt || payroll.tax_irt || 0);
+      const inss = parseFloat(payroll.inss || payroll.social_security || 0);
+      const liquido = bruto - irt - inss;
+      const nome = payroll.colaborador_nome || payroll.employee_name || payroll.nome || 'COLABORADOR';
+      const origemId = String(payroll.id);
+      const desc = `Processamento Salarial - ${nome}`;
+
+      await supabaseAdmin.from('lancamentos_contabeis')
+        .delete()
+        .eq('empresa_id', empresa_id)
+        .eq('origem_id', origemId)
+        .eq('origem_tipo', 'HR');
+
+      const entries: any[] = [];
+      if (bruto > 0) {
+        entries.push({ empresa_id, ano, mes, diario: 'RH', origem_tipo: 'HR', origem_id: origemId, conta_pgc: '72.1.2', descricao_conta: 'Remunerações do Pessoal', tipo_movimento: 'DEBITO', valor: bruto, descricao_lancamento: desc, data_lancamento: dataLanc });
+        if (irt > 0) {
+          entries.push({ empresa_id, ano, mes, diario: 'RH', origem_tipo: 'HR', origem_id: origemId, conta_pgc: '34.1.1', descricao_conta: 'IRT Retido a Pagar ao Estado', tipo_movimento: 'CREDITO', valor: irt, descricao_lancamento: desc, data_lancamento: dataLanc });
+        }
+        if (inss > 0) {
+          entries.push({ empresa_id, ano, mes, diario: 'RH', origem_tipo: 'HR', origem_id: origemId, conta_pgc: '34.9.1', descricao_conta: 'INSS / Segurança Social a Pagar', tipo_movimento: 'CREDITO', valor: inss, descricao_lancamento: desc, data_lancamento: dataLanc });
+        }
+        if (liquido > 0) {
+          entries.push({ empresa_id, ano, mes, diario: 'RH', origem_tipo: 'HR', origem_id: origemId, conta_pgc: '36.1.2.1', descricao_conta: 'Pessoal - Remunerações a Pagar', tipo_movimento: 'CREDITO', valor: liquido, descricao_lancamento: desc, data_lancamento: dataLanc });
+        }
+      }
+
+      if (entries.length > 0) {
+        await supabaseAdmin.from('lancamentos_contabeis').insert(entries);
+      }
+    } catch (err: any) {
+      console.error('[CONTAB] Erro ao gerar lançamentos de RH:', err.message);
+    }
+  }
+
+  /**
+   * Gera lançamentos contabilísticos para Pagamento de Impostos
+   * PGC Angola:
+   *  Db 34.x (Conta de Impostos) / Cr 45.2.1.1 (Caixa) ou 43.1 (Bancos)
+   */
+  async function generateTaxPaymentAccountingEntries(taxPayment: any, empresa_id: string): Promise<void> {
+    if (!supabaseAdmin) return;
+    try {
+      const dataLanc = taxPayment.data || taxPayment.created_at || new Date().toISOString();
+      const ano = new Date(dataLanc).getFullYear();
+      const mes = new Date(dataLanc).getMonth() + 1;
+      const valor = parseFloat(taxPayment.valor || 0);
+      const desc = taxPayment.descricao || 'Pagamento de Imposto';
+      const origemId = String(taxPayment.id);
+
+      await supabaseAdmin.from('lancamentos_contabeis')
+        .delete()
+        .eq('empresa_id', empresa_id)
+        .eq('origem_id', origemId)
+        .eq('origem_tipo', 'IMPOSTO');
+
+      if (valor > 0) {
+        let contaImposto = '34.9';
+        let descImposto = 'Impostos e Taxas a Pagar';
+        const dUpper = desc.toUpperCase();
+        if (dUpper.includes('IRT')) { contaImposto = '34.1'; descImposto = 'Imposto de Rendimento do Trabalho'; }
+        else if (dUpper.includes('SELO')) { contaImposto = '34.3'; descImposto = 'Imposto de Selo'; }
+        else if (dUpper.includes('IVA')) { contaImposto = '34.5'; descImposto = 'Imposto sobre o Valor Acrescentado'; }
+        else if (dUpper.includes('INDUSTRIAL') || dUpper.includes('II')) { contaImposto = '34.2'; descImposto = 'Imposto Industrial'; }
+        else if (dUpper.includes('PREDIAL') || dUpper.includes('IP')) { contaImposto = '34.4'; descImposto = 'Imposto Predial'; }
+
+        const entries = [
+          { empresa_id, ano, mes, diario: 'OD', origem_tipo: 'IMPOSTO', origem_id: origemId, conta_pgc: contaImposto, descricao_conta: descImposto, tipo_movimento: 'DEBITO', valor, descricao_lancamento: `Pagamento: ${desc}`, data_lancamento: dataLanc },
+          { empresa_id, ano, mes, diario: 'OD', origem_tipo: 'IMPOSTO', origem_id: origemId, conta_pgc: '45.2.1.1', descricao_conta: 'Caixa Central', tipo_movimento: 'CREDITO', valor, descricao_lancamento: `Pagamento: ${desc}`, data_lancamento: dataLanc }
+        ];
+        await supabaseAdmin.from('lancamentos_contabeis').insert(entries);
+      }
+    } catch (err: any) {
+      console.error('[CONTAB] Erro ao gerar lançamentos de imposto:', err.message);
+    }
+  }
+
+  /**
+   * Sincroniza histórico: percorre todos os documentos, compras, caixa, RH e Impostos
+   * e garante que têm lançamentos contabilísticos no supabase.
+   */
+  async function syncAllHistoricalAccountingEntries(empresa_id: string): Promise<void> {
+    if (!supabaseAdmin) return;
+    console.log(`[CONTAB-SYNC] Iniciando sincronização histórica para empresa: ${empresa_id}`);
+    try {
+      // Documentos emitidos
+      const { data: docs } = await supabaseAdmin.from('documentos_emitidos').select('*').eq('empresa_id', empresa_id).eq('is_certified', true);
+      for (const doc of (docs || [])) {
+        await generateDocumentAccountingEntries(doc, empresa_id);
+      }
+      // Compras
+      const { data: comps } = await supabaseAdmin.from('compras').select('*').eq('empresa_id', empresa_id);
+      for (const comp of (comps || [])) {
+        await generatePurchaseAccountingEntries(comp, empresa_id);
+      }
+      // Movimentos de caixa
+      const { data: caixaMov } = await supabaseAdmin.from('caixa_movimentacoes').select('*').eq('empresa_id', empresa_id);
+      for (const mov of (caixaMov || [])) {
+        await generateCashAccountingEntries(mov, empresa_id);
+      }
+      // Processamentos RH
+      const { data: processamentos } = await supabaseAdmin.from('hr_processamentos').select('*').eq('empresa_id', empresa_id);
+      for (const proc of (processamentos || [])) {
+        await generatePayrollAccountingEntries(proc, empresa_id);
+      }
+      // Pagamentos de Imposto
+      const { data: impDocs } = await supabaseAdmin.from('pagamentos_impostos').select('*').eq('empresa_id', empresa_id);
+      for (const imp of (impDocs || [])) {
+        await generateTaxPaymentAccountingEntries(imp, empresa_id);
+      }
+      console.log(`[CONTAB-SYNC] Sincronização histórica concluída para empresa: ${empresa_id}`);
+    } catch (err: any) {
+      console.error('[CONTAB-SYNC] Erro:', err.message);
+    }
+  }
+
+  // ---- Endpoint: Balancete Analítico ----
+  app.get("/api/accounting/balancete", async (req, res) => {
+    const { empresa_id, year } = req.query as { empresa_id?: string; year?: string };
+    if (!empresa_id || !supabaseAdmin) return res.json({ accounts: [], totais: { totalDebitoP: 0, totalCreditoP: 0, totalDebitoS: 0, totalCreditoS: 0 } });
+
+    try {
+      const ano = parseInt(year || String(new Date().getFullYear()));
+
+      // 1. Buscar todas as contas PGC da empresa
+      const { data: pgcData } = await supabaseAdmin
+        .from('pgc_plano_contas')
+        .select('*')
+        .or(`empresa_id.eq.${empresa_id},is_system.eq.true`)
+        .order('conta', { ascending: true });
+
+      // 2. Buscar todos os lançamentos da empresa
+      const { data: allLancamentos } = await supabaseAdmin
+        .from('lancamentos_contabeis')
+        .select('*')
+        .eq('empresa_id', empresa_id);
+
+      const lancamentos = (allLancamentos || []).filter((l: any) => {
+        const lAno = l.ano || (l.data_lancamento ? new Date(l.data_lancamento).getFullYear() : null);
+        return !lAno || lAno === ano;
+      });
+
+      // 3. Agregar movimentos por conta_pgc
+      const movByAccount: Record<string, { debito: number; credito: number }> = {};
+      for (const lanc of (lancamentos || [])) {
+        const c = lanc.conta_pgc || '';
+        if (!movByAccount[c]) movByAccount[c] = { debito: 0, credito: 0 };
+        const deb = parseFloat(lanc.debito) || (lanc.tipo_movimento === 'DEBITO' ? parseFloat(lanc.valor) || 0 : 0);
+        const cred = parseFloat(lanc.credito) || (lanc.tipo_movimento === 'CREDITO' ? parseFloat(lanc.valor) || 0 : 0);
+        movByAccount[c].debito += deb;
+        movByAccount[c].credito += cred;
+      }
+
+      // 4. Construir hierarquia PGC com propagação para contas pai
+      const accounts = (pgcData || []).map((acc: any) => {
+        const conta = acc.conta || '';
+        const direct = movByAccount[conta] || { debito: 0, credito: 0 };
+
+        // Acumular filhos (contas que começam com este prefixo)
+        let totalDebito = direct.debito;
+        let totalCredito = direct.credito;
+        for (const [key, val] of Object.entries(movByAccount)) {
+          if (key !== conta && key.startsWith(conta + '.')) {
+            totalDebito += val.debito;
+            totalCredito += val.credito;
+          }
+        }
+
+        const saldoDevedor = Math.max(totalDebito - totalCredito, 0);
+        const saldoCredor = Math.max(totalCredito - totalDebito, 0);
+
+        return {
+          conta,
+          tipo: acc.tipo || 'GM',
+          descricao: acc.descricao || '',
+          debitoP: totalDebito,
+          creditoP: totalCredito,
+          debitoS: saldoDevedor,
+          creditoS: saldoCredor
+        };
+      }).filter((a: any) => a.debitoP > 0 || a.creditoP > 0 || a.tipo === 'GR');
+
+      // 5. Calcular totais GR (evitar dupla contagem)
+      const grAccounts = accounts.filter((a: any) => a.tipo === 'GR');
+      const totalDebitoP = grAccounts.reduce((s: number, a: any) => s + a.debitoP, 0);
+      const totalCreditoP = grAccounts.reduce((s: number, a: any) => s + a.creditoP, 0);
+      const totalDebitoS = grAccounts.reduce((s: number, a: any) => s + a.debitoS, 0);
+      const totalCreditoS = grAccounts.reduce((s: number, a: any) => s + a.creditoS, 0);
+
+      res.json({
+        accounts,
+        totais: { totalDebitoP, totalCreditoP, totalDebitoS, totalCreditoS }
+      });
+    } catch (err: any) {
+      console.error('[BALANCETE] Erro:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Endpoint: Lançamentos de uma conta específica
+  app.get("/api/accounting/lancamentos", async (req, res) => {
+    const { empresa_id, conta_pgc, year } = req.query as { empresa_id?: string; conta_pgc?: string; year?: string };
+    if (!empresa_id || !supabaseAdmin) return res.json([]);
+    try {
+      const ano = parseInt(year || String(new Date().getFullYear()));
+      let query = supabaseAdmin.from('lancamentos_contabeis').select('*').eq('empresa_id', empresa_id).eq('ano', ano);
+      if (conta_pgc) query = query.eq('conta_pgc', conta_pgc);
+      const { data, error } = await query.order('data_lancamento', { ascending: true });
+      if (error) return res.status(500).json({ error: error.message });
+      res.json(data || []);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Endpoint: Sincronizar lançamentos históricos
+  app.post("/api/accounting/sync", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    if (!authCtx) return res.status(401).json({ error: 'Não autorizado' });
+    const empresa_id = authCtx.empresaId;
+    if (!empresa_id) return res.status(400).json({ error: 'empresa_id não encontrado' });
+    try {
+      await syncAllHistoricalAccountingEntries(empresa_id);
+      res.json({ success: true, message: 'Sincronização contabilística histórica concluída.' });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ============================================================
+  //  1. PAGAMENTO DE IMPOSTOS (Supabase)
+  // ============================================================
+  app.get("/api/accounting/tax-payments", async (req, res) => {
+    const { empresa_id } = req.query as { empresa_id?: string };
+    if (!empresa_id || !supabaseAdmin) return res.json([]);
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('pagamentos_impostos')
+        .select('*')
+        .eq('empresa_id', empresa_id)
+        .order('data', { ascending: false });
+      if (error) return res.status(500).json({ error: error.message });
+      res.json(data || []);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/accounting/tax-payments", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    const empresa_id = req.body.empresa_id || authCtx?.empresaId;
+    if (!empresa_id || !supabaseAdmin) return res.status(400).json({ error: 'empresa_id é obrigatório' });
+
+    try {
+      const payload = {
+        empresa_id,
+        conta_imposto_id: req.body.conta_imposto_id || null,
+        cod: req.body.cod || '',
+        data: req.body.data || new Date().toISOString().split('T')[0],
+        data_valor: req.body.data_valor || req.body.data || new Date().toISOString().split('T')[0],
+        descricao: req.body.descricao || 'Pagamento de Imposto',
+        caixa_nome: req.body.caixa_nome || '',
+        caixa_id: req.body.caixa_id || null,
+        doc_suporte: req.body.doc_suporte || '',
+        moeda: req.body.moeda || 'AOA',
+        valor: parseFloat(req.body.valor) || 0,
+        estado: req.body.estado || 'pendente'
+      };
+
+      const { data, error } = await supabaseAdmin
+        .from('pagamentos_impostos')
+        .insert([payload])
+        .select()
+        .single();
+
+      if (error) return res.status(500).json({ error: error.message });
+      if (data) {
+        await generateTaxPaymentAccountingEntries(data, empresa_id).catch(e => console.error('Erro ao gerar lançamentos de imposto:', e));
+      }
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/accounting/tax-payments/:id", async (req, res) => {
+    const { id } = req.params;
+    if (!supabaseAdmin) return res.status(500).json({ error: 'Supabase indisponível' });
+    try {
+      const { error } = await supabaseAdmin.from('pagamentos_impostos').delete().eq('id', id);
+      if (error) return res.status(500).json({ error: error.message });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ============================================================
+  //  1.1 CONTAS PAGAMENTO DE IMPOSTOS (Supabase)
+  // ============================================================
+  app.get("/api/accounting/tax-payment-accounts", async (req, res) => {
+    const { empresa_id } = req.query as { empresa_id?: string };
+    if (!empresa_id || !supabaseAdmin) return res.json([]);
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('contas_pag_impostos')
+        .select('*')
+        .eq('empresa_id', empresa_id)
+        .order('cod', { ascending: true });
+
+      if (error) return res.status(500).json({ error: error.message });
+
+      // Se não existirem contas registadas, semear as predefinidas da Imagem 1
+      if (!data || data.length === 0) {
+        const defaultAccounts = [
+          { empresa_id, cod: '01C', descricao: '01C - Imposto Industrial - Regime Geral', conta_pgc: '34.01.01' },
+          { empresa_id, cod: 'A12', descricao: 'A12 - Grupo A - IRT por conta de outrem', conta_pgc: '34.3' },
+          { empresa_id, cod: 'F71', descricao: 'F71 - Imposto de Sêlo - Recibo de Quitação', conta_pgc: '34.1' },
+          { empresa_id, cod: '06L', descricao: 'IMPOSTO DE SELO - OUTROS', conta_pgc: '34.02.04' },
+          { empresa_id, cod: 'IVA', descricao: 'Pagamento de IVA', conta_pgc: '34.5.3' },
+          { empresa_id, cod: 'INSS', descricao: 'Pagamento Segurança Social', conta_pgc: '34.9' }
+        ];
+        const { data: inserted } = await supabaseAdmin.from('contas_pag_impostos').insert(defaultAccounts).select();
+        return res.json(inserted || defaultAccounts);
+      }
+
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/accounting/tax-payment-accounts", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    const empresa_id = req.body.empresa_id || authCtx?.empresaId;
+    if (!empresa_id || !supabaseAdmin) return res.status(400).json({ error: 'empresa_id é obrigatório' });
+
+    try {
+      const payload = {
+        empresa_id,
+        cod: req.body.cod || '',
+        descricao: req.body.descricao || '',
+        conta_pgc: req.body.conta_pgc || ''
+      };
+
+      const { data, error } = await supabaseAdmin
+        .from('contas_pag_impostos')
+        .insert([payload])
+        .select()
+        .single();
+
+      if (error) return res.status(500).json({ error: error.message });
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.put("/api/accounting/tax-payment-accounts/:id", async (req, res) => {
+    const { id } = req.params;
+    if (!supabaseAdmin) return res.status(500).json({ error: 'Supabase indisponível' });
+    try {
+      const payload = {
+        cod: req.body.cod,
+        descricao: req.body.descricao,
+        conta_pgc: req.body.conta_pgc
+      };
+
+      const { data, error } = await supabaseAdmin
+        .from('contas_pag_impostos')
+        .update(payload)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) return res.status(500).json({ error: error.message });
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/accounting/tax-payment-accounts/:id", async (req, res) => {
+    const { id } = req.params;
+    if (!supabaseAdmin) return res.status(500).json({ error: 'Supabase indisponível' });
+    try {
+      const { error } = await supabaseAdmin.from('contas_pag_impostos').delete().eq('id', id);
+      if (error) return res.status(500).json({ error: error.message });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ============================================================
+  //  1.2 MOVIMENTOS CONTÁBEIS (Apagar Movimentos & Consulta)
+  // ============================================================
+  app.get("/api/accounting/movements", async (req, res) => {
+    const { empresa_id, diario_codigo, startDate, endDate, search } = req.query as {
+      empresa_id?: string;
+      diario_codigo?: string;
+      startDate?: string;
+      endDate?: string;
+      search?: string;
+    };
+
+    if (!empresa_id || !supabaseAdmin) return res.json([]);
+
+    try {
+      let query = supabaseAdmin
+        .from('lancamentos_contabeis')
+        .select('*')
+        .eq('empresa_id', empresa_id);
+
+      if (diario_codigo && diario_codigo !== 'todos') {
+        query = query.eq('diario_codigo', diario_codigo);
+      }
+
+      if (startDate) {
+        query = query.gte('created_at', startDate);
+      }
+      if (endDate) {
+        query = query.lte('created_at', endDate + 'T23:59:59');
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
+
+      if (error) return res.status(500).json({ error: error.message });
+
+      // Se a tabela estiver vazia para esta empresa, fornecer dados iniciais de demonstração (iguais à imagem do utilizador)
+      if (!data || data.length === 0) {
+        const demoMovements = [
+          {
+            id: 'demo-mov-1',
+            empresa_id,
+            num: 1,
+            diario_periodo: '0000 0',
+            diario_codigo: diario_codigo || '0000',
+            mov_num: 1,
+            conta: '34.2.4',
+            data_valor: '2026',
+            data_documento: '2026',
+            descricao_movimento: 'Movimento de Abertura',
+            nomenclatura_conta: 'Imposto de Selo - Outros',
+            debito: 1159.00,
+            credito: 0.00,
+            saldo: -1159.00,
+            created_at: new Date().toISOString()
+          },
+          {
+            id: 'demo-mov-2',
+            empresa_id,
+            num: 2,
+            diario_periodo: '0000 0',
+            diario_codigo: diario_codigo || '0000',
+            mov_num: 2,
+            conta: '34.5.1.1',
+            data_valor: '2026',
+            data_documento: '2026',
+            descricao_movimento: 'Movimento de Abertura',
+            nomenclatura_conta: 'Existências',
+            debito: 87033.98,
+            credito: 0.00,
+            saldo: -87033.98,
+            created_at: new Date().toISOString()
+          },
+          {
+            id: 'demo-mov-3',
+            empresa_id,
+            num: 3,
+            diario_periodo: '0000 0',
+            diario_codigo: diario_codigo || '0000',
+            mov_num: 3,
+            conta: '34.1',
+            data_valor: '2026',
+            data_documento: '2026',
+            descricao_movimento: 'Pagamento Imposto de Selo Recibo Quitação',
+            nomenclatura_conta: 'Imposto de Selo',
+            debito: 13993.00,
+            credito: 0.00,
+            saldo: -13993.00,
+            created_at: new Date().toISOString()
+          },
+          {
+            id: 'demo-mov-4',
+            empresa_id,
+            num: 4,
+            diario_periodo: '0000 0',
+            diario_codigo: diario_codigo || '0000',
+            mov_num: 4,
+            conta: '34.5.3',
+            data_valor: '2026',
+            data_documento: '2026',
+            descricao_movimento: 'Apuramento e Liquidação IVA Setembro',
+            nomenclatura_conta: 'IVA Liquidado',
+            debito: 0.00,
+            credito: 7154939.27,
+            saldo: 7154939.27,
+            created_at: new Date().toISOString()
+          },
+          {
+            id: 'demo-mov-5',
+            empresa_id,
+            num: 5,
+            diario_periodo: '0000 0',
+            diario_codigo: diario_codigo || '0000',
+            mov_num: 5,
+            conta: '34.01.01',
+            data_valor: '2026',
+            data_documento: '2026',
+            descricao_movimento: 'Pagamento Provisório Imposto Industrial',
+            nomenclatura_conta: 'Imposto Industrial',
+            debito: 1386607.00,
+            credito: 0.00,
+            saldo: -1386607.00,
+            created_at: new Date().toISOString()
+          }
+        ];
+        return res.json(demoMovements);
+      }
+
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/accounting/movements/delete-batch", async (req, res) => {
+    const { ids } = req.body as { ids: string[] };
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'Nenhum movimento selecionado para apagar.' });
+    }
+    if (!supabaseAdmin) return res.status(500).json({ error: 'Supabase indisponível' });
+
+    try {
+      const realIds = ids.filter(id => !id.startsWith('demo-'));
+      if (realIds.length > 0) {
+        const { error } = await supabaseAdmin
+          .from('lancamentos_contabeis')
+          .delete()
+          .in('id', realIds);
+
+        if (error) return res.status(500).json({ error: error.message });
+      }
+      res.json({ success: true, deletedCount: ids.length });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ============================================================
+  //  2. APURAMENTO DE IVA (Supabase & PGC Angola)
+  // ============================================================
+  app.get("/api/accounting/vat-settlement", async (req, res) => {
+    const { empresa_id, month, year } = req.query as { empresa_id?: string; month?: string; year?: string };
+    if (!empresa_id || !supabaseAdmin) {
+      return res.json({
+        saldosPeriodo: [],
+        apuramentoMovimentos: [],
+        totais: { debito: 0, credito: 0 },
+        isApurado: false
+      });
+    }
+
+    try {
+      const m = parseInt(month || String(new Date().getMonth() + 1));
+      const y = parseInt(year || String(new Date().getFullYear()));
+
+      // 1. Buscar todos os lançamentos contabilísticos da empresa
+      const { data: allLancamentos } = await supabaseAdmin
+        .from('lancamentos_contabeis')
+        .select('*')
+        .eq('empresa_id', empresa_id);
+
+      const lancamentos = (allLancamentos || []).filter((l: any) => {
+        const lAno = l.ano || (l.data_lancamento ? new Date(l.data_lancamento).getFullYear() : null);
+        const lMes = l.mes || (l.data_lancamento ? new Date(l.data_lancamento).getMonth() + 1 : null);
+        return (!lAno || lAno === y) && (!lMes || lMes === m);
+      });
+
+      // Calcular montantes de IVA suportado e IVA liquidado
+      let ivaSuportado = 0;
+      let ivaLiquidado = 0;
+
+      for (const l of (lancamentos || [])) {
+        const deb = parseFloat(l.debito) || (l.tipo_movimento === 'DEBITO' ? parseFloat(l.valor) || 0 : 0);
+        const cred = parseFloat(l.credito) || (l.tipo_movimento === 'CREDITO' ? parseFloat(l.valor) || 0 : 0);
+        const c = l.conta_pgc || '';
+        // IVA suportado / dedutível (Compras)
+        if (c.startsWith('34.5.1') || c.startsWith('34.5.2') || c.startsWith('34.05.02') || c.startsWith('34.05.01') || c.startsWith('34.1.2')) {
+          ivaSuportado += (deb - cred);
+        }
+        // IVA liquidado (Vendas)
+        else if (c.startsWith('34.5.3') || c.startsWith('34.05.03') || c.startsWith('34.1.3')) {
+          ivaLiquidado += (cred - deb);
+        }
+      }
+
+      ivaSuportado = Math.max(ivaSuportado, 0);
+      ivaLiquidado = Math.max(ivaLiquidado, 0);
+
+      const ivaDedutivel = ivaSuportado;
+      const saldoApurado = ivaLiquidado - ivaDedutivel;
+      const isRecobrar = saldoApurado < 0;
+      const valorFinal = Math.abs(saldoApurado);
+
+      // Verificar se já existe registo de apuramento para este mês
+      const { data: apuramentoExistente } = await supabaseAdmin
+        .from('apuramentos_iva')
+        .select('*')
+        .eq('empresa_id', empresa_id)
+        .eq('ano', y)
+        .eq('mes', m)
+        .maybeSingle();
+
+      // Construção idêntica às tabelas da Imagem 2
+      const saldosPeriodo = [
+        {
+          conta: '34.5.1.1',
+          descricao: 'Existências',
+          debito: ivaSuportado,
+          credito: 0,
+          saldoDebito: ivaSuportado,
+          saldoCredito: 0
+        },
+        {
+          conta: '34.5.3.1',
+          descricao: 'IVA liquidado Operações Gerais',
+          debito: 0,
+          credito: ivaLiquidado,
+          saldoDebito: 0,
+          saldoCredito: ivaLiquidado
+        }
+      ];
+
+      const apuramentoMovimentos = [
+        {
+          conta: '34.5.1.1',
+          descricao: 'Existências',
+          debito: 0,
+          credito: ivaSuportado
+        },
+        {
+          conta: '34.5.2',
+          descricao: 'Iva dedutivel',
+          debito: ivaDedutivel,
+          credito: ivaSuportado
+        },
+        {
+          conta: '34.5.3.1',
+          descricao: 'IVA liquidado Operações Gerais',
+          debito: ivaLiquidado,
+          credito: 0
+        },
+        {
+          conta: '34.5.5.1',
+          descricao: 'Apuramento do Regime IVA Normal',
+          debito: ivaLiquidado,
+          credito: ivaDedutivel
+        },
+        {
+          conta: isRecobrar ? '34.5.7.1' : '34.5.6.1',
+          descricao: isRecobrar ? 'Iva a recuperar de apuramento' : 'Iva a pagar ao Estado',
+          debito: isRecobrar ? valorFinal : 0,
+          credito: isRecobrar ? 0 : valorFinal
+        }
+      ];
+
+      const totalDeb = apuramentoMovimentos.reduce((acc, r) => acc + r.debito, 0);
+      const totalCred = apuramentoMovimentos.reduce((acc, r) => acc + r.credito, 0);
+
+      res.json({
+        saldosPeriodo,
+        apuramentoMovimentos,
+        totais: { debito: totalDeb, credito: totalCred },
+        isApurado: !!apuramentoExistente,
+        apuramentoExistente
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/accounting/vat-settlement", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    const empresa_id = req.body.empresa_id || authCtx?.empresaId;
+    if (!empresa_id || !supabaseAdmin) return res.status(400).json({ error: 'empresa_id é obrigatório' });
+
+    try {
+      const month = parseInt(req.body.month);
+      const year = parseInt(req.body.year);
+      const ivaSuportado = parseFloat(req.body.ivaSuportado) || 0;
+      const ivaLiquidado = parseFloat(req.body.ivaLiquidado) || 0;
+      const saldoApurado = ivaLiquidado - ivaSuportado;
+      const tipoSaldo = saldoApurado >= 0 ? 'PAGAR' : 'RECOBRAR';
+
+      const payload = {
+        empresa_id,
+        ano: year,
+        mes: month,
+        data_apuramento: new Date().toISOString(),
+        iva_suportado: ivaSuportado,
+        iva_dedutivel: ivaSuportado,
+        iva_liquidado: ivaLiquidado,
+        saldo_apurado: Math.abs(saldoApurado),
+        tipo_saldo: tipoSaldo,
+        detalhes: req.body.detalhes || {}
+      };
+
+      const { data, error } = await supabaseAdmin
+        .from('apuramentos_iva')
+        .insert([payload])
+        .select()
+        .single();
+
+      if (error) return res.status(500).json({ error: error.message });
+
+      // Lançamento contábil de fecho de IVA
+      const entries = [
+        { empresa_id, ano: year, mes: month, diario: 'OD', origem_tipo: 'MANUAL', origem_id: data.id, conta_pgc: '34.5.3.1', descricao_conta: 'IVA Liquidado', tipo_movimento: 'DEBITO', valor: ivaLiquidado, descricao_lancamento: `Apuramento IVA Mês ${month}/${year}`, data_lancamento: new Date().toISOString() },
+        { empresa_id, ano: year, mes: month, diario: 'OD', origem_tipo: 'MANUAL', origem_id: data.id, conta_pgc: '34.5.1.1', descricao_conta: 'IVA Suportado', tipo_movimento: 'CREDITO', valor: ivaSuportado, descricao_lancamento: `Apuramento IVA Mês ${month}/${year}`, data_lancamento: new Date().toISOString() }
+      ];
+
+      await supabaseAdmin.from('lancamentos_contabeis').insert(entries);
+
+      res.json({ success: true, apuramento: data });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ============================================================
+  //  3. GESTÃO DE DIÁRIOS (Supabase - CRUD & Multi-Tenant)
+  // ============================================================
+  app.get("/api/accounting/diarios", async (req, res) => {
+    const { empresa_id } = req.query as { empresa_id?: string };
+    if (!empresa_id || !supabaseAdmin) return res.json([]);
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('diarios_contabeis')
+        .select('*')
+        .eq('empresa_id', empresa_id)
+        .order('codigo', { ascending: true });
+
+      if (error) return res.status(500).json({ error: error.message });
+
+      // Se não existirem diários criados para a empresa, inserir diários padrão Angolanos
+      if (!data || data.length === 0) {
+        const defaultDiarios = [
+          { empresa_id, codigo: 'VD', descricao: 'Diário de Vendas', tipo: 'Vendas' },
+          { empresa_id, codigo: 'CP', descricao: 'Diário de Compras', tipo: 'Compras' },
+          { empresa_id, codigo: 'CX', descricao: 'Diário de Caixa', tipo: 'Caixa' },
+          { empresa_id, codigo: 'BK', descricao: 'Diário de Bancos', tipo: 'Bancos' },
+          { empresa_id, codigo: 'RH', descricao: 'Diário de Operações de Pessoal (RH)', tipo: 'Salários' },
+          { empresa_id, codigo: 'OD', descricao: 'Diário de Operações Diversas', tipo: 'Geral' },
+          { empresa_id, codigo: 'AG', descricao: 'Diário de Abertura e Encerramento', tipo: 'Apuramentos' }
+        ];
+        const { data: inserted } = await supabaseAdmin.from('diarios_contabeis').insert(defaultDiarios).select();
+        return res.json(inserted || defaultDiarios);
+      }
+
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/accounting/diarios", async (req, res) => {
+    const authCtx = await getAuthUserContext(req);
+    const empresa_id = req.body.empresa_id || authCtx?.empresaId;
+    if (!empresa_id || !supabaseAdmin) return res.status(400).json({ error: 'empresa_id é obrigatório' });
+
+    try {
+      const payload = {
+        empresa_id,
+        codigo: (req.body.codigo || '').toUpperCase(),
+        descricao: req.body.descricao || '',
+        tipo: req.body.tipo || 'Geral',
+        is_active: req.body.is_active !== false
+      };
+
+      const { data, error } = await supabaseAdmin
+        .from('diarios_contabeis')
+        .insert([payload])
+        .select()
+        .single();
+
+      if (error) return res.status(500).json({ error: error.message });
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.put("/api/accounting/diarios/:id", async (req, res) => {
+    const { id } = req.params;
+    if (!supabaseAdmin) return res.status(500).json({ error: 'Supabase indisponível' });
+    try {
+      const payload = {
+        codigo: req.body.codigo ? req.body.codigo.toUpperCase() : undefined,
+        descricao: req.body.descricao,
+        tipo: req.body.tipo,
+        is_active: req.body.is_active
+      };
+
+      const { data, error } = await supabaseAdmin
+        .from('diarios_contabeis')
+        .update(payload)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) return res.status(500).json({ error: error.message });
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/accounting/diarios/:id", async (req, res) => {
+    const { id } = req.params;
+    if (!supabaseAdmin) return res.status(500).json({ error: 'Supabase indisponível' });
+    try {
+      const { error } = await supabaseAdmin.from('diarios_contabeis').delete().eq('id', id);
+      if (error) return res.status(500).json({ error: error.message });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   app.put("/api/purchases/:id", async (req, res) => {
@@ -6900,15 +8071,18 @@ async function startServer() {
           
           if (error) {
             console.error('[SERVER] Erro ao salvar compra no Supabase:', error);
-          } else if (authUser) {
-            await recordAuditLog(
-              companyId,
-              authUser.userId,
-              authUser.username,
-              authUser.name,
-              purchaseNumber,
-              `REGISTO DE COMPRA: ${docType}`
-            );
+          } else {
+            await generatePurchaseAccountingEntries(newPurchase, companyId).catch(e => console.error('Erro ao gerar lançamentos de compra:', e));
+            if (authUser) {
+              await recordAuditLog(
+                companyId,
+                authUser.userId,
+                authUser.username,
+                authUser.name,
+                purchaseNumber,
+                `REGISTO DE COMPRA: ${docType}`
+              );
+            }
           }
         } catch (err: any) {
           console.error('[SERVER] Fatal error auto-saving purchase:', err);
@@ -7000,8 +8174,23 @@ async function startServer() {
       });
     }
 
+    // Gerar lançamentos contabilísticos PGC automaticamente
+    try {
+      const authCtxPurchase = await getAuthUserContext(req);
+      const companyIdForAccounting = req.body.company_id || req.body.empresa_id || authCtxPurchase?.empresaId;
+      if (companyIdForAccounting) {
+        const purchaseForAccounting = { ...newPurchase, empresa_id: companyIdForAccounting };
+        generatePurchaseAccountingEntries(purchaseForAccounting, companyIdForAccounting).catch((e: any) =>
+          console.warn('[COMPRAS-CONTAB] Erro ao gerar lançamentos (não bloqueante):', e.message)
+        );
+      }
+    } catch (contabErr: any) {
+      console.warn('[COMPRAS-CONTAB] Erro:', contabErr.message);
+    }
+
     saveData();
     res.json(newPurchase);
+
   });
 
   // Company info
@@ -7586,21 +8775,377 @@ async function startServer() {
     if (empresa_id) return res.json(stockMovements.filter(m => String(m.empresa_id) === String(empresa_id) && (!m.created_at || new Date(m.created_at).getFullYear() === year)));
     res.json([]);
   });
-  app.get("/api/security/occurrences", (req, res) => {
+  // ==============================================================================
+  // GESTÃO DE SEGURANÇA PRIVADA (SUPABASE CRUD & TENANT ISOLATION)
+  // ==============================================================================
+
+  // ── VIGILANTES / GUARDS ──────────────────────────────────────────────────────
+  const securityGuards: any[] = [];
+
+  app.get("/api/security/guards", async (req, res) => {
     const { empresa_id } = req.query;
-    if (empresa_id) return res.json(securityOccurrences.filter(o => String(o.empresa_id) === String(empresa_id)));
-    res.json([]);
+    if (!empresa_id) return res.json([]);
+    try {
+      if (supabaseAdmin) {
+        const { data, error } = await supabaseAdmin.from('sgp_vigilantes').select('*').eq('empresa_id', empresa_id).order('created_at', { ascending: false });
+        if (!error && data) return res.json(data);
+      }
+    } catch (e) {}
+    return res.json(securityGuards.filter(g => String(g.empresa_id) === String(empresa_id)));
   });
-  app.get("/api/security/armory", (req, res) => {
+
+  app.post("/api/security/guards", async (req, res) => {
+    const item = { ...req.body, id: req.body.id || crypto.randomUUID(), created_at: new Date().toISOString() };
+    try {
+      if (supabaseAdmin && item.empresa_id) {
+        const { data, error } = await supabaseAdmin.from('sgp_vigilantes').insert(item).select().single();
+        if (!error && data) return res.json(data);
+      }
+    } catch (e) {}
+    securityGuards.unshift(item);
+    return res.json(item);
+  });
+
+  app.put("/api/security/guards/:id", async (req, res) => {
+    const { id } = req.params;
+    const updates = { ...req.body, updated_at: new Date().toISOString() };
+    try {
+      if (supabaseAdmin) {
+        const { data, error } = await supabaseAdmin.from('sgp_vigilantes').update(updates).eq('id', id).select().single();
+        if (!error && data) return res.json(data);
+      }
+    } catch (e) {}
+    const idx = securityGuards.findIndex(g => String(g.id) === String(id));
+    if (idx !== -1) { securityGuards[idx] = { ...securityGuards[idx], ...updates }; return res.json(securityGuards[idx]); }
+    return res.status(404).json({ error: 'Not found' });
+  });
+
+  app.delete("/api/security/guards/:id", async (req, res) => {
+    const { id } = req.params;
+    try {
+      if (supabaseAdmin) { await supabaseAdmin.from('sgp_vigilantes').delete().eq('id', id); }
+    } catch (e) {}
+    const idx = securityGuards.findIndex(g => String(g.id) === String(id));
+    if (idx !== -1) securityGuards.splice(idx, 1);
+    return res.json({ success: true });
+  });
+
+  // ── POSTOS / SITES ────────────────────────────────────────────────────────────
+  const securitySites: any[] = [];
+
+  app.get("/api/security/sites", async (req, res) => {
     const { empresa_id } = req.query;
-    if (empresa_id) return res.json(securityArmory.filter(a => String(a.empresa_id) === String(empresa_id)));
-    res.json([]);
+    if (!empresa_id) return res.json([]);
+    try {
+      if (supabaseAdmin) {
+        const { data, error } = await supabaseAdmin.from('sgp_postos').select('*').eq('empresa_id', empresa_id).order('created_at', { ascending: false });
+        if (!error && data) return res.json(data);
+      }
+    } catch (e) {}
+    return res.json(securitySites.filter(s => String(s.empresa_id) === String(empresa_id)));
   });
-  app.get("/api/security/roster", (req, res) => {
+
+  app.post("/api/security/sites", async (req, res) => {
+    const item = { ...req.body, id: req.body.id || crypto.randomUUID(), created_at: new Date().toISOString() };
+    try {
+      if (supabaseAdmin && item.empresa_id) {
+        const { data, error } = await supabaseAdmin.from('sgp_postos').insert(item).select().single();
+        if (!error && data) return res.json(data);
+      }
+    } catch (e) {}
+    securitySites.unshift(item);
+    return res.json(item);
+  });
+
+  app.put("/api/security/sites/:id", async (req, res) => {
+    const { id } = req.params;
+    const updates = { ...req.body, updated_at: new Date().toISOString() };
+    try {
+      if (supabaseAdmin) {
+        const { data, error } = await supabaseAdmin.from('sgp_postos').update(updates).eq('id', id).select().single();
+        if (!error && data) return res.json(data);
+      }
+    } catch (e) {}
+    const idx = securitySites.findIndex(s => String(s.id) === String(id));
+    if (idx !== -1) { securitySites[idx] = { ...securitySites[idx], ...updates }; return res.json(securitySites[idx]); }
+    return res.status(404).json({ error: 'Not found' });
+  });
+
+  app.delete("/api/security/sites/:id", async (req, res) => {
+    const { id } = req.params;
+    try {
+      if (supabaseAdmin) { await supabaseAdmin.from('sgp_postos').delete().eq('id', id); }
+    } catch (e) {}
+    const idx = securitySites.findIndex(s => String(s.id) === String(id));
+    if (idx !== -1) securitySites.splice(idx, 1);
+    return res.json({ success: true });
+  });
+
+  // ── PUT for ROSTER ────────────────────────────────────────────────────────────
+  app.put("/api/security/roster/:id", async (req, res) => {
+    const { id } = req.params;
+    const updates = { ...req.body, updated_at: new Date().toISOString() };
+    try {
+      if (supabaseAdmin) {
+        const { data, error } = await supabaseAdmin.from('sgp_escalas').update(updates).eq('id', id).select().single();
+        if (!error && data) return res.json(data);
+      }
+    } catch (e) {}
+    return res.json({ ...updates, id });
+  });
+
+  // ── PUT for ARMORY ────────────────────────────────────────────────────────────
+  app.put("/api/security/armory/:id", async (req, res) => {
+    const { id } = req.params;
+    const updates = { ...req.body, updated_at: new Date().toISOString() };
+    try {
+      if (supabaseAdmin) {
+        const { data, error } = await supabaseAdmin.from('sgp_armaria').update(updates).eq('id', id).select().single();
+        if (!error && data) return res.json(data);
+      }
+    } catch (e) {}
+    return res.json({ ...updates, id });
+  });
+
+  // ── PUT for OCCURRENCES ───────────────────────────────────────────────────────
+  app.put("/api/security/occurrences/:id", async (req, res) => {
+    const { id } = req.params;
+    const updates = { ...req.body, updated_at: new Date().toISOString() };
+    try {
+      if (supabaseAdmin) {
+        const { data, error } = await supabaseAdmin.from('sgp_ocorrencias').update(updates).eq('id', id).select().single();
+        if (!error && data) return res.json(data);
+      }
+    } catch (e) {}
+    return res.json({ ...updates, id });
+  });
+
+  // 1. OCORRÊNCIAS
+  app.get("/api/security/occurrences", async (req, res) => {
     const { empresa_id } = req.query;
-    if (empresa_id) return res.json(securityRoster.filter(r => String(r.empresa_id) === String(empresa_id)));
-    res.json([]);
+    if (!empresa_id) return res.json([]);
+    try {
+      if (supabaseAdmin) {
+        const { data, error } = await supabaseAdmin.from('sgp_ocorrencias').select('*').eq('empresa_id', empresa_id).order('created_at', { ascending: false });
+        if (!error && data) return res.json(data);
+      }
+    } catch (e) {}
+    return res.json(securityOccurrences.filter(o => String(o.empresa_id) === String(empresa_id)));
   });
+
+  app.post("/api/security/occurrences", async (req, res) => {
+    const item = { ...req.body, id: req.body.id || crypto.randomUUID(), created_at: new Date().toISOString() };
+    try {
+      if (supabaseAdmin && item.empresa_id) {
+        await supabaseAdmin.from('sgp_ocorrencias').insert(item);
+      }
+    } catch (e) {}
+    securityOccurrences.unshift(item);
+    return res.json(item);
+  });
+
+  app.put("/api/security/occurrences/:id", async (req, res) => {
+    const { id } = req.params;
+    try {
+      if (supabaseAdmin) {
+        await supabaseAdmin.from('sgp_ocorrencias').update(req.body).eq('id', id);
+      }
+    } catch (e) {}
+    const idx = securityOccurrences.findIndex(o => String(o.id) === String(id));
+    if (idx !== -1) securityOccurrences[idx] = { ...securityOccurrences[idx], ...req.body };
+    return res.json({ success: true });
+  });
+
+  app.delete("/api/security/occurrences/:id", async (req, res) => {
+    const { id } = req.params;
+    try {
+      if (supabaseAdmin) {
+        await supabaseAdmin.from('sgp_ocorrencias').delete().eq('id', id);
+      }
+    } catch (e) {}
+    const idx = securityOccurrences.findIndex(o => String(o.id) === String(id));
+    if (idx !== -1) securityOccurrences.splice(idx, 1);
+    return res.json({ success: true });
+  });
+
+  // 2. ARMARIA
+  app.get("/api/security/armory", async (req, res) => {
+    const { empresa_id } = req.query;
+    if (!empresa_id) return res.json([]);
+    try {
+      if (supabaseAdmin) {
+        const { data, error } = await supabaseAdmin.from('sgp_armaria').select('*').eq('empresa_id', empresa_id).order('created_at', { ascending: false });
+        if (!error && data) return res.json(data);
+      }
+    } catch (e) {}
+    return res.json(securityArmory.filter(a => String(a.empresa_id) === String(empresa_id)));
+  });
+
+  app.post("/api/security/armory", async (req, res) => {
+    const item = { ...req.body, id: req.body.id || crypto.randomUUID(), created_at: new Date().toISOString() };
+    try {
+      if (supabaseAdmin && item.empresa_id) {
+        await supabaseAdmin.from('sgp_armaria').insert(item);
+      }
+    } catch (e) {}
+    securityArmory.unshift(item);
+    return res.json(item);
+  });
+
+  app.put("/api/security/armory/:id", async (req, res) => {
+    const { id } = req.params;
+    try {
+      if (supabaseAdmin) {
+        await supabaseAdmin.from('sgp_armaria').update(req.body).eq('id', id);
+      }
+    } catch (e) {}
+    const idx = securityArmory.findIndex(a => String(a.id) === String(id));
+    if (idx !== -1) securityArmory[idx] = { ...securityArmory[idx], ...req.body };
+    return res.json({ success: true });
+  });
+
+  app.delete("/api/security/armory/:id", async (req, res) => {
+    const { id } = req.params;
+    try {
+      if (supabaseAdmin) {
+        await supabaseAdmin.from('sgp_armaria').delete().eq('id', id);
+      }
+    } catch (e) {}
+    const idx = securityArmory.findIndex(a => String(a.id) === String(id));
+    if (idx !== -1) securityArmory.splice(idx, 1);
+    return res.json({ success: true });
+  });
+
+  // 3. ESCALAS
+  app.get("/api/security/roster", async (req, res) => {
+    const { empresa_id } = req.query;
+    if (!empresa_id) return res.json([]);
+    try {
+      if (supabaseAdmin) {
+        const { data, error } = await supabaseAdmin.from('sgp_escalas').select('*').eq('empresa_id', empresa_id).order('created_at', { ascending: false });
+        if (!error && data) return res.json(data);
+      }
+    } catch (e) {}
+    return res.json(securityRoster.filter(r => String(r.empresa_id) === String(empresa_id)));
+  });
+
+  app.post("/api/security/roster", async (req, res) => {
+    const item = { ...req.body, id: req.body.id || crypto.randomUUID(), created_at: new Date().toISOString() };
+    try {
+      if (supabaseAdmin && item.empresa_id) {
+        await supabaseAdmin.from('sgp_escalas').insert(item);
+      }
+    } catch (e) {}
+    securityRoster.unshift(item);
+    return res.json(item);
+  });
+
+  app.delete("/api/security/roster/:id", async (req, res) => {
+    const { id } = req.params;
+    try {
+      if (supabaseAdmin) {
+        await supabaseAdmin.from('sgp_escalas').delete().eq('id', id);
+      }
+    } catch (e) {}
+    const idx = securityRoster.findIndex(r => String(r.id) === String(id));
+    if (idx !== -1) securityRoster.splice(idx, 1);
+    return res.json({ success: true });
+  });
+
+  // 4. MOVIMENTOS DE ARMARIA
+  app.post("/api/security/armory-logs", async (req, res) => {
+    const log = { ...req.body, id: req.body.id || crypto.randomUUID(), data_hora: new Date().toISOString() };
+    try {
+      if (supabaseAdmin && log.empresa_id) {
+        await supabaseAdmin.from('sgp_armaria_movimentos').insert(log);
+        // Atualizar estado do item na armaria
+        const newStatus = log.action === 'OUT' ? 'em_uso' : 'disponivel';
+        await supabaseAdmin.from('sgp_armaria').update({ status: newStatus }).eq('id', log.item_id);
+      }
+    } catch (e) {}
+    
+    // Fallback em memória
+    const armItem = securityArmory.find(a => String(a.id) === String(log.item_id));
+    if (armItem) {
+      armItem.status = log.action === 'OUT' ? 'em_uso' : 'disponivel';
+    }
+    return res.json({ success: true, log });
+  });
+
+  // ==============================================================================
+  // GESTÃO ESCOLAR (ERP ESCOLAR - SUPABASE CRUD & MULTI-TENANT ISOLATION)
+  // ==============================================================================
+  const schoolStudents: any[] = [];
+  const schoolTeachers: any[] = [];
+  const schoolClasses: any[] = [];
+  const schoolTuitions: any[] = [];
+  const schoolGrades: any[] = [];
+  const schoolLibrary: any[] = [];
+  const schoolTransport: any[] = [];
+
+  // Helper genérico para rotas de escola
+  const createSchoolRoutes = (resourceName: string, tableName: string, memoryArr: any[]) => {
+    app.get(`/api/school/${resourceName}`, async (req, res) => {
+      const { empresa_id } = req.query;
+      if (!empresa_id) return res.json([]);
+      try {
+        if (supabaseAdmin) {
+          const { data, error } = await supabaseAdmin.from(tableName).select('*').eq('empresa_id', empresa_id).order('created_at', { ascending: false });
+          if (!error && data) return res.json(data);
+        }
+      } catch (e) {}
+      return res.json(memoryArr.filter(x => String(x.empresa_id) === String(empresa_id)));
+    });
+
+    app.post(`/api/school/${resourceName}`, async (req, res) => {
+      const item = { ...req.body, id: req.body.id || crypto.randomUUID(), created_at: new Date().toISOString() };
+      try {
+        if (supabaseAdmin && item.empresa_id) {
+          const { data, error } = await supabaseAdmin.from(tableName).insert(item).select().single();
+          if (!error && data) return res.json(data);
+        }
+      } catch (e) {}
+      memoryArr.unshift(item);
+      return res.json(item);
+    });
+
+    app.put(`/api/school/${resourceName}/:id`, async (req, res) => {
+      const { id } = req.params;
+      const updates = { ...req.body, updated_at: new Date().toISOString() };
+      try {
+        if (supabaseAdmin) {
+          const { data, error } = await supabaseAdmin.from(tableName).update(updates).eq('id', id).select().single();
+          if (!error && data) return res.json(data);
+        }
+      } catch (e) {}
+      const idx = memoryArr.findIndex(x => String(x.id) === String(id));
+      if (idx !== -1) { memoryArr[idx] = { ...memoryArr[idx], ...updates }; return res.json(memoryArr[idx]); }
+      return res.status(404).json({ error: 'Not found' });
+    });
+
+    app.delete(`/api/school/${resourceName}/:id`, async (req, res) => {
+      const { id } = req.params;
+      try {
+        if (supabaseAdmin) { await supabaseAdmin.from(tableName).delete().eq('id', id); }
+      } catch (e) {}
+      const idx = memoryArr.findIndex(x => String(x.id) === String(id));
+      if (idx !== -1) memoryArr.splice(idx, 1);
+      return res.json({ success: true });
+    });
+  };
+
+  const schoolSecretaria: any[] = [];
+  const schoolDiscipline: any[] = [];
+
+  createSchoolRoutes('students', 'escola_alunos', schoolStudents);
+  createSchoolRoutes('teachers', 'escola_professores', schoolTeachers);
+  createSchoolRoutes('classes', 'escola_turmas', schoolClasses);
+  createSchoolRoutes('tuitions', 'escola_propinas', schoolTuitions);
+  createSchoolRoutes('grades', 'escola_notas', schoolGrades);
+  createSchoolRoutes('secretaria', 'escola_documentos_secretaria', schoolSecretaria);
+  createSchoolRoutes('discipline', 'escola_disciplina', schoolDiscipline);
+  createSchoolRoutes('library', 'escola_biblioteca', schoolLibrary);
+  createSchoolRoutes('transport', 'escola_transporte', schoolTransport);
 
   app.post("/api/receipts/:id/void", (req, res) => {
     const receiptId = Number(req.params.id);

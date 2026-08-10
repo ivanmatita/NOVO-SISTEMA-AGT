@@ -32,6 +32,7 @@ export interface User {
   nome?: string;
   name?: string;
   empresa_id: string;
+  company_id?: string;
   empresa_nif?: string;
   role: string;
   created_at?: string;
@@ -631,6 +632,7 @@ export interface Purchase {
   id: number;
   supplier_id: number;
   supplier_name?: string;
+  fornecedor_nome?: string;
   client_name?: string;
   document_type?: string;
   purchase_number: string;
@@ -642,7 +644,12 @@ export interface Purchase {
   due_date?: string;
   payment_method?: string;
   status: string;
+  estado?: string;
+  empresa_id?: string;
+  company_id?: string;
   total: number;
+  desconto_global?: number | string;
+  global_discount?: number | string;
   items?: PurchaseItem[];
   document_url?: string;
   document_path?: string;

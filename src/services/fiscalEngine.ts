@@ -95,7 +95,7 @@ export async function emitirDocumentoFiscal(payload: any) {
       throw error;
     }
 
-    // 6a. CRIAR REGISTO NA TABELA agt_documents (RELACIONADO JURÍDICAMENTE PARA A FILA DE SUBMISSÃO)
+    // 6a. CRIAR REGISTO NA TABELA agt_documents
     let agtDocId = null;
     try {
       const { data: agtDoc, error: agtDocErr } = await supabase
@@ -134,7 +134,7 @@ export async function emitirDocumentoFiscal(payload: any) {
       throw dbErr;
     }
 
-    // 7. PUBLICAR NA FILA AGT (AGT_QUEUE) PARA TRANSMISSÃO ASSÍNCRONA
+    // 7. PUBLICAR NA FILA AGT
     try {
       await supabase.from("agt_queue").insert([
         {

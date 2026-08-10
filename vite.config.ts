@@ -31,7 +31,7 @@ export default defineConfig(({mode}) => {
         ignored: ['**/db.json', '**/logs/**', '**/*.log', '**/*.txt', '**/*.cjs'],
       },
       headers: {
-        'Content-Security-Policy': "default-src 'self' https: data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: data: https://*.supabase.co; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co ws://localhost:* wss: https: blob:;"
+        'Content-Security-Policy': "default-src 'self' https: data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: data: https://*.supabase.co; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co ws: wss: http: https: blob:;"
       },
       proxy: {
         // Proxy for AGT NIF consultation — bypasses CORS in dev

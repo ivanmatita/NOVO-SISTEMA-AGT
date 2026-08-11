@@ -52884,6 +52884,18 @@
       "reference_id": "a4def356-8e4d-4fe0-bdea-d5f0dc51f363",
       "payment_method": "Transferência",
       "cash_box": "4359669a-79e2-4166-bc6c-8f95b87e36fd"
+    },
+    {
+      "description": "mmmmmm",
+      "amount": 66666,
+      "type": "expense",
+      "category": "Outros",
+      "payment_method": "71d2ab3b-6c12-4b4b-86a8-e4229e1dd289",
+      "reference": "jjjjjj",
+      "observation": "",
+      "date": "2026-08-11T11:57:46.460Z",
+      "empresa_id": "7163a5b1-95ca-4d5b-b582-8de65f7395db",
+      "id": 1786450465587
     }
   ],
   "receipts": [
@@ -54517,14 +54529,6 @@
     {
       "id": 1786377769916,
       "opening_date": "2026-08-10T15:57:18.291Z",
-      "initial_balance": 0,
-      "status": "open",
-      "pos_point_id": "",
-      "user_id": "1"
-    },
-    {
-      "id": 1786390118754,
-      "opening_date": "2026-08-10T19:15:37.890Z",
       "initial_balance": 0,
       "status": "open",
       "pos_point_id": "",

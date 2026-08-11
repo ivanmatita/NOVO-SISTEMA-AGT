@@ -498,6 +498,2013 @@ const PrintP89 = ({ sale, clientName }: { sale: any, clientName?: string }) => {
 
 // --- Components ---
 
+
+const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack, employees = [], allWorkSites = [], onRefreshEmployees }: { 
+  workSite: WorkSite, 
+  movements: WorkSiteMovement[], 
+  invoices?: IssuedDocument[],
+  onBack: () => void,
+  employees?: Employee[],
+  allWorkSites?: WorkSite[],
+  onRefreshEmployees?: () => void
+}) => {
+  const [activeTab, setActiveTab] = useState<'finance' | 'invoices' | 'stock' | 'employees'>('finance');
+  const [staffSearch, setStaffSearch] = useState('');
+  const [movingEmployee, setMovingEmployee] = useState<Employee | null>(null);
+
+  const siteEmployees = (employees ?? []).filter(emp => emp.local_trabalho_id?.toString() === workSite.id?.toString());
+  const filteredSiteEmployees = siteEmployees.filter(emp => 
+    emp.name.toLowerCase().includes(staffSearch.toLowerCase()) || 
+    emp.role.toLowerCase().includes(staffSearch.toLowerCase()) ||
+    String(emp.id).includes(staffSearch)
+  );
+
+  const handleMoveEmployee = async (employeeId: number, targetWorkplaceId: string) => {
+    try {
+      const { error } = await supabase
+        .from('colaboradores')
+        .update({ local_trabalho_id: targetWorkplaceId })
+        .eq('id', employeeId);
+
+      if (error) throw error;
+      alert('Colaborador transferido com sucesso!');
+      setMovingEmployee(null);
+      if (onRefreshEmployees) onRefreshEmployees();
+    } catch (err) {
+      console.error('Error moving employee:', err);
+      alert('Erro ao transferir colaborador.');
+    }
+  };
+
+  const handlePrintEmployeeList = () => {
+    window.print();
+  };
+
+  const handleDownloadEmployeePDF = () => {
+    const doc = new jsPDF('p', 'mm', 'a4');
+    doc.setFontSize(16);
+    doc.text(`Lista de Colaboradores - ${workSite?.title || 'Todos'}`, 14, 20);
+    doc.setFontSize(10);
+    
+    let y = 30;
+    doc.text('Nome', 14, y);
+    doc.text('Cargo', 80, y);
+    doc.text('Contacto', 140, y);
+    doc.text('Estado', 180, y);
+    y += 10;
+    
+    filteredSiteEmployees.forEach(emp => {
+      if (y > 270) {
+        doc.addPage();
+        y = 20;
+      }
+      doc.text(emp.name.substring(0, 30), 14, y);
+      doc.text((emp.role || '---').substring(0, 25), 80, y);
+      doc.text(emp.phone || emp.email || '---', 140, y);
+      doc.text(emp.status === 'active' ? 'Presente' : 'Ausente', 180, y);
+      y += 8;
+    });
+
+    doc.save(`colaboradores_${(workSite?.title || 'lista').replace(/ /g, '_')}.pdf`);
+  };
+  
+  // Show all certified issued documents for the company in the work site view
+  // (documentos_emitidos does not have a work_site_id column, so we show all certified docs)
+  const siteInvoices = (invoices ?? []).filter(inv => inv.is_certified === true || (inv as any).estado_documento === 'CERTIFICADO' || (inv as any).estado === 'ATIVO' || (inv as any).estado_documento === 'ativo');
+  const totalInvoiced = (siteInvoices ?? []).reduce((sum, inv) => sum + (inv.contravalor || inv.total || 0), 0);
+  const totalPaid = (siteInvoices ?? []).filter(inv => inv.status === 'paid' || (inv.estado_documento as string) === 'pago' || (inv.estado_documento as string) === 'ativo' || inv.payment_status === 'paid').reduce((sum, inv) => sum + (inv.contravalor || inv.total || 0), 0);
+  const totalPending = totalInvoiced - totalPaid;
+  const totalVoided = (siteInvoices ?? []).filter(inv => inv.status === 'anulado' || (inv.estado_documento as string) === 'anulado').reduce((sum, inv) => sum + (inv.contravalor || inv.total || 0), 0);
+  
+  // Calculate specific site costs based on invoices related to the site (purchases or direct expenses)
+  const siteMovements = (movements ?? []).filter(m => m.work_site_id?.toString() === workSite.id?.toString());
+  
+  // Combine movements with sales (all invoices related to site) for a full financial view
+  const combinedMovements = [
+    ...siteMovements.map(m => ({ 
+      id: m.id, 
+      date: m.date, 
+      doc_no: m.doc_no || 'TRF', 
+      company: m.company || 'Diversos',
+      description: m.description, 
+      debit: m.debit || 0,
+      credit: m.credit || 0,
+      source: 'expense' 
+    })),
+    ...siteInvoices.filter(inv => inv.status !== 'anulado').map(inv => ({
+      id: inv.id,
+      date: inv.date,
+      doc_no: inv.numero_documento,
+      company: inv.client_name,
+      description: `Facturação - ${inv.document_type} ${inv.is_certified ? '(Certificada)' : '(Rascunho)'}`,
+      debit: 0,
+      credit: inv.total || inv.counter_value || 0,
+      source: 'sale'
+    }))
+  ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  let rollingBalance = 0;
+  const processedMovements = combinedMovements.map(m => {
+    rollingBalance += (m.credit || 0) - (m.debit || 0);
+    return { ...m, balance: rollingBalance };
+  });
+
+  const actualDebit = processedMovements.reduce((sum, m) => sum + (m.debit || 0), 0);
+  const actualCredit = processedMovements.reduce((sum, m) => sum + (m.credit || 0), 0);
+  const actualBalance = actualCredit - actualDebit;
+
+  return (
+    <div className="bg-white min-h-screen p-8 sm:p-12 space-y-10 max-w-6xl mx-auto shadow-2xl border border-zinc-100">
+      {/* Report Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start gap-8 border-b-2 border-[#003366] pb-8">
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-[#003366] flex items-center justify-center text-white">
+              <BarChart3 size={24} />
+            </div>
+            <div>
+              <h1 className="text-2xl font-black text-[#003366] tracking-tighter uppercase">Gestão do Local de Trabalho</h1>
+              <p className="text-zinc-400 text-[10px] font-bold uppercase tracking-[0.2em]">Controlo de Movimentação e Facturação</p>
+            </div>
+          </div>
+          <div className="space-y-1">
+            <h2 className="text-xl font-bold text-zinc-800">{workSite.title}</h2>
+            <p className="text-zinc-500 text-sm font-medium flex items-center gap-2">
+              <span className="bg-zinc-100 px-2 py-0.5 text-[#003366] font-bold text-[10px]">{workSite.code}</span>
+              <span>{workSite.location}</span>
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-x-12 gap-y-4 text-sm">
+          <div className="space-y-1">
+            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data de Início</p>
+            <p className="font-bold text-zinc-700">{formatDate(workSite.start_date)}</p>
+          </div>
+          <div className="space-y-1">
+            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data de Fim</p>
+            <p className="font-bold text-zinc-700">{formatDate(workSite.end_date)}</p>
+          </div>
+          <div className="space-y-1">
+            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Cliente Responsável</p>
+            <p className="font-bold text-zinc-700">{workSite.client_name}</p>
+          </div>
+          <div className="space-y-1">
+            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Contacto</p>
+            <p className="font-bold text-zinc-700">{workSite.contact}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-0 border border-zinc-200 divide-x divide-zinc-200">
+        <div className="p-8 bg-zinc-50/50">
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Facturado</p>
+          <p className="text-xl font-black text-[#003366]">{formatCurrency(totalInvoiced)}</p>
+          <div className="flex items-center gap-2 mt-2">
+            <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5">PAGO: {formatCurrency(totalPaid)}</span>
+          </div>
+        </div>
+        <div className="p-8 bg-zinc-50/50">
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Anulados</p>
+          <p className="text-xl font-black text-red-400">{formatCurrency(totalVoided)}</p>
+          <p className="text-[9px] text-zinc-400 font-bold mt-1 uppercase tracking-tighter">S/ Impacto Financeiro</p>
+        </div>
+        <div className="p-8">
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Débito (Custos)</p>
+          <p className="text-xl font-black text-red-600">{formatCurrency(actualDebit)}</p>
+        </div>
+        <div className="p-8">
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Crédito</p>
+          <p className="text-xl font-black text-emerald-600">{formatCurrency(actualCredit)}</p>
+        </div>
+        <div className="p-8 bg-[#003366] text-white">
+          <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-2">Saldo Obra</p>
+          <p className="text-xl font-black">{formatCurrency(actualBalance)}</p>
+          <p className="text-[9px] text-white/40 mt-1 font-bold italic uppercase tracking-tighter">Pendente: {formatCurrency(totalPending)}</p>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-4 border-b border-zinc-200 no-print">
+        <button 
+          onClick={() => setActiveTab('finance')}
+          className={`pb-4 px-4 text-xs font-bold uppercase tracking-widest transition-all relative ${
+            activeTab === 'finance' ? 'text-[#003366]' : 'text-zinc-400 hover:text-zinc-600'
+          }`}
+        >
+          Movimentação Financeira
+          {activeTab === 'finance' && <motion.div layoutId="activeTabWork" className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#003366]" />}
+        </button>
+        <button 
+          onClick={() => setActiveTab('invoices')}
+          className={`pb-4 px-4 text-xs font-bold uppercase tracking-widest transition-all relative ${
+            activeTab === 'invoices' ? 'text-[#003366]' : 'text-zinc-400 hover:text-zinc-600'
+          }`}
+        >
+          Documentos Emitidos
+          {activeTab === 'invoices' && <motion.div layoutId="activeTabWork" className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#003366]" />}
+        </button>
+        <button 
+          onClick={() => setActiveTab('stock')}
+          className={`pb-4 px-4 text-xs font-bold uppercase tracking-widest transition-all relative ${
+            activeTab === 'stock' ? 'text-[#003366]' : 'text-zinc-400 hover:text-zinc-600'
+          }`}
+        >
+          Entregas / Matérias Primas
+          {activeTab === 'stock' && <motion.div layoutId="activeTabWork" className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#003366]" />}
+        </button>
+        <button 
+          onClick={() => setActiveTab('employees')}
+          className={`pb-4 px-4 text-xs font-bold uppercase tracking-widest transition-all relative ${
+            activeTab === 'employees' ? 'text-[#003366]' : 'text-zinc-400 hover:text-zinc-600'
+          }`}
+        >
+          Gestão de Colaboradores
+          {activeTab === 'employees' && <motion.div layoutId="activeTabWork" className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#003366]" />}
+        </button>
+      </div>
+
+      {activeTab === 'finance' ? (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest flex items-center gap-2">
+              <div className="w-1 h-4 bg-[#003366]"></div>
+              Histórico de Movimentação Financeira (Vendas e Despesas)
+            </h3>
+            <div className="flex gap-2 no-print">
+              <button 
+                onClick={() => window.print()} 
+                className="flex items-center gap-2 px-4 py-2 border border-zinc-200 hover:bg-zinc-50 transition-colors text-zinc-600 text-[10px] font-bold uppercase tracking-widest"
+              >
+                <Printer size={16} />
+                Imprimir Relatório
+              </button>
+              <button onClick={onBack} className="px-4 py-2 bg-zinc-100 text-zinc-600 text-xs font-bold uppercase tracking-widest hover:bg-zinc-200 transition-colors">
+                Voltar
+              </button>
+            </div>
+          </div>
+
+          <div className="border border-zinc-200">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-zinc-100 border-b border-zinc-200 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
+                  <th className="px-6 py-4">Data</th>
+                  <th className="px-6 py-4">Documento</th>
+                  <th className="px-6 py-4">Entidade</th>
+                  <th className="px-6 py-4">Descrição</th>
+                  <th className="px-6 py-4 text-right">Débito</th>
+                  <th className="px-6 py-4 text-right">Crédito</th>
+                  <th className="px-6 py-4 text-right bg-zinc-200/50">Saldo</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100 text-xs text-zinc-800">
+                {processedMovements.map((m: any) => (
+                  <tr key={m.id} className="hover:bg-zinc-50 transition-colors">
+                    <td className="px-6 py-4 font-medium text-zinc-500">{new Date(m.date).toLocaleDateString('pt-PT')}</td>
+                    <td className="px-6 py-4 font-bold text-zinc-800">{m.doc_no}</td>
+                    <td className="px-6 py-4 text-zinc-600">{m.company}</td>
+                    <td className="px-6 py-4 text-zinc-500 italic">{m.description}</td>
+                    <td className="px-6 py-4 text-right text-red-600 font-bold">{m.debit > 0 ? formatCurrency(m.debit) : '-'}</td>
+                    <td className="px-6 py-4 text-right text-emerald-600 font-bold">{m.credit > 0 ? formatCurrency(m.credit) : '-'}</td>
+                    <td className="px-6 py-4 text-right font-black text-[#003366] bg-zinc-50/50">{formatCurrency(m.balance)}</td>
+                  </tr>
+                ))}
+                {processedMovements.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-20 text-center text-zinc-400 font-medium italic">
+                      Nenhum registo de movimentação encontrado para este local.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+              {processedMovements.length > 0 && (
+                <tfoot>
+                  <tr className="bg-zinc-50 border-t-2 border-zinc-200 font-black text-xs">
+                    <td colSpan={4} className="px-6 py-4 text-right uppercase tracking-widest text-zinc-400">Totais Acumulados</td>
+                    <td className="px-6 py-4 text-right text-red-600">{formatCurrency(actualDebit)}</td>
+                    <td className="px-6 py-4 text-right text-emerald-600">{formatCurrency(actualCredit)}</td>
+                    <td className="px-6 py-4 text-right text-[#003366] bg-zinc-200/50">{formatCurrency(actualBalance)}</td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        </div>
+      ) : activeTab === 'stock' ? (
+        <div className="space-y-4">
+           <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest flex items-center gap-2">
+              <div className="w-1 h-4 bg-[#003366]"></div>
+              Movimentos de Stock no Local (Entregas e Saídas)
+            </h3>
+            <div className="border border-zinc-200">
+               <table className="w-full text-left border-collapse">
+                  <thead>
+                     <tr className="bg-zinc-100 border-b border-zinc-200 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
+                        <th className="px-6 py-4">Data</th>
+                        <th className="px-6 py-4">Produto</th>
+                        <th className="px-6 py-4 text-center">Tipo</th>
+                        <th className="px-6 py-4 text-right">Qtd</th>
+                        <th className="px-6 py-4">Responsável</th>
+                     </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100 text-xs text-zinc-800">
+                    {movements.filter(m => m.work_site_id?.toString() === workSite.id?.toString()).map((m: any) => (
+                      <tr key={m.id} className="hover:bg-zinc-50 transition-colors">
+                        <td className="px-6 py-4 font-medium text-zinc-500">{new Date(m.created_at).toLocaleDateString('pt-PT')}</td>
+                        <td className="px-6 py-4 font-bold text-zinc-900">{m.product_name}</td>
+                        <td className="px-6 py-4 text-center">
+                          <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-none ${
+                            m.type === 'entry' ? 'bg-emerald-50 text-emerald-600' :
+                            m.type === 'exit' ? 'bg-red-50 text-red-600' :
+                            'bg-zinc-100 text-zinc-600'
+                          }`}>
+                            {m.type === 'entry' ? 'Entrada' : m.type === 'exit' ? 'Saída' : m.type}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right font-black">{m.quantity}</td>
+                        <td className="px-6 py-4 text-zinc-500 italic font-medium">{m.description || '---'}</td>
+                      </tr>
+                    ))}
+                    {movements.filter(m => m.work_site_id?.toString() === workSite.id?.toString()).length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="px-6 py-20 text-center text-zinc-400 font-medium italic">
+                          Nenhum movimento de stock registado para este local.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+               </table>
+            </div>
+        </div>
+      ) : activeTab === 'employees' ? (
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 no-print bg-zinc-50 p-4 border border-zinc-200">
+              <div className="relative w-full sm:w-96">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
+                <input 
+                  type="text" 
+                  placeholder="Pesquisar colaborador neste local..." 
+                  value={staffSearch}
+                  onChange={(e) => setStaffSearch(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 bg-white border border-zinc-200 text-xs font-bold focus:outline-none focus:border-[#003366]"
+                />
+              </div>
+              <div className="flex gap-2 w-full sm:w-auto">
+                <button 
+                  onClick={handlePrintEmployeeList}
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2 bg-white border border-zinc-200 text-zinc-600 text-[10px] font-black uppercase tracking-widest hover:bg-zinc-50 transition-all shadow-sm"
+                >
+                  <Printer size={16} /> Imprimir Lista
+                </button>
+                <button 
+                  onClick={handleDownloadEmployeePDF}
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2 bg-[#003366] text-white text-[10px] font-black uppercase tracking-widest hover:bg-[#002244] transition-all shadow-md"
+                >
+                  <Download size={16} /> Baixar PDF
+                </button>
+              </div>
+           </div>
+
+           <div className="border border-zinc-200 shadow-sm overflow-hidden bg-white">
+              <table className="w-full text-left border-collapse">
+                 <thead>
+                    <tr className="bg-zinc-100 border-b border-zinc-200 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
+                       <th className="px-6 py-4 w-16">ID</th>
+                       <th className="px-6 py-4">Nome Completo</th>
+                       <th className="px-6 py-4">Cargo / Função</th>
+                       <th className="px-6 py-4">Contacto</th>
+                       <th className="px-6 py-4 text-center no-print">Estado</th>
+                       <th className="px-6 py-4 text-right no-print">Opções</th>
+                    </tr>
+                 </thead>
+                 <tbody className="divide-y divide-zinc-100 text-xs">
+                    {filteredSiteEmployees.length > 0 ? (
+                      filteredSiteEmployees.map(emp => (
+                        <tr key={emp.id} className="hover:bg-zinc-50 transition-colors group">
+                           <td className="px-6 py-4 font-mono text-[#003366]">{String(emp.id).padStart(4, '0')}</td>
+                           <td className="px-6 py-4">
+                              <div className="flex items-center gap-3">
+                                 <div className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center text-[#003366] font-black uppercase border-2 border-white shadow-sm overflow-hidden">
+                                    {emp.image_url ? <img src={emp.image_url} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" /> : emp.name.charAt(0)}
+                                 </div>
+                                 <span className="font-bold text-zinc-800 uppercase">{emp.name}</span>
+                              </div>
+                           </td>
+                           <td className="px-6 py-4 font-medium text-zinc-500">{emp.role}</td>
+                           <td className="px-6 py-4 font-medium text-zinc-500">{emp.phone || emp.email || '---'}</td>
+                           <td className="px-6 py-4 text-center no-print">
+                              <span className={`px-2 py-0.5 text-[9px] font-black uppercase border ${
+                                emp.status === 'active' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'
+                              }`}>
+                                {emp.status === 'active' ? 'Presente' : 'Ausente'}
+                              </span>
+                           </td>
+                           <td className="px-6 py-4 text-right no-print">
+                              <button 
+                                onClick={() => setMovingEmployee(emp)}
+                                className="inline-flex items-center gap-2 px-3 py-1.5 bg-[#003366] text-white text-[9px] font-black uppercase tracking-widest hover:bg-[#002244] transition-all"
+                              >
+                                <ArrowRightLeft size={12} /> Transferir
+                              </button>
+                           </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={6} className="px-6 py-20 text-center text-zinc-300 italic font-black uppercase tracking-widest opacity-50">
+                           {staffSearch ? 'Nenhum resultado para a pesquisa' : 'Nenhum funcionário alocado a este local de trabalho'}
+                        </td>
+                      </tr>
+                    )}
+                 </tbody>
+              </table>
+           </div>
+
+           {/* Transfer Modal */}
+           <AnimatePresence>
+              {movingEmployee && (
+                <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm">
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className="bg-white w-full max-w-md shadow-2xl p-8"
+                  >
+                    <header className="mb-6">
+                      <h3 className="text-xl font-black text-[#003366] uppercase tracking-tighter">Transferir Colaborador</h3>
+                      <p className="text-xs text-zinc-500 font-medium">Selecione o novo destino para <span className="font-bold text-[#003366] uppercase">{movingEmployee.name}</span></p>
+                    </header>
+
+                    <div className="space-y-4">
+                       <label className="block text-[10px] font-black text-zinc-400 uppercase tracking-widest text-[10px]">Novo Local de Trabalho</label>
+                       <div className="grid grid-cols-1 gap-2 max-h-60 overflow-y-auto pr-2">
+                          {allWorkSites.filter(ws => ws.id?.toString() !== workSite.id?.toString()).map(ws => (
+                            <button 
+                              key={ws.id}
+                              onClick={() => handleMoveEmployee(movingEmployee.id, ws.id.toString())}
+                              className="text-left p-4 border border-zinc-200 hover:border-[#003366] hover:bg-zinc-50 transition-all group flex items-center justify-between"
+                            >
+                               <div>
+                                  <p className="text-xs font-black text-zinc-800 uppercase">{ws.title}</p>
+                                  <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-tight">{ws.location}</p>
+                               </div>
+                               <ChevronRight size={16} className="text-zinc-300 group-hover:text-[#003366]" />
+                            </button>
+                          ))}
+                       </div>
+                    </div>
+
+                    <button 
+                      onClick={() => setMovingEmployee(null)}
+                      className="w-full mt-8 py-3 text-xs font-black text-zinc-400 uppercase tracking-widest border border-zinc-200 hover:bg-zinc-50 transition-all"
+                    >
+                      Cancelar Operação
+                    </button>
+                  </motion.div>
+                </div>
+              )}
+           </AnimatePresence>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest flex items-center gap-2">
+              <div className="w-1 h-4 bg-[#003366]"></div>
+              Documentos Emitidos no Local
+            </h3>
+            <div className="flex gap-2 no-print">
+              <button onClick={onBack} className="px-4 py-2 bg-zinc-100 text-zinc-600 text-xs font-bold uppercase tracking-widest hover:bg-zinc-200 transition-colors">
+                Voltar
+              </button>
+            </div>
+          </div>
+
+          <div className="border border-zinc-200">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-zinc-100 border-b border-zinc-200 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
+                  <th className="px-6 py-4">Data</th>
+                  <th className="px-6 py-4">Documento</th>
+                  <th className="px-6 py-4">Cliente</th>
+                  <th className="px-6 py-4 text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100 text-xs">
+                {siteInvoices.map(inv => (
+                  <tr key={inv.id} className="hover:bg-zinc-50 text-sm">
+                    <td className="px-6 py-4 text-zinc-500">{new Date(inv.date || inv.data_emissao || new Date()).toLocaleDateString('pt-PT')}</td>
+                    <td className="px-6 py-4 font-bold text-zinc-900">{inv.numero_documento || inv.invoice_number}</td>
+                    <td className="px-6 py-4 text-zinc-600">{inv.client_name}</td>
+                    <td className="px-6 py-4 text-right font-black text-[#003366]">{formatCurrency(inv.total || inv.contravalor)}</td>
+                  </tr>
+                ))}
+                {siteInvoices.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="px-6 py-20 text-center text-zinc-400 font-medium italic">
+                      Nenhum documento emitido para este local.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Footer / Signature */}
+      <div className="pt-20 grid grid-cols-2 gap-20 text-center">
+        <div className="space-y-8">
+          <div className="border-b border-zinc-300 pb-2"></div>
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Responsável pela Obra</p>
+        </div>
+        <div className="space-y-8">
+          <div className="border-b border-zinc-300 pb-2"></div>
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Administração / Contabilidade</p>
+        </div>
+      </div>
+      
+      <div className="text-center pt-10">
+        <p className="text-[9px] text-zinc-300 font-bold uppercase tracking-[0.3em]">Documento gerado em {new Date().toLocaleString('pt-PT')}</p>
+      </div>
+    </div>
+  );
+};
+
+const WorkSiteRegistration = ({ workSite, onBack }: { workSite: WorkSite, onBack: () => void }) => {
+  const handleDownloadPDF = () => {
+    exportToPDF('worksite-registration-area', `cadastro_obra_${workSite.code}.pdf`);
+  };
+
+  return (
+    <div id="worksite-registration-area" className="bg-white min-h-screen p-8 sm:p-12 space-y-10 max-w-5xl mx-auto shadow-2xl border border-zinc-100 print-area">
+      {/* Document Header */}
+      <div className="flex justify-between items-start border-b-4 border-[#003366] pb-8">
+        <div className="flex items-center gap-6">
+          <div className="w-20 h-20 bg-[#003366] flex items-center justify-center text-white">
+            <Construction size={40} />
+          </div>
+          <div>
+            <h1 className="text-3xl font-black text-[#003366] tracking-tighter uppercase">Ficha de Cadastro de Obra</h1>
+            <p className="text-zinc-400 text-xs font-bold uppercase tracking-[0.3em] mt-1">Registo Oficial de Local de Trabalho</p>
+          </div>
+        </div>
+        <div className="text-right space-y-1">
+          <div className="bg-zinc-100 px-4 py-2 font-mono text-sm font-bold text-[#003366]">
+            REF: {workSite.code}
+          </div>
+          <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">Data de Emissão: {new Date().toLocaleDateString('pt-PT')}</p>
+        </div>
+      </div>
+
+      {/* Main Content Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        {/* Left Column - Main Info */}
+        <div className="md:col-span-2 space-y-8">
+          <section className="space-y-4">
+            <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest border-l-4 border-[#003366] pl-3">Informações Gerais</h3>
+            <div className="grid grid-cols-2 gap-6 bg-zinc-50/50 p-6 border border-zinc-100">
+              <div className="space-y-1">
+                <p className="text-[10px] font-bold text-zinc-400 uppercase">Título do Projecto</p>
+                <p className="font-bold text-zinc-800 text-lg">{workSite.title}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] font-bold text-zinc-400 uppercase">Cliente Responsável</p>
+                <p className="font-bold text-zinc-800">{workSite.client_name}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] font-bold text-zinc-400 uppercase">Localização / Endereço</p>
+                <p className="font-medium text-zinc-600">{workSite.location}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] font-bold text-zinc-400 uppercase">Contacto de Emergência</p>
+                <p className="font-bold text-zinc-800">{workSite.contact}</p>
+              </div>
+            </div>
+          </section>
+
+          <section className="space-y-4">
+            <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest border-l-4 border-[#003366] pl-3">Cronograma e Prazos</h3>
+            <div className="grid grid-cols-2 gap-6 bg-zinc-50/50 p-6 border border-zinc-100">
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
+                  <Calendar size={20} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-zinc-400 uppercase">Data de Abertura</p>
+                  <p className="font-bold text-zinc-800">{new Date(workSite.start_date).toLocaleDateString('pt-PT')}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center text-red-600">
+                  <Calendar size={20} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-zinc-400 uppercase">Previsão de Conclusão</p>
+                  <p className="font-bold text-zinc-800">{new Date(workSite.end_date).toLocaleDateString('pt-PT')}</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="space-y-4">
+            <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest border-l-4 border-[#003366] pl-3">Descrição dos Trabalhos</h3>
+            <div className="bg-zinc-50/50 p-6 border border-zinc-100 min-h-[120px]">
+              <p className="text-zinc-600 text-sm leading-relaxed whitespace-pre-wrap">{workSite.description || 'Nenhuma descrição detalhada fornecida.'}</p>
+            </div>
+          </section>
+        </div>
+
+        {/* Right Column - Stats and Meta */}
+        <div className="space-y-8">
+          <section className="space-y-4">
+            <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest border-l-4 border-[#003366] pl-3">Recursos Humanos</h3>
+            <div className="space-y-4">
+              <div className="bg-[#003366] text-white p-6 shadow-lg">
+                <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-2">Total de Efectivos</p>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-4xl font-black">{workSite.total_staff}</span>
+                  <span className="text-xs font-bold uppercase opacity-60">Colaboradores</span>
+                </div>
+              </div>
+              <div className="bg-white border border-zinc-200 p-6">
+                <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Média Diária</p>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl font-black text-zinc-800">{workSite.staff_per_day}</span>
+                  <span className="text-xs font-bold uppercase text-zinc-400">Pessoas/Dia</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="space-y-4">
+            <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest border-l-4 border-[#003366] pl-3">Observações Adicionais</h3>
+            <div className="bg-amber-50/50 p-6 border border-amber-100 min-h-[150px]">
+              <p className="text-amber-900/70 text-xs leading-relaxed italic">{workSite.observations || 'Sem observações registadas.'}</p>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      {/* Action Buttons - No Print */}
+      <div className="flex justify-end gap-4 pt-12 border-t border-zinc-100 no-print">
+        <button 
+          onClick={() => window.print()}
+          className="flex items-center gap-2 bg-white border border-zinc-300 text-zinc-700 px-6 py-3 font-bold text-sm hover:bg-zinc-50 transition-all shadow-sm"
+        >
+          <Printer size={18} /> Imprimir Ficha
+        </button>
+        <button 
+          onClick={handleDownloadPDF}
+          className="flex items-center gap-2 bg-[#003366] text-white px-6 py-3 font-bold text-sm hover:bg-[#002244] transition-all shadow-lg"
+        >
+          <Download size={18} /> Baixar PDF
+        </button>
+        <button 
+          onClick={onBack}
+          className="flex items-center gap-2 bg-zinc-100 text-zinc-600 px-6 py-3 font-bold text-sm hover:bg-zinc-200 transition-all"
+        >
+          Voltar à Lista
+        </button>
+      </div>
+
+      {/* Signatures */}
+      <div className="pt-20 grid grid-cols-2 gap-20 text-center">
+        <div className="space-y-8">
+          <div className="border-b border-zinc-300 pb-2"></div>
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Responsável pelo Cadastro</p>
+        </div>
+        <div className="space-y-8">
+          <div className="border-b border-zinc-300 pb-2"></div>
+          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Aprovação Direcção</p>
+        </div>
+      </div>
+
+      <div className="text-center pt-10">
+        <p className="text-[8px] text-zinc-300 font-bold uppercase tracking-[0.4em]">Este documento é um registo oficial do sistema de gestão AGT</p>
+      </div>
+    </div>
+  );
+};
+
+const WorkSiteMovementForm = ({ onBack, onSuccess, movements = [] }: { onBack: () => void, onSuccess: (movement: any) => void, movements?: WorkSiteMovement[] }) => {
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [docNo, setDocNo] = useState('');
+  const [company, setCompany] = useState('');
+  const [description, setDescription] = useState('');
+  const [debit, setDebit] = useState<number>(0);
+  const [credit, setCredit] = useState<number>(0);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSuccess({ date, doc_no: docNo, company, description, debit, credit });
+  };
+
+  return (
+    <div className="space-y-8">
+      <form onSubmit={handleSubmit} className="space-y-4 bg-zinc-50 p-6 border border-zinc-200">
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-zinc-400 uppercase">Data</label>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} required className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-zinc-400 uppercase">Nº Documento</label>
+            <input type="text" value={docNo} onChange={e => setDocNo(e.target.value)} placeholder="Ex: FT-2026/001" className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm" />
+          </div>
+        </div>
+        <div className="space-y-1">
+          <label className="text-[10px] font-bold text-zinc-400 uppercase">Empresa/Entidade</label>
+          <input type="text" value={company} onChange={e => setCompany(e.target.value)} placeholder="Nome da empresa" className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm" />
+        </div>
+        <div className="space-y-1">
+          <label className="text-[10px] font-bold text-zinc-400 uppercase">Descrição</label>
+          <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Descrição do movimento" className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm min-h-[60px]" />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-zinc-400 uppercase">Débito (Saída)</label>
+            <input type="number" value={debit} onChange={e => setDebit(Number(e.target.value))} className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-zinc-400 uppercase">Crédito (Entrada)</label>
+            <input type="number" value={credit} onChange={e => setCredit(Number(e.target.value))} className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm" />
+          </div>
+        </div>
+        <div className="flex justify-end gap-3 pt-4">
+          <button type="button" onClick={onBack} className="text-zinc-500 hover:text-zinc-700 text-sm font-medium">Cancelar</button>
+          <button type="submit" className="bg-[#003366] text-white font-bold px-6 py-2 rounded-none hover:bg-[#002244] text-sm">Salvar Movimento</button>
+        </div>
+      </form>
+
+      <div className="space-y-3">
+        <h4 className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+          <History size={14} />
+          Movimentos Associados Recentemente
+        </h4>
+        <div className="border border-zinc-200 max-h-[200px] overflow-y-auto">
+          <table className="w-full text-left text-[11px]">
+            <thead className="bg-zinc-100 sticky top-0">
+              <tr className="text-zinc-500 font-bold uppercase tracking-tighter">
+                <th className="px-4 py-2">Data</th>
+                <th className="px-4 py-2">Doc</th>
+                <th className="px-4 py-2 text-right">Valor</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+              {movements.slice().reverse().map(m => (
+                <tr key={m.id}>
+                  <td className="px-4 py-2 text-zinc-500">{new Date(m.date).toLocaleDateString()}</td>
+                  <td className="px-4 py-2 font-bold text-zinc-700">{m.doc_no}</td>
+                  <td className={`px-4 py-2 text-right font-bold ${m.debit > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                    {formatCurrency(m.debit > 0 ? m.debit : m.credit)}
+                  </td>
+                </tr>
+              ))}
+              {movements.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="px-4 py-8 text-center text-zinc-400 italic">Nenhum movimento associado.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const WorkSiteForm = ({ clients, onBack, onSuccess, initialData }: { clients: Client[], onBack: () => void, onSuccess: (site: Omit<WorkSite, 'id'>) => void, initialData?: WorkSite | null }) => {
+  const [clientId, setClientId] = useState<string | ''>(initialData?.client_id?.toString() || '');
+  const [startDate, setStartDate] = useState(initialData?.start_date || '');
+  const [endDate, setEndDate] = useState(initialData?.end_date || '');
+  const [title, setTitle] = useState(initialData?.title || '');
+  const [code, setCode] = useState(initialData?.code || '');
+  const [staffPerDay, setStaffPerDay] = useState(initialData?.staff_per_day || 0);
+  const [totalStaff, setTotalStaff] = useState(initialData?.total_staff || 0);
+  const [location, setLocation] = useState(initialData?.location || '');
+  const [description, setDescription] = useState(initialData?.description || '');
+  const [contact, setContact] = useState(initialData?.contact || '');
+  const [observations, setObservations] = useState(initialData?.observations || '');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!clientId) return;
+    const client = clients.find(c => String(c.id) === String(clientId));
+    onSuccess({
+      client_id: clientId.toString(),
+      client_name: client?.name || '',
+      start_date: startDate,
+      end_date: endDate,
+      title,
+      code,
+      staff_per_day: staffPerDay,
+      total_staff: totalStaff,
+      location,
+      description,
+      contact,
+      observations
+    });
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="space-y-1">
+        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Seleccione um Cliente</label>
+        <select 
+          value={clientId} onChange={e => setClientId(e.target.value)} required
+          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+        >
+          <option value="">Selecionar Cliente...</option>
+          {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+      </div>
+      <div className="space-y-1">
+        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Titulo da Obra/Serviço</label>
+        <input 
+          type="text" value={title} onChange={e => setTitle(e.target.value)} required
+          placeholder="Digite o título da obra ou serviço"
+          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+        />
+      </div>
+      <div className="space-y-1">
+        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data de Abertura de Obra/Serviço</label>
+        <input 
+          type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required
+          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+        />
+      </div>
+      <div className="space-y-1">
+        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data de Encerramento de Obra/Serviço</label>
+        <input 
+          type="date" value={endDate} onChange={e => setEndDate(e.target.value)} required
+          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+        />
+      </div>
+      <div className="space-y-1">
+        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">COD de Obra/Serv</label>
+        <input 
+          type="text" value={code} onChange={e => setCode(e.target.value)} required
+          placeholder="Código identificador da obra"
+          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+        />
+      </div>
+      <div className="space-y-1">
+        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Total de Efectivos por Dia</label>
+        <input 
+          type="number" value={staffPerDay} onChange={e => setStaffPerDay(Number(e.target.value))} required
+          placeholder="Número de trabalhadores diários"
+          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+        />
+      </div>
+      <div className="space-y-1">
+        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Total de Efectivos</label>
+        <input 
+          type="number" value={totalStaff} onChange={e => setTotalStaff(Number(e.target.value))} required
+          placeholder="Total de trabalhadores no projeto"
+          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+        />
+      </div>
+      <div className="space-y-1">
+        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Localização da Obra/Serviço</label>
+        <input 
+          type="text" value={location} onChange={e => setLocation(e.target.value)} required
+          placeholder="Endereço ou coordenadas da obra"
+          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+        />
+      </div>
+      <div className="space-y-1">
+        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Contacto da Obra/Serviço</label>
+        <input 
+          type="text" value={contact} onChange={e => setContact(e.target.value)} required
+          placeholder="Telefone ou responsável no local"
+          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+        />
+      </div>
+      <div className="space-y-1">
+        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Descrição da Obra/Serviço</label>
+        <textarea 
+          value={description} onChange={e => setDescription(e.target.value)} required
+          placeholder="Breve descrição dos trabalhos a realizar"
+          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm min-h-[80px]"
+        />
+      </div>
+      <div className="md:col-span-2 space-y-1">
+        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Observações</label>
+        <textarea 
+          value={observations} onChange={e => setObservations(e.target.value)}
+          placeholder="Notas adicionais ou restrições"
+          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm min-h-[80px]"
+        />
+      </div>
+      <div className="md:col-span-2 flex justify-end gap-3">
+        <button type="button" onClick={onBack} className="text-zinc-500 hover:text-zinc-700 text-sm font-medium">Cancelar</button>
+        <button type="submit" className="bg-[#003366] text-white font-bold px-8 py-2.5 rounded-none hover:bg-[#002244] transition-all text-sm shadow-sm">
+          {initialData ? 'Atualizar' : 'Registar'}
+        </button>
+      </div>
+    </form>
+  );
+};
+
+const InvoiceDetail = ({ 
+  id, 
+  onBack,
+  onPrint,
+  onDownload,
+  companyName,
+  companyNif,
+  companyAddress,
+  companyLogo,
+  companyFooter,
+  companyData
+}: { 
+  id: number, 
+  onBack: () => void,
+  onPrint: (invoice: Invoice) => void,
+  onDownload?: (invoice: Invoice) => void,
+  companyName: string,
+  companyNif: string,
+  companyAddress: string,
+  companyLogo: string,
+  companyFooter: string,
+  companyData: CompanyData | null
+}) => {
+  const [invoice, setInvoice] = useState<Invoice | null>(null);
+
+  useEffect(() => {
+    fetch(`/api/invoices/${id}`)
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+        return res.json();
+      })
+      .then(data => setInvoice(data))
+      .catch(err => {
+        console.error('Error fetching invoice detail:', err);
+        // We could set an error state here if we had one
+      });
+  }, [id]);
+
+  if (!invoice) return <div className="p-8">Carregando...</div>;
+
+  // Calculate VAT summary by tax label/name instead of just rate
+  const vatSummary = (invoice.items || []).reduce((acc: any, item: any) => {
+    const label = item.tax || (item.tax_rate ? `IVA (${item.tax_rate}%)` : 'ISE (0%)');
+    if (!acc[label]) {
+      acc[label] = { base: 0, vat: 0, rate: item.tax_rate || 0 };
+    }
+    const rate = item.tax_rate || 0;
+    const itemTotal = item.total || 0;
+    const base = itemTotal / (1 + rate / 100);
+    acc[label].base += base;
+    acc[label].vat += itemTotal - base;
+    return acc;
+  }, {});
+
+  const subtotalRaw = (invoice.items || []).reduce((sum, item) => sum + (item.unit_price * item.quantity), 0);
+  const lineDiscountsTotal = (invoice.items || []).reduce((sum, item) => sum + (item.desconto || 0), 0);
+  const subtotalWithLineDiscounts = subtotalRaw - lineDiscountsTotal;
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-8">
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-4">
+          <button onClick={onBack} className="p-2 hover:bg-zinc-100 rounded-full text-zinc-400 hover:text-[#003366] transition-colors">
+            <ArrowLeft size={24} />
+          </button>
+          <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Fatura {invoice.invoice_number || invoice.numero_documento}</h2>
+        </div>
+        <div className="flex gap-3">
+          <button 
+            onClick={() => invoice && onPrint(invoice)}
+            className="bg-white border border-zinc-300 hover:bg-zinc-50 text-zinc-700 px-4 py-2 rounded-none flex items-center gap-2 transition-all text-sm shadow-sm"
+          >
+            <Printer size={18} /> Imprimir
+          </button>
+          <button 
+            onClick={() => invoice && onDownload && onDownload(invoice)}
+            className="bg-[#003366] hover:bg-[#002244] text-white font-bold px-4 py-2 rounded-none flex items-center gap-2 transition-all text-sm shadow-sm"
+          >
+            <Download size={18} /> Baixar PDF
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-white text-zinc-950 p-12 rounded-none shadow-2xl border border-zinc-100 space-y-12 relative overflow-hidden">
+        {companyData?.watermark_url && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.05] z-0">
+            <img 
+              src={companyData.watermark_url} 
+              alt="Watermark" 
+              style={{ height: `${companyData?.watermark_size || 300}px` }} 
+              className="object-contain grayscale" 
+            />
+          </div>
+        )}
+        <div className="flex justify-between items-start relative z-10">
+          <div className="flex items-start gap-6">
+            {companyLogo ? (
+              <img src={companyLogo} alt="Logo" className="w-24 h-24 object-contain" referrerPolicy="no-referrer" />
+            ) : (
+              <div className="w-24 h-24 bg-[#003366] flex items-center justify-center text-white font-black text-2xl">
+                FP
+              </div>
+            )}
+            <div>
+              <h1 className="text-3xl font-black text-[#003366]">{companyName}</h1>
+              <div className="mt-2 text-sm text-zinc-500">
+                <p>{companyAddress}</p>
+                <p>NIF: {companyNif}</p>
+                {companyData?.regime && <p className="text-[#003366] font-bold uppercase text-[10px] mt-1 border border-[#003366] w-fit px-2 py-0.5">{companyData.regime}</p>}
+              </div>
+            </div>
+          </div>
+          <div className="text-right">
+            <h3 className="text-2xl font-bold uppercase tracking-tighter text-[#003366]">{invoice.document_type || invoice.tipo_documento}</h3>
+            <p className="text-zinc-400 font-mono text-sm">{invoice.invoice_number || invoice.numero_documento}</p>
+            <div className="mt-4 text-sm">
+              <p><span className="font-bold text-zinc-700">Data:</span> {new Date(invoice.date || invoice.data_emissao).toLocaleDateString('pt-PT')}</p>
+              {(invoice.due_date || invoice.data_vencimento) && <p><span className="font-bold text-zinc-700">Vencimento:</span> {new Date((invoice.due_date || invoice.data_vencimento) as string).toLocaleDateString('pt-PT')}</p>}
+              {(invoice.work_site_title || invoice.local_trabalho) && (
+                <div className="mt-2 pt-2 border-t border-zinc-100 italic text-[10px] text-zinc-400">
+                   <p className="font-bold uppercase">Local de Trabalho:</p>
+                   <p className="text-zinc-600">{invoice.work_site_title || invoice.local_trabalho}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-12">
+          <div>
+            <h4 className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Faturado a:</h4>
+            <div className="text-lg font-bold text-zinc-800">
+              <p>{invoice.client_name}</p>
+              <p className="text-sm font-normal text-zinc-500">{invoice.client_address}</p>
+              <p className="text-sm font-normal text-zinc-500">NIF: {invoice.client_nif}</p>
+              <p className="text-sm font-normal text-zinc-500">{invoice.client_email}</p>
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <QRCodeCanvas 
+              value={`Invoice:${invoice.invoice_number || invoice.numero_documento}|Total:${invoice.total || invoice.contravalor}|Date:${invoice.date || invoice.data_emissao}`} 
+              size={100}
+              level="H"
+            />
+          </div>
+        </div>
+
+        <table className="w-full text-left">
+          <thead>
+            <tr className="border-b-2 border-zinc-100 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+              <th className="py-4">Descrição</th>
+              <th className="py-4 text-center">Qtd</th>
+              <th className="py-4 text-center">Desc.</th>
+              <th className="py-4 text-right">Preço Un.</th>
+              <th className="py-4 text-right">Total</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-50 text-sm">
+            {invoice.items?.map((item, idx) => (
+              <tr key={idx}>
+                <td className="py-4 font-medium text-zinc-800">{item.description}</td>
+                <td className="py-4 text-center text-zinc-500">{item.quantity}</td>
+                <td className="py-4 text-center text-red-500 font-bold">{item.desconto ? formatCurrency(item.desconto) : '-'}</td>
+                <td className="py-4 text-right text-zinc-500">
+                  {formatCurrency(item.unit_price)}
+                </td>
+                <td className="py-4 text-right font-bold text-zinc-800">
+                  {formatCurrency(item.total)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <div className="pt-8 grid grid-cols-2 gap-8 text-[10px] text-zinc-500 border-t border-zinc-100">
+          <div>
+            <p className="font-bold uppercase tracking-widest text-zinc-400 mb-1">Emitido por:</p>
+            <p className="font-bold text-[#003366] text-sm uppercase">{invoice.created_by_nome || 'Utilizador do Sistema'}</p>
+            {invoice.created_by_username && <p>Username: {invoice.created_by_username} (ID: {invoice.created_by ? String(invoice.created_by).slice(-6) : '---'})</p>}
+            <p>Data: {new Date(invoice.created_at || invoice.date || invoice.data_emissao).toLocaleString('pt-PT')}</p>
+            {invoice.documento_anulado && (
+              <div className="mt-4 p-2 bg-red-50 border border-red-100 text-red-600 rounded-none font-bold">
+                <p className="uppercase text-[8px]">DOCUMENTO ANULADO</p>
+                <p className="text-[10px]">Motivo: {invoice.motivo_anulacao}</p>
+                {invoice.anulado_at && <p className="text-[8px] mt-1">Data: {new Date(invoice.anulado_at).toLocaleString()}</p>}
+              </div>
+            )}
+          </div>
+          <div className="text-right flex flex-col gap-2">
+            <div>
+              <p className="font-bold uppercase tracking-widest text-zinc-400 mb-1">Rastreabilidade Fiscal:</p>
+              <p className="font-mono text-[8px] break-all bg-zinc-50 p-1 border border-zinc-100">{invoice.hash_documento || invoice.hash || '---'}</p>
+              {invoice.codigo_validacao && <p className="mt-1 font-black text-[#003366]">Cód. Validação: {invoice.codigo_validacao}</p>}
+              <p className="mt-1">Certificação: {invoice.is_certified ? 'CERTIFICADO' : 'PENDENTE'}</p>
+            </div>
+            
+            {(invoice.numero_documento_origem || invoice.rectified_document) && (
+              <div className="mt-2 p-2 bg-blue-50 border border-blue-100 text-blue-700 text-left rounded-none">
+                <p className="font-bold uppercase text-[8px]">Documento Relacionado:</p>
+                <p className="font-black text-[10px]">{invoice.tipo_documento_origem || 'Origem'}: {invoice.numero_documento_origem || invoice.rectified_document}</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-8 pt-8">
+          <div>
+            <h4 className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-4">Resumo de IVA</h4>
+            <table className="w-full text-[10px] text-left">
+              <thead>
+                <tr className="border-b border-zinc-100 text-zinc-400">
+                  <th className="pb-2">Taxa</th>
+                  <th className="pb-2 text-right">Base</th>
+                  <th className="pb-2 text-right">IVA</th>
+                </tr>
+              </thead>
+              <tbody className="text-zinc-600">
+                {Object.entries(vatSummary || {}).map(([label, values]: [string, any]) => (
+                  <tr key={label}>
+                    <td className="py-1">{label}</td>
+                    <td className="py-1 text-right">{formatCurrency(values.base)}</td>
+                    <td className="py-1 text-right">{formatCurrency(values.vat)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex justify-end">
+            <div className="w-64 space-y-2">
+              <div className="flex justify-between text-xs text-zinc-500">
+                <span>Total Ilíquido</span>
+                <span>{formatCurrency(subtotalRaw)}</span>
+              </div>
+              {lineDiscountsTotal > 0 && (
+                <div className="flex justify-between text-xs text-red-600 font-bold">
+                  <span>Descontos de Linha</span>
+                  <span>- {formatCurrency(lineDiscountsTotal)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-xs text-zinc-800 font-bold border-t border-zinc-50 pt-1">
+                <span>Subtotal</span>
+                <span>{formatCurrency(subtotalWithLineDiscounts)}</span>
+              </div>
+              {Object.entries(vatSummary || {}).map(([label, values]: [string, any]) => (
+                <div key={label} className="flex justify-between text-xs text-zinc-500">
+                  <span>{label}</span>
+                  <span>{formatCurrency(values.vat)}</span>
+                </div>
+              ))}
+              {(invoice.vat_withholding_amount || 0) > 0 && (
+                <div className="flex justify-between text-xs text-orange-600 font-bold">
+                  <span>Cativação de IVA</span>
+                  <span>- {formatCurrency(invoice.vat_withholding_amount)}</span>
+                </div>
+              )}
+              {(invoice.retencao_fonte_total || 0) > 0 && (
+                <div className="flex justify-between text-xs text-blue-600 font-bold">
+                  <span>Retenção na Fonte (6,5%)</span>
+                  <span>- {formatCurrency(invoice.retencao_fonte_total)}</span>
+                </div>
+              )}
+              {(invoice.global_discount || 0) > 0 && (
+                <div className="flex justify-between text-xs text-red-600 font-bold">
+                  <span>Desconto Global</span>
+                  <span>- {formatCurrency(invoice.global_discount)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-2xl font-black pt-4 border-t border-zinc-100">
+                <span className="text-zinc-800">Total</span>
+                <span className="text-[#003366]">{formatCurrency(invoice.total || invoice.contravalor)}</span>
+              </div>
+              <div className="pt-4 text-[10px] font-black text-zinc-400 uppercase tracking-widest text-right">
+                <p>Valor por Extenso:</p>
+                <p className="text-[#003366] mt-1">{writeValorPorExtenso(invoice.total || invoice.contravalor || 0)}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Secção de Certificação AGT no Documento Aberto */}
+        <div className="pt-6 border-t border-zinc-100 mt-8 relative z-10">
+          <div className="bg-zinc-50 p-6 border border-zinc-200">
+            <p className="text-[10px] font-black text-zinc-800 tracking-widest uppercase mb-4 text-center border-b border-zinc-200 pb-2">
+              SISTEMA VALIDADO PELA AGT — DECLARAÇÃO DE CONFORMIDADE FISCAL
+            </p>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 text-xs font-mono text-zinc-650 my-4">
+              <div className="space-y-1 bg-white p-3 border border-zinc-100">
+                <span className="text-[9px] font-black text-zinc-400 uppercase tracking-wider block">Número Documento</span>
+                <span className="font-bold text-[#003366] block">{invoice.invoice_number || invoice.numero_documento}</span>
+              </div>
+              <div className="space-y-1 bg-white p-3 border border-zinc-100">
+                <span className="text-[9px] font-black text-zinc-400 uppercase tracking-wider block">Hash Fiscal (4 Chars)</span>
+                <span className="bg-[#003366] text-white px-2 py-0.5 text-[11px] font-black rounded-none inline-block mt-0.5">
+                  {invoice.codigo_validacao || (invoice.hash ? invoice.hash.slice(0, 4).toUpperCase() : 'PENDENTE')}
+                </span>
+              </div>
+              <div className="space-y-1 bg-white p-3 border border-zinc-100">
+                <span className="text-[9px] font-black text-zinc-400 uppercase tracking-wider block">Estado Fiscal</span>
+                <span className={`font-black uppercase text-[10px] ${
+                  invoice.documento_anulado ? 'text-red-650' : invoice.is_certified ? 'text-emerald-650' : 'text-amber-650'
+                }`}>
+                  {invoice.documento_anulado ? 'Anulado' : invoice.is_certified ? 'Certificado' : 'Rascunho'}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-2 text-[9px] text-zinc-500 font-sans leading-relaxed border-t border-zinc-200 pt-3">
+              <p>
+                <strong>✓ Processamento:</strong> Processado por programa validado nº 101/AGT/2026 - Gesforma.
+              </p>
+              <p>
+                <strong>✓ Encadeamento:</strong> Imutabilidade fiscal garantida por algoritmo de encadeamento criptográfico SHA-256 da série fiscal <span className="font-mono text-zinc-700 font-bold">{invoice.serie || 'S1'}</span>.
+              </p>
+              {(invoice.hash || invoice.hash_documento || invoice.hash_fiscal) && (
+                <div className="mt-2 p-2 bg-white border border-zinc-100 font-mono text-[8.5px] break-all select-all">
+                  <span className="font-bold text-zinc-600 uppercase tracking-wider">Assinatura Digital (JWS / RS256):</span> <span className="text-zinc-750">{invoice.hash || invoice.hash_documento || invoice.hash_fiscal}</span>
+                </div>
+              )}
+              {invoice.is_certified && invoice.certified_at && (
+                <p className="text-[8px] text-zinc-400 font-mono">
+                  Data de Certificação: {new Date(invoice.certified_at).toLocaleString('pt-AO')}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="pt-12 text-center text-[10px] text-zinc-400 uppercase tracking-widest border-t border-zinc-50 relative z-10">
+          <div className="flex justify-center mb-6">
+            {companyData?.footer_image_url && (companyData.footer_image_url.startsWith('data:image') || companyData.footer_image_url.startsWith('http')) && (
+              <img 
+                src={companyData.footer_image_url} 
+                alt="Footer" 
+                style={{ height: `${companyData?.footer_size || 40}px` }} 
+                className="object-contain" 
+              />
+            )}
+          </div>
+          <p>Obrigado pela sua preferência!</p>
+          <p className="mt-1">{companyFooter}</p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ClientAccount = ({ client, documents, onBack }: { 
+  client: Client, 
+  documents: IssuedDocument[], 
+  onBack: () => void 
+}) => {
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [filteredMovements, setFilteredMovements] = useState<any[]>([]);
+
+  useEffect(() => {
+    handleSearch();
+  }, [documents]);
+
+  const handleSearch = () => {
+    const movements = documents.map(doc => {
+      const isSupplier = (client as any).tipo_cliente === 'Fornecedor';
+      let isCredit = false;
+      let isDebit = false;
+      
+      const type = String(doc.tipo_documento || doc.document_type || '').toUpperCase();
+      const isFT = type === 'FT' || type.includes('FATURA');
+      const isFR = type === 'FR' || type.includes('FATURA-RECIBO');
+      const isRC = type === 'RC' || type === 'RE' || type.includes('RECIBO');
+      const isNC = type === 'NC' || type.includes('CRÉDITO') || type.includes('CREDITO');
+      const isND = type === 'ND' || type.includes('DÉBITO') || type.includes('DEBITO');
+      const isDraft = type === 'DRAFT';
+
+      if (isSupplier) {
+        // Purchases logic
+        isCredit = isFT || isFR || isND;
+        isDebit = isRC || isNC;
+      } else {
+        // Sales logic
+        isDebit = isFT || isND || isFR || isDraft;
+        isCredit = isRC || isNC || isFR;
+      }
+      
+      return {
+        ...doc,
+        debito: isDebit ? (doc.contravalor || doc.total || 0) : 0,
+        credito: isCredit ? (doc.contravalor || doc.total || 0) : 0
+      };
+    }).filter(m => {
+      // Filtering types as requested in Req 11
+      const type = String(m.tipo_documento || m.document_type || '').toUpperCase();
+      const allowedTypes = ['FT', 'FR', 'RC', 'NC', 'ND', 'DRAFT', 'RE'];
+      const isAllowed = allowedTypes.some(t => type === t || type.includes(t));
+      if (!isAllowed) return false;
+
+      if (!m.data_emissao) return true;
+      try {
+        const date = new Date(m.data_emissao).toISOString().split('T')[0];
+        if (startDate && date < startDate) return false;
+        if (endDate && date > endDate) return false;
+      } catch (e) {
+        console.error("Invalid date:", m.data_emissao);
+      }
+      return true;
+    });
+    setFilteredMovements(movements);
+  };
+
+  const totalDebito = (filteredMovements ?? []).reduce((acc, m) => acc + m.debito, 0);
+  const totalCredito = (filteredMovements ?? []).reduce((acc, m) => acc + m.credito, 0);
+  const initialBalance = client.saldo_inicial || 0;
+  const saldoAtual = initialBalance + totalDebito - totalCredito;
+
+  const handleExportXLSX = () => {
+    const headers = ['Data', 'Documento', 'URN', 'Doc Nº', 'Descrição', 'Crédito', 'Débito', 'Saldo'];
+    let runningSaldo = initialBalance;
+    const rows = filteredMovements.map(m => {
+      runningSaldo += (m.debito - m.credito);
+      return [new Date(m.data_emissao).toLocaleDateString(), m.numero_documento, '', '', m.tipo_documento, m.credito, m.debito, runningSaldo];
+    });
+    const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].map(e => e.join(",")).join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `extrato_${client.name}.csv`);
+    document.body.appendChild(link);
+    link.click();
+  };
+
+  return (
+    <div className="space-y-6 bg-zinc-50/50 p-6 min-h-screen">
+      <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center gap-4">
+          <button onClick={onBack} className="p-2 hover:bg-white rounded-full transition-colors text-zinc-400 shadow-sm">
+            <ChevronLeft size={24} />
+          </button>
+          <div>
+            <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Extrato de Conta Corrente</h2>
+            <p className="text-zinc-500 font-medium uppercase text-[10px] tracking-widest">{client.name}</p>
+          </div>
+        </div>
+        <div className="flex gap-3">
+          <button onClick={handleExportXLSX} className="bg-white text-zinc-600 border border-zinc-200 px-4 py-2 text-xs font-bold flex items-center gap-2 hover:bg-zinc-50 transition-all">
+            <FileSpreadsheet size={16} /> XLSX
+          </button>
+          <button onClick={() => window.print()} className="bg-[#003366] text-white px-4 py-2 text-xs font-bold flex items-center gap-2 hover:bg-[#002244] transition-all shadow-lg">
+            <Printer size={16} /> Imprimir PDF
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-white border border-zinc-200 p-8 shadow-sm space-y-8">
+        {/* Header Info based on Image */}
+        <div className="grid grid-cols-2 gap-8 border-b border-zinc-100 pb-8">
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4 text-[10px]">
+              <div>
+                <p className="font-bold text-zinc-400 uppercase">Data de Emissão</p>
+                <p className="text-zinc-800">{new Date().toLocaleString()}</p>
+              </div>
+              <div>
+                <p className="font-bold text-zinc-400 uppercase">Nº Contribuinte</p>
+                <p className="text-zinc-800 font-mono">{client.contribuinte || 'N/A'}</p>
+              </div>
+            </div>
+            <div>
+              <p className="text-lg font-bold text-[#003366]">Extrato Cliente</p>
+              <p className="text-xs text-zinc-500 font-mono">CC-{client.id} {client.name.toUpperCase()}</p>
+            </div>
+          </div>
+          <div className="text-right space-y-2">
+            <div className="inline-block bg-zinc-100 px-6 py-3 border-r-4 border-[#003366]">
+              <h3 className="text-xl font-black text-[#003366]">{client.name.toUpperCase()}</h3>
+            </div>
+            <div className="text-[10px] text-zinc-500 space-y-0.5">
+              <p>{client.localidade || 'LUANDA'}</p>
+              <p>{client.municipio || 'BELAS'}</p>
+              <p>{client.codigo_postal || '0000-000'}</p>
+              <p>{client.provincia || 'LUANDA'}</p>
+              <p>{client.pais || 'AO'}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Filters */}
+        <div className="flex items-end gap-4 bg-zinc-50 p-4 border border-zinc-100 no-print">
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data Inicial</label>
+            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="bg-white border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data Final</label>
+            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="bg-white border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+          </div>
+          <button 
+            onClick={handleSearch}
+            className="bg-[#003366] text-white px-6 py-2 text-sm font-bold hover:bg-[#002244] transition-all flex items-center gap-2"
+          >
+            <Search size={16} /> Pesquisar
+          </button>
+        </div>
+
+        {/* Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b-2 border-zinc-200 text-[10px] uppercase tracking-wider font-black text-zinc-400">
+                <th className="px-4 py-3">Data Valor<br/>Data Documento</th>
+                <th className="px-4 py-3">File Interno<br/>File Cliente</th>
+                <th className="px-4 py-3">URN<br/>EndService</th>
+                <th className="px-4 py-3">Doc Nº<br/>OriginatingOn</th>
+                <th className="px-4 py-3">Descrição<br/>Doc. Suporte</th>
+                <th className="px-4 py-3 text-right">Crédito</th>
+                <th className="px-4 py-3 text-right">Débito</th>
+                <th className="px-4 py-3 text-right">Saldo</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+              <tr className="bg-zinc-50/50 font-bold text-xs">
+                <td colSpan={5} className="px-4 py-3 text-right uppercase tracking-widest text-zinc-400">Saldo Inicial</td>
+                <td className="px-4 py-3 text-right">-</td>
+                <td className="px-4 py-3 text-right">-</td>
+                <td className="px-4 py-3 text-right text-[#003366]">{formatCurrency(initialBalance)}</td>
+              </tr>
+              {filteredMovements.map((m, idx) => {
+                const runningSaldo = initialBalance + (filteredMovements ?? []).slice(0, idx + 1).reduce((acc, curr) => acc + (curr.debito - curr.credito), 0);
+                return (
+                  <tr key={m.id} className="hover:bg-zinc-50 text-[11px]">
+                    <td className="px-4 py-4 text-zinc-500">{new Date(m.data_emissao).toLocaleDateString()}</td>
+                    <td className="px-4 py-4 text-zinc-400 font-mono">INT-{m.id}</td>
+                    <td className="px-4 py-4 text-zinc-400">-</td>
+                    <td className="px-4 py-4 font-bold text-zinc-800">{m.numero_documento}</td>
+                    <td className="px-4 py-4 text-zinc-600">{m.tipo_documento}</td>
+                    <td className="px-4 py-4 text-right text-emerald-600 font-bold">{m.credito > 0 ? formatCurrency(m.credito) : '-'}</td>
+                    <td className="px-4 py-4 text-right text-red-600 font-bold">{m.debito > 0 ? formatCurrency(m.debito) : '-'}</td>
+                    <td className="px-4 py-4 text-right font-black text-[#003366]">{formatCurrency(runningSaldo)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-zinc-200 font-black text-xs">
+                <td colSpan={5} className="px-4 py-6 text-right uppercase tracking-widest text-zinc-400">Acumulados do Período</td>
+                <td className="px-4 py-6 text-right text-emerald-600 border-b-2 border-zinc-200">{formatCurrency(totalCredito)}</td>
+                <td className="px-4 py-6 text-right text-red-600 border-b-2 border-zinc-200">{formatCurrency(totalDebito)}</td>
+                <td className="px-4 py-6 text-right text-[#003366] bg-zinc-50">{formatCurrency(saldoAtual)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        {filteredMovements.length === 0 && (
+          <div className="p-12 text-center text-zinc-400 text-sm italic">Nenhum movimento encontrado no período selecionado.</div>
+        )}
+
+        <div className="flex justify-between items-center pt-8 border-t border-zinc-100">
+          <div className="text-[10px] text-zinc-400 font-bold uppercase tracking-[0.2em]">
+            [AOA] Moeda Corrente
+          </div>
+          <div className="flex items-center gap-4">
+            <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Saldo Acumulado Geral</span>
+            <span className="text-xl font-black text-[#003366]">{formatCurrency(saldoAtual)}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: { 
+  clients: Client[], 
+  issuedDocuments: IssuedDocument[],
+  onRefresh: () => void,
+  onViewAccount: (client: Client) => void
+}) => {
+  const { user } = useAuth();
+  const [showForm, setShowForm] = useState(false);
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [showOptionsModal, setShowOptionsModal] = useState<Client | null>(null);
+  const [showInitialBalanceModal, setShowInitialBalanceModal] = useState<Client | null>(null);
+  const [showSettledDocsModal, setShowSettledDocsModal] = useState<Client | null>(null);
+  
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [nif, setNif] = useState('');
+  const [morada, setMorada] = useState('');
+  const [localidade, setLocalidade] = useState('');
+  const [codigo_postal, setCodigoPostal] = useState('');
+  const [provincia, setProvincia] = useState('');
+  const [municipio, setMunicipio] = useState('');
+  const [pais, setPais] = useState('');
+  const [telefone, setTelefone] = useState('');
+  const [webpage, setWebpage] = useState('');
+  const [tipo_cliente, setTipoCliente] = useState('normal');
+  const [estado_nif, setEstadoNif] = useState('não encontrado');
+  const [saldo_inicial, setSaldoInicial] = useState(0);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const filteredClients = clients.filter(c => 
+    (c.name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+    (c.contribuinte || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+    (c.email && c.email.toLowerCase().includes((searchTerm || '').toLowerCase()))
+  );
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (nif && nif.trim() !== '') {
+      const isDuplicateNif = clients.some(c => 
+        (c.contribuinte === nif || c.nif === nif) && 
+        String(c.id) !== String(selectedClient?.id)
+      );
+      if (isDuplicateNif) {
+        alert('Atenção: Já existe um cliente registado com este NIF. Não são permitidos NIFs duplicados.');
+        return;
+      }
+    }
+    if (name && name.trim() !== '') {
+      const isDuplicateName = clients.some(c => 
+        c.name.trim().toLowerCase() === name.trim().toLowerCase() && 
+        String(c.id) !== String(selectedClient?.id)
+      );
+      if (isDuplicateName) {
+        alert('Atenção: Já existe um cliente registado com este mesmo Nome. Não são permitidos registos duplicados.');
+        return;
+      }
+    }
+    
+    if (nif && !validateAngolaNIF(nif)) {
+      alert('O NIF inserido é inválido segundo as regras da AGT Angola. Deve conter 10 dígitos e começar com 1, 2, 3, 4 ou 5.');
+      return;
+    }
+
+    if (!user?.empresa_id) {
+       alert('Sessão expirada. Por favor, faça login novamente.');
+       return;
+    }
+
+    const clientPayload: DbCliente = { 
+      nome: name, 
+      email, 
+      contribuinte: nif, 
+      nif: nif,
+      endereco: morada, 
+      localidade, 
+      codigo_postal, 
+      provincia, 
+      municipio, 
+      pais, 
+      telefone, 
+      webpage, 
+      tipo_cliente, 
+      saldo_inicial: Number(saldo_inicial),
+      estado_nif,
+      empresa_id: user.empresa_id,
+      tipo_entidade: 'Cliente'
+    };
+    
+    try {
+      if (selectedClient?.id) {
+        await clienteService.updateCliente(selectedClient.id, clientPayload);
+      } else {
+        await clienteService.createCliente(clientPayload);
+      }
+      
+      resetForm();
+      setShowForm(false);
+      onRefresh();
+    } catch (error: any) {
+      console.error('Error saving client:', error);
+      alert('Erro ao guardar cliente. Verifique a consola para mais detalhes.');
+    }
+  };
+
+  const handleDelete = async (id: number | string) => {
+    if (!confirm('Tem a certeza que deseja eliminar este cliente? Esta ação é irreversível.')) return;
+    try {
+      if (!user?.empresa_id) return;
+      await clienteService.deleteCliente(id, user.empresa_id);
+      onRefresh();
+      setShowOptionsModal(null);
+      alert('Cliente eliminado com sucesso.');
+    } catch (err: any) {
+      console.error('Error deleting client:', err);
+      alert('Erro ao eliminar cliente: ' + (err.message || 'Erro desconhecido'));
+    }
+  };
+
+  const resetForm = () => {
+    setSelectedClient(null);
+    setName(''); setEmail(''); setNif(''); setMorada(''); setLocalidade(''); setCodigoPostal(''); setProvincia(''); setMunicipio(''); setPais(''); setTelefone(''); setWebpage(''); setTipoCliente('normal'); setEstadoNif('não encontrado'); setSaldoInicial(0);
+  };
+
+  const handleEdit = (client: Client) => {
+    setSelectedClient(client);
+    setName(client.name);
+    setEmail(client.email || '');
+    setNif(client.contribuinte || '');
+    setMorada(client.morada || '');
+    setLocalidade(client.localidade || '');
+    setCodigoPostal(client.codigo_postal || '');
+    setProvincia(client.provincia || '');
+    setMunicipio(client.municipio || '');
+    setPais(client.pais || '');
+    setTelefone(client.telefone || '');
+    setWebpage(client.webpage || '');
+    setTipoCliente(client.tipo_cliente || 'normal');
+    setEstadoNif(client.estado_nif || 'não encontrado');
+    setSaldoInicial(client.saldo_inicial || 0);
+    setShowForm(true);
+    setShowOptionsModal(null);
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const handleExportXLSX = () => {
+    // Basic CSV export as XLSX placeholder
+    const headers = ['NIF', 'Nome', 'Email', 'Telefone', 'Localidade', 'Tipo'];
+    const rows = filteredClients.map(c => [c.contribuinte, c.name, c.email, c.telefone, c.localidade, c.tipo_cliente]);
+    const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].map(e => e.join(",")).join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "lista_clientes.csv");
+    document.body.appendChild(link);
+    link.click();
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center bg-white p-6 border border-zinc-200 shadow-sm">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 bg-[#003366] text-white flex items-center justify-center shadow-lg">
+            <Users size={24} />
+          </div>
+          <div>
+            <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Gestão de Clientes</h2>
+            <p className="text-zinc-400 text-xs font-medium uppercase tracking-widest">Registo e consulta de contas correntes</p>
+          </div>
+        </div>
+        <div className="flex gap-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
+            <input 
+              type="text" 
+              placeholder="Pesquisar clientes..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 pr-4 py-2.5 bg-zinc-50 border border-zinc-200 text-sm focus:outline-none focus:border-[#003366] w-64 transition-all"
+            />
+          </div>
+          <button 
+            onClick={handlePrint}
+            className="p-2.5 bg-zinc-100 text-zinc-600 hover:bg-zinc-200 transition-all border border-zinc-200"
+            title="Imprimir Lista"
+          >
+            <Printer size={18} />
+          </button>
+          <button 
+            onClick={handleExportXLSX}
+            className="p-2.5 bg-zinc-100 text-zinc-600 hover:bg-zinc-200 transition-all border border-zinc-200"
+            title="Exportar XLSX"
+          >
+            <FileSpreadsheet size={18} />
+          </button>
+          <button 
+            onClick={() => {
+              resetForm();
+              setShowForm(true);
+            }}
+            className="bg-[#003366] hover:bg-[#002244] text-white font-bold px-6 py-2.5 rounded-none flex items-center gap-2 transition-all shadow-sm text-sm"
+          >
+            <Plus size={18} />
+            Novo Cliente
+          </button>
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {showForm && (
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 sm:p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowForm(false)}
+              className="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-4xl bg-white rounded-none shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+            >
+              <ClientForm 
+                initialData={selectedClient} 
+                onSuccess={() => { setShowForm(false); onRefresh(); }} 
+                onBack={() => setShowForm(false)} 
+              />
+            </motion.div>
+          </div>
+        )}
+
+        {showOptionsModal && (
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 sm:p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowOptionsModal(null)}
+              className="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative w-full max-w-md bg-white rounded-none shadow-2xl overflow-hidden"
+            >
+              <div className="p-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
+                <h3 className="font-bold text-[#003366] flex items-center gap-2 uppercase tracking-widest text-xs">
+                  <Settings size={16} />
+                  Opções do Cliente
+                </h3>
+                <button 
+                  onClick={() => setShowOptionsModal(null)}
+                  className="p-2 hover:bg-zinc-200 rounded-full transition-colors text-zinc-400 hover:text-zinc-600"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="p-6 space-y-4">
+                <p className="text-sm font-bold text-zinc-800 mb-4">{showOptionsModal.name}</p>
+                <button 
+                  onClick={() => handleEdit(showOptionsModal)}
+                  className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-all border border-zinc-100 group"
+                >
+                  <div className="w-10 h-10 bg-blue-50 text-blue-600 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-all">
+                    <Edit size={20} />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-sm font-bold text-zinc-800">Editar Cliente</p>
+                    <p className="text-[10px] text-zinc-400 uppercase tracking-wider">Alterar dados cadastrais</p>
+                  </div>
+                </button>
+                <button 
+                  onClick={() => {
+                    setShowInitialBalanceModal(showOptionsModal);
+                    setShowOptionsModal(null);
+                  }}
+                  className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-all border border-zinc-100 group"
+                >
+                  <div className="w-10 h-10 bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-all">
+                    <CreditCard size={20} />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-sm font-bold text-zinc-800">Saldo Inicial</p>
+                    <p className="text-[10px] text-zinc-400 uppercase tracking-wider">Configurar saldo de conta corrente</p>
+                  </div>
+                </button>
+                <button 
+                  onClick={() => {
+                    setShowSettledDocsModal(showOptionsModal);
+                    setShowOptionsModal(null);
+                  }}
+                  className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-all border border-zinc-100 group"
+                >
+                  <div className="w-10 h-10 bg-purple-50 text-purple-600 flex items-center justify-center group-hover:bg-purple-600 group-hover:text-white transition-all">
+                    <FileCheck size={20} />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-sm font-bold text-zinc-800">Documentos Liquidados</p>
+                    <p className="text-[10px] text-zinc-400 uppercase tracking-wider">Ver faturas e recibos pagos</p>
+                  </div>
+                </button>
+
+                <button 
+                  onClick={() => {
+                    handleDelete(showOptionsModal.id);
+                  }}
+                  className="w-full flex items-center gap-4 p-4 hover:bg-red-50 transition-all border border-red-100 group"
+                >
+                  <div className="w-10 h-10 bg-red-50 text-red-600 flex items-center justify-center group-hover:bg-red-600 group-hover:text-white transition-all">
+                    <Trash2 size={20} />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-sm font-bold text-red-600">Eliminar Cliente</p>
+                    <p className="text-[10px] text-red-400 uppercase tracking-wider">Remover permanentemente</p>
+                  </div>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {showInitialBalanceModal && (
+          <div className="fixed inset-0 z-[160] flex items-center justify-center p-4 sm:p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowInitialBalanceModal(null)}
+              className="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative w-full max-w-md bg-white rounded-none shadow-2xl overflow-hidden"
+            >
+              <div className="p-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
+                <h3 className="font-bold text-[#003366] flex items-center gap-2 uppercase tracking-widest text-xs">
+                  <CreditCard size={16} />
+                  Saldo Inicial de Conta Corrente
+                </h3>
+                <button 
+                  onClick={() => setShowInitialBalanceModal(null)}
+                  className="p-2 hover:bg-zinc-200 rounded-full transition-colors text-zinc-400 hover:text-zinc-600"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="p-8">
+                <p className="text-sm font-bold text-zinc-800 mb-6">{showInitialBalanceModal.name}</p>
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Valor do Saldo Inicial</label>
+                    <input 
+                      type="number" 
+                      step="0.01" 
+                      defaultValue={showInitialBalanceModal.saldo_inicial || 0}
+                      id="initial_balance_input"
+                      className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-3 text-zinc-800 focus:outline-none focus:border-[#003366] text-lg font-bold" 
+                      placeholder="0.00" 
+                    />
+                  </div>
+                  <div className="flex justify-end gap-3 pt-4">
+                    <button onClick={() => setShowInitialBalanceModal(null)} className="px-6 py-2 text-sm font-bold text-zinc-500 hover:bg-zinc-100 transition-all">Cancelar</button>
+                    <button 
+                      onClick={async () => {
+                        const val = (document.getElementById('initial_balance_input') as HTMLInputElement).value;
+                        try {
+                          if (!user?.empresa_id) throw new Error("Usuário sem empresa");
+                          
+                          await clienteService.updateCliente(showInitialBalanceModal.id!, {
+                            saldo_inicial: Number(val),
+                            empresa_id: user.empresa_id
+                          });
+                          
+                          setShowInitialBalanceModal(null);
+                          onRefresh();
+                        } catch (err) {
+                          console.error("Erro ao definir saldo:", err);
+                          alert("Falha ao definir saldo inicial.");
+                        }
+                      }}
+                      className="bg-emerald-600 text-white px-8 py-2 text-sm font-bold shadow-lg hover:bg-emerald-700 transition-all"
+                    >
+                      Guardar Saldo
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {showSettledDocsModal && (
+          <div className="fixed inset-0 z-[160] flex items-center justify-center p-4 sm:p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowSettledDocsModal(null)}
+              className="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative w-full max-w-4xl bg-white rounded-none shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+            >
+              <div className="p-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
+                <h3 className="font-bold text-[#003366] flex items-center gap-2 uppercase tracking-widest text-xs">
+                  <FileCheck size={16} />
+                  Documentos Liquidados
+                </h3>
+                <button 
+                  onClick={() => setShowSettledDocsModal(null)}
+                  className="p-2 hover:bg-zinc-200 rounded-full transition-colors text-zinc-400 hover:text-zinc-600"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="p-8 overflow-y-auto">
+                <p className="text-sm font-bold text-zinc-800 mb-6">{showSettledDocsModal.name}</p>
+                <div className="bg-white border border-zinc-200 rounded-none overflow-hidden">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-zinc-50 text-zinc-400 text-[10px] uppercase tracking-wider font-bold border-b border-zinc-100">
+                        <th className="px-6 py-3">Data</th>
+                        <th className="px-6 py-3">Documento</th>
+                        <th className="px-6 py-3">Tipo</th>
+                        <th className="px-6 py-3 text-right">Valor</th>
+                        <th className="px-6 py-3 text-right">Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100">
+                      {issuedDocuments.filter(d => d.cliente_id === showSettledDocsModal.id && d.status === 'pago').length > 0 ? (
+                        issuedDocuments.filter(d => d.cliente_id === showSettledDocsModal.id && d.status === 'pago').map(d => (
+                          <tr key={d.id} className="text-sm hover:bg-zinc-50">
+                            <td className="px-6 py-4 text-zinc-500">{new Date(d.data_emissao).toLocaleDateString()}</td>
+                            <td className="px-6 py-4 font-bold text-zinc-800">{d.numero_documento}</td>
+                            <td className="px-6 py-4 text-zinc-600">{d.tipo_documento}</td>
+                            <td className="px-6 py-4 text-right font-bold text-[#003366]">{formatCurrency(d.contravalor)}</td>
+                            <td className="px-6 py-4 text-right">
+                              <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase">Liquidado</span>
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr className="text-sm">
+                          <td className="px-6 py-4 text-zinc-500 italic" colSpan={5}>Nenhum documento liquidado encontrado.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* NIF Portal removed as it is now opened in a new tab */}
+
+      <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-[#003366] text-white text-[11px] uppercase tracking-wider font-bold">
+              <th className="px-6 py-4">NIF</th>
+              <th className="px-6 py-4">Estado NIF</th>
+              <th className="px-6 py-4">Nome</th>
+              <th className="px-6 py-4">Localidade</th>
+              <th className="px-6 py-4">Telefone</th>
+              <th className="px-6 py-4 text-right">Ações</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-100">
+            {filteredClients.map((client) => (
+              <tr key={client.id} className="hover:bg-zinc-50 text-sm transition-colors">
+                <td className="px-6 py-4 font-mono text-xs text-zinc-400">{client.contribuinte || 'N/A'}</td>
+                <td className="px-6 py-4">
+                  {(client.contribuinte || client.nif) ? (
+                    <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 px-2 py-0.5 border border-emerald-200 text-xs font-bold"><CheckCircle size={13} className="text-emerald-600" /> NIF Ativo</span>
+                  ) : (
+                    <span className="text-zinc-400 text-xs">N/A</span>
+                  )}
+                </td>
+                <td className="px-6 py-4">
+                  <div className="font-bold text-zinc-800">{client.name}</div>
+                  <div className="text-[10px] text-zinc-400">{client.email}</div>
+                </td>
+                <td className="px-6 py-4 text-zinc-600">{client.localidade || 'N/A'}</td>
+                <td className="px-6 py-4 text-zinc-600">{client.telefone || 'N/A'}</td>
+                <td className="px-6 py-4 text-right">
+                  <div className="flex justify-end gap-2">
+                    <button 
+                      onClick={() => onViewAccount(client)}
+                      className="text-[#003366] hover:bg-[#003366] hover:text-white px-3 py-1 text-xs font-bold border border-[#003366] transition-all"
+                    >
+                      Conta Corrente
+                    </button>
+                    <button 
+                      onClick={() => setShowOptionsModal(client)}
+                      className="text-zinc-400 hover:text-[#003366] p-1.5 hover:bg-zinc-100 transition-all"
+                      title="Opções"
+                    >
+                      <Settings size={18} />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {clients.length === 0 && (
+          <div className="p-12 text-center text-zinc-400 text-sm italic">Nenhum cliente registado.</div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+
 const WorkplaceModule = ({ 
   workplaces, 
   onRefresh, 
@@ -569,12 +2576,23 @@ const WorkplaceModule = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (name && name.trim() !== '') {
+      const isDuplicateSite = workplaces.some(w => 
+        ((w.title && w.title.toLowerCase() === name.toLowerCase()) || (w.name && w.name.toLowerCase() === name.toLowerCase()) || (code && w.code && w.code.toLowerCase() === code.toLowerCase())) &&
+        String(w.id) !== String(editingWorkplace?.id)
+      );
+      if (isDuplicateSite) {
+        alert('Atenção: Já existe um local de trabalho registado com o mesmo Nome ou Código. Não são permitidos registos duplicados.');
+        return;
+      }
+    }
     if (!user) return;
     
     const client = clients?.find(c => String(c.id) === String(clientId));
     
     const payload = {
       client_id: clientId,
+
       client_name: client?.name || '',
       title: name,
       location,
@@ -11067,7 +13085,7 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
 
   return (
     <div className="bg-white border border-zinc-200 rounded-none overflow-x-auto shadow-sm">
-      <table className="w-full text-left border-collapse min-w-[1200px]">
+      <table className="w-full text-left border-collapse min-w-[900px]">
         <thead>
           <tr className="bg-[#003366] text-white text-[10px] uppercase tracking-widest font-black border-b border-zinc-200">
             <th className="px-6 py-4">Data Emissão</th>
@@ -11102,7 +13120,7 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
                   </div>
                 )}
               </td>
-                <td className="px-6 py-4 font-black text-[#003366] whitespace-nowrap">
+                <td className="px-3 py-2 font-black text-[#003366] whitespace-nowrap">
                   <div className={`uppercase tracking-tighter ${doc.status === 'anulado' ? 'line-through text-red-400' : ''}`}>
                     {/* Colour-coded type badge */}
                     {(() => {
@@ -11146,7 +13164,7 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
                   )}
                   {doc.series_name && <div className="text-[9px] text-zinc-400 font-black uppercase tracking-widest">{doc.series_name}</div>}
                 </td>
-                <td className={`px-6 py-4 font-mono text-[10px] font-black whitespace-nowrap transition-colors ${doc.status === 'anulado' ? 'bg-red-50 text-red-600' : 'text-zinc-600 bg-zinc-50/50'}`}>
+                <td className={`px-3 py-2 font-mono text-[10px] font-black whitespace-nowrap transition-colors ${doc.status === 'anulado' ? 'bg-red-50 text-red-600' : 'text-zinc-600 bg-zinc-50/50'}`}>
                   <div className="flex flex-col">
                     <span className="text-zinc-900 font-black">{doc.invoice_number || doc.numero_documento}</span>
                     <span className="text-zinc-400 text-[9px] mt-1">
@@ -11155,7 +13173,7 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
                     {doc.status === 'anulado' && <span className="mt-1 bg-red-600 text-white px-1.5 py-0.5 rounded-full text-[8px] animate-pulse w-fit text-center">ANULADO</span>}
                   </div>
                 </td>
-                <td className="px-6 py-4 text-zinc-900 font-black min-w-[150px] uppercase">
+                <td className="px-3 py-2 text-zinc-900 font-black min-w-[120px] uppercase">
                   <div>{doc.client_name || doc.cliente_id || doc.client_id}</div>
                   <div className="text-[9px] text-zinc-400 font-bold tracking-tight">{doc.work_site_title || doc.local_trabalho || 'Sede/Balcão'}</div>
                 </td>
@@ -23388,8 +25406,8 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
   };
 
   return (
-    <div className="max-w-[98%] mx-auto space-y-8 bg-zinc-50/30 p-4 sm:p-8 min-h-screen">
-      <div className="flex items-center gap-4 mb-8">
+    <div className="max-w-[98%] mx-auto space-y-2 bg-zinc-50/30 p-3 sm:p-4 min-h-screen">
+      <div className="flex items-center gap-3 mb-2">
         <button onClick={onBack} className="p-2 hover:bg-zinc-100 rounded-none text-zinc-400 transition-colors">
           <ChevronLeft size={24} />
         </button>
@@ -23403,18 +25421,18 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-8">
+      <form onSubmit={handleSubmit} className="space-y-4">
         {/* Section 1: Informações do documento */}
-        <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="space-y-2">
+        <div className="bg-white border border-zinc-200 p-4 rounded-none shadow-sm space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-1">
               <label className="text-xs font-bold text-zinc-600">Tipo de documento <span className="text-red-500">*</span></label>
               <select 
                 value={documentType} 
                 onChange={(e) => setDocumentType(e.target.value)}
                 disabled={!!fixedDocumentType}
                 required
-                className={`w-full border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm ${fixedDocumentType ? 'bg-zinc-100 text-zinc-500' : 'bg-zinc-50'}`}
+                className={`w-full border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm ${fixedDocumentType ? 'bg-zinc-100 text-zinc-500' : 'bg-zinc-50'}`}
               >
                 {documentTypesList.length > 0 ? (
                   documentTypesList.map(t => <option key={t.codigo} value={t.codigo}>{t.descricao} ({t.codigo})</option>)
@@ -23432,7 +25450,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
             </div>
 
             {['NC', 'RC', 'Nota de Crédito', 'Recibo'].includes(documentType) && (
-              <div className="space-y-2">
+              <div className="space-y-1">
                 <label className="text-xs font-bold text-zinc-600">Documento de Origem (Obrigatório)</label>
                 <select
                   value={originDocId}
@@ -23481,7 +25499,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                     }
                   }}
                   required
-                  className="w-full bg-amber-50 border border-amber-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-amber-600 text-sm"
+                  className="w-full bg-amber-50 border border-amber-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-amber-600 text-sm"
                 >
                   <option value="">Selecionar Documento vinculado...</option>
                   {originDocs.map(d => (
@@ -23496,13 +25514,13 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                 )}
               </div>
             )}
-            <div className="space-y-2">
+            <div className="space-y-1">
               <label className="text-xs font-bold text-zinc-600">Série</label>
               <select 
                 value={selectedSerieFiscal === null ? '' : selectedSerieFiscal} 
                 onChange={(e) => setSelectedSerieFiscal(e.target.value ? Number(e.target.value) : null)} 
                 required
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
               >
                 <option value="">Selecionar Série</option>
                 {filteredSeries.length === 0 ? (
@@ -23514,12 +25532,12 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                 )}
               </select>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1">
               <label className="text-xs font-bold text-zinc-600">Local de trabalho</label>
               <select 
                 value={isNaN(Number(workSiteId)) && workSiteId !== '' ? '' : workSiteId} 
                 onChange={(e) => setWorkSiteId(e.target.value)}
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
               >
                 <option value="">Selecione o local</option>
                 {workSites.map(ws => <option key={ws.id} value={ws.id.toString()}>{ws.title}</option>)}
@@ -23527,86 +25545,86 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
             </div>
 
             {selectedSeries?.type === 'manual' && (
-              <div className="col-span-1 md:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6 bg-amber-50/50 p-4 border border-amber-100">
+              <div className="col-span-1 md:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-4 bg-amber-50/50 p-3 border border-amber-100">
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-amber-600 block">Número do Doc. Manual <span className="text-red-500">*</span></label>
-                  <input type="text" value={documentNumberManual} onChange={e => setDocumentNumberManual(e.target.value)} required className="w-full border border-amber-300 px-3 py-2 text-sm focus:outline-none focus:border-amber-600 bg-white" />
+                  <input type="text" value={documentNumberManual} onChange={e => setDocumentNumberManual(e.target.value)} required className="w-full border border-amber-300 px-3 py-1.5 text-sm focus:outline-none focus:border-amber-600 bg-white" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-amber-600 block">Ref. da Série Manual <span className="text-red-500">*</span></label>
-                  <input type="text" value={referenceManual} onChange={e => setReferenceManual(e.target.value)} required className="w-full border border-amber-300 px-3 py-2 text-sm focus:outline-none focus:border-amber-600 bg-white" />
+                  <input type="text" value={referenceManual} onChange={e => setReferenceManual(e.target.value)} required className="w-full border border-amber-300 px-3 py-1.5 text-sm focus:outline-none focus:border-amber-600 bg-white" />
                 </div>
               </div>
             )}
 
-            <div className="space-y-2">
+            <div className="space-y-1">
               <label className="text-xs font-bold text-zinc-600">Data de emissão</label>
               <input 
                 type="date" 
                 value={date} 
                 onChange={(e) => setDate(e.target.value)}
                 required
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
               />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1">
               <label className="text-xs font-bold text-zinc-600">Data de vencimento</label>
               <input 
                 type="date" 
                 value={dueDate} 
                 onChange={(e) => setDueDate(e.target.value)}
                 required
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
               />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1">
               <label className="text-xs font-bold text-zinc-600">Cativação de IVA</label>
               <select 
                 value={vatWithholding} 
                 onChange={(e) => setVatWithholding(e.target.value)}
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
               >
                 <option value="0">Sem cativação</option>
                 <option value="0.5">50%</option>
                 <option value="1">100%</option>
               </select>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1">
               <label className="text-xs font-bold text-zinc-600">Câmbio</label>
               <input 
                 type="number" 
                 value={exchangeRate} 
                 onChange={(e) => setExchangeRate(e.target.value)}
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
               />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1">
               <label className="text-xs font-bold text-zinc-600">Moeda</label>
               <select 
                 value={currency} 
                 onChange={(e) => setCurrency(e.target.value)}
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
               >
                 <option value="Kwanza">Kwanza</option>
                 <option value="USD">USD</option>
                 <option value="Euro">Euro</option>
               </select>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1">
               <label className="text-xs font-bold text-zinc-600">Contravalor</label>
               <input 
                 type="number" 
                 value={counterValue} 
                 onChange={(e) => setCounterValue(e.target.value)}
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
               />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1">
               <label className="text-xs font-bold text-zinc-600">Seleccione a Taxa de Retenção</label>
               <select 
                 value={retencaoTaxa} 
                 onChange={(e) => setRetencaoTaxa(e.target.value)}
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
               >
                 <option value="">Selecione...</option>
                 <option value="6.5">Retencao II 6,5 %</option>
@@ -23617,21 +25635,21 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                 <option value="0-ii">Retencao II 0%</option>
               </select>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1">
               <label className="text-xs font-bold text-zinc-600">Desconto global</label>
               <input 
                 type="number" 
                 value={globalDiscount} 
                 onChange={(e) => setGlobalDiscount(e.target.value)}
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
               />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1">
               <label className="text-xs font-bold text-zinc-600">Condição de Pagamento</label>
               <select 
                 value={paymentCondition} 
                 onChange={(e) => setPaymentCondition(e.target.value)}
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
               >
                 <option value="Pronto Pagamento">Pronto Pagamento</option>
                 <option value="A Prazo">A Prazo</option>
@@ -23643,13 +25661,13 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
               ) || (documentType || '').toLowerCase().includes('recibo') || paymentCondition === 'Pronto Pagamento';
               return isPaymentRequiredDoc ? (
                 <>
-                  <div className="space-y-2">
+                  <div className="space-y-1">
                     <label className="text-xs font-bold text-zinc-600">Método de Pagamento <span className="text-red-500">*</span></label>
                     <select 
                       value={paymentMethod} 
                       onChange={(e) => setPaymentMethod(e.target.value)}
                       required={isPaymentRequiredDoc}
-                      className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+                      className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
                     >
                       <option value="">Selecione...</option>
                       <option value="Numerário">Numerário / Dinheiro</option>
@@ -23659,13 +25677,13 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                       <option value="Cheque">Cheque</option>
                     </select>
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-1">
                     <label className="text-xs font-bold text-zinc-600">Caixa / Conta <span className="text-red-500">*</span></label>
                     <select 
                       value={cashBox || ''} 
                       onChange={(e) => setCashBox(e.target.value)}
                       required={isPaymentRequiredDoc}
-                      className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
+                      className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
                     >
                       <option value="">Selecione...</option>
                       {caixas.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -23677,11 +25695,10 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
           </div>
         </div>
 
-        {/* Section 2: Informações do adquirente - form11.PNG style */}
-        <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-6">
-          <h3 className="text-sm font-bold text-[#0f2a4a] border-b border-zinc-100 pb-3 uppercase tracking-wide">Informações do adquirente</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {/* Código do país */}
+        {/* Section 2: Informações do adquirente */}
+        <div className="bg-white border border-zinc-200 p-4 rounded-none shadow-sm space-y-4">
+          <h3 className="text-sm font-bold text-[#0f2a4a] border-b border-zinc-100 pb-2 uppercase tracking-wide">Informações do adquirente</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-1">
               <label className="text-xs font-semibold text-zinc-600">Código do país <span className="text-red-500">*</span></label>
               <select
@@ -23702,7 +25719,6 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                 <option value="NG">NG - Nigéria</option>
               </select>
             </div>
-            {/* NIF com botão de pesquisa */}
             <div className="space-y-1">
               <label className="text-xs font-semibold text-zinc-600">Nº de identificação fiscal <span className="text-red-500">*</span></label>
               <div className="flex">
@@ -23711,7 +25727,6 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                   value={clientNifSearch}
                   onChange={(e) => {
                     setClientNifSearch(e.target.value);
-                    // Auto-select client by NIF
                     const found = clients.find(c => c.contribuinte && c.contribuinte.toString() === e.target.value);
                     if (found) setClientId(Number(found.id));
                   }}
@@ -23731,7 +25746,6 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                 </button>
               </div>
             </div>
-            {/* Nome */}
             <div className="space-y-1">
               <label className="text-xs font-semibold text-zinc-600">Nome <span className="text-red-500">*</span></label>
               <select
@@ -23751,7 +25765,6 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                 {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
-            {/* Data prestação */}
             <div className="space-y-1">
               <label className="text-xs font-semibold text-zinc-600">Data prestação de bens/serviços <span className="text-red-500">*</span></label>
               <input
@@ -23762,7 +25775,6 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                 className="w-full bg-white border border-zinc-300 rounded-none px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#0f2a4a] text-sm"
               />
             </div>
-            {/* Local de prestação */}
             <div className="space-y-1 md:col-span-2">
               <label className="text-xs font-semibold text-zinc-600">Local de prestação de bens/serviços <span className="text-red-500">*</span></label>
               <input
@@ -23776,9 +25788,9 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
           </div>
         </div>
 
-        {/* Section 3: Bens e serviços - form11.PNG style AGT table */}
-        <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-6">
-          <div className="flex justify-between items-center border-b border-zinc-100 pb-4">
+        {/* Section 3: Bens e serviços */}
+        <div className="bg-white border border-zinc-200 p-4 rounded-none shadow-sm space-y-4">
+          <div className="flex justify-between items-center border-b border-zinc-100 pb-3">
             <h3 className="text-sm font-bold text-[#0f2a4a] uppercase tracking-wide">Bens e serviços</h3>
             <button
               type="button"
@@ -23799,34 +25811,34 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
             <table className="w-full text-xs border-collapse">
               <thead>
                 <tr className="bg-[#0f2a4a] text-white">
-                  <th className="px-3 py-2.5 text-left font-semibold w-10">#</th>
-                  <th className="px-3 py-2.5 text-left font-semibold">Descrição do produto</th>
-                  <th className="px-3 py-2.5 text-center font-semibold w-24">Quantidade</th>
-                  <th className="px-3 py-2.5 text-center font-semibold w-28">Preço Unit</th>
-                  <th className="px-3 py-2.5 text-center font-semibold w-28">Desconto (%)</th>
-                  <th className="px-3 py-2.5 text-center font-semibold w-32">Imposto aplicado</th>
-                  <th className="px-3 py-2.5 text-center font-semibold w-24">Acção</th>
+                  <th className="px-3 py-2 text-left font-semibold w-10">#</th>
+                  <th className="px-3 py-2 text-left font-semibold">Descrição do produto</th>
+                  <th className="px-3 py-2 text-center font-semibold w-24">Quantidade</th>
+                  <th className="px-3 py-2 text-center font-semibold w-28">Preço Unit</th>
+                  <th className="px-3 py-2 text-center font-semibold w-28">Desconto (%)</th>
+                  <th className="px-3 py-2 text-center font-semibold w-32">Imposto aplicado</th>
+                  <th className="px-3 py-2 text-center font-semibold w-24">Acção</th>
                 </tr>
               </thead>
               <tbody>
                 {items.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-16 text-center text-zinc-300 font-semibold uppercase tracking-widest text-xs italic border border-dashed border-zinc-200">
+                    <td colSpan={7} className="py-12 text-center text-zinc-300 font-semibold uppercase tracking-widest text-xs italic border border-dashed border-zinc-200">
                       Nenhum bem ou serviço adicionado
                     </td>
                   </tr>
                 ) : (
                   items.map((item, idx) => (
                     <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-zinc-50/60'}>
-                      <td className="px-3 py-2.5 text-zinc-500 border-b border-zinc-100">{idx + 1}</td>
-                      <td className="px-3 py-2.5 border-b border-zinc-100">
+                      <td className="px-3 py-2 text-zinc-500 border-b border-zinc-100">{idx + 1}</td>
+                      <td className="px-3 py-2 border-b border-zinc-100">
                         <div className="font-medium text-zinc-800">{item.description || '—'}</div>
                         {item.referencia && <div className="text-zinc-400 text-[10px]">Ref: {item.referencia}</div>}
                       </td>
-                      <td className="px-3 py-2.5 text-center border-b border-zinc-100 text-zinc-700">{item.quantity}</td>
-                      <td className="px-3 py-2.5 text-center border-b border-zinc-100 text-zinc-700">{formatCurrency(Number(item.unit_price) || 0)}</td>
-                      <td className="px-3 py-2.5 text-center border-b border-zinc-100 text-zinc-700">{item.desconto || 0}%</td>
-                      <td className="px-3 py-2.5 text-center border-b border-zinc-100">
+                      <td className="px-3 py-2 text-center border-b border-zinc-100 text-zinc-700">{item.quantity}</td>
+                      <td className="px-3 py-2 text-center border-b border-zinc-100 text-zinc-700">{formatCurrency(Number(item.unit_price) || 0)}</td>
+                      <td className="px-3 py-2 text-center border-b border-zinc-100 text-zinc-700">{item.desconto || 0}%</td>
+                      <td className="px-3 py-2 text-center border-b border-zinc-100">
                         {(() => {
                           const tax = activeTaxes.find(t => t.id === item.tax_id || String(t.id) === String(item.tax_id));
                           return tax ? (
@@ -23836,7 +25848,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                           ) : <span className="text-zinc-400">—</span>;
                         })()}
                       </td>
-                      <td className="px-3 py-2.5 border-b border-zinc-100">
+                      <td className="px-3 py-2 border-b border-zinc-100">
                         <div className="flex items-center justify-center gap-1.5">
                           <button
                             type="button"
@@ -23863,8 +25875,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                               });
                               setIsAgtItemModalOpen(true);
                             }}
-                            title="Editar"
-                            className="p-1.5 bg-white border border-zinc-200 text-zinc-500 hover:text-[#0f2a4a] hover:border-[#0f2a4a] transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                            className="p-1.5 bg-white border border-zinc-200 text-zinc-500 hover:text-[#0f2a4a] hover:border-[#0f2a4a] transition-all"
                           >
                             <Pencil size={13} />
                           </button>
@@ -23872,8 +25883,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                             type="button"
                             disabled={isCertified}
                             onClick={() => removeItem(idx)}
-                            title="Remover"
-                            className="p-1.5 bg-white border border-zinc-200 text-zinc-500 hover:text-red-600 hover:border-red-300 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                            className="p-1.5 bg-white border border-zinc-200 text-zinc-500 hover:text-red-600 hover:border-red-300 transition-all"
                           >
                             <Trash2 size={13} />
                           </button>
@@ -23886,10 +25896,8 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
             </table>
           </div>
 
-
-
-          <div className="flex justify-end pt-8">
-            <div className="w-full max-w-sm space-y-3 bg-zinc-50 p-6 border border-zinc-100">
+          <div className="flex justify-end pt-4">
+            <div className="w-full max-w-sm space-y-2 bg-zinc-50 p-4 border border-zinc-100">
                <div className="flex justify-between text-xs font-bold text-zinc-500">
                   <span>SUBTOTAL BRUTO</span>
                   <span>{formatCurrency(total)}</span>
@@ -23902,7 +25910,6 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                  </div>
                )}
 
-               {/* Tax Breakdown */}
                {Object.entries(vatBreakdown).map(([label, value]) => (
                  value > 0 && (
                    <div key={label} className="flex justify-between text-xs font-bold text-emerald-500">
@@ -23911,54 +25918,36 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                    </div>
                  )
                ))}
-
-               {vatWithholdingAmount > 0 && (
-                 <div className="flex justify-between text-xs font-bold text-orange-500">
-                    <span>CATIVAÇÃO DE IVA ({Number(vatWithholding) * 100}%)</span>
-                    <span>- {formatCurrency(vatWithholdingAmount)}</span>
-                 </div>
-               )}
-               {Number(globalDiscount) > 0 && (
-                 <div className="flex justify-between text-xs font-bold text-red-500">
-                    <span>DESCONTO GLOBAL</span>
-                    <span>- {formatCurrency(Number(globalDiscount))}</span>
-                 </div>
-               )}
-               {retencaoFonteTotal > 0 && (
                  <div className="flex justify-between text-xs font-bold text-zinc-600 bg-zinc-200/50 px-1">
                     <span>RETENÇÕES</span>
                     <span>- {formatCurrency(retencaoFonteTotal)}</span>
                  </div>
-               )}
-               <div className="pt-4 border-t border-zinc-200 flex justify-between items-center">
+               <div className="pt-2 border-t border-zinc-200 flex justify-between items-center">
                   <span className="text-[10px] font-black text-[#003366] uppercase tracking-widest">Total Documento</span>
-                  <span className="text-xl font-black text-[#003366]">{formatCurrency(finalTotal)}</span>
+                  <span className="text-lg font-black text-[#003366]">{formatCurrency(finalTotal)}</span>
                </div>
-               <p className="text-[8px] text-zinc-400 font-bold uppercase tracking-tighter mt-1 italic leading-none">
-                 * Os valores finais podem sofrer ajustes automáticos de moeda e retenção de fonte.
-               </p>
             </div>
           </div>
         </div>
 
-        <div className="flex justify-end gap-4 pt-6 pb-20">
+        <div className="flex justify-end gap-3 pt-2 pb-12">
           <button 
             type="button" 
             onClick={onBack}
-            className="px-10 py-4 text-[10px] font-black uppercase tracking-widest text-zinc-400 hover:text-zinc-600 transition-all"
+            className="px-8 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 hover:text-zinc-600 transition-all"
           >
             Cancelar Emissão
           </button>
           <button 
             type="submit"
-            className="bg-[#003366] text-white px-12 py-4 rounded-none text-[10px] font-black uppercase tracking-[0.2em] shadow-2xl shadow-blue-900/30 hover:bg-[#002244] active:scale-95 transition-all"
+            className="bg-[#003366] text-white px-10 py-3 rounded-none text-[10px] font-black uppercase tracking-[0.2em] shadow-lg shadow-blue-900/20 hover:bg-[#002244] transition-all"
           >
             Confirmar e Emitir Documento
           </button>
         </div>
       </form>
 
-      {/* AgtItemModal - FORM 2.PNG style */}
+      {/* AgtItemModal */}
       {isAgtItemModalOpen && (
         <AgtItemModal
           isOpen={isAgtItemModalOpen}
@@ -24014,1998 +26003,13 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
   );
 };
 
-const WorkSiteForm = ({ clients, onBack, onSuccess, initialData }: { clients: Client[], onBack: () => void, onSuccess: (site: Omit<WorkSite, 'id'>) => void, initialData?: WorkSite | null }) => {
-  const [clientId, setClientId] = useState<string | ''>(initialData?.client_id?.toString() || '');
-  const [startDate, setStartDate] = useState(initialData?.start_date || '');
-  const [endDate, setEndDate] = useState(initialData?.end_date || '');
-  const [title, setTitle] = useState(initialData?.title || '');
-  const [code, setCode] = useState(initialData?.code || '');
-  const [staffPerDay, setStaffPerDay] = useState(initialData?.staff_per_day || 0);
-  const [totalStaff, setTotalStaff] = useState(initialData?.total_staff || 0);
-  const [location, setLocation] = useState(initialData?.location || '');
-  const [description, setDescription] = useState(initialData?.description || '');
-  const [contact, setContact] = useState(initialData?.contact || '');
-  const [observations, setObservations] = useState(initialData?.observations || '');
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!clientId) return;
-    const client = clients.find(c => String(c.id) === String(clientId));
-    onSuccess({
-      client_id: clientId.toString(),
-      client_name: client?.name || '',
-      start_date: startDate,
-      end_date: endDate,
-      title,
-      code,
-      staff_per_day: staffPerDay,
-      total_staff: totalStaff,
-      location,
-      description,
-      contact,
-      observations
-    });
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      <div className="space-y-1">
-        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Seleccione um Cliente</label>
-        <select 
-          value={clientId} onChange={e => setClientId(e.target.value)} required
-          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-        >
-          <option value="">Selecionar Cliente...</option>
-          {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
-      </div>
-      <div className="space-y-1">
-        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Titulo da Obra/Serviço</label>
-        <input 
-          type="text" value={title} onChange={e => setTitle(e.target.value)} required
-          placeholder="Digite o título da obra ou serviço"
-          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-        />
-      </div>
-      <div className="space-y-1">
-        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data de Abertura de Obra/Serviço</label>
-        <input 
-          type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required
-          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-        />
-      </div>
-      <div className="space-y-1">
-        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data de Encerramento de Obra/Serviço</label>
-        <input 
-          type="date" value={endDate} onChange={e => setEndDate(e.target.value)} required
-          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-        />
-      </div>
-      <div className="space-y-1">
-        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">COD de Obra/Serv</label>
-        <input 
-          type="text" value={code} onChange={e => setCode(e.target.value)} required
-          placeholder="Código identificador da obra"
-          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-        />
-      </div>
-      <div className="space-y-1">
-        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Total de Efectivos por Dia</label>
-        <input 
-          type="number" value={staffPerDay} onChange={e => setStaffPerDay(Number(e.target.value))} required
-          placeholder="Número de trabalhadores diários"
-          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-        />
-      </div>
-      <div className="space-y-1">
-        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Total de Efectivos</label>
-        <input 
-          type="number" value={totalStaff} onChange={e => setTotalStaff(Number(e.target.value))} required
-          placeholder="Total de trabalhadores no projeto"
-          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-        />
-      </div>
-      <div className="space-y-1">
-        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Localização da Obra/Serviço</label>
-        <input 
-          type="text" value={location} onChange={e => setLocation(e.target.value)} required
-          placeholder="Endereço ou coordenadas da obra"
-          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-        />
-      </div>
-      <div className="space-y-1">
-        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Contacto da Obra/Serviço</label>
-        <input 
-          type="text" value={contact} onChange={e => setContact(e.target.value)} required
-          placeholder="Telefone ou responsável no local"
-          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-        />
-      </div>
-      <div className="space-y-1">
-        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Descrição da Obra/Serviço</label>
-        <textarea 
-          value={description} onChange={e => setDescription(e.target.value)} required
-          placeholder="Breve descrição dos trabalhos a realizar"
-          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm min-h-[80px]"
-        />
-      </div>
-      <div className="md:col-span-2 space-y-1">
-        <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Observações</label>
-        <textarea 
-          value={observations} onChange={e => setObservations(e.target.value)}
-          placeholder="Notas adicionais ou restrições"
-          className="w-full bg-zinc-50 border border-zinc-300 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm min-h-[80px]"
-        />
-      </div>
-      <div className="md:col-span-2 flex justify-end gap-3">
-        <button type="button" onClick={onBack} className="text-zinc-500 hover:text-zinc-700 text-sm font-medium">Cancelar</button>
-        <button type="submit" className="bg-[#003366] text-white font-bold px-8 py-2.5 rounded-none hover:bg-[#002244] transition-all text-sm shadow-sm">
-          {initialData ? 'Atualizar' : 'Registar'}
-        </button>
-      </div>
-    </form>
-  );
-};
-
-const WorkSiteMovementForm = ({ onBack, onSuccess, movements = [] }: { onBack: () => void, onSuccess: (movement: any) => void, movements?: WorkSiteMovement[] }) => {
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [docNo, setDocNo] = useState('');
-  const [company, setCompany] = useState('');
-  const [description, setDescription] = useState('');
-  const [debit, setDebit] = useState<number>(0);
-  const [credit, setCredit] = useState<number>(0);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onSuccess({ date, doc_no: docNo, company, description, debit, credit });
-  };
-
-  return (
-    <div className="space-y-8">
-      <form onSubmit={handleSubmit} className="space-y-4 bg-zinc-50 p-6 border border-zinc-200">
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold text-zinc-400 uppercase">Data</label>
-            <input type="date" value={date} onChange={e => setDate(e.target.value)} required className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm" />
-          </div>
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold text-zinc-400 uppercase">Nº Documento</label>
-            <input type="text" value={docNo} onChange={e => setDocNo(e.target.value)} placeholder="Ex: FT-2026/001" className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm" />
-          </div>
-        </div>
-        <div className="space-y-1">
-          <label className="text-[10px] font-bold text-zinc-400 uppercase">Empresa/Entidade</label>
-          <input type="text" value={company} onChange={e => setCompany(e.target.value)} placeholder="Nome da empresa" className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm" />
-        </div>
-        <div className="space-y-1">
-          <label className="text-[10px] font-bold text-zinc-400 uppercase">Descrição</label>
-          <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Descrição do movimento" className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm min-h-[60px]" />
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold text-zinc-400 uppercase">Débito (Saída)</label>
-            <input type="number" value={debit} onChange={e => setDebit(Number(e.target.value))} className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm" />
-          </div>
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold text-zinc-400 uppercase">Crédito (Entrada)</label>
-            <input type="number" value={credit} onChange={e => setCredit(Number(e.target.value))} className="w-full border border-zinc-300 rounded-none px-3 py-2 text-sm" />
-          </div>
-        </div>
-        <div className="flex justify-end gap-3 pt-4">
-          <button type="button" onClick={onBack} className="text-zinc-500 hover:text-zinc-700 text-sm font-medium">Cancelar</button>
-          <button type="submit" className="bg-[#003366] text-white font-bold px-6 py-2 rounded-none hover:bg-[#002244] text-sm">Salvar Movimento</button>
-        </div>
-      </form>
-
-      <div className="space-y-3">
-        <h4 className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
-          <History size={14} />
-          Movimentos Associados Recentemente
-        </h4>
-        <div className="border border-zinc-200 max-h-[200px] overflow-y-auto">
-          <table className="w-full text-left text-[11px]">
-            <thead className="bg-zinc-100 sticky top-0">
-              <tr className="text-zinc-500 font-bold uppercase tracking-tighter">
-                <th className="px-4 py-2">Data</th>
-                <th className="px-4 py-2">Doc</th>
-                <th className="px-4 py-2 text-right">Valor</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100">
-              {movements.slice().reverse().map(m => (
-                <tr key={m.id}>
-                  <td className="px-4 py-2 text-zinc-500">{new Date(m.date).toLocaleDateString()}</td>
-                  <td className="px-4 py-2 font-bold text-zinc-700">{m.doc_no}</td>
-                  <td className={`px-4 py-2 text-right font-bold ${m.debit > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                    {formatCurrency(m.debit > 0 ? m.debit : m.credit)}
-                  </td>
-                </tr>
-              ))}
-              {movements.length === 0 && (
-                <tr>
-                  <td colSpan={3} className="px-4 py-8 text-center text-zinc-400 italic">Nenhum movimento associado.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const WorkSiteRegistration = ({ workSite, onBack }: { workSite: WorkSite, onBack: () => void }) => {
-  const handleDownloadPDF = () => {
-    exportToPDF('worksite-registration-area', `cadastro_obra_${workSite.code}.pdf`);
-  };
-
-  return (
-    <div id="worksite-registration-area" className="bg-white min-h-screen p-8 sm:p-12 space-y-10 max-w-5xl mx-auto shadow-2xl border border-zinc-100 print-area">
-      {/* Document Header */}
-      <div className="flex justify-between items-start border-b-4 border-[#003366] pb-8">
-        <div className="flex items-center gap-6">
-          <div className="w-20 h-20 bg-[#003366] flex items-center justify-center text-white">
-            <Construction size={40} />
-          </div>
-          <div>
-            <h1 className="text-3xl font-black text-[#003366] tracking-tighter uppercase">Ficha de Cadastro de Obra</h1>
-            <p className="text-zinc-400 text-xs font-bold uppercase tracking-[0.3em] mt-1">Registo Oficial de Local de Trabalho</p>
-          </div>
-        </div>
-        <div className="text-right space-y-1">
-          <div className="bg-zinc-100 px-4 py-2 font-mono text-sm font-bold text-[#003366]">
-            REF: {workSite.code}
-          </div>
-          <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">Data de Emissão: {new Date().toLocaleDateString('pt-PT')}</p>
-        </div>
-      </div>
-
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        {/* Left Column - Main Info */}
-        <div className="md:col-span-2 space-y-8">
-          <section className="space-y-4">
-            <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest border-l-4 border-[#003366] pl-3">Informações Gerais</h3>
-            <div className="grid grid-cols-2 gap-6 bg-zinc-50/50 p-6 border border-zinc-100">
-              <div className="space-y-1">
-                <p className="text-[10px] font-bold text-zinc-400 uppercase">Título do Projecto</p>
-                <p className="font-bold text-zinc-800 text-lg">{workSite.title}</p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-[10px] font-bold text-zinc-400 uppercase">Cliente Responsável</p>
-                <p className="font-bold text-zinc-800">{workSite.client_name}</p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-[10px] font-bold text-zinc-400 uppercase">Localização / Endereço</p>
-                <p className="font-medium text-zinc-600">{workSite.location}</p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-[10px] font-bold text-zinc-400 uppercase">Contacto de Emergência</p>
-                <p className="font-bold text-zinc-800">{workSite.contact}</p>
-              </div>
-            </div>
-          </section>
-
-          <section className="space-y-4">
-            <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest border-l-4 border-[#003366] pl-3">Cronograma e Prazos</h3>
-            <div className="grid grid-cols-2 gap-6 bg-zinc-50/50 p-6 border border-zinc-100">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
-                  <Calendar size={20} />
-                </div>
-                <div>
-                  <p className="text-[10px] font-bold text-zinc-400 uppercase">Data de Abertura</p>
-                  <p className="font-bold text-zinc-800">{new Date(workSite.start_date).toLocaleDateString('pt-PT')}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center text-red-600">
-                  <Calendar size={20} />
-                </div>
-                <div>
-                  <p className="text-[10px] font-bold text-zinc-400 uppercase">Previsão de Conclusão</p>
-                  <p className="font-bold text-zinc-800">{new Date(workSite.end_date).toLocaleDateString('pt-PT')}</p>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section className="space-y-4">
-            <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest border-l-4 border-[#003366] pl-3">Descrição dos Trabalhos</h3>
-            <div className="bg-zinc-50/50 p-6 border border-zinc-100 min-h-[120px]">
-              <p className="text-zinc-600 text-sm leading-relaxed whitespace-pre-wrap">{workSite.description || 'Nenhuma descrição detalhada fornecida.'}</p>
-            </div>
-          </section>
-        </div>
-
-        {/* Right Column - Stats and Meta */}
-        <div className="space-y-8">
-          <section className="space-y-4">
-            <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest border-l-4 border-[#003366] pl-3">Recursos Humanos</h3>
-            <div className="space-y-4">
-              <div className="bg-[#003366] text-white p-6 shadow-lg">
-                <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-2">Total de Efectivos</p>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-4xl font-black">{workSite.total_staff}</span>
-                  <span className="text-xs font-bold uppercase opacity-60">Colaboradores</span>
-                </div>
-              </div>
-              <div className="bg-white border border-zinc-200 p-6">
-                <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Média Diária</p>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-2xl font-black text-zinc-800">{workSite.staff_per_day}</span>
-                  <span className="text-xs font-bold uppercase text-zinc-400">Pessoas/Dia</span>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section className="space-y-4">
-            <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest border-l-4 border-[#003366] pl-3">Observações Adicionais</h3>
-            <div className="bg-amber-50/50 p-6 border border-amber-100 min-h-[150px]">
-              <p className="text-amber-900/70 text-xs leading-relaxed italic">{workSite.observations || 'Sem observações registadas.'}</p>
-            </div>
-          </section>
-        </div>
-      </div>
-
-      {/* Action Buttons - No Print */}
-      <div className="flex justify-end gap-4 pt-12 border-t border-zinc-100 no-print">
-        <button 
-          onClick={() => window.print()}
-          className="flex items-center gap-2 bg-white border border-zinc-300 text-zinc-700 px-6 py-3 font-bold text-sm hover:bg-zinc-50 transition-all shadow-sm"
-        >
-          <Printer size={18} /> Imprimir Ficha
-        </button>
-        <button 
-          onClick={handleDownloadPDF}
-          className="flex items-center gap-2 bg-[#003366] text-white px-6 py-3 font-bold text-sm hover:bg-[#002244] transition-all shadow-lg"
-        >
-          <Download size={18} /> Baixar PDF
-        </button>
-        <button 
-          onClick={onBack}
-          className="flex items-center gap-2 bg-zinc-100 text-zinc-600 px-6 py-3 font-bold text-sm hover:bg-zinc-200 transition-all"
-        >
-          Voltar à Lista
-        </button>
-      </div>
-
-      {/* Signatures */}
-      <div className="pt-20 grid grid-cols-2 gap-20 text-center">
-        <div className="space-y-8">
-          <div className="border-b border-zinc-300 pb-2"></div>
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Responsável pelo Cadastro</p>
-        </div>
-        <div className="space-y-8">
-          <div className="border-b border-zinc-300 pb-2"></div>
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Aprovação Direcção</p>
-        </div>
-      </div>
-
-      <div className="text-center pt-10">
-        <p className="text-[8px] text-zinc-300 font-bold uppercase tracking-[0.4em]">Este documento é um registo oficial do sistema de gestão AGT</p>
-      </div>
-    </div>
-  );
-};
-
-const WorkSiteManagement = ({ workSite, movements, invoices = [], onBack, employees = [], allWorkSites = [], onRefreshEmployees }: { 
-  workSite: WorkSite, 
-  movements: WorkSiteMovement[], 
-  invoices?: IssuedDocument[],
-  onBack: () => void,
-  employees?: Employee[],
-  allWorkSites?: WorkSite[],
-  onRefreshEmployees?: () => void
-}) => {
-  const [activeTab, setActiveTab] = useState<'finance' | 'invoices' | 'stock' | 'employees'>('finance');
-  const [staffSearch, setStaffSearch] = useState('');
-  const [movingEmployee, setMovingEmployee] = useState<Employee | null>(null);
-
-  const siteEmployees = (employees ?? []).filter(emp => emp.local_trabalho_id?.toString() === workSite.id?.toString());
-  const filteredSiteEmployees = siteEmployees.filter(emp => 
-    emp.name.toLowerCase().includes(staffSearch.toLowerCase()) || 
-    emp.role.toLowerCase().includes(staffSearch.toLowerCase()) ||
-    String(emp.id).includes(staffSearch)
-  );
-
-  const handleMoveEmployee = async (employeeId: number, targetWorkplaceId: string) => {
-    try {
-      const { error } = await supabase
-        .from('colaboradores')
-        .update({ local_trabalho_id: targetWorkplaceId })
-        .eq('id', employeeId);
-
-      if (error) throw error;
-      alert('Colaborador transferido com sucesso!');
-      setMovingEmployee(null);
-      if (onRefreshEmployees) onRefreshEmployees();
-    } catch (err) {
-      console.error('Error moving employee:', err);
-      alert('Erro ao transferir colaborador.');
-    }
-  };
-
-  const handlePrintEmployeeList = () => {
-    window.print();
-  };
-
-  const handleDownloadEmployeePDF = () => {
-    const doc = new jsPDF('p', 'mm', 'a4');
-    doc.setFontSize(16);
-    doc.text(`Lista de Colaboradores - ${workSite?.title || 'Todos'}`, 14, 20);
-    doc.setFontSize(10);
-    
-    let y = 30;
-    doc.text('Nome', 14, y);
-    doc.text('Cargo', 80, y);
-    doc.text('Contacto', 140, y);
-    doc.text('Estado', 180, y);
-    y += 10;
-    
-    filteredSiteEmployees.forEach(emp => {
-      if (y > 270) {
-        doc.addPage();
-        y = 20;
-      }
-      doc.text(emp.name.substring(0, 30), 14, y);
-      doc.text((emp.role || '---').substring(0, 25), 80, y);
-      doc.text(emp.phone || emp.email || '---', 140, y);
-      doc.text(emp.status === 'active' ? 'Presente' : 'Ausente', 180, y);
-      y += 8;
-    });
-
-    doc.save(`colaboradores_${(workSite?.title || 'lista').replace(/ /g, '_')}.pdf`);
-  };
-  
-  // Show all certified issued documents for the company in the work site view
-  // (documentos_emitidos does not have a work_site_id column, so we show all certified docs)
-  const siteInvoices = (invoices ?? []).filter(inv => inv.is_certified === true || (inv as any).estado_documento === 'CERTIFICADO' || (inv as any).estado === 'ATIVO' || (inv as any).estado_documento === 'ativo');
-  const totalInvoiced = (siteInvoices ?? []).reduce((sum, inv) => sum + (inv.contravalor || inv.total || 0), 0);
-  const totalPaid = (siteInvoices ?? []).filter(inv => inv.status === 'paid' || (inv.estado_documento as string) === 'pago' || (inv.estado_documento as string) === 'ativo' || inv.payment_status === 'paid').reduce((sum, inv) => sum + (inv.contravalor || inv.total || 0), 0);
-  const totalPending = totalInvoiced - totalPaid;
-  const totalVoided = (siteInvoices ?? []).filter(inv => inv.status === 'anulado' || (inv.estado_documento as string) === 'anulado').reduce((sum, inv) => sum + (inv.contravalor || inv.total || 0), 0);
-  
-  // Calculate specific site costs based on invoices related to the site (purchases or direct expenses)
-  const siteMovements = (movements ?? []).filter(m => m.work_site_id?.toString() === workSite.id?.toString());
-  
-  // Combine movements with sales (all invoices related to site) for a full financial view
-  const combinedMovements = [
-    ...siteMovements.map(m => ({ 
-      id: m.id, 
-      date: m.date, 
-      doc_no: m.doc_no || 'TRF', 
-      company: m.company || 'Diversos',
-      description: m.description, 
-      debit: m.debit || 0,
-      credit: m.credit || 0,
-      source: 'expense' 
-    })),
-    ...siteInvoices.filter(inv => inv.status !== 'anulado').map(inv => ({
-      id: inv.id,
-      date: inv.date,
-      doc_no: inv.numero_documento,
-      company: inv.client_name,
-      description: `Facturação - ${inv.document_type} ${inv.is_certified ? '(Certificada)' : '(Rascunho)'}`,
-      debit: 0,
-      credit: inv.total || inv.counter_value || 0,
-      source: 'sale'
-    }))
-  ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-  let rollingBalance = 0;
-  const processedMovements = combinedMovements.map(m => {
-    rollingBalance += (m.credit || 0) - (m.debit || 0);
-    return { ...m, balance: rollingBalance };
-  });
-
-  const actualDebit = processedMovements.reduce((sum, m) => sum + (m.debit || 0), 0);
-  const actualCredit = processedMovements.reduce((sum, m) => sum + (m.credit || 0), 0);
-  const actualBalance = actualCredit - actualDebit;
-
-  return (
-    <div className="bg-white min-h-screen p-8 sm:p-12 space-y-10 max-w-6xl mx-auto shadow-2xl border border-zinc-100">
-      {/* Report Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start gap-8 border-b-2 border-[#003366] pb-8">
-        <div className="space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-[#003366] flex items-center justify-center text-white">
-              <BarChart3 size={24} />
-            </div>
-            <div>
-              <h1 className="text-2xl font-black text-[#003366] tracking-tighter uppercase">Gestão do Local de Trabalho</h1>
-              <p className="text-zinc-400 text-[10px] font-bold uppercase tracking-[0.2em]">Controlo de Movimentação e Facturação</p>
-            </div>
-          </div>
-          <div className="space-y-1">
-            <h2 className="text-xl font-bold text-zinc-800">{workSite.title}</h2>
-            <p className="text-zinc-500 text-sm font-medium flex items-center gap-2">
-              <span className="bg-zinc-100 px-2 py-0.5 text-[#003366] font-bold text-[10px]">{workSite.code}</span>
-              <span>{workSite.location}</span>
-            </p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-x-12 gap-y-4 text-sm">
-          <div className="space-y-1">
-            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data de Início</p>
-            <p className="font-bold text-zinc-700">{formatDate(workSite.start_date)}</p>
-          </div>
-          <div className="space-y-1">
-            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data de Fim</p>
-            <p className="font-bold text-zinc-700">{formatDate(workSite.end_date)}</p>
-          </div>
-          <div className="space-y-1">
-            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Cliente Responsável</p>
-            <p className="font-bold text-zinc-700">{workSite.client_name}</p>
-          </div>
-          <div className="space-y-1">
-            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Contacto</p>
-            <p className="font-bold text-zinc-700">{workSite.contact}</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-0 border border-zinc-200 divide-x divide-zinc-200">
-        <div className="p-8 bg-zinc-50/50">
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Facturado</p>
-          <p className="text-xl font-black text-[#003366]">{formatCurrency(totalInvoiced)}</p>
-          <div className="flex items-center gap-2 mt-2">
-            <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5">PAGO: {formatCurrency(totalPaid)}</span>
-          </div>
-        </div>
-        <div className="p-8 bg-zinc-50/50">
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Anulados</p>
-          <p className="text-xl font-black text-red-400">{formatCurrency(totalVoided)}</p>
-          <p className="text-[9px] text-zinc-400 font-bold mt-1 uppercase tracking-tighter">S/ Impacto Financeiro</p>
-        </div>
-        <div className="p-8">
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Débito (Custos)</p>
-          <p className="text-xl font-black text-red-600">{formatCurrency(actualDebit)}</p>
-        </div>
-        <div className="p-8">
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Crédito</p>
-          <p className="text-xl font-black text-emerald-600">{formatCurrency(actualCredit)}</p>
-        </div>
-        <div className="p-8 bg-[#003366] text-white">
-          <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-2">Saldo Obra</p>
-          <p className="text-xl font-black">{formatCurrency(actualBalance)}</p>
-          <p className="text-[9px] text-white/40 mt-1 font-bold italic uppercase tracking-tighter">Pendente: {formatCurrency(totalPending)}</p>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex gap-4 border-b border-zinc-200 no-print">
-        <button 
-          onClick={() => setActiveTab('finance')}
-          className={`pb-4 px-4 text-xs font-bold uppercase tracking-widest transition-all relative ${
-            activeTab === 'finance' ? 'text-[#003366]' : 'text-zinc-400 hover:text-zinc-600'
-          }`}
-        >
-          Movimentação Financeira
-          {activeTab === 'finance' && <motion.div layoutId="activeTabWork" className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#003366]" />}
-        </button>
-        <button 
-          onClick={() => setActiveTab('invoices')}
-          className={`pb-4 px-4 text-xs font-bold uppercase tracking-widest transition-all relative ${
-            activeTab === 'invoices' ? 'text-[#003366]' : 'text-zinc-400 hover:text-zinc-600'
-          }`}
-        >
-          Documentos Emitidos
-          {activeTab === 'invoices' && <motion.div layoutId="activeTabWork" className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#003366]" />}
-        </button>
-        <button 
-          onClick={() => setActiveTab('stock')}
-          className={`pb-4 px-4 text-xs font-bold uppercase tracking-widest transition-all relative ${
-            activeTab === 'stock' ? 'text-[#003366]' : 'text-zinc-400 hover:text-zinc-600'
-          }`}
-        >
-          Entregas / Matérias Primas
-          {activeTab === 'stock' && <motion.div layoutId="activeTabWork" className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#003366]" />}
-        </button>
-        <button 
-          onClick={() => setActiveTab('employees')}
-          className={`pb-4 px-4 text-xs font-bold uppercase tracking-widest transition-all relative ${
-            activeTab === 'employees' ? 'text-[#003366]' : 'text-zinc-400 hover:text-zinc-600'
-          }`}
-        >
-          Gestão de Colaboradores
-          {activeTab === 'employees' && <motion.div layoutId="activeTabWork" className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#003366]" />}
-        </button>
-      </div>
-
-      {activeTab === 'finance' ? (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest flex items-center gap-2">
-              <div className="w-1 h-4 bg-[#003366]"></div>
-              Histórico de Movimentação Financeira (Vendas e Despesas)
-            </h3>
-            <div className="flex gap-2 no-print">
-              <button 
-                onClick={() => window.print()} 
-                className="flex items-center gap-2 px-4 py-2 border border-zinc-200 hover:bg-zinc-50 transition-colors text-zinc-600 text-[10px] font-bold uppercase tracking-widest"
-              >
-                <Printer size={16} />
-                Imprimir Relatório
-              </button>
-              <button onClick={onBack} className="px-4 py-2 bg-zinc-100 text-zinc-600 text-xs font-bold uppercase tracking-widest hover:bg-zinc-200 transition-colors">
-                Voltar
-              </button>
-            </div>
-          </div>
-
-          <div className="border border-zinc-200">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-zinc-100 border-b border-zinc-200 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
-                  <th className="px-6 py-4">Data</th>
-                  <th className="px-6 py-4">Documento</th>
-                  <th className="px-6 py-4">Entidade</th>
-                  <th className="px-6 py-4">Descrição</th>
-                  <th className="px-6 py-4 text-right">Débito</th>
-                  <th className="px-6 py-4 text-right">Crédito</th>
-                  <th className="px-6 py-4 text-right bg-zinc-200/50">Saldo</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100 text-xs text-zinc-800">
-                {processedMovements.map((m: any) => (
-                  <tr key={m.id} className="hover:bg-zinc-50 transition-colors">
-                    <td className="px-6 py-4 font-medium text-zinc-500">{new Date(m.date).toLocaleDateString('pt-PT')}</td>
-                    <td className="px-6 py-4 font-bold text-zinc-800">{m.doc_no}</td>
-                    <td className="px-6 py-4 text-zinc-600">{m.company}</td>
-                    <td className="px-6 py-4 text-zinc-500 italic">{m.description}</td>
-                    <td className="px-6 py-4 text-right text-red-600 font-bold">{m.debit > 0 ? formatCurrency(m.debit) : '-'}</td>
-                    <td className="px-6 py-4 text-right text-emerald-600 font-bold">{m.credit > 0 ? formatCurrency(m.credit) : '-'}</td>
-                    <td className="px-6 py-4 text-right font-black text-[#003366] bg-zinc-50/50">{formatCurrency(m.balance)}</td>
-                  </tr>
-                ))}
-                {processedMovements.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="px-6 py-20 text-center text-zinc-400 font-medium italic">
-                      Nenhum registo de movimentação encontrado para este local.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-              {processedMovements.length > 0 && (
-                <tfoot>
-                  <tr className="bg-zinc-50 border-t-2 border-zinc-200 font-black text-xs">
-                    <td colSpan={4} className="px-6 py-4 text-right uppercase tracking-widest text-zinc-400">Totais Acumulados</td>
-                    <td className="px-6 py-4 text-right text-red-600">{formatCurrency(actualDebit)}</td>
-                    <td className="px-6 py-4 text-right text-emerald-600">{formatCurrency(actualCredit)}</td>
-                    <td className="px-6 py-4 text-right text-[#003366] bg-zinc-200/50">{formatCurrency(actualBalance)}</td>
-                  </tr>
-                </tfoot>
-              )}
-            </table>
-          </div>
-        </div>
-      ) : activeTab === 'stock' ? (
-        <div className="space-y-4">
-           <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest flex items-center gap-2">
-              <div className="w-1 h-4 bg-[#003366]"></div>
-              Movimentos de Stock no Local (Entregas e Saídas)
-            </h3>
-            <div className="border border-zinc-200">
-               <table className="w-full text-left border-collapse">
-                  <thead>
-                     <tr className="bg-zinc-100 border-b border-zinc-200 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
-                        <th className="px-6 py-4">Data</th>
-                        <th className="px-6 py-4">Produto</th>
-                        <th className="px-6 py-4 text-center">Tipo</th>
-                        <th className="px-6 py-4 text-right">Qtd</th>
-                        <th className="px-6 py-4">Responsável</th>
-                     </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-100 text-xs text-zinc-800">
-                    {movements.filter(m => m.work_site_id?.toString() === workSite.id?.toString()).map((m: any) => (
-                      <tr key={m.id} className="hover:bg-zinc-50 transition-colors">
-                        <td className="px-6 py-4 font-medium text-zinc-500">{new Date(m.created_at).toLocaleDateString('pt-PT')}</td>
-                        <td className="px-6 py-4 font-bold text-zinc-900">{m.product_name}</td>
-                        <td className="px-6 py-4 text-center">
-                          <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-none ${
-                            m.type === 'entry' ? 'bg-emerald-50 text-emerald-600' :
-                            m.type === 'exit' ? 'bg-red-50 text-red-600' :
-                            'bg-zinc-100 text-zinc-600'
-                          }`}>
-                            {m.type === 'entry' ? 'Entrada' : m.type === 'exit' ? 'Saída' : m.type}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-right font-black">{m.quantity}</td>
-                        <td className="px-6 py-4 text-zinc-500 italic font-medium">{m.description || '---'}</td>
-                      </tr>
-                    ))}
-                    {movements.filter(m => m.work_site_id?.toString() === workSite.id?.toString()).length === 0 && (
-                      <tr>
-                        <td colSpan={5} className="px-6 py-20 text-center text-zinc-400 font-medium italic">
-                          Nenhum movimento de stock registado para este local.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-               </table>
-            </div>
-        </div>
-      ) : activeTab === 'employees' ? (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
-           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 no-print bg-zinc-50 p-4 border border-zinc-200">
-              <div className="relative w-full sm:w-96">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
-                <input 
-                  type="text" 
-                  placeholder="Pesquisar colaborador neste local..." 
-                  value={staffSearch}
-                  onChange={(e) => setStaffSearch(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 bg-white border border-zinc-200 text-xs font-bold focus:outline-none focus:border-[#003366]"
-                />
-              </div>
-              <div className="flex gap-2 w-full sm:w-auto">
-                <button 
-                  onClick={handlePrintEmployeeList}
-                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2 bg-white border border-zinc-200 text-zinc-600 text-[10px] font-black uppercase tracking-widest hover:bg-zinc-50 transition-all shadow-sm"
-                >
-                  <Printer size={16} /> Imprimir Lista
-                </button>
-                <button 
-                  onClick={handleDownloadEmployeePDF}
-                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2 bg-[#003366] text-white text-[10px] font-black uppercase tracking-widest hover:bg-[#002244] transition-all shadow-md"
-                >
-                  <Download size={16} /> Baixar PDF
-                </button>
-              </div>
-           </div>
-
-           <div className="border border-zinc-200 shadow-sm overflow-hidden bg-white">
-              <table className="w-full text-left border-collapse">
-                 <thead>
-                    <tr className="bg-zinc-100 border-b border-zinc-200 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
-                       <th className="px-6 py-4 w-16">ID</th>
-                       <th className="px-6 py-4">Nome Completo</th>
-                       <th className="px-6 py-4">Cargo / Função</th>
-                       <th className="px-6 py-4">Contacto</th>
-                       <th className="px-6 py-4 text-center no-print">Estado</th>
-                       <th className="px-6 py-4 text-right no-print">Opções</th>
-                    </tr>
-                 </thead>
-                 <tbody className="divide-y divide-zinc-100 text-xs">
-                    {filteredSiteEmployees.length > 0 ? (
-                      filteredSiteEmployees.map(emp => (
-                        <tr key={emp.id} className="hover:bg-zinc-50 transition-colors group">
-                           <td className="px-6 py-4 font-mono text-[#003366]">{String(emp.id).padStart(4, '0')}</td>
-                           <td className="px-6 py-4">
-                              <div className="flex items-center gap-3">
-                                 <div className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center text-[#003366] font-black uppercase border-2 border-white shadow-sm overflow-hidden">
-                                    {emp.image_url ? <img src={emp.image_url} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" /> : emp.name.charAt(0)}
-                                 </div>
-                                 <span className="font-bold text-zinc-800 uppercase">{emp.name}</span>
-                              </div>
-                           </td>
-                           <td className="px-6 py-4 font-medium text-zinc-500">{emp.role}</td>
-                           <td className="px-6 py-4 font-medium text-zinc-500">{emp.phone || emp.email || '---'}</td>
-                           <td className="px-6 py-4 text-center no-print">
-                              <span className={`px-2 py-0.5 text-[9px] font-black uppercase border ${
-                                emp.status === 'active' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'
-                              }`}>
-                                {emp.status === 'active' ? 'Presente' : 'Ausente'}
-                              </span>
-                           </td>
-                           <td className="px-6 py-4 text-right no-print">
-                              <button 
-                                onClick={() => setMovingEmployee(emp)}
-                                className="inline-flex items-center gap-2 px-3 py-1.5 bg-[#003366] text-white text-[9px] font-black uppercase tracking-widest hover:bg-[#002244] transition-all"
-                              >
-                                <ArrowRightLeft size={12} /> Transferir
-                              </button>
-                           </td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan={6} className="px-6 py-20 text-center text-zinc-300 italic font-black uppercase tracking-widest opacity-50">
-                           {staffSearch ? 'Nenhum resultado para a pesquisa' : 'Nenhum funcionário alocado a este local de trabalho'}
-                        </td>
-                      </tr>
-                    )}
-                 </tbody>
-              </table>
-           </div>
-
-           {/* Transfer Modal */}
-           <AnimatePresence>
-              {movingEmployee && (
-                <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm">
-                  <motion.div 
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.95 }}
-                    className="bg-white w-full max-w-md shadow-2xl p-8"
-                  >
-                    <header className="mb-6">
-                      <h3 className="text-xl font-black text-[#003366] uppercase tracking-tighter">Transferir Colaborador</h3>
-                      <p className="text-xs text-zinc-500 font-medium">Selecione o novo destino para <span className="font-bold text-[#003366] uppercase">{movingEmployee.name}</span></p>
-                    </header>
-
-                    <div className="space-y-4">
-                       <label className="block text-[10px] font-black text-zinc-400 uppercase tracking-widest text-[10px]">Novo Local de Trabalho</label>
-                       <div className="grid grid-cols-1 gap-2 max-h-60 overflow-y-auto pr-2">
-                          {allWorkSites.filter(ws => ws.id?.toString() !== workSite.id?.toString()).map(ws => (
-                            <button 
-                              key={ws.id}
-                              onClick={() => handleMoveEmployee(movingEmployee.id, ws.id.toString())}
-                              className="text-left p-4 border border-zinc-200 hover:border-[#003366] hover:bg-zinc-50 transition-all group flex items-center justify-between"
-                            >
-                               <div>
-                                  <p className="text-xs font-black text-zinc-800 uppercase">{ws.title}</p>
-                                  <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-tight">{ws.location}</p>
-                               </div>
-                               <ChevronRight size={16} className="text-zinc-300 group-hover:text-[#003366]" />
-                            </button>
-                          ))}
-                       </div>
-                    </div>
-
-                    <button 
-                      onClick={() => setMovingEmployee(null)}
-                      className="w-full mt-8 py-3 text-xs font-black text-zinc-400 uppercase tracking-widest border border-zinc-200 hover:bg-zinc-50 transition-all"
-                    >
-                      Cancelar Operação
-                    </button>
-                  </motion.div>
-                </div>
-              )}
-           </AnimatePresence>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-black text-[#003366] uppercase tracking-widest flex items-center gap-2">
-              <div className="w-1 h-4 bg-[#003366]"></div>
-              Documentos Emitidos no Local
-            </h3>
-            <div className="flex gap-2 no-print">
-              <button onClick={onBack} className="px-4 py-2 bg-zinc-100 text-zinc-600 text-xs font-bold uppercase tracking-widest hover:bg-zinc-200 transition-colors">
-                Voltar
-              </button>
-            </div>
-          </div>
-
-          <div className="border border-zinc-200">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-zinc-100 border-b border-zinc-200 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
-                  <th className="px-6 py-4">Data</th>
-                  <th className="px-6 py-4">Documento</th>
-                  <th className="px-6 py-4">Cliente</th>
-                  <th className="px-6 py-4 text-right">Total</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100 text-xs">
-                {siteInvoices.map(inv => (
-                  <tr key={inv.id} className="hover:bg-zinc-50 text-sm">
-                    <td className="px-6 py-4 text-zinc-500">{new Date(inv.date || inv.data_emissao || new Date()).toLocaleDateString('pt-PT')}</td>
-                    <td className="px-6 py-4 font-bold text-zinc-900">{inv.numero_documento || inv.invoice_number}</td>
-                    <td className="px-6 py-4 text-zinc-600">{inv.client_name}</td>
-                    <td className="px-6 py-4 text-right font-black text-[#003366]">{formatCurrency(inv.total || inv.contravalor)}</td>
-                  </tr>
-                ))}
-                {siteInvoices.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="px-6 py-20 text-center text-zinc-400 font-medium italic">
-                      Nenhum documento emitido para este local.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Footer / Signature */}
-      <div className="pt-20 grid grid-cols-2 gap-20 text-center">
-        <div className="space-y-8">
-          <div className="border-b border-zinc-300 pb-2"></div>
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Responsável pela Obra</p>
-        </div>
-        <div className="space-y-8">
-          <div className="border-b border-zinc-300 pb-2"></div>
-          <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Administração / Contabilidade</p>
-        </div>
-      </div>
-      
-      <div className="text-center pt-10">
-        <p className="text-[9px] text-zinc-300 font-bold uppercase tracking-[0.3em]">Documento gerado em {new Date().toLocaleString('pt-PT')}</p>
-      </div>
-    </div>
-  );
-};
-
-const InvoiceDetail = ({ 
-  id, 
-  onBack,
-  onPrint,
-  onDownload,
-  companyName,
-  companyNif,
-  companyAddress,
-  companyLogo,
-  companyFooter,
-  companyData
-}: { 
-  id: number, 
-  onBack: () => void,
-  onPrint: (invoice: Invoice) => void,
-  onDownload?: (invoice: Invoice) => void,
-  companyName: string,
-  companyNif: string,
-  companyAddress: string,
-  companyLogo: string,
-  companyFooter: string,
-  companyData: CompanyData | null
-}) => {
-  const [invoice, setInvoice] = useState<Invoice | null>(null);
-
-  useEffect(() => {
-    fetch(`/api/invoices/${id}`)
-      .then(res => {
-        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-        return res.json();
-      })
-      .then(data => setInvoice(data))
-      .catch(err => {
-        console.error('Error fetching invoice detail:', err);
-        // We could set an error state here if we had one
-      });
-  }, [id]);
-
-  if (!invoice) return <div className="p-8">Carregando...</div>;
-
-  // Calculate VAT summary by tax label/name instead of just rate
-  const vatSummary = (invoice.items || []).reduce((acc: any, item: any) => {
-    const label = item.tax || (item.tax_rate ? `IVA (${item.tax_rate}%)` : 'ISE (0%)');
-    if (!acc[label]) {
-      acc[label] = { base: 0, vat: 0, rate: item.tax_rate || 0 };
-    }
-    const rate = item.tax_rate || 0;
-    const itemTotal = item.total || 0;
-    const base = itemTotal / (1 + rate / 100);
-    acc[label].base += base;
-    acc[label].vat += itemTotal - base;
-    return acc;
-  }, {});
-
-  const subtotalRaw = (invoice.items || []).reduce((sum, item) => sum + (item.unit_price * item.quantity), 0);
-  const lineDiscountsTotal = (invoice.items || []).reduce((sum, item) => sum + (item.desconto || 0), 0);
-  const subtotalWithLineDiscounts = subtotalRaw - lineDiscountsTotal;
-
-  return (
-    <div className="max-w-4xl mx-auto space-y-8">
-      <div className="flex justify-between items-center">
-        <div className="flex items-center gap-4">
-          <button onClick={onBack} className="p-2 hover:bg-zinc-100 rounded-full text-zinc-400 hover:text-[#003366] transition-colors">
-            <ArrowLeft size={24} />
-          </button>
-          <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Fatura {invoice.invoice_number || invoice.numero_documento}</h2>
-        </div>
-        <div className="flex gap-3">
-          <button 
-            onClick={() => invoice && onPrint(invoice)}
-            className="bg-white border border-zinc-300 hover:bg-zinc-50 text-zinc-700 px-4 py-2 rounded-none flex items-center gap-2 transition-all text-sm shadow-sm"
-          >
-            <Printer size={18} /> Imprimir
-          </button>
-          <button 
-            onClick={() => invoice && onDownload && onDownload(invoice)}
-            className="bg-[#003366] hover:bg-[#002244] text-white font-bold px-4 py-2 rounded-none flex items-center gap-2 transition-all text-sm shadow-sm"
-          >
-            <Download size={18} /> Baixar PDF
-          </button>
-        </div>
-      </div>
-
-      <div className="bg-white text-zinc-950 p-12 rounded-none shadow-2xl border border-zinc-100 space-y-12 relative overflow-hidden">
-        {companyData?.watermark_url && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.05] z-0">
-            <img 
-              src={companyData.watermark_url} 
-              alt="Watermark" 
-              style={{ height: `${companyData?.watermark_size || 300}px` }} 
-              className="object-contain grayscale" 
-            />
-          </div>
-        )}
-        <div className="flex justify-between items-start relative z-10">
-          <div className="flex items-start gap-6">
-            {companyLogo ? (
-              <img src={companyLogo} alt="Logo" className="w-24 h-24 object-contain" referrerPolicy="no-referrer" />
-            ) : (
-              <div className="w-24 h-24 bg-[#003366] flex items-center justify-center text-white font-black text-2xl">
-                FP
-              </div>
-            )}
-            <div>
-              <h1 className="text-3xl font-black text-[#003366]">{companyName}</h1>
-              <div className="mt-2 text-sm text-zinc-500">
-                <p>{companyAddress}</p>
-                <p>NIF: {companyNif}</p>
-                {companyData?.regime && <p className="text-[#003366] font-bold uppercase text-[10px] mt-1 border border-[#003366] w-fit px-2 py-0.5">{companyData.regime}</p>}
-              </div>
-            </div>
-          </div>
-          <div className="text-right">
-            <h3 className="text-2xl font-bold uppercase tracking-tighter text-[#003366]">{invoice.document_type || invoice.tipo_documento}</h3>
-            <p className="text-zinc-400 font-mono text-sm">{invoice.invoice_number || invoice.numero_documento}</p>
-            <div className="mt-4 text-sm">
-              <p><span className="font-bold text-zinc-700">Data:</span> {new Date(invoice.date || invoice.data_emissao).toLocaleDateString('pt-PT')}</p>
-              {(invoice.due_date || invoice.data_vencimento) && <p><span className="font-bold text-zinc-700">Vencimento:</span> {new Date((invoice.due_date || invoice.data_vencimento) as string).toLocaleDateString('pt-PT')}</p>}
-              {(invoice.work_site_title || invoice.local_trabalho) && (
-                <div className="mt-2 pt-2 border-t border-zinc-100 italic text-[10px] text-zinc-400">
-                   <p className="font-bold uppercase">Local de Trabalho:</p>
-                   <p className="text-zinc-600">{invoice.work_site_title || invoice.local_trabalho}</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-12">
-          <div>
-            <h4 className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Faturado a:</h4>
-            <div className="text-lg font-bold text-zinc-800">
-              <p>{invoice.client_name}</p>
-              <p className="text-sm font-normal text-zinc-500">{invoice.client_address}</p>
-              <p className="text-sm font-normal text-zinc-500">NIF: {invoice.client_nif}</p>
-              <p className="text-sm font-normal text-zinc-500">{invoice.client_email}</p>
-            </div>
-          </div>
-          <div className="flex justify-end">
-            <QRCodeCanvas 
-              value={`Invoice:${invoice.invoice_number || invoice.numero_documento}|Total:${invoice.total || invoice.contravalor}|Date:${invoice.date || invoice.data_emissao}`} 
-              size={100}
-              level="H"
-            />
-          </div>
-        </div>
-
-        <table className="w-full text-left">
-          <thead>
-            <tr className="border-b-2 border-zinc-100 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-              <th className="py-4">Descrição</th>
-              <th className="py-4 text-center">Qtd</th>
-              <th className="py-4 text-center">Desc.</th>
-              <th className="py-4 text-right">Preço Un.</th>
-              <th className="py-4 text-right">Total</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-zinc-50 text-sm">
-            {invoice.items?.map((item, idx) => (
-              <tr key={idx}>
-                <td className="py-4 font-medium text-zinc-800">{item.description}</td>
-                <td className="py-4 text-center text-zinc-500">{item.quantity}</td>
-                <td className="py-4 text-center text-red-500 font-bold">{item.desconto ? formatCurrency(item.desconto) : '-'}</td>
-                <td className="py-4 text-right text-zinc-500">
-                  {formatCurrency(item.unit_price)}
-                </td>
-                <td className="py-4 text-right font-bold text-zinc-800">
-                  {formatCurrency(item.total)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        <div className="pt-8 grid grid-cols-2 gap-8 text-[10px] text-zinc-500 border-t border-zinc-100">
-          <div>
-            <p className="font-bold uppercase tracking-widest text-zinc-400 mb-1">Emitido por:</p>
-            <p className="font-bold text-[#003366] text-sm uppercase">{invoice.created_by_nome || 'Utilizador do Sistema'}</p>
-            {invoice.created_by_username && <p>Username: {invoice.created_by_username} (ID: {invoice.created_by ? String(invoice.created_by).slice(-6) : '---'})</p>}
-            <p>Data: {new Date(invoice.created_at || invoice.date || invoice.data_emissao).toLocaleString('pt-PT')}</p>
-            {invoice.documento_anulado && (
-              <div className="mt-4 p-2 bg-red-50 border border-red-100 text-red-600 rounded-none font-bold">
-                <p className="uppercase text-[8px]">DOCUMENTO ANULADO</p>
-                <p className="text-[10px]">Motivo: {invoice.motivo_anulacao}</p>
-                {invoice.anulado_at && <p className="text-[8px] mt-1">Data: {new Date(invoice.anulado_at).toLocaleString()}</p>}
-              </div>
-            )}
-          </div>
-          <div className="text-right flex flex-col gap-2">
-            <div>
-              <p className="font-bold uppercase tracking-widest text-zinc-400 mb-1">Rastreabilidade Fiscal:</p>
-              <p className="font-mono text-[8px] break-all bg-zinc-50 p-1 border border-zinc-100">{invoice.hash_documento || invoice.hash || '---'}</p>
-              {invoice.codigo_validacao && <p className="mt-1 font-black text-[#003366]">Cód. Validação: {invoice.codigo_validacao}</p>}
-              <p className="mt-1">Certificação: {invoice.is_certified ? 'CERTIFICADO' : 'PENDENTE'}</p>
-            </div>
-            
-            {(invoice.numero_documento_origem || invoice.rectified_document) && (
-              <div className="mt-2 p-2 bg-blue-50 border border-blue-100 text-blue-700 text-left rounded-none">
-                <p className="font-bold uppercase text-[8px]">Documento Relacionado:</p>
-                <p className="font-black text-[10px]">{invoice.tipo_documento_origem || 'Origem'}: {invoice.numero_documento_origem || invoice.rectified_document}</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-8 pt-8">
-          <div>
-            <h4 className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-4">Resumo de IVA</h4>
-            <table className="w-full text-[10px] text-left">
-              <thead>
-                <tr className="border-b border-zinc-100 text-zinc-400">
-                  <th className="pb-2">Taxa</th>
-                  <th className="pb-2 text-right">Base</th>
-                  <th className="pb-2 text-right">IVA</th>
-                </tr>
-              </thead>
-              <tbody className="text-zinc-600">
-                {Object.entries(vatSummary || {}).map(([label, values]: [string, any]) => (
-                  <tr key={label}>
-                    <td className="py-1">{label}</td>
-                    <td className="py-1 text-right">{formatCurrency(values.base)}</td>
-                    <td className="py-1 text-right">{formatCurrency(values.vat)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="flex justify-end">
-            <div className="w-64 space-y-2">
-              <div className="flex justify-between text-xs text-zinc-500">
-                <span>Total Ilíquido</span>
-                <span>{formatCurrency(subtotalRaw)}</span>
-              </div>
-              {lineDiscountsTotal > 0 && (
-                <div className="flex justify-between text-xs text-red-600 font-bold">
-                  <span>Descontos de Linha</span>
-                  <span>- {formatCurrency(lineDiscountsTotal)}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-xs text-zinc-800 font-bold border-t border-zinc-50 pt-1">
-                <span>Subtotal</span>
-                <span>{formatCurrency(subtotalWithLineDiscounts)}</span>
-              </div>
-              {Object.entries(vatSummary || {}).map(([label, values]: [string, any]) => (
-                <div key={label} className="flex justify-between text-xs text-zinc-500">
-                  <span>{label}</span>
-                  <span>{formatCurrency(values.vat)}</span>
-                </div>
-              ))}
-              {(invoice.vat_withholding_amount || 0) > 0 && (
-                <div className="flex justify-between text-xs text-orange-600 font-bold">
-                  <span>Cativação de IVA</span>
-                  <span>- {formatCurrency(invoice.vat_withholding_amount)}</span>
-                </div>
-              )}
-              {(invoice.retencao_fonte_total || 0) > 0 && (
-                <div className="flex justify-between text-xs text-blue-600 font-bold">
-                  <span>Retenção na Fonte (6,5%)</span>
-                  <span>- {formatCurrency(invoice.retencao_fonte_total)}</span>
-                </div>
-              )}
-              {(invoice.global_discount || 0) > 0 && (
-                <div className="flex justify-between text-xs text-red-600 font-bold">
-                  <span>Desconto Global</span>
-                  <span>- {formatCurrency(invoice.global_discount)}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-2xl font-black pt-4 border-t border-zinc-100">
-                <span className="text-zinc-800">Total</span>
-                <span className="text-[#003366]">{formatCurrency(invoice.total || invoice.contravalor)}</span>
-              </div>
-              <div className="pt-4 text-[10px] font-black text-zinc-400 uppercase tracking-widest text-right">
-                <p>Valor por Extenso:</p>
-                <p className="text-[#003366] mt-1">{writeValorPorExtenso(invoice.total || invoice.contravalor || 0)}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Secção de Certificação AGT no Documento Aberto */}
-        <div className="pt-6 border-t border-zinc-100 mt-8 relative z-10">
-          <div className="bg-zinc-50 p-6 border border-zinc-200">
-            <p className="text-[10px] font-black text-zinc-800 tracking-widest uppercase mb-4 text-center border-b border-zinc-200 pb-2">
-              SISTEMA VALIDADO PELA AGT — DECLARAÇÃO DE CONFORMIDADE FISCAL
-            </p>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 text-xs font-mono text-zinc-650 my-4">
-              <div className="space-y-1 bg-white p-3 border border-zinc-100">
-                <span className="text-[9px] font-black text-zinc-400 uppercase tracking-wider block">Número Documento</span>
-                <span className="font-bold text-[#003366] block">{invoice.invoice_number || invoice.numero_documento}</span>
-              </div>
-              <div className="space-y-1 bg-white p-3 border border-zinc-100">
-                <span className="text-[9px] font-black text-zinc-400 uppercase tracking-wider block">Hash Fiscal (4 Chars)</span>
-                <span className="bg-[#003366] text-white px-2 py-0.5 text-[11px] font-black rounded-none inline-block mt-0.5">
-                  {invoice.codigo_validacao || (invoice.hash ? invoice.hash.slice(0, 4).toUpperCase() : 'PENDENTE')}
-                </span>
-              </div>
-              <div className="space-y-1 bg-white p-3 border border-zinc-100">
-                <span className="text-[9px] font-black text-zinc-400 uppercase tracking-wider block">Estado Fiscal</span>
-                <span className={`font-black uppercase text-[10px] ${
-                  invoice.documento_anulado ? 'text-red-650' : invoice.is_certified ? 'text-emerald-650' : 'text-amber-650'
-                }`}>
-                  {invoice.documento_anulado ? 'Anulado' : invoice.is_certified ? 'Certificado' : 'Rascunho'}
-                </span>
-              </div>
-            </div>
-
-            <div className="space-y-2 text-[9px] text-zinc-500 font-sans leading-relaxed border-t border-zinc-200 pt-3">
-              <p>
-                <strong>✓ Processamento:</strong> Processado por programa validado nº 101/AGT/2026 - Gesforma.
-              </p>
-              <p>
-                <strong>✓ Encadeamento:</strong> Imutabilidade fiscal garantida por algoritmo de encadeamento criptográfico SHA-256 da série fiscal <span className="font-mono text-zinc-700 font-bold">{invoice.serie || 'S1'}</span>.
-              </p>
-              {(invoice.hash || invoice.hash_documento || invoice.hash_fiscal) && (
-                <div className="mt-2 p-2 bg-white border border-zinc-100 font-mono text-[8.5px] break-all select-all">
-                  <span className="font-bold text-zinc-600 uppercase tracking-wider">Assinatura Digital (JWS / RS256):</span> <span className="text-zinc-750">{invoice.hash || invoice.hash_documento || invoice.hash_fiscal}</span>
-                </div>
-              )}
-              {invoice.is_certified && invoice.certified_at && (
-                <p className="text-[8px] text-zinc-400 font-mono">
-                  Data de Certificação: {new Date(invoice.certified_at).toLocaleString('pt-AO')}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="pt-12 text-center text-[10px] text-zinc-400 uppercase tracking-widest border-t border-zinc-50 relative z-10">
-          <div className="flex justify-center mb-6">
-            {companyData?.footer_image_url && (companyData.footer_image_url.startsWith('data:image') || companyData.footer_image_url.startsWith('http')) && (
-              <img 
-                src={companyData.footer_image_url} 
-                alt="Footer" 
-                style={{ height: `${companyData?.footer_size || 40}px` }} 
-                className="object-contain" 
-              />
-            )}
-          </div>
-          <p>Obrigado pela sua preferência!</p>
-          <p className="mt-1">{companyFooter}</p>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const ClientAccount = ({ client, documents, onBack }: { 
-  client: Client, 
-  documents: IssuedDocument[], 
-  onBack: () => void 
-}) => {
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
-  const [filteredMovements, setFilteredMovements] = useState<any[]>([]);
-
-  useEffect(() => {
-    handleSearch();
-  }, [documents]);
-
-  const handleSearch = () => {
-    const movements = documents.map(doc => {
-      const isSupplier = (client as any).tipo_cliente === 'Fornecedor';
-      let isCredit = false;
-      let isDebit = false;
-      
-      const type = String(doc.tipo_documento || doc.document_type || '').toUpperCase();
-      const isFT = type === 'FT' || type.includes('FATURA');
-      const isFR = type === 'FR' || type.includes('FATURA-RECIBO');
-      const isRC = type === 'RC' || type === 'RE' || type.includes('RECIBO');
-      const isNC = type === 'NC' || type.includes('CRÉDITO') || type.includes('CREDITO');
-      const isND = type === 'ND' || type.includes('DÉBITO') || type.includes('DEBITO');
-      const isDraft = type === 'DRAFT';
-
-      if (isSupplier) {
-        // Purchases logic
-        isCredit = isFT || isFR || isND;
-        isDebit = isRC || isNC;
-      } else {
-        // Sales logic
-        isDebit = isFT || isND || isFR || isDraft;
-        isCredit = isRC || isNC || isFR;
-      }
-      
-      return {
-        ...doc,
-        debito: isDebit ? (doc.contravalor || doc.total || 0) : 0,
-        credito: isCredit ? (doc.contravalor || doc.total || 0) : 0
-      };
-    }).filter(m => {
-      // Filtering types as requested in Req 11
-      const type = String(m.tipo_documento || m.document_type || '').toUpperCase();
-      const allowedTypes = ['FT', 'FR', 'RC', 'NC', 'ND', 'DRAFT', 'RE'];
-      const isAllowed = allowedTypes.some(t => type === t || type.includes(t));
-      if (!isAllowed) return false;
-
-      if (!m.data_emissao) return true;
-      try {
-        const date = new Date(m.data_emissao).toISOString().split('T')[0];
-        if (startDate && date < startDate) return false;
-        if (endDate && date > endDate) return false;
-      } catch (e) {
-        console.error("Invalid date:", m.data_emissao);
-      }
-      return true;
-    });
-    setFilteredMovements(movements);
-  };
-
-  const totalDebito = (filteredMovements ?? []).reduce((acc, m) => acc + m.debito, 0);
-  const totalCredito = (filteredMovements ?? []).reduce((acc, m) => acc + m.credito, 0);
-  const initialBalance = client.saldo_inicial || 0;
-  const saldoAtual = initialBalance + totalDebito - totalCredito;
-
-  const handleExportXLSX = () => {
-    const headers = ['Data', 'Documento', 'URN', 'Doc Nº', 'Descrição', 'Crédito', 'Débito', 'Saldo'];
-    let runningSaldo = initialBalance;
-    const rows = filteredMovements.map(m => {
-      runningSaldo += (m.debito - m.credito);
-      return [new Date(m.data_emissao).toLocaleDateString(), m.numero_documento, '', '', m.tipo_documento, m.credito, m.debito, runningSaldo];
-    });
-    const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].map(e => e.join(",")).join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `extrato_${client.name}.csv`);
-    document.body.appendChild(link);
-    link.click();
-  };
-
-  return (
-    <div className="space-y-6 bg-zinc-50/50 p-6 min-h-screen">
-      <div className="flex items-center justify-between mb-8">
-        <div className="flex items-center gap-4">
-          <button onClick={onBack} className="p-2 hover:bg-white rounded-full transition-colors text-zinc-400 shadow-sm">
-            <ChevronLeft size={24} />
-          </button>
-          <div>
-            <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Extrato de Conta Corrente</h2>
-            <p className="text-zinc-500 font-medium uppercase text-[10px] tracking-widest">{client.name}</p>
-          </div>
-        </div>
-        <div className="flex gap-3">
-          <button onClick={handleExportXLSX} className="bg-white text-zinc-600 border border-zinc-200 px-4 py-2 text-xs font-bold flex items-center gap-2 hover:bg-zinc-50 transition-all">
-            <FileSpreadsheet size={16} /> XLSX
-          </button>
-          <button onClick={() => window.print()} className="bg-[#003366] text-white px-4 py-2 text-xs font-bold flex items-center gap-2 hover:bg-[#002244] transition-all shadow-lg">
-            <Printer size={16} /> Imprimir PDF
-          </button>
-        </div>
-      </div>
-
-      <div className="bg-white border border-zinc-200 p-8 shadow-sm space-y-8">
-        {/* Header Info based on Image */}
-        <div className="grid grid-cols-2 gap-8 border-b border-zinc-100 pb-8">
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4 text-[10px]">
-              <div>
-                <p className="font-bold text-zinc-400 uppercase">Data de Emissão</p>
-                <p className="text-zinc-800">{new Date().toLocaleString()}</p>
-              </div>
-              <div>
-                <p className="font-bold text-zinc-400 uppercase">Nº Contribuinte</p>
-                <p className="text-zinc-800 font-mono">{client.contribuinte || 'N/A'}</p>
-              </div>
-            </div>
-            <div>
-              <p className="text-lg font-bold text-[#003366]">Extrato Cliente</p>
-              <p className="text-xs text-zinc-500 font-mono">CC-{client.id} {client.name.toUpperCase()}</p>
-            </div>
-          </div>
-          <div className="text-right space-y-2">
-            <div className="inline-block bg-zinc-100 px-6 py-3 border-r-4 border-[#003366]">
-              <h3 className="text-xl font-black text-[#003366]">{client.name.toUpperCase()}</h3>
-            </div>
-            <div className="text-[10px] text-zinc-500 space-y-0.5">
-              <p>{client.localidade || 'LUANDA'}</p>
-              <p>{client.municipio || 'BELAS'}</p>
-              <p>{client.codigo_postal || '0000-000'}</p>
-              <p>{client.provincia || 'LUANDA'}</p>
-              <p>{client.pais || 'AO'}</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Filters */}
-        <div className="flex items-end gap-4 bg-zinc-50 p-4 border border-zinc-100 no-print">
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data Inicial</label>
-            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="bg-white border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:border-[#003366]" />
-          </div>
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data Final</label>
-            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="bg-white border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:border-[#003366]" />
-          </div>
-          <button 
-            onClick={handleSearch}
-            className="bg-[#003366] text-white px-6 py-2 text-sm font-bold hover:bg-[#002244] transition-all flex items-center gap-2"
-          >
-            <Search size={16} /> Pesquisar
-          </button>
-        </div>
-
-        {/* Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b-2 border-zinc-200 text-[10px] uppercase tracking-wider font-black text-zinc-400">
-                <th className="px-4 py-3">Data Valor<br/>Data Documento</th>
-                <th className="px-4 py-3">File Interno<br/>File Cliente</th>
-                <th className="px-4 py-3">URN<br/>EndService</th>
-                <th className="px-4 py-3">Doc Nº<br/>OriginatingOn</th>
-                <th className="px-4 py-3">Descrição<br/>Doc. Suporte</th>
-                <th className="px-4 py-3 text-right">Crédito</th>
-                <th className="px-4 py-3 text-right">Débito</th>
-                <th className="px-4 py-3 text-right">Saldo</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100">
-              <tr className="bg-zinc-50/50 font-bold text-xs">
-                <td colSpan={5} className="px-4 py-3 text-right uppercase tracking-widest text-zinc-400">Saldo Inicial</td>
-                <td className="px-4 py-3 text-right">-</td>
-                <td className="px-4 py-3 text-right">-</td>
-                <td className="px-4 py-3 text-right text-[#003366]">{formatCurrency(initialBalance)}</td>
-              </tr>
-              {filteredMovements.map((m, idx) => {
-                const runningSaldo = initialBalance + (filteredMovements ?? []).slice(0, idx + 1).reduce((acc, curr) => acc + (curr.debito - curr.credito), 0);
-                return (
-                  <tr key={m.id} className="hover:bg-zinc-50 text-[11px]">
-                    <td className="px-4 py-4 text-zinc-500">{new Date(m.data_emissao).toLocaleDateString()}</td>
-                    <td className="px-4 py-4 text-zinc-400 font-mono">INT-{m.id}</td>
-                    <td className="px-4 py-4 text-zinc-400">-</td>
-                    <td className="px-4 py-4 font-bold text-zinc-800">{m.numero_documento}</td>
-                    <td className="px-4 py-4 text-zinc-600">{m.tipo_documento}</td>
-                    <td className="px-4 py-4 text-right text-emerald-600 font-bold">{m.credito > 0 ? formatCurrency(m.credito) : '-'}</td>
-                    <td className="px-4 py-4 text-right text-red-600 font-bold">{m.debito > 0 ? formatCurrency(m.debito) : '-'}</td>
-                    <td className="px-4 py-4 text-right font-black text-[#003366]">{formatCurrency(runningSaldo)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr className="border-t-2 border-zinc-200 font-black text-xs">
-                <td colSpan={5} className="px-4 py-6 text-right uppercase tracking-widest text-zinc-400">Acumulados do Período</td>
-                <td className="px-4 py-6 text-right text-emerald-600 border-b-2 border-zinc-200">{formatCurrency(totalCredito)}</td>
-                <td className="px-4 py-6 text-right text-red-600 border-b-2 border-zinc-200">{formatCurrency(totalDebito)}</td>
-                <td className="px-4 py-6 text-right text-[#003366] bg-zinc-50">{formatCurrency(saldoAtual)}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-
-        {filteredMovements.length === 0 && (
-          <div className="p-12 text-center text-zinc-400 text-sm italic">Nenhum movimento encontrado no período selecionado.</div>
-        )}
-
-        <div className="flex justify-between items-center pt-8 border-t border-zinc-100">
-          <div className="text-[10px] text-zinc-400 font-bold uppercase tracking-[0.2em]">
-            [AOA] Moeda Corrente
-          </div>
-          <div className="flex items-center gap-4">
-            <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Saldo Acumulado Geral</span>
-            <span className="text-xl font-black text-[#003366]">{formatCurrency(saldoAtual)}</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: { 
-  clients: Client[], 
-  issuedDocuments: IssuedDocument[],
-  onRefresh: () => void,
-  onViewAccount: (client: Client) => void
-}) => {
-  const { user } = useAuth();
-  const [showForm, setShowForm] = useState(false);
-  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
-  const [showOptionsModal, setShowOptionsModal] = useState<Client | null>(null);
-  const [showInitialBalanceModal, setShowInitialBalanceModal] = useState<Client | null>(null);
-  const [showSettledDocsModal, setShowSettledDocsModal] = useState<Client | null>(null);
-  
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [nif, setNif] = useState('');
-  const [morada, setMorada] = useState('');
-  const [localidade, setLocalidade] = useState('');
-  const [codigo_postal, setCodigoPostal] = useState('');
-  const [provincia, setProvincia] = useState('');
-  const [municipio, setMunicipio] = useState('');
-  const [pais, setPais] = useState('');
-  const [telefone, setTelefone] = useState('');
-  const [webpage, setWebpage] = useState('');
-  const [tipo_cliente, setTipoCliente] = useState('normal');
-  const [estado_nif, setEstadoNif] = useState('não encontrado');
-  const [saldo_inicial, setSaldoInicial] = useState(0);
-  const [searchTerm, setSearchTerm] = useState('');
-
-  const filteredClients = clients.filter(c => 
-    (c.name || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
-    (c.contribuinte || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
-    (c.email && c.email.toLowerCase().includes((searchTerm || '').toLowerCase()))
-  );
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (nif && !validateAngolaNIF(nif)) {
-      alert('O NIF inserido é inválido segundo as regras da AGT Angola. Deve conter 10 dígitos e começar com 1, 2, 3, 4 ou 5.');
-      return;
-    }
-
-    if (!user?.empresa_id) {
-       alert('Sessão expirada. Por favor, faça login novamente.');
-       return;
-    }
-
-    const clientPayload: DbCliente = { 
-      nome: name, 
-      email, 
-      contribuinte: nif, 
-      nif: nif,
-      endereco: morada, 
-      localidade, 
-      codigo_postal, 
-      provincia, 
-      municipio, 
-      pais, 
-      telefone, 
-      webpage, 
-      tipo_cliente, 
-      saldo_inicial: Number(saldo_inicial),
-      estado_nif,
-      empresa_id: user.empresa_id,
-      tipo_entidade: 'Cliente'
-    };
-    
-    try {
-      if (selectedClient?.id) {
-        await clienteService.updateCliente(selectedClient.id, clientPayload);
-      } else {
-        await clienteService.createCliente(clientPayload);
-      }
-      
-      resetForm();
-      setShowForm(false);
-      onRefresh();
-    } catch (error: any) {
-      console.error('Error saving client:', error);
-      alert('Erro ao guardar cliente. Verifique a consola para mais detalhes.');
-    }
-  };
-
-  const handleDelete = async (id: number | string) => {
-    if (!confirm('Tem a certeza que deseja eliminar este cliente? Esta ação é irreversível.')) return;
-    try {
-      if (!user?.empresa_id) return;
-      await clienteService.deleteCliente(id, user.empresa_id);
-      onRefresh();
-      setShowOptionsModal(null);
-      alert('Cliente eliminado com sucesso.');
-    } catch (err: any) {
-      console.error('Error deleting client:', err);
-      alert('Erro ao eliminar cliente: ' + (err.message || 'Erro desconhecido'));
-    }
-  };
-
-  const resetForm = () => {
-    setSelectedClient(null);
-    setName(''); setEmail(''); setNif(''); setMorada(''); setLocalidade(''); setCodigoPostal(''); setProvincia(''); setMunicipio(''); setPais(''); setTelefone(''); setWebpage(''); setTipoCliente('normal'); setEstadoNif('não encontrado'); setSaldoInicial(0);
-  };
-
-  const handleEdit = (client: Client) => {
-    setSelectedClient(client);
-    setName(client.name);
-    setEmail(client.email || '');
-    setNif(client.contribuinte || '');
-    setMorada(client.morada || '');
-    setLocalidade(client.localidade || '');
-    setCodigoPostal(client.codigo_postal || '');
-    setProvincia(client.provincia || '');
-    setMunicipio(client.municipio || '');
-    setPais(client.pais || '');
-    setTelefone(client.telefone || '');
-    setWebpage(client.webpage || '');
-    setTipoCliente(client.tipo_cliente || 'normal');
-    setEstadoNif(client.estado_nif || 'não encontrado');
-    setSaldoInicial(client.saldo_inicial || 0);
-    setShowForm(true);
-    setShowOptionsModal(null);
-  };
-
-  const handlePrint = () => {
-    window.print();
-  };
-
-  const handleExportXLSX = () => {
-    // Basic CSV export as XLSX placeholder
-    const headers = ['NIF', 'Nome', 'Email', 'Telefone', 'Localidade', 'Tipo'];
-    const rows = filteredClients.map(c => [c.contribuinte, c.name, c.email, c.telefone, c.localidade, c.tipo_cliente]);
-    const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].map(e => e.join(",")).join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "lista_clientes.csv");
-    document.body.appendChild(link);
-    link.click();
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center bg-white p-6 border border-zinc-200 shadow-sm">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-[#003366] text-white flex items-center justify-center shadow-lg">
-            <Users size={24} />
-          </div>
-          <div>
-            <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Gestão de Clientes</h2>
-            <p className="text-zinc-400 text-xs font-medium uppercase tracking-widest">Registo e consulta de contas correntes</p>
-          </div>
-        </div>
-        <div className="flex gap-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
-            <input 
-              type="text" 
-              placeholder="Pesquisar clientes..." 
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2.5 bg-zinc-50 border border-zinc-200 text-sm focus:outline-none focus:border-[#003366] w-64 transition-all"
-            />
-          </div>
-          <button 
-            onClick={handlePrint}
-            className="p-2.5 bg-zinc-100 text-zinc-600 hover:bg-zinc-200 transition-all border border-zinc-200"
-            title="Imprimir Lista"
-          >
-            <Printer size={18} />
-          </button>
-          <button 
-            onClick={handleExportXLSX}
-            className="p-2.5 bg-zinc-100 text-zinc-600 hover:bg-zinc-200 transition-all border border-zinc-200"
-            title="Exportar XLSX"
-          >
-            <FileSpreadsheet size={18} />
-          </button>
-          <button 
-            onClick={() => {
-              resetForm();
-              setShowForm(true);
-            }}
-            className="bg-[#003366] hover:bg-[#002244] text-white font-bold px-6 py-2.5 rounded-none flex items-center gap-2 transition-all shadow-sm text-sm"
-          >
-            <Plus size={18} />
-            Novo Cliente
-          </button>
-        </div>
-      </div>
-
-      <AnimatePresence>
-        {showForm && (
-          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 sm:p-6">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowForm(false)}
-              className="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm"
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-4xl bg-white rounded-none shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
-            >
-              <ClientForm 
-                initialData={selectedClient} 
-                onSuccess={() => { setShowForm(false); onRefresh(); }} 
-                onBack={() => setShowForm(false)} 
-              />
-            </motion.div>
-          </div>
-        )}
-
-        {showOptionsModal && (
-          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 sm:p-6">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowOptionsModal(null)}
-              className="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm"
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="relative w-full max-w-md bg-white rounded-none shadow-2xl overflow-hidden"
-            >
-              <div className="p-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
-                <h3 className="font-bold text-[#003366] flex items-center gap-2 uppercase tracking-widest text-xs">
-                  <Settings size={16} />
-                  Opções do Cliente
-                </h3>
-                <button 
-                  onClick={() => setShowOptionsModal(null)}
-                  className="p-2 hover:bg-zinc-200 rounded-full transition-colors text-zinc-400 hover:text-zinc-600"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-              <div className="p-6 space-y-4">
-                <p className="text-sm font-bold text-zinc-800 mb-4">{showOptionsModal.name}</p>
-                <button 
-                  onClick={() => handleEdit(showOptionsModal)}
-                  className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-all border border-zinc-100 group"
-                >
-                  <div className="w-10 h-10 bg-blue-50 text-blue-600 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-all">
-                    <Edit size={20} />
-                  </div>
-                  <div className="text-left">
-                    <p className="text-sm font-bold text-zinc-800">Editar Cliente</p>
-                    <p className="text-[10px] text-zinc-400 uppercase tracking-wider">Alterar dados cadastrais</p>
-                  </div>
-                </button>
-                <button 
-                  onClick={() => {
-                    setShowInitialBalanceModal(showOptionsModal);
-                    setShowOptionsModal(null);
-                  }}
-                  className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-all border border-zinc-100 group"
-                >
-                  <div className="w-10 h-10 bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-all">
-                    <CreditCard size={20} />
-                  </div>
-                  <div className="text-left">
-                    <p className="text-sm font-bold text-zinc-800">Saldo Inicial</p>
-                    <p className="text-[10px] text-zinc-400 uppercase tracking-wider">Configurar saldo de conta corrente</p>
-                  </div>
-                </button>
-                <button 
-                  onClick={() => {
-                    setShowSettledDocsModal(showOptionsModal);
-                    setShowOptionsModal(null);
-                  }}
-                  className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-all border border-zinc-100 group"
-                >
-                  <div className="w-10 h-10 bg-purple-50 text-purple-600 flex items-center justify-center group-hover:bg-purple-600 group-hover:text-white transition-all">
-                    <FileCheck size={20} />
-                  </div>
-                  <div className="text-left">
-                    <p className="text-sm font-bold text-zinc-800">Documentos Liquidados</p>
-                    <p className="text-[10px] text-zinc-400 uppercase tracking-wider">Ver faturas e recibos pagos</p>
-                  </div>
-                </button>
-
-                <button 
-                  onClick={() => {
-                    handleDelete(showOptionsModal.id);
-                  }}
-                  className="w-full flex items-center gap-4 p-4 hover:bg-red-50 transition-all border border-red-100 group"
-                >
-                  <div className="w-10 h-10 bg-red-50 text-red-600 flex items-center justify-center group-hover:bg-red-600 group-hover:text-white transition-all">
-                    <Trash2 size={20} />
-                  </div>
-                  <div className="text-left">
-                    <p className="text-sm font-bold text-red-600">Eliminar Cliente</p>
-                    <p className="text-[10px] text-red-400 uppercase tracking-wider">Remover permanentemente</p>
-                  </div>
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-
-        {showInitialBalanceModal && (
-          <div className="fixed inset-0 z-[160] flex items-center justify-center p-4 sm:p-6">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowInitialBalanceModal(null)}
-              className="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm"
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="relative w-full max-w-md bg-white rounded-none shadow-2xl overflow-hidden"
-            >
-              <div className="p-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
-                <h3 className="font-bold text-[#003366] flex items-center gap-2 uppercase tracking-widest text-xs">
-                  <CreditCard size={16} />
-                  Saldo Inicial de Conta Corrente
-                </h3>
-                <button 
-                  onClick={() => setShowInitialBalanceModal(null)}
-                  className="p-2 hover:bg-zinc-200 rounded-full transition-colors text-zinc-400 hover:text-zinc-600"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-              <div className="p-8">
-                <p className="text-sm font-bold text-zinc-800 mb-6">{showInitialBalanceModal.name}</p>
-                <div className="space-y-4">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Valor do Saldo Inicial</label>
-                    <input 
-                      type="number" 
-                      step="0.01" 
-                      defaultValue={showInitialBalanceModal.saldo_inicial || 0}
-                      id="initial_balance_input"
-                      className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-3 text-zinc-800 focus:outline-none focus:border-[#003366] text-lg font-bold" 
-                      placeholder="0.00" 
-                    />
-                  </div>
-                  <div className="flex justify-end gap-3 pt-4">
-                    <button onClick={() => setShowInitialBalanceModal(null)} className="px-6 py-2 text-sm font-bold text-zinc-500 hover:bg-zinc-100 transition-all">Cancelar</button>
-                    <button 
-                      onClick={async () => {
-                        const val = (document.getElementById('initial_balance_input') as HTMLInputElement).value;
-                        try {
-                          if (!user?.empresa_id) throw new Error("Usuário sem empresa");
-                          
-                          await clienteService.updateCliente(showInitialBalanceModal.id!, {
-                            saldo_inicial: Number(val),
-                            empresa_id: user.empresa_id
-                          });
-                          
-                          setShowInitialBalanceModal(null);
-                          onRefresh();
-                        } catch (err) {
-                          console.error("Erro ao definir saldo:", err);
-                          alert("Falha ao definir saldo inicial.");
-                        }
-                      }}
-                      className="bg-emerald-600 text-white px-8 py-2 text-sm font-bold shadow-lg hover:bg-emerald-700 transition-all"
-                    >
-                      Guardar Saldo
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-
-        {showSettledDocsModal && (
-          <div className="fixed inset-0 z-[160] flex items-center justify-center p-4 sm:p-6">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowSettledDocsModal(null)}
-              className="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm"
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="relative w-full max-w-4xl bg-white rounded-none shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
-            >
-              <div className="p-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
-                <h3 className="font-bold text-[#003366] flex items-center gap-2 uppercase tracking-widest text-xs">
-                  <FileCheck size={16} />
-                  Documentos Liquidados
-                </h3>
-                <button 
-                  onClick={() => setShowSettledDocsModal(null)}
-                  className="p-2 hover:bg-zinc-200 rounded-full transition-colors text-zinc-400 hover:text-zinc-600"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-              <div className="p-8 overflow-y-auto">
-                <p className="text-sm font-bold text-zinc-800 mb-6">{showSettledDocsModal.name}</p>
-                <div className="bg-white border border-zinc-200 rounded-none overflow-hidden">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-zinc-50 text-zinc-400 text-[10px] uppercase tracking-wider font-bold border-b border-zinc-100">
-                        <th className="px-6 py-3">Data</th>
-                        <th className="px-6 py-3">Documento</th>
-                        <th className="px-6 py-3">Tipo</th>
-                        <th className="px-6 py-3 text-right">Valor</th>
-                        <th className="px-6 py-3 text-right">Estado</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-zinc-100">
-                      {issuedDocuments.filter(d => d.cliente_id === showSettledDocsModal.id && d.status === 'pago').length > 0 ? (
-                        issuedDocuments.filter(d => d.cliente_id === showSettledDocsModal.id && d.status === 'pago').map(d => (
-                          <tr key={d.id} className="text-sm hover:bg-zinc-50">
-                            <td className="px-6 py-4 text-zinc-500">{new Date(d.data_emissao).toLocaleDateString()}</td>
-                            <td className="px-6 py-4 font-bold text-zinc-800">{d.numero_documento}</td>
-                            <td className="px-6 py-4 text-zinc-600">{d.tipo_documento}</td>
-                            <td className="px-6 py-4 text-right font-bold text-[#003366]">{formatCurrency(d.contravalor)}</td>
-                            <td className="px-6 py-4 text-right">
-                              <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase">Liquidado</span>
-                            </td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr className="text-sm">
-                          <td className="px-6 py-4 text-zinc-500 italic" colSpan={5}>Nenhum documento liquidado encontrado.</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* NIF Portal removed as it is now opened in a new tab */}
-
-      <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-[#003366] text-white text-[11px] uppercase tracking-wider font-bold">
-              <th className="px-6 py-4">NIF</th>
-              <th className="px-6 py-4">Estado NIF</th>
-              <th className="px-6 py-4">Nome</th>
-              <th className="px-6 py-4">Localidade</th>
-              <th className="px-6 py-4">Telefone</th>
-              <th className="px-6 py-4 text-right">Ações</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-zinc-100">
-            {filteredClients.map((client) => (
-              <tr key={client.id} className="hover:bg-zinc-50 text-sm transition-colors">
-                <td className="px-6 py-4 font-mono text-xs text-zinc-400">{client.contribuinte || 'N/A'}</td>
-                <td className="px-6 py-4">
-                  {client.estado_nif === 'ativo' && <span className="text-emerald-600" title="Ativo">🟢</span>}
-                  {client.estado_nif === 'suspenso' && <span className="text-red-600" title="Suspenso">🔴</span>}
-                  {client.estado_nif === 'inválido' && <span className="text-amber-600" title="Inválido">⚠️</span>}
-                  {client.estado_nif === 'não encontrado' && <span className="text-zinc-600" title="Não encontrado">🚫</span>}
-                  {!client.estado_nif && <span className="text-zinc-400" title="Não definido">⚪</span>}
-                </td>
-                <td className="px-6 py-4">
-                  <div className="font-bold text-zinc-800">{client.name}</div>
-                  <div className="text-[10px] text-zinc-400">{client.email}</div>
-                </td>
-                <td className="px-6 py-4 text-zinc-600">{client.localidade || 'N/A'}</td>
-                <td className="px-6 py-4 text-zinc-600">{client.telefone || 'N/A'}</td>
-                <td className="px-6 py-4 text-right">
-                  <div className="flex justify-end gap-2">
-                    <button 
-                      onClick={() => onViewAccount(client)}
-                      className="text-[#003366] hover:bg-[#003366] hover:text-white px-3 py-1 text-xs font-bold border border-[#003366] transition-all"
-                    >
-                      Conta Corrente
-                    </button>
-                    <button 
-                      onClick={() => setShowOptionsModal(client)}
-                      className="text-zinc-400 hover:text-[#003366] p-1.5 hover:bg-zinc-100 transition-all"
-                      title="Opções"
-                    >
-                      <Settings size={18} />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {clients.length === 0 && (
-          <div className="p-12 text-center text-zinc-400 text-sm italic">Nenhum cliente registado.</div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTaxes, onBack, onSuccess, caixas, initialData = null, fixedDocumentType, addMovement }: { 
-  suppliers: Supplier[], 
-  products: Product[], 
-  workSites: WorkSite[], 
+const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTaxes, onBack, onSuccess, caixas, initialData = null, fixedDocumentType, addMovement }: {
+  suppliers: Supplier[],
+  products: Product[],
+  workSites: WorkSite[],
   fiscalSeries: FiscalSeries[],
   activeTaxes: any[],
-  onBack: () => void, 
+  onBack: () => void,
   onSuccess: (data?: any) => void,
   caixas: Caixa[],
   initialData?: Purchase | null,
@@ -26016,58 +26020,30 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
   const [showSupplierModal, setShowSupplierModal] = useState(false);
   const isCertified = false;
   const initAny = initialData as any;
-  const [supplierId, setSupplierId] = useState<number | string | ''>(
-    initAny?.supplier_id || initAny?.fornecedor_id || ''
-  );
+  const [supplierId, setSupplierId] = useState<number | string | ''>(initAny?.supplier_id || initAny?.fornecedor_id || '');
   const [documentType, setDocumentType] = useState(fixedDocumentType || initAny?.document_type || initAny?.tipo_documento || 'Fatura de Compra');
-  const [selectedSerieFiscal, setSelectedSerieFiscal] = useState<number | null>(null);
   const [invoiceNumber, setInvoiceNumber] = useState(initAny?.invoice_number || initAny?.numero_documento || '');
-  const [documentNumber, setDocumentNumber] = useState(initAny?.purchase_number || initAny?.numero_compra || '');
   const [date, setDate] = useState(() => {
-    try {
-      if (initAny?.date || initAny?.data_compra) {
-        const d = new Date(initAny.date || initAny.data_compra);
-        if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
-      }
-    } catch {}
+    try { if (initAny?.date || initAny?.data_compra) { const d = new Date(initAny.date || initAny.data_compra); if (!isNaN(d.getTime())) return d.toISOString().split('T')[0]; } } catch {}
     return new Date().toISOString().split('T')[0];
   });
   const [countryCode, setCountryCode] = useState('AO');
   const [nif, setNif] = useState(initAny?.supplier_nif || initAny?.nif || '');
   const [supplierName, setSupplierName] = useState(initAny?.supplier_name || initAny?.fornecedor_nome || '');
-  const [workSiteId, setWorkSiteId] = useState<string>(String(initAny?.work_site_id || initAny?.work_site || ''));
   const [dueDate, setDueDate] = useState<string>(() => {
-    try {
-      if (initAny?.due_date || initAny?.data_vencimento) {
-        const d = new Date(initAny.due_date || initAny.data_vencimento);
-        if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
-      }
-    } catch {}
+    try { if (initAny?.due_date || initAny?.data_vencimento) { const d = new Date(initAny.due_date || initAny.data_vencimento); if (!isNaN(d.getTime())) return d.toISOString().split('T')[0]; } } catch {}
     return '';
   });
-  const [vatWithholding, setVatWithholding] = useState<string>(String(initAny?.vat_withholding ?? '0'));
-  const [exchangeRate, setExchangeRate] = useState<string>(String(initAny?.exchange_rate ?? '1'));
-  const [currency, setCurrency] = useState<string>(initAny?.currency || 'Kwanza');
   const [globalDiscount, setGlobalDiscount] = useState<string>(String(initAny?.global_discount ?? '0'));
   const [serviceDate, setServiceDate] = useState(() => {
-    try {
-      if (initAny?.service_date) {
-        const d = new Date(initAny.service_date);
-        if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
-      }
-    } catch {}
+    try { if (initAny?.service_date) { const d = new Date(initAny.service_date); if (!isNaN(d.getTime())) return d.toISOString().split('T')[0]; } } catch {}
     return new Date().toISOString().split('T')[0];
   });
-  const [items, setItems] = useState<any[]>(
-    initAny?.items && fixedDocumentType !== 'Pagamento' ? initAny.items.map((i: any) => ({...i})) : []
-  );
+  const [items, setItems] = useState<any[]>(initAny?.items && fixedDocumentType !== 'Pagamento' ? initAny.items.map((i: any) => ({...i})) : []);
   const [cashBox, setCashBox] = useState(initAny?.caixa || initAny?.caixa_id || '');
   const [paymentMethod, setPaymentMethod] = useState(initAny?.payment_method || '');
-  const [hash, setHash] = useState(initialData?.hash || '');
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [loading, setLoading] = useState(false);
-
-  // AGT Item Modal state for purchases
   const [isAgtItemModalOpen, setIsAgtItemModalOpen] = useState(false);
   const [editingAgtItemIndex, setEditingAgtItemIndex] = useState<number | null>(null);
   const [editingAgtItemData, setEditingAgtItemData] = useState<AgtItemData | null>(null);
@@ -26076,10 +26052,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
   useEffect(() => {
     if (supplierId && suppliers && suppliers.length > 0) {
       const foundSup = suppliers.find(s => String(s.id) === String(supplierId));
-      if (foundSup) {
-        setNif(foundSup.nif || '');
-        setSupplierName(foundSup.name || '');
-      }
+      if (foundSup) { setNif(foundSup.nif || ''); setSupplierName(foundSup.name || ''); }
     }
   }, [supplierId, suppliers]);
 
@@ -26092,783 +26065,267 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
   const handleSaveAgtItem = (savedItem: AgtItemData) => {
     const taxObj = activeTaxes.find(t => String(t.id) === String(savedItem.codigo_imposto) || t.nome === savedItem.tipo_imposto);
     const taxRate = taxObj ? Number(taxObj.taxa) : (savedItem.taxa_imposto || 0);
-    const itemTaxName = taxObj ? `${taxObj.nome} (${taxObj.taxa}%)` : (savedItem.tax_applied_label || 'IVA (14%)');
-
     const newItem: Partial<InvoiceItem> = {
-      description: savedItem.description,
-      quantity: savedItem.quantity,
-      unit_price: savedItem.unit_price,
-      desconto: savedItem.desconto || 0,
-      tax_id: taxObj?.id || savedItem.codigo_imposto || undefined,
-      tax: itemTaxName,
-      tax_rate: taxRate,
-      total: savedItem.total,
-      tipologia: savedItem.tipo_operacao || 'Mercadoria',
-      unidade_medida: savedItem.unidade_medida || 'Qtd',
-      referencia: savedItem.referencia || '',
-      tipo_artigo: savedItem.tipo_operacao?.toLowerCase().includes('serviço') ? 'serviço' : 'produto'
+      description: savedItem.description, quantity: savedItem.quantity, unit_price: savedItem.unit_price,
+      tax_id: taxObj?.id, tax_rate: taxRate, desconto: savedItem.desconto || 0, total: savedItem.total,
+      unidade_medida: savedItem.unidade_medida,
     };
-
-    if (editingAgtItemIndex !== null) {
-      const updated = [...items];
-      updated[editingAgtItemIndex] = { ...updated[editingAgtItemIndex], ...newItem };
-      setItems(updated);
-      setEditingAgtItemIndex(null);
-    } else {
-      setItems([...items, newItem]);
-    }
-    setIsAgtItemModalOpen(false);
+    if (editingAgtItemIndex !== null) { const updated = [...items]; updated[editingAgtItemIndex] = {...updated[editingAgtItemIndex], ...newItem}; setItems(updated); }
+    else { setItems(prev => [...prev, newItem]); }
+    setIsAgtItemModalOpen(false); setEditingAgtItemIndex(null); setEditingAgtItemData(null);
   };
 
-  const addItem = () => {
-    setEditingAgtItemIndex(null);
-    setEditingAgtItemData(null);
-    setIsAgtItemModalOpen(true);
-  };
+  const addItem = () => { setEditingAgtItemIndex(null); setEditingAgtItemData(null); setIsAgtItemModalOpen(true); };
+  const removeItem = (idx: number) => setItems(prev => prev.filter((_, i) => i !== idx));
 
-  const removeItem = (index: number) => {
-    setItems(items.filter((_, i) => i !== index));
-  };
+  const total = items.reduce((s, it) => s + (Number(it.unit_price)||0)*(Number(it.quantity)||1)*(1-(Number(it.desconto)||0)/100), 0);
+  const vatAmount = items.reduce((s, it) => {
+    const tax = activeTaxes.find(t => t.id === it.tax_id || String(t.id) === String(it.tax_id));
+    const rate = tax ? Number(tax.taxa)/100 : 0;
+    const base = (Number(it.unit_price)||0)*(Number(it.quantity)||1)*(1-(Number(it.desconto)||0)/100);
+    return s + base * rate;
+  }, 0);
+  const retencaoTaxesAmount = 0;
+  const finalTotal = total + vatAmount - retencaoTaxesAmount - Number(globalDiscount || 0);
 
-  const total = (items ?? []).reduce((sum, item) => sum + (Number(item.total) || 0), 0);
-  
-  const vatBreakdown: { [key: string]: number } = {};
-  const retencaoBreakdown: { [key: string]: number } = {};
-  (items ?? []).forEach(item => {
-    const rate = item.tax_rate || 0;
-    const itemTaxAmount = (Number(item.total) || 0) * (rate / 100);
-    const label = item.tax || 'Outros';
-    
-    const typeStr = item.tax_type?.toLowerCase() || '';
-    if (typeStr.includes('retencao') || typeStr.includes('retenção')) {
-      retencaoBreakdown[label] = (retencaoBreakdown[label] || 0) + itemTaxAmount;
-    } else {
-      vatBreakdown[label] = (vatBreakdown[label] || 0) + itemTaxAmount;
-    }
-  });
-  
-  const vatAmount = Object.values(vatBreakdown).reduce((a, b) => a + b, 0);
-  const retencaoTaxesAmount = Object.values(retencaoBreakdown).reduce((a, b) => a + b, 0);
-  const vatWithholdingAmount = vatAmount * Number(vatWithholding || 0);
-  const finalTotal = total + vatAmount - vatWithholdingAmount - Number(globalDiscount || 0) - retencaoTaxesAmount;
-
-  const handleSearchSupplier = () => {
-    const client = suppliers.find(c => c.nif && c.nif.includes(supplierNifSearch || nif));
-    if (client) {
-      setSupplierId(client.id);
-      setSupplierName(client.name);
-      setNif(client.nif || '');
-    }
+  const handleSearchSupplier = async () => {
+    if (!supplierNifSearch) return;
+    const found = suppliers.find(s => s.nif && String(s.nif) === String(supplierNifSearch));
+    if (found) { setSupplierId(found.id); setSupplierName(found.name); setNif(found.nif || ''); }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (loading) return;
-    if (items.length === 0) {
-      alert('Por favor adicione pelo menos um bem ou serviço.');
-      return;
-    }
-
+    if (items.length === 0) return;
     setLoading(true);
-
-    let finalSupplierId = supplierId;
-
-    if (!finalSupplierId && supplierName) {
-      try {
-        const companyIdVal = user?.empresa_id || user?.company_id;
-        if (!companyIdVal) {
-          alert('Sessão expirada ou sem empresa associada.');
-          setLoading(false);
-          return;
-        }
-
-        const { data: newSup, error: supErr } = await supabase
-          .from('fornecedores')
-          .insert({
-            empresa_id: companyIdVal,
-            nome: supplierName,
-            nif: nif,
-            email: '',
-            morada: ''
-          })
-          .select()
-          .single();
-        
-        if (supErr) throw supErr;
-        finalSupplierId = newSup.id;
-      } catch (err) {
-        console.error('Error creating supplier:', err);
-        setLoading(false);
-        return;
-      }
-    }
-
-    if (!finalSupplierId && !supplierName) {
-      alert('Por favor, selecione um fornecedor ou digite o nome de um novo fornecedor.');
-      setLoading(false);
-      return;
-    }
-
     try {
-      const companyIdVal = user?.empresa_id || user?.company_id;
-      if (!companyIdVal) {
-        alert('Sessão expirada ou sem empresa associada.');
-        setLoading(false);
-        return;
-      }
-
-      let finalCaixaId = cashBox || null;
-      if (cashBox === 'Banco') {
-        const bankCaixa = caixas.find(c => c.name.toLowerCase().includes('banco'));
-        if (bankCaixa) {
-          finalCaixaId = bankCaixa.id;
-        } else if (caixas.length > 0) {
-          finalCaixaId = caixas[0].id;
-        } else {
-          finalCaixaId = null;
-        }
-      }
-
-      if (finalCaixaId && !isValidUUID(finalCaixaId)) {
-        finalCaixaId = null;
-      }
-
-      if (!initialData?.id && invoiceNumber) {
-        const { data: dupCheck } = await supabase
-          .from('compras')
-          .select('id')
-          .eq('empresa_id', companyIdVal)
-          .eq('fornecedor_id', finalSupplierId)
-          .eq('numero_documento', invoiceNumber.trim())
-          .limit(1);
-
-        if (dupCheck && dupCheck.length > 0) {
-          alert(`Já existe um documento de compra registado com o número "${invoiceNumber}" para este fornecedor.`);
-          setLoading(false);
-          return;
-        }
-      }
-
-      const isCashPurchase = documentType === 'Fatura Recibo de Compra' || documentType === 'Fatura Recibo';
-      
-      const purchaseDataFields: any = {
-        empresa_id: companyIdVal,
-        data_compra: date,
-        data: date,
-        valor_total: Number(finalTotal),
-        total: Number(finalTotal),
-        tipo_documento: documentType,
-        document_type: documentType,
-        numero_documento: documentNumber || invoiceNumber,
-        numero_compra: documentNumber || invoiceNumber,
-        invoice_number: invoiceNumber || documentNumber,
-        data_vencimento: dueDate || null,
-        due_date: dueDate || null,
-        taxa_cambio: Number(exchangeRate || 1),
-        moeda: currency || 'Kwanza',
-        itens: items,
-        items: items,
-        descricao: `${documentType} nº ${invoiceNumber || documentNumber}`,
-        ano: Number(new Date(date).getFullYear()),
-        status: isCashPurchase ? 'pago' : 'pendente',
-        estado: isCashPurchase ? 'PAGO' : 'pendente',
-        recibo_emitido: isCashPurchase ? true : false,
-        valor_pago: isCashPurchase ? Number(finalTotal) : 0,
-        saldo_pendente: isCashPurchase ? 0 : Number(finalTotal),
-        metodo_pagamento: paymentMethod || (isCashPurchase ? 'Numerário' : ''),
-        forma_pagamento: paymentMethod || (isCashPurchase ? 'Numerário' : ''),
-        created_by_username: user?.username || 'admin',
-        created_by_nome: user?.nome || user?.username || 'Operador',
+      const purchaseData: any = {
+        supplier_id: supplierId || null, fornecedor_id: supplierId || null,
+        supplier_name: supplierName, fornecedor_nome: supplierName, supplier_nif: nif, nif,
+        document_type: documentType, tipo_documento: documentType,
+        invoice_number: invoiceNumber, numero_documento: invoiceNumber,
+        date, data_compra: date, due_date: dueDate || null, data_vencimento: dueDate || null,
+        service_date: serviceDate, country_code: countryCode,
+        items, total: finalTotal, valor_total: finalTotal, vat_amount: vatAmount,
+        global_discount: Number(globalDiscount) || 0, payment_method: paymentMethod || null,
+        caixa: cashBox || null, caixa_id: cashBox || null,
+        empresa_id: user?.empresa_id || user?.company_id, status: 'pendente', saldo_pendente: finalTotal,
       };
-
-      if (isValidUUID(finalSupplierId)) {
-        purchaseDataFields.fornecedor_id = finalSupplierId;
-        purchaseDataFields.supplier_id = finalSupplierId;
+      const { data, error } = await supabase.from('compras').insert([purchaseData]).select().single();
+      if (error) throw error;
+      if (addMovement && (documentType === 'Fatura Recibo de Compra' || documentType === 'Pagamento') && cashBox) {
+        await addMovement({ tipo: 'saida', valor: finalTotal, descricao: `${documentType} - ${supplierName}`, caixa_id: cashBox, referencia: invoiceNumber });
       }
-      if (isValidUUID(finalCaixaId)) {
-        purchaseDataFields.caixa_id = finalCaixaId;
-      }
-      if (isValidUUID(user?.id)) {
-        purchaseDataFields.created_by = user.id;
-        purchaseDataFields.criado_por = user.id;
-      }
-
-      let result;
-      if (initialData?.id && !fixedDocumentType) {
-        purchaseDataFields.atualizado_em = new Date().toISOString();
-        if (isValidUUID(user?.id)) {
-          purchaseDataFields.atualizado_por = user.id;
-        }
-
-        result = await supabase
-          .from('compras')
-          .update(purchaseDataFields)
-          .eq('id', initialData.id)
-          .select()
-          .single();
-      } else {
-        if (fixedDocumentType === 'Pagamento') {
-          purchaseDataFields.reference_purchase_number = initialData?.purchase_number || '';
-          purchaseDataFields.reference_document = initialData?.purchase_number || '';
-          purchaseDataFields.descricao = `Recibo de Fornecedor referente a ${initialData?.purchase_number || invoiceNumber}`;
-        }
-
-        result = await supabase
-          .from('compras')
-          .insert([purchaseDataFields])
-          .select()
-          .single();
-
-        if (!result.error && fixedDocumentType === 'Pagamento' && initialData?.id) {
-          const valorJaPago = Number(initialData.valor_pago || 0) + Number(finalTotal);
-          const valorTotalDoc = Number(initialData.valor_total || initialData.total || 0);
-          const saldo = Math.max(0, valorTotalDoc - valorJaPago);
-          
-          await supabase
-            .from('compras')
-            .update({
-              recibo_emitido: saldo <= 0,
-              valor_pago: valorJaPago,
-              saldo_pendente: saldo
-            })
-            .eq('id', initialData.id);
-        }
-      }
-
-      if (result.error) {
-        throw result.error;
-      }
-
-      if (result.data && (documentType === 'Fatura Recibo de Compra' || documentType === 'Pagamento') && cashBox && addMovement) {
-          try {
-              const selectedCaixa = caixas.find(c => c.id === cashBox || c.name === cashBox);
-              if (selectedCaixa) {
-                  await addMovement({
-                      caixaId: selectedCaixa.id,
-                      type: 'saida',
-                      amount: finalTotal,
-                      description: `${documentType} Fornecedor nº ${invoiceNumber || documentNumber}`,
-                      date: new Date().toISOString()
-                  });
-              }
-          } catch (movErr) {
-              console.error("Erro ao registrar no caixa (compra):", movErr);
-          }
-      }
-
-      toast.success('Documento de compra salvo com sucesso!');
-      onSuccess(result.data);
-    } catch (err: any) {
-      console.error('Erro ao emitir documento:', err);
-      alert('Erro ao emitir documento: ' + (err.message || 'Erro desconhecido'));
-    } finally {
-      setLoading(false);
-    }
+      onSuccess(data);
+    } catch (err: any) { alert('Erro ao registar compra: ' + (err.message || err)); }
+    finally { setLoading(false); }
   };
 
-  if (fixedDocumentType === 'Pagamento') {
-    const amountToPay = initialData?.total || initialData?.valor_total || 0;
-    const [liquidarValue, setLiquidarValue] = useState(amountToPay);
-    const [receiptNumber, setReceiptNumber] = useState('');
-    const [receiptCode, setReceiptCode] = useState('');
-    const [supportDoc, setSupportDoc] = useState('');
-    const [receiptDate, setReceiptDate] = useState(new Date().toISOString().split('T')[0]);
-
-    return (
-      <div className="fixed inset-0 z-[250] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm overflow-y-auto">
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.98, y: 10 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          className="bg-white w-full max-w-lg shadow-2xl border border-zinc-200"
-        >
-          <div className="p-8 border-b border-zinc-100 flex justify-between items-center bg-zinc-50/50">
-            <h3 className="text-2xl font-black text-[#003366] uppercase tracking-tighter flex items-center gap-2">
-              <FileCheck size={22} className="text-emerald-600" />
-              Emitir Recibo de Fatura
-            </h3>
-            <button onClick={onBack} className="p-2 hover:bg-zinc-100 transition-colors text-zinc-400 group">
-              <X size={24} className="group-hover:rotate-90 transition-transform" />
-            </button>
-          </div>
-          
-          <form onSubmit={handleSubmit} className="p-8 space-y-6">
-            <div className="bg-zinc-50/50 p-6 border border-zinc-100 flex justify-between items-start">
-               <div>
-                  <label className="text-[10px] font-black uppercase text-zinc-400 tracking-widest mb-1 block">Fornecedor</label>
-                  <p className="text-sm font-bold text-zinc-600">{initialData?.supplier_name || initialData?.fornecedor_nome}</p>
-               </div>
-               <div className="text-right">
-                  <label className="text-[10px] font-black uppercase text-zinc-400 tracking-widest mb-1 block">Saldo em falta</label>
-                  <p className="text-xl font-black text-red-600">
-                     {formatCurrency(liquidarValue)}
-                  </p>
-               </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase text-zinc-500 tracking-widest">Nº Recibo</label>
-                <input 
-                  type="text" 
-                  value={receiptNumber}
-                  onChange={(e) => setReceiptNumber(e.target.value)}
-                  placeholder="REC 001/2026" 
-                  className="w-full bg-white border border-zinc-200 px-4 py-2 text-xs font-bold focus:border-[#003366] outline-none" 
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase text-zinc-500 tracking-widest">Código</label>
-                <input 
-                  type="text" 
-                  value={receiptCode}
-                  onChange={(e) => setReceiptCode(e.target.value)}
-                  placeholder="RC-123" 
-                  className="w-full bg-white border border-zinc-200 px-4 py-2 text-xs font-bold focus:border-[#003366] outline-none" 
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-               <label className="text-[10px] font-black uppercase text-zinc-500 tracking-widest">Doc de Suporte</label>
-               <input 
-                  type="text" 
-                  value={supportDoc}
-                  onChange={(e) => setSupportDoc(e.target.value)}
-                  placeholder="Ex: FT 123" 
-                  className="w-full bg-white border border-zinc-200 px-4 py-2 text-xs font-bold focus:border-[#003366] outline-none" 
-               />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black uppercase text-zinc-500 tracking-widest">Valor a Liquidar</label>
-              <input 
-                type="number" 
-                defaultValue={amountToPay}
-                step="0.01"
-                required
-                className="w-full bg-white border border-zinc-200 p-4 text-xl font-bold text-[#003366] focus:border-[#003366] outline-none transition-all placeholder:text-zinc-200"
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value) || 0;
-                  setLiquidarValue(val);
-                  setItems([{ description: 'Recibo: ' + (initialData?.purchase_number || initialData?.invoice_number || ''), quantity: 1, unit_price: val, total: val }]);
-                }}
-              />
-            </div>
-
-            <div className="p-4 bg-blue-50/20 border border-blue-100/30">
-               <label className="text-[9px] font-black uppercase text-blue-400 tracking-widest mb-1 block italic text-center">Valor por extenso</label>
-               <p className="text-xs font-bold text-blue-900 italic text-center">
-                  {writeValorPorExtenso(liquidarValue)}
-               </p>
-            </div>
-
-            <div className="space-y-6">
-               <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase text-zinc-500 tracking-widest">Forma de Pagamento *</label>
-                <select 
-                  value={paymentMethod} 
-                  onChange={(e) => setPaymentMethod(e.target.value)}
-                  required
-                  className="w-full bg-white border border-zinc-200 px-4 py-3 text-sm font-bold focus:border-[#003366] outline-none transition-colors"
-                >
-                  <option value="">Selecione...</option>
-                  <option value="Numerário">Numerário</option>
-                  <option value="Multicaixa">Multicaixa</option>
-                  <option value="Transferência">Transferência</option>
-                  <option value="Depósito">Depósito</option>
-                </select>
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase text-zinc-500 tracking-widest">Caixa / Banco *</label>
-                <select 
-                  value={cashBox} 
-                  onChange={(e) => setCashBox(e.target.value)}
-                  required
-                  className="w-full bg-white border border-zinc-200 px-4 py-3 text-sm font-bold focus:border-[#003366] outline-none transition-colors"
-                >
-                  <option value="">Selecione...</option>
-                  {caixas.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  <option value="Banco">Banco</option>
-                </select>
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase text-zinc-500 tracking-widest">Data do Pagamento</label>
-                <input 
-                  type="date"
-                  value={receiptDate}
-                  onChange={(e) => setReceiptDate(e.target.value)}
-                  className="w-full bg-white border border-zinc-200 px-4 py-3 text-sm font-bold focus:border-[#003366] outline-none transition-colors"
-                />
-              </div>
-            </div>
-
-            <div className="pt-6 flex gap-3">
-              <button 
-                type="button" 
-                onClick={onBack}
-                className="flex-1 bg-white border border-zinc-200 text-zinc-400 font-black py-4 uppercase text-[11px] tracking-widest hover:border-zinc-300 hover:text-zinc-500 transition-all hover:shadow-lg"
-              >
-                Cancelar
-              </button>
-              <button 
-                type="submit"
-                className="flex-[2] bg-[#003366] text-white font-black py-4 uppercase text-[11px] tracking-widest hover:bg-[#002244] shadow-xl shadow-blue-900/10 active:scale-[0.98] transition-all"
-                onClick={() => {
-                   if (items.length === 0) {
-                     setItems([{ description: 'Recibo: ' + (initialData?.purchase_number || ''), quantity: 1, unit_price: liquidarValue, total: liquidarValue }]);
-                   }
-                }}
-              >
-                Confirmar Pagamento
-              </button>
-            </div>
-          </form>
-        </motion.div>
-      </div>
-    );
-  }
-
   return (
-    <div className="max-w-[98%] mx-auto space-y-8 bg-zinc-50/30 p-4 sm:p-8 min-h-screen">
-      <div className="flex items-center gap-4 mb-8">
-        <button onClick={onBack} className="p-2 hover:bg-zinc-100 rounded-none text-zinc-400 transition-colors">
-          <ChevronLeft size={24} />
+    <div className="max-w-full mx-auto space-y-2 p-3">
+      <div className="flex items-center gap-2 mb-1">
+        <button type="button" onClick={onBack} className="p-1.5 hover:bg-zinc-100 rounded text-zinc-400 transition-colors">
+          <ChevronLeft size={20} />
         </button>
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-zinc-100 flex items-center justify-center text-zinc-500">
-            <FileText size={18} />
-          </div>
-          <h2 className="text-xl font-bold text-[#003366]">
-            {fixedDocumentType ? `Emitir ${fixedDocumentType}` : 'Informações do documento de compra'}
-          </h2>
-        </div>
+        <h2 className="text-base font-black text-[#003366] uppercase tracking-wider">
+          {fixedDocumentType ? `Emitir ${fixedDocumentType}` : 'InformaÃ§Ãµes do documento de compra'}
+        </h2>
       </div>
 
       {showSupplierModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm">
-           <motion.div 
-             initial={{ opacity: 0, scale: 0.95 }}
-             animate={{ opacity: 1, scale: 1 }}
-             className="w-full max-w-4xl bg-white shadow-2xl overflow-hidden relative"
-           >
-             <button 
-               onClick={() => setShowSupplierModal(false)}
-               className="absolute top-4 right-4 text-zinc-400 hover:text-zinc-600 z-10 p-2 hover:bg-zinc-100 rounded-full"
-             >
-               <X size={24} />
-             </button>
-             <ClientForm 
-               onBack={() => setShowSupplierModal(false)}
-               onSuccess={() => {
-                 setShowSupplierModal(false);
-                 onSuccess(); 
-               }}
-               isSupplier={true}
-             />
-           </motion.div>
+          <div className="w-full max-w-4xl bg-white shadow-2xl overflow-hidden relative">
+            <button onClick={() => setShowSupplierModal(false)} className="absolute top-4 right-4 text-zinc-400 hover:text-zinc-600 z-10 p-2 hover:bg-zinc-100 rounded-full"><X size={24} /></button>
+            <ClientForm onBack={() => setShowSupplierModal(false)} onSuccess={() => { setShowSupplierModal(false); }} isSupplier={true} />
+          </div>
         </div>
       )}
 
       {isAgtItemModalOpen && (
-        <AgtItemModal
-          isOpen={isAgtItemModalOpen}
-          initialItem={editingAgtItemData}
-          products={products}
-          activeTaxes={activeTaxes}
-          onClose={() => {
-            setIsAgtItemModalOpen(false);
-            setEditingAgtItemIndex(null);
-            setEditingAgtItemData(null);
-          }}
-          onSave={handleSaveAgtItem}
-        />
+        <AgtItemModal isOpen={isAgtItemModalOpen} initialItem={editingAgtItemData} products={products} activeTaxes={activeTaxes}
+          onClose={() => { setIsAgtItemModalOpen(false); setEditingAgtItemIndex(null); setEditingAgtItemData(null); }}
+          onSave={handleSaveAgtItem} />
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-8">
-        <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-600">Tipo de documento <span className="text-red-500">*</span></label>
-              <select 
-                value={documentType} 
-                onChange={(e) => setDocumentType(e.target.value)}
-                required
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold"
-              >
+      <form onSubmit={handleSubmit} className="space-y-2">
+        {/* Section 1: Document info */}
+        <div className="bg-white border border-zinc-200 p-3 shadow-sm">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <div>
+              <label className="text-[10px] font-bold text-zinc-500 uppercase">Tipo de Documento *</label>
+              <select value={documentType} onChange={(e) => setDocumentType(e.target.value)} required
+                className="w-full bg-zinc-50 border border-zinc-200 px-2 py-1 text-zinc-800 focus:outline-none focus:border-[#003366] text-xs font-semibold h-7 mt-0.5">
                 <option value="Fatura de Compra">Fatura de Compra</option>
                 <option value="Fatura Recibo de Compra">Fatura Recibo de Compra</option>
-                <option value="Nota de Crédito de Fornecedor">Nota de Crédito de Fornecedor</option>
-                <option value="Nota de Débito de Fornecedor">Nota de Débito de Fornecedor</option>
+                <option value="Nota de CrÃ©dito de Fornecedor">Nota de CrÃ©dito de Fornecedor</option>
+                <option value="Nota de DÃ©bito de Fornecedor">Nota de DÃ©bito de Fornecedor</option>
                 <option value="Guia de Entrada">Guia de Entrada</option>
-                <option value="Guia de Devolução">Guia de Devolução</option>
+                <option value="Guia de DevoluÃ§Ã£o">Guia de DevoluÃ§Ã£o</option>
               </select>
             </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-600">Nº Documento Fornecedor <span className="text-red-500">*</span></label>
-              <input 
-                type="text" 
-                value={invoiceNumber} 
-                onChange={(e) => setInvoiceNumber(e.target.value)}
-                placeholder="Ex: FT 123/2026"
-                required={true}
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold"
-              />
+            <div>
+              <label className="text-[10px] font-bold text-zinc-500 uppercase">NÂº Documento Fornecedor *</label>
+              <input type="text" value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)}
+                placeholder="Ex: FT 123/2026" required
+                className="w-full bg-zinc-50 border border-zinc-200 px-2 py-1 text-zinc-800 focus:outline-none focus:border-[#003366] text-xs font-semibold h-7 mt-0.5" />
             </div>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-zinc-600">Data de emissão</label>
-                <input 
-                  type="date" 
-                  value={date} 
-                  onChange={(e) => setDate(e.target.value)}
-                  required
-                  className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-zinc-600">Data de vencimento</label>
-                <input 
-                  type="date" 
-                  value={dueDate} 
-                  onChange={(e) => setDueDate(e.target.value)}
-                  required
-                  className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-                />
-              </div>
+            <div>
+              <label className="text-[10px] font-bold text-zinc-500 uppercase">Data de EmissÃ£o *</label>
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required
+                className="w-full bg-zinc-50 border border-zinc-200 px-2 py-1 text-zinc-800 focus:outline-none focus:border-[#003366] text-xs h-7 mt-0.5" />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-zinc-500 uppercase">Data de Vencimento</label>
+              <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)}
+                className="w-full bg-zinc-50 border border-zinc-200 px-2 py-1 text-zinc-800 focus:outline-none focus:border-[#003366] text-xs h-7 mt-0.5" />
             </div>
           </div>
 
           {(documentType === 'Fatura Recibo de Compra' || documentType === 'Fatura Recibo') && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-zinc-100 bg-emerald-50/40 p-4 border border-emerald-200">
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-[#003366] uppercase tracking-wider">Caixa de Pagamento <span className="text-red-500">*</span></label>
-                <select 
-                  value={cashBox} 
-                  onChange={(e) => setCashBox(e.target.value)}
-                  required
-                  className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold shadow-sm"
-                >
+            <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-zinc-100">
+              <div>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase">Caixa de Pagamento *</label>
+                <select value={cashBox} onChange={(e) => setCashBox(e.target.value)} required
+                  className="w-full bg-zinc-50 border border-zinc-200 px-2 py-1 text-zinc-800 focus:outline-none focus:border-[#003366] text-xs font-semibold h-7 mt-0.5">
                   <option value="">Selecione a Caixa</option>
-                  {(caixas || []).map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                  <option value="Banco">Banco de Testes</option>
+                  {(caixas || []).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
                 </select>
               </div>
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-[#003366] uppercase tracking-wider">Forma de Pagamento <span className="text-red-500">*</span></label>
-                <select 
-                  value={paymentMethod} 
-                  onChange={(e) => setPaymentMethod(e.target.value)}
-                  required
-                  className="w-full bg-white border border-zinc-300 rounded-none px-4 py-2.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm font-bold shadow-sm"
-                >
-                  <option value="">Selecione a Forma de Pagamento</option>
-                  <option value="Numerário">Numerário</option>
+              <div>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase">Forma de Pagamento *</label>
+                <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} required
+                  className="w-full bg-zinc-50 border border-zinc-200 px-2 py-1 text-zinc-800 focus:outline-none focus:border-[#003366] text-xs font-semibold h-7 mt-0.5">
+                  <option value="">Selecione</option>
+                  <option value="NumerÃ¡rio">NumerÃ¡rio</option>
                   <option value="Multicaixa">Multicaixa</option>
-                  <option value="Transferência">Transferência</option>
-                  <option value="Depósito">Depósito</option>
+                  <option value="TransferÃªncia">TransferÃªncia</option>
+                  <option value="DepÃ³sito">DepÃ³sito</option>
                 </select>
               </div>
             </div>
           )}
         </div>
 
-        <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-6">
-          <h3 className="text-sm font-bold text-[#0f2a4a] border-b border-zinc-100 pb-3 uppercase tracking-wide">Informações do fornecedor</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-zinc-600">Código do país <span className="text-red-500">*</span></label>
-              <select 
-                value={countryCode} 
-                onChange={(e) => setCountryCode(e.target.value)}
-                required
-                className="w-full bg-white border border-zinc-300 rounded-none px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#0f2a4a] text-sm"
-              >
+        {/* Section 2: Supplier info */}
+        <div className="bg-white border border-zinc-200 p-3 shadow-sm">
+          <h3 className="text-[10px] font-black text-[#0f2a4a] border-b border-zinc-100 pb-1 uppercase tracking-widest mb-2">InformaÃ§Ãµes do fornecedor</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <div>
+              <label className="text-[10px] font-bold text-zinc-500 uppercase">PaÃ­s *</label>
+              <select value={countryCode} onChange={(e) => setCountryCode(e.target.value)} required
+                className="w-full bg-white border border-zinc-200 px-2 py-1 text-zinc-800 focus:outline-none focus:border-[#0f2a4a] text-xs h-7 mt-0.5">
                 <option value="AO">AO - Angola</option>
                 <option value="PT">PT - Portugal</option>
                 <option value="BR">BR - Brasil</option>
                 <option value="US">US - Estados Unidos</option>
               </select>
             </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-zinc-600">Nº de identificação fiscal (NIF) <span className="text-red-500">*</span></label>
-              <div className="flex">
-                <input
-                  type="text"
-                  value={supplierNifSearch || nif}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setSupplierNifSearch(val);
-                    setNif(val);
-                    const found = suppliers.find(c => c.nif && String(c.nif) === val);
-                    if (found) {
-                      setSupplierId(found.id);
-                      setSupplierName(found.name);
-                    }
-                  }}
+            <div>
+              <label className="text-[10px] font-bold text-zinc-500 uppercase">NIF *</label>
+              <div className="flex mt-0.5">
+                <input type="text" value={supplierNifSearch || nif}
+                  onChange={(e) => { const val = e.target.value; setSupplierNifSearch(val); setNif(val); const found = suppliers.find(c => c.nif && String(c.nif) === val); if (found) { setSupplierId(found.id); setSupplierName(found.name); } }}
                   placeholder="Ex: 5000000001"
-                  className="flex-1 bg-white border border-zinc-300 border-r-0 rounded-none px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#0f2a4a] text-sm"
-                />
-                <button
-                  type="button"
-                  onClick={handleSearchSupplier}
-                  className="bg-[#0f2a4a] hover:bg-[#1a3f6f] text-white px-4 py-2 transition-colors flex items-center justify-center"
-                  title="Pesquisar por NIF"
-                >
-                  <Search size={16} />
+                  className="flex-1 bg-white border border-zinc-200 border-r-0 px-2 py-1 text-zinc-800 focus:outline-none focus:border-[#0f2a4a] text-xs h-7" />
+                <button type="button" onClick={handleSearchSupplier}
+                  className="bg-[#0f2a4a] hover:bg-[#1a3f6f] text-white px-2 h-7 transition-colors flex items-center justify-center">
+                  <Search size={12} />
                 </button>
               </div>
             </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-zinc-600">Nome do Fornecedor <span className="text-red-500">*</span></label>
-              <div className="flex gap-2">
-                <select 
-                  value={supplierId || ''} 
-                  onChange={(e) => {
-                    const id = e.target.value;
-                    setSupplierId(id);
-                    const client = suppliers.find(c => String(c.id) === String(id));
-                    if (client) {
-                      setSupplierName(client.name);
-                      setNif(client.nif || '');
-                      setSupplierNifSearch(client.nif || '');
-                    } else {
-                      setSupplierName('');
-                      setNif('');
-                    }
-                  }}
-                  className="flex-1 bg-white border border-zinc-300 rounded-none px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#0f2a4a] text-sm"
-                >
-                  <option value="">Selecione um fornecedor</option>
+            <div>
+              <label className="text-[10px] font-bold text-zinc-500 uppercase">Fornecedor *</label>
+              <div className="flex gap-1 mt-0.5">
+                <select value={supplierId || ''} onChange={(e) => { const id = e.target.value; setSupplierId(id); const client = suppliers.find(c => String(c.id) === String(id)); if (client) { setSupplierName(client.name); setNif(client.nif || ''); setSupplierNifSearch(client.nif || ''); } else { setSupplierName(''); setNif(''); } }}
+                  className="flex-1 bg-white border border-zinc-200 px-2 py-1 text-zinc-800 focus:outline-none focus:border-[#0f2a4a] text-xs h-7">
+                  <option value="">Selecione</option>
                   {suppliers.map(c => <option key={String(c.id)} value={c.id}>{c.name} ({c.nif})</option>)}
                 </select>
-                <button 
-                  type="button"
-                  onClick={() => setShowSupplierModal(true)}
-                  className="p-2 bg-zinc-100 text-[#0f2a4a] hover:bg-zinc-200 transition-all border border-zinc-300 flex items-center justify-center min-w-[42px]"
-                  title="Registar novo fornecedor"
-                >
-                  <UserPlus size={18} />
+                <button type="button" onClick={() => setShowSupplierModal(true)}
+                  className="p-1 bg-zinc-100 text-[#0f2a4a] hover:bg-zinc-200 transition-all border border-zinc-200 flex items-center justify-center h-7 w-7">
+                  <UserPlus size={13} />
                 </button>
               </div>
             </div>
-            
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-zinc-600">Data prestação de bens/serviços <span className="text-red-500">*</span></label>
-              <input 
-                type="date" 
-                value={serviceDate} 
-                onChange={(e) => setServiceDate(e.target.value)}
-                required
-                className="w-full bg-white border border-zinc-300 rounded-none px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#0f2a4a] text-sm"
-              />
+            <div>
+              <label className="text-[10px] font-bold text-zinc-500 uppercase">Data PrestaÃ§Ã£o ServiÃ§os *</label>
+              <input type="date" value={serviceDate} onChange={(e) => setServiceDate(e.target.value)} required
+                className="w-full bg-white border border-zinc-200 px-2 py-1 text-zinc-800 focus:outline-none focus:border-[#0f2a4a] text-xs h-7 mt-0.5" />
             </div>
           </div>
         </div>
 
-        {/* Section 3: Bens e serviços */}
-        <div className="bg-white border border-zinc-200 p-8 rounded-none shadow-sm space-y-6">
-          <div className="flex justify-between items-center border-b border-zinc-100 pb-3">
-            <h3 className="text-sm font-bold text-[#0f2a4a] uppercase tracking-wide">Bens e serviços</h3>
-            <button 
-              type="button"
-              onClick={addItem}
-              className="bg-[#0f2a4a] hover:bg-[#1a3f6f] text-white px-4 py-2 font-bold flex items-center gap-2 transition-all text-xs shadow-sm rounded-none"
-            >
-              <Plus size={16} /> Adicionar Bem ou Serviço
+        {/* Section 3: Bens e serviÃ§os */}
+        <div className="bg-white border border-zinc-200 p-3 shadow-sm">
+          <div className="flex justify-between items-center border-b border-zinc-100 pb-2 mb-2">
+            <h3 className="text-[10px] font-black text-[#0f2a4a] uppercase tracking-widest">Bens e serviÃ§os</h3>
+            <button type="button" onClick={addItem}
+              className="bg-[#0f2a4a] hover:bg-[#1a3f6f] text-white px-3 py-1 font-bold flex items-center gap-1.5 transition-all text-[10px] shadow-sm">
+              <Plus size={12} /> Adicionar
             </button>
           </div>
-          
-          {/* AGT-style table for Purchase Items */}
+
           <div className="overflow-x-auto">
-            <table className="w-full text-xs border-collapse">
+            <table className="w-full text-xs border-collapse" style={{minWidth:'700px'}}>
               <thead>
                 <tr className="bg-[#0f2a4a] text-white">
-                  <th className="px-3 py-2.5 text-left font-semibold w-10">#</th>
-                  <th className="px-3 py-2.5 text-left font-semibold">Descrição do produto / serviço</th>
-                  <th className="px-3 py-2.5 text-center font-semibold w-24">Quantidade</th>
-                  <th className="px-3 py-2.5 text-center font-semibold w-28">Preço Unit</th>
-                  <th className="px-3 py-2.5 text-center font-semibold w-28">Desconto (%)</th>
-                  <th className="px-3 py-2.5 text-center font-semibold w-32">Imposto aplicado</th>
-                  <th className="px-3 py-2.5 text-center font-semibold w-28">Armazém</th>
-                  <th className="px-3 py-2.5 text-center font-semibold w-24">Acção</th>
+                  <th className="px-2 py-1.5 text-left font-semibold w-8">#</th>
+                  <th className="px-2 py-1.5 text-left font-semibold">DescriÃ§Ã£o</th>
+                  <th className="px-2 py-1.5 text-center font-semibold w-16">Qtd</th>
+                  <th className="px-2 py-1.5 text-center font-semibold w-24">PreÃ§o Unit</th>
+                  <th className="px-2 py-1.5 text-center font-semibold w-20">Desc(%)</th>
+                  <th className="px-2 py-1.5 text-center font-semibold w-28">Imposto</th>
+                  <th className="px-2 py-1.5 text-center font-semibold w-20">AcÃ§Ã£o</th>
                 </tr>
               </thead>
               <tbody>
                 {items.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="py-12 text-center text-zinc-400 font-semibold uppercase tracking-widest text-xs italic border border-dashed border-zinc-200">
-                      Nenhum bem ou serviço adicionado. Clique no botão acima para adicionar.
+                    <td colSpan={7} className="py-6 text-center text-zinc-400 font-semibold text-xs italic border border-dashed border-zinc-200">
+                      Nenhum bem ou serviÃ§o adicionado.
                     </td>
                   </tr>
                 ) : (
                   items.map((item, idx) => (
                     <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-zinc-50/60'}>
-                      <td className="px-3 py-2.5 text-zinc-500 border-b border-zinc-100">{idx + 1}</td>
-                      <td className="px-3 py-2.5 border-b border-zinc-100">
-                        <div className="font-medium text-zinc-800">{item.description || '—'}</div>
-                        {item.referencia && <div className="text-zinc-400 text-[10px]">Ref: {item.referencia}</div>}
+                      <td className="px-2 py-1.5 text-zinc-500 border-b border-zinc-100">{idx + 1}</td>
+                      <td className="px-2 py-1.5 border-b border-zinc-100">
+                        <div className="font-medium text-zinc-800 text-xs">{item.description || 'â€”'}</div>
                       </td>
-                      <td className="px-3 py-2.5 text-center border-b border-zinc-100 text-zinc-700 font-bold">{item.quantity}</td>
-                      <td className="px-3 py-2.5 text-center border-b border-zinc-100 text-zinc-700 font-bold">{formatCurrency(Number(item.unit_price) || 0)}</td>
-                      <td className="px-3 py-2.5 text-center border-b border-zinc-100 text-zinc-700">{item.desconto || 0}%</td>
-                      <td className="px-3 py-2.5 text-center border-b border-zinc-100">
+                      <td className="px-2 py-1.5 text-center border-b border-zinc-100 text-zinc-700 font-bold">{item.quantity}</td>
+                      <td className="px-2 py-1.5 text-center border-b border-zinc-100 text-zinc-700 font-bold">{formatCurrency(Number(item.unit_price) || 0)}</td>
+                      <td className="px-2 py-1.5 text-center border-b border-zinc-100 text-zinc-700">{item.desconto || 0}%</td>
+                      <td className="px-2 py-1.5 text-center border-b border-zinc-100">
                         {(() => {
                           const tax = activeTaxes.find(t => t.id === item.tax_id || String(t.id) === String(item.tax_id));
                           return tax ? (
-                            <span className="inline-block bg-blue-50 text-blue-700 px-2 py-0.5 text-[10px] font-semibold border border-blue-100">
+                            <span className="inline-block bg-blue-50 text-blue-700 px-1.5 py-0.5 text-[10px] font-semibold border border-blue-100">
                               {tax.nome} {tax.taxa}%
                             </span>
-                          ) : <span className="text-zinc-400">{item.tax || '—'}</span>;
+                          ) : <span className="text-zinc-400">â€”</span>;
                         })()}
                       </td>
-                      <td className="px-3 py-2.5 text-center border-b border-zinc-100 text-zinc-600 text-[11px]">
-                        {(() => {
-                          const wh = warehouses.find(w => w.id === item.warehouse_id || String(w.id) === String(item.warehouse_id));
-                          return wh ? wh.name : '—';
-                        })()}
-                      </td>
-                      <td className="px-3 py-2.5 border-b border-zinc-100">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEditingAgtItemIndex(idx);
-                              const tax = activeTaxes.find(t => t.id === item.tax_id || String(t.id) === String(item.tax_id));
-                              setEditingAgtItemData({
-                                tipo_operacao: item.tipologia || 'Mercadoria',
-                                quantity: Number(item.quantity) || 1,
-                                description: item.description || '',
-                                unidade_medida: item.unidade_medida || 'QUANTIDADE (Qtd)',
-                                unit_price: Number(item.unit_price) || 0,
-                                preco_com_desconto: Number(item.unit_price) || 0,
-                                valor_credito: 0,
-                                has_imposto: true,
-                                tipo_imposto: tax ? (tax.nome?.includes('IVA') ? 'IVA' : 'IS') : 'IVA',
-                                tem_isencao: false,
-                                codigo_imposto: tax ? String(tax.id) : '',
-                                taxa_imposto: tax ? Number(tax.taxa) : 14,
-                                valor_imposto: 0,
-                                desconto: Number(item.desconto) || 0,
-                                total: Number(item.total) || 0,
-                              });
-                              setIsAgtItemModalOpen(true);
-                            }}
-                            title="Editar Item"
-                            className="p-1.5 bg-white border border-zinc-200 text-zinc-500 hover:text-[#0f2a4a] hover:border-[#0f2a4a] transition-all"
-                          >
-                            <Pencil size={13} />
+                      <td className="px-2 py-1.5 border-b border-zinc-100">
+                        <div className="flex items-center justify-center gap-1">
+                          <button type="button" onClick={() => {
+                            setEditingAgtItemIndex(idx);
+                            const tax = activeTaxes.find(t => t.id === item.tax_id || String(t.id) === String(item.tax_id));
+                            setEditingAgtItemData({
+                              tipo_operacao: item.tipologia || 'Mercadoria', quantity: Number(item.quantity) || 1,
+                              description: item.description || '', unidade_medida: item.unidade_medida || 'QUANTIDADE (Qtd)',
+                              unit_price: Number(item.unit_price) || 0, preco_com_desconto: Number(item.unit_price) || 0,
+                              valor_credito: 0, has_imposto: true,
+                              tipo_imposto: tax ? (tax.nome?.includes('IVA') ? 'IVA' : 'IS') : 'IVA', tem_isencao: false,
+                              codigo_imposto: tax ? String(tax.id) : '', taxa_imposto: tax ? Number(tax.taxa) : 14,
+                              valor_imposto: 0, desconto: Number(item.desconto) || 0, total: Number(item.total) || 0,
+                            });
+                            setIsAgtItemModalOpen(true);
+                          }} className="p-1 bg-white border border-zinc-200 text-zinc-500 hover:text-[#0f2a4a] hover:border-[#0f2a4a] transition-all">
+                            <Pencil size={11} />
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => removeItem(idx)}
-                            title="Remover Item"
-                            className="p-1.5 bg-white border border-zinc-200 text-zinc-500 hover:text-red-600 hover:border-red-300 transition-all"
-                          >
-                            <Trash2 size={13} />
+                          <button type="button" onClick={() => removeItem(idx)}
+                            className="p-1 bg-white border border-zinc-200 text-zinc-500 hover:text-red-600 hover:border-red-300 transition-all">
+                            <Trash2 size={11} />
                           </button>
                         </div>
                       </td>
@@ -26879,54 +26336,39 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
             </table>
           </div>
 
-          <div className="flex justify-end pt-6">
-            <div className="w-full max-w-sm space-y-3 bg-zinc-50 p-6 border border-zinc-100">
-               <div className="flex justify-between text-xs font-bold text-zinc-500">
-                 <span>Subtotal:</span>
-                 <span>{formatCurrency(total)}</span>
-               </div>
-               {Number(globalDiscount || 0) > 0 && (
-                 <div className="flex justify-between text-xs font-bold text-amber-600">
-                   <span>Desconto Global:</span>
-                   <span>-{formatCurrency(Number(globalDiscount))}</span>
-                 </div>
-               )}
-               {vatAmount > 0 && (
-                 <div className="flex justify-between text-xs font-bold text-blue-600">
-                   <span>Total IVA:</span>
-                   <span>+{formatCurrency(vatAmount)}</span>
-                 </div>
-               )}
-               {retencaoTaxesAmount > 0 && (
-                 <div className="flex justify-between text-xs font-bold text-red-600">
-                   <span>Retenção na fonte:</span>
-                   <span>-{formatCurrency(retencaoTaxesAmount)}</span>
-                 </div>
-               )}
-               <div className="border-t border-zinc-200 pt-3 flex justify-between text-sm font-black text-[#0f2a4a]">
-                 <span>Total Final:</span>
-                 <span>{formatCurrency(finalTotal)}</span>
-               </div>
-               <div className="text-[10px] text-zinc-400 italic text-right">
-                 {writeValorPorExtenso(finalTotal)}
-               </div>
+          <div className="flex justify-end pt-3">
+            <div className="w-64 space-y-1 bg-zinc-50 p-3 border border-zinc-100">
+              <div className="flex justify-between text-xs font-bold text-zinc-500">
+                <span>Subtotal:</span>
+                <span>{formatCurrency(total)}</span>
+              </div>
+              {Number(globalDiscount || 0) > 0 && (
+                <div className="flex justify-between text-xs font-bold text-amber-600">
+                  <span>Desconto Global:</span>
+                  <span>-{formatCurrency(Number(globalDiscount))}</span>
+                </div>
+              )}
+              {vatAmount > 0 && (
+                <div className="flex justify-between text-xs font-bold text-blue-600">
+                  <span>Total IVA:</span>
+                  <span>+{formatCurrency(vatAmount)}</span>
+                </div>
+              )}
+              <div className="border-t border-zinc-200 pt-2 flex justify-between text-sm font-black text-[#0f2a4a]">
+                <span>Total Final:</span>
+                <span>{formatCurrency(finalTotal)}</span>
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="flex justify-end gap-4">
-          <button 
-            type="button" 
-            onClick={onBack}
-            className="px-8 py-3 rounded-none border border-zinc-300 text-zinc-700 font-bold hover:bg-zinc-50 transition-all text-sm shadow-sm"
-          >
+        <div className="flex justify-end gap-3 pb-4">
+          <button type="button" onClick={onBack}
+            className="px-6 py-2 border border-zinc-300 text-zinc-600 font-bold hover:bg-zinc-50 transition-all text-xs shadow-sm">
             Cancelar
           </button>
-          <button 
-            type="submit"
-            disabled={items.length === 0 || loading}
-            className="px-8 py-3 rounded-none bg-[#003366] text-white font-bold hover:bg-[#002244] disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm shadow-sm"
-          >
+          <button type="submit" disabled={items.length === 0 || loading}
+            className="px-6 py-2 bg-[#003366] text-white font-bold hover:bg-[#002244] disabled:opacity-50 disabled:cursor-not-allowed transition-all text-xs shadow-sm">
             {loading ? 'A registar...' : 'Registar Compra'}
           </button>
         </div>

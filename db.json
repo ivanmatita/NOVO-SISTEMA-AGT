@@ -54533,6 +54533,30 @@
       "status": "open",
       "pos_point_id": "",
       "user_id": "1"
+    },
+    {
+      "id": 1786454251965,
+      "opening_date": "2026-08-11T13:15:51.540Z",
+      "initial_balance": 8888,
+      "status": "open",
+      "pos_point_id": "",
+      "user_id": "1"
+    },
+    {
+      "id": 1786458260417,
+      "opening_date": "2026-08-11T14:17:00.138Z",
+      "initial_balance": 777777,
+      "status": "open",
+      "pos_point_id": "",
+      "user_id": "1"
+    },
+    {
+      "id": 1786458863619,
+      "opening_date": "2026-08-11T14:18:26.542Z",
+      "initial_balance": 777777,
+      "status": "open",
+      "pos_point_id": "",
+      "user_id": "1"
     }
   ],
   "posSales": [],

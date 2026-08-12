@@ -1,4 +1,4 @@
-﻿import { emitirDocumentoFiscal } from './services/fiscalEngine';
+import { emitirDocumentoFiscal } from './services/fiscalEngine';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import html2pdf from 'html2pdf.js';
 import { DocumentReportModal } from './components/DocumentReportModal';
@@ -2083,18 +2083,10 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
     }
   };
 
-  const handleDelete = async (id: number | string) => {
-    if (!confirm('Tem a certeza que deseja eliminar este cliente? Esta ação é irreversível.')) return;
-    try {
-      if (!user?.empresa_id) return;
-      await clienteService.deleteCliente(id, user.empresa_id);
-      onRefresh();
-      setShowOptionsModal(null);
-      alert('Cliente eliminado com sucesso.');
-    } catch (err: any) {
-      console.error('Error deleting client:', err);
-      alert('Erro ao eliminar cliente: ' + (err.message || 'Erro desconhecido'));
-    }
+  // ⛔ Eliminação física de clientes BLOQUEADA por conformidade fiscal.
+  // Para desativar um cliente, usar updateCliente com { activo: false }.
+  const handleDelete = (_id: number | string) => {
+    alert('A eliminação de clientes está desativada por conformidade fiscal e integridade de dados.\n\nPara desativar este cliente, edite o registo e altere o estado para "Inactivo".');
   };
 
   const resetForm = () => {
@@ -28015,18 +28007,9 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                             <Edit size={12} />
                           </button>
                           <button 
-                            onClick={async () => {
-                              if (window.confirm(`Tens a certeza que desejas eliminar o fornecedor ${s.name}? Esta ação é irreversível.`)) {
-                                try {
-                                  await fornecedorService.deleteFornecedor(s.id);
-                                  // The real-time sync will handle the list update
-                                } catch (err: any) {
-                                  alert('Erro ao eliminar: ' + err.message);
-                                }
-                              }
-                            }}
-                            className="bg-white border border-red-500 text-red-500 px-3 py-1.5 text-[10px] font-black uppercase hover:bg-red-500 hover:text-white transition-all shadow-sm"
-                            title="Remover Fornecedor"
+                            onClick={() => alert('A eliminação de fornecedores está desativada por conformidade fiscal.\n\nPara desativar este fornecedor, clique em Editar e altere o estado para "Inactivo".')}
+                            className="bg-white border border-zinc-300 text-zinc-400 px-3 py-1.5 text-[10px] font-black uppercase cursor-not-allowed shadow-sm"
+                            title="Eliminação bloqueada — use Editar para desativar"
                           >
                             <Trash2 size={12} />
                           </button>
@@ -29759,23 +29742,10 @@ const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas
     }
   };
 
-  const handleDeleteSupplier = async (id: number | string) => {
-    if (!confirm('Tem a certeza que deseja apagar este fornecedor?')) return;
-    try {
-      if (!user?.empresa_id) return;
-
-      const { error } = await supabase
-        .from('fornecedores')
-        .delete()
-        .eq('id', id)
-        .eq('empresa_id', user.empresa_id);
-
-      if (error) throw error;
-      setSuppliers(suppliers.filter(s => String(s.id) !== String(id)));
-    } catch (err) {
-      console.error('Error deleting supplier:', err);
-      alert('Erro ao apagar fornecedor.');
-    }
+  // ⛔ Eliminação física de fornecedores BLOQUEADA por conformidade fiscal.
+  // Para desativar, usar updateFornecedor com { activo: false }.
+  const handleDeleteSupplier = (_id: number | string) => {
+    alert('A eliminação de fornecedores está desativada por conformidade fiscal.\n\nPara desativar este fornecedor, edite o registo e altere o estado para "Inactivo".');
   };
 
   const sections = [

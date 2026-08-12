@@ -4150,29 +4150,52 @@ async function startServer() {
     });
   });
 
-  // Secure Clients Endpoint with server-side company isolation bypassing broken RLS
   app.get("/api/secure-clientes", async (req, res) => {
     const ctx = await getAuthUserContext(req);
     if (!ctx) return res.status(401).json({ error: "Sessão expirada ou inválida. Por favor volte a iniciar sessão." });
     if (ctx.isBlocked) return res.status(403).json({ error: "Conta suspensa ou revogada pelo administrador." });
 
     try {
-      if (!supabaseAdmin) return res.status(500).json({ error: "Database admin client is not initialized on server." });
-      
-      console.log(`[SERVER-CLIENTES] Buscando clientes para a empresa (JWT autenticada): ${ctx.empresaId}`);
-      const { data, error } = await supabaseAdmin
+      const dbClient = getSupabaseClient(req);
+      if (!dbClient) return res.status(500).json({ error: "Database client is not initialized on server." });
+
+      console.log(`[SERVER-CLIENTES] Buscando clientes para empresa: ${ctx.empresaId}`);
+      const { data, error } = await dbClient
         .from('clientes')
         .select('*')
         .eq('empresa_id', ctx.empresaId)
         .order('nome', { ascending: true });
 
       if (error) {
-        console.error("[SERVER-CLIENTES] Erro ao carregar clientes do banco:", error);
+        console.error("[SERVER-CLIENTES] Erro ao carregar clientes:", error);
         return res.status(500).json({ error: error.message });
       }
       return res.json(data || []);
     } catch (err: any) {
       console.error("[SERVER-CLIENTES] Erro na busca de clientes:", err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── Verificação de NIF duplicado para Clientes (frontend usa antes de criar/editar) ──
+  app.get("/api/secure-clientes/check-nif", async (req, res) => {
+    const ctx = await getAuthUserContext(req);
+    if (!ctx) return res.status(401).json({ error: "Não autenticado." });
+    const nif = (req.query.nif as string || '').trim();
+    const excludeId = req.query.excludeId as string | undefined;
+    if (!nif || nif === '999999999' || nif === '0') return res.json({ exists: false, cliente: null });
+    try {
+      const dbClient = getSupabaseClient(req);
+      if (!dbClient) return res.status(500).json({ error: "DB não disponível." });
+      let query = dbClient
+        .from('clientes')
+        .select('id, nome, contribuinte')
+        .eq('empresa_id', ctx.empresaId)
+        .or(`contribuinte.eq.${nif},nif.eq.${nif}`);
+      if (excludeId) query = (query as any).neq('id', excludeId);
+      const { data } = await (query as any).limit(1).maybeSingle();
+      return res.json({ exists: Boolean(data), cliente: data || null });
+    } catch (err: any) {
       return res.status(500).json({ error: err.message });
     }
   });
@@ -4183,15 +4206,16 @@ async function startServer() {
     if (ctx.isBlocked) return res.status(403).json({ error: "Conta suspensa ou revogada." });
 
     try {
-      if (!supabaseAdmin) return res.status(500).json({ error: "Database admin client is not initialized on server." });
+      const dbClient = getSupabaseClient(req);
+      if (!dbClient) return res.status(500).json({ error: "Database client is not initialized on server." });
 
       const clientData = req.body;
-      const nifValue = clientData.contribuinte || clientData.nif;
-      const nomeValue = (clientData.nome || '').trim().toLowerCase();
+      const nifValue = (clientData.contribuinte || clientData.nif || '').trim();
+      const nomeValue = (clientData.nome || '').trim();
 
-      // ── Verificação de NIF duplicado ──────────────────────────────────
+      // ── Verificação de NIF duplicado ──
       if (nifValue && nifValue !== '999999999' && nifValue !== '0') {
-        const { data: nifDup } = await supabaseAdmin
+        const { data: nifDup } = await dbClient
           .from('clientes')
           .select('id, nome')
           .eq('empresa_id', ctx.empresaId)
@@ -4199,14 +4223,14 @@ async function startServer() {
           .limit(1)
           .maybeSingle();
         if (nifDup) {
-          console.warn(`[SERVER-CLIENTES] NIF duplicado bloqueado: ${nifValue} para empresa ${ctx.empresaId}`);
-          return res.status(409).json({ error: `Já existe um cliente registado com o NIF "${nifValue}": ${nifDup.nome}. NIFs duplicados não são permitidos.` });
+          console.warn(`[SERVER-CLIENTES] NIF duplicado bloqueado: ${nifValue}`);
+          return res.status(409).json({ error: `Este cliente já está registado com o NIF "${nifValue}": ${(nifDup as any).nome}. Verifique os dados ou edite o cadastro existente.` });
         }
       }
 
-      // ── Verificação de Nome duplicado ─────────────────────────────────
+      // ── Verificação de Nome duplicado ──
       if (nomeValue) {
-        const { data: nameDup } = await supabaseAdmin
+        const { data: nameDup } = await dbClient
           .from('clientes')
           .select('id, nome')
           .eq('empresa_id', ctx.empresaId)
@@ -4214,30 +4238,25 @@ async function startServer() {
           .limit(1)
           .maybeSingle();
         if (nameDup) {
-          console.warn(`[SERVER-CLIENTES] Nome duplicado bloqueado: "${nomeValue}" para empresa ${ctx.empresaId}`);
-          return res.status(409).json({ error: `Já existe um cliente registado com o nome "${nameDup.nome}". Não são permitidos registos com o mesmo nome.` });
+          console.warn(`[SERVER-CLIENTES] Nome duplicado bloqueado: "${nomeValue}"`);
+          return res.status(409).json({ error: `Este cliente já está registado com o nome "${(nameDup as any).nome}". Verifique os dados ou edite o cadastro existente.` });
         }
       }
 
-      const payload = {
-        ...clientData,
-        empresa_id: ctx.empresaId,
-        updated_at: new Date().toISOString()
-      };
+      const payload = { ...clientData, empresa_id: ctx.empresaId, updated_at: new Date().toISOString() };
+      delete (payload as any).id;
 
-      console.log(`[SERVER-CLIENTES] Criando cliente "${payload.nome}" na empresa "${ctx.empresaId}"`);
-
-      const { data, error } = await supabaseAdmin
+      console.log(`[SERVER-CLIENTES] Criando cliente "${nomeValue}" na empresa "${ctx.empresaId}"`);
+      const { data, error } = await dbClient
         .from('clientes')
         .insert([payload])
         .select()
         .single();
 
       if (error) {
-        console.error("[SERVER-CLIENTES] Erro no INSERT de cliente:", error);
-        // Detect unique constraint violation from DB level as well
+        console.error("[SERVER-CLIENTES] Erro no INSERT:", error);
         if (error.code === '23505') {
-          return res.status(409).json({ error: "Já existe um cliente com este NIF ou nome. Registo duplicado não permitido." });
+          return res.status(409).json({ error: "Este cliente já está registado. Verifique os dados ou edite o cadastro existente." });
         }
         return res.status(500).json({ error: error.message });
       }
@@ -4252,30 +4271,31 @@ async function startServer() {
     const ctx = await getAuthUserContext(req);
     if (!ctx) return res.status(401).json({ error: "Sessão expirada ou inválida. Por favor volte a iniciar sessão." });
     if (ctx.isBlocked) return res.status(403).json({ error: "Conta suspensa ou revogada." });
-
     const clientId = req.params.id;
-
     try {
-      if (!supabaseAdmin) return res.status(500).json({ error: "Database admin client is not initialized on server." });
-
+      const dbClient = getSupabaseClient(req);
+      if (!dbClient) return res.status(500).json({ error: "Database client is not initialized on server." });
       const updateData = req.body;
+      const newNif = (updateData.contribuinte || updateData.nif || '').trim();
+
+      // ── Verificar conflito de NIF na edição ──
+      if (newNif && newNif !== '999999999' && newNif !== '0') {
+        const { data: nifConflict } = await dbClient
+          .from('clientes')
+          .select('id, nome')
+          .eq('empresa_id', ctx.empresaId)
+          .or(`contribuinte.eq.${newNif},nif.eq.${newNif}`)
+          .neq('id', clientId)
+          .limit(1)
+          .maybeSingle();
+        if (nifConflict) {
+          return res.status(409).json({ error: `O NIF "${newNif}" já pertence ao cliente "${(nifConflict as any).nome}". Não é possível criar conflito de NIF.` });
+        }
+      }
+
       delete updateData.id;
-      
-      const payload = {
-        ...updateData,
-        empresa_id: ctx.empresaId,
-        updated_at: new Date().toISOString()
-      };
-
+      const payload = { ...updateData, empresa_id: ctx.empresaId, updated_at: new Date().toISOString() };
       console.log(`[SERVER-CLIENTES] Atualizando cliente ID "${clientId}" na empresa "${ctx.empresaId}"`);
-
-      const { data, error } = await supabaseAdmin
-        .from('clientes')
-        .update(payload)
-        .eq('id', clientId)
-        .eq('empresa_id', ctx.empresaId)
-        .select()
-        .single();
 
       if (error) {
         console.error("[SERVER-CLIENTES] Erro no UPDATE de cliente:", error);
@@ -4317,30 +4337,45 @@ async function startServer() {
     }
   });
 
-  // Secure Suppliers (Fornecedores) Endpoints
+  // ── Fornecedores Endpoints ──
   app.get("/api/secure-fornecedores", async (req, res) => {
     const ctx = await getAuthUserContext(req);
     if (!ctx) return res.status(401).json({ error: "Sessão expirada ou inválida. Por favor volte a iniciar sessão." });
     if (ctx.isBlocked) return res.status(403).json({ error: "Conta suspensa ou revogada pelo administrador." });
-
     try {
       const dbClient = getSupabaseClient(req);
       if (!dbClient) return res.status(500).json({ error: "Database client is not initialized on server." });
-      
-      console.log(`[SERVER-FORNECEDORES] Buscando fornecedores para a empresa: ${ctx.empresaId}`);
       const { data, error } = await dbClient
         .from('fornecedores')
         .select('*')
         .eq('empresa_id', ctx.empresaId)
         .order('nome', { ascending: true });
-
-      if (error) {
-        console.error("[SERVER-FORNECEDORES] Erro ao carregar fornecedores:", error);
-        return res.status(500).json({ error: error.message });
-      }
+      if (error) return res.status(500).json({ error: error.message });
       return res.json(data || []);
     } catch (err: any) {
-      console.error("[SERVER-FORNECEDORES] Erro na busca de fornecedores:", err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── Verificação de NIF duplicado para Fornecedores ──
+  app.get("/api/secure-fornecedores/check-nif", async (req, res) => {
+    const ctx = await getAuthUserContext(req);
+    if (!ctx) return res.status(401).json({ error: "Não autenticado." });
+    const nif = (req.query.nif as string || '').trim();
+    const excludeId = req.query.excludeId as string | undefined;
+    if (!nif || nif === '999999999' || nif === '0') return res.json({ exists: false, fornecedor: null });
+    try {
+      const dbClient = getSupabaseClient(req);
+      if (!dbClient) return res.status(500).json({ error: "DB não disponível." });
+      let query = dbClient
+        .from('fornecedores')
+        .select('id, nome, nif')
+        .eq('empresa_id', ctx.empresaId)
+        .eq('nif', nif);
+      if (excludeId) query = (query as any).neq('id', excludeId);
+      const { data } = await (query as any).limit(1).maybeSingle();
+      return res.json({ exists: Boolean(data), fornecedor: data || null });
+    } catch (err: any) {
       return res.status(500).json({ error: err.message });
     }
   });
@@ -4349,37 +4384,55 @@ async function startServer() {
     const ctx = await getAuthUserContext(req);
     if (!ctx) return res.status(401).json({ error: "Sessão expirada ou inválida. Por favor volte a iniciar sessão." });
     if (ctx.isBlocked) return res.status(403).json({ error: "Conta suspensa ou revogada." });
-
     try {
       const dbClient = getSupabaseClient(req);
       if (!dbClient) return res.status(500).json({ error: "Database client is not initialized on server." });
-
       const supplierData = req.body;
-      const payload = {
-        ...supplierData,
-        empresa_id: ctx.empresaId,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        activo: supplierData.activo !== undefined ? supplierData.activo : true
-      };
-      
-      delete payload.id;
+      const nifValue = (supplierData.nif || '').trim();
+      const nomeValue = (supplierData.nome || '').trim();
 
-      console.log(`[SERVER-FORNECEDORES] Criando fornecedor "${payload.nome}" na empresa "${ctx.empresaId}"`);
+      // ── Verificação de NIF duplicado ──
+      if (nifValue && nifValue !== '999999999' && nifValue !== '0') {
+        const { data: nifDup } = await dbClient
+          .from('fornecedores')
+          .select('id, nome')
+          .eq('empresa_id', ctx.empresaId)
+          .eq('nif', nifValue)
+          .limit(1)
+          .maybeSingle();
+        if (nifDup) {
+          return res.status(409).json({ error: `Este fornecedor já está registado com o NIF "${nifValue}": ${(nifDup as any).nome}. Verifique os dados ou edite o cadastro existente.` });
+        }
+      }
 
+      // ── Verificação de Nome duplicado ──
+      if (nomeValue) {
+        const { data: nameDup } = await dbClient
+          .from('fornecedores')
+          .select('id, nome')
+          .eq('empresa_id', ctx.empresaId)
+          .ilike('nome', nomeValue)
+          .limit(1)
+          .maybeSingle();
+        if (nameDup) {
+          return res.status(409).json({ error: `Este fornecedor já está registado com o nome "${(nameDup as any).nome}". Verifique os dados ou edite o cadastro existente.` });
+        }
+      }
+
+      const payload = { ...supplierData, empresa_id: ctx.empresaId, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), activo: supplierData.activo !== undefined ? supplierData.activo : true };
+      delete (payload as any).id;
+      console.log(`[SERVER-FORNECEDORES] Criando fornecedor "${nomeValue}" na empresa "${ctx.empresaId}"`);
       const { data, error } = await dbClient
         .from('fornecedores')
         .insert([payload])
         .select()
         .single();
-
       if (error) {
-        console.error("[SERVER-FORNECEDORES] Erro no INSERT de fornecedor:", error);
+        if (error.code === '23505') return res.status(409).json({ error: "Este fornecedor já está registado. Verifique os dados ou edite o cadastro existente." });
         return res.status(500).json({ error: error.message });
       }
       return res.status(201).json(data);
     } catch (err: any) {
-      console.error("[SERVER-FORNECEDORES] Erro ao guardar fornecedor:", err);
       return res.status(500).json({ error: err.message });
     }
   });
@@ -4388,70 +4441,56 @@ async function startServer() {
     const ctx = await getAuthUserContext(req);
     if (!ctx) return res.status(401).json({ error: "Sessão expirada ou inválida. Por favor volte a iniciar sessão." });
     if (ctx.isBlocked) return res.status(403).json({ error: "Conta suspensa ou revogada." });
-
     const supplierId = req.params.id;
-
     try {
-      if (!supabaseAdmin) return res.status(500).json({ error: "Database admin client is not initialized on server." });
-
+      const dbClient = getSupabaseClient(req);
+      if (!dbClient) return res.status(500).json({ error: "Database client is not initialized on server." });
       const updateData = req.body;
+      const newNif = (updateData.nif || '').trim();
+
+      // ── Verificar conflito de NIF na edição ──
+      if (newNif && newNif !== '999999999' && newNif !== '0') {
+        const { data: nifConflict } = await dbClient
+          .from('fornecedores')
+          .select('id, nome')
+          .eq('empresa_id', ctx.empresaId)
+          .eq('nif', newNif)
+          .neq('id', supplierId)
+          .limit(1)
+          .maybeSingle();
+        if (nifConflict) {
+          return res.status(409).json({ error: `O NIF "${newNif}" já pertence ao fornecedor "${(nifConflict as any).nome}". Não é possível criar conflito de NIF.` });
+        }
+      }
+
       delete updateData.id;
       delete updateData.empresa_id;
       delete updateData.created_at;
-      
-      const payload = {
-        ...updateData,
-        updated_at: new Date().toISOString()
-      };
-
+      const payload = { ...updateData, updated_at: new Date().toISOString() };
       console.log(`[SERVER-FORNECEDORES] Atualizando fornecedor ID "${supplierId}" na empresa "${ctx.empresaId}"`);
-
-      const { data, error } = await supabaseAdmin
+      const { data, error } = await dbClient
         .from('fornecedores')
         .update(payload)
         .eq('id', supplierId)
         .eq('empresa_id', ctx.empresaId)
         .select()
         .single();
-
       if (error) {
-        console.error("[SERVER-FORNECEDORES] Erro no UPDATE de fornecedor:", error);
+        if (error.code === '23505') return res.status(409).json({ error: "Este NIF já está associado a outro fornecedor. Não é possível criar conflito de NIF." });
         return res.status(500).json({ error: error.message });
       }
       return res.json(data);
     } catch (err: any) {
-      console.error("[SERVER-FORNECEDORES] Erro ao atualizar fornecedor:", err);
       return res.status(500).json({ error: err.message });
     }
   });
 
-  app.delete("/api/secure-fornecedores/:id", async (req, res) => {
-    const ctx = await getAuthUserContext(req);
-    if (!ctx) return res.status(401).json({ error: "Sessão expirada ou inválida. Por favor volte a iniciar sessão." });
-    if (ctx.isBlocked) return res.status(403).json({ error: "Conta suspensa ou revogada." });
-
-    const supplierId = req.params.id;
-
-    try {
-      if (!supabaseAdmin) return res.status(500).json({ error: "Database admin client is not initialized on server." });
-
-      console.log(`[SERVER-FORNECEDORES] Removendo fornecedor ID "${supplierId}" na empresa "${ctx.empresaId}"`);
-
-      const { error } = await supabaseAdmin
-        .from('fornecedores')
-        .delete()
-        .eq('id', supplierId)
-        .eq('empresa_id', ctx.empresaId);
-
-      if (error) {
-        console.error("[SERVER-FORNECEDORES] Erro no DELETE de fornecedor:", error);
-        return res.status(500).json({ error: error.message });
-      }
-      return res.json({ success: true });
-    } catch (err: any) {
-      console.error("[SERVER-FORNECEDORES] Erro ao remover fornecedor:", err);
-      return res.status(500).json({ error: err.message });
-    }
+  // ── DELETE BLOQUEADO: Fornecedores nunca podem ser eliminados fisicamente ──
+  app.delete("/api/secure-fornecedores/:id", async (_req, res) => {
+    return res.status(405).json({
+      error: "A eliminação física de fornecedores está desativada por conformidade fiscal e integridade de dados.",
+      info: "Para desativar um fornecedor, edite o seu registo e altere o estado para Inactivo."
+    });
   });
 
   // Secure Locais de Trabalho Endpoints with server-side company isolation

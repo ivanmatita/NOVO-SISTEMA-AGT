@@ -54573,6 +54573,54 @@
       "status": "open",
       "pos_point_id": "",
       "user_id": "1"
+    },
+    {
+      "id": 1786535320211,
+      "opening_date": "2026-08-12T11:42:51.544Z",
+      "initial_balance": 0,
+      "status": "open",
+      "pos_point_id": "1",
+      "user_id": "1"
+    },
+    {
+      "id": 1786535224971,
+      "opening_date": "2026-08-12T11:43:00.117Z",
+      "initial_balance": 0,
+      "status": "open",
+      "pos_point_id": "1",
+      "user_id": "1"
+    },
+    {
+      "id": 1786535333204,
+      "opening_date": "2026-08-12T11:43:03.467Z",
+      "initial_balance": 0,
+      "status": "open",
+      "pos_point_id": "1",
+      "user_id": "1"
+    },
+    {
+      "id": 1786535416256,
+      "opening_date": "2026-08-12T11:43:09.420Z",
+      "initial_balance": 0,
+      "status": "open",
+      "pos_point_id": "1",
+      "user_id": "1"
+    },
+    {
+      "id": 1786536961599,
+      "opening_date": "2026-08-12T12:14:20.691Z",
+      "initial_balance": 0,
+      "status": "open",
+      "pos_point_id": "1",
+      "user_id": "1"
+    },
+    {
+      "id": 1786539174620,
+      "opening_date": "2026-08-12T12:47:57.996Z",
+      "initial_balance": 0,
+      "status": "open",
+      "pos_point_id": "1",
+      "user_id": "1"
     }
   ],
   "posSales": [],

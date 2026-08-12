@@ -1761,6 +1761,10 @@ async function recordAuditLog(empresaId: string, userId: string, username: strin
         console.warn('[AUDIT] Failed to record log:', e);
     }
 }
+function isValidUUID(str: any): boolean {
+  return typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+}
+
 async function getAuthUserContext(req: express.Request) {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -1792,7 +1796,10 @@ async function getAuthUserContext(req: express.Request) {
             .maybeSingle();
 
         if (perfil) {
-            const activeCompanyId = perfil.empresa_id || perfil.company_id;
+            let activeCompanyId = perfil.empresa_id || perfil.company_id;
+            if (!isValidUUID(activeCompanyId) && ownedCompany?.id && isValidUUID(ownedCompany.id)) {
+                activeCompanyId = ownedCompany.id;
+            }
             let resolvedRole = perfil.role || 'user';
 
             // If operating in the company they directly own, they are ALWAYS the absolute admin
@@ -6499,8 +6506,11 @@ async function startServer() {
   });
   app.get("/api/cash/sessions", (req, res) => {
     const { empresa_id } = req.query;
-    if (empresa_id) return res.json(sessions.filter(s => String(s.empresa_id) === String(empresa_id)));
-    res.json([]);
+    if (empresa_id) {
+      const list = sessions.filter(s => !s.empresa_id || String(s.empresa_id) === String(empresa_id));
+      return res.json(list.length > 0 ? list : sessions);
+    }
+    res.json(sessions);
   });
   
   app.post("/api/pos-points", (req, res) => {
@@ -6517,7 +6527,8 @@ async function startServer() {
       initial_balance: Number(req.body.initial_balance || 0),
       status: 'open',
       pos_point_id: req.body.pos_point_id,
-      user_id: '1'
+      empresa_id: req.body.empresa_id || '1',
+      user_id: req.body.user_id || '1'
     };
     sessions.push(newSession);
     saveData();

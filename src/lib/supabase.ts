@@ -401,20 +401,20 @@ const realClientInstance = supabaseStatus.configured
   : null;
 
 // Direct WSS connection patch for Realtime to bypass standard fetch / proxy limits
-if (realClientInstance && isBrowser) {
+if (realClientInstance && isBrowser && supabaseUrl) {
   try {
-    const rawWssUrl = rawUrl.trim().replace(/^http/, 'ws') + '/realtime/v1';
-    console.log('[Supabase Client] Patching RealtimeClient to direct WSS:', rawWssUrl);
+    const rawWssUrl = supabaseUrl.replace(/^http/, 'ws') + '/realtime/v1';
+    console.log('[Supabase Client] Realtime WebSocket URL:', rawWssUrl);
     (realClientInstance as any).realtime = new RealtimeClient(rawWssUrl, {
       headers: (realClientInstance as any).headers,
-      accessToken: (realClientInstance as any)._getAccessToken.bind(realClientInstance),
+      accessToken: (realClientInstance as any)._getAccessToken ? (realClientInstance as any)._getAccessToken.bind(realClientInstance) : undefined,
       fetch: (realClientInstance as any).fetch,
       params: {
         apikey: supabaseAnonKey,
       }
     });
   } catch (err) {
-    console.error('[Supabase Client] Failed to patch RealtimeClient:', err);
+    console.error('[Supabase Client] Failed to configure RealtimeClient:', err);
   }
 }
 

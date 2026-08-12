@@ -84,13 +84,14 @@ export const clienteService = {
         body: JSON.stringify(payload)
       });
 
+      const errData = await response.json().catch(() => ({}));
+
       if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
+        // Propagar mensagem de erro do servidor (incluindo 409 duplicados)
         throw new Error(errData.error || "Não foi possível registar o cliente.");
       }
 
-      const data = await response.json();
-      return data;
+      return errData;
     } catch (err: any) {
       console.error('[ClienteService] Falha ao registar cliente:', err);
       throw err;

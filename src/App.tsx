@@ -1,4 +1,4 @@
-import { emitirDocumentoFiscal } from './services/fiscalEngine';
+﻿import { emitirDocumentoFiscal } from './services/fiscalEngine';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import html2pdf from 'html2pdf.js';
 import { DocumentReportModal } from './components/DocumentReportModal';
@@ -2079,7 +2079,7 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
       onRefresh();
     } catch (error: any) {
       console.error('Error saving client:', error);
-      alert('Erro ao guardar cliente. Verifique a consola para mais detalhes.');
+      alert(error?.message || 'Erro ao guardar cliente. Verifique a consola para mais detalhes.');
     }
   };
 

@@ -1,7 +1,16 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
-import { createServer as createViteServer } from "vite";
+// Vite is only imported in development - conditional import prevents crashes on Vercel
+let createViteServer: any = null;
+if (process.env.NODE_ENV !== 'production') {
+  try {
+    const viteModule = await import('vite');
+    createViteServer = viteModule.createServer;
+  } catch (e) {
+    console.warn('[SERVER] Vite not available (production mode).');
+  }
+}
 
 import compression from "compression";
 import { createClient } from "@supabase/supabase-js";
@@ -1689,7 +1698,8 @@ if (!supabaseAdmin) {
            CREATE INDEX IF NOT EXISTS idx_lic_empresa ON public.licencas_empresas(empresa_id);
 
           NOTIFY pgrst, 'reload schema';
-   `; // Final SQL migrations
+          SELECT 1;
+   `; // Final SQL migrations - must end with a valid statement
 
   Promise.resolve(supabaseAdmin.rpc('query_exec', { query: sqlMigrations }))
     .then(({ data, error }) => {
@@ -4150,6 +4160,39 @@ async function startServer() {
       if (!supabaseAdmin) return res.status(500).json({ error: "Database admin client is not initialized on server." });
 
       const clientData = req.body;
+      const nifValue = clientData.contribuinte || clientData.nif;
+      const nomeValue = (clientData.nome || '').trim().toLowerCase();
+
+      // ── Verificação de NIF duplicado ──────────────────────────────────
+      if (nifValue && nifValue !== '999999999' && nifValue !== '0') {
+        const { data: nifDup } = await supabaseAdmin
+          .from('clientes')
+          .select('id, nome')
+          .eq('empresa_id', ctx.empresaId)
+          .or(`contribuinte.eq.${nifValue},nif.eq.${nifValue}`)
+          .limit(1)
+          .maybeSingle();
+        if (nifDup) {
+          console.warn(`[SERVER-CLIENTES] NIF duplicado bloqueado: ${nifValue} para empresa ${ctx.empresaId}`);
+          return res.status(409).json({ error: `Já existe um cliente registado com o NIF "${nifValue}": ${nifDup.nome}. NIFs duplicados não são permitidos.` });
+        }
+      }
+
+      // ── Verificação de Nome duplicado ─────────────────────────────────
+      if (nomeValue) {
+        const { data: nameDup } = await supabaseAdmin
+          .from('clientes')
+          .select('id, nome')
+          .eq('empresa_id', ctx.empresaId)
+          .ilike('nome', nomeValue)
+          .limit(1)
+          .maybeSingle();
+        if (nameDup) {
+          console.warn(`[SERVER-CLIENTES] Nome duplicado bloqueado: "${nomeValue}" para empresa ${ctx.empresaId}`);
+          return res.status(409).json({ error: `Já existe um cliente registado com o nome "${nameDup.nome}". Não são permitidos registos com o mesmo nome.` });
+        }
+      }
+
       const payload = {
         ...clientData,
         empresa_id: ctx.empresaId,
@@ -4166,6 +4209,10 @@ async function startServer() {
 
       if (error) {
         console.error("[SERVER-CLIENTES] Erro no INSERT de cliente:", error);
+        // Detect unique constraint violation from DB level as well
+        if (error.code === '23505') {
+          return res.status(409).json({ error: "Já existe um cliente com este NIF ou nome. Registo duplicado não permitido." });
+        }
         return res.status(500).json({ error: error.message });
       }
       return res.status(201).json(data);
@@ -8249,21 +8296,29 @@ async function startServer() {
     }
   });
 
-  // Metrics
+  // Metrics — safe on Vercel (read-only serverless filesystem)
   app.get("/api/metrics", (req, res) => {
-    const { empresa_id } = req.query;
-    if (empresa_id) {
-      const records = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8')).metrics || [];
-      return res.json(records.filter((m: any) => String(m.empresa_id) === String(empresa_id)));
-    }
+    try {
+      const { empresa_id } = req.query;
+      if (empresa_id && fs.existsSync(DB_FILE)) {
+        const records = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8')).metrics || [];
+        return res.json(records.filter((m: any) => String(m.empresa_id) === String(empresa_id)));
+      }
+    } catch (e) { /* db.json unavailable on Vercel – return empty */ }
     res.json([]);
   });
   app.post("/api/metrics", (req, res) => {
-    const data = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
-    if (!data.metrics) data.metrics = [];
+    try {
+      if (fs.existsSync(DB_FILE)) {
+        const data = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
+        if (!data.metrics) data.metrics = [];
+        const newMetric = { ...req.body, id: generateId(), created_at: new Date().toISOString() };
+        data.metrics.push(newMetric);
+        fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+        return res.json(newMetric);
+      }
+    } catch (e) { /* db.json unavailable on Vercel */ }
     const newMetric = { ...req.body, id: generateId(), created_at: new Date().toISOString() };
-    data.metrics.push(newMetric);
-    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
     res.json(newMetric);
   });
   app.get("/api/employees", (req, res) => {
@@ -9753,8 +9808,8 @@ async function startServer() {
   });
 
   app.get("/api/receipts", (req, res) => res.json(receipts));
-  // Vite
-  if (process.env.NODE_ENV !== "production") {
+  // Vite (development only) — createViteServer is null on Vercel production
+  if (process.env.NODE_ENV !== "production" && createViteServer) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
@@ -9762,10 +9817,20 @@ async function startServer() {
     console.log("[SERVER] Vite middleware mounting...");
     app.use(vite.middlewares);
     console.log("[SERVER] Vite middleware mounted.");
-  } else {
+  } else if (process.env.NODE_ENV === "production") {
+    // On Vercel the static files are served by Vercel itself — only serve if dist exists
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => res.sendFile(path.join(distPath, 'index.html')));
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath));
+      app.get('*', (req: any, res: any) => {
+        const indexPath = path.join(distPath, 'index.html');
+        if (fs.existsSync(indexPath)) {
+          res.sendFile(indexPath);
+        } else {
+          res.status(404).json({ error: 'Not found' });
+        }
+      });
+    }
   }
 
   // Utility to reload PostgREST schema cache
@@ -9839,27 +9904,36 @@ async function startServer() {
     }
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`ERP Server running on port ${PORT}`);
-    console.log("[STARTUP] Server is ready to receive connections.");
-    
-    // Iniciar o processador e poller assíncrono de facturação AGT em background
-    startAgtQueueWorker(20000); 
+  // Only bind to a port when running as a standalone server (not on Vercel)
+  const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined;
+  if (!isVercel) {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`ERP Server running on port ${PORT}`);
+      console.log("[STARTUP] Server is ready to receive connections.");
 
-    // Primeiro disparo em 5 segundos após boot (assíncrono) para não travar o arranque do servidor
-    setTimeout(() => {
-      runDailyAgtSeriesSync();
-    }, 5000);
+      // Iniciar o processador e poller assíncrono de facturação AGT em background
+      startAgtQueueWorker(20000);
 
-    // Repetir a cada 24 horas (86400000 ms)
-    setInterval(() => {
-      runDailyAgtSeriesSync();
-    }, 24 * 60 * 60 * 1000);
-  });
+      // Primeiro disparo em 5 segundos após boot
+      setTimeout(() => { runDailyAgtSeriesSync(); }, 5000);
+
+      // Repetir a cada 24 horas
+      setInterval(() => { runDailyAgtSeriesSync(); }, 24 * 60 * 60 * 1000);
+    });
+  } else {
+    console.log('[STARTUP] Running on Vercel — skipping app.listen(). Routes ready.');
+    // Start AGT worker non-blocking (short-lived on serverless)
+    try { startAgtQueueWorker(20000); } catch (e) {}
+  }
 }
-startServer().catch(err => {
+// Attach init promise to app so api/index.ts (Vercel entry) can await initialization
+// This prevents requests from being handled before routes are registered
+const __initPromise = startServer().catch(err => {
   console.error("❌ CRITICAL SERVER STARTUP ERROR:", err);
-  process.exit(1);
+  // Don't process.exit(1) on Vercel — it would kill the function before returning the response
+  if (process.env.VERCEL !== '1') process.exit(1);
 });
+
+(app as any).__initPromise = __initPromise;
 
 export default app;

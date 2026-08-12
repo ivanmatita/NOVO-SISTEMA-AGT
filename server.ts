@@ -27,25 +27,29 @@ const __dirname_server = typeof __dirname !== "undefined" ? __dirname : (__filen
 dotenv.config({ override: true, path: path.resolve(__dirname_server, ".env") });
 
 // --- Supabase Admin (Bypasses Rate Limits) ---
+// --- Supabase Admin & User Scoped Client Helper ---
 const rawSupabaseUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "").trim();
 const supabaseUrl = rawSupabaseUrl
   .split('/rest/v1')[0]
   .split('/auth/v1')[0]
-  .replace(/\/$/, "");
-const supabaseServiceRole = (
-  process.env.SUPABASE_SERVICE_ROLE_KEY || 
+  .split('/realtime/v1')[0]
+  .replace(/\/+$/, "");
+
+const supabaseServiceRole = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+const supabaseAnonKey = (
   process.env.SUPABASE_ANON_KEY || 
   process.env.VITE_SUPABASE_ANON_KEY || 
   process.env.ANON_KEY || 
   ""
 ).trim();
-console.log(`[STARTUP] SupabaseURL: ${supabaseUrl ? 'OK' : 'EMPTY'} | ServiceKey length: ${supabaseServiceRole.length}`);
 
-// Verificação de segurança para o Supabase Admin
-const isServiceKeyValid = supabaseServiceRole && supabaseServiceRole.length > 20;
+const hasServiceRoleKey = Boolean(supabaseServiceRole && supabaseServiceRole.length > 20);
+const adminKeyToUse = hasServiceRoleKey ? supabaseServiceRole : supabaseAnonKey;
 
-const supabaseAdmin = (supabaseUrl && isServiceKeyValid) 
-  ? createClient(supabaseUrl, supabaseServiceRole, {
+console.log(`[STARTUP] SupabaseURL: ${supabaseUrl ? 'OK' : 'EMPTY'} | ServiceRoleKey: ${hasServiceRoleKey ? 'PRESENT' : 'MISSING (Using Anon Key fallback)'}`);
+
+const supabaseAdmin = (supabaseUrl && adminKeyToUse) 
+  ? createClient(supabaseUrl, adminKeyToUse, {
       auth: {
         autoRefreshToken: false,
         persistSession: false
@@ -53,8 +57,28 @@ const supabaseAdmin = (supabaseUrl && isServiceKeyValid)
     })
   : null;
 
-if (!supabaseAdmin) {
-  console.warn("⚠️ SUPABASE_SERVICE_ROLE_KEY / ANON_KEY não detetada. O bypass de Rate Limit do Registo não funcionará.");
+/**
+ * Returns either the master supabaseAdmin (if service_role key is present)
+ * or a request-scoped Supabase client initialized with the user's Bearer JWT.
+ * This guarantees RLS policies succeed even when SERVICE_ROLE_KEY is absent.
+ */
+function getSupabaseClient(req?: express.Request) {
+  if (hasServiceRoleKey && supabaseAdmin) {
+    return supabaseAdmin;
+  }
+  const authHeader = req?.headers?.authorization;
+  const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+  if (token && supabaseUrl && supabaseAnonKey) {
+    return createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+  }
+  return supabaseAdmin;
+}
+
+if (!hasServiceRoleKey) {
+  console.warn("⚠️ SUPABASE_SERVICE_ROLE_KEY não detetada nas variáveis de ambiente. A usar o token JWT do utilizador para RLS.");
 } else {
   // Ensure logs_auditoria, user_activities_sessions tables exist and alter columns
   const sqlMigrations = `
@@ -1743,24 +1767,25 @@ async function getAuthUserContext(req: express.Request) {
          return null;
     }
     const token = authHeader.split(' ')[1];
-    if (!supabaseAdmin) return null;
+    const client = getSupabaseClient(req);
+    if (!client) return null;
 
     try {
-        const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+        const { data: { user }, error: authError } = await client.auth.getUser(token);
         if (authError || !user) {
             console.error('getAuthUserContext: Auth error', authError);
             return null;
         }
 
         // 1. Prioritize active context inside the 'perfis' table
-        const { data: perfil } = await supabaseAdmin
+        const { data: perfil } = await client
             .from('perfis')
             .select('*')
             .eq('id', user.id)
             .maybeSingle();
 
         // 2. Load direct owner information from 'empresas'
-        const { data: ownedCompany } = await supabaseAdmin
+        const { data: ownedCompany } = await client
             .from('empresas')
             .select('*')
             .eq('auth_user_id', user.id)
@@ -3710,7 +3735,8 @@ async function startServer() {
           return res.status(400).json({ error: "O parâmetro sessionId é obrigatório" });
       }
 
-      if (!supabaseAdmin) {
+      const dbClient = getSupabaseClient(req);
+      if (!dbClient) {
           return res.status(500).json({ error: "Supabase connection is not available" });
       }
 
@@ -3737,7 +3763,7 @@ async function startServer() {
           }
 
           // Try UPSERT using standard API first
-          const { error: primaryError } = await supabaseAdmin
+          const { error: primaryError } = await dbClient
               .from('user_activities_sessions')
               .upsert({
                   id: sessionId,
@@ -4298,10 +4324,11 @@ async function startServer() {
     if (ctx.isBlocked) return res.status(403).json({ error: "Conta suspensa ou revogada pelo administrador." });
 
     try {
-      if (!supabaseAdmin) return res.status(500).json({ error: "Database admin client is not initialized on server." });
+      const dbClient = getSupabaseClient(req);
+      if (!dbClient) return res.status(500).json({ error: "Database client is not initialized on server." });
       
       console.log(`[SERVER-FORNECEDORES] Buscando fornecedores para a empresa: ${ctx.empresaId}`);
-      const { data, error } = await supabaseAdmin
+      const { data, error } = await dbClient
         .from('fornecedores')
         .select('*')
         .eq('empresa_id', ctx.empresaId)
@@ -4324,7 +4351,8 @@ async function startServer() {
     if (ctx.isBlocked) return res.status(403).json({ error: "Conta suspensa ou revogada." });
 
     try {
-      if (!supabaseAdmin) return res.status(500).json({ error: "Database admin client is not initialized on server." });
+      const dbClient = getSupabaseClient(req);
+      if (!dbClient) return res.status(500).json({ error: "Database client is not initialized on server." });
 
       const supplierData = req.body;
       const payload = {
@@ -4339,7 +4367,7 @@ async function startServer() {
 
       console.log(`[SERVER-FORNECEDORES] Criando fornecedor "${payload.nome}" na empresa "${ctx.empresaId}"`);
 
-      const { data, error } = await supabaseAdmin
+      const { data, error } = await dbClient
         .from('fornecedores')
         .insert([payload])
         .select()

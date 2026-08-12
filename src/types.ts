@@ -384,15 +384,19 @@ export interface Transaction {
 
 export interface CashSession {
   id: number;
-  opened_at: string;
+  opened_at?: string;
+  opening_date?: string;
   closed_at?: string;
+  closing_date?: string;
   initial_balance: number;
   final_balance?: number;
   total_sales?: number;
   total_discounts?: number;
   status: 'open' | 'closed';
-  pos_point_id?: number;
+  pos_point_id?: number | string;
   pos_point_name?: string;
+  empresa_id?: string;
+  user_id?: string;
 }
 
 export interface FiscalSeries {

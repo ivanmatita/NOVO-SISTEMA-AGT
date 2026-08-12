@@ -54557,6 +54557,22 @@
       "status": "open",
       "pos_point_id": "",
       "user_id": "1"
+    },
+    {
+      "id": 1786533519839,
+      "opening_date": "2026-08-12T11:15:57.152Z",
+      "initial_balance": 111,
+      "status": "open",
+      "pos_point_id": "",
+      "user_id": "1"
+    },
+    {
+      "id": 1786534237572,
+      "opening_date": "2026-08-12T11:24:35.416Z",
+      "initial_balance": 111,
+      "status": "open",
+      "pos_point_id": "",
+      "user_id": "1"
     }
   ],
   "posSales": [],

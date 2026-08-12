@@ -179,6 +179,40 @@ const POSPage = ({
   const [documentNotes, setDocumentNotes] = useState<string>('');
   const [toastMessage, setToastMessage] = useState<{ text: string, type: 'success' | 'info' | 'error' } | null>(null);
 
+  // Business Sector / Section & Table Management
+  const [businessSection, setBusinessSection] = useState<'Restaurante' | 'Lojas' | 'Hotelaria' | 'Bar' | 'Comércio' | 'Outros'>('Comércio');
+  const [tables, setTables] = useState<Array<{ id: string; name: string; capacity: number; status: 'livre' | 'ocupada' | 'reservada' }>>([
+    { id: 'm1', name: 'Mesa 01', capacity: 4, status: 'livre' },
+    { id: 'm2', name: 'Mesa 02', capacity: 2, status: 'livre' },
+    { id: 'm3', name: 'Mesa 03', capacity: 6, status: 'livre' },
+    { id: 'm4', name: 'Mesa 04', capacity: 4, status: 'livre' },
+    { id: 'm5', name: 'Esplanada 01', capacity: 8, status: 'livre' },
+  ]);
+  const [selectedTable, setSelectedTable] = useState<string | null>(null);
+  const [showTableModal, setShowTableModal] = useState(false);
+  const [newTableName, setNewTableName] = useState('');
+
+  // Operator / User switching & POS Configuration
+  const [operators, setOperators] = useState<Array<{ id: string; name: string; role: string }>>([
+    { id: 'op1', name: user?.nome || user?.name || 'Operador Principal', role: 'Administrador / Caixa' },
+    { id: 'op2', name: 'Atendente POS 1', role: 'Operador de Caixa' },
+    { id: 'op3', name: 'Supervisor Turno', role: 'Gerente' }
+  ]);
+  const [activeOperator, setActiveOperator] = useState<string>(user?.nome || user?.name || 'Operador Principal');
+  const [showUserModal, setShowUserModal] = useState(false);
+  const [newOperatorName, setNewOperatorName] = useState('');
+  const [newOperatorRole, setNewOperatorRole] = useState('Operador de Caixa');
+
+  const [showConfigModal, setShowConfigModal] = useState(false);
+  const [posConfig, setPosConfig] = useState({
+    autoPrint: true,
+    paperFormat: 'P80',
+    soundBeep: true,
+    requireClient: false,
+    headerMessage: 'Obrigado pela preferência!',
+    footerMessage: 'Conserve este documento. Volte sempre!'
+  });
+
   // Suspended Sales
   const [suspendedSales, setSuspendedSales] = useState<SuspendedSale[]>([]);
   const [showSuspensionModal, setShowSuspensionModal] = useState(false);
@@ -328,13 +362,8 @@ const POSPage = ({
       } else if (e.key === 'F2') {
         e.preventDefault();
         if (cart.length > 0) {
-          if (!activeSession) {
-            triggerToast('Abra o Caixa antes de finalizar a venda!', 'error');
-            setShowSessionModal(true);
-          } else {
-            setAmountPaid('');
-            setShowCheckoutModal(true);
-          }
+          setAmountPaid('');
+          setShowCheckoutModal(true);
         } else {
           triggerToast('Adicione produtos ao carrinho primeiro!', 'error');
         }
@@ -473,6 +502,19 @@ const POSPage = ({
 
     try {
       setIsProcessing(true);
+
+      // Auto-open cash session if none is open
+      if (!activeSession) {
+        await fetchJsonWithAuth('/api/cash/open', {
+          method: 'POST',
+          body: JSON.stringify({ 
+            initial_balance: 0,
+            pos_point_id: selectedPOS || '1',
+            empresa_id: clientEmpresaId
+          })
+        }).catch(() => null);
+      }
+
       const clientName = selectedClient ? selectedClient.name : 'Consumidor Final';
       const clientNif = selectedClient ? (selectedClient.contribuinte || selectedClient.nif || '999999999') : '999999999';
 
@@ -746,6 +788,45 @@ const POSPage = ({
           <span className="text-[#003366] font-mono font-bold">({formatCurrency(activeSession?.initial_balance || 0)})</span>
         </div>
 
+        {/* Secção / Ramo de Atividade */}
+        <div className="flex items-center gap-1 bg-sky-50 border border-sky-200 text-sky-900 px-2.5 py-1 rounded-lg mr-3 text-xs font-bold shrink-0">
+          <Store size={14} className="text-[#003366]" />
+          <span className="text-[10px] text-slate-500 uppercase font-black mr-1">Secção:</span>
+          <select 
+            value={businessSection}
+            onChange={(e) => { setBusinessSection(e.target.value as any); triggerToast(`Secção alterada para ${e.target.value}`, 'info'); }}
+            className="bg-transparent font-black text-[#003366] focus:outline-none cursor-pointer text-xs"
+          >
+            <option value="Comércio">Comércio</option>
+            <option value="Restaurante">Restaurante</option>
+            <option value="Lojas">Lojas</option>
+            <option value="Hotelaria">Hotelaria</option>
+            <option value="Bar">Bar</option>
+            <option value="Outros">Outros</option>
+          </select>
+        </div>
+
+        {/* Mudar Operador / Utilizador */}
+        <div 
+          onClick={() => setShowUserModal(true)}
+          className="flex items-center gap-1.5 bg-slate-50 hover:bg-sky-100/70 border border-slate-200 text-slate-700 px-2.5 py-1 rounded-lg mr-3 text-xs font-bold shrink-0 cursor-pointer transition-all"
+          title="Clique para Trocar ou Adicionar Operador POS"
+        >
+          <User size={13} className="text-[#003366]" />
+          <span className="text-[10px] text-slate-400 uppercase font-black">Operador:</span>
+          <span className="text-[#003366] font-bold">{activeOperator}</span>
+        </div>
+
+        {/* Configurações do POS */}
+        <button
+          onClick={() => setShowConfigModal(true)}
+          className="flex items-center gap-1 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 px-2.5 py-1 rounded-lg mr-3 text-xs font-bold shrink-0 cursor-pointer transition-all shadow-2xs"
+          title="Configurações do Ponto de Venda POS"
+        >
+          <Pencil size={13} className="text-[#003366]" />
+          <span>Config POS</span>
+        </button>
+
         {/* Timestamp */}
         <div className="ml-auto flex items-center gap-2 text-[11px] text-slate-500 border border-slate-200 bg-slate-50 px-3 py-1.5 rounded-lg shrink-0">
           <Clock size={13} className="text-[#003366]" />
@@ -803,6 +884,30 @@ const POSPage = ({
               <User size={13} />
               Identificar Cliente (F3)
             </button>
+          )}
+
+          {/* Gestão de Mesas para Restaurante / Bar / Hotelaria */}
+          {(businessSection === 'Restaurante' || businessSection === 'Bar' || businessSection === 'Hotelaria') && (
+            <div className="flex items-center gap-1.5 ml-1">
+              <button
+                onClick={() => setShowTableModal(true)}
+                className="flex items-center gap-1 text-xs font-bold bg-sky-50 text-sky-800 border border-sky-300 hover:bg-sky-100 px-2.5 py-1.5 rounded-lg transition-all cursor-pointer"
+                title="Gestão e Adicionar Mesas"
+              >
+                <Utensils size={13} className="text-[#003366]" />
+                <span>Mesas ({tables.length})</span>
+              </button>
+              <select
+                value={selectedTable || ''}
+                onChange={e => { setSelectedTable(e.target.value || null); if (e.target.value) triggerToast(`Mesa selecionada: ${e.target.value}`, 'info'); }}
+                className="bg-white border border-slate-200 text-slate-800 text-xs font-bold px-2 py-1.5 rounded-lg focus:outline-none focus:border-[#003366] cursor-pointer"
+              >
+                <option value="">Sem Mesa Exclusiva</option>
+                {tables.map(t => (
+                  <option key={t.id} value={t.name}>{t.name} ({t.status})</option>
+                ))}
+              </select>
+            </div>
           )}
 
           {suspendedSales.length > 0 && (
@@ -923,9 +1028,9 @@ const POSPage = ({
                         </span>
                       )}
 
-                      {product.image_url ? (
+                      {(product.image_url || (product as any).imagem_url || (product as any).imagem || (product as any).image || (product as any).photo_url) ? (
                         <img
-                          src={product.image_url}
+                          src={product.image_url || (product as any).imagem_url || (product as any).imagem || (product as any).image || (product as any).photo_url}
                           alt={product.name}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                         />
@@ -1125,13 +1230,8 @@ const POSPage = ({
               <button
                 onClick={() => {
                   if (cart.length > 0) {
-                    if (!activeSession) {
-                      triggerToast('Abra o Caixa antes de emitir documentos!', 'error');
-                      setShowSessionModal(true);
-                    } else {
-                      setAmountPaid('');
-                      setShowCheckoutModal(true);
-                    }
+                    setAmountPaid('');
+                    setShowCheckoutModal(true);
                   } else {
                     triggerToast('Adicione produtos ao carrinho primeiro!', 'error');
                   }
@@ -1886,6 +1986,201 @@ const POSPage = ({
               <div className="flex justify-end gap-2">
                 <button onClick={() => setShowReceiptDetailModal(null)} className="px-4 py-2 bg-slate-100 text-slate-700 text-xs font-bold rounded-lg">Fechar</button>
                 <button onClick={() => window.print()} className="px-5 py-2 bg-[#003366] text-white text-xs font-bold rounded-lg flex items-center gap-1.5"><Printer size={14} /> Imprimir</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL MUDAR / ADICIONAR UTILIZADOR */}
+      {showUserModal && (
+        <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 w-full max-w-md shadow-2xl rounded-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+              <span className="font-black text-[#003366] text-xs uppercase flex items-center gap-2">
+                <Users size={18} /> Operadores e Utilizadores POS
+              </span>
+              <button onClick={() => setShowUserModal(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-2">Selecionar Operador Activo</label>
+                <div className="space-y-1.5 max-h-[30vh] overflow-y-auto custom-scrollbar">
+                  {operators.map(op => (
+                    <button
+                      key={op.id}
+                      onClick={() => {
+                        setActiveOperator(op.name);
+                        setShowUserModal(false);
+                        triggerToast(`Operador ativo: ${op.name}`, 'success');
+                      }}
+                      className={`w-full text-left p-3 rounded-xl border flex items-center justify-between transition-all cursor-pointer ${
+                        activeOperator === op.name ? 'border-[#003366] bg-blue-50/50 text-[#003366] font-bold' : 'border-slate-200 hover:border-slate-300 text-slate-700'
+                      }`}
+                    >
+                      <div>
+                        <span className="text-xs font-bold block">{op.name}</span>
+                        <span className="text-[10px] text-slate-400">{op.role}</span>
+                      </div>
+                      {activeOperator === op.name && <CheckCircle size={16} className="text-[#003366]" />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="border-t border-slate-200 pt-4">
+                <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2">Adicionar Novo Operador</h5>
+                <form onSubmit={e => {
+                  e.preventDefault();
+                  if (!newOperatorName.trim()) return;
+                  const newOp = { id: Date.now().toString(), name: newOperatorName, role: newOperatorRole };
+                  setOperators([...operators, newOp]);
+                  setActiveOperator(newOperatorName);
+                  setNewOperatorName('');
+                  setShowUserModal(false);
+                  triggerToast(`Novo operador registado: ${newOp.name}`, 'success');
+                }} className="space-y-3">
+                  <input
+                    type="text"
+                    required
+                    placeholder="Nome do Operador"
+                    value={newOperatorName}
+                    onChange={e => setNewOperatorName(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-[#003366]"
+                  />
+                  <select
+                    value={newOperatorRole}
+                    onChange={e => setNewOperatorRole(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-[#003366]"
+                  >
+                    <option value="Operador de Caixa">Operador de Caixa</option>
+                    <option value="Atendente / Garçom">Atendente / Garçom</option>
+                    <option value="Supervisor Turno">Supervisor Turno</option>
+                    <option value="Gerente">Gerente</option>
+                  </select>
+                  <button type="submit" className="w-full bg-[#003366] text-white py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider shadow-xs">
+                    Adicionar Operador
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CONFIGURAÇÃO DO POS */}
+      {showConfigModal && (
+        <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 w-full max-w-lg shadow-2xl rounded-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+              <span className="font-black text-[#003366] text-xs uppercase flex items-center gap-2">
+                <Pencil size={18} /> Configurações Gerais do Terminal POS
+              </span>
+              <button onClick={() => setShowConfigModal(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+            </div>
+            <div className="p-6 space-y-4 text-xs">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">Formato Impressão</label>
+                  <select
+                    value={posConfig.paperFormat}
+                    onChange={e => setPosConfig({ ...posConfig, paperFormat: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-bold text-slate-800"
+                  >
+                    <option value="P80">Térmica P80 (80mm / Talão)</option>
+                    <option value="A4">A4 Standard</option>
+                    <option value="A5">A5 Compacto</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">Efeitos Sonoros (Beep)</label>
+                  <select
+                    value={posConfig.soundBeep ? 'sim' : 'nao'}
+                    onChange={e => setPosConfig({ ...posConfig, soundBeep: e.target.value === 'sim' })}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-bold text-slate-800"
+                  >
+                    <option value="sim">Ativado</option>
+                    <option value="nao">Desativado</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 uppercase mb-1">Mensagem de Cabeçalho do Talão P80</label>
+                <input
+                  type="text"
+                  value={posConfig.headerMessage}
+                  onChange={e => setPosConfig({ ...posConfig, headerMessage: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-800"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 uppercase mb-1">Mensagem de Rodapé do Talão P80</label>
+                <input
+                  type="text"
+                  value={posConfig.footerMessage}
+                  onChange={e => setPosConfig({ ...posConfig, footerMessage: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-800"
+                />
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button onClick={() => setShowConfigModal(false)} className="px-4 py-2 bg-slate-100 text-slate-600 font-bold rounded-lg">Cancelar</button>
+                <button onClick={() => { setShowConfigModal(false); triggerToast('Configurações do POS salvas!', 'success'); }} className="px-5 py-2 bg-[#003366] text-white font-bold uppercase rounded-lg">Guardar Alterações</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL GESTÃO DE MESAS */}
+      {showTableModal && (
+        <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 w-full max-w-md shadow-2xl rounded-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+              <span className="font-black text-[#003366] text-xs uppercase flex items-center gap-2">
+                <Utensils size={18} /> Adicionar & Gestão de Mesas / Salas
+              </span>
+              <button onClick={() => setShowTableModal(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <form onSubmit={e => {
+                e.preventDefault();
+                if (!newTableName.trim()) return;
+                const newTbl = { id: `m_${Date.now()}`, name: newTableName, capacity: 4, status: 'livre' as const };
+                setTables([...tables, newTbl]);
+                setSelectedTable(newTableName);
+                setNewTableName('');
+                setShowTableModal(false);
+                triggerToast(`Mesa "${newTbl.name}" criada com sucesso!`, 'success');
+              }} className="space-y-3">
+                <label className="block text-xs font-bold text-slate-700 uppercase">Nome da Mesa / Sala / Esplanada</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ex: Mesa VIP 05, Quarto 102..."
+                    value={newTableName}
+                    onChange={e => setNewTableName(e.target.value)}
+                    className="flex-1 bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-[#003366]"
+                  />
+                  <button type="submit" className="bg-[#003366] text-white px-4 py-2 rounded-lg text-xs font-bold uppercase shadow-xs">
+                    Criar
+                  </button>
+                </div>
+              </form>
+
+              <div>
+                <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2">Mesas Registadas</h5>
+                <div className="grid grid-cols-2 gap-2 max-h-[30vh] overflow-y-auto custom-scrollbar">
+                  {tables.map(t => (
+                    <div key={t.id} className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs flex justify-between items-center">
+                      <span className="font-bold text-slate-800">{t.name}</span>
+                      <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">{t.status}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>

@@ -136,6 +136,13 @@ export function ClientForm({ initialData, onSuccess, onBack, isSupplier }: Clien
     setMessage(null);
 
     try {
+      if (!formData.name || formData.name.trim() === '') {
+        throw new Error(isSupplier ? "Por favor, preencha o Nome do Fornecedor." : "Por favor, preencha o Nome do Cliente.");
+      }
+      if (!formData.contribuinte || formData.contribuinte.trim() === '') {
+        throw new Error("Por favor, preencha a Identificação (NIF).");
+      }
+
       if (!user?.empresa_id) {
         throw new Error("Sessão inválida ou empresa não associada.");
       }

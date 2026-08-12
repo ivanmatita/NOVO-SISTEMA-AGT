@@ -2016,6 +2016,14 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!name || name.trim() === '') {
+      alert('Por favor, preencha o campo Nome do Cliente. É um campo obrigatório.');
+      return;
+    }
+    if (!nif || nif.trim() === '') {
+      alert('Por favor, preencha o campo NIF/Contribuinte. É um campo obrigatório.');
+      return;
+    }
     if (nif && nif.trim() !== '') {
       const isDuplicateNif = clients.some(c => 
         (c.contribuinte === nif || c.nif === nif) && 
@@ -28006,13 +28014,6 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                           >
                             <Edit size={12} />
                           </button>
-                          <button 
-                            onClick={() => alert('A eliminação de fornecedores está desativada por conformidade fiscal.\n\nPara desativar este fornecedor, clique em Editar e altere o estado para "Inactivo".')}
-                            className="bg-white border border-zinc-300 text-zinc-400 px-3 py-1.5 text-[10px] font-black uppercase cursor-not-allowed shadow-sm"
-                            title="Eliminação bloqueada — use Editar para desativar"
-                          >
-                            <Trash2 size={12} />
-                          </button>
                         </div>
                       </td>
                     </tr>
@@ -29671,6 +29672,14 @@ const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!name || name.trim() === '') {
+      alert('Por favor, preencha o campo Nome do Fornecedor. É um campo obrigatório.');
+      return;
+    }
+    if (!nif || nif.trim() === '') {
+      alert('Por favor, preencha o campo NIF. É um campo obrigatório.');
+      return;
+    }
     
     if (nif && !validateAngolaNIF(nif)) {
       alert('O NIF inserido é inválido segundo as regras da AGT Angola. Deve conter 10 dígitos e começar com 1, 2, 3, 4 ou 5.');
@@ -29851,12 +29860,6 @@ const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas
                             setShowForm(true);
                           }} className="text-zinc-400 hover:text-[#003366] p-1.5 hover:bg-zinc-100 transition-all">
                             <Edit size={18} />
-                          </button>
-                          <button 
-                            onClick={() => handleDeleteSupplier(s.id)}
-                            className="text-zinc-400 hover:text-red-600 p-1.5 hover:bg-zinc-100 transition-all"
-                          >
-                            <Trash2 size={18} />
                           </button>
                         </div>
                       </td>

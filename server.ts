@@ -30,10 +30,16 @@ import { fileURLToPath } from "url";
 const _currentFile = typeof import.meta !== "undefined" && import.meta.url ? fileURLToPath(import.meta.url) : "";
 const __dirname_server = typeof __dirname !== "undefined" ? __dirname : (_currentFile ? path.dirname(_currentFile) : process.cwd());
 
-// Determinar qual ficheiro .env carregar com base no ambiente
-const _appEnv = (process.env.VITE_APP_ENV || process.env.NODE_ENV || 'development').toLowerCase().trim();
-const _isStaging = _appEnv === 'staging' || _appEnv === 'homologacao' || _appEnv === 'teste';
-const _isProd = _appEnv === 'production' || _appEnv === 'prod';
+const _rawAppEnv = (process.env.VITE_APP_ENV || '').toLowerCase().trim();
+const _rawUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').toLowerCase().trim();
+
+const _isStaging = _rawAppEnv === 'staging' || 
+                   _rawAppEnv === 'homologacao' || 
+                   _rawAppEnv === 'teste' || 
+                   _rawUrl.includes('sfnibpxfevhelaikqbiq') ||
+                   (process.env.VERCEL_GIT_COMMIT_REF === 'staging');
+
+const _isProd = !_isStaging && (_rawAppEnv === 'production' || _rawAppEnv === 'prod' || _rawUrl.includes('nawqfidnawokqaheqvar'));
 
 const _envFile = _isStaging ? '.env.staging' : (_isProd ? '.env.production' : '.env');
 const _envPath = path.resolve(__dirname_server, _envFile);
@@ -61,16 +67,19 @@ if (_isStaging) {
 const PROD_URL = "https://nawqfidnawokqaheqvar.supabase.co";
 const STAGING_URL = "https://sfnibpxfevhelaikqbiq.supabase.co";
 const currentUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "").trim().replace(/\/+$/, '');
+const isVercelRuntime = process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined;
 
 if (_isStaging && currentUrl === PROD_URL) {
   console.error('\n🛑 [FATAL SECURITY ERROR] STAGING ESTÁ CONFIGURADO COM A URL DE PRODUÇÃO!');
   console.error('🛑 A execução do servidor foi bloqueada para proteger a base de dados de produção.\n');
-  process.exit(1);
+  if (!isVercelRuntime) process.exit(1);
+  throw new Error('STAGING bloqueado de aceder a produção');
 }
 if (_isProd && currentUrl === STAGING_URL) {
   console.error('\n🛑 [FATAL SECURITY ERROR] PRODUÇÃO ESTÁ CONFIGURADA COM A URL DE STAGING!');
   console.error('🛑 A execução do servidor foi bloqueada para evitar uso de base de dados de teste em produção.\n');
-  process.exit(1);
+  if (!isVercelRuntime) process.exit(1);
+  throw new Error('PRODUÇÃO bloqueada de aceder a staging');
 }
 
 // --- Supabase Admin (Bypasses Rate Limits) ---

@@ -1,0 +1,60 @@
+﻿name: "Staging CI — Validate & Deploy"
+
+on:
+  push:
+    branches: [staging]
+  pull_request:
+    branches: [staging]
+
+jobs:
+  validate-and-deploy:
+    name: "Validate & Deploy to Staging"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: "Checkout Code"
+        uses: actions/checkout@v4
+
+      - name: "Setup Node.js 20"
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: "Install Dependencies"
+        run: npm ci
+
+      - name: "TypeScript Check (tsc --noEmit)"
+        run: npx tsc --noEmit
+
+      - name: "Build Staging"
+        env:
+          VITE_APP_ENV: staging
+          VITE_SUPABASE_URL: ${{ secrets.STAGING_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.STAGING_SUPABASE_ANON_KEY }}
+        run: npm run build:staging
+
+      - name: "Verify API Bundle"
+        run: |
+          test -f api/index.js || { echo "ERRO: api/index.js nao gerado!"; exit 1; }
+          echo "api/index.js OK"
+
+      - name: "Apply Migrations to Staging"
+        env:
+          SUPABASE_TOKEN: ${{ secrets.SUPABASE_TOKEN }}
+        run: node scripts/migrate.mjs staging
+
+      - name: "Summary"
+        run: |
+          echo "==========================================="
+          echo "STAGING DEPLOY: OK"
+          echo "Commit: ${{ github.sha }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Acesse: https://novo-sistema-agt-staging.vercel.app"
+          echo "==========================================="
+          echo ""
+          echo "IMPORTANTE: Para promover para Producao:"
+          echo "  1. Teste manualmente em Staging"
+          echo "  2. Execute: npm run release:create"
+          echo "  3. Execute: npm run release:approve -- 'NomeAprovador'"
+          echo "  4. Execute: npm run promote (no Antigravity)"

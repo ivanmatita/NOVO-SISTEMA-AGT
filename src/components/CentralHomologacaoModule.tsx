@@ -42,7 +42,7 @@ export const CentralHomologacaoModule: React.FC = () => {
   const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [overallStatus, setOverallStatus] = useState<'APPROVED' | 'ATTENTION' | 'ERROR'>('APPROVED');
   const [lastTestDate, setLastTestDate] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'tests' | 'checklist' | 'mockdata'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'tests' | 'checklist' | 'releases'>('dashboard');
 
   const appEnv = getAppEnvironment();
   const activeUrl = supabaseStatus.url;
@@ -324,6 +324,15 @@ export const CentralHomologacaoModule: React.FC = () => {
             <CheckCircle2 className="w-4 h-4" />
             <span>Checklist de Homologação</span>
           </button>
+          <button
+            onClick={() => setActiveTab('releases')}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-all flex items-center gap-2 ${
+              activeTab === 'releases' ? 'border-amber-400 text-amber-400' : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Server className="w-4 h-4" />
+            <span>Pipeline Staging → Produção</span>
+          </button>
         </div>
 
         {/* Tab 1: Dashboard */}
@@ -447,6 +456,67 @@ export const CentralHomologacaoModule: React.FC = () => {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Tab 4: Pipeline Releases */}
+        {activeTab === 'releases' && (
+          <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div>
+                <h3 className="font-bold text-base text-white flex items-center gap-2">
+                  <Server className="w-5 h-5 text-amber-400" />
+                  Pipeline de Promoção Controlada: Staging → Produção
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Garantia de promoção idempotente do mesmo commit SHA e das mesmas migrations aprovadas.
+                </p>
+              </div>
+              <span className="text-xs font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3 py-1 rounded-full font-bold">
+                CI/CD ATIVO
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-4 bg-slate-950/80 rounded-xl border border-slate-800 space-y-2">
+                <div className="text-xs font-mono text-amber-400 font-bold uppercase">Ambiente Staging</div>
+                <div className="text-sm text-white font-mono">Branch: staging</div>
+                <div className="text-xs text-slate-400">Vercel: https://novo-sistema-agt-staging.vercel.app</div>
+                <div className="text-xs text-slate-400">Supabase: sfnibpxfevhelaikqbiq</div>
+              </div>
+
+              <div className="p-4 bg-slate-950/80 rounded-xl border border-slate-800 space-y-2">
+                <div className="text-xs font-mono text-emerald-400 font-bold uppercase">Ambiente Produção</div>
+                <div className="text-sm text-white font-mono">Branch: main (Protegida)</div>
+                <div className="text-xs text-slate-400">Vercel: https://novo-sistema-agt.vercel.app</div>
+                <div className="text-xs text-slate-400">Supabase: nawqfidnawokqaheqvar</div>
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-3">
+              <div className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                <Terminal className="w-4 h-4 text-sky-400" />
+                Comandos de Gestão do Pipeline via Terminal
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs font-mono">
+                <div className="p-2 bg-slate-900 rounded border border-slate-800 text-slate-300">
+                  <span className="text-amber-400 font-bold">1. Criar Release:</span>
+                  <div className="text-slate-400">npm run release:create</div>
+                </div>
+                <div className="p-2 bg-slate-900 rounded border border-slate-800 text-slate-300">
+                  <span className="text-amber-400 font-bold">2. Testar Release:</span>
+                  <div className="text-slate-400">npm run release:test</div>
+                </div>
+                <div className="p-2 bg-slate-900 rounded border border-slate-800 text-slate-300">
+                  <span className="text-amber-400 font-bold">3. Aprovar Release:</span>
+                  <div className="text-slate-400">npm run release:approve</div>
+                </div>
+                <div className="p-2 bg-slate-900 rounded border border-slate-800 text-slate-300">
+                  <span className="text-emerald-400 font-bold">4. Promover a Produção:</span>
+                  <div className="text-slate-400">npm run release:promote</div>
+                </div>
+              </div>
             </div>
           </div>
         )}

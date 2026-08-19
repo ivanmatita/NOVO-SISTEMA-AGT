@@ -13,7 +13,19 @@
     "vercel-build": "node -e \"const env=(process.env.VITE_APP_ENV||'').toLowerCase().replace(/['\\\"]/g,'').trim();const cmd=env.includes('staging')?'npm run build:staging':'npm run build:production';const {execSync}=require('child_process');console.log('[vercel-build] clean_env='+env+' -> '+cmd);execSync(cmd,{stdio:'inherit',shell:true});\"",
     "start": "node dist/server.mjs",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "migrate:staging": "node scripts/migrate.mjs staging",
+    "migrate:prod": "node scripts/migrate.mjs production",
+    "migrate:status": "node scripts/migrate.mjs status",
+    "release:create": "node scripts/release_manager.mjs create",
+    "release:test": "node scripts/release_manager.mjs test",
+    "release:approve": "node scripts/release_manager.mjs approve",
+    "release:promote": "node scripts/release_manager.mjs promote",
+    "release:status": "node scripts/release_manager.mjs status",
+    "promote": "node scripts/promote.mjs",
+    "promote:dry-run": "node scripts/promote.mjs --dry-run",
+    "promote:status": "node scripts/promote.mjs --status",
+    "audit": "node scripts/audit_pipeline_current_state.mjs"
   },
   "dependencies": {
     "@fontsource/inter": "^5.2.8",

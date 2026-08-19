@@ -7,7 +7,7 @@ import {
   TrendingUp, Wallet, ArrowUpCircle, ArrowDownCircle, Info, RefreshCw,
   LayoutDashboard, UserCog, PieChart as PieChartIcon, Mail, Send,
   AlertOctagon, CheckCircle2, History, ChevronRight, Eye, CornerDownRight,
-  Sliders, MessageSquare, Lock, Unlock, Phone, MapPin, Globe, User
+  Sliders, MessageSquare, Lock, Unlock, Phone, MapPin, Globe, User, Upload
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 

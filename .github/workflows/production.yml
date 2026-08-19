@@ -1,0 +1,82 @@
+﻿name: "Production Guard — Release Verification Only"
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  verify-production-release:
+    name: "Verify Approved Release & Build Production"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: "Checkout Code"
+        uses: actions/checkout@v4
+
+      - name: "Setup Node.js 20"
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: "Install Dependencies"
+        run: npm ci
+
+      - name: "Verify Release Manifest (BLOQUEIO CRITICO)"
+        run: |
+          node -e "
+            const fs = require('fs');
+            if (!fs.existsSync('release-manifest.json')) {
+              console.error('BLOQUEIO: release-manifest.json nao encontrado!');
+              console.error('Deploy em main PROIBIDO sem manifesto de release aprovado.');
+              process.exit(1);
+            }
+            const m = JSON.parse(fs.readFileSync('release-manifest.json','utf8'));
+            console.log('Release:', m.release_id);
+            console.log('Status:', m.status);
+            console.log('Commit no manifesto:', m.commit_sha);
+            console.log('Commit atual:', process.env.GITHUB_SHA);
+            if (m.status !== 'APPROVED' && m.status !== 'PROMOTED') {
+              console.error('BLOQUEIO: Release nao esta APPROVED ou PROMOTED! Status: ' + m.status);
+              process.exit(1);
+            }
+            if (m.commit_sha !== process.env.GITHUB_SHA) {
+              console.error('BLOQUEIO: Commit SHA nao coincide!');
+              console.error('  Manifesto: ' + m.commit_sha);
+              console.error('  Atual:     ' + process.env.GITHUB_SHA);
+              process.exit(1);
+            }
+            if (!m.approval || !m.approval.approved_by) {
+              console.error('BLOQUEIO: Sem aprovador registrado no manifesto!');
+              process.exit(1);
+            }
+            console.log('OK: Release verificada. Aprovada por: ' + m.approval.approved_by);
+          "
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+
+      - name: "TypeScript Check"
+        run: npx tsc --noEmit
+
+      - name: "Build Production"
+        env:
+          VITE_APP_ENV: production
+          VITE_SUPABASE_URL: ${{ secrets.PROD_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.PROD_SUPABASE_ANON_KEY }}
+        run: npm run build:production
+
+      - name: "Verify API Bundle"
+        run: |
+          test -f api/index.js || { echo "ERRO: api/index.js nao gerado!"; exit 1; }
+          echo "api/index.js OK"
+
+      - name: "Production Summary"
+        run: |
+          echo "==========================================="
+          echo "PRODUCTION BUILD: OK"
+          echo "Commit: ${{ github.sha }}"
+          echo "Deploy Vercel em andamento..."
+          echo "==========================================="
+          echo ""
+          echo "NOTA: As migrations jah foram aplicadas pelo promote.mjs"
+          echo "Validar: https://novo-sistema-agt.vercel.app"

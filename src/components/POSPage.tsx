@@ -1061,7 +1061,7 @@ const POSPage = ({
   };
 
   const filteredByWarehouse = userPosConfig && userPosConfig.warehouse_id 
-    ? products.filter(p => p.armazem_id == userPosConfig.warehouse_id)
+    ? products.filter(p => (p as any).armazem_id == userPosConfig.warehouse_id)
     : products;
 
   const activeFilteredProducts = filteredByWarehouse
@@ -1383,7 +1383,7 @@ const POSPage = ({
             onChange={(e) => { setSelectedPOS(e.target.value); triggerToast(`Ponto de Venda alterado!`, 'info'); }}
             className="bg-transparent font-black text-[#003366] focus:outline-none cursor-pointer text-xs"
           >
-            {posPoints.map(p => <option key={p.id} value={String(p.id)}>{p.name || p.nome || `POS ${p.id}`}</option>)}
+            {posPoints.map(p => <option key={p.id} value={String(p.id)}>{p.name || (p as any).nome || `POS ${p.id}`}</option>)}
             {posPoints.length === 0 && <option value="1">POS Principal</option>}
           </select>
           <button

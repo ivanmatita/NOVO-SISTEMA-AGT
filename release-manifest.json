@@ -1,0 +1,25 @@
+{
+  "release_id": "v2026.08.19-001",
+  "created_at": "2026-08-19T14:01:48.275Z",
+  "branch": "staging",
+  "commit_sha": "5d7b4965dc3b86f9a495c8aac48aa2e2c9c58ba8",
+  "status": "DRAFT",
+  "notes": "Release v2026.08.19-001: Pipeline completo Staging para Producao com versionamento de migrations",
+  "migrations": [
+    "20260819_001_base_schema_alignment.sql",
+    "20260819_002_security_definer_helpers.sql",
+    "20260819_003_missing_rpcs_and_fixes.sql"
+  ],
+  "test_results": null,
+  "approval": {
+    "approved_by": null,
+    "approved_at": null,
+    "notes": null
+  },
+  "promotion": {
+    "promoted_at": null,
+    "promoted_by": null,
+    "production_commit_sha": null,
+    "migrations_applied": []
+  }
+}

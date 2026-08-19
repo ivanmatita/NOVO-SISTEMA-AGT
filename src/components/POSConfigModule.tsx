@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Settings, Save, AlertTriangle, Printer, Store, DollarSign, Package, RefreshCw, CheckCircle2, ShieldCheck, Lock, Unlock, Database } from 'lucide-react';
-import { fetchWithAuth, authService } from '../services/authService';
+import { authService } from '../services/authService';
+import { fetchWithAuth } from '../lib/fetchWithAuth';
 import { systemUsersService } from '../services/systemUsersService';
 import { localTrabalhoService } from '../services/localTrabalhoService';
 import { useAuth } from '../contexts/AuthContext';

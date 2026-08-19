@@ -3761,7 +3761,7 @@ const HRModule = ({
             
             for (const item of payData) {
                const pData = item.dados_processamento || {};
-               const matchedEmp = employees.find((e: any) => String(e.id) === String(item.colaborador_id || pData.employee?.id || pData.employee_id));
+               const matchedEmp = (Array.isArray(localEmployees) ? localEmployees : [] as any[]).find((e: any) => String(e.id) === String(item.colaborador_id || pData.employee?.id || pData.employee_id));
                const employeeObj = pData.employee || matchedEmp || {
                  id: item.colaborador_id || 0,
                  name: item.colaborador_nome || matchedEmp?.name || 'Colaborador',
@@ -7679,7 +7679,7 @@ const HRModule = ({
                   setIsProcessingComplete(true);
                   
                   if (user?.empresa_id) {
-                     Promise.all(receipts.map(rec => payrollService.savePayroll(user.empresa_id, String(rec?.employee?.id ?? rec?.employee_id ?? rec?.id), selectedMonth, rec))).catch(err => {
+                     Promise.all(receipts.map(rec => payrollService.savePayroll(user.empresa_id, String(rec?.employee?.id ?? (rec as any)?.employee_id ?? rec?.id), selectedMonth, rec))).catch(err => {
                         console.error('Failed to sync payrolls to supabase', err);
                      });
                   }
@@ -24449,7 +24449,7 @@ const InvoiceList = ({
     const matchesMin = minValue === '' || docValue >= Number(minValue);
     const matchesMax = maxValue === '' || docValue <= Number(maxValue);
     
-    const isDocPago = doc.status === 'paid' || (doc.estado_documento as string) === 'pago' || doc.payment_status === 'paid' || doc.payment_status === 'pago' || doc.estado_pagamento === 'pago' || doc.recibo_emitido === true || docTypeNormalized === 'RC' || docTypeNormalized === 'FR';
+    const isDocPago = doc.status === 'paid' || (doc.estado_documento as string) === 'pago' || doc.payment_status === 'paid' || (doc.payment_status as string) === 'pago' || (doc as any).estado_pagamento === 'pago' || (doc as any).recibo_emitido === true || docTypeNormalized === 'RC' || docTypeNormalized === 'FR';
     const matchesStatus = statusFilter === 'Todos' || 
                          (statusFilter === 'PAGO' && isDocPago) ||
                          (statusFilter === 'PENDENTE' && !isDocPago);
@@ -25453,7 +25453,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         cliente_id: clientId, 
-        client_name: client?.name || client?.nome || '',
+        client_name: (client as any)?.name || (client as any)?.nome || '',
         date, 
         due_date: dueDate,
         items,
@@ -25892,7 +25892,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                   onChange={(e) => {
                     setClientNifSearch(e.target.value);
                     const found = clients.find(c => (c.contribuinte && c.contribuinte.toString() === e.target.value) || (c.nif && c.nif.toString() === e.target.value));
-                    if (found) setClientId(found.id);
+                    if (found) setClientId(found.id as (number | ""));
                   }}
                   placeholder="Ex: 5000000001"
                   className="flex-1 bg-white border border-zinc-300 border-r-0 rounded-none px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#0f2a4a] text-sm"
@@ -25901,7 +25901,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                   type="button"
                   onClick={() => {
                     const found = clients.find(c => (c.contribuinte && c.contribuinte.toString().includes(clientNifSearch)) || (c.nif && c.nif.toString().includes(clientNifSearch)));
-                    if (found) setClientId(found.id);
+                    if (found) setClientId(found.id as (number | ""));
                   }}
                   className="bg-[#0f2a4a] hover:bg-[#1a3f6f] text-white px-4 py-2 transition-colors flex items-center justify-center"
                   title="Pesquisar por NIF"
@@ -25916,7 +25916,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                 value={clientId || ''}
                 onChange={(e) => {
                   const val = e.target.value;
-                  setClientId(val);
+                  setClientId(val as unknown as (number | ''));
                   if (val) {
                     const c = clients.find(cl => String(cl.id) === String(val));
                     if (c && (c.contribuinte || c.nif)) setClientNifSearch((c.contribuinte || c.nif).toString());
@@ -25926,7 +25926,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                 className="w-full bg-white border border-zinc-300 rounded-none px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#0f2a4a] text-sm"
               >
                 <option value="">Selecione o adquirente...</option>
-                {clients.map(c => <option key={c.id} value={c.id}>{c.name || c.nome}</option>)}
+                {clients.map(c => <option key={c.id} value={c.id}>{c.name || (c as any).nome}</option>)}
               </select>
             </div>
             <div className="space-y-1">
@@ -31328,7 +31328,7 @@ const ReceiptModal = ({ document: doc, caixas, onClose, onSuccess }: {
       return;
     }
     try {
-      const currentEmpresaId = user?.empresa_id || user?.company_id || doc.empresa_id || '11111111-0000-0000-0000-000000000001';
+      const currentEmpresaId = user?.empresa_id || user?.company_id || (doc as any).empresa_id || '11111111-0000-0000-0000-000000000001';
       const res = await fetchWithAuth('/api/receipts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

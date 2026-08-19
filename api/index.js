@@ -2460,10 +2460,14 @@ if (_isProd && currentUrl === STAGING_URL) {
   if (!isVercelRuntime) process.exit(1);
   throw new Error("PRODU\xC7\xC3O bloqueada de aceder a staging");
 }
-var rawSupabaseUrl4 = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "").trim();
+var STAGING_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmbmlicHhmZXZoZWxhaWtxYmlxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwNTAyODgsImV4cCI6MjEwMjYyNjI4OH0.AnxqAF-TBY556gp2oPV0I5hfTjozaCMIHaeH7OhifiM";
+var PROD_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5hd3FmaWRuYXdva3FhaGVxdmFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyMTgxNDYsImV4cCI6MjA5Mzc5NDE0Nn0.qFkIexxKcQDWax3pfhcgPMR3ZFIsE-gYWTS62i5Edgs";
+var defaultUrl = _isStaging ? STAGING_URL : PROD_URL;
+var defaultAnonKey = _isStaging ? STAGING_ANON_KEY : PROD_ANON_KEY;
+var rawSupabaseUrl4 = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || defaultUrl).trim();
 var supabaseUrl5 = rawSupabaseUrl4.split("/rest/v1")[0].split("/auth/v1")[0].split("/realtime/v1")[0].replace(/\/+$/, "");
 var supabaseServiceRole4 = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
-var supabaseAnonKey = (process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.ANON_KEY || "").trim();
+var supabaseAnonKey = (process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.ANON_KEY || defaultAnonKey).trim();
 var hasServiceRoleKey = Boolean(supabaseServiceRole4 && supabaseServiceRole4.length > 20);
 var adminKeyToUse = hasServiceRoleKey ? supabaseServiceRole4 : supabaseAnonKey;
 console.log(`[STARTUP] SupabaseURL: ${supabaseUrl5 ? "OK" : "EMPTY"} | ServiceRoleKey: ${hasServiceRoleKey ? "PRESENT" : "MISSING (Using Anon Key fallback)"}`);

@@ -84,7 +84,13 @@ if (_isProd && currentUrl === STAGING_URL) {
 
 // --- Supabase Admin (Bypasses Rate Limits) ---
 // --- Supabase Admin & User Scoped Client Helper ---
-const rawSupabaseUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "").trim();
+const STAGING_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmbmlicHhmZXZoZWxhaWtxYmlxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwNTAyODgsImV4cCI6MjEwMjYyNjI4OH0.AnxqAF-TBY556gp2oPV0I5hfTjozaCMIHaeH7OhifiM';
+const PROD_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5hd3FmaWRuYXdva3FhaGVxdmFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyMTgxNDYsImV4cCI6MjA5Mzc5NDE0Nn0.qFkIexxKcQDWax3pfhcgPMR3ZFIsE-gYWTS62i5Edgs';
+
+const defaultUrl = _isStaging ? STAGING_URL : PROD_URL;
+const defaultAnonKey = _isStaging ? STAGING_ANON_KEY : PROD_ANON_KEY;
+
+const rawSupabaseUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || defaultUrl).trim();
 const supabaseUrl = rawSupabaseUrl
   .split('/rest/v1')[0]
   .split('/auth/v1')[0]
@@ -96,7 +102,7 @@ const supabaseAnonKey = (
   process.env.SUPABASE_ANON_KEY || 
   process.env.VITE_SUPABASE_ANON_KEY || 
   process.env.ANON_KEY || 
-  ""
+  defaultAnonKey
 ).trim();
 
 const hasServiceRoleKey = Boolean(supabaseServiceRole && supabaseServiceRole.length > 20);

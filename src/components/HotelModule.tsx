@@ -17,6 +17,11 @@ import { useAuth } from '../contexts/AuthContext';
 // ─── FORMAT ──────────────────────────────────────────────────────────────────
 const fmt = (v: number) => v.toLocaleString('pt-AO', { style: 'currency', currency: 'AOA', minimumFractionDigits: 0 });
 
+// ─── SANITIZERS ──────────────────────────────────────────────────────────────
+const cleanDate = (d: any): string | null => (d && typeof d === 'string' && d.trim() !== '') ? d.trim() : null;
+const cleanNum = (n: any, fallback: number | null = null): number | null => (n !== '' && n !== null && n !== undefined && !isNaN(Number(n))) ? Number(n) : fallback;
+const cleanUUID = (id: any): string | null => (id && typeof id === 'string' && id.trim() !== '' && id.length > 10) ? id.trim() : null;
+
 // ─── FIELD COMPONENTS ─────────────────────────────────────────────────────────
 const Field = ({ label, children, half }: { label: string; children: React.ReactNode; half?: boolean }) => (
   <div className={half ? 'col-span-1' : 'col-span-2'}>
@@ -114,12 +119,20 @@ const RoomModal = ({ initialData, empresaId, onClose, onSuccess }: any) => {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const payload = { ...form, empresa_id: empresaId };
+      const activeEmpresaId = empresaId || '11111111-0000-0000-0000-000000000001';
+      const payload = {
+        ...form,
+        empresa_id: activeEmpresaId,
+        preco_noite: cleanNum(form.preco_noite, 0),
+        preco_final_semana: cleanNum(form.preco_final_semana, 0),
+        capacidade: cleanNum(form.capacidade, 2),
+        area_m2: cleanNum(form.area_m2, null),
+      };
       let error;
       if (initialData?.id) {
         ({ error } = await supabase.from('hotel_quartos').update(payload).eq('id', initialData.id));
       } else {
-        ({ error } = await supabase.from('hotel_quartos').insert(payload));
+        ({ error } = await supabase.from('hotel_quartos').insert([payload]));
       }
       if (error) { alert('Erro ao guardar quarto: ' + error.message); return; }
       onSuccess();
@@ -229,15 +242,27 @@ const ReservationModal = ({ initialData, empresaId, rooms, onClose, onSuccess }:
     e.preventDefault();
     setSubmitting(true);
     try {
+      const activeEmpresaId = empresaId || '11111111-0000-0000-0000-000000000001';
       const room = rooms.find((r: any) => r.id === form.quarto_id);
-      const payload = { ...form, empresa_id: empresaId, quarto_numero: room?.numero || '' };
+      const payload = {
+        ...form,
+        empresa_id: activeEmpresaId,
+        quarto_id: cleanUUID(form.quarto_id),
+        quarto_numero: room?.numero || '',
+        num_adultos: cleanNum(form.num_adultos, 1),
+        num_criancas: cleanNum(form.num_criancas, 0),
+        valor_total: cleanNum(form.valor_total, 0),
+        valor_pago: cleanNum(form.valor_pago, 0),
+        data_checkin: cleanDate(form.data_checkin),
+        data_checkout: cleanDate(form.data_checkout),
+      };
       let error;
       if (initialData?.id) {
         ({ error } = await supabase.from('hotel_reservas').update(payload).eq('id', initialData.id));
       } else {
-        ({ error } = await supabase.from('hotel_reservas').insert(payload));
+        ({ error } = await supabase.from('hotel_reservas').insert([payload]));
         // Update room status
-        if (!error && form.status !== 'Cancelada') {
+        if (!error && form.status !== 'Cancelada' && form.quarto_id) {
           await supabase.from('hotel_quartos').update({ status: 'Reservado' }).eq('id', form.quarto_id);
         }
       }
@@ -318,14 +343,21 @@ const HousekeepingModal = ({ initialData, empresaId, rooms, onClose, onSuccess }
     e.preventDefault();
     setSubmitting(true);
     try {
+      const activeEmpresaId = empresaId || '11111111-0000-0000-0000-000000000001';
       const room = rooms.find((r: any) => r.id === form.quarto_id);
-      const payload = { ...form, empresa_id: empresaId, quarto_numero: room?.numero || '' };
+      const payload = {
+        ...form,
+        empresa_id: activeEmpresaId,
+        quarto_id: cleanUUID(form.quarto_id),
+        quarto_numero: room?.numero || '',
+        data_tarefa: cleanDate(form.data_tarefa) || new Date().toISOString().split('T')[0],
+      };
       let error;
       if (initialData?.id) {
         ({ error } = await supabase.from('hotel_housekeeping').update(payload).eq('id', initialData.id));
       } else {
-        ({ error } = await supabase.from('hotel_housekeeping').insert(payload));
-        if (!error) {
+        ({ error } = await supabase.from('hotel_housekeeping').insert([payload]));
+        if (!error && form.quarto_id) {
           await supabase.from('hotel_quartos').update({ status: 'Limpeza' }).eq('id', form.quarto_id);
         }
       }
@@ -386,8 +418,18 @@ const ServiceModal = ({ initialData, empresaId, rooms, onClose, onSuccess }: any
     e.preventDefault();
     setSubmitting(true);
     try {
+      const activeEmpresaId = empresaId || '11111111-0000-0000-0000-000000000001';
       const room = rooms.find((r: any) => r.id === form.quarto_id);
-      const payload = { ...form, empresa_id: empresaId, quarto_numero: room?.numero || '' };
+      const payload = {
+        ...form,
+        empresa_id: activeEmpresaId,
+        quarto_id: cleanUUID(form.quarto_id),
+        quarto_numero: room?.numero || '',
+        valor: cleanNum(form.valor, 0),
+        preco_unitario: cleanNum(form.valor, 0),
+        total: cleanNum(form.valor, 0),
+        data_servico: cleanDate(form.data_servico) || new Date().toISOString().split('T')[0],
+      };
       let error;
       if (initialData?.id) {
         ({ error } = await supabase.from('hotel_servicos').update(payload).eq('id', initialData.id));

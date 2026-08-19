@@ -1,4 +1,6 @@
 import { emitirDocumentoFiscal } from './services/fiscalEngine';
+import { StagingBadge } from './components/StagingBadge';
+import { CentralHomologacaoModule } from './components/CentralHomologacaoModule';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import html2pdf from 'html2pdf.js';
 import { DocumentReportModal } from './components/DocumentReportModal';
@@ -196,6 +198,7 @@ import { MetricsModule, fetchMetrics, Metric } from './components/MetricsModule'
 import { MediaLibraryModule } from './components/MediaLibraryModule';
 import LicencasModule from './components/LicencasModule';
 import { EmpresaModule } from './components/EmpresaModule';
+import { POSConfigModule } from './components/POSConfigModule';
 import { CRMModule } from './components/CRMModule';
 import { AgtValidationModal } from './components/AgtValidationModal';
 import { AgtElectronicInvoiceModal } from './components/AgtElectronicInvoiceModal';
@@ -3444,9 +3447,9 @@ const OrdemTransferencia = ({ employee, hasReceipts, processedReceipts, companyN
   const downloadExcel = () => {
     const data = processedReceipts.map((rcpt, index) => ({
       '#': index + 1,
-      'Beneficiário': rcpt.employee.name,
-      'Banco': rcpt.employee.bank_name || 'BFA',
-      'IBAN': rcpt.employee.iban || '---',
+      'Beneficiário': rcpt.employee?.name || rcpt.employee_name || 'Colaborador',
+      'Banco': rcpt.employee?.bank_name || 'BFA',
+      'IBAN': rcpt.employee?.iban || '---',
       'Valor Líquido': rcpt.calculations?.totalNet || 0
     }));
     exportToExcel(data, `Ordem_Transferencia_${selectedMonth.replace(/\//g, '_')}.xlsx`, 'Transferencias');
@@ -3537,17 +3540,18 @@ const OrdemTransferencia = ({ employee, hasReceipts, processedReceipts, companyN
                 </thead>
                 <tbody className="divide-y divide-zinc-200">
                   {processedReceipts.map((rcpt, idx) => (
-                    <tr key={rcpt.id} className="hover:bg-zinc-50 font-bold text-zinc-700">
+                    <tr key={rcpt.id || idx} className="hover:bg-zinc-50 font-bold text-zinc-700">
                       <td className="px-3 py-2 border-r border-zinc-200 text-center text-zinc-400">{idx + 1}</td>
-                      <td className="px-3 py-2 border-r border-zinc-200 uppercase text-[#003366]">{rcpt.employee.name}</td>
-                      <td className="px-3 py-2 border-r border-zinc-200 uppercase text-zinc-500">{rcpt.employee.bank_name || 'BFA'}</td>
-                      <td className="px-3 py-2 border-r border-zinc-200 font-mono text-xs">{rcpt.employee.iban || 'AO00 0000 0000 0000 0000 0000 0'}</td>
+                      <td className="px-3 py-2 border-r border-zinc-200 uppercase text-[#003366]">{rcpt.employee?.name || rcpt.employee_name || 'Colaborador'}</td>
+                      <td className="px-3 py-2 border-r border-zinc-200 uppercase text-zinc-500">{rcpt.employee?.bank_name || 'BFA'}</td>
+                      <td className="px-3 py-2 border-r border-zinc-200 font-mono text-xs">{rcpt.employee?.iban || 'AO00 0000 0000 0000 0000 0000 0'}</td>
                       <td className="px-3 py-2 text-right font-mono text-emerald-600 border-r border-zinc-200">{formatCurrency(rcpt.calculations?.totalNet || 0)}</td>
                       <td className="px-3 py-2 text-center no-print">
                         <button 
                           onClick={() => {
                             if (confirm('Tem a certeza que deseja remover este registo da ordem de transferência?')) {
-                              setProcessedReceipts((prev: any[]) => prev.filter(p => (p.id || p.employee.id) !== (rcpt.id || rcpt.employee.id)));
+                              const empId = rcpt.employee?.id ?? rcpt.employee_id ?? rcpt.id;
+                              setProcessedReceipts((prev: any[]) => prev.filter(p => (p.id || p.employee?.id || p.employee_id) !== (rcpt.id || empId)));
                             }
                           }}
                           className="p-1.5 text-red-600 hover:bg-red-50 transition-colors"
@@ -3756,11 +3760,39 @@ const HRModule = ({
             const newProcessedAtt: Record<string, boolean> = {};
             
             for (const item of payData) {
+               const pData = item.dados_processamento || {};
+               const matchedEmp = employees.find((e: any) => String(e.id) === String(item.colaborador_id || pData.employee?.id || pData.employee_id));
+               const employeeObj = pData.employee || matchedEmp || {
+                 id: item.colaborador_id || 0,
+                 name: item.colaborador_nome || matchedEmp?.name || 'Colaborador',
+                 role: item.colaborador_cargo || matchedEmp?.role || 'Funcionário',
+                 salary: Number(item.salario_base || matchedEmp?.salary || 0),
+                 nif: matchedEmp?.nif || '',
+                 iban: matchedEmp?.iban || '',
+                 bank_name: matchedEmp?.bank_name || 'BFA',
+               };
+               
+               const calculationsObj = pData.calculations || {
+                 totalGross: Number(item.total_bruto || employeeObj.salary || 0),
+                 totalDeductions: Number(item.total_descontos || 0),
+                 totalNet: Number(item.total_liquido || employeeObj.salary || 0),
+               };
+
+               const normalizedReceipt = {
+                 ...pData,
+                 id: pData.id || item.id || `RCPT-${item.colaborador_id || employeeObj.id}-${pData.period || selectedMonth}`,
+                 period: pData.period || item.periodo || selectedMonth,
+                 employee: employeeObj,
+                 calculations: calculationsObj,
+                 inputs: pData.inputs || {},
+                 status: pData.status || item.status || 'processed',
+               };
+
                // Only set attendance done for the currently selected month, but load ALL receipts
-               if (item.dados_processamento.period === selectedMonth) {
-                  newProcessedAtt[`${item.colaborador_id}_${selectedMonth}`] = true;
+               if (normalizedReceipt.period === selectedMonth) {
+                  newProcessedAtt[`${item.colaborador_id || employeeObj.id}_${selectedMonth}`] = true;
                }
-               newReceipts.push(item.dados_processamento);
+               newReceipts.push(normalizedReceipt);
             }
 
             setProcessedAttendance(prev => ({
@@ -5456,11 +5488,11 @@ const HRModule = ({
                       ) : (
                         processedReceipts.map(proc => (
                           <tr key={proc.id} className="hover:bg-zinc-50 transition-colors text-xs font-bold text-zinc-600">
-                            <td className="px-6 py-4 uppercase">{proc.employee.name}</td>
-                            <td className="px-6 py-4 uppercase text-zinc-400">{proc.employee.role}</td>
+                            <td className="px-6 py-4 uppercase">{proc.employee?.name || proc.employee_name || 'Colaborador'}</td>
+                            <td className="px-6 py-4 uppercase text-zinc-400">{proc.employee?.role || proc.employee_role || 'Funcionário'}</td>
                             <td className="px-6 py-4 uppercase">{proc.period}</td>
-                            <td className="px-6 py-4 text-right font-mono">{formatCurrency(proc.employee.salary)}</td>
-                            <td className="px-6 py-4 text-right font-mono text-emerald-600">{formatCurrency(proc.calculations.totalNet)}</td>
+                            <td className="px-6 py-4 text-right font-mono">{formatCurrency(proc.employee?.salary || 0)}</td>
+                            <td className="px-6 py-4 text-right font-mono text-emerald-600">{formatCurrency(proc.calculations?.totalNet || 0)}</td>
                             <td className="px-6 py-4">
                               <div className="flex items-center justify-center gap-2">
                                 <button 
@@ -5517,7 +5549,7 @@ const HRModule = ({
                     </div>
                     <div className="text-right text-[10px] font-bold uppercase">
                       <p>Data: {new Date().toLocaleDateString()}</p>
-                      <p>Período: {selectedProcedure.period}</p>
+                      <p>Período: {selectedProcedure?.period}</p>
                     </div>
                   </div>
 
@@ -5525,9 +5557,9 @@ const HRModule = ({
                     <div className="space-y-4">
                       <div className="bg-zinc-50 p-4 border border-zinc-100">
                         <h4 className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-2">Dados do Colaborador</h4>
-                        <p className="text-sm font-black text-[#003366] uppercase">{selectedProcedure.employee.name}</p>
-                        <p className="text-[10px] font-bold text-zinc-600 uppercase mt-1">{selectedProcedure.employee.role}</p>
-                        <p className="text-[10px] font-mono text-zinc-500 mt-1">NIF: {selectedProcedure.employee.nif || '---'}</p>
+                        <p className="text-sm font-black text-[#003366] uppercase">{selectedProcedure?.employee?.name || selectedProcedure?.employee_name || 'Colaborador'}</p>
+                        <p className="text-[10px] font-bold text-zinc-600 uppercase mt-1">{selectedProcedure?.employee?.role || selectedProcedure?.employee_role || 'Funcionário'}</p>
+                        <p className="text-[10px] font-mono text-zinc-500 mt-1">NIF: {selectedProcedure?.employee?.nif || '---'}</p>
                       </div>
                     </div>
                     <div className="space-y-4">
@@ -5535,15 +5567,15 @@ const HRModule = ({
                         <h4 className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-2">Resumo Financeiro</h4>
                         <div className="flex justify-between items-center mb-1">
                           <span className="text-[10px] font-bold text-zinc-500 uppercase">Salário Base:</span>
-                          <span className="text-xs font-black">{formatCurrency(selectedProcedure.employee.salary)}</span>
+                          <span className="text-xs font-black">{formatCurrency(selectedProcedure?.employee?.salary || 0)}</span>
                         </div>
                         <div className="flex justify-between items-center mb-1">
                           <span className="text-[10px] font-bold text-zinc-500 uppercase">Total Descontos:</span>
-                          <span className="text-xs font-black text-red-500">-{formatCurrency(selectedProcedure.calculations.totalDeductions)}</span>
+                          <span className="text-xs font-black text-red-500">-{formatCurrency(selectedProcedure?.calculations?.totalDeductions || 0)}</span>
                         </div>
                         <div className="pt-2 border-t border-zinc-200 flex justify-between items-center">
                           <span className="text-[10px] font-black text-[#003366] uppercase">Valor Líquido:</span>
-                          <span className="text-sm font-black text-emerald-600">{formatCurrency(selectedProcedure.calculations.totalNet)}</span>
+                          <span className="text-sm font-black text-emerald-600">{formatCurrency(selectedProcedure?.calculations?.totalNet || 0)}</span>
                         </div>
                       </div>
                     </div>
@@ -5561,23 +5593,23 @@ const HRModule = ({
                       <tbody className="divide-y divide-zinc-200 font-bold uppercase">
                         <tr>
                           <td className="px-4 py-3">Salário Base</td>
-                          <td className="px-4 py-3 text-right">{formatCurrency(selectedProcedure.employee.salary)}</td>
+                          <td className="px-4 py-3 text-right">{formatCurrency(selectedProcedure?.employee?.salary || 0)}</td>
                           <td className="px-4 py-3 text-right">---</td>
                         </tr>
                         <tr>
                           <td className="px-4 py-3">Segurança Social (3%)</td>
                           <td className="px-4 py-3 text-right">---</td>
-                          <td className="px-4 py-3 text-right text-red-500">{formatCurrency(selectedProcedure.calculations.inss)}</td>
+                          <td className="px-4 py-3 text-right text-red-500">{formatCurrency(selectedProcedure?.calculations?.inss || 0)}</td>
                         </tr>
                         <tr>
                           <td className="px-4 py-3">IRT</td>
                           <td className="px-4 py-3 text-right">---</td>
-                          <td className="px-4 py-3 text-right text-red-500">{formatCurrency(selectedProcedure.calculations.irt)}</td>
+                          <td className="px-4 py-3 text-right text-red-500">{formatCurrency(selectedProcedure?.calculations?.irt || 0)}</td>
                         </tr>
-                        {selectedProcedure.inputs.subsidioTransporte > 0 && (
+                        {Number(selectedProcedure?.inputs?.subsidioTransporte || 0) > 0 && (
                           <tr>
                             <td className="px-4 py-3">Subsídio de Transporte</td>
-                            <td className="px-4 py-3 text-right">{formatCurrency(selectedProcedure.inputs.subsidioTransporte)}</td>
+                            <td className="px-4 py-3 text-right">{formatCurrency(selectedProcedure?.inputs?.subsidioTransporte || 0)}</td>
                             <td className="px-4 py-3 text-right">---</td>
                           </tr>
                         )}
@@ -5946,11 +5978,11 @@ const HRModule = ({
                                 className="accent-[#003366]"
                               />
                             </td>
-                            <td className="px-6 py-4 uppercase">{receipt.employee.name}</td>
-                            <td className="px-6 py-4 uppercase text-zinc-400">{receipt.employee.role}</td>
+                            <td className="px-6 py-4 uppercase">{receipt.employee?.name || receipt.employee_name || 'Colaborador'}</td>
+                            <td className="px-6 py-4 uppercase text-zinc-400">{receipt.employee?.role || receipt.employee_role || 'Funcionário'}</td>
                             <td className="px-6 py-4 uppercase">{receipt.period}</td>
-                            <td className="px-6 py-4 text-right font-mono">{Number(receipt.employee.salary).toLocaleString('pt-AO', { style: 'currency', currency: 'AOA' })}</td>
-                            <td className="px-6 py-4 text-right font-mono text-[#16A34A]">{receipt.calculations.totalNet.toLocaleString('pt-AO', { style: 'currency', currency: 'AOA' })}</td>
+                            <td className="px-6 py-4 text-right font-mono">{Number(receipt.employee?.salary || 0).toLocaleString('pt-AO', { style: 'currency', currency: 'AOA' })}</td>
+                            <td className="px-6 py-4 text-right font-mono text-[#16A34A]">{Number(receipt.calculations?.totalNet || 0).toLocaleString('pt-AO', { style: 'currency', currency: 'AOA' })}</td>
                             <td className="px-6 py-4 text-center">
                               <div className="flex items-center justify-center gap-4">
                                 <button 
@@ -5961,14 +5993,16 @@ const HRModule = ({
                                 </button>
                                 <button
                                   onClick={async () => {
-                                    if (window.confirm(`Tem a certeza que pretende desprocessar o salário de ${receipt.employee.name} para o período ${receipt.period}?`)) {
+                                    const empName = receipt.employee?.name || receipt.employee_name || 'este colaborador';
+                                    const empId = receipt.employee?.id ?? receipt.employee_id ?? receipt.id;
+                                    if (window.confirm(`Tem a certeza que pretende desprocessar o salário de ${empName} para o período ${receipt.period}?`)) {
                                       try {
                                         if (user?.empresa_id) {
-                                           await payrollService.desprocessarPayroll(user.empresa_id, String(receipt.employee.id), receipt.period);
+                                           await payrollService.desprocessarPayroll(user.empresa_id, String(empId), receipt.period);
                                         }
                                         setProcessedReceipts(prev => prev.filter(r => r.id !== receipt.id));
                                         
-                                        const attendanceKey = `${receipt.employee.id}_${receipt.period}`;
+                                        const attendanceKey = `${empId}_${receipt.period}`;
                                         setProcessedAttendance(prev => {
                                           const newState = { ...prev };
                                           delete newState[attendanceKey];
@@ -7641,11 +7675,11 @@ const HRModule = ({
                     nextProcessed[`${id}_${selectedMonth}`] = true;
                   });
                   setProcessedAttendance(nextProcessed);
-                  setProcessedReceipts(prev => [...prev.filter(r => !selectedEmpIds.includes(r.employee.id) || r.period !== selectedMonth), ...receipts]);
+                  setProcessedReceipts(prev => [...prev.filter(r => !selectedEmpIds.includes(Number(r?.employee?.id ?? r?.employee_id ?? r?.id)) || r.period !== selectedMonth), ...receipts]);
                   setIsProcessingComplete(true);
                   
                   if (user?.empresa_id) {
-                     Promise.all(receipts.map(rec => payrollService.savePayroll(user.empresa_id, String(rec.employee.id), selectedMonth, rec))).catch(err => {
+                     Promise.all(receipts.map(rec => payrollService.savePayroll(user.empresa_id, String(rec?.employee?.id ?? rec?.employee_id ?? rec?.id), selectedMonth, rec))).catch(err => {
                         console.error('Failed to sync payrolls to supabase', err);
                      });
                   }
@@ -7675,7 +7709,7 @@ const HRModule = ({
                     delete nextProcessed[`${id}_${selectedMonth}`];
                   });
                   setProcessedAttendance(nextProcessed);
-                  setProcessedReceipts(prev => prev.filter(r => !selectedEmpIds.includes(r.employee.id) || r.period !== selectedMonth));
+                  setProcessedReceipts(prev => prev.filter(r => !selectedEmpIds.includes(Number(r?.employee?.id ?? r?.employee_id ?? r?.id)) || r.period !== selectedMonth));
                   
                   if (user?.empresa_id) {
                      Promise.all(selectedEmpIds.map(id => payrollService.desprocessarPayroll(user.empresa_id, String(id), selectedMonth))).catch(err => {
@@ -7684,7 +7718,7 @@ const HRModule = ({
                   }
                   
                   // if none are left for this month, toggle isProcessingComplete false
-                  const stillProcessed = processedReceipts.filter(r => !selectedEmpIds.includes(r.employee.id) && r.period === selectedMonth);
+                  const stillProcessed = processedReceipts.filter(r => !selectedEmpIds.includes(Number(r?.employee?.id ?? r?.employee_id ?? r?.id)) && r.period === selectedMonth);
                   if (stillProcessed.length === 0) setIsProcessingComplete(false);
 
                   alert('Salários desprocessados com sucesso.');
@@ -7791,7 +7825,7 @@ const HRModule = ({
                       const totalNet = totalGross - inss_worker - irt - absenceDeduction - lostHoursDeduction - (inputs.adiantamentos || 0) - appliedPenalties;
 
                       const isProcessed = !!processedAttendance[`${emp.id}_${selectedMonth}`];
-                      const isPaid = processedReceipts.find(r => r.employee.id === emp.id && r.period === selectedMonth)?.status === 'paid';
+                      const isPaid = processedReceipts.find(r => (r?.employee?.id === emp.id || r?.employee_id === emp.id || r?.id === emp.id) && r?.period === selectedMonth)?.status === 'paid';
 
                       const receipt = {
                         id: emp.id,
@@ -8073,7 +8107,7 @@ const HRModule = ({
                                       delete next[`${emp.id}_${selectedMonth}`];
                                       return next;
                                     });
-                                    setProcessedReceipts(prev => prev.filter(r => !(r.employee.id === emp.id && r.period === selectedMonth)));
+                                    setProcessedReceipts(prev => prev.filter(r => !(Number(r?.employee?.id ?? r?.employee_id ?? r?.id) === Number(emp.id) && r.period === selectedMonth)));
                                   }}
                                   className="bg-amber-600 text-white px-3 py-1.5 text-[9px] font-black uppercase tracking-widest hover:bg-amber-700 flex items-center gap-1"
                                 >
@@ -8084,7 +8118,7 @@ const HRModule = ({
                                   onClick={() => {
                                     setSelectedEmployeesToProcess(prev => ({ ...prev, [emp.id]: true }));
                                     setProcessedAttendance(prev => ({...prev, [`${emp.id}_${selectedMonth}`]: true}));
-                                    setProcessedReceipts(prev => [...prev.filter(r => !(r.employee.id === emp.id && r.period === selectedMonth)), receipt]);
+                                    setProcessedReceipts(prev => [...prev.filter(r => !(Number(r?.employee?.id ?? r?.employee_id ?? r?.id) === Number(emp.id) && r.period === selectedMonth)), receipt]);
                                   }}
                                   className="bg-emerald-600 text-white px-3 py-1.5 text-[9px] font-black uppercase tracking-widest hover:bg-emerald-700"
                                 >
@@ -13141,14 +13175,16 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
                       const tp = (doc.tipo_documento || doc.document_type || '').toLowerCase();
                       // "Fatura Recibo" (FR) docs are always paid upon issuance
                       const isFaturaRecibo = tp === 'fr' || tp === 'fatura recibo' || tp === 'fatura-recibo';
-                      // Standalone Recibo (RC) is a receipt itself - do NOT show PAGO on it
-                      // PAGO shows on origin Fatura that got paid (payment_status updated)
+                      // Standalone Recibo (RC) is itself a receipt — always PAGO
+                      const isRecibo = tp === 'rc' || tp === 'recibo' || tp === 'recibo de venda';
                       const isPaid =
                         doc.payment_status === 'paid' ||
                         (doc as any).payment_status === 'pago' ||
                         (doc as any).estado_pagamento === 'pago' ||
-                        (doc as any).status_pagamento === 'pago';
-                      const isPago = isFaturaRecibo || isPaid;
+                        (doc as any).status_pagamento === 'pago' ||
+                        (doc as any).recibo_emitido === true ||
+                        ((doc as any).valor_pago > 0 && (doc as any).valor_pago >= Number((doc as any).total || 0));
+                      const isPago = isFaturaRecibo || isRecibo || isPaid;
                       return isPago ? (
                         <span className="ml-1.5 inline-block text-[8px] font-black bg-green-600 text-white px-1.5 py-0.5 rounded-none uppercase tracking-widest align-middle">
                           PAGO
@@ -13694,7 +13730,7 @@ const POSManagementView = ({
   );
 };
 
-const POSModule = ({ products, onRefresh, caixas, onSaveDocument, sessions, fiscalSeries, fiscalYear, user, companyData }: { 
+const POSModule = ({ products, onRefresh, caixas, onSaveDocument, sessions, fiscalSeries, fiscalYear, user, companyData, onNavigate }: { 
   products: Product[], 
   onRefresh: () => void, 
   caixas: Caixa[], 
@@ -13703,7 +13739,8 @@ const POSModule = ({ products, onRefresh, caixas, onSaveDocument, sessions, fisc
   fiscalSeries: FiscalSeries[],
   fiscalYear: string,
   user: any,
-  companyData: any
+  companyData: any,
+  onNavigate?: (tab: string) => void
 }) => {
   return <POSPage 
     products={products} 
@@ -13715,7 +13752,7 @@ const POSModule = ({ products, onRefresh, caixas, onSaveDocument, sessions, fisc
     fiscalYear={fiscalYear}
     user={user}
     companyData={companyData}
-    onNavigate={() => {}}
+    onNavigate={onNavigate || ((tab) => { window.location.hash = tab; })}
   />;
 };
 
@@ -17024,6 +17061,18 @@ const SettingsModule = ({ user, companyData, onRefreshData, alerts, setAlerts, o
         >
           Licenças
         </button>
+        <button 
+          onClick={() => setActiveTab('pos')}
+          className={`pb-2 text-sm font-bold ${activeTab === 'pos' ? 'text-[#003366] border-b-2 border-[#003366]' : 'text-zinc-500 hover:text-zinc-800'}`}
+        >
+          Configurar POS
+        </button>
+        <button 
+          onClick={() => setActiveTab('central_homologacao')}
+          className={`pb-2 text-sm font-bold flex items-center gap-1.5 ${activeTab === 'central_homologacao' ? 'text-amber-600 border-b-2 border-amber-500' : 'text-zinc-500 hover:text-zinc-800'}`}
+        >
+          🧪 Homologação
+        </button>
       </div>
 
       {activeTab === 'geral' && (
@@ -17100,6 +17149,8 @@ const SettingsModule = ({ user, companyData, onRefreshData, alerts, setAlerts, o
       {activeTab === 'utilizadores' && <UsersSettings />}
       {activeTab === 'actividades' && <ActivitiesManagementModule />}
       {activeTab === 'licencas' && <LicencasModule user={user} userProfile={user} />}
+      {activeTab === 'pos' && <POSConfigModule />}
+      {activeTab === 'central_homologacao' && <CentralHomologacaoModule />}
     </div>
   );
 };
@@ -23864,28 +23915,36 @@ const FiscalSeriesModule = ({
       } else {
         const year = new Date().getFullYear().toString();
         const reference = `S${series.length + 1}${year}`;
+        const prefixVal = reference.substring(0, 4);
+        const currentEmpresaId = user?.empresa_id || user?.company_id || '11111111-0000-0000-0000-000000000001';
+
         const { data, error } = await supabase
           .from('series_fiscais')
           .insert([{
-            empresa_id: user.empresa_id,
+            empresa_id: currentEmpresaId,
             serie: reference,
+            prefixo: prefixVal,
+            codigo: reference,
+            nome: name,
             descricao: name,
             tipo: type,
+            ano: Number(year),
             utilizador_id: selectedUsers.length > 0 ? selectedUsers[0] : null,
             proximo_numero: 1,
+            ultimo_numero: 0,
             ativo: true,
             created_at: new Date().toISOString()
           }]).select().single();
 
         if (!error && data) {
           if (selectedUsers.length > 0) {
-             const userInserts = selectedUsers.map(uid => ({ empresa_id: user.empresa_id, serie_id: data.id, usuario_id: uid }));
+             const userInserts = selectedUsers.map(uid => ({ empresa_id: currentEmpresaId, serie_id: data.id, usuario_id: uid }));
              await supabase.from('series_fiscais_usuarios').insert(userInserts);
           }
           
           setShowForm(false);
           onRefresh();
-          alert('Série criada!');
+          alert('Série criada com sucesso!');
         } else {
           alert('Erro ao criar série: ' + (error?.message || 'Erro desconhecido.'));
         }
@@ -24294,6 +24353,7 @@ const InvoiceList = ({
         return 'FT';
       }
       if (t === 'FR') return 'FR';
+      if (t === 'FS') return 'FS';
       if (t === 'RC' || t.includes('RECIBO')) return 'RC';
       if (t === 'NC' || t.includes('CRÉDITO') || t.includes('CREDITO')) return 'NC';
       if (t === 'ND' || t.includes('DÉBITO') || t.includes('DEBITO')) return 'ND';
@@ -24335,6 +24395,7 @@ const InvoiceList = ({
         return 'FT';
       }
       if (t === 'FR') return 'FR';
+      if (t === 'FS') return 'FS';
       if (t === 'RC' || t.includes('RECIBO')) return 'RC';
       if (t === 'NC' || t.includes('CRÉDITO') || t.includes('CREDITO')) return 'NC';
       if (t === 'ND' || t.includes('DÉBITO') || t.includes('DEBITO')) return 'ND';
@@ -24388,9 +24449,10 @@ const InvoiceList = ({
     const matchesMin = minValue === '' || docValue >= Number(minValue);
     const matchesMax = maxValue === '' || docValue <= Number(maxValue);
     
+    const isDocPago = doc.status === 'paid' || (doc.estado_documento as string) === 'pago' || doc.payment_status === 'paid' || doc.payment_status === 'pago' || doc.estado_pagamento === 'pago' || doc.recibo_emitido === true || docTypeNormalized === 'RC' || docTypeNormalized === 'FR';
     const matchesStatus = statusFilter === 'Todos' || 
-                         (statusFilter === 'PAGO' && (doc.status === 'paid' || (doc.estado_documento as string) === 'pago' || doc.payment_status === 'paid')) ||
-                         (statusFilter === 'PENDENTE' && (doc.status === 'pending' || doc.status === 'ativo' || doc.payment_status === 'pending' || !doc.payment_status));
+                         (statusFilter === 'PAGO' && isDocPago) ||
+                         (statusFilter === 'PENDENTE' && !isDocPago);
 
     const matchesCurrency = currencyFilter === 'Todos' || 
                           (currencyFilter === 'USD' && (doc.currency === 'USD' || doc.moeda === 'USD')) ||
@@ -25074,21 +25136,67 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
   useEffect(() => {
     const isDocWithOrigin = ['Nota de Crédito', 'Recibo', 'NC', 'RC', 'NOTA DE CRÉDITO', 'RECIBO'].some(
       t => t.toLowerCase() === (documentType || '').trim().toLowerCase()
-    ) || (documentType || '').toLowerCase().includes('recibo') || (documentType || '').toLowerCase().includes('crédito');
+    ) || (documentType || '').toLowerCase().includes('recibo') || (documentType || '').toLowerCase().includes('crédito') || (documentType || '').toLowerCase().includes('credito');
 
-    if (user?.empresa_id && isDocWithOrigin) {
+    const companyId = user?.empresa_id || user?.company_id || '11111111-0000-0000-0000-000000000001';
+
+    if (isDocWithOrigin) {
+      // 1. Try fetching from Supabase with broad type matching
       supabase.from('documentos_emitidos')
-        .select('id, numero_documento, total, cliente_nome, cliente_id, data_emissao, items')
-        .eq('empresa_id', user.empresa_id)
-        .in('tipo_documento', ['FT', 'FR', 'FS', 'Fatura', 'Factura', 'Fatura Recibo', 'Factura Recibo', 'Fatura Simplificada'])
+        .select('id, numero_documento, invoice_number, total, cliente_nome, client_name, cliente_id, data_emissao, date, items, itens, detalhes, recibo_emitido, payment_status, estado_pagamento, status_pagamento, valor_pago, paid_amount, saldo_pendente, tipo_documento, document_type')
+        .eq('empresa_id', companyId)
         .order('created_at', { ascending: false })
-        .limit(100)
-        .then(({data, error}) => {
-          if (error) console.error('Erro ao buscar documentos de origem:', error);
-          setOriginDocs(data || []);
+        .limit(150)
+        .then(({ data, error }) => {
+          if (!error && Array.isArray(data) && data.length > 0) {
+            // Filter faturas / sales on client-side to avoid missing any custom document type casing
+            const faturas = data.filter((d: any) => {
+              const tp = (d.tipo_documento || d.document_type || '').toUpperCase();
+              return tp === 'FT' || tp === 'FR' || tp === 'FS' || tp === 'VD' ||
+                     tp.includes('FATURA') || tp.includes('FACTURA') || tp.includes('VENDA');
+            }).map((d: any) => ({
+              ...d,
+              numero_documento: d.numero_documento || d.invoice_number || 'Sem Número',
+              cliente_nome: d.cliente_nome || d.client_name || 'Consumidor Final',
+              data_emissao: d.data_emissao || d.date || new Date().toISOString(),
+              items: d.items || d.itens || d.detalhes?.items || [],
+              recibo_emitido: d.recibo_emitido === true,
+              payment_status: d.payment_status || d.estado_pagamento || d.status_pagamento,
+              estado_pagamento: d.estado_pagamento || d.status_pagamento || d.payment_status,
+              valor_pago: Number(d.valor_pago || d.paid_amount || 0),
+              total: Number(d.total || 0),
+            }));
+            setOriginDocs(faturas.length > 0 ? faturas : data);
+          } else {
+            // 2. Fallback to API endpoint
+            fetchWithAuth(`/api/invoices?empresa_id=${companyId}`)
+              .then(res => res.json())
+              .then(apiData => {
+                if (Array.isArray(apiData)) {
+                  const faturas = apiData.filter((d: any) => {
+                    const tp = (d.tipo_documento || d.document_type || '').toUpperCase();
+                    return tp === 'FT' || tp === 'FR' || tp === 'FS' || tp === 'VD' ||
+                           tp.includes('FATURA') || tp.includes('FACTURA') || tp.includes('VENDA');
+                  }).map((d: any) => ({
+                    ...d,
+                    numero_documento: d.numero_documento || d.invoice_number || 'Sem Número',
+                    cliente_nome: d.cliente_nome || d.client_name || 'Consumidor Final',
+                    data_emissao: d.data_emissao || d.date || new Date().toISOString(),
+                    items: d.items || d.detalhes?.items || [],
+                    recibo_emitido: d.recibo_emitido === true,
+                    payment_status: d.payment_status || d.estado_pagamento || d.status_pagamento,
+                    estado_pagamento: d.estado_pagamento || d.status_pagamento || d.payment_status,
+                    valor_pago: Number(d.valor_pago || d.paid_amount || 0),
+                    total: Number(d.total || 0),
+                  }));
+                  setOriginDocs(faturas);
+                }
+              })
+              .catch(console.error);
+          }
         });
     }
-  }, [user?.empresa_id, documentType]);
+  }, [user?.empresa_id, user?.company_id, documentType]);
   
   useEffect(() => {
     if (fixedDocumentType) {
@@ -25303,6 +25411,21 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
       alert('Por favor, selecione o Documento de Origem vinculado para emitir ' + documentType + '.');
       return;
     }
+
+    const isReciboEmission = ['RC', 'Recibo', 'RECIBO'].some(t => t.toLowerCase() === (documentType || '').trim().toLowerCase());
+    if (isReciboEmission && originDocId) {
+      const originDoc = originDocs.find(d => String(d.id) === String(originDocId));
+      if (originDoc) {
+        const isFullyPaid = originDoc.recibo_emitido === true || 
+                            originDoc.payment_status === 'paid' || 
+                            originDoc.estado_pagamento === 'pago' ||
+                            (Number(originDoc.valor_pago || originDoc.paid_amount || 0) >= Number(originDoc.total || 0) && Number(originDoc.total || 0) > 0);
+        if (isFullyPaid) {
+          alert('Esta fatura já se encontra totalmente liquidada com recibo emitido. Não é permitido emitir outro recibo para a mesma fatura.');
+          return;
+        }
+      }
+    }
     if (items.length === 0) {
       alert('Por favor, adicione pelo menos um item ou selecione uma fatura de origem.');
       return;
@@ -25313,22 +25436,24 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
     }
     if (!clientId) { alert('Por favor, selecione um cliente.'); return; }
 
-    const client = clients.find(c => c.id === Number(clientId));
+    const client = clients.find(c => String(c.id) === String(clientId));
     const isManual = selectedSeries?.type === 'manual';
     
-    const originDoc = originDocs.find(d => d.id === originDocId);
+    const originDoc = originDocs.find(d => String(d.id) === String(originDocId));
     const numeroDocOrigem = originDoc?.numero_documento || (initialData as any)?.numero_documento_origem || '';
 
     const isNewFromTemplate = !!fixedDocumentType && initialData?.document_type !== fixedDocumentType;
     const url = (initialData && !isNewFromTemplate) ? `/api/invoices/${initialData.id}` : '/api/invoices';
     const method = (initialData && !isNewFromTemplate) ? 'PUT' : 'POST';
 
+    const currentEmpresaId = user?.empresa_id || user?.company_id || '11111111-0000-0000-0000-000000000001';
+
     const res = await fetchWithAuth(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         cliente_id: clientId, 
-        client_name: client?.name || '',
+        client_name: client?.name || client?.nome || '',
         date, 
         due_date: dueDate,
         items,
@@ -25353,7 +25478,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
         total: finalTotal,
         total_in_words: writeValorPorExtenso(finalTotal),
         retencao_fonte_total: retencaoFonteTotal,
-        empresa_id: user?.empresa_id,
+        empresa_id: currentEmpresaId,
         criado_por: user?.id
       })
     });
@@ -25381,16 +25506,41 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
 
       // Update origin invoice payment status to 'pago' when emitting Recibo or Fatura Recibo
       if (['Fatura Recibo', 'FR', 'Recibo', 'RC', 'FATURA RECIBO', 'RECIBO'].includes(documentType)) {
-        const targetDocId = originDocId || (savedDoc && savedDoc.documento_origem_id);
-        if (targetDocId && user?.empresa_id) {
+        const targetDocId = originDocId || (savedDoc && (savedDoc.documento_origem_id || savedDoc.reference_document));
+        if (targetDocId) {
           try {
             await supabase
               .from('documentos_emitidos')
-              .update({ estado_pagamento: 'pago', status_pagamento: 'pago', payment_status: 'paid' })
-              .eq('id', targetDocId)
-              .eq('empresa_id', user.empresa_id);
+              .update({ 
+                estado_pagamento: 'pago', 
+                status_pagamento: 'pago', 
+                payment_status: 'paid',
+                recibo_emitido: true,
+                valor_pago: finalTotal,
+                paid_amount: finalTotal
+              })
+              .eq('id', targetDocId);
           } catch (stErr) {
             console.error("Erro ao atualizar estado de pagamento da fatura de origem:", stErr);
+          }
+        }
+
+        // Also ensure the newly saved receipt document itself is marked as 'pago'
+        if (savedDoc?.id) {
+          try {
+            await supabase
+              .from('documentos_emitidos')
+              .update({
+                estado_pagamento: 'pago',
+                status_pagamento: 'pago',
+                payment_status: 'paid',
+                recibo_emitido: true,
+                valor_pago: finalTotal,
+                paid_amount: finalTotal
+              })
+              .eq('id', savedDoc.id);
+          } catch (rcErr) {
+            console.error("Erro ao marcar recibo como pago:", rcErr);
           }
         }
       }
@@ -25502,9 +25652,23 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                   className="w-full bg-amber-50 border border-amber-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-amber-600 text-sm"
                 >
                   <option value="">Selecionar Documento vinculado...</option>
-                  {originDocs.map(d => (
-                    <option key={d.id} value={d.id}>{d.numero_documento} - {d.cliente_nome} ({new Date(d.data_emissao).toLocaleDateString()})</option>
-                  ))}
+                  {originDocs.map(d => {
+                    const isDocPaid = d.recibo_emitido === true || 
+                                      d.payment_status === 'paid' || 
+                                      d.estado_pagamento === 'pago' || 
+                                      (Number(d.valor_pago || d.paid_amount || 0) >= Number(d.total || 0) && Number(d.total || 0) > 0);
+                    const isRecibo = ['RC', 'Recibo', 'RECIBO'].some(t => t.toLowerCase() === (documentType || '').trim().toLowerCase());
+                    const statusTag = isDocPaid ? '[LIQUIDADA / PAGO]' : '[PENDENTE]';
+                    return (
+                      <option 
+                        key={d.id} 
+                        value={d.id}
+                        disabled={isRecibo && isDocPaid}
+                      >
+                        {statusTag} {d.numero_documento} - {d.cliente_nome} ({new Date(d.data_emissao).toLocaleDateString()}) - {Number(d.total || 0).toLocaleString('pt-AO', { style: 'currency', currency: 'AOA' })}
+                      </option>
+                    );
+                  })}
                 </select>
                 {originDocId && originDocs.find(d => String(d.id) === String(originDocId)) && (
                   <div className="mt-1 p-2 bg-amber-50 border border-amber-100 text-[10px] text-amber-700 font-bold uppercase tracking-wide flex items-center gap-2">
@@ -25727,8 +25891,8 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                   value={clientNifSearch}
                   onChange={(e) => {
                     setClientNifSearch(e.target.value);
-                    const found = clients.find(c => c.contribuinte && c.contribuinte.toString() === e.target.value);
-                    if (found) setClientId(Number(found.id));
+                    const found = clients.find(c => (c.contribuinte && c.contribuinte.toString() === e.target.value) || (c.nif && c.nif.toString() === e.target.value));
+                    if (found) setClientId(found.id);
                   }}
                   placeholder="Ex: 5000000001"
                   className="flex-1 bg-white border border-zinc-300 border-r-0 rounded-none px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#0f2a4a] text-sm"
@@ -25736,8 +25900,8 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                 <button
                   type="button"
                   onClick={() => {
-                    const found = clients.find(c => c.contribuinte && c.contribuinte.toString().includes(clientNifSearch));
-                    if (found) setClientId(Number(found.id));
+                    const found = clients.find(c => (c.contribuinte && c.contribuinte.toString().includes(clientNifSearch)) || (c.nif && c.nif.toString().includes(clientNifSearch)));
+                    if (found) setClientId(found.id);
                   }}
                   className="bg-[#0f2a4a] hover:bg-[#1a3f6f] text-white px-4 py-2 transition-colors flex items-center justify-center"
                   title="Pesquisar por NIF"
@@ -25749,20 +25913,20 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
             <div className="space-y-1">
               <label className="text-xs font-semibold text-zinc-600">Nome <span className="text-red-500">*</span></label>
               <select
-                value={isNaN(Number(clientId)) ? '' : clientId}
+                value={clientId || ''}
                 onChange={(e) => {
-                  const val = e.target.value ? Number(e.target.value) : '';
+                  const val = e.target.value;
                   setClientId(val);
                   if (val) {
-                    const c = clients.find(cl => cl.id === val);
-                    if (c && c.contribuinte) setClientNifSearch(c.contribuinte.toString());
+                    const c = clients.find(cl => String(cl.id) === String(val));
+                    if (c && (c.contribuinte || c.nif)) setClientNifSearch((c.contribuinte || c.nif).toString());
                   }
                 }}
                 required
                 className="w-full bg-white border border-zinc-300 rounded-none px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#0f2a4a] text-sm"
               >
                 <option value="">Selecione o adquirente...</option>
-                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {clients.map(c => <option key={c.id} value={c.id}>{c.name || c.nome}</option>)}
               </select>
             </div>
             <div className="space-y-1">
@@ -26096,7 +26260,10 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (items.length === 0) return;
+    if (items.length === 0) {
+      alert('⚠️ Por favor, adicione pelo menos um artigo/serviço antes de registar o documento de compra.');
+      return;
+    }
     setLoading(true);
     try {
       const purchaseData: any = {
@@ -30950,35 +31117,75 @@ const ProductList = ({ products, setProducts, onRefresh, stockMovements, warehou
                   image_path = filePath;
                 }
 
-                const payload = {
+                const currentCompanyId = user?.empresa_id || user?.company_id || '11111111-0000-0000-0000-000000000001';
+
+                const payload: any = {
                   name: data.name,
-                  referente: data.referente,
+                  nome: data.name,
+                  referente: data.referente || '',
                   price: Number(data.price),
+                  preco: Number(data.price),
                   cost_price: Number(data.cost_price),
+                  preco_custo: Number(data.cost_price),
                   stock_quantity: Number(data.stock_quantity),
+                  stock_atual: Number(data.stock_quantity),
                   min_stock: Number(data.min_stock),
+                  stock_minimo: Number(data.min_stock),
                   category: data.category,
+                  categoria: data.category,
                   unit: data.unit,
-                  barcode: data.barcode,
-                  data_registo: data.data_registo,
+                  unidade: data.unit,
+                  barcode: data.barcode || '',
+                  data_registo: data.data_registo || new Date().toISOString().split('T')[0],
                   warehouse_id: data.warehouse_id ? Number(data.warehouse_id) : null,
-                  empresa_id: user?.empresa_id,
+                  empresa_id: currentCompanyId,
+                  company_id: currentCompanyId,
                   image_url,
+                  imagem_url: image_url,
+                  image: image_url,
+                  foto_url: image_url,
                   image_path
                 };
+
+                let savedProdId = editingProduct?.id;
 
                 if (editingProduct) {
                   const { error } = await supabase
                     .from('produtos')
                     .update(payload)
-                    .eq('id', editingProduct.id)
-                    .eq('empresa_id', user?.empresa_id);
+                    .eq('id', editingProduct.id);
                   if (error) throw error;
                 } else {
-                  const { error } = await supabase
+                  const { data: newProd, error } = await supabase
                     .from('produtos')
-                    .insert([payload]);
+                    .insert([payload])
+                    .select()
+                    .single();
                   if (error) throw error;
+                  if (newProd) savedProdId = newProd.id;
+                }
+
+                // Registar também na tabela media_arquivos para manter a galeria/biblioteca sincronizada
+                if (image_url && imageFile) {
+                  try {
+                    await supabase.from('media_arquivos').insert([{
+                      empresa_id: currentCompanyId,
+                      tipo: 'produto',
+                      nome_arquivo: imageFile.name,
+                      nome_original: imageFile.name,
+                      bucket: 'produtos-imagens',
+                      caminho_arquivo: image_path || '',
+                      url_publica: image_url,
+                      mime_type: imageFile.type,
+                      tamanho_bytes: imageFile.size,
+                      entidade: 'produto',
+                      entidade_id: savedProdId ? String(savedProdId) : null,
+                      observacao: `Imagem do produto: ${data.name}`,
+                      ativo: true
+                    }]);
+                  } catch (mediaErr) {
+                    console.warn('Aviso: Falha ao registar em media_arquivos:', mediaErr);
+                  }
                 }
 
                 onRefresh();
@@ -31121,21 +31328,29 @@ const ReceiptModal = ({ document: doc, caixas, onClose, onSuccess }: {
       return;
     }
     try {
+      const currentEmpresaId = user?.empresa_id || user?.company_id || doc.empresa_id || '11111111-0000-0000-0000-000000000001';
       const res = await fetchWithAuth('/api/receipts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           invoice_id: doc.id,
-          empresa_id: user?.empresa_id,
+          empresa_id: currentEmpresaId,
           amount,
           payment_method: paymentMethod,
           cash_box: cashBox,
           date
         })
       });
-      if (res.ok) onSuccess();
-    } catch (error) {
+      if (res.ok) {
+        toast.success('Recibo emitido com sucesso!');
+        onSuccess();
+      } else {
+        const errorData = await res.json().catch(() => ({ error: 'Erro desconhecido ao emitir recibo' }));
+        alert('Erro ao emitir recibo: ' + (errorData.error || errorData.message || 'Erro desconhecido'));
+      }
+    } catch (error: any) {
       console.error('Error creating receipt:', error);
+      alert('Falha na comunicação ao emitir recibo: ' + (error.message || error));
     }
   };
 
@@ -31429,7 +31644,44 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
   const [showMenu, setShowMenu] = useState(true);
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTabState] = useState(() => {
+    // Ler o hash da URL para restaurar o tab correcto ao carregar/refresh (#pos → 'pos')
+    const VALID_TABS = [
+      'dashboard','crm_empresas','clients','workplaces','secretary','pos','contracts',
+      'electronic_invoices','security','specialized','archive','cartas','invoices',
+      'drafts','suppliers','products','financial','accounting','hr','reports',
+      'licencas','empresa','taxes','metrics','media','warehouse','caixa','alertas',
+      'users','agrobusiness','church','school','restaurant','hotel','fleet','projects'
+    ];
+    const hash = window.location.hash.replace('#', '').trim().toLowerCase();
+    return VALID_TABS.includes(hash) ? hash : 'dashboard';
+  });
+
+  // Wrapper que actualiza o hash da URL quando o tab muda
+  const setActiveTab = (tab: string) => {
+    setActiveTabState(tab);
+    if (window.location.hash !== `#${tab}`) {
+      window.history.replaceState(null, '', `#${tab}`);
+    }
+  };
+
+  // Escutar mudanças de hash (botão Voltar/Avançar do browser)
+  React.useEffect(() => {
+    const VALID_TABS = [
+      'dashboard','crm_empresas','clients','workplaces','secretary','pos','contracts',
+      'electronic_invoices','security','specialized','archive','cartas','invoices',
+      'drafts','suppliers','products','financial','accounting','hr','reports',
+      'licencas','empresa','taxes','metrics','media','warehouse','caixa','alertas',
+      'users','agrobusiness','church','school','restaurant','hotel','fleet','projects'
+    ];
+    const onHashChange = () => {
+      const hash = window.location.hash.replace('#', '').trim().toLowerCase();
+      if (VALID_TABS.includes(hash)) setActiveTabState(hash);
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+
   const [connectionError, setConnectionError] = useState(false);
   const [configuringGraphicSerie, setConfiguringGraphicSerie] = useState<FiscalSeries | null>(null);
   const [fiscalYear, setFiscalYearState] = useState(() => localStorage.getItem('fiscalYear') || '2026');
@@ -31461,18 +31713,75 @@ export default function App() {
 
   useEffect(() => {
     const loadPrintingConfigs = async () => {
+      const empresaId = user?.empresa_id;
+      let configs: GraphicConfig[] = [];
+
+      // 1. Try serie-specific graphic configs
       if (printingInvoice?.series_id) {
-        const { data } = await supabase
+        const { data: serieData } = await supabase
           .from('setup_grafico_series')
           .select('*')
           .eq('serie_id', printingInvoice.series_id);
-        setPrintingGraphicConfigs(data || []);
-      } else {
-        setPrintingGraphicConfigs([]);
+        if (serieData && serieData.length > 0) {
+          configs = serieData;
+        }
       }
+
+      // 2. Fallback to empresa-level graphic configs (media_biblioteca or configuracoes_graficas)
+      if (configs.length === 0 && empresaId) {
+        const { data: empData } = await supabase
+          .from('configuracoes_graficas')
+          .select('*')
+          .eq('empresa_id', empresaId)
+          .eq('ativo', true);
+
+        if (empData && empData.length > 0) {
+          // Map configuracoes_graficas to GraphicConfig format
+          configs = empData.map((c: any) => ({
+            ...c,
+            tipo: c.tipo || 'logotipo',
+            url_imagem: c.logo_url || c.logotipo || c.url_imagem || '',
+            ativo: c.ativo !== false,
+            largura: c.largura || 200,
+            altura: c.altura || 60,
+            posicao_x: c.posicao_x || 0,
+            posicao_y: c.posicao_y || 0,
+            transparencia: c.transparencia || 1,
+            alinhamento: c.alinhamento || 'left',
+          }));
+        }
+      }
+
+      // 3. Last resort — use media_arquivos biblioteca (type=logo/logotipo)
+      if (configs.length === 0 && empresaId) {
+        const { data: mediaData } = await supabase
+          .from('media_arquivos')
+          .select('*')
+          .eq('empresa_id', empresaId)
+          .eq('ativo', true)
+          .in('tipo', ['logo', 'logotipo', 'sidebar_image', 'menu_logo']);
+
+        if (mediaData && mediaData.length > 0) {
+          const logoMedia = mediaData[0];
+          configs = [{
+            id: logoMedia.id,
+            tipo: 'logotipo',
+            url_imagem: logoMedia.url_publica || '',
+            ativo: true,
+            largura: 200,
+            altura: 60,
+            posicao_x: 0,
+            posicao_y: 0,
+            transparencia: 1,
+            alinhamento: 'left',
+          } as unknown as GraphicConfig];
+        }
+      }
+
+      setPrintingGraphicConfigs(configs);
     };
     loadPrintingConfigs();
-  }, [printingInvoice]);
+  }, [printingInvoice, user?.empresa_id]);
   const [isPrintingDraft, setIsPrintingDraft] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [copyType, setCopyType] = useState<'Original' | 'Duplicado' | 'Triplicado'>('Original');
@@ -31998,15 +32307,22 @@ export default function App() {
         id: d.id,
         is_certified: Boolean(d.is_certified),
         status: (d.status || d.estado_certificacao || 'ativo').toLowerCase(),
-        // Explicitly map payment_status so PAGO badge works after a receipt marks the invoice as paid
-        payment_status: d.payment_status || d.estado_pagamento || d.status_pagamento || undefined,
-        estado_pagamento: d.estado_pagamento || d.status_pagamento || d.payment_status || undefined,
+        // Payment status — multiple field aliases for PAGO badge
+        payment_status: d.payment_status || d.estado_pagamento || d.status_pagamento || (d.recibo_emitido ? 'paid' : undefined),
+        estado_pagamento: d.estado_pagamento || d.status_pagamento || d.payment_status || (d.recibo_emitido ? 'pago' : undefined),
+        recibo_emitido: d.recibo_emitido || false,
+        paid_amount: Number(d.valor_pago || d.paid_amount || 0),
+        valor_pago: Number(d.valor_pago || d.paid_amount || 0),
         contravalor: Number(d.total || 0),
         date: d.data_emissao || d.created_at,
         client_name: d.cliente_nome || d.client_name || 'Desconhecido',
         invoice_number: (d.numero_documento || d.invoice_number || d.documento_formatado || 'DRAFT').split('-')[0].trim(),
-        document_type: d.tipo_documento || d.document_type
+        document_type: d.tipo_documento || d.document_type,
+        // Logo / branding
+        company_logo: d.company_logo || d.logotipo || d.logo_url || d.detalhes?.company_logo || d.detalhes?.logotipo || null,
+        logo_url: d.logo_url || d.company_logo || d.logotipo || null,
       })) || [];
+
       
       setIssuedDocuments(docs);
       
@@ -33009,6 +33325,8 @@ export default function App() {
               }
             }}
           />
+          {/* Staging Banner - only visible in non-production environments */}
+          <StagingBadge />
           <main className="flex-1 overflow-visible w-full transition-all duration-300">
             <div className="p-6 md:p-8 max-w-[1600px] mx-auto">
               {connectionError && (
@@ -33321,6 +33639,7 @@ export default function App() {
                                 fiscalYear={fiscalYear}
                                 user={user}
                                 companyData={companyData}
+                                onNavigate={(tab) => { setActiveTab(tab); window.location.hash = tab; }}
                               />;
                             case 'electronic_invoices':
                             case 'invoices':

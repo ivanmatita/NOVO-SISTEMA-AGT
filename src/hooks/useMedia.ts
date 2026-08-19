@@ -93,10 +93,10 @@ export const useMedia = () => {
 
       const { data: profile } = await supabase
         .from('perfis')
-        .select('company_id')
+        .select('company_id, empresa_id')
         .eq('id', user.id)
         .single();
-      const currentEmpresaId = profile?.company_id;
+      const currentEmpresaId = profile?.company_id || profile?.empresa_id || user.user_metadata?.company_id || user.user_metadata?.empresa_id || '11111111-0000-0000-0000-000000000001';
       if (!currentEmpresaId) throw new Error('Empresa não identificada');
 
       const extensao = file.name.split('.').pop() || '';
@@ -152,10 +152,10 @@ export const useMedia = () => {
  
        const { data: profile } = await supabase
          .from('perfis')
-         .select('company_id')
+         .select('company_id, empresa_id')
          .eq('id', user.id)
          .single();
-       const currentEmpresaId = profile?.company_id;
+       const currentEmpresaId = profile?.company_id || profile?.empresa_id || user.user_metadata?.company_id || user.user_metadata?.empresa_id || '11111111-0000-0000-0000-000000000001';
        if (!currentEmpresaId) throw new Error('Empresa não identificada');
 
        // 1. Apagar do Banco primeiro para garantir que o registro seja removido mesmo que o storage falhe
@@ -190,10 +190,10 @@ export const useMedia = () => {
 
       const { data: profile } = await supabase
         .from('perfis')
-        .select('company_id')
+        .select('company_id, empresa_id')
         .eq('id', user.id)
         .single();
-      const currentEmpresaId = profile?.company_id;
+      const currentEmpresaId = profile?.company_id || profile?.empresa_id || user.user_metadata?.company_id || user.user_metadata?.empresa_id || '11111111-0000-0000-0000-000000000001';
       if (!currentEmpresaId) throw new Error('Empresa não identificada');
 
       // 1. Upload new file
@@ -262,10 +262,10 @@ export const useMedia = () => {
 
       const { data: profile } = await supabase
         .from('perfis')
-        .select('company_id')
+        .select('company_id, empresa_id')
         .eq('id', user.id)
         .single();
-      const currentEmpresaId = profile?.company_id;
+      const currentEmpresaId = profile?.company_id || profile?.empresa_id || user.user_metadata?.company_id || user.user_metadata?.empresa_id || '11111111-0000-0000-0000-000000000001';
       if (!currentEmpresaId) throw new Error('Empresa não identificada');
 
       const { error } = await supabase

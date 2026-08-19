@@ -1,41 +1,49 @@
 import { createClient, RealtimeClient } from '@supabase/supabase-js';
+import { validateEnvironmentIsolation, getAppEnvironment } from './envProtection';
 
-const getEnvVar = (name: string): string => {
-  try {
-    if (typeof import.meta !== 'undefined' && import.meta.env) {
-      return (import.meta.env[name] || '') as string;
-    }
-  } catch (e) {}
-  try {
-    if (typeof process !== 'undefined' && process.env) {
-      return (process.env[name] || '') as string;
-    }
-  } catch (e) {}
-  return '';
-};
+const STAGING_URL = 'https://sfnibpxfevhelaikqbiq.supabase.co';
+const PROD_URL = 'https://nawqfidnawokqaheqvar.supabase.co';
+const STAGING_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmbmlicHhmZXZoZWxhaWtxYmlxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwNTAyODgsImV4cCI6MjEwMjYyNjI4OH0.AnxqAF-TBY556gp2oPV0I5hfTjozaCMIHaeH7OhifiM';
+const PROD_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5hd3FmaWRuYXdva3FhaGVxdmFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyMTgxNDYsImV4cCI6MjA5Mzc5NDE0Nn0.qFkIexxKcQDWax3pfhcgPMR3ZFIsE-gYWTS62i5Edgs';
 
-const rawUrl = (getEnvVar('VITE_SUPABASE_URL') || getEnvVar('SUPABASE_URL')).trim();
-if (!rawUrl) {
-  console.error("VITE_SUPABASE_URL / SUPABASE_URL não encontrada");
-}
-const rawKey = (getEnvVar('VITE_SUPABASE_ANON_KEY') || getEnvVar('ANON_KEY') || getEnvVar('SUPABASE_ANON_KEY')).trim();
-if (!rawKey) {
-  console.error("VITE_SUPABASE_ANON_KEY / ANON_KEY não encontrada");
-}
+const isStaging = getAppEnvironment() === 'staging';
+
+// Static property access is REQUIRED for Vite build-time inlining / replacement
+const rawUrl = (
+  (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_SUPABASE_URL) ||
+  (typeof process !== 'undefined' && process.env && (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL)) ||
+  (isStaging ? STAGING_URL : PROD_URL)
+).toString().trim();
+
+const rawKey = (
+  (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_SUPABASE_ANON_KEY) ||
+  (typeof process !== 'undefined' && process.env && (process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || process.env.ANON_KEY)) ||
+  (isStaging ? STAGING_ANON : PROD_ANON)
+).toString().trim();
 
 // Robust URL cleaning to guarantee base origin without /rest/v1 or trailing slashes
 const isBrowser = typeof window !== 'undefined';
 const supabaseUrl = rawUrl
   ? rawUrl.split('/rest/v1')[0].split('/auth/v1')[0].split('/realtime/v1')[0].replace(/\/+$/, '')
-  : '';
-const supabaseAnonKey = rawKey;
+  : (isStaging ? STAGING_URL : PROD_URL);
+const supabaseAnonKey = rawKey || (isStaging ? STAGING_ANON : PROD_ANON);
+
+// Executa a validação rigorosa de isolamento de ambiente (Staging vs Produção)
+if (supabaseUrl) {
+  try {
+    validateEnvironmentIsolation(supabaseUrl);
+  } catch (err: any) {
+    console.error("[CRITICAL ENV ISOLATION ERROR]", err.message);
+  }
+}
 
 // Connection status exported for UI inspection
 export const supabaseStatus = {
   configured: Boolean(supabaseUrl && supabaseAnonKey && supabaseUrl.startsWith('http')),
   url: supabaseUrl || 'MISSING',
   keyPresent: Boolean(supabaseAnonKey),
-  environment: typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.MODE : 'development',
+  environment: getAppEnvironment(),
+  isStaging: getAppEnvironment() === 'staging',
 };
 
 /**

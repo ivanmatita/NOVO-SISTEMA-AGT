@@ -20,11 +20,58 @@ import { validateDocumentController } from "./agt/validate-document.controller.j
 import { validateDocumentControllerNew, registerInvoiceController, validateNifController, solicitarSerieController, consultarFacturaController, listarSeriesController, obterEstadoController, listarFacturasController, agtWebhookController } from "./agt/agt.controllers.js";
 import { startAgtQueueWorker } from "./agt/agtQueueWorker.js";
 
-// Carregar variáveis de ambiente do ficheiro .env
+// ================================================================
+// CARREGAMENTO DE AMBIENTE — SUPORTE MULTI-AMBIENTE
+// Detecta VITE_APP_ENV para carregar o .env correto:
+//   staging  → .env.staging  (Supabase STAGING isolado)
+//   default  → .env          (Supabase PRODUÇÃO)
+// ================================================================
 import { fileURLToPath } from "url";
-const __filename = typeof import.meta !== "undefined" && import.meta.url ? fileURLToPath(import.meta.url) : (typeof __filename !== "undefined" ? __filename : "");
-const __dirname_server = typeof __dirname !== "undefined" ? __dirname : (__filename ? path.dirname(__filename) : process.cwd());
-dotenv.config({ override: true, path: path.resolve(__dirname_server, ".env") });
+const _currentFile = typeof import.meta !== "undefined" && import.meta.url ? fileURLToPath(import.meta.url) : "";
+const __dirname_server = typeof __dirname !== "undefined" ? __dirname : (_currentFile ? path.dirname(_currentFile) : process.cwd());
+
+// Determinar qual ficheiro .env carregar com base no ambiente
+const _appEnv = (process.env.VITE_APP_ENV || process.env.NODE_ENV || 'development').toLowerCase().trim();
+const _isStaging = _appEnv === 'staging' || _appEnv === 'homologacao' || _appEnv === 'teste';
+const _isProd = _appEnv === 'production' || _appEnv === 'prod';
+
+const _envFile = _isStaging ? '.env.staging' : (_isProd ? '.env.production' : '.env');
+const _envPath = path.resolve(__dirname_server, _envFile);
+
+// Carregar o ficheiro de ambiente específico
+if (fs.existsSync(_envPath)) {
+  dotenv.config({ override: true, path: _envPath });
+} else {
+  dotenv.config({ override: true, path: path.resolve(__dirname_server, ".env") });
+}
+
+if (_isStaging) {
+  process.env.VITE_APP_ENV = 'staging';
+  console.log(`\n🧪 [STAGING MODE] Ficheiro de ambiente carregado: ${_envFile}`);
+  console.log(`🧪 [STAGING MODE] Supabase URL: ${process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'NÃO DEFINIDA'}`);
+} else if (_isProd) {
+  process.env.VITE_APP_ENV = 'production';
+  console.log(`\n🚀 [PRODUCTION MODE] Ficheiro de ambiente carregado: ${_envFile}`);
+  console.log(`🚀 [PRODUCTION MODE] Supabase URL: ${process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'NÃO DEFINIDA'}`);
+} else {
+  console.log(`\n⚙️ [DEV MODE] Ficheiro de ambiente carregado: ${_envFile}`);
+}
+
+// 🛡️ VALIDAÇÃO DE SEGURANÇA NO SERVIDOR:
+const PROD_URL = "https://nawqfidnawokqaheqvar.supabase.co";
+const STAGING_URL = "https://sfnibpxfevhelaikqbiq.supabase.co";
+const currentUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "").trim().replace(/\/+$/, '');
+
+if (_isStaging && currentUrl === PROD_URL) {
+  console.error('\n🛑 [FATAL SECURITY ERROR] STAGING ESTÁ CONFIGURADO COM A URL DE PRODUÇÃO!');
+  console.error('🛑 A execução do servidor foi bloqueada para proteger a base de dados de produção.\n');
+  process.exit(1);
+}
+if (_isProd && currentUrl === STAGING_URL) {
+  console.error('\n🛑 [FATAL SECURITY ERROR] PRODUÇÃO ESTÁ CONFIGURADA COM A URL DE STAGING!');
+  console.error('🛑 A execução do servidor foi bloqueada para evitar uso de base de dados de teste em produção.\n');
+  process.exit(1);
+}
 
 // --- Supabase Admin (Bypasses Rate Limits) ---
 // --- Supabase Admin & User Scoped Client Helper ---
@@ -4304,6 +4351,14 @@ async function startServer() {
       const payload = { ...updateData, empresa_id: ctx.empresaId, updated_at: new Date().toISOString() };
       console.log(`[SERVER-CLIENTES] Atualizando cliente ID "${clientId}" na empresa "${ctx.empresaId}"`);
 
+      const { data, error } = await dbClient
+        .from('clientes')
+        .update(payload)
+        .eq('id', clientId)
+        .eq('empresa_id', ctx.empresaId)
+        .select()
+        .single();
+
       if (error) {
         console.error("[SERVER-CLIENTES] Erro no UPDATE de cliente:", error);
         return res.status(500).json({ error: error.message });
@@ -4960,6 +5015,7 @@ async function startServer() {
             'FT', 'FR', 'RC', 'REC', 'RE', 'NC', 'ND', 'FS', 'DRAFT', 'GR', 'GT', 'GD',
             'NOTA_CREDITO', 'NOTA_DEBITO', 'RECIBO',
             'Fatura', 'Factura', 'Fatura Recibo', 'Factura Recibo',
+            'Fatura Simplificada', 'Factura Simplificada',
             'Nota de Crédito', 'Nota de Débito', 'Nota de Credito', 'Nota de Debito',
             'Recibo', 'Recibo de Venda',
             'Venda', 'Guia de Remessa', 'Guia de Transporte', 'Guia de Entrega',
@@ -4985,7 +5041,7 @@ async function startServer() {
               status: (d.status || d.estado || 'ativo').toLowerCase(),
               total: Number(d.total || 0),
               imposto: Number(d.imposto || 0),
-              items: d.detalhes?.items || d.items || [],
+              items: d.detalhes?.items || d.items || d.itens || [],
               client_email: d.cliente_email || d.client_email,
               document_type: d.tipo_documento || d.document_type,
               is_certified: d.is_certified,
@@ -4995,11 +5051,40 @@ async function startServer() {
               numero_documento_origem: d.numero_documento_origem || d.detalhes?.documento_origem_numero || null,
               tipo_documento_origem: d.tipo_documento_origem || null,
               documento_origem_id: d.documento_origem_id || d.detalhes?.documento_origem_id || null,
-              payment_method: d.detalhes?.payment_method || d.payment_method,
+              payment_method: d.forma_pagamento || d.detalhes?.payment_method || d.payment_method,
               currency: d.detalhes?.currency || d.moeda || 'AOA',
-              exchange_rate: d.detalhes?.exchange_rate || d.taxa_cambio || 1
+              exchange_rate: d.detalhes?.exchange_rate || d.taxa_cambio || 1,
+              // Payment status fields — used for PAGO badge
+              paid_amount: Number(d.valor_pago || d.paid_amount || 0),
+              valor_pago: Number(d.valor_pago || d.paid_amount || 0),
+              payment_status: d.payment_status || d.estado_pagamento || d.status_pagamento || (d.recibo_emitido ? 'paid' : undefined),
+              estado_pagamento: d.estado_pagamento || d.status_pagamento || d.payment_status || (d.recibo_emitido ? 'pago' : undefined),
+              recibo_emitido: d.recibo_emitido || false,
+              saldo_pendente: Number(d.saldo_pendente || 0),
+              // Logo / company branding for document printing
+              company_logo: d.company_logo || d.logotipo || d.logo_url || d.detalhes?.company_logo || d.detalhes?.logotipo || null,
+              logo_url: d.logo_url || d.company_logo || d.logotipo || d.detalhes?.logo_url || null,
+              logotipo: d.logotipo || d.logo_url || d.company_logo || null,
             };
           });
+
+          // Merge in-memory POS sales (not yet synced to Supabase)
+          const supabaseIds = new Set(formatted.map((d: any) => String(d.id)));
+          const posOnlyForCompany = posSales
+            .filter(s => String(s.empresa_id) === String(empresa_id) && !supabaseIds.has(String(s.invoice_id || s.id)))
+            .map(s => ({
+              ...s,
+              id: s.invoice_id || s.id,
+              invoice_number: s.invoice_number || s.numero_documento,
+              document_type: s.document_type || 'Fatura Recibo',
+              client_name: s.client_name || 'Consumidor Final',
+              client_nif: s.client_nif || '999999999',
+              date: s.date || s.created_at,
+              total: Number(s.total || 0),
+              status: 'ativo',
+              from_pos: true
+            }));
+          formatted = [...formatted, ...posOnlyForCompany];
 
           return res.json(formatted);
         } else if (error) {
@@ -5012,9 +5097,28 @@ async function startServer() {
       console.warn('[API-INVOICES] supabaseAdmin not initialized, using in-memory fallback');
     }
 
-    // Fallback: in-memory documents
+    // Fallback: in-memory documents — merge with POS sales
     const fallbackDocs = issuedDocuments.filter(d => String(d.empresa_id) === String(empresa_id));
-    res.json(fallbackDocs);
+    const posSalesForCompany = posSales
+      .filter(s => String(s.empresa_id) === String(empresa_id))
+      .map(s => ({
+        ...s,
+        id: s.id || s.invoice_id,
+        invoice_number: s.invoice_number || s.numero_documento,
+        document_type: s.document_type || 'Fatura Recibo',
+        client_name: s.client_name || 'Consumidor Final',
+        client_nif: s.client_nif || '999999999',
+        date: s.date || s.created_at,
+        total: Number(s.total || 0),
+        status: 'ativo',
+        from_pos: true
+      }));
+    const posIds = new Set(posSalesForCompany.map(s => String(s.invoice_id || s.id)).filter(Boolean));
+    const merged = [
+      ...fallbackDocs.filter(d => !posIds.has(String(d.id))),
+      ...posSalesForCompany
+    ];
+    res.json(merged);
   });
 
   app.get("/api/issued-documents", async (req, res) => {
@@ -5031,6 +5135,7 @@ async function startServer() {
             'FT', 'FR', 'RC', 'REC', 'RE', 'NC', 'ND', 'FS', 'DRAFT', 'GR', 'GT', 'GD',
             'NOTA_CREDITO', 'NOTA_DEBITO', 'RECIBO',
             'Fatura', 'Factura', 'Fatura Recibo', 'Factura Recibo',
+            'Fatura Simplificada', 'Factura Simplificada',
             'Nota de Crédito', 'Nota de Débito', 'Nota de Credito', 'Nota de Debito',
             'Recibo', 'Recibo de Venda',
             'Venda', 'Guia de Remessa', 'Guia de Transporte', 'Guia de Entrega',
@@ -6499,10 +6604,267 @@ async function startServer() {
     if (empresa_id) return res.json(costCenters.filter(c => String(c.empresa_id) === String(empresa_id)));
     res.json([]);
   });
+
+  // ===== POS AUTHENTICATION ENDPOINT (validates password/username against Supabase Auth & system_users) =====
+  app.post("/api/pos-auth/validate", async (req, res) => {
+    try {
+      let { email, identifier, username, password, user_id, empresa_id } = req.body;
+      const inputPass = String(password || '').trim();
+      const loginId = String(identifier || email || username || '').trim();
+
+      if (!inputPass) {
+        return res.status(400).json({ success: false, error: "Palavra-passe é obrigatória." });
+      }
+
+      let targetEmail = (email || loginId).includes('@') ? (email || loginId).trim().toLowerCase() : '';
+      let targetUserObj: any = null;
+
+      // 1. If user_id is provided, fetch exact email directly from Supabase Auth admin
+      if (user_id && supabaseAdmin) {
+        try {
+          const { data: authUserData } = await supabaseAdmin.auth.admin.getUserById(String(user_id));
+          if (authUserData?.user?.email) {
+            targetEmail = authUserData.user.email.toLowerCase();
+            targetUserObj = authUserData.user;
+          }
+        } catch (e: any) {
+          console.warn("[POS-AUTH] getUserById warning:", e.message);
+        }
+      }
+
+      // 2. Lookup user in perfis if targetEmail is still empty
+      if (supabaseAdmin && !targetEmail) {
+        if (user_id) {
+          const { data: pData } = await supabaseAdmin.from("perfis").select("*").eq("id", user_id).maybeSingle();
+          if (pData?.email) {
+            targetEmail = pData.email.toLowerCase();
+            targetUserObj = pData;
+          }
+        }
+        if (!targetEmail && loginId) {
+          const { data: pData } = await supabaseAdmin
+            .from("perfis")
+            .select("*")
+            .or(`username.ilike.${loginId},nome.ilike.${loginId},email.ilike.${loginId}@%`)
+            .limit(1)
+            .maybeSingle();
+          if (pData?.email) {
+            targetEmail = pData.email.toLowerCase();
+            targetUserObj = pData;
+          }
+        }
+      }
+
+      // 3. Fallback to system_users table if targetEmail is still empty
+      if (supabaseAdmin && !targetEmail) {
+        if (user_id) {
+          const { data: sData } = await supabaseAdmin.from("system_users").select("*").eq("id", user_id).maybeSingle();
+          if (sData?.email) {
+            targetEmail = sData.email.toLowerCase();
+            targetUserObj = sData;
+          }
+        }
+      }
+
+      // 4. Fallback lookup in systemUsers in-memory array if targetEmail still empty
+      if (!targetEmail) {
+        const foundLocal = systemUsers.find(u => 
+          String(u.id) === String(user_id) ||
+          (u.username || '').toLowerCase() === loginId.toLowerCase() ||
+          (u.email || '').toLowerCase() === loginId.toLowerCase() ||
+          (u.nome || u.name || '').toLowerCase() === loginId.toLowerCase()
+        );
+        if (foundLocal) {
+          targetUserObj = foundLocal;
+          targetEmail = (foundLocal.email || '').toLowerCase();
+          const storedLocalPass = foundLocal.senha || foundLocal.password || foundLocal.pin;
+          if (storedLocalPass && storedLocalPass === inputPass) {
+            return res.json({ 
+              success: true, 
+              message: "Autenticação efetuada com sucesso.", 
+              user: { id: foundLocal.id, name: foundLocal.nome || foundLocal.name, email: foundLocal.email } 
+            });
+          }
+        }
+      }
+
+      if (!targetEmail && loginId.includes('@')) {
+        targetEmail = loginId.toLowerCase();
+      }
+
+      console.log(`[POS-AUTH] Validating password for targetEmail: '${targetEmail}' (user_id: ${user_id})`);
+
+      // 5. Check against Supabase Auth signInWithPassword using reliable client config
+      const urlToUse = (supabaseUrl || process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "https://nawqfidnawokqaheqvar.supabase.co").trim();
+      const anonKeyToUse = (supabaseAnonKey || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5hd3FmaWRuYXdva3FhaGVxdmFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyMTgxNDYsImV4cCI6MjA5Mzc5NDE0Nn0.qFkIexxKcQDWax3pfhcgPMR3ZFIsE-gYWTS62i5Edgs").trim();
+
+      if (targetEmail && urlToUse && anonKeyToUse) {
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabaseClient = createClient(urlToUse, anonKeyToUse, {
+          auth: { autoRefreshToken: false, persistSession: false }
+        });
+
+        const { data: authResult, error: authErr } = await supabaseClient.auth.signInWithPassword({
+          email: targetEmail,
+          password: inputPass
+        });
+
+        if (!authErr && authResult?.user) {
+          const userName = targetUserObj?.nome || targetUserObj?.name || authResult.user.user_metadata?.full_name || authResult.user.user_metadata?.name || loginId;
+          return res.json({
+            success: true,
+            message: "Autenticação validada com sucesso.",
+            user: { id: authResult.user.id, name: userName, email: authResult.user.email }
+          });
+        } else if (authErr) {
+          console.warn(`[POS-AUTH] Supabase Auth signInWithPassword failed for '${targetEmail}':`, authErr.message);
+        }
+      }
+
+      // 6. Check stored password/pin on perfis if auth lookup fails or demo mode
+      if (targetUserObj) {
+        const storedPass = targetUserObj.senha || targetUserObj.password || targetUserObj.pin;
+        if (storedPass && storedPass === inputPass) {
+          return res.json({
+            success: true,
+            message: "Autenticação validada.",
+            user: { id: targetUserObj.id, name: targetUserObj.nome || targetUserObj.name || loginId }
+          });
+        }
+      }
+
+      return res.status(401).json({ success: false, error: "Palavra-passe incorreta. Introduza a palavra-passe da sua conta." });
+    } catch (err: any) {
+      console.error("[POS-AUTH] Erro ao validar senha:", err.message);
+      return res.status(401).json({ success: false, error: "Palavra-passe incorreta. Tente novamente." });
+    }
+  });
+
   app.get("/api/pos-points", (req, res) => {
     const { empresa_id } = req.query;
     if (empresa_id) return res.json(posPoints.filter(p => String(p.empresa_id) === String(empresa_id)));
     res.json([]);
+  });
+
+  // Endpoints para Configurações do POS por Utilizador
+  const posUserConfigsMemory: any[] = [];
+
+  app.get("/api/pos-user-configs", async (req, res) => {
+    try {
+      const { empresa_id } = req.query;
+      let list: any[] = [];
+      if (supabaseAdmin) {
+        try {
+          let query = supabaseAdmin.from('pos_user_configs').select('*');
+          if (empresa_id) query = query.eq('empresa_id', String(empresa_id));
+          const { data, error } = await query;
+          if (!error && Array.isArray(data)) {
+            list = data;
+          }
+        } catch (e: any) {
+          console.warn("[SERVER] Supabase pos_user_configs query warning:", e.message);
+        }
+      }
+      if (list.length === 0 && posUserConfigsMemory.length > 0) {
+        list = empresa_id 
+          ? posUserConfigsMemory.filter(c => String(c.empresa_id) === String(empresa_id)) 
+          : posUserConfigsMemory;
+      }
+      const normalized = list.map(c => ({
+        ...c,
+        can_access_pos: c.can_access_pos ?? c.allow_pos ?? false,
+        allow_pos: c.allow_pos ?? c.can_access_pos ?? false,
+        series_id: String(c.series_id || c.serie_id || ''),
+        serie_id: String(c.serie_id || c.series_id || ''),
+        caixa_id: String(c.caixa_id || ''),
+        workplace_id: String(c.workplace_id || c.workplace || ''),
+        workplace: String(c.workplace || c.workplace_id || ''),
+        warehouse_id: String(c.warehouse_id || c.armazem_id || ''),
+        armazem_id: String(c.armazem_id || c.warehouse_id || ''),
+      }));
+      res.json(normalized);
+    } catch (err: any) {
+      console.error("[SERVER] Erro ao obter pos-user-configs:", err.message);
+      res.json([]);
+    }
+  });
+
+  app.post("/api/pos-user-configs/:userId", async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const body = req.body || {};
+      const empresa_id = body.empresa_id || req.query.empresa_id || '1';
+      const allow_pos = body.can_access_pos ?? body.allow_pos ?? false;
+      const serie_id = body.series_id || body.serie_id || null;
+      const caixa_id = body.caixa_id || null;
+      const printer_type = body.printer_type || 'P80';
+      const workplace = body.workplace_id || body.workplace || null;
+      const initial_balance = body.initial_balance ? Number(body.initial_balance) : 0;
+      const armazem_id = body.warehouse_id || body.armazem_id || null;
+
+      const record = {
+        user_id: String(userId),
+        empresa_id: String(empresa_id),
+        allow_pos: !!allow_pos,
+        can_access_pos: !!allow_pos,
+        serie_id: serie_id ? String(serie_id) : null,
+        series_id: serie_id ? String(serie_id) : null,
+        caixa_id: caixa_id ? String(caixa_id) : null,
+        printer_type,
+        workplace: workplace ? String(workplace) : null,
+        workplace_id: workplace ? String(workplace) : null,
+        initial_balance,
+        armazem_id: armazem_id ? String(armazem_id) : null,
+        warehouse_id: armazem_id ? String(armazem_id) : null,
+        updated_at: new Date().toISOString()
+      };
+
+      const idx = posUserConfigsMemory.findIndex(c => String(c.user_id) === String(userId));
+      if (idx >= 0) posUserConfigsMemory[idx] = record;
+      else posUserConfigsMemory.push(record);
+
+      if (supabaseAdmin) {
+        try {
+          // 1. Upsert into pos_user_configs
+          await supabaseAdmin.from('pos_user_configs').upsert({
+            user_id: String(userId),
+            empresa_id: String(empresa_id),
+            allow_pos: !!allow_pos,
+            can_access_pos: !!allow_pos,
+            serie_id: serie_id ? String(serie_id) : null,
+            series_id: serie_id ? String(serie_id) : null,
+            caixa_id: caixa_id ? String(caixa_id) : null,
+            printer_type,
+            workplace: workplace ? String(workplace) : null,
+            workplace_id: workplace ? String(workplace) : null,
+            initial_balance,
+            armazem_id: armazem_id ? String(armazem_id) : null,
+            warehouse_id: armazem_id ? String(armazem_id) : null,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'user_id' });
+
+          // 2. Sync can_access_pos into perfis and system_users
+          await supabaseAdmin.from('perfis').update({
+            can_access_pos: !!allow_pos,
+            allow_pos: !!allow_pos,
+            updated_at: new Date().toISOString()
+          }).eq('id', String(userId));
+
+          await supabaseAdmin.from('system_users').update({
+            can_access_pos: !!allow_pos,
+            allow_pos: !!allow_pos,
+            updated_at: new Date().toISOString()
+          }).eq('id', String(userId));
+        } catch (e: any) {
+          console.warn("[SERVER] Supabase pos_user_configs upsert warning:", e.message);
+        }
+      }
+
+      res.json({ success: true, data: record });
+    } catch (err: any) {
+      console.error("[SERVER] Erro ao salvar pos-user-config:", err.message);
+      res.status(500).json({ error: err.message });
+    }
   });
   app.get("/api/cash/sessions", (req, res) => {
     const { empresa_id } = req.query;
@@ -6524,11 +6886,16 @@ async function startServer() {
     const newSession = {
       id: generateId(),
       opening_date: new Date().toISOString(),
+      opened_at: new Date().toISOString(),
       initial_balance: Number(req.body.initial_balance || 0),
       status: 'open',
       pos_point_id: req.body.pos_point_id,
       empresa_id: req.body.empresa_id || '1',
-      user_id: req.body.user_id || '1'
+      user_id: req.body.user_id || '1',
+      shift_type: req.body.shift_type || 'diario',
+      shift_name: req.body.shift_name || 'Turno Diário',
+      operator_name: req.body.operator_name || 'Operador Principal',
+      observations: req.body.observations || ''
     };
     sessions.push(newSession);
     saveData();
@@ -6609,6 +6976,24 @@ async function startServer() {
 
     saveData();
     res.json(newSale);
+  });
+
+  app.get("/api/pos/sales", async (req, res) => {
+    const { empresa_id, date_from, date_to } = req.query;
+    let sales = posSales;
+    if (empresa_id) {
+      sales = sales.filter(s => String(s.empresa_id) === String(empresa_id));
+    }
+    if (date_from) {
+      const from = new Date(String(date_from));
+      sales = sales.filter(s => new Date(s.created_at || s.date || Date.now()) >= from);
+    }
+    if (date_to) {
+      const to = new Date(String(date_to));
+      to.setHours(23, 59, 59, 999);
+      sales = sales.filter(s => new Date(s.created_at || s.date || Date.now()) <= to);
+    }
+    res.json(sales);
   });
 
   app.get("/api/pos/suspended", (req, res) => {
@@ -9489,6 +9874,335 @@ async function startServer() {
       }
       
       res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Edit Company Details via CRM
+  app.put("/api/crm/companies/:id", async (req, res) => {
+    try {
+      if (!await isSuperAdmin(req)) return res.status(403).json({ error: "Acesso negado." });
+      if (!supabaseAdmin) return res.status(500).json({ error: "Supabase Admin não disponível" });
+
+      const { id } = req.params;
+      const payload = req.body;
+
+      const { data: oldData } = await supabaseAdmin.from('empresas').select('*').eq('id', id).single();
+
+      const { data, error } = await supabaseAdmin
+        .from('empresas')
+        .update({
+          nome_empresa: payload.nome_empresa,
+          nif: payload.nif,
+          email: payload.email,
+          telefone: payload.telefone,
+          endereco: payload.endereco || payload.morada,
+          municipio: payload.municipio,
+          provincia: payload.provincia,
+          pais: payload.pais || 'Angola',
+          responsavel: payload.responsavel,
+          email_responsavel: payload.email_responsavel,
+          telefone_responsavel: payload.telefone_responsavel,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) return res.status(500).json({ error: error.message });
+
+      // Audit log
+      const authCtx = await getAuthUserContext(req);
+      await supabaseAdmin.from('auditoria_crm').insert({
+        empresa_id: id,
+        utilizador_id: authCtx?.userId || 'system',
+        modulo: 'EMPRESAS',
+        acao: 'EDITAR_EMPRESA',
+        descricao: `Edição de dados cadastrais da empresa ${payload.nome_empresa}`,
+        dados_anteriores: oldData || {},
+        dados_novos: data || {},
+        created_at: new Date().toISOString()
+      });
+
+      res.json(data);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Activate License via CRM (Starts valid period counting automatically!)
+  app.post("/api/crm/companies/:id/activate-license", async (req, res) => {
+    try {
+      if (!await isSuperAdmin(req)) return res.status(403).json({ error: "Acesso negado." });
+      if (!supabaseAdmin) return res.status(500).json({ error: "Supabase Admin não disponível" });
+
+      const { id } = req.params;
+      const { duracao_dias = 30, plano = 'Profissional', tipo_licenca = 'Profissional', observacoes = '' } = req.body;
+
+      const authCtx = await getAuthUserContext(req);
+      const now = new Date();
+      const endDate = new Date(now.getTime() + (Number(duracao_dias) || 30) * 24 * 60 * 60 * 1000);
+
+      const licensePayload = {
+        empresa_id: id,
+        status_licenca: 'ATIVA',
+        status: 'ATIVA',
+        plano,
+        tipo_licenca,
+        duracao_dias: Number(duracao_dias) || 30,
+        data_inicio: now.toISOString(),
+        data_fim: endDate.toISOString(),
+        data_ativacao: now.toISOString(),
+        ativada_por: authCtx?.email || 'SuperAdmin CRM',
+        ativado_por: authCtx?.email || 'SuperAdmin CRM',
+        observacoes,
+        updated_at: now.toISOString()
+      };
+
+      await supabaseAdmin.from('licencas_empresas').upsert(licensePayload, { onConflict: 'empresa_id' });
+      await supabaseAdmin.from('licencas_empresa').upsert(licensePayload, { onConflict: 'empresa_id' });
+      await supabaseAdmin.from('empresas').update({ status_licenca: 'ATIVA', updated_at: now.toISOString() }).eq('id', id);
+
+      // Audit log
+      await supabaseAdmin.from('auditoria_crm').insert({
+        empresa_id: id,
+        utilizador_id: authCtx?.userId || 'system',
+        modulo: 'LICENCAS',
+        acao: 'ATIVAR_LICENCA',
+        descricao: `Licença ${plano} (${duracao_dias} dias) ativada. Início: ${now.toLocaleDateString()} -> Fim: ${endDate.toLocaleDateString()}`,
+        dados_novos: licensePayload,
+        created_at: now.toISOString()
+      });
+
+      res.json({ success: true, license: licensePayload });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Upgrade License via CRM
+  app.post("/api/crm/companies/:id/upgrade", async (req, res) => {
+    try {
+      if (!await isSuperAdmin(req)) return res.status(403).json({ error: "Acesso negado." });
+      if (!supabaseAdmin) return res.status(500).json({ error: "Supabase Admin não disponível" });
+
+      const { id } = req.params;
+      const { novo_plano, valor_adicional, motivo } = req.body;
+      const authCtx = await getAuthUserContext(req);
+
+      const upgradePayload = {
+        empresa_id: id,
+        tipo: 'UPGRADE',
+        plano_solicitado: novo_plano,
+        motivo: motivo || 'Upgrade de plano realizado via CRM',
+        status: 'APROVADA',
+        solicitado_por: authCtx?.email || 'SuperAdmin',
+        analisado_por: authCtx?.email || 'SuperAdmin',
+        created_at: new Date().toISOString()
+      };
+
+      await supabaseAdmin.from('solicitacoes_licenca').insert([upgradePayload]);
+      await supabaseAdmin.from('licencas_empresas').update({ plano: novo_plano, tipo_licenca: novo_plano, updated_at: new Date().toISOString() }).eq('empresa_id', id);
+
+      // Audit
+      await supabaseAdmin.from('auditoria_crm').insert({
+        empresa_id: id,
+        utilizador_id: authCtx?.userId || 'system',
+        modulo: 'LICENCAS',
+        acao: 'UPGRADE_LICENCA',
+        descricao: `Upgrade de licença efetuado para o plano ${novo_plano}`,
+        dados_novos: upgradePayload,
+        created_at: new Date().toISOString()
+      });
+
+      res.json({ success: true, upgrade: upgradePayload });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Downgrade License via CRM
+  app.post("/api/crm/companies/:id/downgrade", async (req, res) => {
+    try {
+      if (!await isSuperAdmin(req)) return res.status(403).json({ error: "Acesso negado." });
+      if (!supabaseAdmin) return res.status(500).json({ error: "Supabase Admin não disponível" });
+
+      const { id } = req.params;
+      const { novo_plano, motivo } = req.body;
+      const authCtx = await getAuthUserContext(req);
+
+      const downgradePayload = {
+        empresa_id: id,
+        tipo: 'DOWNGRADE',
+        plano_solicitado: novo_plano,
+        motivo: motivo || 'Downgrade de plano realizado via CRM',
+        status: 'APROVADA',
+        solicitado_por: authCtx?.email || 'SuperAdmin',
+        analisado_por: authCtx?.email || 'SuperAdmin',
+        created_at: new Date().toISOString()
+      };
+
+      await supabaseAdmin.from('solicitacoes_licenca').insert([downgradePayload]);
+      await supabaseAdmin.from('licencas_empresas').update({ plano: novo_plano, tipo_licenca: novo_plano, updated_at: new Date().toISOString() }).eq('empresa_id', id);
+
+      // Audit
+      await supabaseAdmin.from('auditoria_crm').insert({
+        empresa_id: id,
+        utilizador_id: authCtx?.userId || 'system',
+        modulo: 'LICENCAS',
+        acao: 'DOWNGRADE_LICENCA',
+        descricao: `Downgrade de licença efetuado para o plano ${novo_plano}`,
+        dados_novos: downgradePayload,
+        created_at: new Date().toISOString()
+      });
+
+      res.json({ success: true, downgrade: downgradePayload });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Ocorrências CRM
+  app.get("/api/crm/occurrences", async (req, res) => {
+    try {
+      if (!supabaseAdmin) return res.json([]);
+      const { empresa_id } = req.query as { empresa_id?: string };
+      let query = supabaseAdmin.from('ocorrencias_crm').select('*').order('created_at', { ascending: false });
+      if (empresa_id) query = query.eq('empresa_id', empresa_id);
+      const { data } = await query;
+      res.json(data || []);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/crm/occurrences", async (req, res) => {
+    try {
+      if (!supabaseAdmin) return res.status(500).json({ error: "Supabase not available" });
+      const authCtx = await getAuthUserContext(req);
+      const payload = {
+        ...req.body,
+        criado_por: authCtx?.email || 'Utilizador CRM',
+        created_at: new Date().toISOString()
+      };
+      const { data, error } = await supabaseAdmin.from('ocorrencias_crm').insert([payload]).select().single();
+      if (error) return res.status(500).json({ error: error.message });
+
+      // Audit
+      await supabaseAdmin.from('auditoria_crm').insert({
+        empresa_id: payload.empresa_id,
+        utilizador_id: authCtx?.userId || 'system',
+        modulo: 'OCORRENCIAS',
+        acao: 'CRIAR_OCORRENCIA',
+        descricao: `Nova ocorrência: ${payload.titulo}`,
+        dados_novos: payload,
+        created_at: new Date().toISOString()
+      });
+
+      res.json(data);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Enviar Email CRM
+  app.post("/api/crm/send-email", async (req, res) => {
+    try {
+      if (!await isSuperAdmin(req)) return res.status(403).json({ error: "Acesso negado." });
+      if (!supabaseAdmin) return res.status(500).json({ error: "Supabase not available" });
+
+      const authCtx = await getAuthUserContext(req);
+      const { empresa_id, destinatario, assunto, mensagem } = req.body;
+
+      const emailPayload = {
+        empresa_id,
+        enviado_por: authCtx?.email || 'SuperAdmin CRM',
+        destinatario,
+        assunto,
+        mensagem,
+        status: 'ENVIADO',
+        created_at: new Date().toISOString()
+      };
+
+      await supabaseAdmin.from('emails_crm').insert([emailPayload]);
+
+      // Audit
+      await supabaseAdmin.from('auditoria_crm').insert({
+        empresa_id,
+        utilizador_id: authCtx?.userId || 'system',
+        modulo: 'EMAIL',
+        acao: 'ENVIAR_EMAIL',
+        descricao: `E-mail enviado para ${destinatario} - Assunto: ${assunto}`,
+        dados_novos: emailPayload,
+        created_at: new Date().toISOString()
+      });
+
+      res.json({ success: true, email: emailPayload });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Reset User Access / Password via CRM
+  app.post("/api/crm/users/:id/reset-access", async (req, res) => {
+    try {
+      if (!await isSuperAdmin(req)) return res.status(403).json({ error: "Acesso negado." });
+      if (!supabaseAdmin) return res.status(500).json({ error: "Supabase not available" });
+
+      const { id } = req.params;
+      const { motivo = 'Reset de credenciais solicitado via CRM' } = req.body;
+      const authCtx = await getAuthUserContext(req);
+
+      const { data: userProfile } = await supabaseAdmin.from('perfis').select('*').eq('id', id).single();
+
+      // Trigger password reset email via Supabase Auth
+      if (userProfile?.email) {
+        try {
+          await supabaseAdmin.auth.admin.generateLink({
+            type: 'recovery',
+            email: userProfile.email
+          });
+        } catch (authErr) {
+          console.warn(authErr);
+        }
+      }
+
+      // Audit
+      await supabaseAdmin.from('auditoria_crm').insert({
+        empresa_id: userProfile?.empresa_id || 'system',
+        utilizador_id: authCtx?.userId || 'system',
+        modulo: 'UTILIZADORES',
+        acao: 'RESETAR_ACESSO',
+        descricao: `Reset de acesso efetuado para o utilizador ${userProfile?.email || id}. Motivo: ${motivo}`,
+        created_at: new Date().toISOString()
+      });
+
+      res.json({ success: true, message: `Instruções de redefinição enviadas para ${userProfile?.email || id}` });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+
+
+  // Audit Logs CRM
+  app.get("/api/crm/audit", async (req, res) => {
+    try {
+      if (!await isSuperAdmin(req)) return res.status(403).json({ error: "Acesso negado." });
+      if (!supabaseAdmin) return res.status(500).json({ error: "Supabase not available" });
+
+      const { empresa_id } = req.query as { empresa_id?: string };
+      let query = supabaseAdmin.from('auditoria_crm').select('*').order('created_at', { ascending: false }).limit(300);
+      if (empresa_id) query = query.eq('empresa_id', empresa_id);
+
+      const { data, error } = await query;
+      if (error) {
+        // Fallback to logs_actividade
+        const { data: logsFallback } = await supabaseAdmin.from('logs_actividade').select('*').order('created_at', { ascending: false }).limit(200);
+        return res.json(logsFallback || []);
+      }
+      res.json(data || []);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }

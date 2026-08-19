@@ -78,6 +78,10 @@ async function apiDelete(url: string) {
   return res.json();
 }
 
+const cleanDate = (d: any): string | null => (d && typeof d === 'string' && d.trim() !== '') ? d.trim() : null;
+const cleanNum = (n: any, fallback: number | null = null): number | null => (n !== '' && n !== null && n !== undefined && !isNaN(Number(n))) ? Number(n) : fallback;
+const cleanUUID = (id: any): string | null => (id && typeof id === 'string' && id.trim() !== '' && id.length > 10) ? id.trim() : null;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // CAMPO REUTILIZÁVEL
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1272,31 +1276,34 @@ const ReportsTab = ({ occurrences, roster, armory, guards, sites }: any) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // MODAL BASE
 // ─────────────────────────────────────────────────────────────────────────────
-const ModalBase = ({ title, icon: Icon, onClose, children, onSubmit, submitting }: any) => (
-  <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+// ─────────────────────────────────────────────────────────────────────────────
+// MODAL BASE
+// ─────────────────────────────────────────────────────────────────────────────
+const ModalBase = ({ title, icon: Icon, onClose, children, onSubmit, submitting, maxWidth = 'max-w-2xl', gridCols = 'grid-cols-2' }: any) => (
+  <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-3 overflow-y-auto">
     <motion.div
       initial={{ opacity: 0, scale: 0.96 }}
       animate={{ opacity: 1, scale: 1 }}
-      className="bg-white w-full max-w-2xl shadow-2xl border border-zinc-200 my-4"
+      className={`bg-white w-full ${maxWidth} shadow-2xl border border-zinc-200 my-auto max-h-[92vh] flex flex-col`}
     >
-      <div className="flex justify-between items-center px-6 py-4 border-b border-zinc-100 bg-zinc-50">
-        <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider flex items-center gap-2">
-          <Icon size={16} /> {title}
+      <div className="flex justify-between items-center px-5 py-3 border-b border-zinc-100 bg-[#003366] text-white shrink-0">
+        <h3 className="text-xs font-black uppercase tracking-wider flex items-center gap-2">
+          <Icon size={15} /> {title}
         </h3>
-        <button onClick={onClose} className="p-1.5 text-zinc-400 hover:text-zinc-700 hover:bg-zinc-200 transition-all">
+        <button onClick={onClose} className="p-1 text-white/70 hover:text-white hover:bg-white/10 transition-all rounded">
           <X size={16} />
         </button>
       </div>
-      <form onSubmit={onSubmit}>
-        <div className="p-6 grid grid-cols-2 gap-4">
+      <form onSubmit={onSubmit} className="flex flex-col flex-1 overflow-hidden">
+        <div className={`p-4 md:p-5 grid ${gridCols} gap-2.5 overflow-y-auto flex-1`}>
           {children}
         </div>
-        <div className="flex justify-end gap-3 px-6 py-4 border-t border-zinc-100 bg-zinc-50">
+        <div className="flex justify-end gap-2.5 px-5 py-3 border-t border-zinc-100 bg-zinc-50 shrink-0">
           <button type="button" onClick={onClose} className="px-4 py-2 text-xs font-bold uppercase text-zinc-500 hover:text-zinc-800 transition-colors">Cancelar</button>
           <button
             type="submit"
             disabled={submitting}
-            className="bg-[#003366] text-white px-6 py-2.5 text-xs font-black uppercase tracking-wider shadow hover:bg-[#002244] transition-all disabled:opacity-50 flex items-center gap-2"
+            className="bg-[#003366] text-white px-6 py-2 text-xs font-black uppercase tracking-wider shadow hover:bg-[#002244] transition-all disabled:opacity-50 flex items-center gap-2"
           >
             {submitting ? <RefreshCw size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
             {submitting ? 'A guardar...' : 'Guardar Registo'}
@@ -1337,12 +1344,22 @@ const GuardModal = ({ initialData, empresaId, sites, onClose, onSuccess }: any) 
     e.preventDefault();
     setSubmitting(true);
     try {
-      const payload = { ...form, empresa_id: empresaId };
+      const activeEmpresaId = empresaId || '11111111-0000-0000-0000-000000000001';
+      const payload = {
+        ...form,
+        empresa_id: activeEmpresaId,
+        data_nascimento: cleanDate(form.data_nascimento),
+        validade_cartao: cleanDate(form.validade_cartao),
+        data_admissao: cleanDate(form.data_admissao) || new Date().toISOString().split('T')[0],
+        posto_id: cleanUUID(form.posto_id),
+        salario_base: cleanNum(form.salario_base, 0),
+        porte_arma: Boolean(form.porte_arma),
+      };
       let error;
       if (initialData?.id) {
         ({ error } = await supabase.from('seg_vigilantes').update(payload).eq('id', initialData.id));
       } else {
-        ({ error } = await supabase.from('seg_vigilantes').insert(payload));
+        ({ error } = await supabase.from('seg_vigilantes').insert([payload]));
       }
       if (error) { alert('Erro ao guardar vigilante: ' + error.message); return; }
       onSuccess();
@@ -1350,29 +1367,47 @@ const GuardModal = ({ initialData, empresaId, sites, onClose, onSuccess }: any) 
   };
 
   return (
-    <ModalBase title={initialData?.id ? 'Editar Vigilante' : 'Novo Vigilante'} icon={Users} onClose={onClose} onSubmit={handleSubmit} submitting={submitting}>
-      <Field label="Nome Completo">
+    <ModalBase 
+      title={initialData?.id ? 'Editar Vigilante' : 'Novo Vigilante'} 
+      icon={Users} 
+      onClose={onClose} 
+      onSubmit={handleSubmit} 
+      submitting={submitting}
+      maxWidth="max-w-5xl"
+      gridCols="grid-cols-1 md:grid-cols-3"
+    >
+      <div className="md:col-span-2">
+        <label className="block text-[9px] font-black text-zinc-500 uppercase tracking-wider mb-1">Nome Completo *</label>
         <Input required value={form.nome} onChange={(e: any) => set('nome', e.target.value)} placeholder="Nome completo do vigilante" />
-      </Field>
-      <Field label="Matrícula" half>
+      </div>
+      <div>
+        <label className="block text-[9px] font-black text-zinc-500 uppercase tracking-wider mb-1">Matrícula</label>
         <Input value={form.matricula} onChange={(e: any) => set('matricula', e.target.value)} placeholder="MAT-001" />
-      </Field>
-      <Field label="NIF" half>
-        <Input value={form.nif} onChange={(e: any) => set('nif', e.target.value)} placeholder="000000000AA000" />
-      </Field>
-      <Field label="Nº Bilhete de Identidade" half>
-        <Input value={form.bi_numero} onChange={(e: any) => set('bi_numero', e.target.value)} placeholder="BI" />
-      </Field>
-      <Field label="Data de Nascimento" half>
+      </div>
+
+      <div>
+        <label className="block text-[9px] font-black text-zinc-500 uppercase tracking-wider mb-1">Nº Bilhete de Identidade (BI)</label>
+        <Input value={form.bi_numero} onChange={(e: any) => set('bi_numero', e.target.value)} placeholder="000000000LA000" />
+      </div>
+      <div>
+        <label className="block text-[9px] font-black text-zinc-500 uppercase tracking-wider mb-1">NIF</label>
+        <Input value={form.nif} onChange={(e: any) => set('nif', e.target.value)} placeholder="NIF do vigilante" />
+      </div>
+      <div>
+        <label className="block text-[9px] font-black text-zinc-500 uppercase tracking-wider mb-1">Data de Nascimento</label>
         <Input type="date" value={form.data_nascimento} onChange={(e: any) => set('data_nascimento', e.target.value)} />
-      </Field>
-      <Field label="Telefone" half>
+      </div>
+
+      <div>
+        <label className="block text-[9px] font-black text-zinc-500 uppercase tracking-wider mb-1">Telefone</label>
         <Input type="tel" value={form.telefone} onChange={(e: any) => set('telefone', e.target.value)} placeholder="+244 9XX XXX XXX" />
-      </Field>
-      <Field label="E-mail" half>
+      </div>
+      <div>
+        <label className="block text-[9px] font-black text-zinc-500 uppercase tracking-wider mb-1">E-mail</label>
         <Input type="email" value={form.email} onChange={(e: any) => set('email', e.target.value)} placeholder="email@empresa.ao" />
-      </Field>
-      <Field label="Categoria / Cargo">
+      </div>
+      <div>
+        <label className="block text-[9px] font-black text-zinc-500 uppercase tracking-wider mb-1">Categoria / Cargo</label>
         <Select value={form.categoria} onChange={(e: any) => set('categoria', e.target.value)}>
           <option value="Vigilante Operacional">Vigilante Operacional</option>
           <option value="Vigilante Sénior">Vigilante Sénior</option>
@@ -1381,37 +1416,47 @@ const GuardModal = ({ initialData, empresaId, sites, onClose, onSuccess }: any) 
           <option value="Controlador">Controlador</option>
           <option value="Coordenador">Coordenador Operacional</option>
         </Select>
-      </Field>
-      <Field label="Nº Cartão Profissional" half>
+      </div>
+
+      <div>
+        <label className="block text-[9px] font-black text-zinc-500 uppercase tracking-wider mb-1">Nº Cartão Profissional</label>
         <Input value={form.numero_cartao_profissional} onChange={(e: any) => set('numero_cartao_profissional', e.target.value)} placeholder="CP-000000" />
-      </Field>
-      <Field label="Validade do Cartão" half>
+      </div>
+      <div>
+        <label className="block text-[9px] font-black text-zinc-500 uppercase tracking-wider mb-1">Validade do Cartão</label>
         <Input type="date" value={form.validade_cartao} onChange={(e: any) => set('validade_cartao', e.target.value)} />
-      </Field>
-      <Field label="Posto Alocado" half>
+      </div>
+      <div>
+        <label className="block text-[9px] font-black text-zinc-500 uppercase tracking-wider mb-1">Posto Alocado</label>
         <Select value={form.posto_id} onChange={(e: any) => set('posto_id', e.target.value)}>
           <option value="">Sem posto definido</option>
           {sites.map((s: any) => <option key={s.id} value={s.id}>{s.nome || s.name}</option>)}
         </Select>
-      </Field>
-      <Field label="Salário Base (AOA)" half>
+      </div>
+
+      <div>
+        <label className="block text-[9px] font-black text-zinc-500 uppercase tracking-wider mb-1">Salário Base (AOA)</label>
         <Input type="number" value={form.salario_base} onChange={(e: any) => set('salario_base', e.target.value)} placeholder="150000" />
-      </Field>
-      <Field label="Data de Admissão" half>
+      </div>
+      <div>
+        <label className="block text-[9px] font-black text-zinc-500 uppercase tracking-wider mb-1">Data de Admissão</label>
         <Input type="date" value={form.data_admissao} onChange={(e: any) => set('data_admissao', e.target.value)} />
-      </Field>
-      <Field label="Estado" half>
+      </div>
+      <div>
+        <label className="block text-[9px] font-black text-zinc-500 uppercase tracking-wider mb-1">Estado</label>
         <Select value={form.status} onChange={(e: any) => set('status', e.target.value)}>
           <option value="ativo">Ativo</option>
           <option value="inativo">Inativo</option>
           <option value="suspenso">Suspenso</option>
           <option value="ferias">De Férias</option>
         </Select>
-      </Field>
-      <Field label="Morada">
+      </div>
+
+      <div className="md:col-span-2">
+        <label className="block text-[9px] font-black text-zinc-500 uppercase tracking-wider mb-1">Morada Completa</label>
         <Input value={form.morada} onChange={(e: any) => set('morada', e.target.value)} placeholder="Endereço completo" />
-      </Field>
-      <div className="col-span-2 flex items-center gap-3 p-3 bg-zinc-50 border border-zinc-200">
+      </div>
+      <div className="flex items-center gap-2.5 p-2 bg-zinc-50 border border-zinc-200 h-[38px] mt-auto">
         <input
           type="checkbox"
           id="porte_arma"
@@ -1419,11 +1464,13 @@ const GuardModal = ({ initialData, empresaId, sites, onClose, onSuccess }: any) 
           onChange={e => set('porte_arma', e.target.checked)}
           className="w-4 h-4 accent-[#003366]"
         />
-        <label htmlFor="porte_arma" className="text-xs font-bold text-zinc-700">Autorizado para Porte de Arma</label>
+        <label htmlFor="porte_arma" className="text-xs font-bold text-zinc-700 cursor-pointer">Autorizado para Porte de Arma</label>
       </div>
-      <Field label="Observações">
-        <Textarea rows={2} value={form.observacoes} onChange={(e: any) => set('observacoes', e.target.value)} placeholder="Notas adicionais..." />
-      </Field>
+
+      <div className="md:col-span-3">
+        <label className="block text-[9px] font-black text-zinc-500 uppercase tracking-wider mb-1">Observações</label>
+        <Textarea rows={2} value={form.observacoes} onChange={(e: any) => set('observacoes', e.target.value)} placeholder="Notas adicionais sobre o vigilante..." />
+      </div>
     </ModalBase>
   );
 };
@@ -1456,12 +1503,21 @@ const SiteModal = ({ initialData, empresaId, guards, onClose, onSuccess }: any) 
     e.preventDefault();
     setSubmitting(true);
     try {
-      const payload = { ...form, empresa_id: empresaId };
+      const activeEmpresaId = empresaId || '11111111-0000-0000-0000-000000000001';
+      const payload = {
+        ...form,
+        empresa_id: activeEmpresaId,
+        numero_efetivos_necessarios: cleanNum(form.numero_efetivos_necessarios, 1),
+        valor_mensal_contrato: cleanNum(form.valor_mensal_contrato, 0),
+        data_inicio_contrato: cleanDate(form.data_inicio_contrato),
+        data_fim_contrato: cleanDate(form.data_fim_contrato),
+        responsavel_id: cleanUUID(form.responsavel_id),
+      };
       let error;
       if (initialData?.id) {
         ({ error } = await supabase.from('seg_postos').update(payload).eq('id', initialData.id));
       } else {
-        ({ error } = await supabase.from('seg_postos').insert(payload));
+        ({ error } = await supabase.from('seg_postos').insert([payload]));
       }
       if (error) { alert('Erro ao guardar posto: ' + error.message); return; }
       onSuccess();
@@ -1557,11 +1613,15 @@ const RosterModal = ({ initialData, empresaId, guards, sites, onClose, onSuccess
     e.preventDefault();
     setSubmitting(true);
     try {
+      const activeEmpresaId = empresaId || '11111111-0000-0000-0000-000000000001';
       const selectedGuard = guards.find((g: any) => g.id === form.vigilante_id);
       const selectedSite = sites.find((s: any) => s.id === form.posto_id);
       const payload = {
         ...form,
-        empresa_id: empresaId,
+        empresa_id: activeEmpresaId,
+        data_servico: cleanDate(form.data_servico) || new Date().toISOString().split('T')[0],
+        posto_id: cleanUUID(form.posto_id),
+        vigilante_id: cleanUUID(form.vigilante_id),
         vigilante_nome: selectedGuard?.nome || selectedGuard?.name || '',
         posto_nome: selectedSite?.nome || selectedSite?.name || '',
       };
@@ -1569,7 +1629,7 @@ const RosterModal = ({ initialData, empresaId, guards, sites, onClose, onSuccess
       if (initialData?.id) {
         ({ error } = await supabase.from('seg_escalas').update(payload).eq('id', initialData.id));
       } else {
-        ({ error } = await supabase.from('seg_escalas').insert(payload));
+        ({ error } = await supabase.from('seg_escalas').insert([payload]));
       }
       if (error) { alert('Erro ao guardar escala: ' + error.message); return; }
       onSuccess();
@@ -1663,12 +1723,18 @@ const ArmoryModal = ({ initialData, empresaId, onClose, onSuccess }: any) => {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const payload = { ...form, empresa_id: empresaId };
+      const payload = {
+        ...form,
+        empresa_id: empresaId,
+        ano_fabricacao: cleanNum(form.ano_fabricacao),
+        licenca_validade: cleanDate(form.licenca_validade),
+        quantidade_municao: cleanNum(form.quantidade_municao, 0),
+      };
       let error;
       if (initialData?.id) {
         ({ error } = await supabase.from('seg_armaria').update(payload).eq('id', initialData.id));
       } else {
-        ({ error } = await supabase.from('seg_armaria').insert(payload));
+        ({ error } = await supabase.from('seg_armaria').insert([payload]));
       }
       if (error) { alert('Erro ao guardar equipamento: ' + error.message); return; }
       onSuccess();
@@ -1766,11 +1832,16 @@ const IncidentModal = ({ initialData, empresaId, guards, sites, onClose, onSucce
     e.preventDefault();
     setSubmitting(true);
     try {
+      const activeEmpresaId = empresaId || '11111111-0000-0000-0000-000000000001';
       const selectedGuard = guards.find((g: any) => g.id === form.guard_id);
       const selectedSite = sites.find((s: any) => s.id === form.site_id);
       const payload = {
         ...form,
-        empresa_id: empresaId,
+        empresa_id: activeEmpresaId,
+        site_id: cleanUUID(form.site_id),
+        guard_id: cleanUUID(form.guard_id),
+        data_ocorrencia: cleanDate(form.data_ocorrencia) || new Date().toISOString().split('T')[0],
+        danos_estimados: cleanNum(form.danos_estimados, 0),
         vigilante_nome: selectedGuard?.nome || selectedGuard?.name || '',
         posto_nome: selectedSite?.nome || selectedSite?.name || '',
       };
@@ -1778,7 +1849,7 @@ const IncidentModal = ({ initialData, empresaId, guards, sites, onClose, onSucce
       if (initialData?.id) {
         ({ error } = await supabase.from('seg_ocorrencias').update(payload).eq('id', initialData.id));
       } else {
-        ({ error } = await supabase.from('seg_ocorrencias').insert(payload));
+        ({ error } = await supabase.from('seg_ocorrencias').insert([payload]));
       }
       if (error) { alert('Erro ao guardar ocorrência: ' + error.message); return; }
       onSuccess();

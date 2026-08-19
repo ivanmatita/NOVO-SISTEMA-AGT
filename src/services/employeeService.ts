@@ -35,15 +35,33 @@ export const employeeService = {
     try {
       if (!employee.empresa_id) throw new Error("empresa_id é obrigatório para criar um colaborador.");
 
-      const payload = {
-        ...employee
-      };
+      // Sanitize empty string date/numeric fields to null
+      const sanitized: any = { ...employee };
+      const dateOrNullableFields = [
+        'data_nascimento', 'data_admissao', 'data_saida', 'start_date', 'end_date',
+        'birth_date', 'admission_date', 'exit_date', 'contract_id', 'profession_id',
+        'local_trabalho_id', 'user_id', 'motivo_saida'
+      ];
+      for (const field of dateOrNullableFields) {
+        if (sanitized[field] === '' || sanitized[field] === undefined) {
+          sanitized[field] = null;
+        }
+      }
+      if (sanitized.salario === '' || isNaN(Number(sanitized.salario))) {
+        sanitized.salario = 0;
+      }
+      if (!sanitized.nome && sanitized.name) {
+        sanitized.nome = sanitized.name;
+      }
+      if (!sanitized.name && sanitized.nome) {
+        sanitized.name = sanitized.nome;
+      }
 
-      console.log('[EmployeeService] Inserindo colaborador:', payload.name);
+      console.log('[EmployeeService] Inserindo colaborador:', sanitized.name || sanitized.nome);
 
       const { data, error } = await supabase
         .from('colaboradores')
-        .insert([payload])
+        .insert([sanitized])
         .select()
         .single();
 
@@ -60,15 +78,32 @@ export const employeeService = {
 
   async updateEmployee(id: number | string, employee: Partial<Employee> & { empresa_id: string }): Promise<Employee> {
     try {
-      const payload = {
-        ...employee
-      };
+      const sanitized: any = { ...employee };
+      const dateOrNullableFields = [
+        'data_nascimento', 'data_admissao', 'data_saida', 'start_date', 'end_date',
+        'birth_date', 'admission_date', 'exit_date', 'contract_id', 'profession_id',
+        'local_trabalho_id', 'user_id', 'motivo_saida'
+      ];
+      for (const field of dateOrNullableFields) {
+        if (sanitized[field] === '') {
+          sanitized[field] = null;
+        }
+      }
+      if (sanitized.salario === '') {
+        sanitized.salario = 0;
+      }
+      if (sanitized.name && !sanitized.nome) {
+        sanitized.nome = sanitized.name;
+      }
+      if (sanitized.nome && !sanitized.name) {
+        sanitized.name = sanitized.nome;
+      }
 
       console.log('[EmployeeService] Atualizando colaborador ID:', id);
 
       const { data, error } = await supabase
         .from('colaboradores')
-        .update(payload)
+        .update(sanitized)
         .eq('id', id)
         .eq('empresa_id', employee.empresa_id)
         .select()

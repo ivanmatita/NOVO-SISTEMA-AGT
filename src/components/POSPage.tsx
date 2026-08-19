@@ -8,8 +8,8 @@ import {
   Scan, Keyboard, Play, Lock, AlertCircle, FileText, Check, ArrowRight, Star, HelpCircle,
   ArrowLeft, Users, Clock, ShoppingCart, User, Banknote, CircleCheck, Key, Layers, Pencil,
   Coffee, Shirt, RefreshCw, History, PieChart, ChevronDown, RotateCw, Percent, Sparkles,
-  Brain, Bot, Lightbulb, TrendingDown, DollarSign, FileSpreadsheet, Eye, ShieldCheck,
-  FileCheck, Landmark, Receipt, Truck, Filter, Calendar
+  Brain, Bot, Lightbulb, TrendingDown, DollarSign, FileSpreadsheet, Eye, EyeOff, ShieldCheck,
+  FileCheck, Landmark, Receipt, Truck, Filter, Calendar, UserPlus, LogIn
 } from 'lucide-react';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -18,6 +18,8 @@ import {
 import { exportToPDF, handlePrint } from '../lib/exportUtils';
 import { QRCodeSVG } from 'qrcode.react';
 import { authService } from '../services/authService';
+import { supabase } from '../lib/supabase';
+import { ClientForm } from './ClientForm';
 
 const fetchJsonWithAuth = async (url: string, options?: RequestInit) => {
   const session = await authService.getSessionSafe();
@@ -106,9 +108,11 @@ interface SuspendedSale {
   date: string;
   globalDiscount: number;
   empresa_id?: string;
+  assigned_operator?: string;
+  created_by_operator?: string;
 }
 
-type ActiveTab = 'pos' | 'estoque' | 'historico' | 'relatorios';
+type ActiveTab = 'pos' | 'estoque' | 'historico' | 'relatorios' | 'relatorio_geral';
 type ReportSubTab = 'resumo' | 'abertura_fecho' | 'iva' | 'pagamentos' | 'ai';
 
 const POSPage = ({ 
@@ -151,10 +155,14 @@ const POSPage = ({
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [showClientModal, setShowClientModal] = useState(false);
+  const [clientSearch, setClientSearch] = useState('');
+  const [showRegisterClientForm, setShowRegisterClientForm] = useState(false);
   const [newClientName, setNewClientName] = useState('');
   const [newClientNif, setNewClientNif] = useState('');
   const [newClientPhone, setNewClientPhone] = useState('');
   const [newClientAddress, setNewClientAddress] = useState('');
+  const [newClientEmail, setNewClientEmail] = useState('');
+  const [newClientTipo, setNewClientTipo] = useState('normal');
 
   // Series & Terminals from server
   const [seriesList, setSeriesList] = useState<FiscalSeries[]>(fiscalSeries || []);
@@ -196,6 +204,17 @@ const POSPage = ({
   const [showTableModal, setShowTableModal] = useState(false);
   const [newTableName, setNewTableName] = useState('');
   const [newTableCapacity, setNewTableCapacity] = useState(4);
+
+  // POS Authentication Gate & System Users Integration
+  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [posAuthPhase, setPosAuthPhase] = useState<'users' | 'password'>('users');
+  const [userPosConfig, setUserPosConfig] = useState<any>(null);
+  const [selectedAuthUser, setSelectedAuthUser] = useState<any>(null);
+  const [authIdentifier, setAuthIdentifier] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [showAuthPassword, setShowAuthPassword] = useState(false);
+  const [systemUsersList, setSystemUsersList] = useState<any[]>([]);
+  const [authError, setAuthError] = useState('');
 
   // Operator / User switching & POS Configuration
   const [operators, setOperators] = useState<Array<{ id: string; name: string; role: string; pin?: string }>>(() => {
@@ -242,12 +261,25 @@ const POSPage = ({
   // Caixa Movements
   const [caixaMovements, setCaixaMovements] = useState<any[]>([]);
 
-  // Modal controls (White-Themed)
+  // Modal controls
   const [showSessionModal, setShowSessionModal] = useState(false);
   const [showCloseSessionModal, setShowCloseSessionModal] = useState(false);
   const [showPOSModal, setShowPOSModal] = useState(false);
+  const [newPOSPointName, setNewPOSPointName] = useState('');
+  const [newPOSPointLocation, setNewPOSPointLocation] = useState('');
+  const [showTransferCartModal, setShowTransferCartModal] = useState(false);
+  const [targetTransferOperator, setTargetTransferOperator] = useState('');
+  const [showCloseSessionReportModal, setShowCloseSessionReportModal] = useState(false);
+  const [closedSessionReportData, setClosedSessionReportData] = useState<any>(null);
+  const [closeSessionObs, setCloseSessionObs] = useState('');
   const [showReceiptDetailModal, setShowReceiptDetailModal] = useState<any>(null);
   const [showOpeningReportModal, setShowOpeningReportModal] = useState(false);
+
+  // Cash session shift state
+  const [shiftType, setShiftType] = useState<'diario' | 'manha' | 'tarde' | 'noite'>('diario');
+  const [shiftName, setShiftName] = useState('Turno Diário');
+  const [sessionObservations, setSessionObservations] = useState('');
+  const [allInvoices, setAllInvoices] = useState<any[]>([]);
 
   // Report Period Filtering
   const [reportPeriod, setReportPeriod] = useState<'hoje' | 'semana' | 'mes' | 'ano' | 'custom'>('hoje');
@@ -328,23 +360,122 @@ const POSPage = ({
     const loadInfrastructure = async () => {
       try {
         const empresaId = companyData?.id || user?.empresa_id || '1';
-        const [cc, pp, cl, sl, suspended, movements] = await Promise.all([
+        const [cc, pp, cl, sl, suspended, movements, allInv, sysUsers] = await Promise.all([
           fetchJsonWithAuth(`/api/cost-centers?empresa_id=${empresaId}`).catch(() => []),
           fetchJsonWithAuth(`/api/pos-points?empresa_id=${empresaId}`).catch(() => []),
           fetchJsonWithAuth(`/api/secure-clientes`).catch(() => []),
           fetchJsonWithAuth(`/api/pos/sales?empresa_id=${empresaId}`).catch(() => []),
           fetchJsonWithAuth(`/api/pos/suspended?empresa_id=${empresaId}`).catch(() => []),
-          fetchJsonWithAuth(`/api/caixa-movements?empresa_id=${empresaId}`).catch(() => [])
+          fetchJsonWithAuth(`/api/caixa-movements?empresa_id=${empresaId}`).catch(() => []),
+          fetchJsonWithAuth(`/api/invoices?empresa_id=${empresaId}`).catch(() => []),
+          fetchJsonWithAuth(`/api/system-users?empresa_id=${empresaId}`).catch(() => [])
         ]);
         setCostCenters(cc);
         setPosPoints(pp);
-        setClients(cl || []);
+        setClients(Array.isArray(cl) ? cl : []);
         setSuspendedSales(suspended || []);
         setCaixaMovements(movements || []);
+        if (Array.isArray(allInv)) setAllInvoices(allInv);
         
-        if (Array.isArray(sl)) {
-          setCompletedSales(sl);
+        if (Array.isArray(sysUsers) && sysUsers.length > 0) {
+          setSystemUsersList(sysUsers);
+          const mappedOps = sysUsers.map((u: any) => ({
+            id: u.id,
+            name: u.nome || u.name || u.username || u.email?.split('@')[0] || 'Utilizador',
+            role: u.role || (u.is_admin ? 'Administrador' : 'Operador de Caixa'),
+            pin: u.pin || '1234'
+          }));
+          setOperators(mappedOps);
+          if (!selectedAuthUser) setSelectedAuthUser(sysUsers[0]);
         }
+        
+        const voidMap = new Map<string, any>();
+        if (Array.isArray(allInv)) {
+          for (const inv of allInv) {
+            const num = (inv.invoice_number || inv.numero_documento || '').trim();
+            const isAnulado = inv.status === 'anulado' || inv.estado === 'anulado' || inv.estado_documento === 'anulado' || inv.is_void === true || Boolean(inv.reason_anulacao);
+            if (num) {
+              voidMap.set(num, {
+                is_anulado: isAnulado,
+                motivo_anulacao: inv.reason_anulacao || inv.motivo_anulacao || 'Documento Anulado na Faturação Eletrónica'
+              });
+            }
+          }
+        }
+
+        const normalizedSales: any[] = [];
+        const seenDocNums = new Set<string>();
+
+        if (Array.isArray(sl)) {
+          for (const s of sl) {
+            const docNum = (s.invoice_number || s.numero_documento || s.reference || `POS-${s.id}`).trim();
+            seenDocNums.add(docNum);
+            const voidInfo = voidMap.get(docNum);
+            const isAnulado = Boolean(voidInfo?.is_anulado || s.status === 'anulado' || s.estado === 'anulado');
+            normalizedSales.push({
+              id: s.id || Date.now(),
+              invoice_number: docNum,
+              date: s.date ? new Date(s.date).toLocaleString('pt-AO') : (s.created_at ? new Date(s.created_at).toLocaleString('pt-AO') : ''),
+              raw_date: s.date || s.created_at || s.data_emissao || new Date().toISOString(),
+              items: s.items || [],
+              subtotal: s.subtotal || s.total || 0,
+              discount: s.discount || 0,
+              tax_rate: s.tax_rate || 14,
+              total: s.total || 0,
+              received: s.received || s.amount_paid || s.total || 0,
+              change: s.change || 0,
+              payment_method: s.payment_method || s.metodo_pagamento || 'DINHEIRO',
+              client_name: s.client_name || s.cliente_nome || s.customer_name || 'Consumidor Final',
+              client_nif: s.client_nif || s.cliente_nif || s.nif || '999999999',
+              pos_hash: s.pos_hash || s.hash || s.codigo_validacao || 'AGT-OK',
+              operator: s.operator || s.operator_name || s.operador || '',
+              document_type: s.document_type || s.tipo_documento || 'Fatura Recibo',
+              section: s.section || '',
+              table: s.table || null,
+              notes: s.notes || '',
+              is_anulado: isAnulado,
+              motivo_anulacao: voidInfo?.motivo_anulacao || s.motivo_anulacao || ''
+            });
+          }
+        }
+
+        // Merge electronic invoices ONLY if explicitly issued via POS
+        if (Array.isArray(allInv)) {
+          for (const inv of allInv) {
+            const isPosDoc = inv.is_pos === true || inv.origem === 'POS' || inv.source === 'pos';
+            const docNum = (inv.invoice_number || inv.numero_documento || '').trim();
+            if (isPosDoc && docNum && !seenDocNums.has(docNum)) {
+              seenDocNums.add(docNum);
+              const isAnulado = inv.status === 'anulado' || inv.estado === 'anulado' || inv.estado_documento === 'anulado' || inv.is_void === true || Boolean(inv.reason_anulacao);
+              normalizedSales.push({
+                id: inv.id || Date.now(),
+                invoice_number: docNum,
+                date: inv.date ? new Date(inv.date).toLocaleString('pt-AO') : (inv.created_at ? new Date(inv.created_at).toLocaleString('pt-AO') : ''),
+                raw_date: inv.date || inv.created_at || inv.data_emissao || new Date().toISOString(),
+                items: inv.items || [],
+                subtotal: inv.subtotal || inv.total || 0,
+                discount: inv.discount || 0,
+                tax_rate: inv.tax_rate || 14,
+                total: inv.total || 0,
+                received: inv.received || inv.amount_paid || inv.total || 0,
+                change: inv.change || 0,
+                payment_method: inv.payment_method || inv.metodo_pagamento || 'DINHEIRO',
+                client_name: inv.client_name || inv.cliente_nome || inv.customer_name || 'Consumidor Final',
+                client_nif: inv.client_nif || inv.cliente_nif || inv.nif || '999999999',
+                pos_hash: inv.pos_hash || inv.hash || inv.codigo_validacao || 'AGT-OK',
+                operator: inv.operator || inv.operator_name || inv.operador || 'Operador POS',
+                document_type: inv.document_type || inv.tipo_documento || 'Fatura Recibo',
+                section: inv.section || 'Ponto de Venda',
+                table: inv.table || null,
+                notes: inv.notes || '',
+                is_anulado: isAnulado,
+                motivo_anulacao: inv.reason_anulacao || inv.motivo_anulacao || 'Documento Anulado na Faturação Eletrónica'
+              });
+            }
+          }
+        }
+
+        setCompletedSales(normalizedSales);
         if (pp.length > 0 && !selectedPOS) setSelectedPOS(pp[0].id.toString());
         if (fiscalSeries.length > 0 && !selectedSeries) setSelectedSeries(fiscalSeries[0].id.toString());
       } catch (err) {
@@ -353,6 +484,7 @@ const POSPage = ({
     };
     loadInfrastructure();
   }, [clientEmpresaId, fiscalSeries]);
+
 
   useEffect(() => {
     setCashSessions(sessions || []);
@@ -365,6 +497,106 @@ const POSPage = ({
     }
     setTimeout(() => { setToastMessage(null); }, 3500);
   };
+
+  const handlePOSLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError('');
+
+    const inputPass = authPassword.trim();
+    if (!inputPass) {
+      setAuthError('Por favor, introduza a sua palavra-passe.');
+      return;
+    }
+
+    const chosenUser = selectedAuthUser || (systemUsersList.length > 0 ? systemUsersList[0] : null);
+    const loginIdentifier = authIdentifier.trim() || chosenUser?.username || chosenUser?.email || chosenUser?.nome || user?.email || '';
+
+    if (!loginIdentifier) {
+      setAuthError('Por favor, selecione um utilizador da lista.');
+      return;
+    }
+
+    const empresaId = companyData?.id || user?.empresa_id || '1';
+
+    try {
+      const result = await fetchJsonWithAuth('/api/pos-auth/validate', {
+        method: 'POST',
+        body: JSON.stringify({
+          identifier: loginIdentifier,
+          email: chosenUser?.email || (loginIdentifier.includes('@') ? loginIdentifier : ''),
+          username: loginIdentifier,
+          password: inputPass,
+          user_id: chosenUser?.id,
+          empresa_id: empresaId
+        })
+      });
+
+      if (result?.success) {
+        const opName = result.user?.name || chosenUser?.nome || chosenUser?.name || loginIdentifier.split('@')[0];
+        try {
+          const configRes = await fetchJsonWithAuth(`/api/pos-user-configs?empresa_id=${empresaId}`).catch(() => []);
+          let userConf = Array.isArray(configRes) ? configRes.find((c: any) => String(c.user_id) === String(chosenUser?.id)) : null;
+
+          // Direct query to Supabase as fallback
+          if (!userConf && chosenUser?.id) {
+            try {
+              const { data: supaC } = await supabase
+                .from('pos_user_configs')
+                .select('*')
+                .eq('user_id', String(chosenUser.id))
+                .maybeSingle();
+              if (supaC) userConf = supaC;
+            } catch (e) {
+              console.warn("Direct Supabase pos_user_configs lookup error:", e);
+            }
+          }
+          
+          const isUserAdmin = chosenUser?.role === 'admin' || chosenUser?.role === 'Administrador' || chosenUser?.is_admin === true || user?.role === 'super_admin';
+          const isExplicitlyBlocked = userConf && (userConf.can_access_pos === false || userConf.allow_pos === false);
+
+          if (isExplicitlyBlocked && !isUserAdmin) {
+            setAuthError('Utilizador com acesso ao POS bloqueado. Verifique as permissões no Configurar POS.');
+            setAuthPassword('');
+            return;
+          }
+          
+          if (userConf) {
+            setUserPosConfig(userConf);
+            if (userConf.series_id || userConf.serie_id) setSelectedSeries(String(userConf.series_id || userConf.serie_id));
+            if (userConf.caixa_id) setSelectedPOS(String(userConf.caixa_id));
+          }
+          
+          setActiveOperator(opName);
+          setIsUnlocked(true);
+          setAuthPassword('');
+          setAuthError('');
+          setPosAuthPhase('users');
+          triggerToast(`Ponto de Venda Desbloqueado! Operador Ativo: ${opName}`, 'success');
+        } catch (err) {
+          console.warn('Aviso no carregamento de configurações POS, permitindo acesso:', err);
+          setActiveOperator(opName);
+          setIsUnlocked(true);
+          setAuthPassword('');
+          setAuthError('');
+          setPosAuthPhase('users');
+        }
+      } else {
+        setAuthError(result?.error || 'Palavra-passe incorreta.\nVerifique os dados e tente novamente.');
+        setAuthPassword('');
+      }
+    } catch (err: any) {
+      const msg = err.message || '';
+      if (msg.toLowerCase().includes('permission') || msg.toLowerCase().includes('acesso')) {
+        setAuthError('Este utilizador não possui permissão para utilizar o Ponto de Venda.');
+      } else if (msg.toLowerCase().includes('network') || msg.toLowerCase().includes('fetch') || msg.toLowerCase().includes('connect')) {
+        setAuthError('Não foi possível validar o acesso.\nVerifique a ligação ao sistema e tente novamente.');
+      } else {
+        setAuthError('Palavra-passe incorreta.\nVerifique os dados e tente novamente.');
+      }
+      setAuthPassword('');
+    }
+  };
+
 
   // Keyboard Shortcuts (F1, F2, F3, ESC)
   useEffect(() => {
@@ -463,7 +695,7 @@ const POSPage = ({
     }
 
     if (newClientNif && newClientNif.trim() !== '' && newClientNif !== '999999999') {
-      const dupNif = clients.some(c => (c.contribuinte === newClientNif || c.nif === newClientNif));
+      const dupNif = clients.some(c => (c.contribuinte === newClientNif || (c as any).nif === newClientNif));
       if (dupNif) {
         triggerToast(`Já existe cliente registado com NIF ${newClientNif}`, 'error');
         return;
@@ -475,38 +707,48 @@ const POSPage = ({
         method: 'POST',
         body: JSON.stringify({
           nome: newClientName,
+          name: newClientName,
           contribuinte: newClientNif || '999999999',
           nif: newClientNif || '999999999',
+          email: newClientEmail || '',
           telefone: newClientPhone,
           endereco: newClientAddress || 'Luanda, Angola',
+          tipo_cliente: newClientTipo || 'normal',
           empresa_id: clientEmpresaId
         })
       });
-      setClients([...clients, response]);
-      setSelectedClient(response);
+      const newClient = { ...response, name: response.name || response.nome || newClientName };
+      setClients(prev => [...prev, newClient]);
+      setSelectedClient(newClient);
       setShowClientModal(false);
-      setNewClientName('');
-      setNewClientNif('');
-      setNewClientPhone('');
-      setNewClientAddress('');
+      setShowRegisterClientForm(false);
+      setNewClientName(''); setNewClientNif(''); setNewClientPhone('');
+      setNewClientAddress(''); setNewClientEmail(''); setNewClientTipo('normal');
       triggerToast('Cliente registado e selecionado!', 'success');
     } catch (e: any) {
       // Fallback for fast UI continuity
       const fallbackClient = {
         id: Date.now(),
         name: newClientName,
+        nome: newClientName,
         contribuinte: newClientNif || '999999999',
         nif: newClientNif || '999999999',
+        email: newClientEmail,
         telefone: newClientPhone,
         endereco: newClientAddress || 'Luanda, Angola',
+        tipo_cliente: newClientTipo,
         empresa_id: clientEmpresaId
       };
-      setClients([...clients, fallbackClient as any]);
+      setClients(prev => [...prev, fallbackClient as any]);
       setSelectedClient(fallbackClient as any);
       setShowClientModal(false);
-      triggerToast('Cliente selecionado para a venda!', 'success');
+      setShowRegisterClientForm(false);
+      setNewClientName(''); setNewClientNif(''); setNewClientPhone('');
+      setNewClientAddress(''); setNewClientEmail(''); setNewClientTipo('normal');
+      triggerToast('Cliente criado e selecionado para a venda!', 'success');
     }
   };
+
 
   // CHECKOUT & DOCUMENT EMISSION (AGT COMPLIANT, NO IMPEDIMENT / NO MODAL BLOCK)
   const handleCheckout = async () => {
@@ -625,6 +867,7 @@ const POSPage = ({
         id: invRes.id || Date.now(),
         invoice_number: serialNumber,
         date: new Date().toLocaleString('pt-AO'),
+        raw_date: new Date().toISOString(),
         items: [...cart],
         subtotal,
         discount: globalDiscount + totalItemDiscounts,
@@ -673,17 +916,24 @@ const POSPage = ({
 
   const handleOpenSession = async () => {
     try {
-      await fetchJsonWithAuth('/api/cash/open', {
+      const res = await fetchJsonWithAuth('/api/cash/open', {
         method: 'POST',
         body: JSON.stringify({ 
           initial_balance: parseFloat(initialBalance) || 0,
           pos_point_id: selectedPOS || '1',
           empresa_id: clientEmpresaId,
-          user_id: user?.id || '1'
+          user_id: user?.id || '1',
+          shift_type: shiftType,
+          shift_name: shiftName,
+          operator_name: activeOperator,
+          observations: sessionObservations
         })
       });
+      if (res) setCashSessions(prev => [...prev.filter(s => s.status !== 'open'), { ...res, status: 'open' }]);
       setShowSessionModal(false);
-      triggerToast('Caixa aberto com fundo inicial registado!', 'success');
+      setInitialBalance('');
+      setSessionObservations('');
+      triggerToast(`Caixa aberto: ${shiftName}. Fundo: ${formatCurrency(parseFloat(initialBalance) || 0)}`, 'success');
       onRefresh();
     } catch (e: any) {
       triggerToast('Caixa aberto com sucesso!', 'success');
@@ -691,27 +941,64 @@ const POSPage = ({
     }
   };
 
+
   const handleCloseSession = async () => {
     try {
-      const expectedTotal = ((activeSession?.initial_balance || 0) + completedSales.reduce((acc, s) => acc + (s.total || 0), 0));
-      const counting = parseFloat(countedCash) || expectedTotal;
-      const discrepancy = counting - expectedTotal;
+      const cashSales = completedSales.filter(s => !s.is_anulado && ((s.payment_method || '').includes('CASH') || (s.payment_method || '').includes('DINHEIRO'))).reduce((a, b) => a + (b.total || 0), 0);
+      const cardSales = completedSales.filter(s => !s.is_anulado && ((s.payment_method || '').includes('CARD') || (s.payment_method || '').includes('MULTICAIXA'))).reduce((a, b) => a + (b.total || 0), 0);
+      const transferSales = completedSales.filter(s => !s.is_anulado && (s.payment_method || '').includes('TRANSFER')).reduce((a, b) => a + (b.total || 0), 0);
+      const initialBalanceVal = parseFloat(initialBalance) || activeSession?.initial_balance || 0;
+      const expectedCashTotal = initialBalanceVal + cashSales;
+      const counting = parseFloat(countedCash) || expectedCashTotal;
+      const discrepancy = counting - expectedCashTotal;
+
+      const reportData = {
+        session_id: activeSession?.id || `SESSION-${Date.now()}`,
+        opening_date: activeSession?.opening_date || new Date().toISOString(),
+        closing_date: new Date().toISOString(),
+        operator: activeOperator,
+        terminal: posConfig.terminalName,
+        initial_balance: initialBalanceVal,
+        cash_sales: cashSales,
+        card_sales: cardSales,
+        transfer_sales: transferSales,
+        total_sales: cashSales + cardSales + transferSales,
+        expected_cash: expectedCashTotal,
+        counted_cash: counting,
+        discrepancy: discrepancy,
+        total_documents: completedSales.length,
+        observations: closeSessionObs
+      };
 
       if (activeSession?.id) {
         await fetchJsonWithAuth(`/api/cash/close/${activeSession.id}`, {
           method: 'POST',
           body: JSON.stringify({ 
-            final_balance: expectedTotal,
+            final_balance: expectedCashTotal,
             user_id: user?.id || '1',
             counted_cash: counting,
             discrepancy: discrepancy,
-            empresa_id: clientEmpresaId
+            empresa_id: clientEmpresaId,
+            observations: closeSessionObs
           })
         }).catch(() => null);
       }
+
+      setClosedSessionReportData(reportData);
+      setShowCloseSessionReportModal(true);
       setShowCloseSessionModal(false);
+
+      // ZERAR ESTADO AO FECHAR O CAIXA
+      setCashSessions(prev => (prev || []).map(s => s.id === activeSession?.id ? { ...s, status: 'closed' } : s));
+      setCart([]);
+      setSelectedClient(null);
+      setSelectedTable(null);
       setCountedCash('');
-      triggerToast('Sessão de Caixa encerrada com sucesso!', 'info');
+      setInitialBalance('');
+      setGlobalDiscount(0);
+      setCloseSessionObs('');
+      
+      triggerToast('Fecho de Caixa concluído! O caixa foi zerado e encerrado com sucesso.', 'success');
       onRefresh();
     } catch (e: any) {
       triggerToast('Sessão de Caixa encerrada!', 'info');
@@ -773,17 +1060,46 @@ const POSPage = ({
     }
   };
 
-  const activeFilteredProducts = products
+  const filteredByWarehouse = userPosConfig && userPosConfig.warehouse_id 
+    ? products.filter(p => p.armazem_id == userPosConfig.warehouse_id)
+    : products;
+
+  const activeFilteredProducts = filteredByWarehouse
     .filter(p => selectedCategory === 'Todos os Produtos' || p.category === selectedCategory || (p as any).tipologia === selectedCategory)
     .filter(p => !onlyFavorites || favoriteIds.includes(String(p.id)))
     .filter(p => !onlyInStock || (p.stock_quantity ?? (p as any).stock ?? 0) > 0)
     .filter(p => !search || (p.name || '').toLowerCase().includes(search.toLowerCase()) || p.barcode === search);
 
+  const parseSaleDate = (s: any): Date => {
+    if (s.raw_date) {
+      const d = new Date(s.raw_date);
+      if (!isNaN(d.getTime())) return d;
+    }
+    if (s.created_at) {
+      const d = new Date(s.created_at);
+      if (!isNaN(d.getTime())) return d;
+    }
+    if (s.date) {
+      const d = new Date(s.date);
+      if (!isNaN(d.getTime())) return d;
+      const parts = String(s.date).split(/[/, :]/);
+      if (parts.length >= 3) {
+        const day = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1;
+        const year = parseInt(parts[2], 10);
+        if (!isNaN(day) && !isNaN(month) && !isNaN(year)) {
+          return new Date(year, month, day);
+        }
+      }
+    }
+    return new Date();
+  };
+
   // Period Filtered Sales
   const getFilteredPeriodSales = () => {
     const now = new Date();
     return completedSales.filter(s => {
-      const sDate = new Date(s.date || Date.now());
+      const sDate = parseSaleDate(s);
       if (reportPeriod === 'hoje') {
         return sDate.toDateString() === now.toDateString();
       } else if (reportPeriod === 'semana') {
@@ -815,8 +1131,214 @@ const POSPage = ({
   });
 
   return (
-    <div className="flex flex-col h-screen bg-[#f8fafc] overflow-hidden font-sans select-none text-slate-800">
+    <div className="flex flex-col h-screen bg-[#f8fafc] overflow-hidden font-sans select-none text-slate-800 relative">
 
+      {/* ===== OVERLAY DE AUTENTICAÇÃO DO PONTO DE VENDA (2 FASES) ===== */}
+      {!isUnlocked && (
+        <div className="fixed inset-0 z-[500] bg-slate-900/85 backdrop-blur-md flex items-center justify-center p-4">
+
+          {/* ── FASE 1: SELECÇÃO DE UTILIZADOR (ESTILO TRANSPARENTE, CANTOS QUADRADOS, SEM EMAIL) ── */}
+          {posAuthPhase === 'users' && (
+            <div className="bg-[#003366]/90 backdrop-blur-md border border-white/20 w-full max-w-2xl shadow-2xl rounded-none overflow-hidden flex flex-col animate-in zoom-in-95 duration-200 text-white relative">
+              {/* Botão X para fechar e voltar ao menu principal */}
+              <button
+                type="button"
+                onClick={() => {
+                  window.location.hash = 'dashboard';
+                  if (onNavigate) onNavigate('dashboard');
+                }}
+                className="absolute top-4 right-4 text-white/70 hover:text-white p-1 rounded-none transition-colors cursor-pointer z-10"
+                title="Fechar e Voltar ao Menu Principal"
+              >
+                <X size={24} />
+              </button>
+
+              {/* Cabeçalho */}
+              <div className="px-8 py-6 bg-black/20 text-white flex flex-col items-center text-center border-b border-white/10">
+                <div className="w-14 h-14 bg-white/10 backdrop-blur-md rounded-none flex items-center justify-center mb-3 border border-white/20">
+                  <Users size={28} className="text-white" />
+                </div>
+                <h2 className="text-lg font-black tracking-widest uppercase">Ponto de Venda</h2>
+                <p className="text-xs text-blue-200 mt-1 font-medium">Selecione o operador para iniciar sessão</p>
+              </div>
+
+              {/* Grid de utilizadores */}
+              <div className="p-6">
+                {systemUsersList.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-10 text-white/50 gap-3">
+                    <Users size={40} className="opacity-30" />
+                    <p className="text-sm font-bold">A carregar operadores...</p>
+                    <p className="text-xs">Se persistir, verifique a ligação ao sistema.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    {systemUsersList
+                      .filter((u: any) => u.is_active !== false)
+                      .map((u: any) => {
+                        const displayName = u.nome || u.name || u.username || 'Utilizador';
+                        const displayRole = u.role || (u.is_admin ? 'Administrador' : 'Operador de Caixa');
+                        const initials = displayName.split(' ').map((n: string) => n[0]).slice(0, 2).join('').toUpperCase();
+                        const isAdmin = u.is_admin || ['admin', 'super_admin', 'admin_empresa', 'proprietario'].includes(u.role);
+                        return (
+                          <button
+                            key={u.id}
+                            onClick={() => {
+                              setSelectedAuthUser(u);
+                              setAuthIdentifier(u.username || u.email || u.nome || '');
+                              setAuthError('');
+                              setAuthPassword('');
+                              setPosAuthPhase('password');
+                            }}
+                            className="flex flex-col items-center gap-3 p-5 bg-white/10 border border-white/15 rounded-none hover:bg-white/20 hover:border-white/40 transition-all duration-200 group cursor-pointer"
+                          >
+                            {/* Avatar com iniciais */}
+                            <div className={`w-14 h-14 rounded-none flex items-center justify-center text-lg font-black shadow-md border ${
+                              isAdmin ? 'bg-[#003366] text-white border-white/30' : 'bg-white/20 text-white border-white/20'
+                            }`}>
+                              {initials || <User size={24} />}
+                            </div>
+                            {/* Nome APENAS (sem email) */}
+                            <div className="text-center">
+                              <p className="text-sm font-black text-white truncate max-w-[140px]">{displayName}</p>
+                              <p className="text-[10px] font-bold text-blue-200 uppercase tracking-wider mt-0.5 truncate max-w-[140px]">{displayRole}</p>
+                            </div>
+                            <div className="w-full text-center text-[10px] font-black uppercase tracking-widest text-sky-300 group-hover:text-white transition-colors pt-1">
+                              ENTRAR →
+                            </div>
+                          </button>
+                        );
+                      })
+                    }
+                  </div>
+                )}
+
+                {/* Fallback: se lista vazia, mostrar o utilizador actual */}
+                {systemUsersList.filter((u: any) => u.is_active !== false).length === 0 && systemUsersList.length === 0 && user && (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    <button
+                      onClick={() => {
+                        setSelectedAuthUser(user);
+                        setAuthIdentifier(user.email || user.username || '');
+                        setAuthError('');
+                        setAuthPassword('');
+                        setPosAuthPhase('password');
+                      }}
+                      className="flex flex-col items-center gap-3 p-5 bg-white/10 border border-white/15 rounded-none hover:bg-white/20 hover:border-white/40 transition-all duration-200 group cursor-pointer"
+                    >
+                      <div className="w-14 h-14 rounded-none bg-white/20 text-white flex items-center justify-center text-lg font-black shadow-md border border-white/20">
+                        {(user.nome || user.name || 'A').charAt(0).toUpperCase()}
+                      </div>
+                      <div className="text-center">
+                        <p className="text-sm font-black text-white">{user.nome || user.name || 'Utilizador'}</p>
+                        <p className="text-[10px] font-bold text-blue-200 uppercase tracking-wider mt-0.5">{user.role || 'Administrador'}</p>
+                      </div>
+                      <div className="text-[10px] font-black uppercase tracking-widest text-sky-300 group-hover:text-white">ENTRAR →</div>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Rodapé com botão Voltar */}
+              <div className="px-6 pb-5 border-t border-white/10 pt-4 flex justify-center bg-black/10">
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.location.hash = 'dashboard';
+                    if (onNavigate) onNavigate('dashboard');
+                  }}
+                  className="text-white/70 hover:text-white font-bold text-xs transition-colors flex items-center gap-1.5 cursor-pointer uppercase tracking-wider"
+                >
+                  <ChevronLeft size={16} /> Voltar ao Menu Principal
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── FASE 2: PALAVRA-PASSE ── */}
+          {posAuthPhase === 'password' && (
+            <div className="bg-white w-full max-w-sm shadow-2xl rounded-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+              {/* Cabeçalho azul com info do utilizador */}
+              <div className="px-6 py-6 bg-[#003366] text-white flex flex-col items-center text-center">
+                <div className="w-16 h-16 bg-white/15 backdrop-blur-md rounded-2xl flex items-center justify-center mb-3 shadow-inner text-2xl font-black">
+                  {selectedAuthUser
+                    ? (selectedAuthUser.nome || selectedAuthUser.name || selectedAuthUser.email || 'U').split(' ').map((n: string) => n[0]).slice(0, 2).join('').toUpperCase()
+                    : <Lock size={28} className="text-white" />
+                  }
+                </div>
+                <h2 className="text-base font-black tracking-wide">
+                  {selectedAuthUser?.nome || selectedAuthUser?.name || selectedAuthUser?.username || 'Utilizador'}
+                </h2>
+                <p className="text-xs text-blue-200 mt-0.5 font-medium uppercase tracking-widest">
+                  {selectedAuthUser?.role || (selectedAuthUser?.is_admin ? 'Administrador' : 'Operador')}
+                </p>
+              </div>
+
+              {/* Formulário de senha */}
+              <form onSubmit={handlePOSLogin} className="p-6 space-y-4">
+                <p className="text-center text-xs font-bold text-slate-500 uppercase tracking-widest">
+                  Acesso ao Ponto de Venda
+                </p>
+
+                {authError && (
+                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs font-bold flex items-center gap-2">
+                    <AlertCircle size={16} className="shrink-0" />
+                    <span>{authError}</span>
+                  </div>
+                )}
+
+                {/* Palavra-passe */}
+                <div>
+                  <label className="block text-xs font-black text-slate-600 uppercase tracking-wider mb-1.5">
+                    Palavra-Passe
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                    <input
+                      type={showAuthPassword ? 'text' : 'password'}
+                      required
+                      autoFocus
+                      placeholder="••••••••••••"
+                      value={authPassword}
+                      onChange={e => setAuthPassword(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-10 pr-10 py-3.5 text-sm font-black text-slate-900 focus:outline-none focus:border-[#003366] focus:ring-2 focus:ring-blue-100 tracking-[0.3em]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowAuthPassword(!showAuthPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      {showAuthPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Botão entrar */}
+                <button
+                  type="submit"
+                  className="w-full bg-[#003366] hover:bg-[#002244] text-white font-black py-3.5 rounded-xl uppercase tracking-widest text-xs shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <LogIn size={16} />
+                  Entrar no Ponto de Venda
+                </button>
+
+                {/* Cancelar — volta à selecção de utilizadores */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthPassword('');
+                    setAuthError('');
+                    setShowAuthPassword(false);
+                    setPosAuthPhase('users');
+                  }}
+                  className="w-full text-slate-500 hover:text-slate-700 font-bold text-xs py-2 cursor-pointer transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <ChevronLeft size={14} /> Cancelar — Trocar Utilizador
+                </button>
+              </form>
+            </div>
+          )}
+        </div>
+      )}
       {/* ===== TOP HEADER BAR (AZUL CLARO E BONITO) ===== */}
       <div className="bg-white border-b border-sky-100 flex items-center px-4 py-2.5 shrink-0 shadow-xs">
         {/* Store Icon */}
@@ -852,20 +1374,41 @@ const POSPage = ({
           <span className="text-sky-700 font-mono font-bold">({formatCurrency(activeSession?.initial_balance || 0)})</span>
         </div>
 
+        {/* Ponto de Venda (Atendimento) */}
+        <div className="flex items-center gap-1 bg-sky-50 border border-sky-200 text-sky-900 px-2.5 py-1.5 rounded-none mr-2 text-xs font-bold shrink-0">
+          <Store size={14} className="text-[#003366]" />
+          <span className="text-[10px] text-slate-500 uppercase font-black mr-1">POS Atendimento:</span>
+          <select 
+            value={selectedPOS}
+            onChange={(e) => { setSelectedPOS(e.target.value); triggerToast(`Ponto de Venda alterado!`, 'info'); }}
+            className="bg-transparent font-black text-[#003366] focus:outline-none cursor-pointer text-xs"
+          >
+            {posPoints.map(p => <option key={p.id} value={String(p.id)}>{p.name || p.nome || `POS ${p.id}`}</option>)}
+            {posPoints.length === 0 && <option value="1">POS Principal</option>}
+          </select>
+          <button
+            onClick={() => setShowPOSModal(true)}
+            className="ml-1 text-[#003366] hover:text-sky-900 p-0.5 rounded-none cursor-pointer"
+            title="Adicionar Novo Ponto de Venda de Atendimento"
+          >
+            <Plus size={14} />
+          </button>
+        </div>
+
         {/* Secção / Ramo de Atividade */}
-        <div className="flex items-center gap-1 bg-sky-50 border border-sky-200 text-sky-900 px-2.5 py-1.5 rounded-lg mr-2 text-xs font-bold shrink-0">
-          <Store size={14} className="text-[#0284c7]" />
+        <div className="flex items-center gap-1 bg-sky-50 border border-sky-200 text-sky-900 px-2.5 py-1.5 rounded-none mr-2 text-xs font-bold shrink-0">
+          <Store size={14} className="text-[#003366]" />
           <span className="text-[10px] text-slate-500 uppercase font-black mr-1">Secção:</span>
           <select 
             value={businessSection}
             onChange={(e) => { setBusinessSection(e.target.value); triggerToast(`Secção alterada para ${e.target.value}`, 'info'); }}
-            className="bg-transparent font-black text-[#0284c7] focus:outline-none cursor-pointer text-xs"
+            className="bg-transparent font-black text-[#003366] focus:outline-none cursor-pointer text-xs"
           >
             {sectionsList.map(sec => <option key={sec} value={sec}>{sec}</option>)}
           </select>
           <button
             onClick={() => setShowAddSectionModal(true)}
-            className="ml-1 text-sky-600 hover:text-sky-800 p-0.5 rounded cursor-pointer"
+            className="ml-1 text-[#003366] hover:text-sky-900 p-0.5 rounded-none cursor-pointer"
             title="Adicionar Nova Secção"
           >
             <Plus size={14} />
@@ -875,13 +1418,30 @@ const POSPage = ({
         {/* Mudar E ADICIONAR Utilizador (Operador) */}
         <div 
           onClick={() => setShowUserModal(true)}
-          className="flex items-center gap-1.5 bg-sky-50/60 hover:bg-sky-100 border border-sky-200 text-slate-700 px-2.5 py-1.5 rounded-lg mr-2 text-xs font-bold shrink-0 cursor-pointer transition-all"
+          className="flex items-center gap-1.5 bg-sky-50/60 hover:bg-sky-100 border border-sky-200 text-slate-700 px-2.5 py-1.5 rounded-lg mr-1 text-xs font-bold shrink-0 cursor-pointer transition-all"
           title="Clique para Trocar ou Adicionar Operador POS"
         >
           <User size={13} className="text-[#0284c7]" />
           <span className="text-[10px] text-slate-400 uppercase font-black">Operador:</span>
           <span className="text-[#0284c7] font-bold">{activeOperator}</span>
         </div>
+
+        {/* Botão Trocar Operador — termina sessão do operador e volta à selecção */}
+        <button
+          onClick={() => {
+            setIsUnlocked(false);
+            setPosAuthPhase('users');
+            setSelectedAuthUser(null);
+            setAuthPassword('');
+            setAuthError('');
+            triggerToast('Sessão do operador terminada. Selecione um utilizador.', 'info');
+          }}
+          className="flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 px-2.5 py-1.5 rounded-lg mr-2 text-xs font-bold shrink-0 cursor-pointer transition-all"
+          title="Trocar Operador — volta à selecção de utilizadores"
+        >
+          <ArrowRightLeft size={13} />
+          <span className="hidden sm:inline">Trocar Operador</span>
+        </button>
 
         {/* Configurações do POS */}
         <button
@@ -916,7 +1476,8 @@ const POSPage = ({
           { id: 'pos' as ActiveTab, label: 'Caixa (POS)', shortcut: 'F2', icon: ShoppingCart },
           { id: 'estoque' as ActiveTab, label: 'Catálogo & Stock', shortcut: '', icon: Package },
           { id: 'historico' as ActiveTab, label: 'Documentos Emitidos', shortcut: '', icon: History },
-          { id: 'relatorios' as ActiveTab, label: 'Relatórios & Diagnóstico IA', shortcut: '', icon: PieChart },
+          { id: 'relatorios' as ActiveTab, label: 'Relatórios & IA', shortcut: '', icon: PieChart },
+          { id: 'relatorio_geral' as ActiveTab, label: 'Relatório Geral (A4)', shortcut: '', icon: FileSpreadsheet },
         ].map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -1143,15 +1704,27 @@ const POSPage = ({
               <div className="flex items-center gap-2 truncate">
                 <User size={13} className="text-[#0284c7]" />
                 <span className="font-bold text-slate-800 truncate">
-                  {selectedClient ? selectedClient.name : 'Consumidor Final'}
+                  {selectedClient ? (selectedClient.name || (selectedClient as any).nome) : 'Consumidor Final'}
                 </span>
               </div>
-              <button
-                onClick={() => setShowClientModal(true)}
-                className="text-[10px] text-[#0284c7] font-bold hover:underline cursor-pointer"
-              >
-                Alterar
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => { setShowRegisterClientForm(true); setShowClientModal(true); }}
+                  className="text-[10px] bg-[#0284c7] hover:bg-sky-700 text-white font-bold px-2 py-1 rounded-md flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                  title="Registar Novo Cliente (Gestão de Clientes)"
+                >
+                  <UserPlus size={12} />
+                  <span>Novo</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowClientModal(true)}
+                  className="text-[10px] text-[#0284c7] font-bold hover:underline cursor-pointer"
+                >
+                  Alterar
+                </button>
+              </div>
             </div>
 
             {/* Cart Items List */}
@@ -1180,15 +1753,22 @@ const POSPage = ({
                         </button>
                       </div>
 
-                      <div className="flex items-center justify-between mt-1">
-                        <div className="flex items-center border border-slate-300 rounded-lg bg-white overflow-hidden">
+                      <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-200">
+                        {/* Controlo Manual de Quantidade */}
+                        <div className="flex items-center border border-slate-300 rounded-none bg-white overflow-hidden">
                           <button
                             onClick={() => updateQuantity(idx, item.qty - 1)}
                             className="px-2 py-1 hover:bg-slate-100 text-slate-600 cursor-pointer"
                           >
                             <Minus size={12} />
                           </button>
-                          <span className="px-2 text-xs font-bold font-mono text-slate-800">{item.qty}</span>
+                          <input
+                            type="number"
+                            min="1"
+                            value={item.qty}
+                            onChange={(e) => updateQuantity(idx, Math.max(1, parseInt(e.target.value) || 1))}
+                            className="w-12 text-center text-xs font-bold font-mono text-slate-900 focus:outline-none focus:bg-blue-50 py-0.5 border-x border-slate-200"
+                          />
                           <button
                             onClick={() => updateQuantity(idx, item.qty + 1)}
                             className="px-2 py-1 hover:bg-slate-100 text-slate-600 cursor-pointer"
@@ -1197,10 +1777,26 @@ const POSPage = ({
                           </button>
                         </div>
 
+                        {/* Entrada Manual de Desconto */}
+                        <div className="flex items-center gap-1">
+                          <span className="text-[10px] text-slate-400 font-bold uppercase">Desc:</span>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={item.discount || ''}
+                            onChange={(e) => {
+                              const val = Math.max(0, parseFloat(e.target.value) || 0);
+                              const updated = [...cart];
+                              updated[idx] = { ...updated[idx], discount: val };
+                              setCart(updated);
+                            }}
+                            className="w-16 px-1.5 py-0.5 text-[10px] font-mono border border-slate-300 rounded-none focus:outline-none focus:border-[#003366] bg-white text-slate-900 font-bold"
+                          />
+                          <span className="text-[9px] text-slate-400">Kz</span>
+                        </div>
+
                         <div className="text-right">
-                          <span className="text-[10px] text-slate-400 block font-mono">
-                            {item.qty} x {formatCurrency(unitPrice)}
-                          </span>
                           <span className="text-xs font-black text-[#0284c7] font-mono">
                             {formatCurrency(itemTotal)}
                           </span>
@@ -1241,6 +1837,25 @@ const POSPage = ({
                 <span className="text-xl font-black text-[#0284c7] font-mono leading-none">{formatCurrency(total)}</span>
               </div>
 
+              {cart.length > 0 && (
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <button
+                    onClick={() => setShowTransferCartModal(true)}
+                    className="bg-sky-50 hover:bg-sky-100 text-[#003366] border border-sky-200 font-bold py-2 rounded-none flex items-center justify-center gap-1.5 text-[11px] cursor-pointer"
+                    title="Passar esta compra para outro operador continuar"
+                  >
+                    <ArrowRightLeft size={13} /> Passar Compra
+                  </button>
+                  <button
+                    onClick={() => setShowSuspensionModal(true)}
+                    className="bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 font-bold py-2 rounded-none flex items-center justify-center gap-1.5 text-[11px] cursor-pointer"
+                    title="Colocar venda em espera"
+                  >
+                    <Clock size={13} /> Em Espera
+                  </button>
+                </div>
+              )}
+
               <button
                 onClick={() => {
                   if (cart.length > 0) {
@@ -1251,7 +1866,7 @@ const POSPage = ({
                   }
                 }}
                 disabled={cart.length === 0}
-                className="w-full mt-2 bg-[#0284c7] hover:bg-sky-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 text-xs transition-all cursor-pointer shadow-md uppercase tracking-wider"
+                className="w-full mt-2 bg-[#003366] hover:bg-[#002244] disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-none flex items-center justify-center gap-2 text-xs transition-all cursor-pointer shadow-md uppercase tracking-wider"
               >
                 <CircleCheck size={16} />
                 EMITIR DOCUMENTO (F2)
@@ -1347,29 +1962,30 @@ const POSPage = ({
               <select
                 value={historyDocTypeFilter}
                 onChange={e => setHistoryDocTypeFilter(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 cursor-pointer"
+                className="bg-slate-50 border border-slate-300 rounded-none px-3 py-2 text-xs font-bold text-slate-700 cursor-pointer"
               >
-                <option value="todos">Todos os Tipos</option>
+                <option value="todos">Todos os Documentos</option>
                 <option value="Fatura Recibo">Fatura Recibo (FR)</option>
                 <option value="Fatura Simplificada">Fatura Simplificada (FS)</option>
                 <option value="Fatura">Fatura (FT)</option>
+                <option value="anulado">DOCUMENTOS ANULADOS (Faturação Eletrónica)</option>
               </select>
             </div>
           </div>
 
           {/* Documents Table */}
-          <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
+          <div className="bg-white border border-slate-200 rounded-none shadow-xs overflow-hidden">
             {filteredHistory.length === 0 ? (
               <div className="py-20 text-center flex flex-col items-center gap-3">
                 <History size={40} className="text-slate-300" />
-                <p className="text-slate-400 text-xs font-bold">Nenhum documento emitido até ao momento</p>
+                <p className="text-slate-400 text-xs font-bold">Nenhum documento encontrado com o filtro selecionado</p>
               </div>
             ) : (
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="bg-slate-50 text-slate-500 border-b border-slate-200 text-[10px] font-black uppercase tracking-wider">
                     <th className="px-4 py-3">Nº Documento</th>
-                    <th className="px-4 py-3">Tipo</th>
+                    <th className="px-4 py-3">Tipo / Estado</th>
                     <th className="px-4 py-3">Data / Hora</th>
                     <th className="px-4 py-3">Cliente / NIF</th>
                     <th className="px-4 py-3 text-center">Pagamento</th>
@@ -1379,30 +1995,43 @@ const POSPage = ({
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredHistory.map((s, idx) => (
-                    <tr key={s.id || idx} className="hover:bg-slate-50 transition-colors">
+                    <tr key={s.id || idx} className={`hover:bg-slate-50 transition-colors ${s.is_anulado ? 'bg-rose-50/40' : ''}`}>
                       <td className="px-4 py-3">
-                        <span className="font-bold text-slate-900 font-mono block">{s.invoice_number}</span>
+                        <span className={`font-bold font-mono block ${s.is_anulado ? 'line-through text-rose-700' : 'text-slate-900'}`}>{s.invoice_number}</span>
                         <span className="text-[9px] text-slate-400 font-mono">HASH: {s.pos_hash || 'AGT-OK'}</span>
                       </td>
-                      <td className="px-4 py-3 font-bold text-[#0284c7]">{s.document_type || 'Fatura Recibo'}</td>
+                      <td className="px-4 py-3">
+                        <span className="font-bold text-[#003366] block">{s.document_type || 'Fatura Recibo'}</span>
+                        {s.is_anulado ? (
+                          <span className="inline-flex items-center gap-1 text-[9px] font-black bg-rose-600 text-white px-2 py-0.5 rounded-none uppercase mt-0.5">
+                            <XCircle size={10} /> ANULADO
+                          </span>
+                        ) : (
+                          <span className="inline-block text-[9px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-none uppercase mt-0.5">
+                            Emitido
+                          </span>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-slate-500 font-mono">{s.date}</td>
                       <td className="px-4 py-3">
                         <span className="font-bold text-slate-800 block">{s.client_name || 'Consumidor Final'}</span>
                         <span className="text-[10px] text-slate-400 font-mono">NIF: {s.client_nif || '999999999'}</span>
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <span className="px-2 py-0.5 bg-slate-100 border border-slate-200 text-slate-700 rounded-md text-[10px] font-bold uppercase">
+                        <span className="px-2 py-0.5 bg-slate-100 border border-slate-200 text-slate-700 rounded-none text-[10px] font-bold uppercase">
                           {s.payment_method || 'DINHEIRO'}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-right font-mono font-black text-emerald-600">{formatCurrency(s.total)}</td>
+                      <td className={`px-4 py-3 text-right font-mono font-black ${s.is_anulado ? 'line-through text-rose-600' : 'text-emerald-600'}`}>
+                        {formatCurrency(s.total)}
+                      </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => setShowReceiptDetailModal(s)}
-                            className="px-2.5 py-1 bg-sky-50 hover:bg-sky-100 text-[#0284c7] rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                            className="px-2.5 py-1 bg-sky-50 hover:bg-sky-100 text-[#003366] rounded-none text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer border border-sky-200"
                           >
-                            <Eye size={12} /> Imprimir / PDF
+                            <Eye size={12} /> Visualizar / Talão
                           </button>
                         </div>
                       </td>
@@ -1413,7 +2042,7 @@ const POSPage = ({
             )}
           </div>
         </div>
-      ) : (
+      ) : activeTab === 'relatorios' ? (
         /* ===== RELATÓRIOS DAS VENDAS POR PERÍODO & GEMINI IA TAB ===== */
         <div className="flex-1 overflow-y-auto bg-slate-50 p-6 space-y-6 custom-scrollbar">
           {/* Header & Subtabs */}
@@ -1671,7 +2300,255 @@ const POSPage = ({
             )}
           </div>
         </div>
-      )}
+      ) : activeTab === 'relatorio_geral' ? (
+        /* ===== RELATÓRIO GERAL POS (FOLHA A4 COMPLETA PARA IMPRIMIR E BAIXAR) ===== */
+        <div className="flex-1 overflow-y-auto p-6 bg-slate-200/70 custom-scrollbar flex flex-col items-center gap-6">
+          {/* Barra de Ações A4 */}
+          <div className="w-full max-w-[210mm] bg-white border border-slate-300 p-4 shadow-md flex justify-between items-center no-print">
+            <div className="flex items-center gap-3">
+              <FileSpreadsheet size={24} className="text-[#003366]" />
+              <div>
+                <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider">Relatório Geral POS & Análise de Margens</h3>
+                <p className="text-[10px] text-slate-500 font-bold uppercase">Folha A4 Oficial • Movimentos, Impostos, Margens e Stock Residual</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => window.print()}
+                className="bg-[#003366] hover:bg-[#002244] text-white px-4 py-2 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
+              >
+                <Printer size={14} /> Imprimir A4
+              </button>
+              <button
+                onClick={() => exportToPDF('pos-general-report-print', `Relatorio_Geral_POS_${new Date().toISOString().slice(0,10)}.pdf`)}
+                className="bg-rose-700 hover:bg-rose-800 text-white px-4 py-2 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
+              >
+                <Download size={14} /> Baixar PDF
+              </button>
+            </div>
+          </div>
+
+          {/* Folha Oficial A4 */}
+          <div id="pos-general-report-print" className="w-[210mm] min-h-[297mm] bg-white text-slate-900 p-10 shadow-2xl border border-slate-300 font-sans text-xs space-y-6 print:w-full print:shadow-none print:border-none print:p-0">
+            {/* Cabeçalho do Relatório */}
+            <div className="flex justify-between items-start border-b-2 border-[#003366] pb-6">
+              <div>
+                <h1 className="text-2xl font-black text-[#003366] uppercase tracking-tight">{companyName}</h1>
+                <p className="text-[10px] text-slate-500 font-mono">NIF: {companyData?.nif || companyData?.cnpj || '5000000000'}</p>
+                <p className="text-[10px] text-slate-500">{companyData?.endereco || companyData?.morada || 'Angola'}</p>
+                <p className="text-[10px] text-slate-500">Tel: {companyData?.telefone || '---'}</p>
+              </div>
+              <div className="text-right space-y-1">
+                <span className="bg-[#003366] text-white px-3 py-1 text-[10px] font-black uppercase tracking-widest block">
+                  RELATÓRIO GERAL DO POS
+                </span>
+                <p className="text-[10px] text-slate-500 font-mono mt-1">Data: {new Date().toLocaleDateString('pt-AO')} {new Date().toLocaleTimeString('pt-AO')}</p>
+                <p className="text-[10px] text-slate-500">Operador Atual: <strong className="text-slate-800">{activeOperator}</strong></p>
+              </div>
+            </div>
+
+            {/* Resumo de Indicadores Chave */}
+            {(() => {
+              const validSales = completedSales.filter(s => !s.is_anulado);
+              const voidSales = completedSales.filter(s => s.is_anulado);
+              const totalRevenue = validSales.reduce((sum, s) => sum + (s.total || 0), 0);
+              const totalVoided = voidSales.reduce((sum, s) => sum + (s.total || 0), 0);
+              const totalTax = validSales.reduce((sum, s) => sum + ((s.total || 0) * ((s.tax_rate || 14) / 100)), 0);
+
+              // Aggregate product sales
+              const productSalesMap = new Map<string, { name: string; cat: string; qty: number; revenue: number; cost: number }>();
+              validSales.forEach(s => {
+                (s.items || []).forEach((item: any) => {
+                  const pId = String(item.product?.id || item.product_id || item.name || 'P');
+                  const pName = item.product?.name || item.name || 'Produto';
+                  const pCat = item.product?.category || (item.product as any)?.tipologia || 'Geral';
+                  const qty = Number(item.qty || 1);
+                  const price = item.customPrice !== undefined ? item.customPrice : (item.product?.price || 0);
+                  const rev = (price * qty) - (item.discount || 0);
+                  const unitCost = item.product?.cost_price || item.product?.custo || (price * 0.7);
+                  const cost = unitCost * qty;
+
+                  const existing = productSalesMap.get(pId) || { name: pName, cat: pCat, qty: 0, revenue: 0, cost: 0 };
+                  existing.qty += qty;
+                  existing.revenue += rev;
+                  existing.cost += cost;
+                  productSalesMap.set(pId, existing);
+                });
+              });
+
+              const soldProductsList = Array.from(productSalesMap.values());
+              const realizedProfit = soldProductsList.reduce((sum, p) => sum + (p.revenue - p.cost), 0);
+
+              // Stock analysis & potential profit
+              const stockAnalysis = products.map(p => {
+                const stockQty = p.stock_quantity ?? (p as any).stock ?? 0;
+                const sellingPrice = p.price || 0;
+                const costPrice = (p as any).cost_price || (p as any).custo || (sellingPrice * 0.7);
+                const potentialRev = stockQty * sellingPrice;
+                const potentialCost = stockQty * costPrice;
+                const potentialProfit = potentialRev - potentialCost;
+                const margin = potentialRev > 0 ? (potentialProfit / potentialRev) * 100 : 0;
+                return { name: p.name, cat: p.category || (p as any).tipologia || 'Geral', stockQty, sellingPrice, costPrice, potentialRev, potentialCost, potentialProfit, margin };
+              });
+
+              const totalStockQty = stockAnalysis.reduce((sum, p) => sum + Math.max(0, p.stockQty), 0);
+              const totalStockCost = stockAnalysis.reduce((sum, p) => sum + Math.max(0, p.potentialCost), 0);
+              const totalStockPotentialRev = stockAnalysis.reduce((sum, p) => sum + Math.max(0, p.potentialRev), 0);
+              const totalStockEstimatedProfit = stockAnalysis.reduce((sum, p) => sum + Math.max(0, p.potentialProfit), 0);
+
+              return (
+                <div className="space-y-6">
+                  {/* KPI Cards A4 */}
+                  <div className="grid grid-cols-4 gap-3 text-center border border-slate-200 p-4 bg-slate-50">
+                    <div className="p-2 border-r border-slate-200">
+                      <span className="text-[9px] font-bold text-slate-500 uppercase block">Total Faturado POS</span>
+                      <span className="text-sm font-black text-[#003366] font-mono">{formatCurrency(totalRevenue)}</span>
+                    </div>
+                    <div className="p-2 border-r border-slate-200">
+                      <span className="text-[9px] font-bold text-slate-500 uppercase block">Lucro Realizado (Vendas)</span>
+                      <span className="text-sm font-black text-emerald-700 font-mono">{formatCurrency(realizedProfit)}</span>
+                    </div>
+                    <div className="p-2 border-r border-slate-200">
+                      <span className="text-[9px] font-bold text-slate-500 uppercase block">Lucro Estimado (Em Stock)</span>
+                      <span className="text-sm font-black text-sky-700 font-mono">{formatCurrency(totalStockEstimatedProfit)}</span>
+                    </div>
+                    <div className="p-2">
+                      <span className="text-[9px] font-bold text-slate-500 uppercase block">Total Anulados</span>
+                      <span className="text-sm font-black text-rose-600 font-mono">{formatCurrency(totalVoided)}</span>
+                    </div>
+                  </div>
+
+                  {/* Detalhe de Produtos Vendidos & Margens */}
+                  <div>
+                    <h3 className="text-xs font-black text-[#003366] uppercase tracking-wider mb-2 border-b border-slate-200 pb-1">
+                      1. Detalhe de Artigos / Produtos Vendidos & Margens de Venda
+                    </h3>
+                    <table className="w-full text-left text-[10px] border border-slate-200">
+                      <thead>
+                        <tr className="bg-slate-100 font-bold uppercase border-b border-slate-200">
+                          <th className="p-2">Artigo / Produto</th>
+                          <th className="p-2">Tipologia</th>
+                          <th className="p-2 text-center">Qtd Vendida</th>
+                          <th className="p-2 text-right">Faturação</th>
+                          <th className="p-2 text-right">Custo Est.</th>
+                          <th className="p-2 text-right">Margem %</th>
+                          <th className="p-2 text-right">Lucro Obtido</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {soldProductsList.map((p, idx) => {
+                          const profit = p.revenue - p.cost;
+                          const margin = p.revenue > 0 ? (profit / p.revenue) * 100 : 0;
+                          return (
+                            <tr key={idx} className="hover:bg-slate-50">
+                              <td className="p-2 font-bold">{p.name}</td>
+                              <td className="p-2 text-slate-500">{p.cat}</td>
+                              <td className="p-2 text-center font-mono font-bold">{p.qty}</td>
+                              <td className="p-2 text-right font-mono">{formatCurrency(p.revenue)}</td>
+                              <td className="p-2 text-right font-mono text-slate-500">{formatCurrency(p.cost)}</td>
+                              <td className="p-2 text-right font-mono font-bold text-sky-700">{margin.toFixed(1)}%</td>
+                              <td className="p-2 text-right font-mono font-bold text-emerald-700">{formatCurrency(profit)}</td>
+                            </tr>
+                          );
+                        })}
+                        {soldProductsList.length === 0 && (
+                          <tr><td colSpan={7} className="p-4 text-center text-slate-400 italic">Nenhum produto vendido no período.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Análise de Stock e Projeção de Margem */}
+                  <div>
+                    <h3 className="text-xs font-black text-[#003366] uppercase tracking-wider mb-2 border-b border-slate-200 pb-1">
+                      2. Quantidade em Stock por Vender & Estimativa de Lucro Potencial
+                    </h3>
+                    <table className="w-full text-left text-[10px] border border-slate-200">
+                      <thead>
+                        <tr className="bg-slate-100 font-bold uppercase border-b border-slate-200">
+                          <th className="p-2">Produto em Stock</th>
+                          <th className="p-2 text-center">Stock Atual</th>
+                          <th className="p-2 text-right">Preço Venda</th>
+                          <th className="p-2 text-right">Receita Potencial</th>
+                          <th className="p-2 text-right">Custo Investido</th>
+                          <th className="p-2 text-right">Lucro Estimado</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {stockAnalysis.map((p, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50">
+                            <td className="p-2 font-bold">{p.name}</td>
+                            <td className={`p-2 text-center font-mono font-bold ${p.stockQty <= 5 ? 'text-rose-600' : 'text-slate-800'}`}>{p.stockQty}</td>
+                            <td className="p-2 text-right font-mono">{formatCurrency(p.sellingPrice)}</td>
+                            <td className="p-2 text-right font-mono font-bold">{formatCurrency(p.potentialRev)}</td>
+                            <td className="p-2 text-right font-mono text-slate-500">{formatCurrency(p.potentialCost)}</td>
+                            <td className="p-2 text-right font-mono font-bold text-emerald-700">{formatCurrency(p.potentialProfit)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="bg-slate-100 font-bold border-t border-slate-300">
+                          <td className="p-2 uppercase">Total Stock Residual</td>
+                          <td className="p-2 text-center font-mono">{totalStockQty}</td>
+                          <td className="p-2 text-right">-</td>
+                          <td className="p-2 text-right font-mono text-[#003366]">{formatCurrency(totalStockPotentialRev)}</td>
+                          <td className="p-2 text-right font-mono text-slate-600">{formatCurrency(totalStockCost)}</td>
+                          <td className="p-2 text-right font-mono text-emerald-700">{formatCurrency(totalStockEstimatedProfit)}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+
+                  {/* Transações & Documentos Anulados */}
+                  <div>
+                    <h3 className="text-xs font-black text-[#003366] uppercase tracking-wider mb-2 border-b border-slate-200 pb-1">
+                      3. Histórico de Documentos Emitidos e Anulações do POS
+                    </h3>
+                    <table className="w-full text-left text-[10px] border border-slate-200">
+                      <thead>
+                        <tr className="bg-slate-100 font-bold uppercase border-b border-slate-200">
+                          <th className="p-2">Data / Hora</th>
+                          <th className="p-2">Documento</th>
+                          <th className="p-2">Cliente</th>
+                          <th className="p-2">Operador</th>
+                          <th className="p-2">Método</th>
+                          <th className="p-2 text-right">Valor Total</th>
+                          <th className="p-2 text-center">Estado</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {completedSales.map((s, idx) => (
+                          <tr key={idx} className={s.is_anulado ? 'bg-rose-50/50' : 'hover:bg-slate-50'}>
+                            <td className="p-2 font-mono text-slate-600">{s.date}</td>
+                            <td className="p-2 font-bold font-mono">{s.invoice_number}</td>
+                            <td className="p-2">{s.client_name} ({s.client_nif})</td>
+                            <td className="p-2 text-slate-700">{s.operator}</td>
+                            <td className="p-2 uppercase text-[9px] font-bold">{s.payment_method}</td>
+                            <td className={`p-2 text-right font-mono font-bold ${s.is_anulado ? 'line-through text-rose-500' : 'text-slate-900'}`}>{formatCurrency(s.total)}</td>
+                            <td className="p-2 text-center">
+                              {s.is_anulado ? (
+                                <span className="bg-rose-100 text-rose-800 px-1.5 py-0.5 font-bold uppercase text-[9px]">Anulado</span>
+                              ) : (
+                                <span className="bg-emerald-100 text-emerald-800 px-1.5 py-0.5 font-bold uppercase text-[9px]">Emitido</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Rodapé A4 */}
+                  <div className="pt-6 border-t border-slate-300 text-[9px] text-slate-500 flex justify-between items-center">
+                    <p>Processado por computador • Programa Certificado n.º 472/AGT/2026</p>
+                    <p>Página 1 de 1</p>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      ) : null}
 
       {/* ===== CHECKOUT MODAL (FINALIZAR EMISSÃO DE DOCUMENTO) ===== */}
       {showCheckoutModal && (
@@ -1848,6 +2725,16 @@ const POSPage = ({
 
                 {/* Doc Details */}
                 <div className="space-y-1 mb-3 text-[10px]">
+                  {showReceiptDetailModal.is_anulado && (
+                    <div className="bg-rose-600 text-white font-black text-center text-xs py-1.5 px-2 uppercase tracking-widest my-2 rounded-none">
+                      DOCUMENTO ANULADO (FATURAÇÃO ELETRÓNICA)
+                      {showReceiptDetailModal.motivo_anulacao && (
+                        <span className="block text-[9px] font-normal normal-case opacity-90 mt-0.5">
+                          Motivo: {showReceiptDetailModal.motivo_anulacao}
+                        </span>
+                      )}
+                    </div>
+                  )}
                   <p className="font-bold text-center text-xs">{showReceiptDetailModal.document_type || 'FATURA RECIBO'}</p>
                   <p className="font-bold text-center text-xs">{showReceiptDetailModal.invoice_number}</p>
                   <div className="border-t border-dashed border-slate-300 my-1 pt-1">
@@ -1937,80 +2824,46 @@ const POSPage = ({
           <div className="bg-white border border-slate-200 w-full max-w-md shadow-2xl rounded-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="px-6 py-4 bg-sky-50 border-b border-sky-100 flex justify-between items-center">
               <span className="font-black text-[#0284c7] text-xs uppercase flex items-center gap-2">
-                <Users size={18} /> Operadores e Utilizadores POS
+                <Users size={18} /> Operadores — Utilizadores do Sistema
               </span>
               <button onClick={() => setShowUserModal(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
             </div>
             <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-2">Selecionar Operador Activo</label>
-                <div className="space-y-1.5 max-h-[30vh] overflow-y-auto custom-scrollbar">
-                  {operators.map(op => (
+              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                Selecione o operador ativo da lista de utilizadores da página <span className="text-[#0284c7]">Utilizadores</span>
+              </p>
+              <div className="space-y-1.5 max-h-[45vh] overflow-y-auto custom-scrollbar">
+                {systemUsersList.length > 0 ? systemUsersList.map(u => {
+                  const uName = u.nome || u.name || u.username || u.email?.split('@')[0] || 'Utilizador';
+                  const uRole = u.role || (u.is_admin ? 'Administrador' : 'Operador');
+                  const isActive = activeOperator === uName;
+                  return (
                     <button
-                      key={op.id}
+                      key={u.id}
+                      type="button"
                       onClick={() => {
-                        setActiveOperator(op.name);
+                        setActiveOperator(uName);
                         setShowUserModal(false);
-                        triggerToast(`Operador ativo alterado para: ${op.name}`, 'success');
+                        triggerToast(`Operador ativo alterado para: ${uName}`, 'success');
                       }}
                       className={`w-full text-left p-3 rounded-xl border flex items-center justify-between transition-all cursor-pointer ${
-                        activeOperator === op.name ? 'border-[#0284c7] bg-sky-50/70 text-[#0284c7] font-bold' : 'border-slate-200 hover:border-slate-300 text-slate-700'
+                        isActive ? 'border-[#0284c7] bg-sky-50/70 text-[#0284c7] font-bold' : 'border-slate-200 hover:border-slate-300 text-slate-700'
                       }`}
                     >
                       <div>
-                        <span className="text-xs font-bold block">{op.name}</span>
-                        <span className="text-[10px] text-slate-400">{op.role}</span>
+                        <span className="text-xs font-bold block">{uName}</span>
+                        <span className="text-[10px] text-slate-400">{uRole} · {u.email || ''}</span>
                       </div>
-                      {activeOperator === op.name && <CheckCircle size={16} className="text-[#0284c7]" />}
+                      {isActive && <CheckCircle size={16} className="text-[#0284c7]" />}
                     </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="border-t border-slate-200 pt-4">
-                <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2">Adicionar Novo Operador / Utilizador</h5>
-                <form onSubmit={e => {
-                  e.preventDefault();
-                  if (!newOperatorName.trim()) return;
-                  const newOp = { id: Date.now().toString(), name: newOperatorName, role: newOperatorRole, pin: newOperatorPin || '0000' };
-                  setOperators([...operators, newOp]);
-                  setActiveOperator(newOperatorName);
-                  setNewOperatorName('');
-                  setNewOperatorPin('');
-                  setShowUserModal(false);
-                  triggerToast(`Novo operador registado: ${newOp.name}`, 'success');
-                }} className="space-y-3">
-                  <input
-                    type="text"
-                    required
-                    placeholder="Nome do Operador"
-                    value={newOperatorName}
-                    onChange={e => setNewOperatorName(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-[#0284c7]"
-                  />
-                  <div className="grid grid-cols-2 gap-2">
-                    <select
-                      value={newOperatorRole}
-                      onChange={e => setNewOperatorRole(e.target.value)}
-                      className="bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-[#0284c7]"
-                    >
-                      <option value="Operador de Caixa">Operador de Caixa</option>
-                      <option value="Atendente / Garçom">Atendente / Garçom</option>
-                      <option value="Supervisor Turno">Supervisor Turno</option>
-                      <option value="Gerente">Gerente</option>
-                    </select>
-                    <input
-                      type="password"
-                      placeholder="Código PIN (ex: 1234)"
-                      value={newOperatorPin}
-                      onChange={e => setNewOperatorPin(e.target.value)}
-                      className="bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-[#0284c7]"
-                    />
+                  );
+                }) : (
+                  <div className="py-8 text-center text-slate-400 text-xs">
+                    <Users size={32} className="mx-auto mb-2 text-slate-300" />
+                    <p>Nenhum utilizador encontrado na página Utilizadores.</p>
+                    <p className="mt-1 text-[10px]">Adicione utilizadores em <strong>Utilizadores do Sistema</strong>.</p>
                   </div>
-                  <button type="submit" className="w-full bg-[#0284c7] hover:bg-sky-700 text-white py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider shadow-xs cursor-pointer">
-                    Adicionar Novo Operador
-                  </button>
-                </form>
+                )}
               </div>
             </div>
           </div>
@@ -2235,12 +3088,437 @@ const POSPage = ({
         </div>
       )}
 
+      {/* ===== MODAL DE SELEÇÃO E REGISTO DE CLIENTES (GESTÃO DE CLIENTES) ===== */}
+      {showClientModal && (
+        <div className="fixed inset-0 z-[300] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 w-full max-w-xl shadow-2xl rounded-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 bg-sky-50 border-b border-sky-100 flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <User className="text-[#0284c7]" size={20} />
+                <div>
+                  <h3 className="text-sm font-black text-[#0284c7] uppercase tracking-wider">
+                    {showRegisterClientForm ? 'Registar Novo Cliente (Gestão de Clientes)' : 'Selecionar Cliente para Venda'}
+                  </h3>
+                  <p className="text-[10px] text-slate-500 font-bold uppercase">
+                    Clientes integrados com Gestão de Clientes & AGT
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => { setShowClientModal(false); setShowRegisterClientForm(false); }} 
+                className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-4 text-xs">
+              {/* Tab Navigation inside modal */}
+              <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
+                <button
+                  type="button"
+                  onClick={() => setShowRegisterClientForm(false)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    !showRegisterClientForm ? 'bg-[#0284c7] text-white shadow-2xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  <User size={14} /> Lista de Clientes ({clients.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowRegisterClientForm(true)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    showRegisterClientForm ? 'bg-[#0284c7] text-white shadow-2xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  <UserPlus size={14} /> Registar Novo Cliente
+                </button>
+              </div>
+
+              {!showRegisterClientForm ? (
+                /* LISTA & SELEÇÃO DE CLIENTES */
+                <div className="space-y-3">
+                  {/* Consumidor Final quick button */}
+                  <div className="p-3 bg-sky-50/60 border border-sky-200 rounded-xl flex items-center justify-between">
+                    <div>
+                      <span className="font-black text-slate-900 block text-xs">Consumidor Final (Sem NIF)</span>
+                      <span className="text-[10px] text-slate-500 font-mono">NIF: 999999999 - Venda Geral ao Balcão</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedClient(null);
+                        setShowClientModal(false);
+                        triggerToast('Consumidor Final selecionado para a venda.', 'info');
+                      }}
+                      className="px-3.5 py-1.5 bg-[#0284c7] hover:bg-sky-700 text-white font-bold rounded-lg text-xs cursor-pointer shadow-2xs"
+                    >
+                      Selecionar
+                    </button>
+                  </div>
+
+                  {/* Search Bar */}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+                    <input
+                      type="text"
+                      placeholder="Pesquisar cliente por Nome, NIF ou Telefone..."
+                      value={clientSearch}
+                      onChange={e => setClientSearch(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-9 pr-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:border-[#0284c7]"
+                    />
+                  </div>
+
+                  {/* Clients List Grid */}
+                  <div className="space-y-2 max-h-[40vh] overflow-y-auto custom-scrollbar">
+                    {clients
+                      .filter(c => {
+                        if (!clientSearch.trim()) return true;
+                        const query = clientSearch.toLowerCase();
+                        const cName = (c.name || (c as any).nome || '').toLowerCase();
+                        const cNif = (c.contribuinte || (c as any).nif || '').toLowerCase();
+                        const cPhone = (c.telefone || '').toLowerCase();
+                        return cName.includes(query) || cNif.includes(query) || cPhone.includes(query);
+                      })
+                      .map(c => {
+                        const isSelected = selectedClient?.id === c.id;
+                        const displayName = c.name || (c as any).nome || 'Cliente';
+                        const displayNif = c.contribuinte || (c as any).nif || '999999999';
+                        return (
+                          <div
+                            key={c.id}
+                            className={`p-3 rounded-xl border flex items-center justify-between transition-all cursor-pointer ${
+                              isSelected ? 'border-[#0284c7] bg-sky-50 text-[#0284c7] font-bold' : 'border-slate-200 hover:border-slate-300 bg-white'
+                            }`}
+                            onClick={() => {
+                              setSelectedClient(c);
+                              setShowClientModal(false);
+                              triggerToast(`Cliente selecionado: ${displayName}`, 'success');
+                            }}
+                          >
+                            <div>
+                              <span className="font-bold text-slate-900 block text-xs">{displayName}</span>
+                              <div className="flex items-center gap-3 text-[10px] text-slate-500 font-mono mt-0.5">
+                                <span>NIF: {displayNif}</span>
+                                {c.telefone && <span>Tel: {c.telefone}</span>}
+                                {c.email && <span>Email: {c.email}</span>}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer ${
+                                isSelected ? 'bg-[#0284c7] text-white' : 'bg-slate-100 text-slate-700 hover:bg-sky-100 hover:text-[#0284c7]'
+                              }`}
+                            >
+                              {isSelected ? 'Ativo' : 'Selecionar'}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    {clients.length === 0 && (
+                      <p className="text-center py-6 text-slate-400 italic">Nenhum cliente registado. Clique em "Registar Novo Cliente" para criar.</p>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                /* FORMULÁRIO REGISTAR NOVO CLIENTE (USANDO CLIENTFORM DO MÓDULO DE CLIENTES) */
+                <div className="space-y-4">
+                  <ClientForm
+                    onSuccess={() => {
+                      setShowRegisterClientForm(false);
+                      fetchJsonWithAuth('/api/secure-clientes').then(cl => {
+                        if (Array.isArray(cl)) setClients(cl);
+                      });
+                      triggerToast('Cliente registado com sucesso na Gestão de Clientes!', 'success');
+                    }}
+                    onBack={() => setShowRegisterClientForm(false)}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL FECHO DE CAIXA COMPLETO COM TODOS OS CAMPOS E ZERAMENTO */}
+      {showCloseSessionModal && (
+        <div className="fixed inset-0 z-[300] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-300 w-full max-w-lg shadow-2xl rounded-none overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 bg-[#003366] text-white flex justify-between items-center">
+              <span className="font-black text-xs uppercase tracking-wider flex items-center gap-2">
+                <FileText size={18} /> Registar Fecho de Caixa (Turno Z)
+              </span>
+              <button onClick={() => setShowCloseSessionModal(false)} className="text-white/80 hover:text-white cursor-pointer"><X size={20} /></button>
+            </div>
+            
+            <div className="p-6 space-y-4 text-xs">
+              <div className="bg-slate-50 p-4 border border-slate-200 rounded-none space-y-2 font-mono">
+                <div className="flex justify-between"><span className="text-slate-500 font-bold">Terminal POS:</span><span className="font-bold text-slate-900">{posConfig.terminalName}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500 font-bold">Operador Ativo:</span><span className="font-bold text-slate-900">{activeOperator}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500 font-bold">Fundo de Maneio Inicial:</span><span className="font-bold text-sky-800">{formatCurrency(parseFloat(initialBalance) || activeSession?.initial_balance || 0)}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500 font-bold">Vendas em Dinheiro:</span><span className="font-bold text-emerald-700">{formatCurrency(completedSales.filter(s => !s.is_anulado && ((s.payment_method || '').includes('CASH') || (s.payment_method || '').includes('DINHEIRO'))).reduce((a, b) => a + (b.total || 0), 0))}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500 font-bold">Vendas TPA / Cartão:</span><span className="font-bold text-sky-700">{formatCurrency(completedSales.filter(s => !s.is_anulado && ((s.payment_method || '').includes('CARD') || (s.payment_method || '').includes('MULTICAIXA'))).reduce((a, b) => a + (b.total || 0), 0))}</span></div>
+                <div className="flex justify-between border-t border-slate-300 pt-2 text-sm font-black"><span className="text-slate-900">Total Previsto em Caixa:</span><span className="text-emerald-700">{formatCurrency((parseFloat(initialBalance) || activeSession?.initial_balance || 0) + completedSales.filter(s => !s.is_anulado && ((s.payment_method || '').includes('CASH') || (s.payment_method || '').includes('DINHEIRO'))).reduce((a, b) => a + (b.total || 0), 0))}</span></div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black text-slate-700 uppercase tracking-wider mb-1">
+                  Valor em Dinheiro Contado pelo Operador (AOA) *
+                </label>
+                <input
+                  type="number"
+                  required
+                  placeholder="0.00"
+                  value={countedCash}
+                  onChange={e => setCountedCash(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-none px-3 py-3 text-base font-black text-slate-900 focus:outline-none focus:border-[#003366] font-mono text-center"
+                />
+              </div>
+
+              {countedCash && (
+                <div className={`p-3 border rounded-none flex justify-between items-center text-xs font-bold font-mono ${
+                  (parseFloat(countedCash) - ((parseFloat(initialBalance) || activeSession?.initial_balance || 0) + completedSales.filter(s => !s.is_anulado && ((s.payment_method || '').includes('CASH') || (s.payment_method || '').includes('DINHEIRO'))).reduce((a, b) => a + (b.total || 0), 0))) < 0
+                    ? 'bg-rose-50 border-rose-200 text-rose-700'
+                    : 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                }`}>
+                  <span>DIFERENÇA DE CAIXA (QUEBRA):</span>
+                  <span>{formatCurrency(parseFloat(countedCash) - ((parseFloat(initialBalance) || activeSession?.initial_balance || 0) + completedSales.filter(s => !s.is_anulado && ((s.payment_method || '').includes('CASH') || (s.payment_method || '').includes('DINHEIRO'))).reduce((a, b) => a + (b.total || 0), 0)))}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[10px] font-black text-slate-700 uppercase tracking-wider mb-1">
+                  Observações / Justificação do Fecho de Caixa
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Introduza notas relevantes sobre o fecho ou justificações..."
+                  value={closeSessionObs}
+                  onChange={e => setCloseSessionObs(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-none p-2.5 text-xs text-slate-800 focus:outline-none focus:border-[#003366]"
+                />
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button type="button" onClick={() => setShowCloseSessionModal(false)} className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-none cursor-pointer">Cancelar</button>
+                <button
+                  type="button"
+                  onClick={handleCloseSession}
+                  className="px-5 py-2.5 bg-rose-700 hover:bg-rose-800 text-white font-bold uppercase rounded-none cursor-pointer shadow-xs"
+                >
+                  Concluir Fecho & Zerar Caixa
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL ADICIONAR PONTO DE VENDA DE ATENDIMENTO */}
+      {showPOSModal && (
+        <div className="fixed inset-0 z-[300] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-300 w-full max-w-md shadow-2xl rounded-none overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 bg-[#003366] text-white flex justify-between items-center">
+              <span className="font-black text-xs uppercase tracking-wider flex items-center gap-2">
+                <Store size={18} /> Adicionar Ponto de Venda (Atendimento)
+              </span>
+              <button onClick={() => setShowPOSModal(false)} className="text-white/80 hover:text-white cursor-pointer"><X size={20} /></button>
+            </div>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              if (!newPOSPointName.trim()) return;
+              try {
+                const newPointPayload = {
+                  name: newPOSPointName.trim(),
+                  nome: newPOSPointName.trim(),
+                  location: newPOSPointLocation.trim() || 'Atendimento Geral',
+                  empresa_id: clientEmpresaId,
+                  is_active: true
+                };
+                const created = await fetchJsonWithAuth('/api/pos-points', {
+                  method: 'POST',
+                  body: JSON.stringify(newPointPayload)
+                }).catch(() => ({ id: Date.now(), ...newPointPayload }));
+                
+                setPosPoints(prev => [...prev, created]);
+                setSelectedPOS(String(created.id));
+                setNewPOSPointName('');
+                setNewPOSPointLocation('');
+                setShowPOSModal(false);
+                triggerToast(`Ponto de Venda "${created.name || created.nome}" adicionado com sucesso!`, 'success');
+              } catch (err: any) {
+                triggerToast('Erro ao criar Ponto de Venda', 'error');
+              }
+            }} className="p-6 space-y-4 text-xs">
+              <div>
+                <label className="block text-[10px] font-black text-slate-700 uppercase tracking-wider mb-1">
+                  Nome do Ponto de Venda / Terminal de Atendimento *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ex: Balcão Atendimento 01, Caixa Bar 2..."
+                  value={newPOSPointName}
+                  onChange={e => setNewPOSPointName(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-none px-3 py-2.5 text-xs text-slate-900 font-bold focus:outline-none focus:border-[#003366]"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-700 uppercase tracking-wider mb-1">
+                  Localização / Secção de Atendimento
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: Loja Principal - Piso 1"
+                  value={newPOSPointLocation}
+                  onChange={e => setNewPOSPointLocation(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-none px-3 py-2.5 text-xs text-slate-900 font-medium focus:outline-none focus:border-[#003366]"
+                />
+              </div>
+              <div className="pt-2 flex justify-end gap-2">
+                <button type="button" onClick={() => setShowPOSModal(false)} className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-none cursor-pointer">Cancelar</button>
+                <button type="submit" className="px-5 py-2 bg-[#003366] hover:bg-[#002244] text-white font-bold uppercase rounded-none cursor-pointer shadow-xs">
+                  Guardar Ponto de Venda
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL PASSAR / TRANSFERIR CARRINHO PARA OUTRO OPERADOR */}
+      {showTransferCartModal && (
+        <div className="fixed inset-0 z-[300] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-300 w-full max-w-md shadow-2xl rounded-none overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 bg-[#003366] text-white flex justify-between items-center">
+              <span className="font-black text-xs uppercase tracking-wider flex items-center gap-2">
+                <ArrowRightLeft size={18} /> Passar Compra a Outro Operador
+              </span>
+              <button onClick={() => setShowTransferCartModal(false)} className="text-white/80 hover:text-white cursor-pointer"><X size={20} /></button>
+            </div>
+            <div className="p-6 space-y-4 text-xs">
+              <p className="text-slate-600 font-medium">
+                Selecione o operador de destino para transferir a compra do carrinho ({cart.length} itens - {formatCurrency(total)}).
+              </p>
+              <div className="space-y-2 max-h-[40vh] overflow-y-auto custom-scrollbar">
+                {systemUsersList.map(u => {
+                  const targetName = u.nome || u.name || u.username || u.email?.split('@')[0] || 'Operador';
+                  if (targetName === activeOperator) return null;
+                  return (
+                    <button
+                      key={u.id}
+                      type="button"
+                      onClick={() => {
+                        const newSuspended: SuspendedSale = {
+                          id: Date.now().toString(),
+                          notes: `Transferido por ${activeOperator} para ${targetName} - ${new Date().toLocaleTimeString('pt-AO')}`,
+                          cart: [...cart],
+                          client: selectedClient,
+                          date: new Date().toISOString(),
+                          globalDiscount,
+                          empresa_id: clientEmpresaId,
+                          assigned_operator: targetName,
+                          created_by_operator: activeOperator
+                        };
+                        setSuspendedSales([newSuspended, ...suspendedSales]);
+                        setCart([]);
+                        setSelectedClient(null);
+                        setGlobalDiscount(0);
+                        setShowTransferCartModal(false);
+                        triggerToast(`Compra transferida para o operador ${targetName}!`, 'success');
+                      }}
+                      className="w-full text-left p-3 border border-slate-200 hover:border-[#003366] bg-slate-50 hover:bg-blue-50/50 flex items-center justify-between transition-all cursor-pointer rounded-none"
+                    >
+                      <div>
+                        <span className="font-bold text-slate-900 block">{targetName}</span>
+                        <span className="text-[10px] text-slate-500">{u.role || 'Operador de Caixa'}</span>
+                      </div>
+                      <ArrowRight size={16} className="text-[#003366]" />
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="pt-2 flex justify-end">
+                <button type="button" onClick={() => setShowTransferCartModal(false)} className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-none cursor-pointer">Cancelar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL RELATÓRIO OFICIAL DE FECHO DE CAIXA COM IMPRESSÃO */}
+      {showCloseSessionReportModal && closedSessionReportData && (
+        <div className="fixed inset-0 z-[350] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-300 w-full max-w-lg shadow-2xl rounded-none overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+            <div className="px-6 py-4 bg-[#003366] text-white flex justify-between items-center">
+              <span className="font-black text-xs uppercase tracking-wider flex items-center gap-2">
+                <FileText size={18} /> Relatório Oficial de Fecho de Caixa
+              </span>
+              <button onClick={() => setShowCloseSessionReportModal(false)} className="text-white/80 hover:text-white cursor-pointer"><X size={20} /></button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-1 custom-scrollbar bg-slate-100 flex justify-center text-xs">
+              <div id="fecho-caixa-report-print" className="w-[320px] bg-white p-5 shadow-md font-mono text-[11px] leading-tight text-slate-900 border border-slate-300 space-y-3">
+                <div className="text-center space-y-1 pb-2 border-b border-dashed border-slate-400">
+                  <h3 className="font-black text-sm uppercase">{companyName}</h3>
+                  <p className="text-[10px] font-bold text-slate-700">RELATÓRIO DE FECHO DE CAIXA (Z)</p>
+                  <p className="text-[9px]">Terminal: {closedSessionReportData.terminal}</p>
+                  <p className="text-[9px]">Operador: {closedSessionReportData.operator}</p>
+                  <p className="text-[9px]">Data/Hora: {new Date(closedSessionReportData.closing_date).toLocaleString('pt-AO')}</p>
+                </div>
+
+                <div className="space-y-1.5 border-b border-dashed border-slate-400 pb-2">
+                  <div className="flex justify-between font-bold"><span>Fundo de Maneio Inicial:</span><span>{formatCurrency(closedSessionReportData.initial_balance)}</span></div>
+                  <div className="flex justify-between"><span>Vendas em Dinheiro:</span><span>{formatCurrency(closedSessionReportData.cash_sales)}</span></div>
+                  <div className="flex justify-between"><span>Vendas TPA / Cartão:</span><span>{formatCurrency(closedSessionReportData.card_sales)}</span></div>
+                  <div className="flex justify-between"><span>Vendas Transferência:</span><span>{formatCurrency(closedSessionReportData.transfer_sales)}</span></div>
+                  <div className="flex justify-between font-bold border-t border-slate-200 pt-1"><span>Total Faturado no Turno:</span><span>{formatCurrency(closedSessionReportData.total_sales)}</span></div>
+                </div>
+
+                <div className="space-y-1.5 border-b border-dashed border-slate-400 pb-2">
+                  <div className="flex justify-between font-bold"><span>Total Previsto em Caixa:</span><span>{formatCurrency(closedSessionReportData.expected_cash)}</span></div>
+                  <div className="flex justify-between font-bold"><span>Valor em Caixa Contado:</span><span>{formatCurrency(closedSessionReportData.counted_cash)}</span></div>
+                  <div className={`flex justify-between font-black text-xs pt-1 border-t border-slate-300 ${closedSessionReportData.discrepancy < 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
+                    <span>DIFERENÇA / QUEBRA:</span>
+                    <span>{formatCurrency(closedSessionReportData.discrepancy)}</span>
+                  </div>
+                </div>
+
+                {closedSessionReportData.observations && (
+                  <div className="text-[9px] pt-1">
+                    <span className="font-bold block">Observações:</span>
+                    <p className="italic text-slate-700">{closedSessionReportData.observations}</p>
+                  </div>
+                )}
+
+                <div className="text-center text-[8px] pt-2 border-t border-dashed border-slate-400 text-slate-500">
+                  <p>Processado por Programa Certificado n.º 472/AGT/2026</p>
+                  <p className="font-bold mt-0.5 text-slate-900">SESSÃO ENCERRADA E ZERADA</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 bg-white border-t border-slate-200 flex justify-between items-center">
+              <button onClick={() => setShowCloseSessionReportModal(false)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-none cursor-pointer">
+                Fechar
+              </button>
+              <button
+                onClick={() => window.print()}
+                className="px-5 py-2 bg-[#003366] hover:bg-[#002244] text-white text-xs font-bold rounded-none flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <Printer size={14} /> Imprimir Relatório
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* TOAST NOTIFICATIONS */}
       {toastMessage && (
-        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[999] px-6 py-3 rounded-xl text-xs font-bold shadow-2xl border flex items-center gap-2.5 animate-in slide-in-from-bottom-4 duration-300 ${
+        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[999] px-6 py-3 rounded-none text-xs font-bold shadow-2xl border flex items-center gap-2.5 animate-in slide-in-from-bottom-4 duration-300 ${
           toastMessage.type === 'success' ? 'bg-emerald-600 border-emerald-700 text-white' :
           toastMessage.type === 'error' ? 'bg-rose-600 border-rose-700 text-white' :
-          'bg-[#0284c7] border-sky-700 text-white'
+          'bg-[#003366] border-sky-900 text-white'
         }`}>
           <CheckCircle size={16} />
           {toastMessage.text}

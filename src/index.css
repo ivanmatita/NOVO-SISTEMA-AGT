@@ -53,8 +53,19 @@
     background: white !important;
   }
 
-  .no-print {
+  .no-print, nav, header, sidebar, footer {
     display: none !important;
+  }
+
+  #p80-receipt-print, #fecho-caixa-report-print, #pos-general-report-print {
+    visibility: visible !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
   }
 
   .print-area {

@@ -605,8 +605,14 @@ async function startServer() {
   // Sync in background on startup (non-blocking to prevent serverless/Vercel timeouts)
   syncFromSupabase().catch(err => console.warn("[Background Sync] Failed on startup:", err));
   
-  app.use(compression());
-  app.use(express.json({ limit: '50mb' }));
+  // Restore original URL from Vercel rewrite headers
+  app.use((req, res, next) => {
+    const rawUrl = (req.headers['x-matched-path'] || req.headers['x-invoke-path'] || req.headers['x-now-route-matches']) as string;
+    if (rawUrl && typeof rawUrl === 'string' && rawUrl.startsWith('/api')) {
+      req.url = rawUrl;
+    }
+    next();
+  });
 
   // --- Content Security Policy (CSP) ---
   app.use((req, res, next) => {

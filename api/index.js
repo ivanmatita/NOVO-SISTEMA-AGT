@@ -9527,21 +9527,8 @@ async function startServer() {
     }
   }
 }
-var __initPromise = startServer().catch((err) => {
-  console.error("\u274C CRITICAL SERVER STARTUP ERROR:", err);
-  if (process.env.VERCEL !== "1") process.exit(1);
-});
-app.__initPromise = __initPromise;
-async function vercelHandler(req, res) {
-  try {
-    if (__initPromise) await __initPromise;
-  } catch (err) {
-    console.error("[VERCEL-HANDLER] Init error (suppressed):", err?.message);
-  }
-  return app(req, res);
-}
-vercelHandler.__initPromise = __initPromise;
-var server_default = vercelHandler;
+startServer();
+var server_default = app;
 export {
   server_default as default
 };

@@ -9038,33 +9038,7 @@ async function startServer() {
     try { startAgtQueueWorker(20000); } catch (e) {}
   }
 }
-// Attach init promise to app so api/index.ts (Vercel entry) can await initialization
-// This prevents requests from being handled before routes are registered
-const __initPromise = startServer().catch(err => {
-  console.error("❌ CRITICAL SERVER STARTUP ERROR:", err);
-  // Don't process.exit(1) on Vercel — it would kill the function before returning the response
-  if (process.env.VERCEL !== '1') process.exit(1);
-});
+// Initialize Express application and routes synchronously
+startServer();
 
-(app as any).__initPromise = __initPromise;
-
-// ============================================================
-// VERCEL SERVERLESS HANDLER — CRITICAL FIX
-// Exporting app directly causes FUNCTION_INVOCATION_FAILED
-// because routes are not yet registered when the first
-// request arrives. We must export an async handler that
-// awaits __initPromise before delegating to Express.
-// ============================================================
-async function vercelHandler(req: any, res: any) {
-  try {
-    if (__initPromise) await __initPromise;
-  } catch (err: any) {
-    console.error('[VERCEL-HANDLER] Init error (suppressed):', err?.message);
-  }
-  return app(req, res);
-}
-
-// Preserve the init promise reference for debugging
-(vercelHandler as any).__initPromise = __initPromise;
-
-export default vercelHandler;
+export default app;

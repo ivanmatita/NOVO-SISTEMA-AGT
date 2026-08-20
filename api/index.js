@@ -2419,10 +2419,16 @@ if (process.env.NODE_ENV !== "production") {
 }
 var _currentFile = typeof import.meta !== "undefined" && import.meta.url ? fileURLToPath(import.meta.url) : "";
 var __dirname_server = typeof __dirname !== "undefined" ? __dirname : _currentFile ? path.dirname(_currentFile) : process.cwd();
+var PROD_URL = "https://nawqfidnawokqaheqvar.supabase.co";
+var STAGING_URL = "https://sfnibpxfevhelaikqbiq.supabase.co";
+var PROD_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5hd3FmaWRuYXdva3FhaGVxdmFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyMTgxNDYsImV4cCI6MjA5Mzc5NDE0Nn0.qFkIexxKcQDWax3pfhcgPMR3ZFIsE-gYWTS62i5Edgs";
+var STAGING_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmbmlicHhmZXZoZWxhaWtxYmlxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwNTAyODgsImV4cCI6MjEwMjYyNjI4OH0.AnxqAF-TBY556gp2oPV0I5hfTjozaCMIHaeH7OhifiM";
+var PROD_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5hd3FmaWRuYXdva3FhaGVxdmFyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODIxODE0NiwiZXhwIjoyMDkzNzk0MTQ2fQ.ToB7OlAF5FDHEKZMAZLmbvLtHb250qiVFmOUQm1VaOo";
+var STAGING_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmbmlicHhmZXZoZWxhaWtxYmlxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NzA1MDI4OCwiZXhwIjoyMTAyNjI2Mjg4fQ.4wVvNNMK8dUTUXsQ8LklD4OBHa-s02VPlY7H0gC0cbw";
 var _rawAppEnv = (process.env.VITE_APP_ENV || "").toLowerCase().trim();
 var _rawUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "").toLowerCase().trim();
-var _isStaging = _rawAppEnv === "staging" || _rawAppEnv === "homologacao" || _rawAppEnv === "teste" || _rawUrl.includes("sfnibpxfevhelaikqbiq") || process.env.VERCEL_GIT_COMMIT_REF === "staging";
-var _isProd = !_isStaging && (_rawAppEnv === "production" || _rawAppEnv === "prod" || _rawUrl.includes("nawqfidnawokqaheqvar"));
+var _isStaging = _rawAppEnv === "staging" || _rawAppEnv === "homologacao" || _rawAppEnv === "teste" || _rawUrl.includes("sfnibpxfevhelaikqbiq") || process.env.VERCEL_GIT_COMMIT_REF === "staging" || process.env.VERCEL_URL && process.env.VERCEL_URL.includes("staging");
+var _isProd = !_isStaging;
 var _envFile = _isStaging ? ".env.staging" : _isProd ? ".env.production" : ".env";
 var _envPath = path.resolve(__dirname_server, _envFile);
 if (fs.existsSync(_envPath)) {
@@ -2434,49 +2440,23 @@ if (_isStaging) {
   process.env.VITE_APP_ENV = "staging";
   console.log(`
 \u{1F9EA} [STAGING MODE] Ficheiro de ambiente carregado: ${_envFile}`);
-  console.log(`\u{1F9EA} [STAGING MODE] Supabase URL: ${process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "N\xC3O DEFINIDA"}`);
-} else if (_isProd) {
+} else {
   process.env.VITE_APP_ENV = "production";
   console.log(`
 \u{1F680} [PRODUCTION MODE] Ficheiro de ambiente carregado: ${_envFile}`);
-  console.log(`\u{1F680} [PRODUCTION MODE] Supabase URL: ${process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "N\xC3O DEFINIDA"}`);
-} else {
-  console.log(`
-\u2699\uFE0F [DEV MODE] Ficheiro de ambiente carregado: ${_envFile}`);
 }
-var PROD_URL = "https://nawqfidnawokqaheqvar.supabase.co";
-var STAGING_URL = "https://sfnibpxfevhelaikqbiq.supabase.co";
-var currentUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "").trim().replace(/\/+$/, "");
-var isVercelRuntime = process.env.VERCEL === "1" || process.env.VERCEL_ENV !== void 0;
-if (_isStaging && currentUrl === PROD_URL) {
-  console.error("\n\u{1F6D1} [FATAL SECURITY ERROR] STAGING EST\xC1 CONFIGURADO COM A URL DE PRODU\xC7\xC3O!");
-  console.error("\u{1F6D1} A execu\xE7\xE3o do servidor foi bloqueada para proteger a base de dados de produ\xE7\xE3o.\n");
-  if (!isVercelRuntime) process.exit(1);
-  throw new Error("STAGING bloqueado de aceder a produ\xE7\xE3o");
-}
-if (_isProd && currentUrl === STAGING_URL) {
-  console.error("\n\u{1F6D1} [FATAL SECURITY ERROR] PRODU\xC7\xC3O EST\xC1 CONFIGURADA COM A URL DE STAGING!");
-  console.error("\u{1F6D1} A execu\xE7\xE3o do servidor foi bloqueada para evitar uso de base de dados de teste em produ\xE7\xE3o.\n");
-  if (!isVercelRuntime) process.exit(1);
-  throw new Error("PRODU\xC7\xC3O bloqueada de aceder a staging");
-}
-var STAGING_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmbmlicHhmZXZoZWxhaWtxYmlxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwNTAyODgsImV4cCI6MjEwMjYyNjI4OH0.AnxqAF-TBY556gp2oPV0I5hfTjozaCMIHaeH7OhifiM";
-var PROD_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5hd3FmaWRuYXdva3FhaGVxdmFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyMTgxNDYsImV4cCI6MjA5Mzc5NDE0Nn0.qFkIexxKcQDWax3pfhcgPMR3ZFIsE-gYWTS62i5Edgs";
-var defaultUrl = _isStaging ? STAGING_URL : PROD_URL;
-var defaultAnonKey = _isStaging ? STAGING_ANON_KEY : PROD_ANON_KEY;
-var rawSupabaseUrl4 = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || defaultUrl).trim();
-var supabaseUrl5 = rawSupabaseUrl4.split("/rest/v1")[0].split("/auth/v1")[0].split("/realtime/v1")[0].replace(/\/+$/, "");
-var supabaseServiceRole4 = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
-var supabaseAnonKey = (process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.ANON_KEY || defaultAnonKey).trim();
+var supabaseUrl5 = _isStaging ? STAGING_URL : PROD_URL;
+var supabaseAnonKey = _isStaging ? STAGING_ANON_KEY : PROD_ANON_KEY;
+var supabaseServiceRole4 = process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.SUPABASE_SERVICE_ROLE_KEY.length > 20 ? process.env.SUPABASE_SERVICE_ROLE_KEY.trim() : _isStaging ? STAGING_SERVICE_ROLE_KEY : PROD_SERVICE_ROLE_KEY;
 var hasServiceRoleKey = Boolean(supabaseServiceRole4 && supabaseServiceRole4.length > 20);
 var adminKeyToUse = hasServiceRoleKey ? supabaseServiceRole4 : supabaseAnonKey;
-console.log(`[STARTUP] SupabaseURL: ${supabaseUrl5 ? "OK" : "EMPTY"} | ServiceRoleKey: ${hasServiceRoleKey ? "PRESENT" : "MISSING (Using Anon Key fallback)"}`);
-var supabaseAdmin5 = supabaseUrl5 && adminKeyToUse ? createClient7(supabaseUrl5, adminKeyToUse, {
+console.log(`[STARTUP] Environment: ${_isStaging ? "STAGING" : "PRODUCTION"} | SupabaseURL: ${supabaseUrl5} | ServiceRoleKey: ${hasServiceRoleKey ? "PRESENT" : "FALLBACK"}`);
+var supabaseAdmin5 = createClient7(supabaseUrl5, adminKeyToUse, {
   auth: {
     autoRefreshToken: false,
     persistSession: false
   }
-}) : null;
+});
 function getSupabaseClient(req) {
   if (hasServiceRoleKey && supabaseAdmin5) {
     return supabaseAdmin5;

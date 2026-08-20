@@ -8,33 +8,16 @@ const PROD_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIs
 
 const isStaging = getAppEnvironment() === 'staging';
 
-// Static property access is REQUIRED for Vite build-time inlining / replacement
-const rawUrl = (
-  (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_SUPABASE_URL) ||
-  (typeof process !== 'undefined' && process.env && (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL)) ||
-  (isStaging ? STAGING_URL : PROD_URL)
-).toString().trim();
-
-const rawKey = (
-  (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_SUPABASE_ANON_KEY) ||
-  (typeof process !== 'undefined' && process.env && (process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || process.env.ANON_KEY)) ||
-  (isStaging ? STAGING_ANON : PROD_ANON)
-).toString().trim();
-
-// Robust URL cleaning to guarantee base origin without /rest/v1 or trailing slashes
+// Deterministic URL and key selection based strictly on environment
+const supabaseUrl = isStaging ? STAGING_URL : PROD_URL;
+const supabaseAnonKey = isStaging ? STAGING_ANON : PROD_ANON;
 const isBrowser = typeof window !== 'undefined';
-const supabaseUrl = rawUrl
-  ? rawUrl.split('/rest/v1')[0].split('/auth/v1')[0].split('/realtime/v1')[0].replace(/\/+$/, '')
-  : (isStaging ? STAGING_URL : PROD_URL);
-const supabaseAnonKey = rawKey || (isStaging ? STAGING_ANON : PROD_ANON);
 
 // Executa a validação rigorosa de isolamento de ambiente (Staging vs Produção)
-if (supabaseUrl) {
-  try {
-    validateEnvironmentIsolation(supabaseUrl);
-  } catch (err: any) {
-    console.error("[CRITICAL ENV ISOLATION ERROR]", err.message);
-  }
+try {
+  validateEnvironmentIsolation(supabaseUrl);
+} catch (err: any) {
+  console.error("[CRITICAL ENV ISOLATION ERROR]", err.message);
 }
 
 // Connection status exported for UI inspection

@@ -69771,9 +69771,11 @@ async function startServer() {
   }
 }
 startServer();
-var server_default = app;
+function handler(req, res) {
+  return app(req, res);
+}
 export {
-  server_default as default
+  handler as default
 };
 /*! Bundled license information:
 

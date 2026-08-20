@@ -9420,15 +9420,25 @@ async function startServer() {
     res.json(data);
   });
   app.get("/api/receipts", (req, res) => res.json(receipts));
-  if (process.env.NODE_ENV !== "production" && createViteServer) {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa"
-    });
-    console.log("[SERVER] Vite middleware mounting...");
-    app.use(vite.middlewares);
-    console.log("[SERVER] Vite middleware mounted.");
-  } else if (process.env.NODE_ENV === "production") {
+  const isVercelOrProd = process.env.VERCEL === "1" || process.env.NODE_ENV === "production" || process.env.VITE_APP_ENV === "production";
+  if (!isVercelOrProd) {
+    try {
+      const { createServer: createViteServerDyn } = await import("vite");
+      const vite = await createViteServerDyn({
+        server: { middlewareMode: true },
+        appType: "spa"
+      });
+      console.log("[SERVER] Vite middleware mounting...");
+      app.use(vite.middlewares);
+      console.log("[SERVER] Vite middleware mounted.");
+    } catch (e) {
+      console.warn("[SERVER] Vite not available, falling back to static:", e.message);
+      const distPath = path.join(process.cwd(), "dist");
+      if (fs.existsSync(distPath)) {
+        app.use(express.static(distPath));
+      }
+    }
+  } else {
     const distPath = path.join(process.cwd(), "dist");
     if (fs.existsSync(distPath)) {
       app.use(express.static(distPath));

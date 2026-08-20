@@ -8911,17 +8911,28 @@ async function startServer() {
   });
 
   app.get("/api/receipts", (req, res) => res.json(receipts));
-  // Vite (development only) — createViteServer is null on Vercel production
-  if (process.env.NODE_ENV !== "production" && createViteServer) {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    console.log("[SERVER] Vite middleware mounting...");
-    app.use(vite.middlewares);
-    console.log("[SERVER] Vite middleware mounted.");
-  } else if (process.env.NODE_ENV === "production") {
-    // On Vercel the static files are served by Vercel itself — only serve if dist exists
+  // Vite (development only) — only load in non-production non-Vercel environments
+  const isVercelOrProd = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production' || process.env.VITE_APP_ENV === 'production';
+  if (!isVercelOrProd) {
+    try {
+      const { createServer: createViteServerDyn } = await import('vite');
+      const vite = await createViteServerDyn({
+        server: { middlewareMode: true },
+        appType: 'spa',
+      });
+      console.log('[SERVER] Vite middleware mounting...');
+      app.use(vite.middlewares);
+      console.log('[SERVER] Vite middleware mounted.');
+    } catch (e: any) {
+      console.warn('[SERVER] Vite not available, falling back to static:', e.message);
+      // fall through to static serving below
+      const distPath = path.join(process.cwd(), 'dist');
+      if (fs.existsSync(distPath)) {
+        app.use(express.static(distPath));
+      }
+    }
+  } else {
+    // On Vercel the static files are served by Vercel itself — only serve if dist exists locally
     const distPath = path.join(process.cwd(), 'dist');
     if (fs.existsSync(distPath)) {
       app.use(express.static(distPath));

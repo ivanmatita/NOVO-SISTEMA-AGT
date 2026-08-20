@@ -9029,7 +9029,46 @@ async function startServer() {
     try { startAgtQueueWorker(20000); } catch (e) {}
   }
 }
-// Initialize Express application and routes synchronously
-startServer();
 
-export default app;
+// ============================================================
+// VERCEL SERVERLESS HANDLER — SAFE ASYNC WRAPPER
+// Captures any top-level crash and returns a JSON error
+// instead of FUNCTION_INVOCATION_FAILED
+// ============================================================
+let _startPromise: Promise<void> | null = null;
+let _startError: Error | null = null;
+
+function ensureStarted() {
+  if (!_startPromise) {
+    _startPromise = Promise.resolve().then(() => startServer()).catch((err: Error) => {
+      _startError = err;
+      console.error('[VERCEL-HANDLER] startServer() failed:', err?.message || err);
+    });
+  }
+  return _startPromise;
+}
+
+// Start immediately (non-blocking) so routes are ready before first request
+ensureStarted();
+
+async function vercelHandler(req: any, res: any) {
+  try {
+    await ensureStarted();
+    if (_startError) {
+      res.status(500).json({
+        error: 'Server initialization failed',
+        message: _startError.message,
+        env: process.env.VITE_APP_ENV || 'unknown',
+        supabaseUrl: (process.env.SUPABASE_URL || '').substring(0, 40) + '...'
+      });
+      return;
+    }
+    return app(req, res);
+  } catch (err: any) {
+    console.error('[VERCEL-HANDLER] Unhandled error:', err?.message);
+    res.status(500).json({ error: 'Internal server error', message: err?.message });
+  }
+}
+
+export default vercelHandler;
+

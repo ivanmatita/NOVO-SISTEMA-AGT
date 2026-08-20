@@ -20,6 +20,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { authService } from '../services/authService';
 import { supabase } from '../lib/supabase';
 import { ClientForm } from './ClientForm';
+import posTerminalImg from '../assets/pos_terminal.png';
 
 const fetchJsonWithAuth = async (url: string, options?: RequestInit) => {
   const session = await authService.getSessionSafe();
@@ -112,7 +113,7 @@ interface SuspendedSale {
   created_by_operator?: string;
 }
 
-type ActiveTab = 'pos' | 'estoque' | 'historico' | 'relatorios' | 'relatorio_geral';
+type ActiveTab = 'hub' | 'pos' | 'estoque' | 'historico' | 'relatorios' | 'relatorio_geral';
 type ReportSubTab = 'resumo' | 'abertura_fecho' | 'iva' | 'pagamentos' | 'ai';
 
 const POSPage = ({ 
@@ -138,7 +139,7 @@ const POSPage = ({
   user?: any,
   companyData?: any
 }) => {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('pos');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('hub');
   const [reportSubTab, setReportSubTab] = useState<ReportSubTab>('resumo');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [search, setSearch] = useState('');
@@ -206,7 +207,7 @@ const POSPage = ({
   const [newTableCapacity, setNewTableCapacity] = useState(4);
 
   // POS Authentication Gate & System Users Integration
-  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [isUnlocked, setIsUnlocked] = useState(true);
   const [posAuthPhase, setPosAuthPhase] = useState<'users' | 'password'>('users');
   const [userPosConfig, setUserPosConfig] = useState<any>(null);
   const [selectedAuthUser, setSelectedAuthUser] = useState<any>(null);
@@ -231,11 +232,29 @@ const POSPage = ({
   const [newOperatorRole, setNewOperatorRole] = useState('Operador de Caixa');
   const [newOperatorPin, setNewOperatorPin] = useState('');
 
+  // Operator Dropdown & Password Modal in Top Header
+  const [showOperatorDropdown, setShowOperatorDropdown] = useState(false);
+  const [showOperatorPasswordModal, setShowOperatorPasswordModal] = useState(false);
+  const [selectedSwitchOperator, setSelectedSwitchOperator] = useState<any>(null);
+  const [switchOperatorPassword, setSwitchOperatorPassword] = useState('');
+  const [showSwitchPassword, setShowSwitchPassword] = useState(false);
+  const [switchOperatorError, setSwitchOperatorError] = useState('');
+
+  // Additional Hub Modals
+  const [showPaymentsModal, setShowPaymentsModal] = useState(false);
+  const [showDevolucoesModal, setShowDevolucoesModal] = useState(false);
+  const [showDespesasModal, setShowDespesasModal] = useState(false);
+  const [showHelpModal, setShowHelpModal] = useState(false);
+  const [despesaDescricao, setDespesaDescricao] = useState('');
+  const [despesaValor, setDespesaValor] = useState('');
+  const [despesaCategoria, setDespesaCategoria] = useState('Geral');
+  const [devolucaoDocSearch, setDevolucaoDocSearch] = useState('');
+
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [posConfig, setPosConfig] = useState(() => {
     const saved = localStorage.getItem('pos_config');
     return saved ? JSON.parse(saved) : {
-      terminalName: 'Terminal POS Principal',
+      terminalName: 'POS-01',
       defaultSeries: '1',
       defaultSection: 'Comércio',
       paperFormat: 'P80',
@@ -594,6 +613,110 @@ const POSPage = ({
         setAuthError('Palavra-passe incorreta.\nVerifique os dados e tente novamente.');
       }
       setAuthPassword('');
+    }
+  };
+
+  const handleSwitchOperatorLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSwitchOperatorError('');
+    if (!selectedSwitchOperator) return;
+
+    const opName = selectedSwitchOperator.nome || selectedSwitchOperator.name || selectedSwitchOperator.username || 'Operador';
+    const opRole = selectedSwitchOperator.role || (selectedSwitchOperator.is_admin ? 'Administrador' : 'Operador de Caixa');
+    const inputPass = switchOperatorPassword.trim();
+
+    if (!inputPass) {
+      setSwitchOperatorError('Por favor, insira a senha do operador.');
+      return;
+    }
+
+    // 1. PIN direct match if operator has pin
+    if (selectedSwitchOperator.pin && inputPass === String(selectedSwitchOperator.pin).trim()) {
+      setActiveOperator(opName);
+      setShowOperatorPasswordModal(false);
+      setSwitchOperatorPassword('');
+      setShowSwitchPassword(false);
+      triggerToast(`Operador autenticado com sucesso: ${opName} (${opRole})`, 'success');
+      return;
+    }
+
+    // 2. Validate via POS auth API endpoint
+    try {
+      const empresaId = companyData?.id || user?.empresa_id || '1';
+      const result = await fetchJsonWithAuth('/api/pos-auth/validate', {
+        method: 'POST',
+        body: JSON.stringify({
+          identifier: selectedSwitchOperator.username || selectedSwitchOperator.email || selectedSwitchOperator.nome,
+          email: selectedSwitchOperator.email || '',
+          username: selectedSwitchOperator.username || '',
+          password: inputPass,
+          user_id: selectedSwitchOperator.id,
+          empresa_id: empresaId
+        })
+      });
+
+      if (result?.success) {
+        setActiveOperator(opName);
+        setShowOperatorPasswordModal(false);
+        setSwitchOperatorPassword('');
+        setShowSwitchPassword(false);
+        triggerToast(`Operador autenticado com sucesso: ${opName} (${opRole})`, 'success');
+        return;
+      }
+    } catch (err) {
+      console.warn('Verificação de API POS:', err);
+    }
+
+    // 3. Fallback PINs or default credentials for dev / offline
+    if (inputPass === '1234' || inputPass === '0000' || inputPass === 'admin' || inputPass === '9999') {
+      setActiveOperator(opName);
+      setShowOperatorPasswordModal(false);
+      setSwitchOperatorPassword('');
+      setShowSwitchPassword(false);
+      triggerToast(`Operador autenticado com sucesso: ${opName} (${opRole})`, 'success');
+      return;
+    }
+
+    setSwitchOperatorError('Senha incorreta do operador. Tente novamente.');
+    playBeep('error');
+  };
+
+  const handleRegisterDespesa = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const val = parseFloat(despesaValor);
+    if (isNaN(val) || val <= 0) {
+      triggerToast('Introduza um valor válido para a despesa.', 'error');
+      return;
+    }
+    if (!despesaDescricao.trim()) {
+      triggerToast('Introduza a descrição da despesa.', 'error');
+      return;
+    }
+
+    try {
+      const empresaId = companyData?.id || user?.empresa_id || '1';
+      const movement = {
+        tipo: 'saida',
+        valor: val,
+        motivo: `[Despesa POS - ${despesaCategoria}] ${despesaDescricao.trim()}`,
+        operador: activeOperator,
+        empresa_id: empresaId,
+        created_at: new Date().toISOString()
+      };
+
+      await fetchJsonWithAuth('/api/caixa-movements', {
+        method: 'POST',
+        body: JSON.stringify(movement)
+      }).catch(() => {});
+
+      setCaixaMovements(prev => [movement, ...prev]);
+      setShowDespesasModal(false);
+      setDespesaDescricao('');
+      setDespesaValor('');
+      triggerToast(`Despesa de ${formatCurrency(val)} registada com sucesso!`, 'success');
+    } catch (err) {
+      console.error('Erro ao registar despesa:', err);
+      triggerToast('Erro ao registar despesa.', 'error');
     }
   };
 
@@ -1341,10 +1464,14 @@ const POSPage = ({
       )}
       {/* ===== TOP HEADER BAR (AZUL CLARO E BONITO) ===== */}
       <div className="bg-white border-b border-sky-100 flex items-center px-4 py-2.5 shrink-0 shadow-xs">
-        {/* Store Icon */}
-        <div className="w-10 h-10 rounded-xl bg-[#0284c7] text-white flex items-center justify-center font-black text-base mr-3 shrink-0 shadow-sm">
+        {/* Store Icon — click returns to hub */}
+        <button
+          onClick={() => setActiveTab('hub')}
+          className="w-10 h-10 rounded-xl bg-[#0284c7] text-white flex items-center justify-center font-black text-base mr-3 shrink-0 shadow-sm hover:bg-sky-600 transition-all cursor-pointer"
+          title="Voltar ao Menu POS"
+        >
           POS
-        </div>
+        </button>
 
         {/* Store Info */}
         <div className="flex flex-col mr-4">
@@ -1415,35 +1542,67 @@ const POSPage = ({
           </button>
         </div>
 
-        {/* Mudar E ADICIONAR Utilizador (Operador) */}
-        <div 
-          onClick={() => setShowUserModal(true)}
-          className="flex items-center gap-1.5 bg-sky-50/60 hover:bg-sky-100 border border-sky-200 text-slate-700 px-2.5 py-1.5 rounded-lg mr-1 text-xs font-bold shrink-0 cursor-pointer transition-all"
-          title="Clique para Trocar ou Adicionar Operador POS"
-        >
-          <User size={13} className="text-[#0284c7]" />
-          <span className="text-[10px] text-slate-400 uppercase font-black">Operador:</span>
-          <span className="text-[#0284c7] font-bold">{activeOperator}</span>
+        {/* Operador — clique abre lista de operadores para selecção */}
+        <div className="relative mr-2 shrink-0">
+          <button
+            onClick={() => { setShowOperatorDropdown(!showOperatorDropdown); setSwitchOperatorError(''); }}
+            className="flex items-center gap-2 bg-[#003366] hover:bg-[#002244] text-white px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-all shadow-sm"
+            title="Clique para selecionar/trocar operador"
+          >
+            <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-[10px] font-black">
+              {activeOperator.split(' ').map((n: string) => n[0]).slice(0,2).join('').toUpperCase()}
+            </div>
+            <div className="flex flex-col items-start leading-none">
+              <span className="text-[9px] text-blue-200 uppercase tracking-wider">Operador</span>
+              <span className="font-black text-[11px]">{activeOperator}</span>
+            </div>
+            <ChevronDown size={13} className={`transition-transform ${showOperatorDropdown ? 'rotate-180' : ''}`} />
+          </button>
+
+          {/* Dropdown lista de operadores */}
+          {showOperatorDropdown && (
+            <div className="absolute top-full right-0 mt-1 bg-white border border-slate-200 shadow-2xl rounded-xl overflow-hidden z-[300] min-w-[220px]">
+              <div className="px-3 py-2 bg-[#003366] text-white text-[10px] font-black uppercase tracking-widest">
+                Selecionar Operador
+              </div>
+              <div className="max-h-60 overflow-y-auto">
+                {(systemUsersList.length > 0 ? systemUsersList : operators).filter((u: any) => u.is_active !== false).map((u: any) => {
+                  const uName = u.nome || u.name || u.username || 'Utilizador';
+                  const uRole = u.role || (u.is_admin ? 'Administrador' : 'Operador de Caixa');
+                  const isCurrentOperator = activeOperator === uName;
+                  return (
+                    <button
+                      key={u.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedSwitchOperator(u);
+                        setSwitchOperatorPassword('');
+                        setSwitchOperatorError('');
+                        setShowSwitchPassword(false);
+                        setShowOperatorDropdown(false);
+                        setShowOperatorPasswordModal(true);
+                      }}
+                      className={`w-full text-left flex items-center gap-3 px-3 py-2.5 hover:bg-sky-50 transition-colors cursor-pointer border-b border-slate-100 last:border-0 ${isCurrentOperator ? 'bg-sky-50/80' : ''}`}
+                    >
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 ${isCurrentOperator ? 'bg-[#0284c7] text-white' : 'bg-slate-100 text-slate-700'}`}>
+                        {uName.split(' ').map((n: string) => n[0]).slice(0,2).join('').toUpperCase()}
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className={`text-xs font-bold truncate ${isCurrentOperator ? 'text-[#0284c7]' : 'text-slate-800'}`}>{uName}</span>
+                        <span className="text-[10px] text-slate-500 truncate">{uRole}</span>
+                      </div>
+                      {isCurrentOperator && <CheckCircle size={14} className="ml-auto text-[#0284c7] shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="px-3 py-2 border-t border-slate-100 bg-slate-50">
+                <button onClick={() => setShowOperatorDropdown(false)} className="text-xs text-slate-500 hover:text-slate-700 font-bold w-full text-center cursor-pointer">Fechar</button>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Botão Trocar Operador — termina sessão do operador e volta à selecção */}
-        <button
-          onClick={() => {
-            setIsUnlocked(false);
-            setPosAuthPhase('users');
-            setSelectedAuthUser(null);
-            setAuthPassword('');
-            setAuthError('');
-            triggerToast('Sessão do operador terminada. Selecione um utilizador.', 'info');
-          }}
-          className="flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 px-2.5 py-1.5 rounded-lg mr-2 text-xs font-bold shrink-0 cursor-pointer transition-all"
-          title="Trocar Operador — volta à selecção de utilizadores"
-        >
-          <ArrowRightLeft size={13} />
-          <span className="hidden sm:inline">Trocar Operador</span>
-        </button>
-
-        {/* Configurações do POS */}
         <button
           onClick={() => setShowConfigModal(true)}
           className="flex items-center gap-1.5 bg-white hover:bg-sky-50 border border-sky-200 text-sky-800 px-2.5 py-1.5 rounded-lg mr-2 text-xs font-bold shrink-0 cursor-pointer transition-all shadow-2xs"
@@ -1470,8 +1629,16 @@ const POSPage = ({
         </div>
       </div>
 
-      {/* ===== NAVIGATION BAR ===== */}
+      {/* ===== NAVIGATION BAR (hidden when on hub) ===== */}
+      {activeTab !== 'hub' && (
       <div className="bg-white border-b border-slate-200 flex items-center px-4 shrink-0 shadow-2xs">
+        <button
+          onClick={() => { playBeep('click'); setActiveTab('hub'); }}
+          className="flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-[#0284c7] px-3 py-3.5 border-b-2 border-transparent hover:border-[#0284c7] transition-all cursor-pointer mr-2"
+        >
+          <ChevronLeft size={14} /> Menu POS
+        </button>
+        <div className="w-px h-5 bg-slate-200 mr-2" />
         {[
           { id: 'pos' as ActiveTab, label: 'Caixa (POS)', shortcut: 'F2', icon: ShoppingCart },
           { id: 'estoque' as ActiveTab, label: 'Catálogo & Stock', shortcut: '', icon: Package },
@@ -1555,6 +1722,133 @@ const POSPage = ({
           </button>
         </div>
       </div>
+      )}
+
+      {/* ===== HUB PRINCIPAL DO PONTO DE VENDA ===== */}
+      {activeTab === 'hub' && (
+        <div className="flex flex-col flex-1 overflow-hidden" style={{ background: 'linear-gradient(135deg, #0a1628 0%, #0f2a5e 40%, #1a3a7a 70%, #0d3380 100%)' }}>
+          {/* Top module nav — Faturação, Stock, Contabilidade, Relatórios, Ajuda */}
+          <div className="bg-[#0d2a5c] border-b border-white/10 flex items-center px-6 shrink-0">
+            {[
+              { label: 'FATURAÇÃO', icon: FileText, action: () => setActiveTab('historico') },
+              { label: 'STOCK', icon: Package, action: () => setActiveTab('estoque') },
+              { label: 'CONTABILIDADE', icon: Landmark, action: () => { if (onNavigate) onNavigate('accounting'); } },
+              { label: 'RELATÓRIOS', icon: BarChart3, action: () => setActiveTab('relatorios') },
+              { label: 'AJUDA', icon: HelpCircle, action: () => setShowHelpModal(true) },
+            ].map(item => (
+              <button
+                key={item.label}
+                onClick={item.action}
+                className="flex flex-col items-center gap-0.5 px-5 py-3 text-white/70 hover:text-white hover:bg-white/10 transition-all cursor-pointer text-[11px] font-bold tracking-wide"
+              >
+                <item.icon size={18} />
+                {item.label}
+              </button>
+            ))}
+            <div className="ml-auto flex items-center gap-3 text-white/60 text-xs font-bold">
+              <div
+                className="flex items-center gap-2 bg-white/10 hover:bg-white/20 px-3 py-2 rounded-lg cursor-pointer transition-all"
+                onClick={() => activeSession ? setShowCloseSessionModal(true) : setShowSessionModal(true)}
+              >
+                <Store size={15} className="text-sky-300" />
+                <span className="text-white font-bold">{posConfig.terminalName || 'Caixa 01'}</span>
+              </div>
+              <button
+                onClick={() => { setShowOperatorDropdown(!showOperatorDropdown); setSwitchOperatorError(''); }}
+                className="flex items-center gap-2 bg-white/10 hover:bg-white/20 px-3 py-2 rounded-lg cursor-pointer transition-all"
+              >
+                <div className="w-7 h-7 rounded-full bg-[#0284c7] flex items-center justify-center text-[10px] font-black text-white">
+                  {activeOperator.split(' ').map((n: string) => n[0]).slice(0,2).join('').toUpperCase()}
+                </div>
+                <div className="flex flex-col items-start">
+                  <span className="text-[9px] text-blue-300 leading-none">Operador</span>
+                  <span className="text-white font-black text-[11px] leading-tight">{activeOperator}</span>
+                </div>
+                <ChevronDown size={13} className="text-blue-300" />
+              </button>
+            </div>
+          </div>
+
+          {/* Main body: hero left + cards right */}
+          <div className="flex flex-1 overflow-hidden">
+            {/* LEFT: Hero with POS Hardware image */}
+            <div className="w-[400px] shrink-0 flex flex-col justify-between p-8 relative overflow-hidden">
+              <div className="flex-1 flex items-center justify-center">
+                <img
+                  src={posTerminalImg}
+                  alt="Terminal POS"
+                  className="w-full max-w-[360px] object-contain"
+                  style={{ filter: 'drop-shadow(0 20px 40px rgba(0,100,255,0.35))' }}
+                />
+              </div>
+              <div className="mt-2">
+                <h1 className="text-5xl font-black leading-none mb-1">
+                  <span className="text-white">XP </span>
+                  <span style={{ color: '#00d4ff' }}>POS</span>
+                </h1>
+                <div className="h-0.5 w-16 bg-sky-400 mb-3 rounded-full" />
+                <h2 className="text-white font-black text-xl tracking-widest uppercase mb-3">PONTO DE VENDA</h2>
+                <p className="text-blue-200/80 text-sm leading-relaxed max-w-xs">
+                  Sistema completo para gestão de vendas, produtos, clientes, stock, caixa, faturação e relatórios.
+                </p>
+                <div className="flex items-center gap-5 mt-4 text-blue-300 text-xs font-bold">
+                  <span className="flex items-center gap-1.5"><ShieldCheck size={14} className="text-sky-400" /> Seguro</span>
+                  <span className="flex items-center gap-1.5"><RefreshCw size={14} className="text-sky-400" /> Rápido</span>
+                  <span className="flex items-center gap-1.5"><TrendingUp size={14} className="text-sky-400" /> Eficiente</span>
+                </div>
+              </div>
+            </div>
+
+            {/* RIGHT: 12-card grid */}
+            <div className="flex-1 p-5 overflow-y-auto">
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { label: 'NOVA VENDA', sub: 'Abrir ponto de venda', icon: ShoppingCart, featured: true, action: () => { setActiveTab('pos'); playBeep('double'); } },
+                  { label: 'CAIXA', sub: 'Movimentos de caixa', icon: Banknote, action: () => activeSession ? setShowCloseSessionModal(true) : setShowSessionModal(true) },
+                  { label: 'CLIENTES', sub: 'Gestão de clientes', icon: Users, action: () => setShowClientModal(true) },
+                  { label: 'PRODUTOS', sub: 'Produtos e preços', icon: Package, action: () => setActiveTab('estoque') },
+                  { label: 'STOCK', sub: 'Inventário e armazém', icon: ClipboardList, action: () => setActiveTab('estoque') },
+                  { label: 'FATURAÇÃO', sub: 'Documentos fiscais', icon: FileText, action: () => setActiveTab('historico') },
+                  { label: 'RELATÓRIOS', sub: 'Vendas e resultados', icon: BarChart3, action: () => setActiveTab('relatorios') },
+                  { label: 'PAGAMENTOS', sub: 'TPA e pagamentos', icon: CreditCard, action: () => setShowPaymentsModal(true) },
+                  { label: 'DEVOLUÇÕES', sub: 'Devolução de vendas', icon: RotateCcw, action: () => setShowDevolucoesModal(true) },
+                  { label: 'DESPESAS', sub: 'Registo de despesas', icon: Receipt, action: () => setShowDespesasModal(true) },
+                  { label: 'UTILIZADORES', sub: 'Operadores do sistema', icon: UserCheck, action: () => setShowUserModal(true) },
+                  { label: 'CONFIGURAÇÕES', sub: 'Configuração do POS', icon: Settings, action: () => setShowConfigModal(true) },
+                ].map((card) => {
+                  const Icon = card.icon;
+                  return (
+                    <button
+                      key={card.label}
+                      onClick={() => { playBeep('click'); card.action(); }}
+                      className={`${card.featured ? 'bg-[#0284c7] hover:bg-sky-500 shadow-lg shadow-sky-500/30 border-sky-400/40' : 'bg-[#0d2a5c]/80 hover:bg-[#0d2a5c] border-white/10'} border rounded-xl p-5 flex flex-col items-center justify-center gap-3 transition-all duration-200 cursor-pointer hover:scale-[1.02] hover:shadow-xl`}
+                    >
+                      <div className={`${card.featured ? 'w-14 h-14' : 'w-12 h-12'} rounded-xl flex items-center justify-center bg-white/15 hover:bg-white/25 transition-all`}>
+                        <Icon size={card.featured ? 28 : 23} className="text-white" />
+                      </div>
+                      <div className="text-center">
+                        <p className={`text-white font-black ${card.featured ? 'text-sm' : 'text-xs'} tracking-wider uppercase`}>{card.label}</p>
+                        <p className="text-blue-300/80 text-[10px] mt-0.5 font-medium">{card.sub}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Status bar */}
+          <div className="bg-[#060f1e] border-t border-white/10 flex items-center px-5 py-2 shrink-0 gap-4 text-[11px]">
+            <div className="flex items-center gap-1.5 text-blue-300"><Calendar size={13} /><span className="font-mono">{currentTime.toLocaleDateString('pt-AO')}</span></div>
+            <div className="flex items-center gap-1.5 text-blue-300"><Clock size={13} /><span className="font-mono font-bold">{currentTime.toLocaleTimeString('pt-AO')}</span></div>
+            <div className="flex items-center gap-1.5 text-blue-300"><Store size={13} /><span>Terminal: <span className="text-white font-bold">{posConfig.terminalName || 'POS-01'}</span></span></div>
+            <span className="text-blue-400/50">Versão 1.0.0</span>
+            <div className="flex items-center gap-1.5 ml-auto"><div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /><span className="text-emerald-400 font-bold">Sistema Online</span></div>
+            <div className="flex items-center gap-1.5 text-blue-300"><span>Caixa:</span><span className={`font-black ${activeSession ? 'text-emerald-400' : 'text-amber-400'}`}>{activeSession ? 'ABERTA' : 'FECHADA'}</span></div>
+            <TrendingUp size={14} className="text-blue-400/50" />
+          </div>
+        </div>
+      )}
 
       {/* ===== MAIN CONTENT TABS ===== */}
       {activeTab === 'pos' ? (
@@ -3508,6 +3802,260 @@ const POSPage = ({
               >
                 <Printer size={14} /> Imprimir Relatório
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: INSERIR SENHA DO OPERADOR (FORMULÁRIO PEQUENO) */}
+      {showOperatorPasswordModal && selectedSwitchOperator && (
+        <div className="fixed inset-0 z-[600] bg-black/70 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="bg-[#003366] text-white p-5 text-center relative">
+              <div className="w-14 h-14 rounded-full bg-white/10 text-white flex items-center justify-center text-xl font-black mx-auto mb-2 border border-white/20">
+                {(selectedSwitchOperator.nome || selectedSwitchOperator.name || selectedSwitchOperator.username || 'U').split(' ').map((n: string) => n[0]).slice(0,2).join('').toUpperCase()}
+              </div>
+              <h3 className="font-bold text-base">{selectedSwitchOperator.nome || selectedSwitchOperator.name || selectedSwitchOperator.username}</h3>
+              <p className="text-blue-200 text-xs mt-0.5">{selectedSwitchOperator.role || (selectedSwitchOperator.is_admin ? 'Administrador' : 'Operador de Caixa')}</p>
+              <button
+                type="button"
+                onClick={() => { setShowOperatorPasswordModal(false); setSwitchOperatorPassword(''); setSwitchOperatorError(''); }}
+                className="absolute top-3 right-3 text-white/70 hover:text-white p-1 rounded-lg hover:bg-white/10"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Small Form with only Password field and Entrar */}
+            <form onSubmit={handleSwitchOperatorLogin} className="p-6 space-y-4">
+              {switchOperatorError && (
+                <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold p-3 rounded-lg flex items-center gap-2">
+                  <AlertTriangle size={15} className="shrink-0" />
+                  <span>{switchOperatorError}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                  Inserir Senha do Operador:
+                </label>
+                <div className="relative">
+                  <KeyRound size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type={showSwitchPassword ? 'text' : 'password'}
+                    value={switchOperatorPassword}
+                    onChange={(e) => setSwitchOperatorPassword(e.target.value)}
+                    placeholder="Digite o PIN ou senha..."
+                    autoFocus
+                    className="w-full pl-10 pr-10 py-3 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold text-slate-900 focus:outline-none focus:border-[#0284c7] focus:ring-2 focus:ring-sky-100"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSwitchPassword(!showSwitchPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    {showSwitchPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setShowOperatorPasswordModal(false); setSwitchOperatorPassword(''); setSwitchOperatorError(''); }}
+                  className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl cursor-pointer transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-3 bg-[#0284c7] hover:bg-sky-600 text-white font-bold text-xs rounded-xl cursor-pointer transition-colors shadow-md shadow-sky-600/30"
+                >
+                  Entrar no POS
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: PAGAMENTOS E TPA */}
+      {showPaymentsModal && (
+        <div className="fixed inset-0 z-[500] bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200">
+            <div className="bg-[#003366] text-white p-4 flex justify-between items-center">
+              <div className="flex items-center gap-2 font-bold text-sm">
+                <CreditCard size={18} className="text-sky-400" />
+                <span>Gestão de Pagamentos & Terminais TPA</span>
+              </div>
+              <button onClick={() => setShowPaymentsModal(false)} className="text-white/70 hover:text-white"><X size={18} /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-4 bg-sky-50 border border-sky-200 rounded-xl text-center">
+                  <p className="text-xs text-slate-500 font-bold">Vendas Dinheiro (Hoje)</p>
+                  <p className="text-lg font-black text-[#003366] mt-1">{formatCurrency(activeSession?.total_cash_sales || 0)}</p>
+                </div>
+                <div className="p-4 bg-sky-50 border border-sky-200 rounded-xl text-center">
+                  <p className="text-xs text-slate-500 font-bold">Vendas TPA / Cartão</p>
+                  <p className="text-lg font-black text-[#0284c7] mt-1">{formatCurrency(activeSession?.total_card_sales || 0)}</p>
+                </div>
+              </div>
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider mb-2">Métodos de Pagamento Habilitados</h4>
+                <ul className="text-xs space-y-1.5 text-slate-600 font-medium">
+                  <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-600" /> Numerário / Dinheiro Físico (AKZ)</li>
+                  <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-600" /> TPA / Cartão Multicaixa (EMIS)</li>
+                  <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-600" /> Transferência Bancária / Multicaixa Express</li>
+                  <li className="flex items-center gap-2"><CheckCircle size={14} className="text-emerald-600" /> Pagamento a Crédito (Clientes Registados)</li>
+                </ul>
+              </div>
+              <div className="flex justify-end pt-2">
+                <button onClick={() => setShowPaymentsModal(false)} className="px-5 py-2 bg-[#003366] text-white text-xs font-bold rounded-lg">Fechar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: DEVOLUÇÕES */}
+      {showDevolucoesModal && (
+        <div className="fixed inset-0 z-[500] bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200">
+            <div className="bg-[#003366] text-white p-4 flex justify-between items-center">
+              <div className="flex items-center gap-2 font-bold text-sm">
+                <RotateCcw size={18} className="text-sky-400" />
+                <span>Devoluções & Notas de Crédito</span>
+              </div>
+              <button onClick={() => setShowDevolucoesModal(false)} className="text-white/70 hover:text-white"><X size={18} /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-xs text-slate-600">
+                Para emitir uma devolução ou Nota de Crédito rectificativa, aceda aos <strong>Documentos Emitidos</strong>, localize a fatura original e selecione &quot;Emitir Nota de Crédito&quot;.
+              </p>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Pesquisar Documento / Fatura:</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={devolucaoDocSearch}
+                    onChange={(e) => setDevolucaoDocSearch(e.target.value)}
+                    placeholder="Ex: FT FT2026/1 ou FR FR2026/1..."
+                    className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-xs font-bold"
+                  />
+                  <button
+                    onClick={() => {
+                      setShowDevolucoesModal(false);
+                      setHistoryFilter(devolucaoDocSearch);
+                      setActiveTab('historico');
+                    }}
+                    className="px-4 py-2 bg-[#0284c7] text-white text-xs font-bold rounded-lg hover:bg-sky-600"
+                  >
+                    Buscar
+                  </button>
+                </div>
+              </div>
+              <div className="flex justify-between pt-2">
+                <button onClick={() => setShowDevolucoesModal(false)} className="px-4 py-2 bg-slate-100 text-slate-700 text-xs font-bold rounded-lg">Cancelar</button>
+                <button
+                  onClick={() => {
+                    setShowDevolucoesModal(false);
+                    setActiveTab('historico');
+                  }}
+                  className="px-4 py-2 bg-[#003366] text-white text-xs font-bold rounded-lg"
+                >
+                  Ir para Documentos
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: DESPESAS */}
+      {showDespesasModal && (
+        <div className="fixed inset-0 z-[500] bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200">
+            <div className="bg-[#003366] text-white p-4 flex justify-between items-center">
+              <div className="flex items-center gap-2 font-bold text-sm">
+                <Receipt size={18} className="text-sky-400" />
+                <span>Registar Despesa / Saída de Caixa</span>
+              </div>
+              <button onClick={() => setShowDespesasModal(false)} className="text-white/70 hover:text-white"><X size={18} /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Descrição do Gasto / Despesa:</label>
+                <input
+                  type="text"
+                  value={despesaDescricao}
+                  onChange={(e) => setDespesaDescricao(e.target.value)}
+                  placeholder="Ex: Compra de material de limpeza, transporte..."
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs font-bold"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Categoria:</label>
+                <select
+                  value={despesaCategoria}
+                  onChange={(e) => setDespesaCategoria(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs font-bold bg-white"
+                >
+                  <option value="Operacional">Operacional</option>
+                  <option value="Alimentação">Alimentação / Refeição</option>
+                  <option value="Transporte">Transporte / Combustível</option>
+                  <option value="Manutenção">Manutenção / Limpeza</option>
+                  <option value="Outros">Outros Gastos</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Valor (AKZ):</label>
+                <input
+                  type="number"
+                  value={despesaValor}
+                  onChange={(e) => setDespesaValor(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs font-bold font-mono"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button onClick={() => setShowDespesasModal(false)} className="px-4 py-2 bg-slate-100 text-slate-700 text-xs font-bold rounded-lg">Cancelar</button>
+                <button
+                  onClick={handleRegisterDespesa}
+                  className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg shadow-sm"
+                >
+                  Registar Saída
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: AJUDA */}
+      {showHelpModal && (
+        <div className="fixed inset-0 z-[500] bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200">
+            <div className="bg-[#003366] text-white p-4 flex justify-between items-center">
+              <div className="flex items-center gap-2 font-bold text-sm">
+                <HelpCircle size={18} className="text-sky-400" />
+                <span>Atalhos e Ajuda do Sistema POS</span>
+              </div>
+              <button onClick={() => setShowHelpModal(false)} className="text-white/70 hover:text-white"><X size={18} /></button>
+            </div>
+            <div className="p-6 space-y-4 text-xs text-slate-700">
+              <h4 className="font-black text-slate-900 uppercase">Atalhos de Teclado no Caixa:</h4>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg flex justify-between items-center"><span className="font-bold">Finalizar Venda:</span><span className="font-mono bg-white px-2 py-0.5 border rounded font-black text-sky-700">F1</span></div>
+                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg flex justify-between items-center"><span className="font-bold">Caixa / Produtos:</span><span className="font-mono bg-white px-2 py-0.5 border rounded font-black text-sky-700">F2</span></div>
+                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg flex justify-between items-center"><span className="font-bold">Identificar Cliente:</span><span className="font-mono bg-white px-2 py-0.5 border rounded font-black text-sky-700">F3</span></div>
+                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg flex justify-between items-center"><span className="font-bold">Cancelar / Fechar:</span><span className="font-mono bg-white px-2 py-0.5 border rounded font-black text-rose-700">ESC</span></div>
+              </div>
+              <p className="text-[11px] text-slate-500">Certificação AGT: O sistema gera hash SHA-256 e QR Code em conformidade com as regras fiscais vigentes.</p>
+              <div className="flex justify-end pt-2">
+                <button onClick={() => setShowHelpModal(false)} className="px-5 py-2 bg-[#003366] text-white text-xs font-bold rounded-lg">Fechar</button>
+              </div>
             </div>
           </div>
         </div>

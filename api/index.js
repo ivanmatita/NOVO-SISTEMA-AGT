@@ -2409,7 +2409,7 @@ function startAgtQueueWorker(intervalMs = 15e3) {
 // server.ts
 import { fileURLToPath } from "url";
 var createViteServer = null;
-if (process.env.NODE_ENV !== "production") {
+if (!process.env.VERCEL && process.env.NODE_ENV !== "production" && process.env.VITE_APP_ENV !== "production") {
   try {
     const viteModule = await import("vite");
     createViteServer = viteModule.createServer;

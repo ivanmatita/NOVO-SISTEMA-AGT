@@ -8903,40 +8903,18 @@ async function startServer() {
   });
 
   app.get("/api/receipts", (req, res) => res.json(receipts));
-  // Vite (development only) — only load in non-production non-Vercel environments
-  const isVercelOrProd = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production' || process.env.VITE_APP_ENV === 'production';
-  if (!isVercelOrProd) {
-    try {
-      const { createServer: createViteServerDyn } = await import('vite');
-      const vite = await createViteServerDyn({
-        server: { middlewareMode: true },
-        appType: 'spa',
-      });
-      console.log('[SERVER] Vite middleware mounting...');
-      app.use(vite.middlewares);
-      console.log('[SERVER] Vite middleware mounted.');
-    } catch (e: any) {
-      console.warn('[SERVER] Vite not available, falling back to static:', e.message);
-      // fall through to static serving below
-      const distPath = path.join(process.cwd(), 'dist');
-      if (fs.existsSync(distPath)) {
-        app.use(express.static(distPath));
+  // Serve static files in production / standalone
+  const distPath = path.join(process.cwd(), 'dist');
+  if (fs.existsSync(distPath)) {
+    app.use(express.static(distPath));
+    app.get('*', (req: any, res: any) => {
+      const indexPath = path.join(distPath, 'index.html');
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        res.status(404).json({ error: 'Not found' });
       }
-    }
-  } else {
-    // On Vercel the static files are served by Vercel itself — only serve if dist exists locally
-    const distPath = path.join(process.cwd(), 'dist');
-    if (fs.existsSync(distPath)) {
-      app.use(express.static(distPath));
-      app.get('*', (req: any, res: any) => {
-        const indexPath = path.join(distPath, 'index.html');
-        if (fs.existsSync(indexPath)) {
-          res.sendFile(indexPath);
-        } else {
-          res.status(404).json({ error: 'Not found' });
-        }
-      });
-    }
+    });
   }
 
   // Utility to reload PostgREST schema cache

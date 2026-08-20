@@ -9412,37 +9412,17 @@ async function startServer() {
     res.json(data);
   });
   app.get("/api/receipts", (req, res) => res.json(receipts));
-  const isVercelOrProd = process.env.VERCEL === "1" || process.env.NODE_ENV === "production" || process.env.VITE_APP_ENV === "production";
-  if (!isVercelOrProd) {
-    try {
-      const { createServer: createViteServerDyn } = await import("vite");
-      const vite = await createViteServerDyn({
-        server: { middlewareMode: true },
-        appType: "spa"
-      });
-      console.log("[SERVER] Vite middleware mounting...");
-      app.use(vite.middlewares);
-      console.log("[SERVER] Vite middleware mounted.");
-    } catch (e) {
-      console.warn("[SERVER] Vite not available, falling back to static:", e.message);
-      const distPath = path.join(process.cwd(), "dist");
-      if (fs.existsSync(distPath)) {
-        app.use(express.static(distPath));
+  const distPath = path.join(process.cwd(), "dist");
+  if (fs.existsSync(distPath)) {
+    app.use(express.static(distPath));
+    app.get("*", (req, res) => {
+      const indexPath = path.join(distPath, "index.html");
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        res.status(404).json({ error: "Not found" });
       }
-    }
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    if (fs.existsSync(distPath)) {
-      app.use(express.static(distPath));
-      app.get("*", (req, res) => {
-        const indexPath = path.join(distPath, "index.html");
-        if (fs.existsSync(indexPath)) {
-          res.sendFile(indexPath);
-        } else {
-          res.status(404).json({ error: "Not found" });
-        }
-      });
-    }
+    });
   }
   app.post("/api/admin/reload-schema", async (req, res) => {
     const authCtx = await getAuthUserContext(req);

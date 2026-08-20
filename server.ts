@@ -338,7 +338,7 @@ let laborTerminations: any[] = savedData?.laborTerminations || [];
 let contracts: any[] = savedData?.contracts || [];
 
 // --- Supabase Persistence Layer (Cloud Sync) ---
-let isInitialLoadComplete = false;
+let isInitialLoadComplete = true;
 let syncPromise: Promise<void> | null = null;
 
 async function syncFromSupabase(): Promise<void> {
@@ -596,16 +596,8 @@ app.all("/api/supabase-proxy/*", express.raw({ type: "*/*", limit: "50mb" }), as
   }
 });
 
-// Middleware to ensure data is loaded before processing requests
-app.use(async (req, res, next) => {
-  if (!isInitialLoadComplete && supabaseAdmin && req.path.startsWith('/api')) {
-    try {
-      await syncFromSupabase();
-    } catch (e) {
-      console.warn("[Middleware Sync Error] Suprimido para não bloquear API:", e);
-      isInitialLoadComplete = true;
-    }
-  }
+// Middleware non-blocking
+app.use((req, res, next) => {
   next();
 });
 

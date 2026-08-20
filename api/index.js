@@ -2660,7 +2660,7 @@ var attendance = savedData?.attendance || [];
 var absences = savedData?.absences || [];
 var laborTerminations = savedData?.laborTerminations || [];
 var contracts = savedData?.contracts || [];
-var isInitialLoadComplete = false;
+var isInitialLoadComplete = true;
 var syncPromise = null;
 async function syncFromSupabase() {
   if (!supabaseAdmin5) return;
@@ -2884,15 +2884,7 @@ app.all("/api/supabase-proxy/*", express.raw({ type: "*/*", limit: "50mb" }), as
     res.status(502).json({ error: "Erro de Proxy Supabase", message: error.message });
   }
 });
-app.use(async (req, res, next) => {
-  if (!isInitialLoadComplete && supabaseAdmin5 && req.path.startsWith("/api")) {
-    try {
-      await syncFromSupabase();
-    } catch (e) {
-      console.warn("[Middleware Sync Error] Suprimido para n\xE3o bloquear API:", e);
-      isInitialLoadComplete = true;
-    }
-  }
+app.use((req, res, next) => {
   next();
 });
 async function startServer() {

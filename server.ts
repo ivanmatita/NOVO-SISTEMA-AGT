@@ -734,19 +734,20 @@ async function startServer() {
         return res.status(401).json({ error: "Missing token" });
       }
       
-      if (!supabaseAdmin) {
-        return res.status(500).json({ error: "No admin client available" });
+      const client = getSupabaseClient(req) || supabaseAdmin;
+      if (!client) {
+        return res.status(500).json({ error: "No Supabase client available" });
       }
 
       const token = authHeader.split(' ')[1];
-      const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
+      const { data: { user }, error: userError } = await client.auth.getUser(token);
       
       if (userError || !user) {
         return res.status(401).json({ error: "Invalid token" });
       }
 
       // Fetch without RLS
-      const { data: perfil } = await supabaseAdmin
+      const { data: perfil } = await client
         .from('perfis')
         .select('*')
         .eq('id', user.id)
@@ -755,18 +756,22 @@ async function startServer() {
       const companyId = perfil?.company_id || perfil?.empresa_id;
 
       if (companyId) {
-        const { data: empresa } = await supabaseAdmin
+        const { data: empresa } = await client
           .from('empresas')
           .select('*')
           .eq('id', companyId)
           .maybeSingle();
           
         // Load permission_areas from system_users for normal user restriction
-        const { data: sysUser } = await supabaseAdmin
-          .from('system_users')
-          .select('permission_areas, is_admin, level')
-          .eq('id', user.id)
-          .maybeSingle();
+        let sysUser = null;
+        try {
+          const { data: su } = await client
+            .from('system_users')
+            .select('permission_areas, is_admin, level')
+            .eq('id', user.id)
+            .maybeSingle();
+          sysUser = su;
+        } catch (_) {}
 
         if (perfil && perfil.is_active === false) {
           return res.status(403).json({ error: "CONTA_BLOQUEADA", message: "Esta conta foi desativada pelo administrador." });
@@ -781,14 +786,16 @@ async function startServer() {
           level: perfil?.level || sysUser?.level || (perfil?.role === 'admin' ? 10 : 1)
         };
 
-        await addAuditLog(
-          user.id,
-          user.email || null,
-          "Login efetuado / Sessão validada",
-          companyId,
-          (req.ip || req.headers['x-forwarded-for'] || '').toString(),
-          (req.headers['user-agent'] || '').toString()
-        );
+        try {
+          await addAuditLog(
+            user.id,
+            user.email || null,
+            "Login efetuado / Sessão validada",
+            companyId,
+            (req.ip || req.headers['x-forwarded-for'] || '').toString(),
+            (req.headers['user-agent'] || '').toString()
+          );
+        } catch (_) {}
           
         return res.json({
           user: user,
@@ -798,21 +805,23 @@ async function startServer() {
       }
 
       // Fallback: look for empresa where user is owner
-      const { data: legacyEmpresa } = await supabaseAdmin
+      const { data: legacyEmpresa } = await client
         .from('empresas')
         .select('*')
         .or(`id.eq.${user.id},auth_user_id.eq.${user.id}`)
         .maybeSingle();
         
       if (legacyEmpresa) {
-        await addAuditLog(
-          user.id,
-          user.email || null,
-          "Login efetuado / Sessão validada (Proprietário)",
-          legacyEmpresa.id,
-          (req.ip || req.headers['x-forwarded-for'] || '').toString(),
-          (req.headers['user-agent'] || '').toString()
-        );
+        try {
+          await addAuditLog(
+            user.id,
+            user.email || null,
+            "Login efetuado / Sessão validada (Proprietário)",
+            legacyEmpresa.id,
+            (req.ip || req.headers['x-forwarded-for'] || '').toString(),
+            (req.headers['user-agent'] || '').toString()
+          );
+        } catch (_) {}
 
         return res.json({
           user: user,
@@ -830,7 +839,8 @@ async function startServer() {
 
       return res.status(404).json({ error: "Profile not found" });
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      console.error("[AUTH/ME] Error:", e);
+      res.status(500).json({ error: e.message || "Internal server error" });
     }
   });
 

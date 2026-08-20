@@ -52661,19 +52661,25 @@ async function startServer() {
       if (!authHeader || !authHeader.startsWith("Bearer ")) {
         return res.status(401).json({ error: "Missing token" });
       }
-      if (!supabaseAdmin5) {
-        return res.status(500).json({ error: "No admin client available" });
+      const client = getSupabaseClient(req) || supabaseAdmin5;
+      if (!client) {
+        return res.status(500).json({ error: "No Supabase client available" });
       }
       const token = authHeader.split(" ")[1];
-      const { data: { user }, error: userError } = await supabaseAdmin5.auth.getUser(token);
+      const { data: { user }, error: userError } = await client.auth.getUser(token);
       if (userError || !user) {
         return res.status(401).json({ error: "Invalid token" });
       }
-      const { data: perfil } = await supabaseAdmin5.from("perfis").select("*").eq("id", user.id).maybeSingle();
+      const { data: perfil } = await client.from("perfis").select("*").eq("id", user.id).maybeSingle();
       const companyId = perfil?.company_id || perfil?.empresa_id;
       if (companyId) {
-        const { data: empresa } = await supabaseAdmin5.from("empresas").select("*").eq("id", companyId).maybeSingle();
-        const { data: sysUser } = await supabaseAdmin5.from("system_users").select("permission_areas, is_admin, level").eq("id", user.id).maybeSingle();
+        const { data: empresa } = await client.from("empresas").select("*").eq("id", companyId).maybeSingle();
+        let sysUser = null;
+        try {
+          const { data: su } = await client.from("system_users").select("permission_areas, is_admin, level").eq("id", user.id).maybeSingle();
+          sysUser = su;
+        } catch (_) {
+        }
         if (perfil && perfil.is_active === false) {
           return res.status(403).json({ error: "CONTA_BLOQUEADA", message: "Esta conta foi desativada pelo administrador." });
         }
@@ -52685,30 +52691,36 @@ async function startServer() {
           is_admin: perfil?.is_admin || perfil?.role === "admin" || sysUser?.is_admin || false,
           level: perfil?.level || sysUser?.level || (perfil?.role === "admin" ? 10 : 1)
         };
-        await addAuditLog(
-          user.id,
-          user.email || null,
-          "Login efetuado / Sess\xE3o validada",
-          companyId,
-          (req.ip || req.headers["x-forwarded-for"] || "").toString(),
-          (req.headers["user-agent"] || "").toString()
-        );
+        try {
+          await addAuditLog(
+            user.id,
+            user.email || null,
+            "Login efetuado / Sess\xE3o validada",
+            companyId,
+            (req.ip || req.headers["x-forwarded-for"] || "").toString(),
+            (req.headers["user-agent"] || "").toString()
+          );
+        } catch (_) {
+        }
         return res.json({
           user,
           perfil: enrichedPerfil,
           empresa
         });
       }
-      const { data: legacyEmpresa } = await supabaseAdmin5.from("empresas").select("*").or(`id.eq.${user.id},auth_user_id.eq.${user.id}`).maybeSingle();
+      const { data: legacyEmpresa } = await client.from("empresas").select("*").or(`id.eq.${user.id},auth_user_id.eq.${user.id}`).maybeSingle();
       if (legacyEmpresa) {
-        await addAuditLog(
-          user.id,
-          user.email || null,
-          "Login efetuado / Sess\xE3o validada (Propriet\xE1rio)",
-          legacyEmpresa.id,
-          (req.ip || req.headers["x-forwarded-for"] || "").toString(),
-          (req.headers["user-agent"] || "").toString()
-        );
+        try {
+          await addAuditLog(
+            user.id,
+            user.email || null,
+            "Login efetuado / Sess\xE3o validada (Propriet\xE1rio)",
+            legacyEmpresa.id,
+            (req.ip || req.headers["x-forwarded-for"] || "").toString(),
+            (req.headers["user-agent"] || "").toString()
+          );
+        } catch (_) {
+        }
         return res.json({
           user,
           perfil: {
@@ -52724,7 +52736,8 @@ async function startServer() {
       }
       return res.status(404).json({ error: "Profile not found" });
     } catch (e) {
-      res.status(500).json({ error: e.message });
+      console.error("[AUTH/ME] Error:", e);
+      res.status(500).json({ error: e.message || "Internal server error" });
     }
   });
   app.post("/api/auth/repair-onboarding", async (req, res) => {

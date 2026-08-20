@@ -9,7 +9,7 @@ import {
   ArrowLeft, Users, Clock, ShoppingCart, User, Banknote, CircleCheck, Key, Layers, Pencil,
   Coffee, Shirt, RefreshCw, History, PieChart, ChevronDown, RotateCw, Percent, Sparkles,
   Brain, Bot, Lightbulb, TrendingDown, DollarSign, FileSpreadsheet, Eye, EyeOff, ShieldCheck,
-  FileCheck, Landmark, Receipt, Truck, Filter, Calendar, UserPlus, LogIn
+  FileCheck, Landmark, Receipt, Truck, Filter, Calendar, UserPlus, LogIn, Settings, KeyRound
 } from 'lucide-react';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,

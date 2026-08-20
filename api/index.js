@@ -50472,10 +50472,10 @@ function generateValidateDocumentSignature(params) {
 import crypto4 from "crypto";
 import_dotenv3.default.config();
 var rawSupabaseUrl = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "").trim();
-var supabaseUrl = rawSupabaseUrl.replace(/\/rest\/v1\/?$/, "").replace(/\/auth\/v1\/?$/, "").replace(/\/$/, "");
+var supabaseUrl2 = rawSupabaseUrl.replace(/\/rest\/v1\/?$/, "").replace(/\/auth\/v1\/?$/, "").replace(/\/$/, "");
 var supabaseServiceRole = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
 var isServiceKeyValid = supabaseServiceRole && supabaseServiceRole.length > 50;
-var supabaseAdmin = supabaseUrl && isServiceKeyValid ? createClient(supabaseUrl, supabaseServiceRole, {
+var supabaseAdmin = supabaseUrl2 && isServiceKeyValid ? createClient(supabaseUrl2, supabaseServiceRole, {
   auth: {
     autoRefreshToken: false,
     persistSession: false
@@ -50655,10 +50655,10 @@ init_requestSignature();
 import crypto5 from "crypto";
 import_dotenv4.default.config();
 var rawSupabaseUrl2 = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "").trim();
-var supabaseUrl2 = rawSupabaseUrl2.replace(/\/rest\/v1\/?$/, "").replace(/\/auth\/v1\/?$/, "").replace(/\/$/, "");
+var supabaseUrl3 = rawSupabaseUrl2.replace(/\/rest\/v1\/?$/, "").replace(/\/auth\/v1\/?$/, "").replace(/\/$/, "");
 var supabaseServiceRole2 = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
 var isServiceKeyValid2 = supabaseServiceRole2 && supabaseServiceRole2.length > 50;
-var supabaseAdmin2 = supabaseUrl2 && isServiceKeyValid2 ? createClient(supabaseUrl2, supabaseServiceRole2, {
+var supabaseAdmin2 = supabaseUrl3 && isServiceKeyValid2 ? createClient(supabaseUrl3, supabaseServiceRole2, {
   auth: {
     autoRefreshToken: false,
     persistSession: false
@@ -50774,10 +50774,10 @@ init_documentSignature();
 import crypto6 from "crypto";
 import_dotenv5.default.config();
 var rawSupabaseUrl3 = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "").trim();
-var supabaseUrl3 = rawSupabaseUrl3.replace(/\/rest\/v1\/?$/, "").replace(/\/auth\/v1\/?$/, "").replace(/\/$/, "");
+var supabaseUrl4 = rawSupabaseUrl3.replace(/\/rest\/v1\/?$/, "").replace(/\/auth\/v1\/?$/, "").replace(/\/$/, "");
 var supabaseServiceRole3 = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
 var isServiceKeyValid3 = supabaseServiceRole3 && supabaseServiceRole3.length > 50;
-var supabaseAdmin3 = supabaseUrl3 && isServiceKeyValid3 ? createClient(supabaseUrl3, supabaseServiceRole3, {
+var supabaseAdmin3 = supabaseUrl4 && isServiceKeyValid3 ? createClient(supabaseUrl4, supabaseServiceRole3, {
   auth: {
     autoRefreshToken: false,
     persistSession: false
@@ -51895,9 +51895,9 @@ init_dist4();
 var import_dotenv6 = __toESM(require_main4(), 1);
 import_dotenv6.default.config();
 var rawUrl = (process.env.SUPABASE_URL || "").trim();
-var supabaseUrl4 = rawUrl.replace(/\/rest\/v1\/?$/, "").replace(/\/auth\/v1\/?$/, "").replace(/\/$/, "");
+var supabaseUrl5 = rawUrl.replace(/\/rest\/v1\/?$/, "").replace(/\/auth\/v1\/?$/, "").replace(/\/$/, "");
 var supabaseServiceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
-var supabaseAdmin4 = supabaseUrl4 && supabaseServiceKey ? createClient(supabaseUrl4, supabaseServiceKey, {
+var supabaseAdmin4 = supabaseUrl5 && supabaseServiceKey ? createClient(supabaseUrl5, supabaseServiceKey, {
   auth: { persistSession: false, autoRefreshToken: false }
 }) : null;
 var isProcessing = false;
@@ -52094,6 +52094,7 @@ function startAgtQueueWorker(intervalMs = 15e3) {
 
 // server.ts
 import { fileURLToPath } from "url";
+import { AsyncLocalStorage } from "async_hooks";
 var _currentFile = typeof import.meta !== "undefined" && import.meta.url ? fileURLToPath(import.meta.url) : "";
 var __dirname_server = typeof __dirname !== "undefined" ? __dirname : _currentFile ? path.dirname(_currentFile) : process.cwd();
 var PROD_URL = "https://nawqfidnawokqaheqvar.supabase.co";
@@ -52122,31 +52123,60 @@ if (_isStaging) {
   console.log(`
 \u{1F680} [PRODUCTION MODE] Ficheiro de ambiente carregado: ${_envFile}`);
 }
-var supabaseUrl5 = _isStaging ? STAGING_URL : PROD_URL;
-var supabaseAnonKey = _isStaging ? STAGING_ANON_KEY : PROD_ANON_KEY;
-var supabaseServiceRole4 = process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.SUPABASE_SERVICE_ROLE_KEY.length > 20 ? process.env.SUPABASE_SERVICE_ROLE_KEY.trim() : _isStaging ? STAGING_SERVICE_ROLE_KEY : PROD_SERVICE_ROLE_KEY;
-var hasServiceRoleKey = Boolean(supabaseServiceRole4 && supabaseServiceRole4.length > 20);
-var adminKeyToUse = hasServiceRoleKey ? supabaseServiceRole4 : supabaseAnonKey;
-console.log(`[STARTUP] Environment: ${_isStaging ? "STAGING" : "PRODUCTION"} | SupabaseURL: ${supabaseUrl5} | ServiceRoleKey: ${hasServiceRoleKey ? "PRESENT" : "FALLBACK"}`);
-var supabaseAdmin5 = createClient(supabaseUrl5, adminKeyToUse, {
+var reqStorage = new AsyncLocalStorage();
+var supabaseAdminProd = createClient(PROD_URL, PROD_SERVICE_ROLE_KEY, {
   auth: {
     autoRefreshToken: false,
     persistSession: false
   }
 });
-function getSupabaseClient(req) {
-  if (hasServiceRoleKey && supabaseAdmin5) {
-    return supabaseAdmin5;
+var supabaseAdminStaging = createClient(STAGING_URL, STAGING_SERVICE_ROLE_KEY, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
   }
+});
+function getActiveAdminClient(req) {
+  if (req) {
+    const host = (req.headers["x-forwarded-host"] || req.headers.host || "").toString().toLowerCase();
+    if (host.includes("staging") || host.includes("teste") || host.includes("homologacao")) {
+      return supabaseAdminStaging;
+    }
+    if (host.includes("vercel.app") && !host.includes("staging")) {
+      return supabaseAdminProd;
+    }
+  }
+  const store = reqStorage.getStore();
+  if (store !== void 0) {
+    return store.isStaging ? supabaseAdminStaging : supabaseAdminProd;
+  }
+  return _isStaging ? supabaseAdminStaging : supabaseAdminProd;
+}
+var supabaseAdmin5 = new Proxy({}, {
+  get(_target, prop) {
+    const client = getActiveAdminClient();
+    const val = client[prop];
+    if (typeof val === "function") {
+      return val.bind(client);
+    }
+    return val;
+  }
+});
+function getSupabaseClient(req) {
+  const host = (req?.headers?.["x-forwarded-host"] || req?.headers?.host || "").toString().toLowerCase();
+  const isStagingReq = host.includes("staging") || host.includes("teste") || host.includes("homologacao") || _isStaging;
+  const currentUrl = isStagingReq ? STAGING_URL : PROD_URL;
+  const currentAnonKey = isStagingReq ? STAGING_ANON_KEY : PROD_ANON_KEY;
+  const currentAdmin = isStagingReq ? supabaseAdminStaging : supabaseAdminProd;
   const authHeader = req?.headers?.authorization;
   const token = authHeader && authHeader.startsWith("Bearer ") ? authHeader.split(" ")[1] : null;
-  if (token && supabaseUrl5 && supabaseAnonKey) {
-    return createClient(supabaseUrl5, supabaseAnonKey, {
+  if (token) {
+    return createClient(currentUrl, currentAnonKey, {
       global: { headers: { Authorization: `Bearer ${token}` } },
       auth: { autoRefreshToken: false, persistSession: false }
     });
   }
-  return supabaseAdmin5;
+  return currentAdmin;
 }
 if (!hasServiceRoleKey) {
   console.warn("\u26A0\uFE0F SUPABASE_SERVICE_ROLE_KEY n\xE3o detetada nas vari\xE1veis de ambiente. A usar o token JWT do utilizador para RLS.");
@@ -52532,13 +52562,13 @@ var PORT = 3e3;
 app.all("/api/supabase-proxy/*", import_express.default.raw({ type: "*/*", limit: "50mb" }), async (req, res) => {
   try {
     const subPath = req.originalUrl.substring("/api/supabase-proxy".length);
-    if (!supabaseUrl5 || supabaseUrl5.includes("xxxx") || !supabaseUrl5.startsWith("http")) {
+    if (!supabaseUrl || supabaseUrl.includes("xxxx") || !supabaseUrl.startsWith("http")) {
       return res.status(503).json({
         error: "Supabase n\xE3o configurado",
         message: "Defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY no ficheiro .env"
       });
     }
-    const destinationUrl = supabaseUrl5 + subPath;
+    const destinationUrl = supabaseUrl + subPath;
     const headers = {};
     for (const [key, value] of Object.entries(req.headers)) {
       if (typeof value === "string") {
@@ -52571,17 +52601,18 @@ app.all("/api/supabase-proxy/*", import_express.default.raw({ type: "*/*", limit
   }
 });
 app.use((req, res, next) => {
-  next();
+  const host = (req.headers["x-forwarded-host"] || req.headers.host || "").toString().toLowerCase();
+  const isStagingReq = host.includes("staging") || host.includes("teste") || host.includes("homologacao") || process.env.VITE_APP_ENV === "staging";
+  const rawUrl2 = req.headers["x-matched-path"] || req.headers["x-invoke-path"] || req.headers["x-now-route-matches"];
+  if (rawUrl2 && typeof rawUrl2 === "string" && rawUrl2.startsWith("/api")) {
+    req.url = rawUrl2;
+  }
+  reqStorage.run({ isStaging: isStagingReq }, () => {
+    next();
+  });
 });
 async function startServer() {
   syncFromSupabase().catch((err) => console.warn("[Background Sync] Failed on startup:", err));
-  app.use((req, res, next) => {
-    const rawUrl2 = req.headers["x-matched-path"] || req.headers["x-invoke-path"] || req.headers["x-now-route-matches"];
-    if (rawUrl2 && typeof rawUrl2 === "string" && rawUrl2.startsWith("/api")) {
-      req.url = rawUrl2;
-    }
-    next();
-  });
   app.use((req, res, next) => {
     const csp = [
       "default-src 'self' https: data: blob:",
@@ -52867,7 +52898,7 @@ async function startServer() {
       if (!username) {
         return res.status(400).json({ error: "Username is required" });
       }
-      const client = supabaseAdmin5 || createClient(supabaseUrl5, process.env.VITE_SUPABASE_ANON_KEY || "");
+      const client = supabaseAdmin5 || createClient(supabaseUrl, process.env.VITE_SUPABASE_ANON_KEY || "");
       const { data, error } = await client.from("perfis").select("email").or(`username.ilike.${username},nome.ilike.${username},email.ilike.${username}@%`).order("username", { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
       if (error) {
         console.error("[SERVER] Error looking up username:", error);
@@ -55974,7 +56005,7 @@ async function startServer() {
         targetEmail = loginId.toLowerCase();
       }
       console.log(`[POS-AUTH] Validating password for targetEmail: '${targetEmail}' (user_id: ${user_id})`);
-      const urlToUse = (supabaseUrl5 || process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "https://nawqfidnawokqaheqvar.supabase.co").trim();
+      const urlToUse = (supabaseUrl || process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "https://nawqfidnawokqaheqvar.supabase.co").trim();
       const anonKeyToUse = (supabaseAnonKey || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5hd3FmaWRuYXdva3FhaGVxdmFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyMTgxNDYsImV4cCI6MjA5Mzc5NDE0Nn0.qFkIexxKcQDWax3pfhcgPMR3ZFIsE-gYWTS62i5Edgs").trim();
       if (targetEmail && urlToUse && anonKeyToUse) {
         const { createClient: createClient2 } = await Promise.resolve().then(() => (init_dist4(), dist_exports));
@@ -59209,7 +59240,11 @@ function handler(req, res) {
   return app(req, res);
 }
 export {
-  handler as default
+  handler as default,
+  getActiveAdminClient,
+  getSupabaseClient,
+  reqStorage,
+  supabaseAdmin5 as supabaseAdmin
 };
 /*! Bundled license information:
 

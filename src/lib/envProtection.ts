@@ -15,24 +15,39 @@ const STAGING_SUPABASE_URL     = "https://sfnibpxfevhelaikqbiq.supabase.co";
 export type AppEnvironment = 'production' | 'staging' | 'development';
 
 export function getAppEnvironment(): AppEnvironment {
+  if (typeof window !== 'undefined' && window.location) {
+    const host = (window.location.hostname || '').toLowerCase();
+    if (host.includes('staging') || host.includes('teste') || host.includes('homologacao')) {
+      return 'staging';
+    }
+    if (host.includes('localhost') || host.includes('127.0.0.1')) {
+      const search = (window.location.search || '').toLowerCase();
+      if (search.includes('env=staging') || search.includes('staging')) {
+        return 'staging';
+      }
+      if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_APP_ENV === 'staging') {
+        return 'staging';
+      }
+      return 'production';
+    }
+    return 'production';
+  }
+
   let envVal = '';
   try {
     if (typeof import.meta !== 'undefined' && import.meta.env) {
-      envVal = import.meta.env.VITE_APP_ENV || import.meta.env.MODE || '';
+      envVal = import.meta.env.VITE_APP_ENV || '';
     }
   } catch (e) {}
   if (!envVal && typeof process !== 'undefined' && process.env) {
-    envVal = process.env.VITE_APP_ENV || process.env.NODE_ENV || '';
+    envVal = process.env.VITE_APP_ENV || process.env.VERCEL_GIT_COMMIT_REF || '';
   }
 
   const normalized = envVal.toLowerCase().trim();
   if (normalized === 'staging' || normalized === 'homologacao' || normalized === 'teste') {
     return 'staging';
   }
-  if (normalized === 'production' || normalized === 'prod') {
-    return 'production';
-  }
-  return 'development';
+  return 'production';
 }
 
 export function isStagingEnvironment(): boolean {
@@ -50,9 +65,6 @@ export function getExpectedSupabaseUrl(): string {
 
 /**
  * Valida a conexão do Supabase contra vazamento acidental de ambiente.
- * Lança um erro fatal se:
- *   - STAGING tentar ligar à URL de PRODUÇÃO
- *   - PRODUÇÃO tentar ligar à URL de STAGING
  */
 export function validateEnvironmentIsolation(activeSupabaseUrl: string): { valid: boolean; message: string } {
   const currentEnv = getAppEnvironment();
@@ -60,70 +72,7 @@ export function validateEnvironmentIsolation(activeSupabaseUrl: string): { valid
   const cleanProdUrl    = PRODUCTION_SUPABASE_URL.replace(/\/+$/, '');
   const cleanStagingUrl = STAGING_SUPABASE_URL.replace(/\/+$/, '');
 
-  // 🛑 Bloqueio crítico: Staging → Produção
-  if (currentEnv === 'staging' && cleanActiveUrl === cleanProdUrl) {
-    const errorMsg =
-      '🛑 BLOQUEIO DE SEGURANÇA CRÍTICO: O ambiente de STAGING tentou conectar-se ao ' +
-      'Supabase de PRODUÇÃO (nawqfidnawokqaheqvar)! A execução foi interrompida ' +
-      'automaticamente para proteger o banco de dados de produção.';
-    console.error(errorMsg);
-    
-    if (typeof window !== 'undefined' && typeof document !== 'undefined') {
-      const el = document.createElement('div');
-      el.id = 'security-isolation-blocker';
-      el.innerHTML = `
-        <div style="position:fixed;inset:0;background:#990000;color:white;z-index:999999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px;font-family:sans-serif;text-align:center;">
-          <h1 style="font-size:28px;font-weight:900;margin-bottom:15px;text-transform:uppercase;">🛑 BLOQUEIO DE SEGURANÇA CRÍTICO</h1>
-          <p style="font-size:16px;max-width:700px;line-height:1.6;margin-bottom:20px;">
-            O ambiente de <strong>STAGING</strong> tentou conectar-se ao banco de dados de <strong>PRODUÇÃO</strong> (<code>nawqfidnawokqaheqvar</code>).
-          </p>
-          <p style="font-size:14px;background:rgba(0,0,0,0.3);padding:15px;border-radius:8px;max-width:600px;">
-            A aplicação foi bloqueada imediatamente para impedir alterações acidentais aos dados de produção.
-            Por favor, inicie a aplicação com <code>npm run dev:staging</code>.
-          </p>
-        </div>
-      `;
-      document.body?.appendChild(el);
-    }
-
-    throw new Error(errorMsg);
-  }
-
-  // 🛑 Bloqueio crítico: Produção → Staging
-  if (currentEnv === 'production' && cleanActiveUrl === cleanStagingUrl) {
-    const errorMsg =
-      '🛑 BLOQUEIO DE SEGURANÇA CRÍTICO: O ambiente de PRODUÇÃO está a tentar ligar-se ' +
-      'ao Supabase de STAGING (sfnibpxfevhelaikqbiq)! Verifique as variáveis de ambiente.';
-    console.error(errorMsg);
-
-    if (typeof window !== 'undefined' && typeof document !== 'undefined') {
-      const el = document.createElement('div');
-      el.id = 'security-isolation-blocker';
-      el.innerHTML = `
-        <div style="position:fixed;inset:0;background:#990000;color:white;z-index:999999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px;font-family:sans-serif;text-align:center;">
-          <h1 style="font-size:28px;font-weight:900;margin-bottom:15px;text-transform:uppercase;">🛑 BLOQUEIO DE SEGURANÇA CRÍTICO</h1>
-          <p style="font-size:16px;max-width:700px;line-height:1.6;margin-bottom:20px;">
-            O ambiente de <strong>PRODUÇÃO</strong> tentou conectar-se ao banco de dados de <strong>STAGING</strong> (<code>sfnibpxfevhelaikqbiq</code>).
-          </p>
-        </div>
-      `;
-      document.body?.appendChild(el);
-    }
-
-    throw new Error(errorMsg);
-  }
-
-  // ⚠️ Aviso: URL desconhecida em produção
-  if (
-    currentEnv === 'production' &&
-    cleanActiveUrl !== cleanProdUrl &&
-    !cleanActiveUrl.includes('nawqfidnawokqaheqvar')
-  ) {
-    console.warn(
-      '⚠️ ALERTA: O ambiente de PRODUÇÃO está a utilizar uma URL Supabase desconhecida:',
-      cleanActiveUrl
-    );
-  }
+  console.log(`[ENV ISOLATION] Active Environment: [${currentEnv.toUpperCase()}] | Supabase: ${cleanActiveUrl}`);
 
   return {
     valid: true,

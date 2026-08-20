@@ -58,43 +58,73 @@ if (_isStaging) {
   console.log(`\n🚀 [PRODUCTION MODE] Ficheiro de ambiente carregado: ${_envFile}`);
 }
 
-// Deterministic Supabase Credentials
-const supabaseUrl = _isStaging ? STAGING_URL : PROD_URL;
-const supabaseAnonKey = _isStaging ? STAGING_ANON_KEY : PROD_ANON_KEY;
-const supabaseServiceRole = (process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.SUPABASE_SERVICE_ROLE_KEY.length > 20)
-  ? process.env.SUPABASE_SERVICE_ROLE_KEY.trim()
-  : (_isStaging ? STAGING_SERVICE_ROLE_KEY : PROD_SERVICE_ROLE_KEY);
+import { AsyncLocalStorage } from "async_hooks";
+export const reqStorage = new AsyncLocalStorage<{ isStaging: boolean }>();
 
-const hasServiceRoleKey = Boolean(supabaseServiceRole && supabaseServiceRole.length > 20);
-const adminKeyToUse = hasServiceRoleKey ? supabaseServiceRole : supabaseAnonKey;
-
-console.log(`[STARTUP] Environment: ${_isStaging ? 'STAGING' : 'PRODUCTION'} | SupabaseURL: ${supabaseUrl} | ServiceRoleKey: ${hasServiceRoleKey ? 'PRESENT' : 'FALLBACK'}`);
-
-const supabaseAdmin = createClient(supabaseUrl, adminKeyToUse, {
+// Deterministic Supabase Clients for Staging and Production
+const supabaseAdminProd = createClient(PROD_URL, PROD_SERVICE_ROLE_KEY, {
   auth: {
     autoRefreshToken: false,
     persistSession: false
   }
 });
 
-/**
- * Returns either the master supabaseAdmin (if service_role key is present)
- * or a request-scoped Supabase client initialized with the user's Bearer JWT.
- * This guarantees RLS policies succeed even when SERVICE_ROLE_KEY is absent.
- */
-function getSupabaseClient(req?: express.Request) {
-  if (hasServiceRoleKey && supabaseAdmin) {
-    return supabaseAdmin;
+const supabaseAdminStaging = createClient(STAGING_URL, STAGING_SERVICE_ROLE_KEY, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
   }
+});
+
+export function getActiveAdminClient(req?: express.Request) {
+  if (req) {
+    const host = (req.headers['x-forwarded-host'] || req.headers.host || '').toString().toLowerCase();
+    if (host.includes('staging') || host.includes('teste') || host.includes('homologacao')) {
+      return supabaseAdminStaging;
+    }
+    if (host.includes('vercel.app') && !host.includes('staging')) {
+      return supabaseAdminProd;
+    }
+  }
+  const store = reqStorage.getStore();
+  if (store !== undefined) {
+    return store.isStaging ? supabaseAdminStaging : supabaseAdminProd;
+  }
+  return _isStaging ? supabaseAdminStaging : supabaseAdminProd;
+}
+
+// Transparent dynamic proxy for all 400+ supabaseAdmin usages
+export const supabaseAdmin: any = new Proxy({}, {
+  get(_target, prop) {
+    const client = getActiveAdminClient();
+    const val = (client as any)[prop];
+    if (typeof val === 'function') {
+      return val.bind(client);
+    }
+    return val;
+  }
+});
+
+/**
+ * Returns either the master admin client for the current environment
+ * or a request-scoped Supabase client initialized with the user's Bearer JWT.
+ */
+export function getSupabaseClient(req?: express.Request) {
+  const host = (req?.headers?.['x-forwarded-host'] || req?.headers?.host || '').toString().toLowerCase();
+  const isStagingReq = host.includes('staging') || host.includes('teste') || host.includes('homologacao') || _isStaging;
+  const currentUrl = isStagingReq ? STAGING_URL : PROD_URL;
+  const currentAnonKey = isStagingReq ? STAGING_ANON_KEY : PROD_ANON_KEY;
+  const currentAdmin = isStagingReq ? supabaseAdminStaging : supabaseAdminProd;
+
   const authHeader = req?.headers?.authorization;
   const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
-  if (token && supabaseUrl && supabaseAnonKey) {
-    return createClient(supabaseUrl, supabaseAnonKey, {
+  if (token) {
+    return createClient(currentUrl, currentAnonKey, {
       global: { headers: { Authorization: `Bearer ${token}` } },
       auth: { autoRefreshToken: false, persistSession: false }
     });
   }
-  return supabaseAdmin;
+  return currentAdmin;
 }
 
 if (!hasServiceRoleKey) {
@@ -596,23 +626,25 @@ app.all("/api/supabase-proxy/*", express.raw({ type: "*/*", limit: "50mb" }), as
   }
 });
 
-// Middleware non-blocking
+// Middleware multi-environment context
 app.use((req, res, next) => {
-  next();
+  const host = (req.headers['x-forwarded-host'] || req.headers.host || '').toString().toLowerCase();
+  const isStagingReq = host.includes('staging') || host.includes('teste') || host.includes('homologacao') || process.env.VITE_APP_ENV === 'staging';
+
+  // Restore original URL from Vercel rewrite headers
+  const rawUrl = (req.headers['x-matched-path'] || req.headers['x-invoke-path'] || req.headers['x-now-route-matches']) as string;
+  if (rawUrl && typeof rawUrl === 'string' && rawUrl.startsWith('/api')) {
+    req.url = rawUrl;
+  }
+
+  reqStorage.run({ isStaging: isStagingReq }, () => {
+    next();
+  });
 });
 
 async function startServer() {
   // Sync in background on startup (non-blocking to prevent serverless/Vercel timeouts)
   syncFromSupabase().catch(err => console.warn("[Background Sync] Failed on startup:", err));
-  
-  // Restore original URL from Vercel rewrite headers
-  app.use((req, res, next) => {
-    const rawUrl = (req.headers['x-matched-path'] || req.headers['x-invoke-path'] || req.headers['x-now-route-matches']) as string;
-    if (rawUrl && typeof rawUrl === 'string' && rawUrl.startsWith('/api')) {
-      req.url = rawUrl;
-    }
-    next();
-  });
 
   // --- Content Security Policy (CSP) ---
   app.use((req, res, next) => {

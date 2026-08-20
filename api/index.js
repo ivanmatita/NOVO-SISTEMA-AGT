@@ -2408,15 +2408,6 @@ function startAgtQueueWorker(intervalMs = 15e3) {
 
 // server.ts
 import { fileURLToPath } from "url";
-var createViteServer = null;
-if (!process.env.VERCEL && process.env.NODE_ENV !== "production" && process.env.VITE_APP_ENV !== "production") {
-  try {
-    const viteModule = await import("vite");
-    createViteServer = viteModule.createServer;
-  } catch (e) {
-    console.warn("[SERVER] Vite not available (production mode).");
-  }
-}
 var _currentFile = typeof import.meta !== "undefined" && import.meta.url ? fileURLToPath(import.meta.url) : "";
 var __dirname_server = typeof __dirname !== "undefined" ? __dirname : _currentFile ? path.dirname(_currentFile) : process.cwd();
 var PROD_URL = "https://nawqfidnawokqaheqvar.supabase.co";

@@ -1,16 +1,7 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
-// Vite is only imported in local development - never on Vercel or in production
-let createViteServer: any = null;
-if (!process.env.VERCEL && process.env.NODE_ENV !== 'production' && process.env.VITE_APP_ENV !== 'production') {
-  try {
-    const viteModule = await import('vite');
-    createViteServer = viteModule.createServer;
-  } catch (e) {
-    console.warn('[SERVER] Vite not available (production mode).');
-  }
-}
+// Vite dev server import removed for production serverless build
 
 import compression from "compression";
 import { createClient } from "@supabase/supabase-js";

@@ -9528,37 +9528,8 @@ async function startServer() {
     }
   }
 }
-var _startPromise = null;
-var _startError = null;
-function ensureStarted() {
-  if (!_startPromise) {
-    _startPromise = Promise.resolve().then(() => startServer()).catch((err) => {
-      _startError = err;
-      console.error("[VERCEL-HANDLER] startServer() failed:", err?.message || err);
-    });
-  }
-  return _startPromise;
-}
-ensureStarted();
-async function vercelHandler(req, res) {
-  try {
-    await ensureStarted();
-    if (_startError) {
-      res.status(500).json({
-        error: "Server initialization failed",
-        message: _startError.message,
-        env: process.env.VITE_APP_ENV || "unknown",
-        supabaseUrl: (process.env.SUPABASE_URL || "").substring(0, 40) + "..."
-      });
-      return;
-    }
-    return app(req, res);
-  } catch (err) {
-    console.error("[VERCEL-HANDLER] Unhandled error:", err?.message);
-    res.status(500).json({ error: "Internal server error", message: err?.message });
-  }
-}
-var server_default = vercelHandler;
+startServer();
+var server_default = app;
 export {
   server_default as default
 };

@@ -14,6 +14,10 @@
       "destination": "https://portaldocontribuinte.minfin.gov.ao/$1"
     },
     {
+      "source": "/api/health",
+      "destination": "/api/health.js"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/index.js"
     },

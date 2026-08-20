@@ -10743,4 +10743,23 @@ const __initPromise = startServer().catch(err => {
 
 (app as any).__initPromise = __initPromise;
 
-export default app;
+// ============================================================
+// VERCEL SERVERLESS HANDLER — CRITICAL FIX
+// Exporting app directly causes FUNCTION_INVOCATION_FAILED
+// because routes are not yet registered when the first
+// request arrives. We must export an async handler that
+// awaits __initPromise before delegating to Express.
+// ============================================================
+async function vercelHandler(req: any, res: any) {
+  try {
+    if (__initPromise) await __initPromise;
+  } catch (err: any) {
+    console.error('[VERCEL-HANDLER] Init error (suppressed):', err?.message);
+  }
+  return app(req, res);
+}
+
+// Preserve the init promise reference for debugging
+(vercelHandler as any).__initPromise = __initPromise;
+
+export default vercelHandler;

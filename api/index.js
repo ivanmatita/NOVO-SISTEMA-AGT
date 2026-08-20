@@ -11209,7 +11209,16 @@ var __initPromise = startServer().catch((err) => {
   if (process.env.VERCEL !== "1") process.exit(1);
 });
 app.__initPromise = __initPromise;
-var server_default = app;
+async function vercelHandler(req, res) {
+  try {
+    if (__initPromise) await __initPromise;
+  } catch (err) {
+    console.error("[VERCEL-HANDLER] Init error (suppressed):", err?.message);
+  }
+  return app(req, res);
+}
+vercelHandler.__initPromise = __initPromise;
+var server_default = vercelHandler;
 export {
   server_default as default
 };

@@ -159,43 +159,72 @@ async function getAuthUserContext(req: express.Request) {
          return null;
     }
     const token = authHeader.split(' ')[1];
-    const client = getSupabaseClient(req);
-    if (!client) return null;
+    const adminClient = getActiveAdminClient(req);
+    if (!adminClient) return null;
 
     try {
-        const { data: { user }, error: authError } = await client.auth.getUser(token);
+        const { data: { user }, error: authError } = await adminClient.auth.getUser(token);
         if (authError || !user) {
-            console.error('getAuthUserContext: Auth error', authError);
+            console.error('getAuthUserContext: Auth error', authError?.message || 'No user');
             return null;
         }
 
-        // 1. Prioritize active context inside the 'perfis' table
-        const { data: perfil } = await client
+        // 1. Search profile in 'perfis' table (by id, user_id, or email)
+        let { data: perfil } = await adminClient
             .from('perfis')
             .select('*')
-            .eq('id', user.id)
+            .or(`id.eq.${user.id},user_id.eq.${user.id},email.eq.${user.email}`)
             .maybeSingle();
 
         // 2. Load direct owner information from 'empresas'
-        const { data: ownedCompany } = await client
+        let { data: ownedCompany } = await adminClient
             .from('empresas')
             .select('*')
-            .eq('auth_user_id', user.id)
+            .or(`auth_user_id.eq.${user.id},email.eq.${user.email}`)
             .maybeSingle();
 
-        if (perfil) {
-            let activeCompanyId = perfil.empresa_id || perfil.company_id;
-            if (!isValidUUID(activeCompanyId) && ownedCompany?.id && isValidUUID(ownedCompany.id)) {
-                activeCompanyId = ownedCompany.id;
+        // 3. Fallback to first active company if no company found (e.g. Staging setup)
+        if (!perfil?.empresa_id && !ownedCompany?.id) {
+            const { data: firstCompany } = await adminClient
+                .from('empresas')
+                .select('*')
+                .limit(1)
+                .maybeSingle();
+            if (firstCompany) {
+                ownedCompany = firstCompany;
             }
-            let resolvedRole = perfil.role || 'user';
+        }
 
-            // If operating in the company they directly own, they are ALWAYS the absolute admin
+        const resolvedCompanyId = perfil?.empresa_id || perfil?.company_id || ownedCompany?.id;
+
+        // Auto-create / ensure profile exists in perfis
+        if (!perfil && resolvedCompanyId) {
+            const newPerfil = {
+                id: user.id,
+                user_id: user.id,
+                email: user.email,
+                nome: user.user_metadata?.full_name || user.user_metadata?.nome || user.email?.split('@')[0] || 'Utilizador',
+                empresa_id: resolvedCompanyId,
+                role: 'admin',
+                is_admin: true,
+                is_active: true,
+                permissions: { all: true },
+                updated_at: new Date().toISOString()
+            };
+            const { data: createdPerf } = await adminClient
+                .from('perfis')
+                .upsert([newPerfil], { onConflict: 'id' })
+                .select()
+                .maybeSingle();
+            if (createdPerf) perfil = createdPerf;
+        }
+
+        if (perfil) {
+            let activeCompanyId = perfil.empresa_id || perfil.company_id || ownedCompany?.id;
+            let resolvedRole = perfil.role || (ownedCompany ? 'admin' : 'user');
             if (ownedCompany && String(ownedCompany.id) === String(activeCompanyId)) {
                 resolvedRole = 'admin';
             }
-
-            const normRole = (resolvedRole || 'user').toLowerCase();
 
             return {
                 userId: user.id,
@@ -203,18 +232,16 @@ async function getAuthUserContext(req: express.Request) {
                 name: perfil.nome || perfil.name || user.email,
                 username: perfil.username || user.email?.split('@')[0],
                 empresaId: activeCompanyId,
-                role: normRole,
-                isBlocked: perfil.is_active === false
+                role: (resolvedRole || 'user').toLowerCase(),
+                isBlocked: perfil.is_active === false || perfil.ativo === false
             };
         }
 
-        // 3. Fallback: If no profile exists but owns a company, log them into their owned company as direct admin
         if (ownedCompany) {
-            console.log(`[SERVER-AUTH] User ${user.email} verified as company OWNER. Granting role 'admin'.`);
             return {
                 userId: user.id,
                 email: user.email,
-                name: (user.user_metadata?.full_name) || user.email,
+                name: user.user_metadata?.full_name || user.email,
                 username: user.email?.split('@')[0],
                 empresaId: ownedCompany.id,
                 role: 'admin',
@@ -2561,11 +2588,11 @@ async function startServer() {
     if (ctx.isBlocked) return res.status(403).json({ error: "Conta suspensa ou revogada pelo administrador." });
 
     try {
-      const dbClient = getSupabaseClient(req);
-      if (!dbClient) return res.status(500).json({ error: "Database client is not initialized on server." });
+      const adminClient = getActiveAdminClient(req);
+      if (!adminClient) return res.status(500).json({ error: "Database client is not initialized on server." });
 
       console.log(`[SERVER-CLIENTES] Buscando clientes para empresa: ${ctx.empresaId}`);
-      const { data, error } = await dbClient
+      const { data, error } = await adminClient
         .from('clientes')
         .select('*')
         .eq('empresa_id', ctx.empresaId)
@@ -2590,11 +2617,11 @@ async function startServer() {
     const excludeId = req.query.excludeId as string | undefined;
     if (!nif || nif === '999999999' || nif === '0') return res.json({ exists: false, cliente: null });
     try {
-      const dbClient = getSupabaseClient(req);
-      if (!dbClient) return res.status(500).json({ error: "DB não disponível." });
-      let query = dbClient
+      const adminClient = getActiveAdminClient(req);
+      if (!adminClient) return res.status(500).json({ error: "DB não disponível." });
+      let query = adminClient
         .from('clientes')
-        .select('id, nome, contribuinte')
+        .select('id, nome, contribuinte, nif')
         .eq('empresa_id', ctx.empresaId)
         .or(`contribuinte.eq.${nif},nif.eq.${nif}`);
       if (excludeId) query = (query as any).neq('id', excludeId);
@@ -2611,16 +2638,16 @@ async function startServer() {
     if (ctx.isBlocked) return res.status(403).json({ error: "Conta suspensa ou revogada." });
 
     try {
-      const dbClient = getSupabaseClient(req);
-      if (!dbClient) return res.status(500).json({ error: "Database client is not initialized on server." });
+      const adminClient = getActiveAdminClient(req);
+      if (!adminClient) return res.status(500).json({ error: "Database client is not initialized on server." });
 
       const clientData = req.body;
       const nifValue = (clientData.contribuinte || clientData.nif || '').trim();
-      const nomeValue = (clientData.nome || '').trim();
+      const nomeValue = (clientData.nome || clientData.name || '').trim();
 
       // ── Verificação de NIF duplicado ──
       if (nifValue && nifValue !== '999999999' && nifValue !== '0') {
-        const { data: nifDup } = await dbClient
+        const { data: nifDup } = await adminClient
           .from('clientes')
           .select('id, nome')
           .eq('empresa_id', ctx.empresaId)
@@ -2635,7 +2662,7 @@ async function startServer() {
 
       // ── Verificação de Nome duplicado ──
       if (nomeValue) {
-        const { data: nameDup } = await dbClient
+        const { data: nameDup } = await adminClient
           .from('clientes')
           .select('id, nome')
           .eq('empresa_id', ctx.empresaId)
@@ -2648,11 +2675,28 @@ async function startServer() {
         }
       }
 
-      const payload = { ...clientData, empresa_id: ctx.empresaId, updated_at: new Date().toISOString() };
-      delete (payload as any).id;
+      const payload: any = {
+        ...clientData,
+        empresa_id: ctx.empresaId,
+        nome: nomeValue,
+        nif: nifValue || '999999999',
+        contribuinte: nifValue || '999999999',
+        endereco: clientData.endereco || clientData.morada || '',
+        morada: clientData.morada || clientData.endereco || '',
+        tipo: clientData.tipo || 'singular',
+        tipo_entidade: clientData.tipo_entidade || 'Cliente',
+        tipo_cliente: clientData.tipo_cliente || 'normal',
+        saldo_inicial: Number(clientData.saldo_inicial || 0),
+        estado_nif: clientData.estado_nif || 'não encontrado',
+        ativo: clientData.ativo !== false && clientData.is_active !== false,
+        is_active: clientData.ativo !== false && clientData.is_active !== false,
+        updated_at: new Date().toISOString()
+      };
+      delete payload.id;
+      delete payload.name;
 
       console.log(`[SERVER-CLIENTES] Criando cliente "${nomeValue}" na empresa "${ctx.empresaId}"`);
-      const { data, error } = await dbClient
+      const { data, error } = await adminClient
         .from('clientes')
         .insert([payload])
         .select()
@@ -2678,14 +2722,14 @@ async function startServer() {
     if (ctx.isBlocked) return res.status(403).json({ error: "Conta suspensa ou revogada." });
     const clientId = req.params.id;
     try {
-      const dbClient = getSupabaseClient(req);
-      if (!dbClient) return res.status(500).json({ error: "Database client is not initialized on server." });
+      const adminClient = getActiveAdminClient(req);
+      if (!adminClient) return res.status(500).json({ error: "Database client is not initialized on server." });
       const updateData = req.body;
       const newNif = (updateData.contribuinte || updateData.nif || '').trim();
 
       // ── Verificar conflito de NIF na edição ──
       if (newNif && newNif !== '999999999' && newNif !== '0') {
-        const { data: nifConflict } = await dbClient
+        const { data: nifConflict } = await adminClient
           .from('clientes')
           .select('id, nome')
           .eq('empresa_id', ctx.empresaId)
@@ -2699,10 +2743,22 @@ async function startServer() {
       }
 
       delete updateData.id;
-      const payload = { ...updateData, empresa_id: ctx.empresaId, updated_at: new Date().toISOString() };
+      delete updateData.name;
+      const payload: any = {
+        ...updateData,
+        empresa_id: ctx.empresaId,
+        nome: updateData.nome !== undefined ? updateData.nome : (updateData.name !== undefined ? updateData.name : undefined),
+        nif: newNif || undefined,
+        contribuinte: newNif || undefined,
+        endereco: updateData.endereco !== undefined ? updateData.endereco : updateData.morada,
+        morada: updateData.morada !== undefined ? updateData.morada : updateData.endereco,
+        updated_at: new Date().toISOString()
+      };
+      Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k]);
+
       console.log(`[SERVER-CLIENTES] Atualizando cliente ID "${clientId}" na empresa "${ctx.empresaId}"`);
 
-      const { data, error } = await dbClient
+      const { data, error } = await adminClient
         .from('clientes')
         .update(payload)
         .eq('id', clientId)

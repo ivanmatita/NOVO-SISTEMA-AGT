@@ -25,27 +25,49 @@ export interface Cliente {
 }
 
 async function getToken(): Promise<string> {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.access_token) throw new Error('Sessão inválida ou expirada. Inicie sessão novamente.');
-  return session.access_token;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) return session.access_token;
+  } catch (e) {}
+
+  if (typeof window !== 'undefined') {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('sb-') || key.includes('auth-token'))) {
+        try {
+          const item = JSON.parse(localStorage.getItem(key) || '{}');
+          if (item?.access_token) return item.access_token;
+          if (item?.currentSession?.access_token) return item.currentSession.access_token;
+        } catch (e) {}
+      }
+    }
+  }
+  return '';
 }
 
 export const clienteService = {
   async getClientes(_empresa_id?: string): Promise<Cliente[]> {
     try {
       const token = await getToken();
-      const response = await fetch('/api/secure-clientes', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const response = await fetch('/api/secure-clientes', { headers });
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
+        console.warn('[ClienteService] Resposta da API:', response.status, err);
         throw new Error(err.error || 'Falha ao carregar clientes.');
       }
       const data = await response.json();
-      console.log(`[ClienteService] ${data?.length || 0} clientes carregados.`);
-      return data || [];
+      console.log(`[ClienteService] ${data?.length || 0} clientes carregados com sucesso.`);
+      return Array.isArray(data) ? data : [];
     } catch (err: any) {
       console.error('[ClienteService] Erro ao listar clientes:', err);
+      // Fallback to cache if available
+      try {
+        const cached = localStorage.getItem('clientes_backup');
+        if (cached) return JSON.parse(cached);
+      } catch (e) {}
       return [];
     }
   },
@@ -57,11 +79,12 @@ export const clienteService = {
   async checkNIFDuplicate(nif: string, excludeId?: string | number): Promise<{ exists: boolean; cliente?: any }> {
     try {
       const token = await getToken();
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
       const params = new URLSearchParams({ nif });
       if (excludeId) params.set('excludeId', String(excludeId));
-      const response = await fetch(`/api/secure-clientes/check-nif?${params}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const response = await fetch(`/api/secure-clientes/check-nif?${params}`, { headers });
       if (!response.ok) return { exists: false };
       return await response.json();
     } catch {
@@ -72,6 +95,8 @@ export const clienteService = {
   async createCliente(cliente: Omit<Cliente, 'id'>): Promise<Cliente> {
     try {
       const token = await getToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
 
       // ── Verificação antecipada de NIF no frontend ──
       const nif = (cliente.contribuinte || cliente.nif || '').trim();
@@ -84,15 +109,17 @@ export const clienteService = {
 
       const payload = {
         ...cliente,
+        nome: cliente.nome,
         nif: cliente.contribuinte || cliente.nif,
         contribuinte: cliente.contribuinte || cliente.nif,
-        endereco: cliente.endereco
+        endereco: cliente.endereco || (cliente as any).morada || '',
+        morada: (cliente as any).morada || cliente.endereco || ''
       };
 
       console.log('[ClienteService] Criando cliente:', payload.nome);
       const response = await fetch('/api/secure-clientes', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers,
         body: JSON.stringify(payload)
       });
 
@@ -121,9 +148,12 @@ export const clienteService = {
       }
 
       console.log(`[ClienteService] Atualizando cliente ID: ${id}`);
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
       const response = await fetch(`/api/secure-clientes/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers,
         body: JSON.stringify(cliente)
       });
 

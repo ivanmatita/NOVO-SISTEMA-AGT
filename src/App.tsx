@@ -2063,7 +2063,8 @@ const ClientList = ({ clients, issuedDocuments, onRefresh, onViewAccount }: {
       email, 
       contribuinte: nif, 
       nif: nif,
-      endereco: morada, 
+      endereco: morada,
+      morada: morada,
       localidade, 
       codigo_postal, 
       provincia, 
@@ -32044,21 +32045,28 @@ export default function App() {
       setClients(data.map((cl: any) => ({
         ...cl,
         id: cl.id,
-        name: cl.nome || '',
+        name: cl.nome || cl.name || '',
+        nome: cl.nome || cl.name || '',
         email: cl.email || '',
         contribuinte: cl.contribuinte || cl.nif || '',
-        morada: cl.endereco || '',
-        localidade: cl.localidade || '',
+        nif: cl.nif || cl.contribuinte || '',
+        morada: cl.morada || cl.endereco || cl.address || '',
+        endereco: cl.endereco || cl.morada || cl.address || '',
+        localidade: cl.localidade || cl.cidade || '',
         codigo_postal: cl.codigo_postal || '',
         provincia: cl.provincia || '',
         municipio: cl.municipio || '',
         pais: cl.pais || 'Angola',
         telefone: cl.telefone || '',
-        webpage: cl.webpage || '',
+        webpage: cl.webpage || cl.website || '',
+        tipo: cl.tipo || 'singular',
+        tipo_entidade: cl.tipo_entidade || 'Cliente',
         tipo_cliente: cl.tipo_cliente || 'normal',
         saldo_inicial: Number(cl.saldo_inicial || 0),
         estado_nif: cl.estado_nif || 'não encontrado',
-        empresa_id: cl.empresa_id
+        ativo: cl.ativo !== false && cl.is_active !== false,
+        is_active: cl.ativo !== false && cl.is_active !== false,
+        empresa_id: cl.empresa_id || companyId
       })));
 
       localStorage.setItem('clientes_backup', JSON.stringify(data));

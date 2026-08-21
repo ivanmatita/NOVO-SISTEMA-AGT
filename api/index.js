@@ -59318,8 +59318,11 @@ async function startServer() {
     }
   }
 }
-startServer();
-function handler(req, res) {
+var _serverReady = startServer().catch((err) => {
+  console.error("[BOOT] startServer() failed:", err?.message || err);
+});
+async function handler(req, res) {
+  await _serverReady;
   return app(req, res);
 }
 // Annotate the CommonJS export names for ESM import in node:

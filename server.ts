@@ -9140,10 +9140,18 @@ async function startServer() {
   }
 }
 
-// Start server synchronously for Vercel
-startServer();
+// ================================================================
+// VERCEL SERVERLESS BOOT — Guarantee routes are registered before
+// any request is processed. startServer() is async; we capture the
+// promise so the handler can await it on the first call.
+// ================================================================
+const _serverReady: Promise<void> = startServer().catch((err: any) => {
+  console.error('[BOOT] startServer() failed:', err?.message || err);
+});
 
-export default function handler(req: any, res: any) {
+export default async function handler(req: any, res: any) {
+  // Wait for all routes to be registered before handling any request
+  await _serverReady;
   return app(req, res);
 }
 

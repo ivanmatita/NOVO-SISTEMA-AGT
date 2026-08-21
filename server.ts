@@ -183,18 +183,6 @@ async function getAuthUserContext(req: express.Request) {
             .or(`auth_user_id.eq.${user.id},email.eq.${user.email}`)
             .maybeSingle();
 
-        // 3. Fallback to first active company if no company found (e.g. Staging setup)
-        if (!perfil?.empresa_id && !ownedCompany?.id) {
-            const { data: firstCompany } = await adminClient
-                .from('empresas')
-                .select('*')
-                .limit(1)
-                .maybeSingle();
-            if (firstCompany) {
-                ownedCompany = firstCompany;
-            }
-        }
-
         const resolvedCompanyId = perfil?.empresa_id || perfil?.company_id || ownedCompany?.id;
 
         // Auto-create / ensure profile exists in perfis
@@ -2589,34 +2577,34 @@ async function startServer() {
   app.get("/api/secure-clientes", async (req, res) => {
     try {
       const ctx = await getAuthUserContext(req);
+      if (!ctx) {
+        return res.status(401).json({ success: false, error: "Sessão expirada ou utilizador não autenticado. Por favor volte a iniciar sessão.", code: "UNAUTHORIZED" });
+      }
+      if (ctx.isBlocked) {
+        return res.status(403).json({ success: false, error: "Conta suspensa ou revogada pelo administrador.", code: "ACCOUNT_BLOCKED" });
+      }
+      if (!ctx.empresaId) {
+        return res.status(403).json({ success: false, error: "Utilizador não possui empresa associada.", code: "NO_COMPANY_ASSOCIATED" });
+      }
+
       const adminClient = getActiveAdminClient(req);
-      if (!adminClient) return res.status(500).json({ error: "Database client is not initialized on server." });
+      if (!adminClient) return res.status(500).json({ success: false, error: "Database client não inicializado no servidor.", code: "DB_INIT_ERROR" });
 
-      let empresaId = ctx?.empresaId || (req.query.empresa_id as string);
-      if (!empresaId) {
-        const { data: defaultEmp } = await adminClient.from('empresas').select('id').limit(1).maybeSingle();
-        if (defaultEmp?.id) empresaId = defaultEmp.id;
-      }
-
-      if (!empresaId) {
-        return res.json([]);
-      }
-
-      console.log(`[SERVER-CLIENTES] Buscando clientes para empresa: ${empresaId}`);
+      console.log(`[SERVER-CLIENTES] Buscando clientes para empresa: ${ctx.empresaId}`);
       const { data, error } = await adminClient
         .from('clientes')
         .select('*')
-        .eq('empresa_id', empresaId)
+        .eq('empresa_id', ctx.empresaId)
         .order('nome', { ascending: true });
 
       if (error) {
         console.error("[SERVER-CLIENTES] Erro ao carregar clientes:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ success: false, error: error.message, code: error.code });
       }
       return res.json(data || []);
     } catch (err: any) {
       console.error("[SERVER-CLIENTES] Erro na busca de clientes:", err);
-      return res.status(500).json({ error: err.message });
+      return res.status(500).json({ success: false, error: err.message, code: "INTERNAL_ERROR" });
     }
   });
 
@@ -2624,23 +2612,20 @@ async function startServer() {
   app.get("/api/secure-clientes/check-nif", async (req, res) => {
     try {
       const ctx = await getAuthUserContext(req);
+      if (!ctx || !ctx.empresaId) {
+        return res.json({ exists: false, cliente: null });
+      }
       const adminClient = getActiveAdminClient(req);
       if (!adminClient) return res.status(500).json({ error: "DB não disponível." });
 
-      let empresaId = ctx?.empresaId || (req.query.empresa_id as string);
-      if (!empresaId) {
-        const { data: defaultEmp } = await adminClient.from('empresas').select('id').limit(1).maybeSingle();
-        if (defaultEmp?.id) empresaId = defaultEmp.id;
-      }
-
       const nif = (req.query.nif as string || '').trim();
       const excludeId = req.query.excludeId as string | undefined;
-      if (!nif || nif === '999999999' || nif === '0' || !empresaId) return res.json({ exists: false, cliente: null });
+      if (!nif || nif === '999999999' || nif === '0') return res.json({ exists: false, cliente: null });
 
       let query = adminClient
         .from('clientes')
         .select('id, nome, contribuinte, nif')
-        .eq('empresa_id', empresaId)
+        .eq('empresa_id', ctx.empresaId)
         .or(`contribuinte.eq.${nif},nif.eq.${nif}`);
       if (excludeId) query = (query as any).neq('id', excludeId);
       const { data } = await (query as any).limit(1).maybeSingle();
@@ -2653,51 +2638,52 @@ async function startServer() {
   app.post("/api/secure-clientes", async (req, res) => {
     try {
       const ctx = await getAuthUserContext(req);
+      if (!ctx) {
+        return res.status(401).json({ success: false, error: "Sessão expirada ou utilizador não autenticado. Por favor volte a iniciar sessão.", code: "UNAUTHORIZED" });
+      }
+      if (ctx.isBlocked) {
+        return res.status(403).json({ success: false, error: "Conta suspensa ou revogada.", code: "ACCOUNT_BLOCKED" });
+      }
+      if (!ctx.empresaId) {
+        return res.status(403).json({ success: false, error: "Utilizador não possui empresa associada para registar o cliente.", code: "NO_COMPANY_ASSOCIATED" });
+      }
+
       const adminClient = getActiveAdminClient(req);
-      if (!adminClient) return res.status(500).json({ error: "Database client is not initialized on server." });
+      if (!adminClient) return res.status(500).json({ success: false, error: "Database client não inicializado no servidor.", code: "DB_INIT_ERROR" });
 
       const clientData = req.body || {};
-      let empresaId = ctx?.empresaId || clientData.empresa_id;
-
-      if (!empresaId) {
-        const { data: defaultEmp } = await adminClient.from('empresas').select('id').limit(1).maybeSingle();
-        if (defaultEmp?.id) empresaId = defaultEmp.id;
-      }
-
-      if (!empresaId) {
-        return res.status(400).json({ error: "Empresa não identificada para registar o cliente." });
-      }
-
       const nifValue = (clientData.contribuinte || clientData.nif || '').trim();
       const nomeValue = (clientData.nome || clientData.name || '').trim();
 
       if (!nomeValue) {
-        return res.status(400).json({ error: "O nome do cliente é obrigatório." });
+        return res.status(400).json({ success: false, error: "O nome do cliente é obrigatório.", code: "VALIDATION_ERROR" });
       }
 
-      // ── Verificação de NIF duplicado ──
+      // ── Verificação de NIF duplicado para a mesma empresa ──
       if (nifValue && nifValue !== '999999999' && nifValue !== '0') {
         const { data: nifDup } = await adminClient
           .from('clientes')
           .select('id, nome')
-          .eq('empresa_id', empresaId)
+          .eq('empresa_id', ctx.empresaId)
           .or(`contribuinte.eq.${nifValue},nif.eq.${nifValue}`)
           .limit(1)
           .maybeSingle();
         if (nifDup) {
           console.warn(`[SERVER-CLIENTES] NIF duplicado bloqueado: ${nifValue}`);
-          return res.status(409).json({ error: `Este cliente já está registado com o NIF "${nifValue}": ${(nifDup as any).nome}. Verifique os dados ou edite o cadastro existente.` });
+          return res.status(409).json({ success: false, error: `Este cliente já está registado com o NIF "${nifValue}": ${(nifDup as any).nome}. Verifique os dados ou edite o cadastro existente.`, code: "DUPLICATE_NIF" });
         }
       }
 
       const payload: any = {
-        empresa_id: empresaId,
+        empresa_id: ctx.empresaId,
         nome: nomeValue,
         nif: nifValue || '999999999',
         contribuinte: nifValue || '999999999',
-        endereco: clientData.endereco || clientData.morada || '',
-        morada: clientData.morada || clientData.endereco || '',
+        endereco: clientData.endereco || clientData.morada || clientData.address || '',
+        morada: clientData.morada || clientData.endereco || clientData.address || '',
+        address: clientData.address || clientData.morada || clientData.endereco || '',
         localidade: clientData.localidade || clientData.cidade || '',
+        cidade: clientData.cidade || clientData.localidade || '',
         codigo_postal: clientData.codigo_postal || '',
         provincia: clientData.provincia || '',
         municipio: clientData.municipio || '',
@@ -2705,10 +2691,12 @@ async function startServer() {
         telefone: clientData.telefone || '',
         email: clientData.email || '',
         webpage: clientData.webpage || clientData.website || '',
+        website: clientData.website || clientData.webpage || '',
         tipo: clientData.tipo || 'singular',
         tipo_entidade: clientData.tipo_entidade || 'Cliente',
         tipo_cliente: clientData.tipo_cliente || 'normal',
-        saldo_inicial: Number(clientData.saldo_inicial || 0),
+        saldo_inicial: Number(clientData.saldo_inicial || clientData.initial_balance || 0),
+        initial_balance: Number(clientData.initial_balance || clientData.saldo_inicial || 0),
         estado_nif: clientData.estado_nif || 'não encontrado',
         ativo: clientData.ativo !== false && clientData.is_active !== false,
         is_active: clientData.ativo !== false && clientData.is_active !== false,
@@ -2717,7 +2705,7 @@ async function startServer() {
         updated_at: new Date().toISOString()
       };
 
-      console.log(`[SERVER-CLIENTES] Inserindo cliente "${nomeValue}" na empresa "${empresaId}"`);
+      console.log(`[SERVER-CLIENTES] Inserindo cliente "${nomeValue}" na empresa "${ctx.empresaId}"`);
       const { data, error } = await adminClient
         .from('clientes')
         .insert([payload])
@@ -2727,45 +2715,46 @@ async function startServer() {
       if (error) {
         console.error("[SERVER-CLIENTES] Erro no INSERT:", error);
         if (error.code === '23505') {
-          return res.status(409).json({ error: "Este cliente já está registado. Verifique os dados ou edite o cadastro existente." });
+          return res.status(409).json({ success: false, error: "Este cliente já está registado. Verifique os dados ou edite o cadastro existente.", code: "DUPLICATE_RECORD" });
         }
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ success: false, error: error.message, code: error.code });
       }
       return res.status(201).json(data);
     } catch (err: any) {
       console.error("[SERVER-CLIENTES] Erro ao guardar cliente:", err);
-      return res.status(500).json({ error: err.message });
+      return res.status(500).json({ success: false, error: err.message, code: "INTERNAL_ERROR" });
     }
   });
 
   app.put("/api/secure-clientes/:id", async (req, res) => {
     try {
       const ctx = await getAuthUserContext(req);
-      const clientId = req.params.id;
-      const adminClient = getActiveAdminClient(req);
-      if (!adminClient) return res.status(500).json({ error: "Database client is not initialized on server." });
-
-      const updateData = req.body || {};
-      let empresaId = ctx?.empresaId || updateData.empresa_id;
-      if (!empresaId) {
-        const { data: defaultEmp } = await adminClient.from('empresas').select('id').limit(1).maybeSingle();
-        if (defaultEmp?.id) empresaId = defaultEmp.id;
+      if (!ctx) {
+        return res.status(401).json({ success: false, error: "Sessão expirada ou não autenticado.", code: "UNAUTHORIZED" });
+      }
+      if (!ctx.empresaId) {
+        return res.status(403).json({ success: false, error: "Utilizador não possui empresa associada.", code: "NO_COMPANY_ASSOCIATED" });
       }
 
+      const clientId = req.params.id;
+      const adminClient = getActiveAdminClient(req);
+      if (!adminClient) return res.status(500).json({ success: false, error: "Database client não inicializado no servidor.", code: "DB_INIT_ERROR" });
+
+      const updateData = req.body || {};
       const newNif = (updateData.contribuinte || updateData.nif || '').trim();
 
       // ── Verificar conflito de NIF na edição ──
-      if (newNif && newNif !== '999999999' && newNif !== '0' && empresaId) {
+      if (newNif && newNif !== '999999999' && newNif !== '0') {
         const { data: nifConflict } = await adminClient
           .from('clientes')
           .select('id, nome')
-          .eq('empresa_id', empresaId)
+          .eq('empresa_id', ctx.empresaId)
           .or(`contribuinte.eq.${newNif},nif.eq.${newNif}`)
           .neq('id', clientId)
           .limit(1)
           .maybeSingle();
         if (nifConflict) {
-          return res.status(409).json({ error: `O NIF "${newNif}" já pertence ao cliente "${(nifConflict as any).nome}". Não é possível criar conflito de NIF.` });
+          return res.status(409).json({ success: false, error: `O NIF "${newNif}" já pertence ao cliente "${(nifConflict as any).nome}". Não é possível criar conflito de NIF.`, code: "DUPLICATE_NIF" });
         }
       }
 
@@ -2773,9 +2762,9 @@ async function startServer() {
       delete updateData.name;
       const payload: any = {
         ...updateData,
+        empresa_id: ctx.empresaId, // STRICT: enforce company isolation
         updated_at: new Date().toISOString()
       };
-      if (empresaId) payload.empresa_id = empresaId;
       if (updateData.nome !== undefined || updateData.name !== undefined) {
         payload.nome = updateData.nome !== undefined ? updateData.nome : updateData.name;
       }
@@ -2783,28 +2772,31 @@ async function startServer() {
         payload.nif = newNif;
         payload.contribuinte = newNif;
       }
-      if (updateData.endereco !== undefined || updateData.morada !== undefined) {
-        payload.endereco = updateData.endereco !== undefined ? updateData.endereco : updateData.morada;
-        payload.morada = updateData.morada !== undefined ? updateData.morada : updateData.endereco;
+      if (updateData.endereco !== undefined || updateData.morada !== undefined || updateData.address !== undefined) {
+        const addr = updateData.endereco || updateData.morada || updateData.address;
+        payload.endereco = addr;
+        payload.morada = addr;
+        payload.address = addr;
       }
       Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k]);
 
-      console.log(`[SERVER-CLIENTES] Atualizando cliente ID "${clientId}"`);
-      let updateQuery = adminClient.from('clientes').update(payload).eq('id', clientId);
-      if (empresaId) {
-        updateQuery = updateQuery.eq('empresa_id', empresaId);
-      }
-
-      const { data, error } = await updateQuery.select().single();
+      console.log(`[SERVER-CLIENTES] Atualizando cliente ID "${clientId}" na empresa "${ctx.empresaId}"`);
+      const { data, error } = await adminClient
+        .from('clientes')
+        .update(payload)
+        .eq('id', clientId)
+        .eq('empresa_id', ctx.empresaId)
+        .select()
+        .single();
 
       if (error) {
         console.error("[SERVER-CLIENTES] Erro no UPDATE de cliente:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ success: false, error: error.message, code: error.code });
       }
       return res.json(data);
     } catch (err: any) {
       console.error("[SERVER-CLIENTES] Erro ao atualizar cliente:", err);
-      return res.status(500).json({ error: err.message });
+      return res.status(500).json({ success: false, error: err.message, code: "INTERNAL_ERROR" });
     }
   });
 

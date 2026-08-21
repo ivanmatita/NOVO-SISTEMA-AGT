@@ -26,14 +26,6 @@ execSync(`npx esbuild server.ts --bundle --platform=node --format=cjs --target=n
 const footer = '\nif (typeof module !== "undefined" && module.exports) { module.exports = module.exports.default || module.exports; }\n';
 fs.appendFileSync('api/index.js', footer);
 
-// 4. esbuild standalone endpoints
-const endpoints = ['exercicios-fiscais', 'config-empresa', 'stats', 'secure-clientes', 'secure-locais-trabalho', 'auth/me'];
-for (const ep of endpoints) {
-  const file = `api/${ep}.js`;
-  if (fs.existsSync(file)) {
-    console.log(`[BUILD-SCRIPT] Bundling ${file}...`);
-    execSync(`npx esbuild ${file} --bundle --platform=node --format=esm --target=node18 --outfile=${file} --allow-overwrite`, { stdio: 'inherit', env: process.env });
-  }
-}
+
 
 console.log(`✅ [BUILD-SCRIPT] Build completed successfully for [${mode.toUpperCase()}]!`);

@@ -56,11 +56,12 @@ export const clienteService = {
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
         console.warn('[ClienteService] Resposta da API:', response.status, err);
-        throw new Error(err.error || 'Falha ao carregar clientes.');
+        const errorMsg = err.error || err.message || `Falha ao carregar clientes (HTTP ${response.status})`;
+        throw new Error(errorMsg);
       }
       const data = await response.json();
       console.log(`[ClienteService] ${data?.length || 0} clientes carregados com sucesso.`);
-      return Array.isArray(data) ? data : [];
+      return Array.isArray(data) ? data : (data.data || []);
     } catch (err: any) {
       console.error('[ClienteService] Erro ao listar clientes:', err);
       // Fallback to cache if available
@@ -125,7 +126,8 @@ export const clienteService = {
 
       const resData = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(resData.error || 'Não foi possível registar o cliente.');
+        const errorMsg = resData.error || resData.message || (resData.code ? `Erro (${resData.code})` : null) || `Erro do servidor ao registar cliente (HTTP ${response.status})`;
+        throw new Error(errorMsg);
       }
       return resData;
     } catch (err: any) {
@@ -159,7 +161,8 @@ export const clienteService = {
 
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
-        throw new Error(err.error || 'Não foi possível atualizar o cliente.');
+        const errorMsg = err.error || err.message || `Erro do servidor ao atualizar cliente (HTTP ${response.status})`;
+        throw new Error(errorMsg);
       }
       return await response.json();
     } catch (err: any) {

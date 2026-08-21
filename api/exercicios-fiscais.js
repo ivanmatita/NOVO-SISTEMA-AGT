@@ -21723,78 +21723,21 @@ function shouldShowDeprecationWarning() {
 }
 if (shouldShowDeprecationWarning()) console.warn("\u26A0\uFE0F  Node.js 18 and below are deprecated and will no longer be supported in future versions of @supabase/supabase-js. Please upgrade to Node.js 20 or later. For more information, visit: https://github.com/orgs/supabase/discussions/37217");
 
-// api/_supabase.js
-var PROD_URL = "https://nawqfidnawokqaheqvar.supabase.co";
-var PROD_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5hd3FmaWRuYXdva3FhaGVxdmFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyMTgxNDYsImV4cCI6MjA5Mzc5NDE0Nn0.qFkIexxKcQDWax3pfhcgPMR3ZFIsE-gYWTS62i5Edgs";
-var PROD_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5hd3FmaWRuYXdva3FhaGVxdmFyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODIxODE0NiwiZXhwIjoyMDkzNzk0MTQ2fQ.ToB7OlAF5FDHEKZMAZLmbvLtHb250qiVFmOUQm1VaOo";
-var STAGING_URL = "https://sfnibpxfevhelaikqbiq.supabase.co";
-var STAGING_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmbmlicHhmZXZoZWxhaWtxYmlxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwNTAyODgsImV4cCI6MjEwMjYyNjI4OH0.AnxqAF-TBY556gp2oPV0I5hfTjozaCMIHaeH7OhifiM";
-var STAGING_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmbmlicHhmZXZoZWxhaWtxYmlxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NzA1MDI4OCwiZXhwIjoyMTAyNjI2Mjg4fQ.4wVvNNMK8dUTUXsQ8LklD4OBHa-s02VPlY7H0gC0cbw";
-function getSupabaseConfig(req) {
-  const host = (req?.headers?.["x-forwarded-host"] || req?.headers?.host || "").toLowerCase();
-  const isStaging = host.includes("staging") || process.env.VITE_APP_ENV === "staging";
-  return {
-    url: isStaging ? STAGING_URL : PROD_URL,
-    anonKey: isStaging ? STAGING_ANON_KEY : PROD_ANON_KEY,
-    serviceRoleKey: isStaging ? STAGING_SERVICE_ROLE_KEY : PROD_SERVICE_ROLE_KEY,
-    isStaging
-  };
-}
-function getAdminClient(req) {
-  const config = getSupabaseConfig(req);
-  return createClient(config.url, config.serviceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false }
-  });
-}
-async function getUserFromRequest(req) {
-  const authHeader = req?.headers?.authorization || "";
-  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
-  if (!token) return null;
-  const config = getSupabaseConfig(req);
-  const anon = createClient(config.url, config.anonKey, { auth: { persistSession: false } });
-  const { data: { user }, error } = await anon.auth.getUser(token);
-  if (error || !user) return null;
-  return user;
-}
-
 // api/exercicios-fiscais.js
+var PROD_URL = "https://nawqfidnawokqaheqvar.supabase.co";
+var PROD_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5hd3FmaWRuYXdva3FhaGVxdmFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyMTgxNDYsImV4cCI6MjA5Mzc5NDE0Nn0.qFkIexxKcQDWax3pfhcgPMR3ZFIsE-gYWTS62i5Edgs";
 async function handler(req, res) {
   res.setHeader("Content-Type", "application/json");
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
-  const supabase = getAdminClient(req);
-  const user = await getUserFromRequest(req);
-  if (req.method === "GET") {
-    try {
-      let query = supabase.from("exercicios_fiscais").select("*").order("ano", { ascending: false });
-      const { data, error } = await query;
-      if (error) throw error;
-      return res.status(200).json(data || []);
-    } catch (err) {
-      console.error("[API-EXERCICIOS] Erro:", err.message);
-      return res.status(500).json({ error: err.message });
+  try {
+    const supabase = createClient(PROD_URL, PROD_ANON, { auth: { persistSession: false } });
+    const { data, error } = await supabase.from("exercicios_fiscais").select("*").limit(5);
+    if (error) {
+      return res.status(200).json({ success: false, db_error: error.message });
     }
+    return res.status(200).json(data || []);
+  } catch (err) {
+    return res.status(200).json({ success: false, exception: err.message, stack: err.stack });
   }
-  if (req.method === "POST") {
-    try {
-      const { ano, data_inicio, data_fim, empresa_id, status } = req.body || {};
-      const { data, error } = await supabase.from("exercicios_fiscais").insert([{
-        ano: parseInt(ano, 10),
-        data_inicio,
-        data_fim,
-        empresa_id: empresa_id || null,
-        status: status || "aberto",
-        is_closed: false
-      }]).select().single();
-      if (error) throw error;
-      return res.status(201).json(data);
-    } catch (err) {
-      console.error("[API-EXERCICIOS] Erro POST:", err.message);
-      return res.status(500).json({ error: err.message });
-    }
-  }
-  return res.status(405).json({ error: "Method Not Allowed" });
 }
 export {
   handler as default

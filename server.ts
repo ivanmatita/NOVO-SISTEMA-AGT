@@ -646,22 +646,12 @@ app.use((req, res, next) => {
   const host = (req.headers['x-forwarded-host'] || req.headers.host || '').toString().toLowerCase();
   const isStagingReq = host.includes('staging') || host.includes('teste') || host.includes('homologacao') || process.env.VITE_APP_ENV === 'staging';
 
-  // Restore original URL from Vercel rewrite headers
-  // Preserve real request URL on Vercel Serverless (ignore /api/index.js from x-matched-path)
-  let realUrl = req.url;
-  if (realUrl.startsWith('/api/index')) {
-    const invokePath = (req.headers['x-invoke-path'] || req.headers['x-now-route-matches']) as string;
-    if (invokePath && typeof invokePath === 'string' && invokePath.startsWith('/api') && !invokePath.includes('index')) {
-      realUrl = invokePath;
+  // If req.url was rewritten by Vercel to /api/index.js, restore original path from headers if present
+  if (req.url.startsWith('/api/index.js') || req.url.startsWith('/api/index')) {
+    const origPath = (req.headers['x-invoke-path'] || req.headers['x-matched-path']) as string;
+    if (origPath && origPath.startsWith('/api') && !origPath.includes('index.js')) {
+      req.url = origPath;
     }
-  } else {
-    const candidate = (req.headers['x-invoke-path'] || req.headers['x-now-route-matches']) as string;
-    if (candidate && typeof candidate === 'string' && candidate.startsWith('/api') && !candidate.includes('index')) {
-      realUrl = candidate;
-    }
-  }
-  if (realUrl && !realUrl.includes('index.js') && realUrl !== req.url) {
-    req.url = realUrl;
   }
 
   reqStorage.run({ isStaging: isStagingReq }, () => {

@@ -663,12 +663,17 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
-async function startServer() {
-  // Sync in background on startup (non-blocking to prevent serverless/Vercel timeouts)
-  syncFromSupabase().catch(err => console.warn("[Background Sync] Failed on startup:", err));
+// ================================================================
+// TOP-LEVEL ROUTE REGISTRATION — runs synchronously at module load.
+// This ensures ALL routes are registered before any Vercel handler
+// invocation, eliminating the async race condition entirely.
+// ================================================================
 
-  // --- Content Security Policy (CSP) ---
-  app.use((req, res, next) => {
+// Fire-and-forget background sync (non-blocking)
+syncFromSupabase().catch(err => console.warn("[Background Sync] Failed on startup:", err));
+
+// --- Content Security Policy (CSP) ---
+app.use((req, res, next) => {
     const csp = [
       "default-src 'self' https: data: blob:",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: data: cdn.jsdelivr.net https://*.supabase.co",
@@ -9138,20 +9143,8 @@ async function startServer() {
     // Start AGT worker non-blocking (short-lived on serverless)
     try { startAgtQueueWorker(20000); } catch (e) {}
   }
-}
 
-// ================================================================
-// VERCEL SERVERLESS BOOT — Guarantee routes are registered before
-// any request is processed. startServer() is async; we capture the
-// promise so the handler can await it on the first call.
-// ================================================================
-const _serverReady: Promise<void> = startServer().catch((err: any) => {
-  console.error('[BOOT] startServer() failed:', err?.message || err);
-});
-
-export default async function handler(req: any, res: any) {
-  // Wait for all routes to be registered before handling any request
-  await _serverReady;
+export default function handler(req: any, res: any) {
   return app(req, res);
 }
 

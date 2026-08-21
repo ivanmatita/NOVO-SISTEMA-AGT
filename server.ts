@@ -647,9 +647,21 @@ app.use((req, res, next) => {
   const isStagingReq = host.includes('staging') || host.includes('teste') || host.includes('homologacao') || process.env.VITE_APP_ENV === 'staging';
 
   // Restore original URL from Vercel rewrite headers
-  const rawUrl = (req.headers['x-matched-path'] || req.headers['x-invoke-path'] || req.headers['x-now-route-matches']) as string;
-  if (rawUrl && typeof rawUrl === 'string' && rawUrl.startsWith('/api')) {
-    req.url = rawUrl;
+  // Preserve real request URL on Vercel Serverless (ignore /api/index.js from x-matched-path)
+  let realUrl = req.url;
+  if (realUrl.startsWith('/api/index')) {
+    const invokePath = (req.headers['x-invoke-path'] || req.headers['x-now-route-matches']) as string;
+    if (invokePath && typeof invokePath === 'string' && invokePath.startsWith('/api') && !invokePath.includes('index')) {
+      realUrl = invokePath;
+    }
+  } else {
+    const candidate = (req.headers['x-invoke-path'] || req.headers['x-now-route-matches']) as string;
+    if (candidate && typeof candidate === 'string' && candidate.startsWith('/api') && !candidate.includes('index')) {
+      realUrl = candidate;
+    }
+  }
+  if (realUrl && !realUrl.includes('index.js') && realUrl !== req.url) {
+    req.url = realUrl;
   }
 
   reqStorage.run({ isStaging: isStagingReq }, () => {

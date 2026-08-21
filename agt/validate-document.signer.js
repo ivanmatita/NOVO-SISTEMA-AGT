@@ -3,46 +3,17 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-let dynamicPrivateKey = null;
-let dynamicPublicKey = null;
+import { getAGTSigningKey } from "./rs256.signer.js";
 
 /**
  * Obtém chaves RSA configuradas no ambiente ou gera novas chaves de teste para homologação
  */
 function getKeypair() {
-  const privateKeyEnv = process.env.AGT_PRIVATE_KEY;
-  if (privateKeyEnv) {
-    const formattedKey = privateKeyEnv.replace(/\\n/g, "\n");
-    return {
-      privateKey: formattedKey,
-      publicKey: process.env.AGT_PUBLIC_KEY ? process.env.AGT_PUBLIC_KEY.replace(/\\n/g, "\n") : null
-    };
-  }
-
-  // Se não houver chave dita, geramos uma dinamicamente
-  if (!dynamicPrivateKey) {
-    console.warn("⚠️ AGT_PRIVATE_KEY não configurada no ficheiro .env. A gerar chave RSA temporária de 2048-bit para fins de homologação...");
-    try {
-      const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", {
-        modulusLength: 2048,
-        publicKeyEncoding: {
-          type: "spki",
-          format: "pem"
-        },
-        privateKeyEncoding: {
-          type: "pkcs8",
-          format: "pem"
-        }
-      });
-      dynamicPrivateKey = privateKey;
-      dynamicPublicKey = publicKey;
-    } catch (err) {
-      console.error("[AGT-SIGNER] Falha grave ao gerar chaves RSA:", err);
-      throw err;
-    }
-  }
-
-  return { privateKey: dynamicPrivateKey, publicKey: dynamicPublicKey };
+  const signingKey = getAGTSigningKey();
+  return {
+    privateKey: signingKey.key,
+    publicKey: null
+  };
 }
 
 /**

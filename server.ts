@@ -10,6 +10,7 @@ import crypto from "crypto";
 import { validateDocumentController } from "./agt/validate-document.controller.js";
 import { validateDocumentControllerNew, registerInvoiceController, validateNifController, solicitarSerieController, consultarFacturaController, listarSeriesController, obterEstadoController, listarFacturasController, agtWebhookController } from "./agt/agt.controllers.js";
 import { startAgtQueueWorker } from "./agt/agtQueueWorker.js";
+import { getAGTKeyDiagnostic } from "./agt/rs256.signer.js";
 
 // ================================================================
 // CARREGAMENTO DE AMBIENTE — SUPORTE MULTI-AMBIENTE
@@ -127,6 +128,7 @@ export function getSupabaseClient(req?: express.Request) {
   return currentAdmin;
 }
 
+const hasServiceRoleKey = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY || STAGING_SERVICE_ROLE_KEY || PROD_SERVICE_ROLE_KEY);
 if (!hasServiceRoleKey) {
   console.warn("⚠️ SUPABASE_SERVICE_ROLE_KEY não detetada nas variáveis de ambiente. A usar o token JWT do utilizador para RLS.");
 }
@@ -783,7 +785,23 @@ app.use((req, res, next) => {
     }
   });
 
-  app.get("/api/health", (req, res) => res.json({ status: "ok", mode: "offline" }));
+  app.get("/api/health", (req, res) => res.json({ status: "ok", mode: _isStaging ? "staging" : "production" }));
+
+  app.get("/api/health/supabase", async (req, res) => {
+    try {
+      const client = getActiveAdminClient(req);
+      if (!client) {
+        return res.status(503).json({ status: "error", message: "Supabase client not initialized" });
+      }
+      const { data, error } = await client.from("empresas").select("id").limit(1);
+      if (error) {
+        return res.status(503).json({ status: "error", message: error.message });
+      }
+      return res.status(200).json({ status: "ok", environment: _isStaging ? "staging" : "production", connected: true });
+    } catch (e: any) {
+      return res.status(503).json({ status: "error", message: e.message });
+    }
+  });
 
   app.get("/api/auth/me", async (req, res) => {
     try {
@@ -4604,6 +4622,16 @@ app.use((req, res, next) => {
   app.post("/api/agt/listar-series", listarSeriesController);
   app.post("/api/agt/obter-estado", obterEstadoController);
   app.post("/api/agt/listar-facturas", listarFacturasController);
+
+  // Diagnóstico seguro de chave AGT (sem expor segredos)
+  app.get("/api/agt/status-key", (_req, res) => {
+    const diag = getAGTKeyDiagnostic();
+    return res.status(200).json(diag);
+  });
+  app.get("/api/agt/key-status", (_req, res) => {
+    const diag = getAGTKeyDiagnostic();
+    return res.status(200).json(diag);
+  });
 
   // Endpoint HTTP POST público para integração Webhook da AGT
   app.post("/api/agt/webhook", agtWebhookController);

@@ -7,7 +7,7 @@ import { getEnvConfig } from './_env.js';
 
 export async function authenticateRequest(req) {
   const config = getEnvConfig(req);
-  const authHeader = req.headers.authorization || req.headers.Authorization || '';
+  const authHeader = req?.headers?.authorization || req?.headers?.Authorization || '';
   const token = authHeader.replace(/^Bearer\s+/i, '').trim();
 
   if (!token) {

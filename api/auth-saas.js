@@ -223,16 +223,20 @@ export default async function handler(req, res) {
   }
 
   // 4. /api/auth/me
-  const auth = await authenticateRequest(req);
-  if (!auth.authenticated) {
-    return res.status(401).json({ success: false, error: 'Não autenticado' });
-  }
+  try {
+    const auth = await authenticateRequest(req);
+    if (!auth.authenticated) {
+      return res.status(401).json({ success: false, error: auth.message || 'Não autenticado' });
+    }
 
-  return res.status(200).json({
-    success: true,
-    user: { id: auth.user.id, email: auth.user.email, created_at: auth.user.created_at },
-    perfil: auth.perfil,
-    empresa_id: auth.empresa_id,
-    isSuperAdmin: auth.isSuperAdmin
-  });
+    return res.status(200).json({
+      success: true,
+      user: { id: auth.user.id, email: auth.user.email, created_at: auth.user.created_at },
+      perfil: auth.perfil,
+      empresa_id: auth.empresa_id,
+      isSuperAdmin: auth.isSuperAdmin
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
 }

@@ -23,13 +23,7 @@ console.log(`[BUILD-SCRIPT] Bundling api/index.js for Vercel...`);
 if (!fs.existsSync('api')) {
   fs.mkdirSync('api', { recursive: true });
 }
-fs.writeFileSync('api/package.json', JSON.stringify({ type: 'commonjs' }, null, 2));
-execSync(`npx esbuild server.ts --bundle --platform=node --format=cjs --target=node18 --external:pg --outfile=api/index.js`, { stdio: 'inherit', env: process.env });
-
-// Ensure module.exports is directly the handler function for Vercel Serverless Function loader
-const footer = '\nif (typeof module !== "undefined" && module.exports) { module.exports = module.exports.default || module.exports; }\n';
-fs.appendFileSync('api/index.js', footer);
-
-
+fs.writeFileSync('api/package.json', JSON.stringify({ type: 'module' }, null, 2));
+execSync(`npx esbuild server.ts --bundle --platform=node --format=esm --target=node18 --external:pg --outfile=api/index.js`, { stdio: 'inherit', env: process.env });
 
 console.log(`✅ [BUILD-SCRIPT] Build completed successfully for [${mode.toUpperCase()}]!`);

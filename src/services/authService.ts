@@ -208,16 +208,19 @@ export const authService = {
           console.warn('[AuthService] Conta Órfã detetada. Criando Empresa Padrão...');
           
           const newCompanyId = crypto.randomUUID();
+          const compName = `Empresa de ${authData.user.email?.split('@')[0]}`;
           const { data: newCompany, error: createError } = await supabase
             .from('empresas')
             .insert([{
               id: newCompanyId,
               auth_user_id: authData.user.id,
-              nome_empresa: `Empresa de ${authData.user.email?.split('@')[0]}`,
+              nome: compName,
+              nome_empresa: compName,
               email: authData.user.email,
-              plano: 'trial'
+              plano: 'trial',
+              ativo: true
             }])
-            .select('id, nome_empresa')
+            .select('id, nome, nome_empresa')
             .single();
 
           if (createError) {
@@ -237,10 +240,15 @@ export const authService = {
           .from('perfis')
           .upsert({
             id: authData.user.id,
+            user_id: authData.user.id,
             empresa_id: targetCompany.id,
             email: authData.user.email,
             role: 'admin',
-            nome: authData.user.user_metadata?.full_name || targetCompany.nome_empresa || authData.user.email?.split('@')[0]
+            is_admin: true,
+            is_active: true,
+            ativo: true,
+            level: 10,
+            nome: authData.user.user_metadata?.full_name || targetCompany.nome_empresa || targetCompany.nome || authData.user.email?.split('@')[0]
           }, { 
             onConflict: 'id' 
           });
@@ -252,10 +260,15 @@ export const authService = {
              .from('perfis')
              .insert([{
                id: authData.user.id,
+               user_id: authData.user.id,
                empresa_id: targetCompany.id,
                email: authData.user.email,
                role: 'admin',
-               nome: authData.user.user_metadata?.full_name || targetCompany.nome_empresa || authData.user.email?.split('@')[0]
+               is_admin: true,
+               is_active: true,
+               ativo: true,
+               level: 10,
+               nome: authData.user.user_metadata?.full_name || targetCompany.nome_empresa || targetCompany.nome || authData.user.email?.split('@')[0]
              }]);
            
            if (retryError) {

@@ -961,14 +961,17 @@ app.use((req, res, next) => {
       if (!empresa) {
         console.warn("[SERVER-AUTH] Nenhuma empresa encontrada. Criando nova empresa segura...");
         const newComId = crypto.randomUUID();
+        const compName = `Empresa de ${user.email?.split('@')[0]}`;
         const { data: newEmpresa, error: empErr } = await supabaseAdmin
           .from('empresas')
           .insert([{
             id: newComId,
             auth_user_id: user.id,
-            nome_empresa: `Empresa de ${user.email?.split('@')[0]}`,
+            nome: compName,
+            nome_empresa: compName,
             email: user.email,
-            plano: 'trial'
+            plano: 'trial',
+            ativo: true
           }])
           .select('*')
           .single();
@@ -985,12 +988,14 @@ app.use((req, res, next) => {
         .from('perfis')
         .upsert({
           id: user.id,
+          user_id: user.id,
           empresa_id: empresa.id,
-          company_id: empresa.id, // Always save both for compatibility
           email: user.email,
-          nome: user.user_metadata?.full_name || empresa.nome_empresa || user.email?.split('@')[0],
+          nome: user.user_metadata?.full_name || empresa.nome_empresa || empresa.nome || user.email?.split('@')[0],
           role: 'admin',
           is_admin: true,
+          is_active: true,
+          ativo: true,
           level: 10,
           username: user.email?.split('@')[0]
         }, {
@@ -1190,21 +1195,25 @@ app.use((req, res, next) => {
       const userId = authUser.user.id;
 
       // 2. Criar Empresa (O Banco de Dados gera o ID automaticamente agora que aplicamos o SQL)
+      const companyName = (formData.nome_empresa || formData.nome || `Empresa de ${email.split('@')[0]}`).trim();
+      const adminName = (formData.nome_administrador || formData.nome || companyName).trim();
       const { data: company, error: companyError } = await supabaseAdmin
         .from('empresas')
         .insert([{
           auth_user_id: userId,
-          nome_empresa: formData.nome_empresa,
-          nif: formData.nif,
+          nome: companyName,
+          nome_empresa: companyName,
+          nif: formData.nif || null,
           email: email,
-          telefone: formData.telefone,
-          endereco: formData.endereco,
-          provincia: formData.provincia,
-          municipio: formData.municipio,
+          telefone: formData.telefone || null,
+          endereco: formData.endereco || null,
+          provincia: formData.provincia || null,
+          municipio: formData.municipio || null,
           pais: formData.pais || 'Angola',
-          tipo_empresa: formData.tipo_empresa,
-          nome_administrador: formData.nome_administrador,
-          plano: 'trial'
+          tipo_empresa: formData.tipo_empresa || null,
+          nome_administrador: adminName,
+          plano: 'trial',
+          ativo: true
         }])
         .select('id')
         .single();
@@ -1221,12 +1230,14 @@ app.use((req, res, next) => {
         .from('perfis')
         .upsert({
           id: userId,
+          user_id: userId,
           empresa_id: company.id,
-          company_id: company.id, // Always save both columns for compatibility
           email: email,
-          nome: (formData.nome_administrador || formData.nome_empresa || '').trim(),
+          nome: adminName,
           role: 'admin',
           is_admin: true,
+          is_active: true,
+          ativo: true,
           level: 10,
           username: (formData.username || email.split('@')[0] || '').trim()
         });

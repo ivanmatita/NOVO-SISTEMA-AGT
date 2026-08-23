@@ -15,9 +15,18 @@ export default async function handler(req, res) {
   const empresa_id = auth.empresa_id || '11111111-0000-0000-0000-000000000001';
 
   try {
-    const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-    const nif = (url.searchParams.get('nif') || '').trim();
-    const excludeId = url.searchParams.get('excludeId') || url.searchParams.get('id');
+    let nif = req.query?.nif || '';
+    let excludeId = req.query?.excludeId || req.query?.id || '';
+
+    if (!nif && req.url) {
+      try {
+        const parsedUrl = new URL(req.url, `http://${req.headers?.host || 'localhost'}`);
+        nif = parsedUrl.searchParams.get('nif') || '';
+        excludeId = excludeId || parsedUrl.searchParams.get('excludeId') || parsedUrl.searchParams.get('id') || '';
+      } catch (e) {}
+    }
+
+    nif = (nif || '').trim();
 
     if (!nif) {
       return res.status(400).json({

@@ -2,10 +2,7 @@ import { getEnvConfig, setCORS } from './_env.js';
 
 export default async function handler(req, res) {
   setCORS(res);
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
 
   try {
     const config = getEnvConfig(req);
@@ -20,7 +17,7 @@ export default async function handler(req, res) {
         }
       });
       const data = await response.json();
-      return res.status(response.status).json(data);
+      return res.status(response.status).json(Array.isArray(data) ? data : []);
     }
 
     if (req.method === 'POST') {
@@ -32,13 +29,13 @@ export default async function handler(req, res) {
           'Content-Type': 'application/json',
           'Prefer': 'return=representation'
         },
-        body: JSON.stringify(req.body)
+        body: JSON.stringify(req.body || {})
       });
       const data = await response.json();
       return res.status(response.status).json(data);
     }
 
-    return res.status(405).json({ error: 'Method Not Allowed' });
+    return res.status(405).json({ error: 'Método não permitido' });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }

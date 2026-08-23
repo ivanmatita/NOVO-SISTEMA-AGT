@@ -9158,26 +9158,37 @@ app.use((req, res, next) => {
     }
   }
 
-  // Only bind to a port when running as a standalone server (not on Vercel)
-  const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined;
-  if (!isVercel) {
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`ERP Server running on port ${PORT}`);
-      console.log("[STARTUP] Server is ready to receive connections.");
+  // Only bind to a port when running as a standalone server (not on Vercel or Serverless)
+  const isServerless = Boolean(
+    process.env.VERCEL ||
+    process.env.VERCEL_ENV ||
+    process.env.AWS_LAMBDA_FUNCTION_NAME ||
+    process.env.LAMBDA_TASK_ROOT ||
+    process.env.NOW_REGION ||
+    process.env.VERCEL_URL ||
+    (typeof _currentFile === 'string' && _currentFile.includes('api'))
+  );
 
-      // Iniciar o processador e poller assíncrono de facturação AGT em background
-      startAgtQueueWorker(20000);
+  if (!isServerless && (!process.env.NODE_ENV || process.env.NODE_ENV !== 'production' || process.env.STANDALONE_SERVER === 'true')) {
+    try {
+      app.listen(PORT, "0.0.0.0", () => {
+        console.log(`ERP Server running on port ${PORT}`);
+        console.log("[STARTUP] Server is ready to receive connections.");
 
-      // Primeiro disparo em 5 segundos após boot
-      setTimeout(() => { runDailyAgtSeriesSync(); }, 5000);
+        // Iniciar o processador e poller assíncrono de facturação AGT em background
+        startAgtQueueWorker(20000);
 
-      // Repetir a cada 24 horas
-      setInterval(() => { runDailyAgtSeriesSync(); }, 24 * 60 * 60 * 1000);
-    });
+        // Primeiro disparo em 5 segundos após boot
+        setTimeout(() => { runDailyAgtSeriesSync(); }, 5000);
+
+        // Repetir a cada 24 horas
+        setInterval(() => { runDailyAgtSeriesSync(); }, 24 * 60 * 60 * 1000);
+      });
+    } catch (listenErr: any) {
+      console.warn("[STARTUP] Porta já em uso ou ambiente gerenciado:", listenErr.message);
+    }
   } else {
-    console.log('[STARTUP] Running on Vercel — skipping app.listen(). Routes ready.');
-    // Start AGT worker non-blocking (short-lived on serverless)
-    try { startAgtQueueWorker(20000); } catch (e) {}
+    console.log('[STARTUP] Serverless runtime active — API routes initialized.');
   }
 
 export default function handler(req: any, res: any) {

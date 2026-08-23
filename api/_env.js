@@ -1,7 +1,6 @@
 /**
  * api/_env.js
  * Utilitário seguro e dinâmico de configuração de ambiente (Staging vs Produção).
- * NUNCA vaza chaves secretas ou passwords para o exterior.
  */
 
 const PROD_URL = "https://nawqfidnawokqaheqvar.supabase.co";
@@ -20,24 +19,22 @@ export function getEnvConfig(req) {
   ).toLowerCase();
 
   const envVar = (process.env.VITE_APP_ENV || process.env.VERCEL_GIT_COMMIT_REF || process.env.NODE_ENV || '').toLowerCase();
-
   const supabaseUrlEnv = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').toLowerCase();
+
   const isStaging = host.includes('staging') || 
                     host.includes('teste') || 
                     host.includes('homologacao') || 
                     envVar.includes('staging') || 
                     envVar.includes('teste') || 
                     envVar.includes('homologacao') || 
-                    envVar.includes('development') ||
                     supabaseUrlEnv.includes('sfnibpxfevhelaikqbiq');
 
   return {
     environment: isStaging ? 'staging' : 'production',
     isStaging,
-    supabaseUrl: isStaging ? (process.env.SUPABASE_URL || STAGING_URL) : (process.env.SUPABASE_URL || PROD_URL),
-    anonKey: isStaging ? (process.env.SUPABASE_ANON_KEY || STAGING_ANON_KEY) : (process.env.SUPABASE_ANON_KEY || PROD_ANON_KEY),
-    serviceRoleKey: isStaging ? (process.env.SUPABASE_SERVICE_ROLE_KEY || STAGING_SERVICE_ROLE_KEY) : (process.env.SUPABASE_SERVICE_ROLE_KEY || PROD_SERVICE_ROLE_KEY),
-    agtMode: isStaging ? 'SANDBOX' : 'LIVE'
+    supabaseUrl: isStaging ? STAGING_URL : PROD_URL,
+    anonKey: isStaging ? STAGING_ANON_KEY : PROD_ANON_KEY,
+    serviceRoleKey: isStaging ? STAGING_SERVICE_ROLE_KEY : PROD_SERVICE_ROLE_KEY
   };
 }
 

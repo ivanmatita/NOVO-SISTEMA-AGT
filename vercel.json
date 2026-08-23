@@ -2,40 +2,26 @@
   "version": 2,
   "buildCommand": "npm run vercel-build",
   "outputDirectory": "dist",
-  "functions": {
-    "api/index.js": {
-      "maxDuration": 30,
-      "memory": 1024
-    }
-  },
   "rewrites": [
     {
       "source": "/api-agt-nif/(.*)",
       "destination": "https://portaldocontribuinte.minfin.gov.ao/$1"
     },
     {
-      "source": "/api/health/supabase",
-      "destination": "/api/health/supabase.js"
+      "source": "/api/health/(.*)",
+      "destination": "/api/health.js"
     },
     {
       "source": "/api/health",
       "destination": "/api/health.js"
     },
     {
-      "source": "/api/auth/register-saas",
-      "destination": "/api/auth/register-saas.js"
+      "source": "/api/auth/(.*)",
+      "destination": "/api/auth-saas.js"
     },
     {
-      "source": "/api/auth/repair-onboarding",
-      "destination": "/api/auth/repair-onboarding.js"
-    },
-    {
-      "source": "/api/auth/email-by-username",
-      "destination": "/api/auth/email-by-username.js"
-    },
-    {
-      "source": "/api/auth/me",
-      "destination": "/api/auth/me.js"
+      "source": "/api/auth",
+      "destination": "/api/auth-saas.js"
     },
     {
       "source": "/api/exercicios-fiscais",
@@ -50,8 +36,8 @@
       "destination": "/api/stats.js"
     },
     {
-      "source": "/api/secure-clientes/check-nif",
-      "destination": "/api/secure-clientes/check-nif.js"
+      "source": "/api/secure-clientes/(.*)",
+      "destination": "/api/secure-clientes.js"
     },
     {
       "source": "/api/secure-clientes",
@@ -70,48 +56,8 @@
       "destination": "/api/system-users.js"
     },
     {
-      "source": "/api/transactions",
-      "destination": "/api/transactions.js"
-    },
-    {
-      "source": "/api/employees",
-      "destination": "/api/employees.js"
-    },
-    {
-      "source": "/api/cost-centers",
-      "destination": "/api/cost-centers.js"
-    },
-    {
-      "source": "/api/pos-points",
-      "destination": "/api/pos-points.js"
-    },
-    {
-      "source": "/api/cash/sessions",
-      "destination": "/api/cash/sessions.js"
-    },
-    {
-      "source": "/api/work-site-movements",
-      "destination": "/api/work-site-movements.js"
-    },
-    {
-      "source": "/api/security/occurrences",
-      "destination": "/api/security/occurrences.js"
-    },
-    {
-      "source": "/api/security/armory",
-      "destination": "/api/security/armory.js"
-    },
-    {
-      "source": "/api/security/roster",
-      "destination": "/api/security/roster.js"
-    },
-    {
-      "source": "/api/user-activities/heartbeat",
-      "destination": "/api/user-activities/heartbeat.js"
-    },
-    {
       "source": "/api/(.*)",
-      "destination": "/api/index.js"
+      "destination": "/api/health.js"
     },
     {
       "source": "/((?!api).*)",

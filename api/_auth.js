@@ -23,7 +23,6 @@ export async function authenticateRequest(req) {
   }
 
   try {
-    // 1. Validar token contra Supabase Auth REST
     const authRes = await fetch(`${config.supabaseUrl}/auth/v1/user`, {
       headers: {
         'apikey': config.anonKey,
@@ -56,7 +55,6 @@ export async function authenticateRequest(req) {
       };
     }
 
-    // 2. Buscar perfil e empresa_id do utilizador
     const perfilRes = await fetch(
       `${config.supabaseUrl}/rest/v1/perfis?id=eq.${user.id}&select=*`,
       {
@@ -74,11 +72,9 @@ export async function authenticateRequest(req) {
     const role = (perfil?.role || user?.app_metadata?.role || 'user').toLowerCase();
     const isSuperAdmin = role === 'superadmin' || role === 'admin_master';
 
-    // Determinar empresa_id (fallback seguro para default empresa se perfil ainda não tiver)
     let empresa_id = perfil?.empresa_id || user?.user_metadata?.empresa_id || null;
 
     if (!empresa_id) {
-      // Buscar primeira empresa activa no ambiente
       const empRes = await fetch(
         `${config.supabaseUrl}/rest/v1/empresas?select=id&limit=1`,
         {

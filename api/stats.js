@@ -22,23 +22,20 @@ async function getTableCount(table, config) {
 
 export default async function handler(req, res) {
   setCORS(res);
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
 
   try {
     const config = getEnvConfig(req);
-    const [clientes, produtos, armazens] = await Promise.all([
+    const [clientes, produtos, empresas] = await Promise.all([
       getTableCount('clientes', config),
       getTableCount('produtos', config),
-      getTableCount('armazens', config)
+      getTableCount('empresas', config)
     ]);
 
     return res.status(200).json({
       totalClientes: clientes,
       totalProdutos: produtos,
-      totalArmazens: armazens,
+      totalEmpresas: empresas,
       systemStatus: 'healthy',
       mode: config.environment,
       timestamp: new Date().toISOString()
@@ -47,7 +44,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       totalClientes: 0,
       totalProdutos: 0,
-      totalArmazens: 0,
+      totalEmpresas: 0,
       systemStatus: 'healthy'
     });
   }

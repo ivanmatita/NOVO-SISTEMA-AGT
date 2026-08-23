@@ -10,9 +10,11 @@ export interface Metric {
   id: string;
   sigla: string;
   descricao: string;
+  description?: string;
   observacoes: string;
   empresa_id: string;
   created_at: string;
+  activo?: boolean;
 }
 
 export const fetchMetrics = async (empresaId: string) => {
@@ -22,11 +24,16 @@ export const fetchMetrics = async (empresaId: string) => {
       .from('metrics')
       .select('*')
       .eq('empresa_id', empresaId)
-      .eq('activo', true)
+      .or('activo.is.null,activo.eq.true')
       .order('created_at', { ascending: false });
 
     if (error) throw error;
-    return data || [];
+    return (data || []).map((m: any) => ({
+      ...m,
+      sigla: m.sigla || '---',
+      descricao: m.descricao || m.description || '',
+      observacoes: m.observacoes || ''
+    }));
   } catch (e) {
     console.error('Erro ao buscar métricas:', e);
     return [];
@@ -71,7 +78,7 @@ export const MetricsModule = ({ onRefreshData }: { onRefreshData?: () => void })
     if (metric) {
       setEditingId(metric.id);
       setSigla(metric.sigla);
-      setDescricao(metric.descricao);
+      setDescricao(metric.descricao || metric.description || '');
       setObservacoes(metric.observacoes || '');
     } else {
       setEditingId(null);
@@ -97,7 +104,9 @@ export const MetricsModule = ({ onRefreshData }: { onRefreshData?: () => void })
           .update({
             sigla,
             descricao,
-            observacoes
+            description: descricao,
+            observacoes,
+            activo: true
           })
           .eq('id', editingId)
           .eq('empresa_id', user.empresa_id);
@@ -111,7 +120,11 @@ export const MetricsModule = ({ onRefreshData }: { onRefreshData?: () => void })
             empresa_id: user.empresa_id,
             sigla,
             descricao,
-            observacoes
+            description: descricao,
+            observacoes,
+            tipo: 'geral',
+            type: 'geral',
+            activo: true
           }]);
           
         if (error) throw error;

@@ -6,11 +6,17 @@ export interface AlertaTarefa {
   id: string;
   empresa_id: string;
   name: string;
+  nome?: string;
   type: string;
+  tipo?: string;
   description: string;
+  descricao?: string;
   responsible: string;
+  responsavel?: string;
   start_date: string;
+  data_inicio?: string;
   end_date: string;
+  data_fim?: string;
   advance_time: string;
   obs: string;
   created_at: string;
@@ -32,10 +38,10 @@ export const useAlertas = () => {
         .from('perfis')
         .select('empresa_id')
         .eq('id', user.id)
-        .single();
+        .maybeSingle();
       
-      const currentEmpresaId = profile?.empresa_id;
-      setEmpresaId(currentEmpresaId);
+      const currentEmpresaId = profile?.empresa_id || user.user_metadata?.empresa_id;
+      setEmpresaId(currentEmpresaId || null);
 
       if (!currentEmpresaId) return;
 
@@ -50,7 +56,17 @@ export const useAlertas = () => {
         return;
       }
 
-      setAlertas(data as AlertaTarefa[]);
+      const normalized = (data || []).map((item: any) => ({
+        ...item,
+        name: item.name || item.nome || 'Alerta sem título',
+        type: item.type || item.tipo || 'Alerta',
+        description: item.description || item.descricao || '',
+        responsible: item.responsible || item.responsavel || '',
+        start_date: item.start_date || item.data_inicio || '',
+        end_date: item.end_date || item.data_fim || ''
+      }));
+
+      setAlertas(normalized as AlertaTarefa[]);
     } catch (err) {
       console.error('Unexpected error fetching alertas:', err);
     } finally {
@@ -91,27 +107,36 @@ export const useAlertas = () => {
         .from('perfis')
         .select('empresa_id')
         .eq('id', user.id)
-        .single();
-      const currentEmpresaId = profile?.empresa_id;
+        .maybeSingle();
+      const currentEmpresaId = profile?.empresa_id || user.user_metadata?.empresa_id || empresaId;
       if (!currentEmpresaId) throw new Error('Empresa não identificada');
+
+      const payload = {
+        empresa_id: currentEmpresaId,
+        name: name || 'Novo Alerta',
+        nome: name || 'Novo Alerta',
+        type: type || 'Alerta',
+        tipo: type || 'Alerta',
+        description: description || '',
+        descricao: description || '',
+        responsible: responsible || '',
+        responsavel: responsible || '',
+        start_date: start_date || null,
+        data_inicio: start_date || null,
+        end_date: end_date || null,
+        data_fim: end_date || null,
+        advance_time: advance_time || '',
+        obs: obs || ''
+      };
 
       const { data, error } = await supabase
         .from('alertas_tarefas')
-        .insert({
-          empresa_id: currentEmpresaId,
-          name,
-          type,
-          description,
-          responsible,
-          start_date,
-          end_date,
-          advance_time,
-          obs
-        })
+        .insert(payload)
         .select()
         .single();
 
       if (error) throw error;
+      await fetchAlertas();
       return data as AlertaTarefa;
     } catch (e) {
       console.error('Erro ao criar alerta:', e);
@@ -138,26 +163,35 @@ export const useAlertas = () => {
         .from('perfis')
         .select('empresa_id')
         .eq('id', user.id)
-        .single();
-      const currentEmpresaId = profile?.empresa_id;
+        .maybeSingle();
+      const currentEmpresaId = profile?.empresa_id || user.user_metadata?.empresa_id || empresaId;
       if (!currentEmpresaId) throw new Error('Empresa não identificada');
+
+      const payload = {
+        name: name || 'Alerta',
+        nome: name || 'Alerta',
+        type: type || 'Alerta',
+        tipo: type || 'Alerta',
+        description: description || '',
+        descricao: description || '',
+        responsible: responsible || '',
+        responsavel: responsible || '',
+        start_date: start_date || null,
+        data_inicio: start_date || null,
+        end_date: end_date || null,
+        data_fim: end_date || null,
+        advance_time: advance_time || '',
+        obs: obs || ''
+      };
 
       const { error } = await supabase
         .from('alertas_tarefas')
-        .update({
-          name,
-          type,
-          description,
-          responsible,
-          start_date,
-          end_date,
-          advance_time,
-          obs
-        })
+        .update(payload)
         .eq('id', alertaId)
         .eq('empresa_id', currentEmpresaId);
 
       if (error) throw error;
+      await fetchAlertas();
     } catch (e) {
       console.error('Erro ao editar alerta:', e);
       throw e;
@@ -173,8 +207,8 @@ export const useAlertas = () => {
         .from('perfis')
         .select('empresa_id')
         .eq('id', user.id)
-        .single();
-      const currentEmpresaId = profile?.empresa_id;
+        .maybeSingle();
+      const currentEmpresaId = profile?.empresa_id || user.user_metadata?.empresa_id || empresaId;
       if (!currentEmpresaId) throw new Error('Empresa não identificada');
 
       const { error } = await supabase
@@ -184,6 +218,7 @@ export const useAlertas = () => {
         .eq('empresa_id', currentEmpresaId);
 
       if (error) throw error;
+      await fetchAlertas();
     } catch (e) {
       console.error('Erro ao eliminar alerta:', e);
       throw e;

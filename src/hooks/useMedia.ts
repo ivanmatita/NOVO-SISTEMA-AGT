@@ -39,10 +39,10 @@ export const useMedia = () => {
         .from('perfis')
         .select('empresa_id')
         .eq('id', user.id)
-        .single();
+        .maybeSingle();
 
-      const currentEmpresaId = profile?.empresa_id;
-      setEmpresaId(currentEmpresaId);
+      const currentEmpresaId = profile?.empresa_id || user.user_metadata?.empresa_id;
+      setEmpresaId(currentEmpresaId || null);
 
       if (!currentEmpresaId) return;
 
@@ -57,7 +57,7 @@ export const useMedia = () => {
         return;
       }
 
-      setMedia(data as MediaArquivo[]);
+      setMedia((data || []) as MediaArquivo[]);
     } catch (err) {
       console.error('Unexpected error fetching media:', err);
     } finally {
@@ -93,10 +93,10 @@ export const useMedia = () => {
 
       const { data: profile } = await supabase
         .from('perfis')
-        .select('company_id, empresa_id')
+        .select('empresa_id')
         .eq('id', user.id)
-        .single();
-      const currentEmpresaId = profile?.company_id || profile?.empresa_id || user.user_metadata?.company_id || user.user_metadata?.empresa_id || '11111111-0000-0000-0000-000000000001';
+        .maybeSingle();
+      const currentEmpresaId = profile?.empresa_id || user.user_metadata?.empresa_id || empresaId;
       if (!currentEmpresaId) throw new Error('Empresa não identificada');
 
       const extensao = file.name.split('.').pop() || '';
@@ -121,23 +121,29 @@ export const useMedia = () => {
           empresa_id: currentEmpresaId,
           utilizador_id: user.id,
           tipo,
+          nome: file.name,
           nome_arquivo: nomeArquivo,
           nome_original: file.name,
           bucket: 'media',
           caminho_arquivo: caminhoArquivo,
           url_publica: urlPublica,
+          url: urlPublica,
+          url_arquivo: urlPublica,
           mime_type: file.type,
           tamanho_bytes: file.size,
+          tamanho: file.size,
           extensao,
           entidade,
           entidade_id,
-          observacao
+          observacao,
+          ativo: true
         })
         .select()
         .single();
 
       if (dbError) throw dbError;
 
+      await fetchMedia();
       return arquivoSalvo as MediaArquivo;
     } catch (e) {
       console.error('Erro no upload de arquivo:', e);
@@ -147,41 +153,43 @@ export const useMedia = () => {
 
   const deleteFile = async (id: string, caminho_arquivo: string) => {
     try {
-       const { data: { user } } = await supabase.auth.getUser();
-       if (!user) throw new Error('Não autenticado');
- 
-       const { data: profile } = await supabase
-         .from('perfis')
-         .select('company_id, empresa_id')
-         .eq('id', user.id)
-         .single();
-       const currentEmpresaId = profile?.company_id || profile?.empresa_id || user.user_metadata?.company_id || user.user_metadata?.empresa_id || '11111111-0000-0000-0000-000000000001';
-       if (!currentEmpresaId) throw new Error('Empresa não identificada');
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Não autenticado');
 
-       // 1. Apagar do Banco primeiro para garantir que o registro seja removido mesmo que o storage falhe
-       const { error: dbError } = await supabase
+      const { data: profile } = await supabase
+        .from('perfis')
+        .select('empresa_id')
+        .eq('id', user.id)
+        .maybeSingle();
+      const currentEmpresaId = profile?.empresa_id || user.user_metadata?.empresa_id || empresaId;
+      if (!currentEmpresaId) throw new Error('Empresa não identificada');
+
+      // 1. Apagar do Banco
+      const { error: dbError } = await supabase
         .from('media_arquivos')
         .delete()
         .eq('id', id)
         .eq('empresa_id', currentEmpresaId);
 
-       if (dbError) throw dbError;
+      if (dbError) throw dbError;
 
-       // 2. Apagar do Storage
-       const { error: storageError } = await supabase.storage
-        .from('media')
-        .remove([caminho_arquivo]);
-      
-       if (storageError) {
-         console.warn('Erro ao apagar do storage (pode já ter sido removido):', storageError);
-       }
+      // 2. Apagar do Storage
+      if (caminho_arquivo) {
+        const { error: storageError } = await supabase.storage
+          .from('media')
+          .remove([caminho_arquivo]);
+        
+        if (storageError) {
+          console.warn('Aviso storage remove:', storageError);
+        }
+      }
 
-       await fetchMedia();
+      await fetchMedia();
     } catch (e) {
       console.error('Erro a apagar arquivo:', e);
       throw e;
     }
-  }
+  };
 
   const replaceFile = async (id: string, oldPath: string, newFile: File) => {
     try {
@@ -190,10 +198,10 @@ export const useMedia = () => {
 
       const { data: profile } = await supabase
         .from('perfis')
-        .select('company_id, empresa_id')
+        .select('empresa_id')
         .eq('id', user.id)
-        .single();
-      const currentEmpresaId = profile?.company_id || profile?.empresa_id || user.user_metadata?.company_id || user.user_metadata?.empresa_id || '11111111-0000-0000-0000-000000000001';
+        .maybeSingle();
+      const currentEmpresaId = profile?.empresa_id || user.user_metadata?.empresa_id || empresaId;
       if (!currentEmpresaId) throw new Error('Empresa não identificada');
 
       // 1. Upload new file
@@ -217,12 +225,16 @@ export const useMedia = () => {
       const { error: dbError } = await supabase
         .from('media_arquivos')
         .update({
+          nome: newFile.name,
           nome_arquivo: nomeArquivo,
           nome_original: newFile.name,
           caminho_arquivo: newPath,
           url_publica: urlPublica,
+          url: urlPublica,
+          url_arquivo: urlPublica,
           mime_type: newFile.type,
           tamanho_bytes: newFile.size,
+          tamanho: newFile.size,
           extensao,
           updated_at: new Date().toISOString()
         })
@@ -232,10 +244,12 @@ export const useMedia = () => {
       if (dbError) throw dbError;
 
       // 3. Delete old file from storage
-      await supabase.storage.from('media').remove([oldPath]);
+      if (oldPath) {
+        await supabase.storage.from('media').remove([oldPath]);
+      }
 
       // 4. Update company data if it was a special image
-      const { data: fileData } = await supabase.from('media_arquivos').select('tipo').eq('id', id).single();
+      const { data: fileData } = await supabase.from('media_arquivos').select('tipo').eq('id', id).maybeSingle();
       if (fileData?.tipo) {
         if (fileData.tipo === 'menu_logo') {
           await supabase.from('empresas').update({ logo_url: urlPublica }).eq('id', currentEmpresaId);
@@ -262,10 +276,10 @@ export const useMedia = () => {
 
       const { data: profile } = await supabase
         .from('perfis')
-        .select('company_id, empresa_id')
+        .select('empresa_id')
         .eq('id', user.id)
-        .single();
-      const currentEmpresaId = profile?.company_id || profile?.empresa_id || user.user_metadata?.company_id || user.user_metadata?.empresa_id || '11111111-0000-0000-0000-000000000001';
+        .maybeSingle();
+      const currentEmpresaId = profile?.empresa_id || user.user_metadata?.empresa_id || empresaId;
       if (!currentEmpresaId) throw new Error('Empresa não identificada');
 
       const { error } = await supabase
@@ -298,7 +312,7 @@ export const useMedia = () => {
   };
 
   const getMediaByType = (tipo: string) => {
-    return media.filter(m => m.tipo === tipo && m.ativo !== false);
+    return (media || []).filter(m => m.tipo === tipo && m.ativo !== false);
   };
 
   const getLatestMediaByType = (tipo: string) => {

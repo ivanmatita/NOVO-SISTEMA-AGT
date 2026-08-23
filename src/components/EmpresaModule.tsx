@@ -20,6 +20,9 @@ export const EmpresaModule = ({ onUpdate }: { onUpdate: () => void }) => {
     endereco: '',
     provincia: '',
     municipio: '',
+    pais: 'Angola',
+    tipo_empresa: 'Serviços',
+    responsavel: ''
   });
 
   useEffect(() => {
@@ -39,13 +42,16 @@ export const EmpresaModule = ({ onUpdate }: { onUpdate: () => void }) => {
       if (res.ok) {
         const data = await res.json();
         setFormData({
-          nome_empresa: data.nome_empresa || '',
+          nome_empresa: data.nome_empresa || data.nome || '',
           nif: data.nif || '',
           email: data.email || '',
           telefone: data.telefone || '',
-          endereco: data.endereco || data.address || '',
+          endereco: data.endereco || data.morada || data.address || '',
           provincia: data.provincia || '',
           municipio: data.municipio || '',
+          pais: data.pais || 'Angola',
+          tipo_empresa: data.tipo_empresa || 'Serviços',
+          responsavel: data.responsavel || data.nome_administrador || ''
         });
       }
     } catch (error) {
@@ -100,15 +106,23 @@ export const EmpresaModule = ({ onUpdate }: { onUpdate: () => void }) => {
               <input value={formData.nif} onChange={e => setFormData({...formData, nif: e.target.value})} className="w-full border border-zinc-200 p-2 text-sm" />
            </div>
            <div className="space-y-1">
-              <label className="text-[10px] font-black uppercase text-zinc-400">Email</label>
+              <label className="text-[10px] font-black uppercase text-zinc-400">Email Institucional</label>
               <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full border border-zinc-200 p-2 text-sm" />
            </div>
            <div className="space-y-1">
-              <label className="text-[10px] font-black uppercase text-zinc-400">Telefone</label>
+              <label className="text-[10px] font-black uppercase text-zinc-400">Telefone / Telemóvel</label>
               <input value={formData.telefone} onChange={e => setFormData({...formData, telefone: e.target.value})} className="w-full border border-zinc-200 p-2 text-sm" />
            </div>
+           <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase text-zinc-400">Tipo de Empresa / Actividade</label>
+              <input value={formData.tipo_empresa} onChange={e => setFormData({...formData, tipo_empresa: e.target.value})} className="w-full border border-zinc-200 p-2 text-sm" placeholder="Ex: Serviços / Comércio" />
+           </div>
+           <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase text-zinc-400">Responsável / Administrador</label>
+              <input value={formData.responsavel} onChange={e => setFormData({...formData, responsavel: e.target.value})} className="w-full border border-zinc-200 p-2 text-sm" />
+           </div>
            <div className="col-span-full space-y-1">
-              <label className="text-[10px] font-black uppercase text-zinc-400">Endereço</label>
+              <label className="text-[10px] font-black uppercase text-zinc-400">Sede / Morada Fiscal</label>
               <input value={formData.endereco} onChange={e => setFormData({...formData, endereco: e.target.value})} className="w-full border border-zinc-200 p-2 text-sm" />
            </div>
            
@@ -121,7 +135,7 @@ export const EmpresaModule = ({ onUpdate }: { onUpdate: () => void }) => {
               <input value={formData.municipio} onChange={e => setFormData({...formData, municipio: e.target.value})} className="w-full border border-zinc-200 p-2 text-sm" placeholder="Ex: Belas" />
            </div>
            <button type="submit" disabled={loading} className="col-span-full bg-[#003366] text-white py-4 font-black text-xs uppercase hover:bg-blue-900 flex items-center justify-center gap-2 shadow-xl shadow-blue-900/20 transition-all">
-             <Save size={14} /> {loading ? 'A guardar...' : 'Guardar Dados'}
+             <Save size={14} /> {loading ? 'A guardar...' : 'Guardar Dados da Empresa'}
            </button>
         </form>
 

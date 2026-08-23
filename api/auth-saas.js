@@ -1,11 +1,10 @@
 /**
  * api/auth-saas.js
  * Handler Serverless Unificado de Autenticação e Onboarding SaaS.
- * Roteia /api/auth/register-saas, /api/auth/repair-onboarding, /api/auth/email-by-username, /api/auth/me.
+ * 100% Nativo (Zero dependências externas), ultra-rápido e compatível com Vercel Serverless.
  */
 
 import { getEnvConfig, setCORS } from './_env.js';
-import { getAdminClient } from './_supabase.js';
 import { authenticateRequest } from './_auth.js';
 
 export default async function handler(req, res) {
@@ -15,10 +14,18 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
-  const url = new URL(req.url || '', `http://${req.headers?.host || 'localhost'}`);
-  const pathname = url.pathname;
+  const config = getEnvConfig(req);
+  const host = req.headers?.host || 'localhost';
+  let pathname = '';
+  let searchParams = new URLSearchParams();
 
-  const adminClient = getAdminClient(req);
+  try {
+    const url = new URL(req.url || '', `http://${host}`);
+    pathname = url.pathname;
+    searchParams = url.searchParams;
+  } catch (e) {
+    pathname = req.url || '';
+  }
 
   // 1. /api/auth/register-saas
   if (pathname.includes('register-saas') || (req.method === 'POST' && req.body?.formData)) {
@@ -33,14 +40,19 @@ export default async function handler(req, res) {
       const companyName = (formData.nome_empresa || formData.nome || `Empresa de ${cleanEmail.split('@')[0]}`).trim();
       const adminName = (formData.nome_administrador || formData.nome || companyName).trim();
 
-      // Check existing user
-      const { data: existingUser } = await adminClient
-        .from('perfis')
-        .select('email, username')
-        .or(`email.eq.${cleanEmail},username.eq.${requestedUsername}`)
-        .maybeSingle();
-
-      if (existingUser) {
+      // Check existing user in perfis
+      const checkRes = await fetch(
+        `${config.supabaseUrl}/rest/v1/perfis?or=(email.eq.${cleanEmail},username.eq.${requestedUsername})&select=email,username&limit=1`,
+        {
+          headers: {
+            'apikey': config.serviceRoleKey,
+            'Authorization': `Bearer ${config.serviceRoleKey}`
+          }
+        }
+      );
+      const existingList = await checkRes.json();
+      if (Array.isArray(existingList) && existingList.length > 0) {
+        const existingUser = existingList[0];
         if (existingUser.email?.toLowerCase() === cleanEmail) {
           return res.status(400).json({ error: 'Este email já está registado no sistema. Faça login.' });
         }
@@ -49,39 +61,59 @@ export default async function handler(req, res) {
         }
       }
 
-      // Create or recover user in Auth
-      let userId;
-      const { data: authUser, error: authError } = await adminClient.auth.admin.createUser({
-        email: cleanEmail,
-        password: password,
-        email_confirm: true,
-        user_metadata: { full_name: adminName }
+      // Create or recover user in Supabase Auth via Admin REST API
+      let userId = null;
+      const authCreateRes = await fetch(`${config.supabaseUrl}/auth/v1/admin/users`, {
+        method: 'POST',
+        headers: {
+          'apikey': config.serviceRoleKey,
+          'Authorization': `Bearer ${config.serviceRoleKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          email: cleanEmail,
+          password: password,
+          email_confirm: true,
+          user_metadata: { full_name: adminName }
+        })
       });
 
-      if (authError) {
-        const errMsg = (authError.message || '').toLowerCase();
+      const authData = await authCreateRes.json();
+
+      if (!authCreateRes.ok) {
+        const errMsg = (authData.msg || authData.message || authData.error_description || '').toLowerCase();
         if (errMsg.includes('already') || errMsg.includes('exists')) {
-          const { data: usersList } = await adminClient.auth.admin.listUsers();
-          const found = usersList?.users?.find(u => u.email?.toLowerCase() === cleanEmail);
+          const listRes = await fetch(`${config.supabaseUrl}/auth/v1/admin/users`, {
+            headers: {
+              'apikey': config.serviceRoleKey,
+              'Authorization': `Bearer ${config.serviceRoleKey}`
+            }
+          });
+          const listData = await listRes.json();
+          const found = listData?.users?.find(u => u.email?.toLowerCase() === cleanEmail);
           if (found) userId = found.id;
-          else return res.status(400).json({ error: authError.message });
+          else return res.status(400).json({ error: authData.msg || authData.message || 'Utilizador já registado.' });
         } else {
-          return res.status(400).json({ error: authError.message });
+          return res.status(400).json({ error: authData.msg || authData.message || 'Erro ao criar utilizador.' });
         }
       } else {
-        userId = authUser.user.id;
+        userId = authData.id || authData.user?.id;
       }
 
       // Create or recover company
-      let targetCompanyId;
-      const { data: existingCompany } = await adminClient
-        .from('empresas')
-        .select('id')
-        .eq('auth_user_id', userId)
-        .maybeSingle();
-
-      if (existingCompany) {
-        targetCompanyId = existingCompany.id;
+      let targetCompanyId = null;
+      const compCheckRes = await fetch(
+        `${config.supabaseUrl}/rest/v1/empresas?auth_user_id=eq.${userId}&select=id&limit=1`,
+        {
+          headers: {
+            'apikey': config.serviceRoleKey,
+            'Authorization': `Bearer ${config.serviceRoleKey}`
+          }
+        }
+      );
+      const existingComp = await compCheckRes.json();
+      if (Array.isArray(existingComp) && existingComp.length > 0) {
+        targetCompanyId = existingComp[0].id;
       } else {
         const newCompanyId = crypto.randomUUID();
         const companyPayload = {
@@ -102,19 +134,25 @@ export default async function handler(req, res) {
           ativo: true
         };
 
-        const { data: createdCompany, error: compErr } = await adminClient
-          .from('empresas')
-          .insert([companyPayload])
-          .select('id')
-          .single();
+        const compCreateRes = await fetch(`${config.supabaseUrl}/rest/v1/empresas`, {
+          method: 'POST',
+          headers: {
+            'apikey': config.serviceRoleKey,
+            'Authorization': `Bearer ${config.serviceRoleKey}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+          },
+          body: JSON.stringify([companyPayload])
+        });
 
-        if (compErr) {
-          return res.status(400).json({ error: `Erro ao registar empresa: ${compErr.message}` });
+        const createdComp = await compCreateRes.json();
+        if (!compCreateRes.ok) {
+          return res.status(400).json({ error: createdComp.message || 'Erro ao registar empresa' });
         }
-        targetCompanyId = createdCompany.id;
+        targetCompanyId = Array.isArray(createdComp) ? createdComp[0]?.id : newCompanyId;
       }
 
-      // Create Perfil
+      // Create or upsert perfil
       const perfilPayload = {
         id: userId,
         user_id: userId,
@@ -129,7 +167,16 @@ export default async function handler(req, res) {
         username: requestedUsername
       };
 
-      await adminClient.from('perfis').upsert(perfilPayload, { onConflict: 'id' });
+      await fetch(`${config.supabaseUrl}/rest/v1/perfis`, {
+        method: 'POST',
+        headers: {
+          'apikey': config.serviceRoleKey,
+          'Authorization': `Bearer ${config.serviceRoleKey}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'resolution=merge-duplicates'
+        },
+        body: JSON.stringify([perfilPayload])
+      });
 
       return res.status(200).json({
         success: true,
@@ -154,18 +201,30 @@ export default async function handler(req, res) {
       const email = (user.email || '').trim().toLowerCase();
       const defaultName = user.user_metadata?.full_name || email.split('@')[0] || 'Administrador';
 
-      let { data: empresa } = await adminClient
-        .from('empresas')
-        .select('*')
-        .eq('auth_user_id', user.id)
-        .maybeSingle();
+      const empRes = await fetch(
+        `${config.supabaseUrl}/rest/v1/empresas?auth_user_id=eq.${user.id}&select=*&limit=1`,
+        {
+          headers: {
+            'apikey': config.serviceRoleKey,
+            'Authorization': `Bearer ${config.serviceRoleKey}`
+          }
+        }
+      );
+      const empList = await empRes.json();
+      let empresa = Array.isArray(empList) && empList.length > 0 ? empList[0] : null;
 
       if (!empresa) {
         const newComId = crypto.randomUUID();
         const compName = `Empresa de ${email.split('@')[0]}`;
-        const { data: newEmpresa, error: empErr } = await adminClient
-          .from('empresas')
-          .insert([{
+        const newEmpRes = await fetch(`${config.supabaseUrl}/rest/v1/empresas`, {
+          method: 'POST',
+          headers: {
+            'apikey': config.serviceRoleKey,
+            'Authorization': `Bearer ${config.serviceRoleKey}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+          },
+          body: JSON.stringify([{
             id: newComId,
             auth_user_id: user.id,
             nome: compName,
@@ -174,11 +233,9 @@ export default async function handler(req, res) {
             plano: 'trial',
             ativo: true
           }])
-          .select('*')
-          .single();
-
-        if (empErr) return res.status(400).json({ error: empErr.message });
-        empresa = newEmpresa;
+        });
+        const createdEmps = await newEmpRes.json();
+        empresa = Array.isArray(createdEmps) ? createdEmps[0] : { id: newComId };
       }
 
       const perfilData = {
@@ -195,7 +252,16 @@ export default async function handler(req, res) {
         username: email.split('@')[0]
       };
 
-      await adminClient.from('perfis').upsert(perfilData, { onConflict: 'id' });
+      await fetch(`${config.supabaseUrl}/rest/v1/perfis`, {
+        method: 'POST',
+        headers: {
+          'apikey': config.serviceRoleKey,
+          'Authorization': `Bearer ${config.serviceRoleKey}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'resolution=merge-duplicates'
+        },
+        body: JSON.stringify([perfilData])
+      });
 
       return res.status(200).json({
         success: true,
@@ -209,17 +275,27 @@ export default async function handler(req, res) {
 
   // 3. /api/auth/email-by-username
   if (pathname.includes('email-by-username')) {
-    const cleanUsername = (url.searchParams.get('username') || req.query?.username || '').trim().toLowerCase();
-    if (!cleanUsername) return res.status(400).json({ error: 'Username não fornecido.' });
+    try {
+      const cleanUsername = (searchParams.get('username') || req.query?.username || '').trim().toLowerCase();
+      if (!cleanUsername) return res.status(400).json({ error: 'Username não fornecido.' });
 
-    const { data: perfil } = await adminClient
-      .from('perfis')
-      .select('email')
-      .ilike('username', cleanUsername)
-      .maybeSingle();
+      const perfilRes = await fetch(
+        `${config.supabaseUrl}/rest/v1/perfis?username=ilike.${cleanUsername}&select=email&limit=1`,
+        {
+          headers: {
+            'apikey': config.serviceRoleKey,
+            'Authorization': `Bearer ${config.serviceRoleKey}`
+          }
+        }
+      );
+      const perfis = await perfilRes.json();
+      const perfil = Array.isArray(perfis) && perfis.length > 0 ? perfis[0] : null;
 
-    if (!perfil || !perfil.email) return res.status(404).json({ error: 'Utilizador não encontrado.' });
-    return res.status(200).json({ email: perfil.email });
+      if (!perfil || !perfil.email) return res.status(404).json({ error: 'Utilizador não encontrado.' });
+      return res.status(200).json({ email: perfil.email });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
   }
 
   // 4. /api/auth/me

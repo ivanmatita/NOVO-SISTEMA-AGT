@@ -16864,9 +16864,27 @@ const VisualIdentityModule = ({ companyData, onRefreshData }: { companyData: any
         .from('empresas')
         .update(payload)
         .eq('id', user.empresa_id);
+
+      // Também sincronizar em config_empresa
+      await supabase
+        .from('config_empresa')
+        .upsert({
+          empresa_id: user.empresa_id,
+          logo_url: formData.logo_url,
+          logo_size: formData.logo_size,
+          watermark_url: formData.watermark_url,
+          watermark_size: formData.watermark_size,
+          footer_image_url: formData.footer_image_url,
+          footer_size: formData.footer_size,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'empresa_id' });
         
       if (!error) {
-        alert('Identidade visual atualizada com sucesso!');
+        if (formData.logo_url) {
+          localStorage.setItem('companyLogo', formData.logo_url);
+          window.dispatchEvent(new CustomEvent('companyLogoUpdated', { detail: formData.logo_url }));
+        }
+        alert('Configurações gráficas atualizadas com sucesso!');
         onRefreshData();
       } else {
         alert('Erro ao atualizar: ' + error.message);

@@ -32,14 +32,15 @@ export const MediaLibraryModule = ({ onRefreshData }: { onRefreshData?: () => vo
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      const { data: profile } = await supabase.from('perfis').select('company_id, empresa_id').eq('id', user.id).single();
-      const empresaId = profile?.company_id || profile?.empresa_id || '11111111-0000-0000-0000-000000000001';
+      const { data: profile } = await supabase.from('perfis').select('empresa_id').eq('id', user.id).maybeSingle();
+      const empresaId = profile?.empresa_id || user.user_metadata?.empresa_id;
+      if (!empresaId) return;
       
       const { data: emp } = await supabase
         .from('empresas')
         .select('logo_url, watermark_url, footer_image_url, nome_empresa, nif, endereco')
         .eq('id', empresaId)
-        .single();
+        .maybeSingle();
       
       if (emp) {
         setCompanyData(emp);
@@ -133,8 +134,8 @@ export const MediaLibraryModule = ({ onRefreshData }: { onRefreshData?: () => vo
         // Sync with empresas table if it's a structural image
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-          const { data: profile } = await supabase.from('perfis').select('company_id, empresa_id').eq('id', user.id).single();
-          const empresaId = profile?.company_id || profile?.empresa_id || '11111111-0000-0000-0000-000000000001';
+          const { data: profile } = await supabase.from('perfis').select('empresa_id').eq('id', user.id).maybeSingle();
+          const empresaId = profile?.empresa_id || user.user_metadata?.empresa_id;
           
           if (empresaId) {
             if (tipo === 'menu_logo') {

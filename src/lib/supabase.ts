@@ -9,13 +9,8 @@ const PROD_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIs
 const isStaging = getAppEnvironment() === 'staging';
 
 // Deterministic URL and key selection based strictly on environment
-const supabaseUrl = isStaging 
-  ? ((typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) || STAGING_URL)
-  : ((typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) || PROD_URL);
-
-const supabaseAnonKey = isStaging 
-  ? ((typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY) || STAGING_ANON)
-  : ((typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY) || PROD_ANON);
+const supabaseUrl = isStaging ? STAGING_URL : PROD_URL;
+const supabaseAnonKey = isStaging ? STAGING_ANON : PROD_ANON;
 
 const isBrowser = typeof window !== 'undefined';
 

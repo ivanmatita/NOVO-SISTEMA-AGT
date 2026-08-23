@@ -49897,39 +49897,111 @@ var require_jsonwebtoken = __commonJS({
 });
 
 // agt/rs256.signer.js
-function getPrivateKey() {
-  const envKey = process.env.AGT_PRIVATE_KEY;
-  let finalKey = null;
-  if (envKey && envKey.includes("BEGIN") && envKey.includes("PRIVATE KEY") && !envKey.includes("SUA_CHAVE_PRIVADA_AQUI")) {
-    finalKey = envKey.replace(/\\n/g, "\n").replace(/^"|"$/g, "");
-    console.log("[AGT-RS256-SIGNER] Utilizando chave privada configurada no ambiente.");
-  } else {
-    if (!fallbackPrivateKey) {
-      if (envKey && envKey.length > 0) {
-        console.warn("\u26A0\uFE0F [AGT-RS256-SIGNER] AGT_PRIVATE_KEY parece inv\xE1lida ou \xE9 um marcador de posi\xE7\xE3o. A gerar chave RSA tempor\xE1ria...");
-      } else {
-        console.warn("\u26A0\uFE0F [AGT-RS256-SIGNER] AGT_PRIVATE_KEY n\xE3o configurada. A gerar chave RSA tempor\xE1ria de 2048-bit...");
-      }
-      try {
-        const { privateKey } = import_crypto2.default.generateKeyPairSync("rsa", {
-          modulusLength: 2048,
-          privateKeyEncoding: {
-            type: "pkcs8",
-            format: "pem"
-          }
-        });
-        fallbackPrivateKey = privateKey;
-      } catch (err) {
-        console.error("[AGT-RS256-SIGNER] Erro cr\xEDtico ao gerar chave RSA de fallback:", err);
-        throw err;
-      }
-    }
-    finalKey = fallbackPrivateKey;
-  }
-  console.log(`[AGT-RS256-SIGNER] Providenciando chave para assinatura. Inicia com: ${finalKey?.substring(0, 30)}...`);
-  return finalKey;
+function normalizeKey(key) {
+  if (!key || typeof key !== "string") return null;
+  let clean = key.trim();
+  clean = clean.replace(/^["']|["']$/g, "");
+  clean = clean.replace(/\\n/g, "\n").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  return clean.trim();
 }
-var import_jsonwebtoken, import_crypto2, import_dotenv2, sign, fallbackPrivateKey;
+function parseAndValidateRSAPrivateKey(keyStr) {
+  const normalized = normalizeKey(keyStr);
+  if (!normalized) {
+    return { ok: false, errorType: "NOT_CONFIGURED", error: "Chave n\xE3o configurada" };
+  }
+  if (normalized.includes("BEGIN PUBLIC KEY") || normalized.includes("BEGIN RSA PUBLIC KEY")) {
+    return { ok: false, errorType: "PUBLIC_KEY_PROVIDED", error: "Chave p\xFAblica fornecida no lugar de chave privada" };
+  }
+  if (normalized.includes("BEGIN CERTIFICATE")) {
+    return { ok: false, errorType: "CERTIFICATE_PROVIDED", error: "Certificado fornecido no lugar de chave privada" };
+  }
+  try {
+    const keyObj = import_crypto2.default.createPrivateKey(normalized);
+    if (keyObj.type !== "private") {
+      return { ok: false, errorType: "NOT_PRIVATE_KEY", error: "Tipo de chave n\xE3o \xE9 privado" };
+    }
+    if (keyObj.asymmetricKeyType !== "rsa") {
+      return { ok: false, errorType: "NOT_RSA", error: `Tipo de chave n\xE3o \xE9 RSA (${keyObj.asymmetricKeyType})` };
+    }
+    return { ok: true, keyObj, pem: normalized, keyType: "RSA" };
+  } catch (err) {
+    return { ok: false, errorType: "INVALID_KEY_FORMAT", error: err.message };
+  }
+}
+function getAGTKeyDiagnostic() {
+  const envKey = process.env.AGT_PRIVATE_KEY || process.env.PRIVATE_KEY;
+  if (!envKey || envKey.trim().length === 0) {
+    return {
+      configured: false,
+      normalized: false,
+      keyType: "NONE",
+      import: "not_configured",
+      errorType: "NOT_CONFIGURED"
+    };
+  }
+  const normalized = normalizeKey(envKey);
+  const validation = parseAndValidateRSAPrivateKey(envKey);
+  if (validation.ok) {
+    return {
+      configured: true,
+      normalized: true,
+      keyType: "RSA",
+      import: "success"
+    };
+  }
+  return {
+    configured: true,
+    normalized: Boolean(normalized),
+    keyType: validation.keyType || "UNKNOWN",
+    import: "failed",
+    errorType: validation.errorType || "INVALID_KEY_FORMAT"
+  };
+}
+function getAGTSigningKey() {
+  const envKey = process.env.AGT_PRIVATE_KEY || process.env.PRIVATE_KEY;
+  const validation = parseAndValidateRSAPrivateKey(envKey);
+  if (validation.ok) {
+    return {
+      key: validation.keyObj,
+      pem: validation.pem,
+      source: "environment",
+      configured: true
+    };
+  }
+  if (!fallbackPrivateKeyObj) {
+    if (envKey && envKey.trim().length > 0) {
+      console.warn(`\u26A0\uFE0F [AGT-RS256-SIGNER] AGT_PRIVATE_KEY inv\xE1lida (${validation.errorType}: ${validation.error}). A utilizar chave RSA tempor\xE1ria de 2048-bit para manter o sistema operacional.`);
+    } else {
+      console.warn("\u26A0\uFE0F [AGT-RS256-SIGNER] AGT_PRIVATE_KEY n\xE3o configurada. A utilizar chave RSA tempor\xE1ria de 2048-bit de homologa\xE7\xE3o.");
+    }
+    try {
+      const { privateKey } = import_crypto2.default.generateKeyPairSync("rsa", {
+        modulusLength: 2048,
+        privateKeyEncoding: {
+          type: "pkcs8",
+          format: "pem"
+        }
+      });
+      fallbackPrivateKeyPem = privateKey;
+      fallbackPrivateKeyObj = import_crypto2.default.createPrivateKey(privateKey);
+    } catch (err) {
+      console.error("[AGT-RS256-SIGNER] Erro cr\xEDtico ao gerar chave RSA de fallback:", err.message);
+      throw new Error(`Falha ao inicializar motor criptogr\xE1fico AGT: ${err.message}`);
+    }
+  }
+  return {
+    key: fallbackPrivateKeyObj,
+    pem: fallbackPrivateKeyPem,
+    source: "fallback",
+    configured: false,
+    warning: validation.error
+  };
+}
+function getPrivateKey() {
+  const signingKey = getAGTSigningKey();
+  return signingKey.key;
+}
+var import_jsonwebtoken, import_crypto2, import_dotenv2, sign, fallbackPrivateKeyObj, fallbackPrivateKeyPem;
 var init_rs256_signer = __esm({
   "agt/rs256.signer.js"() {
     import_jsonwebtoken = __toESM(require_jsonwebtoken(), 1);
@@ -49937,7 +50009,8 @@ var init_rs256_signer = __esm({
     import_dotenv2 = __toESM(require_main4(), 1);
     ({ sign } = import_jsonwebtoken.default);
     import_dotenv2.default.config();
-    fallbackPrivateKey = null;
+    fallbackPrivateKeyObj = null;
+    fallbackPrivateKeyPem = null;
   }
 });
 
@@ -52098,6 +52171,7 @@ function startAgtQueueWorker(intervalMs = 15e3) {
 }
 
 // server.ts
+init_rs256_signer();
 var import_url = require("url");
 var import_async_hooks = require("async_hooks");
 var import_meta = {};
@@ -52148,9 +52222,6 @@ function getActiveAdminClient(req) {
     if (host.includes("staging") || host.includes("teste") || host.includes("homologacao")) {
       return supabaseAdminStaging;
     }
-    if (host.includes("vercel.app") && !host.includes("staging")) {
-      return supabaseAdminProd;
-    }
   }
   const store = reqStorage.getStore();
   if (store !== void 0) {
@@ -52184,6 +52255,7 @@ function getSupabaseClient(req) {
   }
   return currentAdmin;
 }
+var hasServiceRoleKey = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY || STAGING_SERVICE_ROLE_KEY || PROD_SERVICE_ROLE_KEY);
 if (!hasServiceRoleKey) {
   console.warn("\u26A0\uFE0F SUPABASE_SERVICE_ROLE_KEY n\xE3o detetada nas vari\xE1veis de ambiente. A usar o token JWT do utilizador para RLS.");
 }
@@ -52703,7 +52775,22 @@ app.post("/api/admin/repair-tenancy", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-app.get("/api/health", (req, res) => res.json({ status: "ok", mode: "offline" }));
+app.get("/api/health", (req, res) => res.json({ status: "ok", mode: _isStaging ? "staging" : "production" }));
+app.get("/api/health/supabase", async (req, res) => {
+  try {
+    const client = getActiveAdminClient(req);
+    if (!client) {
+      return res.status(503).json({ status: "error", message: "Supabase client not initialized" });
+    }
+    const { data, error } = await client.from("empresas").select("id").limit(1);
+    if (error) {
+      return res.status(503).json({ status: "error", message: error.message });
+    }
+    return res.status(200).json({ status: "ok", environment: _isStaging ? "staging" : "production", connected: true });
+  } catch (e) {
+    return res.status(503).json({ status: "error", message: e.message });
+  }
+});
 app.get("/api/auth/me", async (req, res) => {
   try {
     const authHeader = req.headers.authorization;
@@ -55673,6 +55760,14 @@ app.post("/api/agt/consultar-factura", consultarFacturaController);
 app.post("/api/agt/listar-series", listarSeriesController);
 app.post("/api/agt/obter-estado", obterEstadoController);
 app.post("/api/agt/listar-facturas", listarFacturasController);
+app.get("/api/agt/status-key", (_req, res) => {
+  const diag = getAGTKeyDiagnostic();
+  return res.status(200).json(diag);
+});
+app.get("/api/agt/key-status", (_req, res) => {
+  const diag = getAGTKeyDiagnostic();
+  return res.status(200).json(diag);
+});
 app.post("/api/agt/webhook", agtWebhookController);
 app.all("/api/agt/webhook", (req, res) => {
   return res.status(405).json({

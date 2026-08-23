@@ -10,7 +10,16 @@ const STAGING_SERVICE_ROLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiO
 
 export function getSupabaseConfig(req) {
   const host = (req?.headers?.['x-forwarded-host'] || req?.headers?.host || '').toLowerCase();
-  const isStaging = host.includes('staging') || process.env.VITE_APP_ENV === 'staging';
+  const envVar = (process.env.VITE_APP_ENV || process.env.VERCEL_GIT_COMMIT_REF || process.env.NODE_ENV || '').toLowerCase();
+  const supabaseUrlEnv = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').toLowerCase();
+  const isStaging = host.includes('staging') || 
+                    host.includes('teste') || 
+                    host.includes('homologacao') || 
+                    envVar.includes('staging') || 
+                    envVar.includes('teste') || 
+                    envVar.includes('homologacao') || 
+                    envVar.includes('development') ||
+                    supabaseUrlEnv.includes('sfnibpxfevhelaikqbiq');
 
   return {
     url: isStaging ? STAGING_URL : PROD_URL,

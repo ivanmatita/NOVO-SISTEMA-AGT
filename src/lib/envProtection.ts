@@ -15,38 +15,47 @@ const STAGING_SUPABASE_URL     = "https://sfnibpxfevhelaikqbiq.supabase.co";
 export type AppEnvironment = 'production' | 'staging' | 'development';
 
 export function getAppEnvironment(): AppEnvironment {
+  // 1. Verificar variáveis injetadas em tempo de build pelo Vite (import.meta.env)
+  let buildEnv = '';
+  let supabaseUrlEnv = '';
+  try {
+    if (typeof import.meta !== 'undefined' && import.meta.env) {
+      buildEnv = (import.meta.env.VITE_APP_ENV || import.meta.env.MODE || '').toLowerCase().trim();
+      supabaseUrlEnv = (import.meta.env.VITE_SUPABASE_URL || '').toLowerCase().trim();
+    }
+  } catch (e) {}
+
+  if (buildEnv === 'staging' || buildEnv === 'teste' || buildEnv === 'homologacao') {
+    return 'staging';
+  }
+  if (supabaseUrlEnv.includes('sfnibpxfevhelaikqbiq')) {
+    return 'staging';
+  }
+
+  // 2. Verificar URL do navegador e parâmetros
   if (typeof window !== 'undefined' && window.location) {
     const host = (window.location.hostname || '').toLowerCase();
     if (host.includes('staging') || host.includes('teste') || host.includes('homologacao')) {
       return 'staging';
     }
+    const search = (window.location.search || '').toLowerCase();
+    if (search.includes('env=staging') || search.includes('staging')) {
+      return 'staging';
+    }
     if (host.includes('localhost') || host.includes('127.0.0.1')) {
-      const search = (window.location.search || '').toLowerCase();
-      if (search.includes('env=staging') || search.includes('staging')) {
-        return 'staging';
-      }
-      if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_APP_ENV === 'staging') {
-        return 'staging';
-      }
-      return 'production';
+      if (buildEnv === 'staging') return 'staging';
     }
-    return 'production';
   }
 
+  // 3. Verificar process.env em tempo de execução server-side
   let envVal = '';
-  try {
-    if (typeof import.meta !== 'undefined' && import.meta.env) {
-      envVal = import.meta.env.VITE_APP_ENV || '';
-    }
-  } catch (e) {}
-  if (!envVal && typeof process !== 'undefined' && process.env) {
-    envVal = process.env.VITE_APP_ENV || process.env.VERCEL_GIT_COMMIT_REF || '';
+  if (typeof process !== 'undefined' && process.env) {
+    envVal = (process.env.VITE_APP_ENV || process.env.VERCEL_GIT_COMMIT_REF || process.env.NODE_ENV || '').toLowerCase().trim();
   }
-
-  const normalized = envVal.toLowerCase().trim();
-  if (normalized === 'staging' || normalized === 'homologacao' || normalized === 'teste') {
+  if (envVal === 'staging' || envVal === 'teste' || envVal === 'homologacao') {
     return 'staging';
   }
+
   return 'production';
 }
 

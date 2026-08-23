@@ -1,23 +1,20 @@
-const SUPABASE_URL = "https://nawqfidnawokqaheqvar.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5hd3FmaWRuYXdva3FhaGVxdmFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyMTgxNDYsImV4cCI6MjA5Mzc5NDE0Nn0.qFkIexxKcQDWax3pfhcgPMR3ZFIsE-gYWTS62i5Edgs";
+import { getEnvConfig, setCORS } from './_env.js';
 
 export default async function handler(req, res) {
-  res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  setCORS(res);
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
   try {
-    const authHeader = req.headers.authorization || `Bearer ${SUPABASE_ANON_KEY}`;
+    const config = getEnvConfig(req);
+    const authHeader = req.headers.authorization || `Bearer ${config.serviceRoleKey}`;
     
     if (req.method === 'GET') {
-      const response = await fetch(`${SUPABASE_URL}/rest/v1/exercicios_fiscais?select=*&order=ano.desc`, {
+      const response = await fetch(`${config.supabaseUrl}/rest/v1/exercicios_fiscais?select=*&order=ano.desc`, {
         headers: {
-          'apikey': SUPABASE_ANON_KEY,
+          'apikey': config.serviceRoleKey,
           'Authorization': authHeader,
           'Content-Type': 'application/json'
         }
@@ -27,10 +24,10 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
-      const response = await fetch(`${SUPABASE_URL}/rest/v1/exercicios_fiscais`, {
+      const response = await fetch(`${config.supabaseUrl}/rest/v1/exercicios_fiscais`, {
         method: 'POST',
         headers: {
-          'apikey': SUPABASE_ANON_KEY,
+          'apikey': config.serviceRoleKey,
           'Authorization': authHeader,
           'Content-Type': 'application/json',
           'Prefer': 'return=representation'

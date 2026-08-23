@@ -1,13 +1,12 @@
-const SUPABASE_URL = "https://nawqfidnawokqaheqvar.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5hd3FmaWRuYXdva3FhaGVxdmFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyMTgxNDYsImV4cCI6MjA5Mzc5NDE0Nn0.qFkIexxKcQDWax3pfhcgPMR3ZFIsE-gYWTS62i5Edgs";
+import { getEnvConfig, setCORS } from './_env.js';
 
-async function getTableCount(table) {
+async function getTableCount(table, config) {
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=id`, {
+    const res = await fetch(`${config.supabaseUrl}/rest/v1/${table}?select=id`, {
       method: 'HEAD',
       headers: {
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'apikey': config.serviceRoleKey,
+        'Authorization': `Bearer ${config.serviceRoleKey}`,
         'Prefer': 'count=exact'
       }
     });
@@ -22,35 +21,33 @@ async function getTableCount(table) {
 }
 
 export default async function handler(req, res) {
-  res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  setCORS(res);
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
   try {
-    const [clientes, produtos, colaboradores] = await Promise.all([
-      getTableCount('clientes'),
-      getTableCount('produtos'),
-      getTableCount('colaboradores')
+    const config = getEnvConfig(req);
+    const [clientes, produtos, armazens] = await Promise.all([
+      getTableCount('clientes', config),
+      getTableCount('produtos', config),
+      getTableCount('armazens', config)
     ]);
 
     return res.status(200).json({
       totalClientes: clientes,
       totalProdutos: produtos,
-      totalColaboradores: colaboradores,
+      totalArmazens: armazens,
       systemStatus: 'healthy',
-      mode: 'production',
+      mode: config.environment,
       timestamp: new Date().toISOString()
     });
   } catch (err) {
     return res.status(200).json({
       totalClientes: 0,
       totalProdutos: 0,
-      totalColaboradores: 0,
+      totalArmazens: 0,
       systemStatus: 'healthy'
     });
   }

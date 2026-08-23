@@ -83,9 +83,6 @@ export function getActiveAdminClient(req?: express.Request) {
     if (host.includes('staging') || host.includes('teste') || host.includes('homologacao')) {
       return supabaseAdminStaging;
     }
-    if (host.includes('vercel.app') && !host.includes('staging')) {
-      return supabaseAdminProd;
-    }
   }
   const store = reqStorage.getStore();
   if (store !== undefined) {

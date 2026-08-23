@@ -11,9 +11,18 @@ export default async function handler(req, res) {
     const authHeader = `Bearer ${config.serviceRoleKey}`;
 
     if (req.method === 'GET') {
-      let url = `${config.supabaseUrl}/rest/v1/documentos?select=*&order=created_at.desc`;
-      if (auth.empresa_id && !auth.isSuperAdmin) {
-        url += `&empresa_id=eq.${auth.empresa_id}`;
+      let queryEmpresaId = req.query?.empresa_id || '';
+      if (!queryEmpresaId && req.url) {
+        try {
+          const parsedUrl = new URL(req.url, `http://${req.headers?.host || 'localhost'}`);
+          queryEmpresaId = parsedUrl.searchParams.get('empresa_id') || '';
+        } catch (e) {}
+      }
+      const targetEmpresaId = queryEmpresaId || auth.empresa_id;
+
+      let url = `${config.supabaseUrl}/rest/v1/documentos_emitidos?select=*&order=created_at.desc`;
+      if (targetEmpresaId && !auth.isSuperAdmin) {
+        url += `&empresa_id=eq.${targetEmpresaId}`;
       }
       const response = await fetch(url, {
         headers: {
@@ -23,7 +32,7 @@ export default async function handler(req, res) {
         }
       });
       const data = await response.json();
-      return res.status(response.status).json(Array.isArray(data) ? data : []);
+      return res.status(200).json(Array.isArray(data) ? data : []);
     }
 
     if (req.method === 'POST') {
@@ -31,7 +40,7 @@ export default async function handler(req, res) {
       if (auth.empresa_id && !body.empresa_id) {
         body.empresa_id = auth.empresa_id;
       }
-      const response = await fetch(`${config.supabaseUrl}/rest/v1/documentos`, {
+      const response = await fetch(`${config.supabaseUrl}/rest/v1/documentos_emitidos`, {
         method: 'POST',
         headers: {
           'apikey': config.serviceRoleKey,

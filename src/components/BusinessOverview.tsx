@@ -32,24 +32,29 @@ import { motion, AnimatePresence } from 'motion/react';
 const COLORS = ['#003366', '#d97706', '#059669', '#dc2626', '#7c3aed'];
 
 const BusinessOverview: React.FC<{
-  invoices: any[];
-  products: any[];
-  clients: any[];
-  transactions: any[];
-}> = ({ invoices, products, clients, transactions }) => {
+  invoices?: any[];
+  products?: any[];
+  clients?: any[];
+  transactions?: any[];
+}> = ({ invoices = [], products = [], clients = [], transactions = [] }) => {
+  const safeInvoices = Array.isArray(invoices) ? invoices : [];
+  const safeProducts = Array.isArray(products) ? products : [];
+  const safeClients = Array.isArray(clients) ? clients : [];
+  const safeTransactions = Array.isArray(transactions) ? transactions : [];
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPeriod, setSelectedPeriod] = useState('year');
 
   // Aggregations
-  const totalInvoiced = useMemo(() => invoices.reduce((acc, inv) => acc + (inv.total || 0), 0), [invoices]);
-  const totalPaid = useMemo(() => invoices.filter(i => i.payment_status === 'paid').reduce((acc, inv) => acc + (inv.total || 0), 0), [invoices]);
-  const totalDebt = useMemo(() => invoices.filter(i => i.payment_status === 'pending').reduce((acc, inv) => acc + (inv.total || 0), 0), [invoices]);
+  const totalInvoiced = useMemo(() => safeInvoices.reduce((acc, inv) => acc + (inv.total || 0), 0), [safeInvoices]);
+  const totalPaid = useMemo(() => safeInvoices.filter(i => i.payment_status === 'paid').reduce((acc, inv) => acc + (inv.total || 0), 0), [safeInvoices]);
+  const totalDebt = useMemo(() => safeInvoices.filter(i => i.payment_status === 'pending').reduce((acc, inv) => acc + (inv.total || 0), 0), [safeInvoices]);
   
-  const totalExpenses = useMemo(() => transactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + (t.amount || 0), 0), [transactions]);
-  const totalStockValue = useMemo(() => products.reduce((acc, p) => acc + ((p.stock_quantity || 0) * (p.cost_price || 0)), 0), [products]);
+  const totalExpenses = useMemo(() => safeTransactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + (t.amount || 0), 0), [safeTransactions]);
+  const totalStockValue = useMemo(() => safeProducts.reduce((acc, p) => acc + ((p.stock_quantity || 0) * (p.cost_price || 0)), 0), [safeProducts]);
 
   const netProfit = totalPaid - totalExpenses;
-  const healthScore = Math.min(100, Math.max(0, (totalPaid / (totalExpenses || 1)) * 40 + (invoices.filter(i => i.payment_status === 'paid').length / (invoices.length || 1)) * 60));
+  const healthScore = Math.min(100, Math.max(0, (totalPaid / (totalExpenses || 1)) * 40 + (safeInvoices.filter(i => i.payment_status === 'paid').length / (safeInvoices.length || 1)) * 60));
 
   const chartData = [
     { name: 'Facturado', value: totalInvoiced },
@@ -74,14 +79,14 @@ const BusinessOverview: React.FC<{
     const q = searchQuery.toLowerCase();
     
     return {
-      invoices: invoices.filter(i => (i.numero_documento || '').toLowerCase().includes(q) || (i.client_name || '').toLowerCase().includes(q)).slice(0, 5),
-      products: products.filter(p => (p.name || '').toLowerCase().includes(q)).slice(0, 5),
-      clients: clients.filter(c => (c.name || '').toLowerCase().includes(q) || (c.nif || '').toLowerCase().includes(q)).slice(0, 5)
+      invoices: safeInvoices.filter(i => (i.numero_documento || '').toLowerCase().includes(q) || (i.client_name || '').toLowerCase().includes(q)).slice(0, 5),
+      products: safeProducts.filter(p => (p.name || '').toLowerCase().includes(q)).slice(0, 5),
+      clients: safeClients.filter(c => (c.name || '').toLowerCase().includes(q) || (c.nif || '').toLowerCase().includes(q)).slice(0, 5)
     };
-  }, [searchQuery, invoices, products, clients]);
+  }, [searchQuery, safeInvoices, safeProducts, safeClients]);
 
-  const totalTaxes = useMemo(() => invoices.reduce((acc, inv) => acc + (inv.total_tax || 0), 0), [invoices]);
-  const totalDeductions = useMemo(() => invoices.reduce((acc, inv) => acc + (inv.global_discount || 0), 0), [invoices]);
+  const totalTaxes = useMemo(() => safeInvoices.reduce((acc, inv) => acc + (inv.total_tax || 0), 0), [safeInvoices]);
+  const totalDeductions = useMemo(() => safeInvoices.reduce((acc, inv) => acc + (inv.global_discount || 0), 0), [safeInvoices]);
 
   return (
     <div className="space-y-8 pb-12">

@@ -32303,6 +32303,8 @@ export default function App() {
       
       if (!res.ok) {
         console.error('Erro ao carregar documentos emitidos:', await res.text());
+        setIssuedDocuments([]);
+        setInvoices([]);
         return;
       }
       

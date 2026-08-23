@@ -185,14 +185,22 @@ const SecurityModule: React.FC<SecurityModuleProps> = ({
   };
 
   // KPIs
-  const totalGuards = guards.length || employees.length;
-  const activeGuards = guards.filter((g: any) => g.status === 'ativo').length || employees.filter((e: any) => e.status === 'active').length;
-  const activeSites = sites.length || workSites.length;
-  const totalIncidents = occurrences.length;
-  const criticalIncidents = occurrences.filter((o: any) => o.severidade === 'Crítica' || o.severity === 'Crítica').length;
-  const totalArmory = armory.length;
-  const availableArmory = armory.filter((a: any) => a.status === 'disponivel').length;
-  const activeRosters = roster.length;
+  const safeGuards = Array.isArray(guards) ? guards : [];
+  const safeEmployees = Array.isArray(employees) ? employees : [];
+  const safeOccurrences = Array.isArray(occurrences) ? occurrences : [];
+  const safeArmory = Array.isArray(armory) ? armory : [];
+  const safeRoster = Array.isArray(roster) ? roster : [];
+  const safeSites = Array.isArray(sites) ? sites : [];
+  const safeWorkSites = Array.isArray(workSites) ? workSites : [];
+
+  const totalGuards = safeGuards.length || safeEmployees.length;
+  const activeGuards = safeGuards.filter((g: any) => g?.status === 'ativo').length || safeEmployees.filter((e: any) => e?.status === 'active').length;
+  const activeSites = safeSites.length || safeWorkSites.length;
+  const totalIncidents = safeOccurrences.length;
+  const criticalIncidents = safeOccurrences.filter((o: any) => o?.severidade === 'Crítica' || o?.severity === 'Crítica').length;
+  const totalArmory = safeArmory.length;
+  const availableArmory = safeArmory.filter((a: any) => a?.status === 'disponivel').length;
+  const activeRosters = safeRoster.length;
 
   const handleDelete = async (table: string, id: string, label: string) => {
     if (!window.confirm(`Apagar "${label}"?`)) return;

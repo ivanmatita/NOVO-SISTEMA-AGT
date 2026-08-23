@@ -83,7 +83,9 @@ export const TopHeader = ({
   useEffect(() => {
     const now = new Date();
     now.setHours(0,0,0,0);
-    const active = alerts.filter(a => {
+    const safeAlerts = Array.isArray(alerts) ? alerts : [];
+    const active = safeAlerts.filter(a => {
+      if (!a || !a.startDate) return false;
       const start = new Date(a.startDate);
       const advanceDays = parseInt(a.advanceTime) || 0;
       const alertDate = new Date(start);

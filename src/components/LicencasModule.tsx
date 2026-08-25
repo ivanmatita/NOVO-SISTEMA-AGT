@@ -72,18 +72,15 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
   const fetchLicencas = async () => {
     setLoading(true);
     try {
-      // 1. Direct fetch from Supabase
-      const { data: supaLicencas, error: supaErr } = await supabase
-        .from('licencas_empresa')
+      // 1. Direct fetch from Supabase using correct schema tables
+      const { data: supaLicencas } = await supabase
+        .from('licencas_empresas')
         .select('*');
       
-      const { data: supaOcorrencias } = await supabase
-        .from('ocorrencias_licenca')
-        .select('*');
-
-      const { data: supaComprovativos } = await supabase
-        .from('comprovativos_licenca')
-        .select('*');
+      const { data: supaHistorico } = await supabase
+        .from('historico_licencas')
+        .select('*')
+        .order('created_at', { ascending: false });
 
       // Fallback or API check
       const { data: { session } } = await supabase.auth.getSession();
@@ -94,7 +91,7 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
       let mergedList = (supaLicencas && supaLicencas.length > 0) ? supaLicencas : res;
 
       // Filter list for non-superadmins to only show their company license
-      if (!isSuperAdmin && mergedList && mergedList.length > 0) {
+      if (!isSuperAdmin && Array.isArray(mergedList) && mergedList.length > 0) {
         const companyLic = mergedList.filter((l: any) => String(l.empresa_id) === String(empresaId));
         if (companyLic.length > 0) {
           mergedList = companyLic;
@@ -102,8 +99,8 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
       }
 
       setLicencas(Array.isArray(mergedList) ? mergedList : []);
-      setOcorrencias(supaOcorrencias || []);
-      setComprovativos(supaComprovativos || []);
+      setOcorrencias(Array.isArray(supaHistorico) ? supaHistorico : []);
+      setComprovativos(Array.isArray(supaHistorico) ? supaHistorico.filter((h: any) => h.comprovativo_url) : []);
     } catch (error) {
       console.error("Erro ao buscar licenças:", error);
     } finally {
@@ -752,15 +749,16 @@ const SubmitPaymentProofModal = ({ onClose, onSuccess }: { onClose: () => void, 
       const { data: { session } } = await supabase.auth.getSession();
       const userRes = await supabase.auth.getUser();
 
-      await supabase.from('comprovativos_licenca').insert([{
+      await supabase.from('historico_licencas').insert([{
+        empresa_id: empresaId || '1',
         banco: formData.banco,
-        montante: Number(formData.montante),
+        valor: Number(formData.montante),
         numero_transacao: formData.numero_transacao,
         data_pagamento: formData.data_pagamento,
         comprovativo_url: formData.comprovativo_url || null,
-        observacao: formData.observacao,
-        status: 'pendente_validacao',
-        user_id: userRes.data.user?.id
+        observacoes: formData.observacao || `Comprovativo ${formData.banco} (${formData.numero_transacao})`,
+        status_novo: 'pendente_validacao',
+        alterado_por: userRes.data.user?.email || 'Utilizador'
       }]).catch(console.warn);
 
       toast.success('Comprovativo de pagamento enviado com sucesso para a validação no CRM!');
@@ -866,12 +864,12 @@ const SubmitOcorrenciaModal = ({ onClose, onSuccess }: { onClose: () => void, on
     try {
       setSubmitting(true);
       const userRes = await supabase.auth.getUser();
-      await supabase.from('ocorrencias_licenca').insert([{
-        assunto,
-        descricao,
-        prioridade,
-        status: 'aberto',
-        user_id: userRes.data.user?.id
+      await supabase.from('historico_licencas').insert([{
+        empresa_id: empresaId || '1',
+        motivo: `[Ocorrência] ${assunto}`,
+        observacoes: descricao,
+        status_novo: 'aberto',
+        alterado_por: userRes.data.user?.email || 'Utilizador'
       }]).catch(console.warn);
 
       toast.success('Ocorrência registada com sucesso!');
@@ -1071,12 +1069,11 @@ const AdminActionModal = ({ license, onClose, onSuccess }: { license: any, onClo
         const endDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
         
         if (acao === 'activar') {
-          await supabase.from('licencas_empresa').upsert({
+          await supabase.from('licencas_empresas').upsert({
             empresa_id: license.empresa_id || '1',
             status_licenca: 'activa',
             data_inicio: now.toISOString(),
-            data_fim: endDate.toISOString(),
-            ativado_por: 'Administrador CRM (Supabase)'
+            data_fim: endDate.toISOString()
           }, { onConflict: 'empresa_id' }).catch(console.warn);
         }
 

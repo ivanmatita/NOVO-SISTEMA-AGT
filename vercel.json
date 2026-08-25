@@ -80,6 +80,54 @@
       "destination": "/api/secure-locais-trabalho.js"
     },
     {
+      "source": "/api/crm/(.*)",
+      "destination": "/api/crm.js"
+    },
+    {
+      "source": "/api/crm",
+      "destination": "/api/crm.js"
+    },
+    {
+      "source": "/api/pos/(.*)",
+      "destination": "/api/pos.js"
+    },
+    {
+      "source": "/api/pos",
+      "destination": "/api/pos.js"
+    },
+    {
+      "source": "/api/pos-points/(.*)",
+      "destination": "/api/pos.js"
+    },
+    {
+      "source": "/api/pos-points",
+      "destination": "/api/pos.js"
+    },
+    {
+      "source": "/api/cost-centers/(.*)",
+      "destination": "/api/pos.js"
+    },
+    {
+      "source": "/api/cost-centers",
+      "destination": "/api/pos.js"
+    },
+    {
+      "source": "/api/caixa-movements/(.*)",
+      "destination": "/api/pos.js"
+    },
+    {
+      "source": "/api/caixa-movements",
+      "destination": "/api/pos.js"
+    },
+    {
+      "source": "/api/pos-user-configs/(.*)",
+      "destination": "/api/pos.js"
+    },
+    {
+      "source": "/api/pos-user-configs",
+      "destination": "/api/pos.js"
+    },
+    {
       "source": "/api/system-users",
       "destination": "/api/system-users.js"
     },

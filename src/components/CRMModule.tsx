@@ -114,27 +114,62 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showUserResetModal, setShowUserResetModal] = useState<UserProfile | null>(null);
 
+  const safeCompanies = Array.isArray(companies) ? companies : [];
+  const safeUsers = Array.isArray(users) ? users : [];
+  const safeLogs = Array.isArray(logs) ? logs : [];
+  const safeOcorrencias = Array.isArray(ocorrencias) ? ocorrencias : [];
+
   const loadData = async () => {
     setLoading(true);
     try {
-      const companiesData = await fetchJson('/api/crm/companies');
-      const statsData = await fetchJson('/api/crm/stats');
-      setCompanies(companiesData || []);
+      let companiesData: any = [];
+      let statsData: any = null;
+
+      try {
+        companiesData = await fetchJson('/api/crm/companies');
+      } catch (e) {
+        const { data: supaEmpresas } = await supabase.from('empresas').select('*');
+        companiesData = supaEmpresas || [];
+      }
+
+      try {
+        statsData = await fetchJson('/api/crm/stats');
+      } catch (e) {
+        statsData = null;
+      }
+
+      setCompanies(Array.isArray(companiesData) ? companiesData : []);
       setStats(statsData);
 
       if (activeTab === 'usuarios' || selectedCompany) {
-        const usersData = await fetchJson('/api/crm/users');
-        setUsers(usersData || []);
+        let usersData: any = [];
+        try {
+          usersData = await fetchJson('/api/crm/users');
+        } catch (e) {
+          const { data: supaPerfis } = await supabase.from('perfis').select('*');
+          usersData = supaPerfis || [];
+        }
+        setUsers(Array.isArray(usersData) ? usersData : []);
       }
 
       if (activeTab === 'auditoria' || selectedCompany) {
-        const logsData = await fetchJson('/api/crm/audit');
-        setLogs(logsData || []);
+        let logsData: any = [];
+        try {
+          logsData = await fetchJson('/api/crm/audit');
+        } catch (e) {
+          logsData = [];
+        }
+        setLogs(Array.isArray(logsData) ? logsData : []);
       }
 
       if (selectedCompany) {
-        const ocData = await fetchJson(`/api/crm/occurrences?empresa_id=${selectedCompany.id}`);
-        setOcorrencias(ocData || []);
+        let ocData: any = [];
+        try {
+          ocData = await fetchJson(`/api/crm/occurrences?empresa_id=${selectedCompany.id}`);
+        } catch (e) {
+          ocData = [];
+        }
+        setOcorrencias(Array.isArray(ocData) ? ocData : []);
       }
     } catch (error) {
       console.error("Erro ao carregar dados CRM:", error);
@@ -245,10 +280,10 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
     <div className="space-y-8 animate-in fade-in duration-500">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
-          { label: 'Total Empresas ERP', value: stats?.total || companies.length, icon: Building2, color: 'text-[#003366]' },
-          { label: 'Licenças Ativas', value: stats?.active || companies.filter(c => c.status_licenca === 'activa' || c.status_licenca === 'active' || c.status_licenca === 'ATIVA').length, icon: ShieldCheck, color: 'text-emerald-600' },
+          { label: 'Total Empresas ERP', value: stats?.total || safeCompanies.length, icon: Building2, color: 'text-[#003366]' },
+          { label: 'Licenças Ativas', value: stats?.active || safeCompanies.filter(c => c.status_licenca === 'activa' || c.status_licenca === 'active' || c.status_licenca === 'ATIVA').length, icon: ShieldCheck, color: 'text-emerald-600' },
           { label: 'Receita Total Licenciamento', value: formatCurrency(stats?.receitaTotal || 1500000), icon: Wallet, color: 'text-blue-600' },
-          { label: 'Alertas Críticos / Expiração', value: stats?.vencidas || companies.filter(c => c.status_licenca === 'vencida' || c.status_licenca === 'EXPIRADA').length, icon: AlertTriangle, color: 'text-red-500' },
+          { label: 'Alertas Críticos / Expiração', value: stats?.vencidas || safeCompanies.filter(c => c.status_licenca === 'vencida' || c.status_licenca === 'EXPIRADA').length, icon: AlertTriangle, color: 'text-red-500' },
         ].map((card, i) => (
           <div key={i} className="bg-white border border-zinc-200 p-6 shadow-xs flex items-center justify-between hover:shadow-md transition-shadow">
             <div>
@@ -263,14 +298,14 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 bg-white border border-zinc-200 p-6 shadow-xs h-full">
+        <div className="lg:col-span-2 bg-white border border-zinc-200 p-6 shadow-xs h-full min-h-[350px]">
           <div className="flex justify-between items-center mb-8">
             <h3 className="font-black text-[#003366] uppercase tracking-[0.2em] text-xs flex items-center gap-2">
               <TrendingUp size={16} /> Fluxo de Facturação CRM &amp; Subscrições
             </h3>
           </div>
-          <div className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-[300px] w-full min-h-[300px]">
+            <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={250}>
               <AreaChart data={[
                 { month: 'Jan', value: 1200000 },
                 { month: 'Fev', value: 1500000 },
@@ -298,12 +333,12 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
           </div>
         </div>
 
-        <div className="bg-white border border-zinc-200 p-6 shadow-xs flex flex-col">
+        <div className="bg-white border border-zinc-200 p-6 shadow-xs flex flex-col min-h-[350px]">
           <h3 className="font-black text-[#003366] uppercase tracking-[0.2em] text-xs mb-8 flex items-center gap-2">
             <PieChartIcon size={16} /> Distribuição de Planos Ativos
           </h3>
-          <div className="h-[230px] flex-1">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-[230px] flex-1 w-full min-h-[230px]">
+            <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={200}>
               <PieChart>
                 <Pie 
                   data={[
@@ -390,7 +425,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100">
-            {companies
+            {safeCompanies
               .filter(c => {
                 const matchSearch = c.nome_empresa?.toLowerCase().includes(searchTerm.toLowerCase()) || 
                   (c.nif && c.nif.includes(searchTerm)) ||
@@ -766,7 +801,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
-                {users.filter(u => String(u.empresa_id) === String(selectedCompany.id)).map(u => (
+                {safeUsers.filter(u => String(u.empresa_id) === String(selectedCompany.id)).map(u => (
                   <tr key={u.id} className="hover:bg-zinc-50">
                     <td className="p-3 font-bold text-zinc-800">{u.full_name || u.email}</td>
                     <td className="p-3 text-zinc-600 uppercase font-mono">{u.role || 'Operador'}</td>
@@ -781,7 +816,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                     </td>
                   </tr>
                 ))}
-                {users.filter(u => String(u.empresa_id) === String(selectedCompany.id)).length === 0 && (
+                {safeUsers.filter(u => String(u.empresa_id) === String(selectedCompany.id)).length === 0 && (
                   <tr><td colSpan={4} className="p-8 text-center text-zinc-400 italic">Nenhum utilizador secundário registado para esta empresa.</td></tr>
                 )}
               </tbody>
@@ -800,7 +835,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
             </div>
 
             <div className="space-y-3">
-              {ocorrencias.map(oc => (
+              {safeOcorrencias.map(oc => (
                 <div key={oc.id} className="p-4 border border-zinc-200 bg-zinc-50 space-y-2">
                   <div className="flex justify-between items-center">
                     <h4 className="font-black text-[#003366] text-xs uppercase">{oc.titulo}</h4>
@@ -809,7 +844,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                   <p className="text-xs text-zinc-600">{oc.descricao}</p>
                 </div>
               ))}
-              {ocorrencias.length === 0 && (
+              {safeOcorrencias.length === 0 && (
                 <p className="p-8 text-center text-zinc-400 italic text-xs">Nenhuma ocorrência registada para esta empresa.</p>
               )}
             </div>
@@ -872,7 +907,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
             </div>
 
             <div className="divide-y divide-zinc-100 text-xs">
-              {logs.filter(l => String(l.empresa_id) === String(selectedCompany.id)).map(log => (
+              {safeLogs.filter(l => String(l.empresa_id) === String(selectedCompany.id)).map(log => (
                 <div key={log.id} className="py-3 flex items-start gap-4">
                   <Activity size={16} className="text-[#003366] mt-0.5" />
                   <div>
@@ -882,7 +917,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                   </div>
                 </div>
               ))}
-              {logs.filter(l => String(l.empresa_id) === String(selectedCompany.id)).length === 0 && (
+              {safeLogs.filter(l => String(l.empresa_id) === String(selectedCompany.id)).length === 0 && (
                 <p className="p-8 text-center text-zinc-400 italic">Nenhum evento de auditoria registado especificamente para esta empresa.</p>
               )}
             </div>

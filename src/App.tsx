@@ -32076,8 +32076,9 @@ export default function App() {
 
       console.log(`[App] Buscando Clientes para ${companyId} via clienteService...`);
       const data = await clienteService.getClientes(companyId);
+      const safeData = Array.isArray(data) ? data : [];
 
-      setClients(data.map((cl: any) => ({
+      setClients(safeData.map((cl: any) => ({
         ...cl,
         id: cl.id,
         name: cl.nome || cl.name || '',
@@ -32104,7 +32105,7 @@ export default function App() {
         empresa_id: cl.empresa_id || companyId
       })));
 
-      localStorage.setItem('clientes_backup', JSON.stringify(data));
+      localStorage.setItem('clientes_backup', JSON.stringify(safeData));
     } catch (err) {
       console.error('[App] Erro ao carregar clientes:', err);
     }
@@ -32117,8 +32118,9 @@ export default function App() {
 
       console.log(`[App] Buscando Locais para ${companyId}...`);
       const data = await localTrabalhoService.getLocaisTrabalho(companyId);
+      const safeData = Array.isArray(data) ? data : [];
 
-      setWorkSites(data.map((ws: any) => ({
+      setWorkSites(safeData.map((ws: any) => ({
         ...ws,
         id: ws.id,
         title: ws.nome || '',
@@ -32136,7 +32138,7 @@ export default function App() {
         total_staff: Number(ws.total_staff || 0)
       })));
 
-      localStorage.setItem('locais_backup', JSON.stringify(data));
+      localStorage.setItem('locais_backup', JSON.stringify(safeData));
     } catch (err) {
       console.error('[App] Erro ao carregar locais:', err);
     }
@@ -32171,8 +32173,9 @@ export default function App() {
         .order('name');
 
       if (error) throw error;
+      const safeData = Array.isArray(data) ? data : [];
 
-      setProducts(data.map((p: any) => ({
+      setProducts(safeData.map((p: any) => ({
         ...p,
         id: p.id,
         name: p.name || '',
@@ -32197,7 +32200,7 @@ export default function App() {
         image_path: p.image_path || ''
       })));
 
-      localStorage.setItem('products_backup', JSON.stringify(data));
+      localStorage.setItem('products_backup', JSON.stringify(safeData));
     } catch (err) {
       console.error('[App] Erro ao carregar produtos:', err);
     }
@@ -32402,7 +32405,8 @@ export default function App() {
         .eq('empresa_id', companyId);
 
       if (error) throw error;
-      const visible = (data || []).filter((c: any) => c.is_deleted !== true);
+      const safeData = Array.isArray(data) ? data : [];
+      const visible = safeData.filter((c: any) => c.is_deleted !== true);
       setCaixas(visible.map(c => ({
         ...c,
         id: c.id,
@@ -32447,14 +32451,15 @@ export default function App() {
         }
       }
 
-      setCaixaMovements(data?.map(m => ({
+      const safeMovements = Array.isArray(data) ? data : [];
+      setCaixaMovements(safeMovements.map(m => ({
         ...m,
         id: m.id,
         caixaId: m.caixa_id,
         targetCaixaId: m.target_caixa_id,
         amount: Number(m.amount || 0),
         date: m.date
-      })) || []);
+      })));
     } catch (err) {
       console.error('Erro ao carregar movimentos de caixa:', err);
     }

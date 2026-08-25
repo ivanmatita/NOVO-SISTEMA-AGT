@@ -333,8 +333,9 @@ const POSPage = ({
   const companyName = companyData?.nome_empresa || companyData?.name || "Minha Empresa";
   const clientEmpresaId = companyData?.id || user?.empresa_id || '1';
 
-  // Categories extracted from products
-  const categories = ['Todos os Produtos', ...Array.from(new Set(products.map(p => p.category || (p as any).tipologia).filter(Boolean)))];
+  // Categories extracted safely from products
+  const safeProducts = Array.isArray(products) ? products : [];
+  const categories = ['Todos os Produtos', ...Array.from(new Set(safeProducts.map(p => p?.category || (p as any)?.tipologia).filter(Boolean)))];
 
   // Save operators and config to localStorage
   useEffect(() => {
@@ -346,12 +347,13 @@ const POSPage = ({
   }, [posConfig]);
 
   // Totals calculations
-  const subtotal = cart.reduce((sum, item) => {
-    const price = item.customPrice !== undefined ? item.customPrice : item.product.price;
+  const safeCart = Array.isArray(cart) ? cart : [];
+  const subtotal = safeCart.reduce((sum, item) => {
+    const price = item.customPrice !== undefined ? item.customPrice : (item.product?.price || 0);
     return sum + (price * item.qty);
   }, 0);
 
-  const totalItemDiscounts = cart.reduce((sum, item) => sum + item.discount, 0);
+  const totalItemDiscounts = safeCart.reduce((sum, item) => sum + (item.discount || 0), 0);
 
   const calculateTotal = () => {
     const afterItemDiscounts = subtotal - totalItemDiscounts;
@@ -389,12 +391,12 @@ const POSPage = ({
           fetchJsonWithAuth(`/api/invoices?empresa_id=${empresaId}`).catch(() => []),
           fetchJsonWithAuth(`/api/system-users?empresa_id=${empresaId}`).catch(() => [])
         ]);
-        setCostCenters(cc);
-        setPosPoints(pp);
+        setCostCenters(Array.isArray(cc) ? cc : []);
+        setPosPoints(Array.isArray(pp) ? pp : []);
         setClients(Array.isArray(cl) ? cl : []);
-        setSuspendedSales(suspended || []);
-        setCaixaMovements(movements || []);
-        if (Array.isArray(allInv)) setAllInvoices(allInv);
+        setSuspendedSales(Array.isArray(suspended) ? suspended : []);
+        setCaixaMovements(Array.isArray(movements) ? movements : []);
+        setAllInvoices(Array.isArray(allInv) ? allInv : []);
         
         if (Array.isArray(sysUsers) && sysUsers.length > 0) {
           setSystemUsersList(sysUsers);

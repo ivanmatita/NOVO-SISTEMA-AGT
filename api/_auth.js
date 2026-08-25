@@ -1,4 +1,4 @@
-﻿/**
+/**
  * api/_auth.js
  * Middleware e Utilitario centralizado de Autenticacao e Contexto de Empresa.
  */
@@ -85,18 +85,23 @@ export async function checkLicenseAccess(empresaId, ambiente, config) {
         : { allowed: true, reason: 'STAGING_ATIVO', licenca };
     }
 
-    // 2. Producao: estritamente bloqueada na Parte 4 ate a migracao da Parte 5
-    // Requer producao_liberada === true E estado === 'producao_ativa'
+    // 2. Producao: acesso permitido somente se:
+    //    - licenca.producao_liberada === true (liberada pelo SuperAdmin via backend)
+    //    - licenca.estado === 'ativa' (licenca ativa e valida)
+    //    - licenca.producao_elegivel === true (empresa elegivel)
     if (ambiente === 'producao') {
-      const producaoLiberada = licenca.producao_liberada === true && licenca.estado === 'producao_ativa';
-      
+      const producaoLiberada =
+        licenca.producao_liberada === true &&
+        licenca.estado === 'ativa' &&
+        licenca.producao_elegivel === true;
+
       if (!producaoLiberada) {
         let message = 'A sua licenca ainda nao esta ativa para utilizacao do ambiente oficial de Producao. Conclua a ativacao da licenca para obter acesso ao ambiente de Producao.';
         let reason = 'PRODUCAO_BLOQUEADA';
 
         if (licenca.estado === 'ativa' && licenca.producao_elegivel === true && !licenca.producao_liberada) {
           reason = 'BLOQUEADO_POR_MIGRACAO';
-          message = 'A sua licença foi aprovada e está ATIVA. A liberação do ambiente de Produção ocorrerá após a conclusão da migração controlada de dados (Parte 5).';
+          message = 'A sua licença foi aprovada e está ATIVA. A liberação do ambiente de Produção ocorrerá após a conclusão da migração controlada de dados e aprovação administrativa.';
         }
 
         return {

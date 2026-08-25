@@ -48,8 +48,20 @@
       "destination": "/api/secure-locais-trabalho.js"
     },
     {
+      "source": "/api/invoices/:id/(.*)",
+      "destination": "/api/invoices.js"
+    },
+    {
+      "source": "/api/invoices/:id",
+      "destination": "/api/invoices.js"
+    },
+    {
       "source": "/api/invoices",
       "destination": "/api/invoices.js"
+    },
+    {
+      "source": "/api/secure-locais-trabalho/(.*)",
+      "destination": "/api/secure-locais-trabalho.js"
     },
     {
       "source": "/api/system-users",

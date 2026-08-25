@@ -40,6 +40,14 @@
       "destination": "/api/licencas.js"
     },
     {
+      "source": "/api/migracao/(.*)",
+      "destination": "/api/migracao.js"
+    },
+    {
+      "source": "/api/migracao",
+      "destination": "/api/migracao.js"
+    },
+    {
       "source": "/api/stats",
       "destination": "/api/stats.js"
     },

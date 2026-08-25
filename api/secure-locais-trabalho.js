@@ -73,14 +73,18 @@ export default async function handler(req, res) {
       const payload = {
         empresa_id: companyId,
         nome: (body.nome || body.name || '').trim(),
-        endereco: body.endereco || body.address || null,
+        endereco: body.endereco || body.morada || body.address || null,
+        morada: body.morada || body.endereco || body.address || null,
         cidade: body.cidade || body.city || null,
         provincia: body.provincia || null,
         municipio: body.municipio || null,
-        pais: body.pais || 'Angola',
+        localizacao: body.localizacao || null,
+        pais: body.pais || body.country || 'Angola',
         telefone: body.telefone || body.phone || null,
         email: body.email || null,
         responsavel: body.responsavel || body.manager || null,
+        descricao: body.descricao || body.description || null,
+        observacoes: body.observacoes || null,
         ativo: body.ativo !== undefined ? body.ativo : true,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -98,6 +102,7 @@ export default async function handler(req, res) {
       });
       const inserted = await insertRes.json();
       if (!insertRes.ok) {
+        console.error('[API-SECURE-LOCAIS] Erro POST:', inserted);
         return res.status(400).json({ error: inserted.message || 'Erro ao criar local de trabalho' });
       }
       return res.status(201).json(Array.isArray(inserted) ? inserted[0] : inserted);
@@ -109,8 +114,24 @@ export default async function handler(req, res) {
       if (!targetId) return res.status(400).json({ error: 'ID do local obrigatório' });
 
       const body = req.body || {};
-      const payload = { ...body, updated_at: new Date().toISOString() };
-      delete payload.id;
+      const payload = { updated_at: new Date().toISOString() };
+
+      if (body.nome !== undefined) payload.nome = body.nome;
+      if (body.endereco !== undefined || body.morada !== undefined) {
+        payload.endereco = body.endereco || body.morada || null;
+        payload.morada = body.morada || body.endereco || null;
+      }
+      if (body.cidade !== undefined) payload.cidade = body.cidade;
+      if (body.provincia !== undefined) payload.provincia = body.provincia;
+      if (body.municipio !== undefined) payload.municipio = body.municipio;
+      if (body.localizacao !== undefined) payload.localizacao = body.localizacao;
+      if (body.pais !== undefined) payload.pais = body.pais;
+      if (body.telefone !== undefined) payload.telefone = body.telefone;
+      if (body.email !== undefined) payload.email = body.email;
+      if (body.responsavel !== undefined) payload.responsavel = body.responsavel;
+      if (body.descricao !== undefined) payload.descricao = body.descricao;
+      if (body.observacoes !== undefined) payload.observacoes = body.observacoes;
+      if (body.ativo !== undefined) payload.ativo = body.ativo;
 
       let patchUrl = `${config.supabaseUrl}/rest/v1/locais_trabalho?id=eq.${targetId}`;
       if (targetEmpresaId && !auth.isSuperAdmin) {
@@ -128,7 +149,33 @@ export default async function handler(req, res) {
         body: JSON.stringify(payload)
       });
       const updated = await patchRes.json();
+      if (!patchRes.ok) {
+        console.error('[API-SECURE-LOCAIS] Erro PATCH:', updated);
+        return res.status(400).json({ error: updated.message || 'Erro ao atualizar local de trabalho' });
+      }
       return res.status(200).json(Array.isArray(updated) ? updated[0] : updated);
+    // 4. DELETE
+    if (req.method === 'DELETE') {
+      const targetId = localId || req.body?.id;
+      if (!targetId) return res.status(400).json({ error: 'ID do local obrigatório' });
+
+      let deleteUrl = `${config.supabaseUrl}/rest/v1/locais_trabalho?id=eq.${targetId}`;
+      if (targetEmpresaId && !auth.isSuperAdmin) {
+        deleteUrl += `&empresa_id=eq.${targetEmpresaId}`;
+      }
+
+      const delRes = await fetch(deleteUrl, {
+        method: 'DELETE',
+        headers: {
+          'apikey': config.serviceRoleKey,
+          'Authorization': authHeader
+        }
+      });
+      if (!delRes.ok) {
+        const errJson = await delRes.json().catch(() => ({}));
+        return res.status(400).json({ error: errJson.message || 'Erro ao remover local de trabalho' });
+      }
+      return res.status(200).json({ success: true });
     }
 
     return res.status(405).json({ error: 'Método não permitido' });

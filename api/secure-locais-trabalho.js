@@ -70,6 +70,9 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'empresa_id obrigatório' });
       }
 
+      const startDate = body.start_date && String(body.start_date).trim() ? String(body.start_date).trim() : null;
+      const endDate = body.end_date && String(body.end_date).trim() ? String(body.end_date).trim() : null;
+
       const payload = {
         empresa_id: companyId,
         nome: (body.nome || body.name || '').trim(),
@@ -78,13 +81,21 @@ export default async function handler(req, res) {
         cidade: body.cidade || body.city || null,
         provincia: body.provincia || null,
         municipio: body.municipio || null,
-        localizacao: body.localizacao || null,
+        localizacao: body.localizacao || body.endereco || null,
         pais: body.pais || body.country || 'Angola',
         telefone: body.telefone || body.phone || null,
         email: body.email || null,
         responsavel: body.responsavel || body.manager || null,
         descricao: body.descricao || body.description || null,
         observacoes: body.observacoes || null,
+        client_id: body.client_id ? String(body.client_id) : null,
+        client_name: body.client_name || null,
+        start_date: startDate,
+        end_date: endDate,
+        code: body.code || null,
+        staff_per_day: Number(body.staff_per_day || 0),
+        total_staff: Number(body.total_staff || 0),
+        status: body.status || 'ativo',
         ativo: body.ativo !== undefined ? body.ativo : true,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -131,6 +142,14 @@ export default async function handler(req, res) {
       if (body.responsavel !== undefined) payload.responsavel = body.responsavel;
       if (body.descricao !== undefined) payload.descricao = body.descricao;
       if (body.observacoes !== undefined) payload.observacoes = body.observacoes;
+      if (body.client_id !== undefined) payload.client_id = body.client_id ? String(body.client_id) : null;
+      if (body.client_name !== undefined) payload.client_name = body.client_name;
+      if (body.start_date !== undefined) payload.start_date = body.start_date ? String(body.start_date).trim() : null;
+      if (body.end_date !== undefined) payload.end_date = body.end_date ? String(body.end_date).trim() : null;
+      if (body.code !== undefined) payload.code = body.code;
+      if (body.staff_per_day !== undefined) payload.staff_per_day = Number(body.staff_per_day || 0);
+      if (body.total_staff !== undefined) payload.total_staff = Number(body.total_staff || 0);
+      if (body.status !== undefined) payload.status = body.status;
       if (body.ativo !== undefined) payload.ativo = body.ativo;
 
       let patchUrl = `${config.supabaseUrl}/rest/v1/locais_trabalho?id=eq.${targetId}`;
@@ -154,6 +173,8 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: updated.message || 'Erro ao atualizar local de trabalho' });
       }
       return res.status(200).json(Array.isArray(updated) ? updated[0] : updated);
+    }
+
     // 4. DELETE
     if (req.method === 'DELETE') {
       const targetId = localId || req.body?.id;

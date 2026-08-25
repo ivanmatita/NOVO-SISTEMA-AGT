@@ -23920,7 +23920,15 @@ const FiscalSeriesModule = ({
           // Update the relation table
           await supabase.from('series_fiscais_usuarios').delete().eq('serie_id', editingSerie.id);
           if (selectedUsers.length > 0) {
-             const userInserts = selectedUsers.map(uid => ({ empresa_id: user.empresa_id, serie_id: editingSerie.id, usuario_id: uid }));
+             const userInserts = selectedUsers.map(uid => ({
+               empresa_id: user.empresa_id,
+               serie_id: editingSerie.id,
+               serie_fiscal_id: editingSerie.id,
+               utilizador_id: uid,
+               usuario_id: uid,
+               user_id: uid,
+               activo: true
+             }));
              const { error: relError } = await supabase.from('series_fiscais_usuarios').insert(userInserts);
              if (relError) console.error('Erro ao atualizar utilizadores:', relError);
           }
@@ -23957,9 +23965,18 @@ const FiscalSeriesModule = ({
 
         if (!error && data) {
           if (selectedUsers.length > 0) {
-             const userInserts = selectedUsers.map(uid => ({ empresa_id: currentEmpresaId, serie_id: data.id, usuario_id: uid }));
+             const userInserts = selectedUsers.map(uid => ({
+               empresa_id: currentEmpresaId,
+               serie_id: data.id,
+               serie_fiscal_id: data.id,
+               utilizador_id: uid,
+               usuario_id: uid,
+               user_id: uid,
+               activo: true
+             }));
              await supabase.from('series_fiscais_usuarios').insert(userInserts);
           }
+
           
           setShowForm(false);
           onRefresh();

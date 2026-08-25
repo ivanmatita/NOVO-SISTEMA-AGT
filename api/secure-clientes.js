@@ -98,6 +98,8 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'empresa_id é obrigatório para cadastrar cliente' });
       }
 
+      const isAtivo = body.ativo !== undefined ? body.ativo : (body.activo !== undefined ? body.activo : (body.is_active !== undefined ? body.is_active : true));
+
       const payload = {
         empresa_id: companyId,
         nome: (body.nome || body.client_name || '').trim(),
@@ -109,15 +111,22 @@ export default async function handler(req, res) {
         morada: body.morada || body.endereco || null,
         provincia: body.provincia || null,
         municipio: body.municipio || null,
+        cidade: body.cidade || null,
+        localidade: body.localidade || null,
+        codigo_postal: body.codigo_postal || null,
         pais: body.pais || 'Angola',
         tipo_entidade: body.tipo_entidade || 'Empresa',
         tipo_cliente: body.tipo_cliente || 'Nacional',
-        saldo_inicial: Number(body.saldo_inicial || 0),
-        activo: body.activo !== undefined ? body.activo : true,
-        ativo: body.ativo !== undefined ? body.ativo : true,
-        is_active: true,
+        tipo: body.tipo || body.tipo_cliente || 'Nacional',
+        saldo_inicial: Number(body.saldo_inicial || body.initial_balance || 0),
+        initial_balance: Number(body.saldo_inicial || body.initial_balance || 0),
+        ativo: isAtivo,
+        activo: isAtivo,
+        is_active: isAtivo,
         notas: body.notas || body.observacoes || null,
         observacoes: body.observacoes || body.notas || null,
+        webpage: body.webpage || body.website || null,
+        website: body.website || body.webpage || null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
@@ -135,6 +144,7 @@ export default async function handler(req, res) {
 
       const inserted = await insertRes.json();
       if (!insertRes.ok) {
+        console.error('[API-SECURE-CLIENTES] Erro POST:', inserted);
         return res.status(400).json({ error: inserted.message || 'Erro ao criar cliente' });
       }
       return res.status(201).json(Array.isArray(inserted) ? inserted[0] : inserted);
@@ -146,15 +156,43 @@ export default async function handler(req, res) {
       if (!targetId) return res.status(400).json({ error: 'ID do cliente é obrigatório para atualização' });
 
       const body = req.body || {};
+      const isAtivo = body.ativo !== undefined ? body.ativo : (body.activo !== undefined ? body.activo : (body.is_active !== undefined ? body.is_active : undefined));
+
       const payload = {
-        ...body,
-        nif: (body.nif || body.contribuinte || '').trim() || null,
-        contribuinte: (body.contribuinte || body.nif || '').trim() || null,
-        endereco: body.endereco || body.morada || null,
-        morada: body.morada || body.endereco || null,
         updated_at: new Date().toISOString()
       };
-      delete payload.id;
+
+      if (body.nome !== undefined) payload.nome = body.nome;
+      if (body.nif !== undefined || body.contribuinte !== undefined) {
+        payload.nif = (body.nif || body.contribuinte || '').trim() || null;
+        payload.contribuinte = (body.contribuinte || body.nif || '').trim() || null;
+      }
+      if (body.email !== undefined) payload.email = body.email;
+      if (body.telefone !== undefined) payload.telefone = body.telefone;
+      if (body.endereco !== undefined || body.morada !== undefined) {
+        payload.endereco = body.endereco || body.morada || null;
+        payload.morada = body.morada || body.endereco || null;
+      }
+      if (body.provincia !== undefined) payload.provincia = body.provincia;
+      if (body.municipio !== undefined) payload.municipio = body.municipio;
+      if (body.cidade !== undefined) payload.cidade = body.cidade;
+      if (body.pais !== undefined) payload.pais = body.pais;
+      if (body.tipo_entidade !== undefined) payload.tipo_entidade = body.tipo_entidade;
+      if (body.tipo_cliente !== undefined) payload.tipo_cliente = body.tipo_cliente;
+      if (body.saldo_inicial !== undefined) payload.saldo_inicial = Number(body.saldo_inicial || 0);
+      if (body.notas !== undefined || body.observacoes !== undefined) {
+        payload.notas = body.notas || body.observacoes || null;
+        payload.observacoes = body.observacoes || body.notas || null;
+      }
+      if (body.webpage !== undefined || body.website !== undefined) {
+        payload.webpage = body.webpage || body.website || null;
+        payload.website = body.website || body.webpage || null;
+      }
+      if (isAtivo !== undefined) {
+        payload.ativo = isAtivo;
+        payload.activo = isAtivo;
+        payload.is_active = isAtivo;
+      }
 
       let patchUrl = `${config.supabaseUrl}/rest/v1/clientes?id=eq.${targetId}`;
       if (targetEmpresaId && !auth.isSuperAdmin) {
@@ -172,6 +210,10 @@ export default async function handler(req, res) {
         body: JSON.stringify(payload)
       });
       const updated = await patchRes.json();
+      if (!patchRes.ok) {
+        console.error('[API-SECURE-CLIENTES] Erro PATCH:', updated);
+        return res.status(400).json({ error: updated.message || 'Erro ao atualizar cliente' });
+      }
       return res.status(200).json(Array.isArray(updated) ? updated[0] : updated);
     }
 

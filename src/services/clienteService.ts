@@ -52,7 +52,8 @@ export const clienteService = {
       const headers: Record<string, string> = {};
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const response = await fetch('/api/secure-clientes', { headers });
+      const url = _empresa_id ? `/api/secure-clientes?empresa_id=${encodeURIComponent(_empresa_id)}` : '/api/secure-clientes';
+      const response = await fetch(url, { headers });
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
         console.warn('[ClienteService] Resposta da API:', response.status, err);

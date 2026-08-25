@@ -32,6 +32,14 @@
       "destination": "/api/config-empresa.js"
     },
     {
+      "source": "/api/licencas/(.*)",
+      "destination": "/api/licencas.js"
+    },
+    {
+      "source": "/api/licencas",
+      "destination": "/api/licencas.js"
+    },
+    {
       "source": "/api/stats",
       "destination": "/api/stats.js"
     },

@@ -77,23 +77,41 @@ export async function checkLicenseAccess(empresaId, ambiente, config) {
 
     if (!licenca) return { allowed: false, reason: 'SEM_LICENCA', licenca: null };
 
+    // 1. Staging: permitido se licenca existe e nao esta bloqueada ou suspensa
     if (ambiente === 'staging') {
-      const bloqueado = licenca.estado === 'bloqueado' || licenca.ativo === false;
+      const bloqueado = licenca.estado === 'bloqueado' || licenca.estado === 'suspensa' || licenca.ativo === false;
       return bloqueado
-        ? { allowed: false, reason: 'STAGING_BLOQUEADO', licenca }
+        ? { allowed: false, reason: 'STAGING_BLOQUEADO', message: 'O acesso ao ambiente de teste (Staging) encontra-se suspenso ou bloqueado.', licenca }
         : { allowed: true, reason: 'STAGING_ATIVO', licenca };
     }
 
+    // 2. Producao: estritamente bloqueada na Parte 4 ate a migracao da Parte 5
+    // Requer producao_liberada === true E estado === 'producao_ativa'
     if (ambiente === 'producao') {
-      const producaoAtiva = licenca.licenca_ativa === true && licenca.estado === 'producao_ativa';
-      return producaoAtiva
-        ? { allowed: true, reason: 'PRODUCAO_ATIVA', licenca }
-        : {
-            allowed: false,
-            reason: 'PRODUCAO_BLOQUEADA',
-            message: 'A sua licenca ainda nao esta ativa para utilizacao do ambiente oficial de Producao. Conclua a ativacao da licenca para obter acesso ao ambiente de Producao.',
-            licenca
-          };
+      const producaoLiberada = licenca.producao_liberada === true && licenca.estado === 'producao_ativa';
+      
+      if (!producaoLiberada) {
+        let message = 'A sua licenca ainda nao esta ativa para utilizacao do ambiente oficial de Producao. Conclua a ativacao da licenca para obter acesso ao ambiente de Producao.';
+        let reason = 'PRODUCAO_BLOQUEADA';
+
+        if (licenca.estado === 'ativa' && licenca.producao_elegivel === true && !licenca.producao_liberada) {
+          reason = 'BLOQUEADO_POR_MIGRACAO';
+          message = 'A sua licença foi aprovada e está ATIVA. A liberação do ambiente de Produção ocorrerá após a conclusão da migração controlada de dados (Parte 5).';
+        }
+
+        return {
+          allowed: false,
+          reason,
+          message,
+          licenca: {
+            estado: licenca.estado,
+            producao_elegivel: licenca.producao_elegivel || false,
+            producao_liberada: licenca.producao_liberada || false
+          }
+        };
+      }
+
+      return { allowed: true, reason: 'PRODUCAO_ATIVA', licenca };
     }
 
     return { allowed: false, reason: 'AMBIENTE_DESCONHECIDO', licenca };

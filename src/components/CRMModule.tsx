@@ -1555,7 +1555,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
               Deseja redefinir o acesso e enviar instruções de recuperação para <strong>{showUserResetModal.full_name || showUserResetModal.email}</strong>?
             </p>
             <div className="flex justify-end gap-3 pt-4 border-t">
-              <button type="button" onClick={() => setShowUserResetModal(null)} className="px-4 py-2 uppercase font-bold">Cancelar</button>
+              <button type="button" onClick={() => setShowUserResetModal(null)} className="px-4 py-2 uppercase font-bold cursor-pointer">Cancelar</button>
               <button 
                 type="button" 
                 onClick={async () => {
@@ -1570,6 +1570,124 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                 Confirmar Reset
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL ANEXAR COMPROVATIVO */}
+      {showProofModal && selectedCompany && (
+        <div className="fixed inset-0 bg-zinc-900/60 backdrop-blur-xs z-[200] flex items-center justify-center p-4">
+          <div className="bg-white border border-zinc-200 w-full max-w-md shadow-2xl p-6 space-y-4 text-xs">
+            <h3 className="text-base font-black text-[#003366] uppercase">Anexar Comprovativo de Pagamento</h3>
+            <p className="text-zinc-500">Registe os dados do pagamento da licença da empresa {selectedCompany.nome_empresa}.</p>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              const form = e.target as any;
+              try {
+                if (typeof fetchJson === 'function') {
+                  await fetchJson('/api/crm/comprovativos', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      empresa_id: selectedCompany.id,
+                      banco: form.banco.value,
+                      numero_transacao: form.numero_transacao.value,
+                      montante: Number(form.montante.value),
+                      comprovativo_nome: `${form.banco.value}_${form.numero_transacao.value}`
+                    })
+                  });
+                }
+                toast.success('Comprovativo registado com sucesso no Supabase!');
+                setShowProofModal(false);
+                loadData();
+              } catch (err: any) {
+                toast.error(err.message || 'Erro ao anexar comprovativo.');
+              }
+            }} className="space-y-3">
+              <div>
+                <label className="block font-bold uppercase mb-1">Banco Emissor *</label>
+                <input type="text" name="banco" required placeholder="Ex: Banco BAI / BFA / BPC" className="w-full bg-zinc-50 border p-2 font-bold" />
+              </div>
+              <div>
+                <label className="block font-bold uppercase mb-1">N.º da Transação / Borderô *</label>
+                <input type="text" name="numero_transacao" required placeholder="Ex: TRX-998231" className="w-full bg-zinc-50 border p-2 font-bold font-mono" />
+              </div>
+              <div>
+                <label className="block font-bold uppercase mb-1">Valor Pago (Kz) *</label>
+                <input type="number" name="montante" defaultValue={65000} required className="w-full bg-zinc-50 border p-2 font-bold font-mono" />
+              </div>
+              <div className="flex justify-end gap-3 pt-4 border-t">
+                <button type="button" onClick={() => setShowProofModal(false)} className="px-4 py-2 uppercase font-bold cursor-pointer">Cancelar</button>
+                <button type="submit" className="bg-[#003366] text-white px-5 py-2 uppercase font-bold cursor-pointer shadow-sm">Gravar Comprovativo</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CRIAR OCORRÊNCIA */}
+      {showOccurrenceModal && selectedCompany && (
+        <div className="fixed inset-0 bg-zinc-900/60 backdrop-blur-xs z-[200] flex items-center justify-center p-4">
+          <div className="bg-white border border-zinc-200 w-full max-w-md shadow-2xl p-6 space-y-4 text-xs">
+            <h3 className="text-base font-black text-[#003366] uppercase">Abrir Nova Ocorrência CRM</h3>
+            <p className="text-zinc-500">Registe um chamado de suporte ou evento técnico para {selectedCompany.nome_empresa}.</p>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              const form = e.target as any;
+              try {
+                if (typeof fetchJson === 'function') {
+                  await fetchJson('/api/crm/occurrences', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      empresa_id: selectedCompany.id,
+                      titulo: form.titulo.value,
+                      tipo: form.tipo.value,
+                      prioridade: form.prioridade.value,
+                      descricao: form.descricao.value
+                    })
+                  });
+                }
+                toast.success('Ocorrência CRM registada no Supabase!');
+                setShowOccurrenceModal(false);
+                loadData();
+              } catch (err: any) {
+                toast.error(err.message || 'Erro ao criar ocorrência.');
+              }
+            }} className="space-y-3">
+              <div>
+                <label className="block font-bold uppercase mb-1">Título da Ocorrência *</label>
+                <input type="text" name="titulo" required placeholder="Ex: Solicitação de Apoio em Certificação AGT" className="w-full bg-zinc-50 border p-2 font-bold" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold uppercase mb-1">Tipo</label>
+                  <select name="tipo" defaultValue="Suporte Técnico" className="w-full bg-zinc-50 border p-2 font-bold">
+                    <option value="Suporte Técnico">Suporte Técnico</option>
+                    <option value="Faturação">Faturação</option>
+                    <option value="Licenciamento">Licenciamento</option>
+                    <option value="AGT">Homologação AGT</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold uppercase mb-1">Prioridade</label>
+                  <select name="prioridade" defaultValue="NORMAL" className="w-full bg-zinc-50 border p-2 font-bold">
+                    <option value="BAIXA">Baixa</option>
+                    <option value="NORMAL">Normal</option>
+                    <option value="ALTA">Alta</option>
+                    <option value="CRITICA">Crítica</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block font-bold uppercase mb-1">Descrição / Detalhes</label>
+                <textarea name="descricao" rows={3} className="w-full bg-zinc-50 border p-2 text-xs" placeholder="Descreva os detalhes da ocorrência..." />
+              </div>
+              <div className="flex justify-end gap-3 pt-4 border-t">
+                <button type="button" onClick={() => setShowOccurrenceModal(false)} className="px-4 py-2 uppercase font-bold cursor-pointer">Cancelar</button>
+                <button type="submit" className="bg-[#003366] text-white px-5 py-2 uppercase font-bold cursor-pointer shadow-sm">Abrir Chamado</button>
+              </div>
+            </form>
           </div>
         </div>
       )}

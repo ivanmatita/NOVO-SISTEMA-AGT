@@ -461,6 +461,92 @@ export default async function handler(req, res) {
         return res.status(200).json({ success: true, message: 'Comunicação oficial registada com sucesso' });
       }
 
+      // Add payment proof: POST /api/crm/comprovativos
+      if (pathname === 'comprovativos' && req.method === 'POST') {
+        const { empresa_id, banco, numero_transacao, montante, comprovativo_nome, comprovativo_url } = body;
+        const targetId = empresa_id || auth.empresa_id;
+
+        if (!targetId) {
+          return res.status(400).json({ error: 'ID da empresa é obrigatório.' });
+        }
+
+        const now = new Date().toISOString();
+
+        // 1. Update or upsert into licencas_empresas
+        await fetch(`${config.supabaseUrl}/rest/v1/licencas_empresas?empresa_id=eq.${targetId}`, {
+          method: 'PATCH',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            comprovativo_url: comprovativo_url || null,
+            comprovativo_nome: comprovativo_nome || `${banco || 'Banco'}_${numero_transacao || 'comp'}`,
+            comprovativo_data: now,
+            estado: 'comprovativo_anexado',
+            valor_licenca: montante || 65000,
+            updated_at: now
+          })
+        }).catch(() => {});
+
+        // 2. Audit log
+        await fetch(`${config.supabaseUrl}/rest/v1/historico_licencas`, {
+          method: 'POST',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            empresa_id: targetId,
+            estado_anterior: 'PENDENTE_COMPROVATIVO',
+            estado_novo: 'COMPROVATIVO_ANEXADO',
+            alterado_por: auth.user?.email || 'SuperAdmin CRM',
+            motivo: `Comprovativo anexado: Banco ${banco || 'N/D'} / Ref ${numero_transacao || 'N/D'} / Valor: ${montante || 0} Kz`
+          })
+        }).catch(() => {});
+
+        return res.status(200).json({ success: true, message: 'Comprovativo anexado com sucesso!' });
+      }
+
+      // Create CRM Occurrence: POST /api/crm/occurrences
+      if (pathname === 'occurrences' && req.method === 'POST') {
+        const { empresa_id, titulo, tipo, prioridade, descricao } = body;
+        const targetId = empresa_id || auth.empresa_id;
+
+        if (!targetId || !titulo) {
+          return res.status(400).json({ error: 'Empresa e Título da ocorrência são obrigatórios.' });
+        }
+
+        const now = new Date().toISOString();
+
+        // Insert into historico_licencas
+        const logRes = await fetch(`${config.supabaseUrl}/rest/v1/historico_licencas`, {
+          method: 'POST',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+          body: JSON.stringify({
+            empresa_id: targetId,
+            acao: `OCORRENCIA_${(tipo || 'SUPORTE').toUpperCase()}`,
+            descricao: `[${prioridade || 'NORMAL'}] ${titulo}: ${descricao || ''}`,
+            motivo: tipo || 'Suporte Técnico CRM',
+            usuario: auth.user?.email || 'SuperAdmin CRM',
+            alterado_por: auth.user?.email || 'SuperAdmin CRM',
+            created_at: now
+          })
+        });
+
+        // Also log in logs_auditoria
+        await fetch(`${config.supabaseUrl}/rest/v1/logs_auditoria`, {
+          method: 'POST',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            empresa_id: targetId,
+            user_id: auth.user?.id,
+            user_email: auth.user?.email,
+            action: 'CRIAR_OCORRENCIA',
+            acao: 'CRIAR_OCORRENCIA',
+            modulo: 'CRM',
+            detalhes: `${titulo} (${prioridade || 'NORMAL'}) - ${descricao || ''}`,
+            created_at: now
+          })
+        }).catch(() => {});
+
+        return res.status(201).json({ success: true, message: 'Ocorrência registada com sucesso!' });
+      }
+
       // Reset access: POST /api/crm/users/:id/reset-access
       if (pathname.includes('/reset-access')) {
         const userId = pathname.split('/')[1];

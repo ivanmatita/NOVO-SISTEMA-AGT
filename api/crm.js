@@ -218,6 +218,10 @@ export default async function handler(req, res) {
 
       // 0. Create new company: POST /api/crm/companies
       if ((pathname === 'companies' || pathname === '') && req.method === 'POST') {
+        if (!auth.isSuperAdmin) {
+          return res.status(403).json({ error: 'Apenas o Super Administrador pode registar empresas no CRM.' });
+        }
+
         const { nome_empresa, nif, email, telefone, endereco, municipio, provincia, pais, responsavel, plano, duracao_dias } = body;
         if (!nome_empresa || !nif) {
           return res.status(400).json({ error: 'Nome da Empresa e NIF são obrigatórios' });
@@ -300,6 +304,10 @@ export default async function handler(req, res) {
 
       // Toggle status: /api/crm/companies/:id/toggle-status
       if (pathname.includes('/toggle-status')) {
+        if (!auth.isSuperAdmin) {
+          return res.status(403).json({ error: 'Apenas o Super Administrador pode alterar o estado das empresas.' });
+        }
+
         const targetId = pathname.split('/')[1];
         const newStatus = body.status || 'ATIVA';
         const now = new Date();
@@ -314,8 +322,19 @@ export default async function handler(req, res) {
           fetch(`${config.supabaseUrl}/rest/v1/licencas_empresas?empresa_id=eq.${targetId}`, {
             method: 'PATCH',
             headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status_licenca: newStatus, data_inicio: now.toISOString(), data_fim: endDate.toISOString(), ativado_por: 'SuperAdmin CRM' })
-          })
+            body: JSON.stringify({ status_licenca: newStatus, data_inicio: now.toISOString(), data_fim: endDate.toISOString(), ativado_por: auth.user?.email || 'SuperAdmin CRM' })
+          }),
+          fetch(`${config.supabaseUrl}/rest/v1/historico_licencas`, {
+            method: 'POST',
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              empresa_id: targetId,
+              estado_anterior: newStatus === 'ATIVA' ? 'SUSPENSA' : 'ATIVA',
+              estado_novo: newStatus,
+              alterado_por: auth.user?.email || 'SuperAdmin CRM',
+              motivo: `Estado da empresa alterado para ${newStatus} pelo SuperAdmin`
+            })
+          }).catch(() => {})
         ]);
 
         return res.status(200).json({ success: true, status: newStatus });
@@ -323,6 +342,10 @@ export default async function handler(req, res) {
 
       // Activate license: /api/crm/companies/:id/activate-license
       if (pathname.includes('/activate-license')) {
+        if (!auth.isSuperAdmin) {
+          return res.status(403).json({ error: 'Apenas o Super Administrador pode ativar licenças.' });
+        }
+
         const targetId = pathname.split('/')[1];
         const duracaoDias = Number(body.duracao_dias || 30);
         const plano = body.plano || 'Profissional';
@@ -338,12 +361,12 @@ export default async function handler(req, res) {
           fetch(`${config.supabaseUrl}/rest/v1/licencas_empresas?empresa_id=eq.${targetId}`, {
             method: 'PATCH',
             headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status_licenca: 'ATIVA', plano, data_inicio: now.toISOString(), data_fim: endDate.toISOString(), duracao_dias: duracaoDias, ativado_por: 'SuperAdmin CRM' })
+            body: JSON.stringify({ status_licenca: 'ATIVA', plano, data_inicio: now.toISOString(), data_fim: endDate.toISOString(), duracao_dias: duracaoDias, ativado_por: auth.user?.email || 'SuperAdmin CRM' })
           }),
           fetch(`${config.supabaseUrl}/rest/v1/historico_licencas`, {
             method: 'POST',
             headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ empresa_id: targetId, estado_anterior: 'PENDENTE', estado_novo: 'ATIVA', alterado_por: 'SuperAdmin CRM', motivo: `Ativação manual de licença ${plano} (${duracaoDias} dias)` })
+            body: JSON.stringify({ empresa_id: targetId, estado_anterior: 'PENDENTE', estado_novo: 'ATIVA', alterado_por: auth.user?.email || 'SuperAdmin CRM', motivo: `Ativação manual de licença ${plano} (${duracaoDias} dias)` })
           }).catch(() => {})
         ]);
 
@@ -352,6 +375,10 @@ export default async function handler(req, res) {
 
       // Upgrade / Downgrade: /api/crm/companies/:id/upgrade ou /downgrade
       if (pathname.includes('/upgrade') || pathname.includes('/downgrade')) {
+        if (!auth.isSuperAdmin) {
+          return res.status(403).json({ error: 'Apenas o Super Administrador pode alterar o plano das empresas.' });
+        }
+
         const targetId = pathname.split('/')[1];
         const novoPlano = body.plano || 'Enterprise';
         const duracaoDias = Number(body.duracao_dias || 30);
@@ -367,8 +394,13 @@ export default async function handler(req, res) {
           fetch(`${config.supabaseUrl}/rest/v1/licencas_empresas?empresa_id=eq.${targetId}`, {
             method: 'PATCH',
             headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ plano: novoPlano, status_licenca: 'ATIVA', data_inicio: now.toISOString(), data_fim: endDate.toISOString(), ativado_por: 'SuperAdmin CRM' })
-          })
+            body: JSON.stringify({ plano: novoPlano, status_licenca: 'ATIVA', data_inicio: now.toISOString(), data_fim: endDate.toISOString(), ativado_por: auth.user?.email || 'SuperAdmin CRM' })
+          }),
+          fetch(`${config.supabaseUrl}/rest/v1/historico_licencas`, {
+            method: 'POST',
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ empresa_id: targetId, estado_anterior: 'PLANO_ANTERIOR', estado_novo: novoPlano, alterado_por: auth.user?.email || 'SuperAdmin CRM', motivo: `Alteração de plano para ${novoPlano} (${duracaoDias} dias)` })
+          }).catch(() => {})
         ]);
 
         return res.status(200).json({ success: true, plano: novoPlano });
@@ -377,6 +409,12 @@ export default async function handler(req, res) {
       // Update company: PUT /api/crm/companies/:id
       if (pathname.match(/^companies\/[a-zA-Z0-9\-]{8,}$/) && req.method === 'PUT') {
         const targetId = pathname.replace('companies/', '');
+
+        // Security check: must be SuperAdmin or belonging to that company
+        if (!auth.isSuperAdmin && String(auth.empresa_id) !== String(targetId)) {
+          return res.status(403).json({ error: 'Sem permissão para editar esta empresa.' });
+        }
+
         const { nome_empresa, nif, email, telefone, responsavel, municipio, provincia, endereco } = body;
 
         const updatePayload = { updated_at: new Date().toISOString() };
@@ -405,7 +443,7 @@ export default async function handler(req, res) {
         return res.status(updateRes.ok ? 200 : updateRes.status).json({ success: updateRes.ok, message: updateRes.ok ? 'Empresa atualizada com sucesso' : 'Erro ao atualizar empresa' });
       }
 
-      // Send email simulation / log
+      // Send email communication / log
       if (pathname === 'send-email') {
         const { empresa_id, destinatario, assunto, mensagem } = body;
         await fetch(`${config.supabaseUrl}/rest/v1/historico_licencas`, {
@@ -414,18 +452,49 @@ export default async function handler(req, res) {
           body: JSON.stringify({
             empresa_id: empresa_id || null,
             estado_anterior: 'COMUNICACAO',
-            estado_novo: 'EMAIL_ENVIADO',
-            alterado_por: 'SuperAdmin CRM',
-            motivo: `Email enviado para ${destinatario}: ${assunto}`
+            estado_novo: 'EMAIL_REGISTADO',
+            alterado_por: auth.user?.email || 'SuperAdmin CRM',
+            motivo: `Comunicação registada para ${destinatario}: ${assunto}`
           })
         }).catch(() => {});
 
-        return res.status(200).json({ success: true, message: 'Email enviado com sucesso' });
+        return res.status(200).json({ success: true, message: 'Comunicação oficial registada com sucesso' });
       }
 
-      // Reset access: /api/crm/users/:id/reset-access
+      // Reset access: POST /api/crm/users/:id/reset-access
       if (pathname.includes('/reset-access')) {
-        return res.status(200).json({ success: true, message: 'Senha e permissões resetadas com sucesso' });
+        const userId = pathname.split('/')[1];
+
+        // Fetch target user profile to verify tenant
+        const userRes = await fetch(`${config.supabaseUrl}/rest/v1/perfis?id=eq.${userId}&select=id,empresa_id,email,nome`, {
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+        });
+        const targetUserArr = await userRes.json();
+        const targetUser = Array.isArray(targetUserArr) && targetUserArr.length > 0 ? targetUserArr[0] : null;
+
+        if (!targetUser) {
+          return res.status(404).json({ error: 'Utilizador não encontrado.' });
+        }
+
+        // Security check: Must be SuperAdmin or admin of the same company
+        if (!auth.isSuperAdmin && String(auth.empresa_id) !== String(targetUser.empresa_id)) {
+          return res.status(403).json({ error: 'Sem autorização para redefinir acesso deste utilizador.' });
+        }
+
+        // 1. Audit log in historico_licencas
+        await fetch(`${config.supabaseUrl}/rest/v1/historico_licencas`, {
+          method: 'POST',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            empresa_id: targetUser.empresa_id,
+            estado_anterior: 'ACESSO_ACTIVO',
+            estado_novo: 'RESET_SOLICITADO',
+            alterado_por: auth.user?.email || 'SuperAdmin CRM',
+            motivo: `Reset de acesso e redefinição de segurança solicitado para ${targetUser.email || targetUser.nome}`
+          })
+        }).catch(() => {});
+
+        return res.status(200).json({ success: true, message: 'Instruções de redefinição de acesso processadas com sucesso.' });
       }
     }
 

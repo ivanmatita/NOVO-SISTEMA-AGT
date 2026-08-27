@@ -5,16 +5,20 @@ export default async function handler(req, res) {
   setCORS(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  try {
     const auth = await authenticateRequest(req);
+    if (!auth.authenticated) {
+      return res.status(401).json({ error: 'Não autenticado' });
+    }
+
     const config = getEnvConfig(req);
     const authHeader = `Bearer ${config.serviceRoleKey}`;
 
     if (req.method === 'GET') {
-      let url = `${config.supabaseUrl}/rest/v1/perfis?select=*&order=nome.asc`;
-      if (auth.empresa_id && !auth.isSuperAdmin) {
-        url += `&empresa_id=eq.${auth.empresa_id}`;
+      if (!auth.empresa_id) {
+        return res.status(200).json([]);
       }
+
+      let url = `${config.supabaseUrl}/rest/v1/perfis?empresa_id=eq.${auth.empresa_id}&select=*&order=nome.asc`;
       const response = await fetch(url, {
         headers: {
           'apikey': config.serviceRoleKey,

@@ -12,13 +12,23 @@ export default async function handler(req, res) {
 
   try {
     const auth = await authenticateRequest(req);
+    if (!auth.authenticated) {
+      return res.status(401).json({ error: 'Não autenticado' });
+    }
+
     const config = getEnvConfig(req);
     const authHeader = `Bearer ${config.serviceRoleKey}`;
 
     const parsedUrl = new URL(req.url || '', `http://${req.headers?.host || 'localhost'}`);
     const pathname = parsedUrl.pathname;
-    const queryEmpresaId = parsedUrl.searchParams.get('empresa_id') || req.query?.empresa_id;
-    const targetEmpresaId = queryEmpresaId || auth.empresa_id;
+    
+    // ISOLAMENTO TENANT ABSOLUTO: empresa_id SEMPRE da sessão autenticada, em TODAS as empresas
+    // incluindo Imatec Angola — cada empresa vê APENAS os seus próprios locais de trabalho
+    const targetEmpresaId = auth.empresa_id;
+
+    if (!targetEmpresaId) {
+      return res.status(400).json({ error: 'Empresa não identificada na sessão' });
+    }
 
     const pathParts = pathname.split('/').filter(Boolean);
     const localId = pathParts.length >= 3 ? pathParts[2] : null;
@@ -26,10 +36,7 @@ export default async function handler(req, res) {
     // 1. GET
     if (req.method === 'GET') {
       if (localId) {
-        let url = `${config.supabaseUrl}/rest/v1/locais_trabalho?id=eq.${localId}&select=*&limit=1`;
-        if (targetEmpresaId && !auth.isSuperAdmin) {
-          url += `&empresa_id=eq.${targetEmpresaId}`;
-        }
+        let url = `${config.supabaseUrl}/rest/v1/locais_trabalho?id=eq.${localId}&empresa_id=eq.${targetEmpresaId}&select=*&limit=1`;
         const response = await fetch(url, {
           headers: {
             'apikey': config.serviceRoleKey,
@@ -43,14 +50,7 @@ export default async function handler(req, res) {
         return res.status(404).json({ error: 'Local de trabalho não encontrado' });
       }
 
-      if (!targetEmpresaId && !auth.isSuperAdmin) {
-        return res.status(200).json([]);
-      }
-
-      let url = `${config.supabaseUrl}/rest/v1/locais_trabalho?select=*&order=nome.asc`;
-      if (targetEmpresaId && !auth.isSuperAdmin) {
-        url += `&empresa_id=eq.${targetEmpresaId}`;
-      }
+      let url = `${config.supabaseUrl}/rest/v1/locais_trabalho?empresa_id=eq.${targetEmpresaId}&select=*&order=nome.asc`;
 
       const response = await fetch(url, {
         headers: {
@@ -65,7 +65,8 @@ export default async function handler(req, res) {
     // 2. POST
     if (req.method === 'POST') {
       const body = req.body || {};
-      const companyId = body.empresa_id || targetEmpresaId;
+      // SEGURANÇA: empresa_id SEMPRE da sessão autenticada, nunca do body
+      const companyId = targetEmpresaId;
       if (!companyId) {
         return res.status(400).json({ error: 'empresa_id obrigatório' });
       }
@@ -152,10 +153,7 @@ export default async function handler(req, res) {
       if (body.status !== undefined) payload.status = body.status;
       if (body.ativo !== undefined) payload.ativo = body.ativo;
 
-      let patchUrl = `${config.supabaseUrl}/rest/v1/locais_trabalho?id=eq.${targetId}`;
-      if (targetEmpresaId && !auth.isSuperAdmin) {
-        patchUrl += `&empresa_id=eq.${targetEmpresaId}`;
-      }
+      let patchUrl = `${config.supabaseUrl}/rest/v1/locais_trabalho?id=eq.${targetId}&empresa_id=eq.${targetEmpresaId}`;
 
       const patchRes = await fetch(patchUrl, {
         method: 'PATCH',
@@ -180,10 +178,7 @@ export default async function handler(req, res) {
       const targetId = localId || req.body?.id;
       if (!targetId) return res.status(400).json({ error: 'ID do local obrigatório' });
 
-      let deleteUrl = `${config.supabaseUrl}/rest/v1/locais_trabalho?id=eq.${targetId}`;
-      if (targetEmpresaId && !auth.isSuperAdmin) {
-        deleteUrl += `&empresa_id=eq.${targetEmpresaId}`;
-      }
+      let deleteUrl = `${config.supabaseUrl}/rest/v1/locais_trabalho?id=eq.${targetId}&empresa_id=eq.${targetEmpresaId}`;
 
       const delRes = await fetch(deleteUrl, {
         method: 'DELETE',

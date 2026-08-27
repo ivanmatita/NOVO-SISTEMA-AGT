@@ -11,22 +11,27 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: 'Não autenticado', data: [] });
     }
 
+    // REGRA DE OURO CRM GLOBAL: Acesso exclusivo à administração global Imatec Angola
+    if (!auth.isGlobalSuperAdmin) {
+      return res.status(403).json({ 
+        error: 'Acesso negado: Apenas a Administração Central (Imatec Angola) possui permissão para aceder e gerir o CRM Global.',
+        code: 'FORBIDDEN_GLOBAL_ADMIN_ONLY'
+      });
+    }
+
     const config = getEnvConfig(req);
     const authHeader = `Bearer ${config.serviceRoleKey}`;
     const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const pathname = urlObj.pathname.replace(/^\/api\/crm\/?/, '');
-    const empresaId = auth.isSuperAdmin ? (urlObj.searchParams.get('empresa_id') || auth.empresa_id) : auth.empresa_id;
+    const empresaId = urlObj.searchParams.get('empresa_id') || auth.empresa_id;
 
     // =========================================================================
     // GET ENDPOINTS
     // =========================================================================
     if (req.method === 'GET') {
-      // 1. /api/crm/companies
+      // 1. /api/crm/companies - Retorna todas as empresas registadas para o Super Admin
       if (pathname === 'companies' || pathname === '' || pathname === '/') {
         let url = `${config.supabaseUrl}/rest/v1/empresas?select=*&order=created_at.desc&limit=1000`;
-        if (!auth.isSuperAdmin && auth.empresa_id) {
-          url += `&id=eq.${auth.empresa_id}`;
-        }
 
         const compRes = await fetch(url, {
           headers: {
@@ -102,8 +107,9 @@ export default async function handler(req, res) {
       // 3. /api/crm/users
       if (pathname === 'users') {
         let url = `${config.supabaseUrl}/rest/v1/perfis?select=*&order=created_at.desc&limit=1000`;
-        if (!auth.isSuperAdmin && auth.empresa_id) {
-          url += `&empresa_id=eq.${auth.empresa_id}`;
+        const filterEmpresaId = urlObj.searchParams.get('empresa_id');
+        if (filterEmpresaId) {
+          url += `&empresa_id=eq.${filterEmpresaId}`;
         }
 
         const [uRes, compRes] = await Promise.all([
@@ -170,12 +176,12 @@ export default async function handler(req, res) {
         const occurrences = rawOc.map(o => ({
           id: o.id,
           empresa_id: o.empresa_id,
-          titulo: `Licença: ${o.estado_novo || o.status_novo || 'Registo CRM'}`,
-          tipo: 'LICENCA',
-          prioridade: 'NORMAL',
-          descricao: o.observacoes || o.motivo || `Operação executada por ${o.alterado_por || 'SuperAdmin'}`,
+          titulo: o.acao?.startsWith('OCORRENCIA_') ? o.acao.replace('OCORRENCIA_', '') : (o.acao || `Licença: ${o.estado_novo || o.status_novo || 'Registo CRM'}`),
+          tipo: o.motivo || 'SUPORTE',
+          prioridade: o.descricao?.startsWith('[') ? o.descricao.slice(1, o.descricao.indexOf(']')) : 'NORMAL',
+          descricao: o.descricao || o.observacoes || o.motivo || `Operação executada por ${o.alterado_por || 'SuperAdmin'}`,
           estado: 'RESOLVIDO',
-          criado_por: o.alterado_por || 'SuperAdmin CRM',
+          criado_por: o.alterado_por || o.usuario || 'SuperAdmin CRM',
           created_at: o.created_at
         }));
 
@@ -556,7 +562,7 @@ export default async function handler(req, res) {
           fetch(`${config.supabaseUrl}/rest/v1/empresas?id=eq.${targetId}`, {
             method: 'PATCH',
             headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status_licenca: 'ATIVA', licenca_ativa: true, ativo: true, plano, data_inicio: now.toISOString(), data_fim: endDate.toISOString(), duracao_dias: duracaoDias, updated_at: now.toISOString() })
+            body: JSON.stringify({ status_licenca: 'ATIVA', licenca_ativa: true, ativo: true, plano, data_expiracao_licenca: endDate.toISOString(), updated_at: now.toISOString() })
           }),
           fetch(`${config.supabaseUrl}/rest/v1/licencas_empresas?empresa_id=eq.${targetId}`, {
             method: 'PATCH',
@@ -596,7 +602,7 @@ export default async function handler(req, res) {
           fetch(`${config.supabaseUrl}/rest/v1/empresas?id=eq.${targetId}`, {
             method: 'PATCH',
             headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ plano: novoPlano, status_licenca: 'ATIVA', data_inicio: now.toISOString(), data_fim: endDate.toISOString(), updated_at: now.toISOString() })
+            body: JSON.stringify({ plano: novoPlano, status_licenca: 'ATIVA', data_expiracao_licenca: endDate.toISOString(), updated_at: now.toISOString() })
           }),
           fetch(`${config.supabaseUrl}/rest/v1/licencas_empresas?empresa_id=eq.${targetId}`, {
             method: 'PATCH',

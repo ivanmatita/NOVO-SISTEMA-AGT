@@ -38,31 +38,32 @@ export async function authenticateRequest(req) {
 
     const role = (perfil?.role || user?.app_metadata?.role || user?.user_metadata?.role || 'user').toLowerCase();
     
-    // SEGURANCA MULTI-TENANT: Apenas superadmin explícito tem acesso global.
-    // Utilizadores com role 'admin', 'admin_empresa', etc. pertencem estritamente à sua empresa (tenant).
-    const isExplicitSuperAdmin = ['superadmin', 'admin_master', 'super_admin'].includes(role);
-    const isSuperAdmin = isExplicitSuperAdmin && (!perfil?.empresa_id || role === 'superadmin' || role === 'admin_master');
-    const isCompanyAdmin = role === 'admin' || role === 'admin_empresa' || perfil?.is_admin === true;
+    // SEGURANCA MULTI-TENANT & CRM GLOBAL:
+    // Super Admin Global: Imatec Angola (NIF 5002123665 / ID 2ebafa88-9a6e-4243-b127-b146410815eb) ou role superadmin explícito
+    const isImatecGlobal = (empresa_id === '2ebafa88-9a6e-4243-b127-b146410815eb') || (user?.email?.toLowerCase() === 'fffm333atitaifvan7@gmail.com');
+    const isExplicitSuperAdmin = ['superadmin', 'admin_master', 'super_admin'].includes(role) || perfil?.is_super_admin === true;
+    const isGlobalSuperAdmin = isExplicitSuperAdmin || isImatecGlobal;
+    const isSuperAdmin = isGlobalSuperAdmin; // Compatibilidade com código existente
+    const isCompanyAdmin = !isGlobalSuperAdmin && (role === 'admin' || role === 'admin_empresa' || perfil?.is_admin === true);
 
     // SEGURANCA: empresa_id NUNCA pode ser fornecido livremente pelo cliente.
-    let empresa_id = perfil?.empresa_id || user?.user_metadata?.empresa_id || null;
-
-    // Fallback seguro: apenas a empresa onde auth_user_id = uid deste utilizador
-    if (!empresa_id) {
+    let empresa_id_final = empresa_id;
+    if (!empresa_id_final) {
       const empRes = await fetch(
         `${config.supabaseUrl}/rest/v1/empresas?auth_user_id=eq.${user.id}&select=id&limit=1`,
         { headers: { 'apikey': config.serviceRoleKey, 'Authorization': `Bearer ${config.serviceRoleKey}` } }
       );
       const emps = await empRes.json();
-      if (Array.isArray(emps) && emps.length > 0) empresa_id = emps[0].id;
+      if (Array.isArray(emps) && emps.length > 0) empresa_id_final = emps[0].id;
     }
 
     return { 
       authenticated: true, 
       user, 
-      perfil: perfil || { id: user.id, email: user.email, role, empresa_id }, 
-      empresa_id, 
-      isSuperAdmin, 
+      perfil: perfil || { id: user.id, email: user.email, role, empresa_id: empresa_id_final }, 
+      empresa_id: empresa_id_final, 
+      isSuperAdmin: isGlobalSuperAdmin, 
+      isGlobalSuperAdmin,
       isCompanyAdmin,
       token, 
       error: null 

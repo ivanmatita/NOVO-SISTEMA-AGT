@@ -17,10 +17,14 @@ export default async function handler(req, res) {
   try {
     const config = getEnvConfig(req);
     const auth = await authenticateRequest(req);
+    if (!auth.authenticated) {
+      return res.status(401).json({ error: 'Não autenticado' });
+    }
 
-    // Permitir obter empresa_id da sessão ou query param
     const parsedUrl = new URL(req.url || '', `http://${req.headers?.host || 'localhost'}`);
-    let targetEmpresaId = parsedUrl.searchParams.get('empresa_id') || req.query?.empresa_id || auth.empresa_id;
+    
+    // ISOLAMENTO TENANT: Cada empresa gerencia estritamente as suas próprias configurações fiscais
+    let targetEmpresaId = auth.empresa_id;
 
     if (!targetEmpresaId && auth.user?.id) {
       const userRes = await fetch(
@@ -113,7 +117,8 @@ export default async function handler(req, res) {
 
     if (req.method === 'POST') {
       const body = req.body || {};
-      const companyId = body.empresa_id || targetEmpresaId;
+      // SEGURANÇA: empresa_id SEMPRE da sessão — nunca aceitar do body (parameter tampering)
+      const companyId = targetEmpresaId;
 
       if (!companyId) {
         return res.status(400).json({ error: 'empresa_id não identificado' });

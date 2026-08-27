@@ -25206,7 +25206,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
             setOriginDocs(faturas.length > 0 ? faturas : data);
           } else {
             // 2. Fallback to API endpoint
-            fetchWithAuth(`/api/invoices?empresa_id=${companyId}`)
+            fetchWithAuth(`/api/invoices`)
               .then(res => res.json())
               .then(apiData => {
                 if (Array.isArray(apiData)) {
@@ -32335,10 +32335,9 @@ export default function App() {
       const companyId = explicitId || user?.empresa_id;
       if (!companyId) return;
 
-      console.log('[App] Carregando todos os documentos emitidos via API para (bypass RLS):', companyId, 'no ano:', fiscalYear);
-      // Remove any implicit year filter if necessary, or ensure backend handles it robustly.
-      // Fetching all to guarantee list visibility.
-      const res = await fetchWithAuth(`/api/invoices?empresa_id=${companyId}&year=${fiscalYear}`);
+      console.log('[App] Carregando documentos emitidos via API para ano:', fiscalYear);
+      // SEGURANÇA: empresa_id não enviado — API determina tenant da sessão JWT
+      const res = await fetchWithAuth(`/api/invoices?year=${fiscalYear}`);
       
       if (!res.ok) {
         console.error('Erro ao carregar documentos emitidos:', await res.text());

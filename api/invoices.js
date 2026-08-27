@@ -28,8 +28,11 @@ export default async function handler(req, res) {
   setCORS(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  try {
     const auth = await authenticateRequest(req);
+    if (!auth.authenticated) {
+      return res.status(401).json({ error: 'Não autenticado' });
+    }
+
     const config = getEnvConfig(req);
     const authHeader = `Bearer ${config.serviceRoleKey}`;
 
@@ -52,15 +55,18 @@ export default async function handler(req, res) {
     const docId = pathParts.length >= 3 && pathParts[2] !== 'invoices' ? pathParts[2] : null;
     const subAction = pathParts.length >= 4 ? pathParts[3] : null;
 
-    const targetEmpresaId = queryEmpresaId || auth.empresa_id;
+    // ISOLAMENTO TENANT ABSOLUTO: empresa_id SEMPRE da sessão autenticada, em TODAS as empresas
+    // incluindo Imatec Angola — cada empresa vê APENAS os seus próprios documentos emitidos
+    const targetEmpresaId = auth.empresa_id;
+
+    if (!targetEmpresaId) {
+      return res.status(400).json({ error: 'Empresa não identificada na sessão' });
+    }
 
     // 1. GET (Listar documentos ou Obter um documento específico)
     if (req.method === 'GET') {
       if (docId) {
-        let url = `${config.supabaseUrl}/rest/v1/documentos_emitidos?id=eq.${docId}&select=*&limit=1`;
-        if (targetEmpresaId && !auth.isSuperAdmin) {
-          url += `&empresa_id=eq.${targetEmpresaId}`;
-        }
+        let url = `${config.supabaseUrl}/rest/v1/documentos_emitidos?id=eq.${docId}&empresa_id=eq.${targetEmpresaId}&select=*&limit=1`;
         const response = await fetch(url, {
           headers: {
             'apikey': config.serviceRoleKey,
@@ -76,10 +82,7 @@ export default async function handler(req, res) {
       }
 
       // Listar todos os documentos da empresa
-      let url = `${config.supabaseUrl}/rest/v1/documentos_emitidos?select=*&order=created_at.desc`;
-      if (targetEmpresaId && !auth.isSuperAdmin) {
-        url += `&empresa_id=eq.${targetEmpresaId}`;
-      }
+      let url = `${config.supabaseUrl}/rest/v1/documentos_emitidos?empresa_id=eq.${targetEmpresaId}&select=*&order=created_at.desc`;
       if (queryYear) {
         url += `&data_emissao=gte.${queryYear}-01-01T00:00:00Z&data_emissao=lte.${queryYear}-12-31T23:59:59Z`;
       }
@@ -147,7 +150,8 @@ export default async function handler(req, res) {
 
       // Emissão de Novo Documento
       const body = req.body || {};
-      const companyId = body.empresa_id || targetEmpresaId;
+      // SEGURANÇA: empresa_id SEMPRE da sessão — nunca aceitar do body (parameter tampering)
+      const companyId = targetEmpresaId;
       if (!companyId) {
         return res.status(400).json({ error: 'empresa_id não identificado na emissão do documento' });
       }
@@ -182,6 +186,7 @@ export default async function handler(req, res) {
 
       const newDocId = body.id || crypto.randomUUID();
       const nowIso = new Date().toISOString();
+      const isValidUuid = (val) => typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(val);
 
       const payload = {
         id: newDocId,
@@ -211,15 +216,16 @@ export default async function handler(req, res) {
         forma_pagamento: body.payment_method || 'Pronto Pagamento',
         payment_method: body.payment_method || 'Pronto Pagamento',
         moeda: body.currency || body.moeda || 'AOA',
-        cash_box: body.cash_box || null,
-        serie_id: body.series_id || body.serie_id || null,
-        documento_origem_id: body.documento_origem_id || null,
+        cash_box: isValidUuid(body.cash_box) ? body.cash_box : null,
+        serie_id: isValidUuid(body.series_id || body.serie_id) ? (body.series_id || body.serie_id) : null,
+        documento_origem_id: isValidUuid(body.documento_origem_id) ? body.documento_origem_id : null,
         numero_documento_origem: body.numero_documento_origem || null,
         valor_extenso: body.total_in_words || null,
         detalhes: {
           items: body.items || [],
           payment_method: body.payment_method,
           series_id: body.series_id,
+          raw_cash_box: body.cash_box || null,
           work_site_id: body.work_site_id,
           global_discount: body.global_discount,
           retencao_fonte_total: body.retencao_fonte_total,
@@ -227,8 +233,8 @@ export default async function handler(req, res) {
         },
         items: body.items || [],
         itens: body.items || [],
-        criado_por: auth.user?.id || body.criado_por || null,
-        created_by: auth.user?.id || null,
+        criado_por: isValidUuid(auth.user?.id) ? auth.user.id : (isValidUuid(body.criado_por) ? body.criado_por : null),
+        created_by: isValidUuid(auth.user?.id) ? auth.user.id : null,
         created_at: nowIso,
         updated_at: nowIso,
         is_certified: false,
@@ -270,7 +276,9 @@ export default async function handler(req, res) {
       };
       delete updatePayload.id;
 
-      const patchRes = await fetch(`${config.supabaseUrl}/rest/v1/documentos_emitidos?id=eq.${targetId}`, {
+      let patchUrl = `${config.supabaseUrl}/rest/v1/documentos_emitidos?id=eq.${targetId}&empresa_id=eq.${targetEmpresaId}`;
+
+      const patchRes = await fetch(patchUrl, {
         method: 'PATCH',
         headers: {
           'apikey': config.serviceRoleKey,
@@ -287,8 +295,11 @@ export default async function handler(req, res) {
     // 4. DELETE /api/invoices/:id
     if (req.method === 'DELETE') {
       if (!docId) return res.status(400).json({ error: 'ID do documento obrigatório' });
+      
+      let deleteUrl = `${config.supabaseUrl}/rest/v1/documentos_emitidos?id=eq.${docId}&empresa_id=eq.${targetEmpresaId}`;
+
       // Documentos fiscais são anulados, não deletados fisicamente
-      await fetch(`${config.supabaseUrl}/rest/v1/documentos_emitidos?id=eq.${docId}`, {
+      await fetch(deleteUrl, {
         method: 'PATCH',
         headers: {
           'apikey': config.serviceRoleKey,

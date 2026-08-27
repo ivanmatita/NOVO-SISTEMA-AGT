@@ -12,13 +12,23 @@ export default async function handler(req, res) {
 
   try {
     const auth = await authenticateRequest(req);
+    if (!auth.authenticated) {
+      return res.status(401).json({ error: 'Não autenticado' });
+    }
+
     const config = getEnvConfig(req);
     const authHeader = `Bearer ${config.serviceRoleKey}`;
 
     const parsedUrl = new URL(req.url || '', `http://${req.headers?.host || 'localhost'}`);
     const pathname = parsedUrl.pathname;
-    const queryEmpresaId = parsedUrl.searchParams.get('empresa_id') || req.query?.empresa_id;
-    const targetEmpresaId = queryEmpresaId || auth.empresa_id;
+    
+    // ISOLAMENTO TENANT ABSOLUTO: empresa_id SEMPRE da sessão autenticada, em TODAS as empresas
+    // incluindo Imatec Angola — cada empresa vê APENAS os seus próprios clientes
+    const targetEmpresaId = auth.empresa_id;
+
+    if (!targetEmpresaId) {
+      return res.status(400).json({ error: 'Empresa não identificada na sessão' });
+    }
 
     const pathParts = pathname.split('/').filter(Boolean);
     const clientId = pathParts.length >= 3 && pathParts[2] !== 'check-nif' ? pathParts[2] : null;
@@ -54,10 +64,7 @@ export default async function handler(req, res) {
     // 2. GET (Listar clientes isolados da empresa ou cliente por ID)
     if (req.method === 'GET') {
       if (clientId) {
-        let url = `${config.supabaseUrl}/rest/v1/clientes?id=eq.${clientId}&select=*&limit=1`;
-        if (targetEmpresaId && !auth.isSuperAdmin) {
-          url += `&empresa_id=eq.${targetEmpresaId}`;
-        }
+        let url = `${config.supabaseUrl}/rest/v1/clientes?id=eq.${clientId}&empresa_id=eq.${targetEmpresaId}&select=*&limit=1`;
         const response = await fetch(url, {
           headers: {
             'apikey': config.serviceRoleKey,
@@ -71,14 +78,7 @@ export default async function handler(req, res) {
         return res.status(404).json({ error: 'Cliente não encontrado' });
       }
 
-      if (!targetEmpresaId && !auth.isSuperAdmin) {
-        return res.status(200).json([]);
-      }
-
-      let url = `${config.supabaseUrl}/rest/v1/clientes?select=*&order=nome.asc`;
-      if (targetEmpresaId && !auth.isSuperAdmin) {
-        url += `&empresa_id=eq.${targetEmpresaId}`;
-      }
+      let url = `${config.supabaseUrl}/rest/v1/clientes?empresa_id=eq.${targetEmpresaId}&select=*&order=nome.asc`;
 
       const response = await fetch(url, {
         headers: {
@@ -93,7 +93,8 @@ export default async function handler(req, res) {
     // 3. POST (Criar novo cliente)
     if (req.method === 'POST') {
       const body = req.body || {};
-      const companyId = body.empresa_id || targetEmpresaId;
+      // SEGURANÇA: empresa_id SEMPRE vem da sessão autenticada, nunca do body
+      const companyId = targetEmpresaId;
       if (!companyId) {
         return res.status(400).json({ error: 'empresa_id é obrigatório para cadastrar cliente' });
       }
@@ -194,10 +195,7 @@ export default async function handler(req, res) {
         payload.is_active = isAtivo;
       }
 
-      let patchUrl = `${config.supabaseUrl}/rest/v1/clientes?id=eq.${targetId}`;
-      if (targetEmpresaId && !auth.isSuperAdmin) {
-        patchUrl += `&empresa_id=eq.${targetEmpresaId}`;
-      }
+      let patchUrl = `${config.supabaseUrl}/rest/v1/clientes?id=eq.${targetId}&empresa_id=eq.${targetEmpresaId}`;
 
       const patchRes = await fetch(patchUrl, {
         method: 'PATCH',

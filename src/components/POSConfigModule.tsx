@@ -81,14 +81,9 @@ export const POSConfigModule = () => {
       const { data: serData } = await supabase.from('series_fiscais').select('*');
       const filteredSer = (serData || []).filter(s => !companyId || !s.empresa_id || String(s.empresa_id) === String(companyId));
 
-      // 6. Fetch workplaces (locais_trabalho)
+      // 6. Fetch workplaces (locais_trabalho) via secure API
       const wpData = await localTrabalhoService.getLocaisTrabalho(companyId).catch(() => []);
-      const { data: supaWp } = await supabase.from('locais_trabalho').select('*');
-      const combinedWpMap = new Map<string, any>();
-      (Array.isArray(wpData) ? wpData : []).concat(supaWp || []).forEach(w => {
-        if (w && w.id) combinedWpMap.set(String(w.id), w);
-      });
-      const combinedWp = Array.from(combinedWpMap.values());
+      const combinedWp = Array.isArray(wpData) ? wpData : [];
 
       setUsers(usersData || []);
       setConfigs(Array.isArray(configsList) ? configsList : []);

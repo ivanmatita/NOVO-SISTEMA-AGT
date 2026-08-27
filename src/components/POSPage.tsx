@@ -382,14 +382,14 @@ const POSPage = ({
       try {
         const empresaId = companyData?.id || user?.empresa_id || '1';
         const [cc, pp, cl, sl, suspended, movements, allInv, sysUsers] = await Promise.all([
-          fetchJsonWithAuth(`/api/cost-centers?empresa_id=${empresaId}`).catch(() => []),
-          fetchJsonWithAuth(`/api/pos-points?empresa_id=${empresaId}`).catch(() => []),
+          fetchJsonWithAuth(`/api/cost-centers`).catch(() => []),
+          fetchJsonWithAuth(`/api/pos-points`).catch(() => []),
           fetchJsonWithAuth(`/api/secure-clientes`).catch(() => []),
-          fetchJsonWithAuth(`/api/pos/sales?empresa_id=${empresaId}`).catch(() => []),
-          fetchJsonWithAuth(`/api/pos/suspended?empresa_id=${empresaId}`).catch(() => []),
-          fetchJsonWithAuth(`/api/caixa-movements?empresa_id=${empresaId}`).catch(() => []),
-          fetchJsonWithAuth(`/api/invoices?empresa_id=${empresaId}`).catch(() => []),
-          fetchJsonWithAuth(`/api/system-users?empresa_id=${empresaId}`).catch(() => [])
+          fetchJsonWithAuth(`/api/pos/sales`).catch(() => []),
+          fetchJsonWithAuth(`/api/pos/suspended`).catch(() => []),
+          fetchJsonWithAuth(`/api/caixa-movements`).catch(() => []),
+          fetchJsonWithAuth(`/api/invoices`).catch(() => []),
+          fetchJsonWithAuth(`/api/system-users`).catch(() => [])
         ]);
         setCostCenters(Array.isArray(cc) ? cc : []);
         setPosPoints(Array.isArray(pp) ? pp : []);

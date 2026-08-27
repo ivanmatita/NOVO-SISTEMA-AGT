@@ -5,13 +5,22 @@ export default async function handler(req, res) {
   setCORS(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  try {
     const auth = await authenticateRequest(req);
+    if (!auth.authenticated) {
+      return res.status(401).json({ error: 'Não autenticado' });
+    }
+
     const config = getEnvConfig(req);
     const authHeader = `Bearer ${config.serviceRoleKey}`;
     const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const pathname = urlObj.pathname.replace(/^\/api\//, '');
-    const empresaId = auth?.empresa_id || urlObj.searchParams.get('empresa_id');
+    
+    // ISOLAMENTO TENANT: O POS opera estritamente na empresa autenticada
+    const empresaId = auth.empresa_id;
+
+    if (!empresaId) {
+      return res.status(400).json({ error: 'Empresa não identificada na sessão' });
+    }
 
     if (req.method === 'GET') {
       // 1. pos-points

@@ -234,19 +234,23 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
       const listLogs = Array.isArray(logsData) ? logsData : (logsData?.data && Array.isArray(logsData.data) ? logsData.data : []);
       setLogs(listLogs);
 
-      // Load Occurrences & Comprovativos if company selected
-      if (selectedCompany?.id) {
-        let ocData: any = [];
-        try {
-          if (typeof fetchJson === 'function') {
-            ocData = await fetchJson(`/api/crm/occurrences?empresa_id=${selectedCompany.id}`);
-          }
-        } catch (e) {
-          ocData = [];
+      // Load Occurrences (Globais ou por Empresa selecionada)
+      let ocData: any = [];
+      try {
+        if (typeof fetchJson === 'function') {
+          const ocUrl = selectedCompany?.id 
+            ? `/api/crm/occurrences?empresa_id=${selectedCompany.id}` 
+            : '/api/crm/occurrences';
+          ocData = await fetchJson(ocUrl);
         }
-        const listOc = Array.isArray(ocData) ? ocData : (ocData?.data && Array.isArray(ocData.data) ? ocData.data : []);
-        setOcorrencias(listOc);
+      } catch (e) {
+        ocData = [];
+      }
+      const listOc = Array.isArray(ocData) ? ocData : (ocData?.data && Array.isArray(ocData.data) ? ocData.data : []);
+      setOcorrencias(listOc);
 
+      // Load Comprovativos if company selected
+      if (selectedCompany?.id) {
         let compData: any = [];
         try {
           if (typeof fetchJson === 'function') {

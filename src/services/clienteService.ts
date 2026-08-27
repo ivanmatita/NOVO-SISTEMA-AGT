@@ -52,7 +52,8 @@ export const clienteService = {
       const headers: Record<string, string> = {};
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const url = _empresa_id ? `/api/secure-clientes?empresa_id=${encodeURIComponent(_empresa_id)}` : '/api/secure-clientes';
+      // SEGURANÇA: empresa_id nunca enviado pelo frontend — API usa exclusivamente a sessão JWT
+      const url = '/api/secure-clientes';
       const response = await fetch(url, { headers });
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));

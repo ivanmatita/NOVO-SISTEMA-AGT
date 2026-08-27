@@ -37,7 +37,9 @@ export async function authenticateRequest(req) {
     const perfil = Array.isArray(perfis) && perfis.length > 0 ? perfis[0] : null;
 
     const role = (perfil?.role || user?.app_metadata?.role || user?.user_metadata?.role || 'user').toLowerCase();
-    const isSuperAdmin = ['superadmin', 'admin_master', 'super_admin', 'suporte_tecnico'].includes(role);
+    const isExplicitSuperAdmin = ['superadmin', 'admin_master', 'super_admin', 'suporte_tecnico', 'proprietario'].includes(role);
+    const isGlobalAdmin = (role === 'admin' || perfil?.is_admin === true || user?.app_metadata?.is_admin === true || user?.user_metadata?.is_admin === true) && role !== 'admin_empresa';
+    const isSuperAdmin = isExplicitSuperAdmin || isGlobalAdmin;
 
     // SEGURANCA: empresa_id NUNCA pode ser de outro utilizador.
     let empresa_id = perfil?.empresa_id || user?.user_metadata?.empresa_id || null;

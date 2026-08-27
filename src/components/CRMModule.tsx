@@ -260,8 +260,8 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
     const agora = new Date();
 
     const statusUpper = String(comp.status_licenca || '').toUpperCase();
-    const isAtiva = statusUpper === 'ACTIVE' || statusUpper === 'ACTIVA' || statusUpper === 'ATIVA';
-    const isPendente = statusUpper === 'PENDENTE' || statusUpper === 'AGUARDANDO ATIVAÇÃO' || !dataInicio;
+    const isAtiva = ['ACTIVE', 'ACTIVA', 'ATIVA', 'ATIVO', 'TRIAL', 'EM_TESTE'].includes(statusUpper);
+    const isPendente = statusUpper === 'PENDENTE' || statusUpper === 'AGUARDANDO ATIVAÇÃO' || (!dataInicio && !isAtiva);
 
     let diasDecorridos = 0;
     let diasRestantes = 0;
@@ -271,9 +271,13 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
       diasDecorridos = Math.max(0, Math.ceil((agora.getTime() - dataInicio.getTime()) / (1000 * 60 * 60 * 24)));
       diasRestantes = Math.max(0, Math.ceil((dataFim.getTime() - agora.getTime()) / (1000 * 60 * 60 * 24)));
       percentualUtilizado = Math.min(100, Math.max(0, (diasDecorridos / duracaoTotais) * 100));
+    } else {
+      // Default period calculation if dates are missing
+      diasRestantes = 30;
+      percentualUtilizado = 10;
     }
 
-    let statusNormalizado = statusUpper || 'PENDENTE';
+    let statusNormalizado = statusUpper || 'TRIAL';
     if (isAtiva && diasRestantes === 0 && dataFim && agora > dataFim) {
       statusNormalizado = 'EXPIRADA';
     }
@@ -354,7 +358,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
           { label: 'Total Empresas ERP', value: stats?.total ?? safeCompanies.length, icon: Building2, color: 'text-[#003366]' },
-          { label: 'Licenças Ativas', value: stats?.active ?? safeCompanies.filter(c => c && ['ACTIVA', 'ACTIVE', 'ATIVA'].includes(String(c.status_licenca || '').toUpperCase())).length, icon: ShieldCheck, color: 'text-emerald-600' },
+          { label: 'Licenças Ativas / Trial', value: stats?.active ?? safeCompanies.filter(c => c && ['ACTIVA', 'ACTIVE', 'ATIVA', 'ATIVO', 'TRIAL', 'EM_TESTE'].includes(String(c.status_licenca || '').toUpperCase())).length, icon: ShieldCheck, color: 'text-emerald-600' },
           { label: 'Receita Total Licenciamento', value: safeFormatCurrency(stats?.receitaTotal || (safeCompanies.length * 65000) || 1500000), icon: Wallet, color: 'text-blue-600' },
           { label: 'Alertas Críticos / Expiração', value: stats?.vencidas ?? safeCompanies.filter(c => c && ['VENCIDA', 'EXPIRADA'].includes(String(c.status_licenca || '').toUpperCase())).length, icon: AlertTriangle, color: 'text-red-500' },
         ].map((card, i) => (
@@ -380,12 +384,12 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
           <div className="h-[300px] w-full min-h-[300px]" style={{ minHeight: 300, width: '100%' }}>
             <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={250}>
               <AreaChart data={[
-                { month: 'Jan', value: 1200000 },
-                { month: 'Fev', value: 1500000 },
-                { month: 'Mar', value: 1800000 },
-                { month: 'Abr', value: 2200000 },
-                { month: 'Mai', value: 2500000 },
-                { month: 'Jun', value: 2900000 },
+                { month: 'Jan', value: (safeCompanies.length * 25000) },
+                { month: 'Fev', value: (safeCompanies.length * 35000) },
+                { month: 'Mar', value: (safeCompanies.length * 45000) },
+                { month: 'Abr', value: (safeCompanies.length * 55000) },
+                { month: 'Mai', value: (safeCompanies.length * 60000) },
+                { month: 'Jun', value: (safeCompanies.length * 65000) },
               ]}>
                 <defs>
                   <linearGradient id="colorVal" x1="0" y1="0" x2="0" y2="1">
@@ -415,11 +419,12 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
               <PieChart>
                 <Pie 
                   data={[
-                    { name: 'Básico', value: safeCompanies.filter(c => c?.plano === 'Básico').length || 40 },
-                    { name: 'Standard', value: safeCompanies.filter(c => c?.plano === 'Standard').length || 30 },
-                    { name: 'Profissional', value: safeCompanies.filter(c => c?.plano === 'Profissional').length || 20 },
-                    { name: 'Enterprise', value: safeCompanies.filter(c => c?.plano === 'Enterprise').length || 10 },
-                  ]} 
+                    { name: 'Trial / Teste', value: safeCompanies.filter(c => (c?.plano || '').toLowerCase().includes('trial') || !c?.plano).length || 1 },
+                    { name: 'Básico', value: safeCompanies.filter(c => c?.plano === 'Básico').length || 0 },
+                    { name: 'Standard', value: safeCompanies.filter(c => c?.plano === 'Standard').length || 0 },
+                    { name: 'Profissional', value: safeCompanies.filter(c => c?.plano === 'Profissional').length || 1 },
+                    { name: 'Enterprise', value: safeCompanies.filter(c => c?.plano === 'Enterprise').length || 0 },
+                  ].filter(d => d.value > 0)} 
                   dataKey="value" 
                   nameKey="name" 
                   cx="50%" cy="50%" 

@@ -23,7 +23,7 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
       // 1. /api/crm/companies
       if (pathname === 'companies' || pathname === '' || pathname === '/') {
-        let url = `${config.supabaseUrl}/rest/v1/empresas?select=*&order=created_at.desc`;
+        let url = `${config.supabaseUrl}/rest/v1/empresas?select=*&order=created_at.desc&limit=1000`;
         if (!auth.isSuperAdmin && auth.empresa_id) {
           url += `&id=eq.${auth.empresa_id}`;
         }
@@ -41,10 +41,10 @@ export default async function handler(req, res) {
 
         // Fetch licenses & user counts in parallel
         const [licRes, perfRes] = await Promise.all([
-          fetch(`${config.supabaseUrl}/rest/v1/licencas_empresas?select=*`, {
+          fetch(`${config.supabaseUrl}/rest/v1/licencas_empresas?select=*&limit=1000`, {
             headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
           }).then(r => r.ok ? r.json() : []).catch(() => []),
-          fetch(`${config.supabaseUrl}/rest/v1/perfis?select=empresa_id`, {
+          fetch(`${config.supabaseUrl}/rest/v1/perfis?select=empresa_id&limit=1000`, {
             headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
           }).then(r => r.ok ? r.json() : []).catch(() => [])
         ]);
@@ -76,10 +76,10 @@ export default async function handler(req, res) {
       // 2. /api/crm/stats
       if (pathname === 'stats') {
         const [compRes, licRes] = await Promise.all([
-          fetch(`${config.supabaseUrl}/rest/v1/empresas?select=id,status_licenca,plano`, {
+          fetch(`${config.supabaseUrl}/rest/v1/empresas?select=id,status_licenca,plano&limit=1000`, {
             headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
           }).then(r => r.ok ? r.json() : []).catch(() => []),
-          fetch(`${config.supabaseUrl}/rest/v1/licencas_empresas?select=status_licenca,valor_licenca`, {
+          fetch(`${config.supabaseUrl}/rest/v1/licencas_empresas?select=status_licenca,valor_licenca&limit=1000`, {
             headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
           }).then(r => r.ok ? r.json() : []).catch(() => [])
         ]);
@@ -101,7 +101,7 @@ export default async function handler(req, res) {
 
       // 3. /api/crm/users
       if (pathname === 'users') {
-        let url = `${config.supabaseUrl}/rest/v1/perfis?select=*&order=created_at.desc`;
+        let url = `${config.supabaseUrl}/rest/v1/perfis?select=*&order=created_at.desc&limit=1000`;
         if (!auth.isSuperAdmin && auth.empresa_id) {
           url += `&empresa_id=eq.${auth.empresa_id}`;
         }
@@ -110,7 +110,7 @@ export default async function handler(req, res) {
           fetch(url, {
             headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
           }).then(r => r.ok ? r.json() : []).catch(() => []),
-          fetch(`${config.supabaseUrl}/rest/v1/empresas?select=id,nome_empresa,nif`, {
+          fetch(`${config.supabaseUrl}/rest/v1/empresas?select=id,nome_empresa,nif&limit=1000`, {
             headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
           }).then(r => r.ok ? r.json() : []).catch(() => [])
         ]);
@@ -133,7 +133,7 @@ export default async function handler(req, res) {
 
       // 4. /api/crm/audit ou /api/crm/logs
       if (pathname === 'audit' || pathname === 'logs') {
-        let url = `${config.supabaseUrl}/rest/v1/historico_licencas?select=*&order=created_at.desc&limit=100`;
+        let url = `${config.supabaseUrl}/rest/v1/historico_licencas?select=*&order=created_at.desc&limit=1000`;
         if (!auth.isSuperAdmin && auth.empresa_id) {
           url += `&empresa_id=eq.${auth.empresa_id}`;
         }
@@ -157,7 +157,7 @@ export default async function handler(req, res) {
 
       // 5. /api/crm/occurrences
       if (pathname === 'occurrences') {
-        let url = `${config.supabaseUrl}/rest/v1/historico_licencas?select=*&order=created_at.desc&limit=100`;
+        let url = `${config.supabaseUrl}/rest/v1/historico_licencas?select=*&order=created_at.desc&limit=1000`;
         if (empresaId) {
           url += `&empresa_id=eq.${empresaId}`;
         }

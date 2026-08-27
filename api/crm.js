@@ -279,7 +279,7 @@ export default async function handler(req, res) {
 
         let authUserId = null;
 
-        // 0.1 Optional: Create Auth user in Supabase Auth Admin API if email & password are provided
+        // 0.1 Create Auth user in Supabase Auth Admin API
         if (adminEmail) {
           try {
             const authCreateRes = await fetch(`${config.supabaseUrl}/auth/v1/admin/users`, {
@@ -304,11 +304,23 @@ export default async function handler(req, res) {
             const authData = await authCreateRes.json();
             if (authData && authData.id) {
               authUserId = authData.id;
+            } else {
+              // Se o utilizador já existe no Auth, buscar o seu ID real no banco/perfis
+              const findPerfilRes = await fetch(`${config.supabaseUrl}/rest/v1/perfis?email=eq.${encodeURIComponent(adminEmail)}&select=id,user_id&limit=1`, {
+                headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+              });
+              const foundPerfis = await findPerfilRes.json();
+              if (Array.isArray(foundPerfis) && foundPerfis.length > 0) {
+                authUserId = foundPerfis[0].user_id || foundPerfis[0].id;
+              }
             }
           } catch (authErr) {
             console.warn('[CRM Company Create Auth User Warn]:', authErr);
           }
         }
+
+        // Fallback garantido para nunca violar a constraint not-null de auth_user_id
+        const finalAuthUserId = authUserId || auth.user?.id || '00000000-0000-0000-0000-000000000000';
 
         // 1. Insert into public.empresas
         const newCompRes = await fetch(`${config.supabaseUrl}/rest/v1/empresas`, {
@@ -332,7 +344,7 @@ export default async function handler(req, res) {
             pais: pais || 'Angola',
             tipo_empresa: tipo_empresa || 'Comércio Geral',
             nome_administrador: adminName,
-            auth_user_id: authUserId,
+            auth_user_id: finalAuthUserId,
             plano: planoAtivo,
             status_licenca: 'ATIVA',
             licenca_ativa: true,
@@ -352,10 +364,8 @@ export default async function handler(req, res) {
 
         const newCompanyId = companyObj.id;
 
-        // 2. Insert Administrator into public.perfis linked to new company
+        // 2. Upsert Administrator into public.perfis linked to new company
         const perfilPayload = {
-          id: authUserId || undefined,
-          user_id: authUserId || undefined,
           nome: adminName,
           name: adminName,
           email: adminEmail,
@@ -366,9 +376,13 @@ export default async function handler(req, res) {
           is_active: true,
           ativo: true,
           empresa_id: newCompanyId,
-          created_at: now.toISOString(),
           updated_at: now.toISOString()
         };
+
+        if (finalAuthUserId && finalAuthUserId !== '00000000-0000-0000-0000-000000000000') {
+          perfilPayload.id = finalAuthUserId;
+          perfilPayload.user_id = finalAuthUserId;
+        }
 
         await fetch(`${config.supabaseUrl}/rest/v1/perfis`, {
           method: 'POST',
@@ -378,7 +392,7 @@ export default async function handler(req, res) {
             'Content-Type': 'application/json',
             'Prefer': 'resolution=merge-duplicates'
           },
-          body: JSON.stringify([perfilPayload])
+          body: JSON.stringify(perfilPayload)
         }).catch((e) => console.warn('[CRM Create Admin Profile Warn]:', e));
 
         // 3. Insert into public.licencas_empresas

@@ -37,11 +37,14 @@ export async function authenticateRequest(req) {
     const perfil = Array.isArray(perfis) && perfis.length > 0 ? perfis[0] : null;
 
     const role = (perfil?.role || user?.app_metadata?.role || user?.user_metadata?.role || 'user').toLowerCase();
-    const isExplicitSuperAdmin = ['superadmin', 'admin_master', 'super_admin', 'suporte_tecnico', 'proprietario'].includes(role);
-    const isGlobalAdmin = (role === 'admin' || perfil?.is_admin === true || user?.app_metadata?.is_admin === true || user?.user_metadata?.is_admin === true) && role !== 'admin_empresa';
-    const isSuperAdmin = isExplicitSuperAdmin || isGlobalAdmin;
+    
+    // SEGURANCA MULTI-TENANT: Apenas superadmin explícito tem acesso global.
+    // Utilizadores com role 'admin', 'admin_empresa', etc. pertencem estritamente à sua empresa (tenant).
+    const isExplicitSuperAdmin = ['superadmin', 'admin_master', 'super_admin'].includes(role);
+    const isSuperAdmin = isExplicitSuperAdmin && (!perfil?.empresa_id || role === 'superadmin' || role === 'admin_master');
+    const isCompanyAdmin = role === 'admin' || role === 'admin_empresa' || perfil?.is_admin === true;
 
-    // SEGURANCA: empresa_id NUNCA pode ser de outro utilizador.
+    // SEGURANCA: empresa_id NUNCA pode ser fornecido livremente pelo cliente.
     let empresa_id = perfil?.empresa_id || user?.user_metadata?.empresa_id || null;
 
     // Fallback seguro: apenas a empresa onde auth_user_id = uid deste utilizador
@@ -54,9 +57,18 @@ export async function authenticateRequest(req) {
       if (Array.isArray(emps) && emps.length > 0) empresa_id = emps[0].id;
     }
 
-    return { authenticated: true, user, perfil: perfil || { id: user.id, email: user.email, role, empresa_id }, empresa_id, isSuperAdmin, token, error: null };
+    return { 
+      authenticated: true, 
+      user, 
+      perfil: perfil || { id: user.id, email: user.email, role, empresa_id }, 
+      empresa_id, 
+      isSuperAdmin, 
+      isCompanyAdmin,
+      token, 
+      error: null 
+    };
   } catch (err) {
-    return { authenticated: false, user: null, perfil: null, empresa_id: null, isSuperAdmin: false, error: 'AUTH_EXCEPTION', message: err.message };
+    return { authenticated: false, user: null, perfil: null, empresa_id: null, isSuperAdmin: false, isCompanyAdmin: false, error: 'AUTH_EXCEPTION', message: err.message };
   }
 }
 

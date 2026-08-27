@@ -15505,7 +15505,7 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
       } else if (activeSection === 'docs') {
          // Load via custom bypass API
          const data = await fetchJson(`/api/company-documents?empresa_id=${companyId}`);
-         setRecords(data || []);
+         setRecords(Array.isArray(data) ? data : []);
       } else {
          // Default logic for other sections
          const { data, error } = await supabase
@@ -15729,7 +15729,8 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
   };
 
   const renderSectionContent = () => {
-    const filteredRecords = records.filter(r => {
+    const safeRecords = Array.isArray(records) ? records : [];
+    const filteredRecords = safeRecords.filter(r => {
       if (activeSection === 'letters') {
          return (
            (r.referencia || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -17925,7 +17926,7 @@ const DailyMovementsModule = ({ onBack }: { onBack: () => void }) => {
   const fetchJournals = async () => {
     try {
       const data = await fetchJson(`/api/accounting/journals?empresa_id=${user?.empresa_id}`);
-      setJournals(data);
+      setJournals(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching journals:', error);
     } finally {
@@ -24289,7 +24290,7 @@ const InvoiceList = ({
       const response = await fetchWithAuth(`/api/work-sites/${workSiteId}/movements?empresa_id=${user?.empresa_id}`);
       if (response.ok) {
         const data = await response.json();
-        setMovements(data);
+        setMovements(Array.isArray(data) ? data : []);
       }
     } catch (error) {
       console.error("Error fetching movements:", error);

@@ -66,10 +66,12 @@ export const clienteService = {
       return Array.isArray(data) ? data : (data.data || []);
     } catch (err: any) {
       console.error('[ClienteService] Erro ao listar clientes:', err);
-      // Fallback to cache if available
+      // Fallback seguro de cache com chave isolada por empresa
       try {
-        const cached = localStorage.getItem('clientes_backup');
-        if (cached) return JSON.parse(cached);
+        if (_empresa_id) {
+          const cached = localStorage.getItem(`clientes_backup_${_empresa_id}`);
+          if (cached) return JSON.parse(cached);
+        }
       } catch (e) {}
       return [];
     }

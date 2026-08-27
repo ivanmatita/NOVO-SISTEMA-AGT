@@ -39,7 +39,7 @@ export const systemUsersService = {
     if (!empresaId) return [];
     try {
       const headers = await getHeaders();
-      const response = await fetch(`/api/system-users?empresa_id=${empresaId}`, {
+      const response = await fetch('/api/system-users', {
         method: 'GET',
         headers
       });

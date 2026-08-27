@@ -32106,7 +32106,9 @@ export default function App() {
         empresa_id: cl.empresa_id || companyId
       })));
 
-      localStorage.setItem('clientes_backup', JSON.stringify(safeData));
+      // Limpeza de chaves legadas e persistência segura isolada por empresa
+      localStorage.removeItem('clientes_backup');
+      localStorage.setItem(`clientes_backup_${companyId}`, JSON.stringify(safeData));
     } catch (err) {
       console.error('[App] Erro ao carregar clientes:', err);
     }
@@ -32139,7 +32141,8 @@ export default function App() {
         total_staff: Number(ws.total_staff || 0)
       })));
 
-      localStorage.setItem('locais_backup', JSON.stringify(safeData));
+      localStorage.removeItem('locais_backup');
+      localStorage.setItem(`locais_backup_${companyId}`, JSON.stringify(safeData));
     } catch (err) {
       console.error('[App] Erro ao carregar locais:', err);
     }
@@ -32201,7 +32204,8 @@ export default function App() {
         image_path: p.image_path || ''
       })));
 
-      localStorage.setItem('products_backup', JSON.stringify(safeData));
+      localStorage.removeItem('products_backup');
+      localStorage.setItem(`products_backup_${companyId}`, JSON.stringify(safeData));
     } catch (err) {
       console.error('[App] Erro ao carregar produtos:', err);
     }
@@ -32565,28 +32569,19 @@ export default function App() {
         return;
       }
 
-      const { data, error } = await supabase
-        .from('fornecedores')
-        .select('*')
-        .eq('empresa_id', companyId);
+      console.log(`[App] Buscando Fornecedores para ${companyId} via fornecedorService...`);
+      const data = await fornecedorService.getFornecedores();
+      const safeList = Array.isArray(data) ? data : [];
 
-      if (error) {
-        console.error('[App] doLoadFornecedores error:', error);
-        if (error.message && (error.message.includes('Refresh Token Not Found') || error.message.includes('invalid_grant'))) {
-             console.error('[App] Session expired or invalid, logging out...');
-             await authService.logout();
-             window.location.reload();
-        }
-        throw error;
-      }
-      setSuppliers(data?.map(s => ({
+      setSuppliers(safeList.map((s: any) => ({
         ...s,
         id: s.id,
-        name: s.nome || s.name,
-        nif: s.nif,
-        siglas_banco: s.sigla_banco,
-        tipo_cliente: s.tipo_fornecedor
-      })) || []);
+        name: s.nome || s.name || '',
+        nome: s.nome || s.name || '',
+        nif: s.nif || '',
+        siglas_banco: s.sigla_banco || '',
+        tipo_cliente: s.tipo_fornecedor || 'Geral'
+      })));
     } catch (err) {
       console.error('Erro ao carregar fornecedores:', err);
     }

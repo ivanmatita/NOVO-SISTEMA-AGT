@@ -49,7 +49,7 @@
     },
     {
       "source": "/api/stats",
-      "destination": "/api/stats.js"
+      "destination": "/api/health.js"
     },
     {
       "source": "/api/secure-clientes/(.*)",

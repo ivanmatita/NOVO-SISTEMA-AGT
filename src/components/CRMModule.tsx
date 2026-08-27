@@ -104,6 +104,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
   const [companySubTab, setCompanySubTab] = useState('info');
 
   // Modals
+  const [showCreateCompanyModal, setShowCreateCompanyModal] = useState(false);
   const [showEditCompanyModal, setShowEditCompanyModal] = useState(false);
   const [showActivateModal, setShowActivateModal] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
@@ -117,6 +118,10 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
   const safeUsers = Array.isArray(users) ? users : [];
   const safeLogs = Array.isArray(logs) ? logs : [];
   const safeOcorrencias = Array.isArray(ocorrencias) ? ocorrencias : [];
+
+  // Comprovativos da empresa selecionada (carregados da API real)
+  const [companyComprovativos, setCompanyComprovativos] = useState<any[]>([]);
+  const safeComprovativos = Array.isArray(companyComprovativos) ? companyComprovativos : [];
 
   const safeFormatCurrency = (val: any) => {
     if (typeof formatCurrency === 'function') {
@@ -196,7 +201,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
       const listLogs = Array.isArray(logsData) ? logsData : (logsData?.data && Array.isArray(logsData.data) ? logsData.data : []);
       setLogs(listLogs);
 
-      // Load Occurrences if company selected
+      // Load Occurrences & Comprovativos if company selected
       if (selectedCompany?.id) {
         let ocData: any = [];
         try {
@@ -208,6 +213,17 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
         }
         const listOc = Array.isArray(ocData) ? ocData : (ocData?.data && Array.isArray(ocData.data) ? ocData.data : []);
         setOcorrencias(listOc);
+
+        let compData: any = [];
+        try {
+          if (typeof fetchJson === 'function') {
+            compData = await fetchJson(`/api/crm/comprovativos?empresa_id=${selectedCompany.id}`);
+          }
+        } catch (e) {
+          compData = [];
+        }
+        const listComp = Array.isArray(compData) ? compData : (compData?.data && Array.isArray(compData.data) ? compData.data : []);
+        setCompanyComprovativos(listComp);
       }
     } catch (error) {
       console.error("Erro ao carregar dados CRM:", error);
@@ -423,7 +439,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
 
   const renderEmpresas = () => (
     <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
-      {/* Barra de Filtros Avançados */}
+      {/* Barra de Filtros Avançados & Novo Registo */}
       <div className="bg-white border border-zinc-200 p-4 shadow-xs flex flex-col md:flex-row gap-4 justify-between items-center">
         <div className="relative flex-1 max-w-md w-full">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
@@ -436,8 +452,15 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
           />
         </div>
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+          <button 
+            onClick={() => setShowCreateCompanyModal(true)}
+            className="px-4 py-2 bg-[#003366] hover:bg-[#002244] text-white text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 cursor-pointer shadow-xs"
+          >
+            <Plus size={14} /> Registar Empresa
+          </button>
+
           <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-zinc-400">
-            <Filter size={14} /> Filtro Plano:
+            <Filter size={14} /> Plano:
           </div>
           <select 
             value={filterPlano}
@@ -561,7 +584,6 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                     </td>
                     <td className="p-4">
                       <div className="flex gap-1.5 justify-center">
-                        {/* Botão Centro de Gestão Completo da Empresa */}
                         <button 
                           onClick={() => {
                             setSelectedCompany(company);
@@ -574,7 +596,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                         </button>
                         <button 
                           onClick={() => toggleCompanyStatus(company.id, company.status_licenca)}
-                          className={`p-1.5 border transition-all ${lic.isAtiva ? 'text-red-500 border-red-200 hover:bg-red-600 hover:text-white' : 'text-emerald-600 border-emerald-200 hover:bg-emerald-600 hover:text-white'}`}
+                          className={`p-1.5 border transition-all cursor-pointer ${lic.isAtiva ? 'text-red-500 border-red-200 hover:bg-red-600 hover:text-white' : 'text-emerald-600 border-emerald-200 hover:bg-emerald-600 hover:text-white'}`}
                           title={lic.isAtiva ? 'Suspender Acesso' : 'Ativar Licença'}
                         >
                           {lic.isAtiva ? <ShieldAlert size={14} /> : <CheckCircle size={14} />}
@@ -591,6 +613,89 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                 </td>
               </tr>
             )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
+  const renderLicencas = () => (
+    <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+      <div className="bg-white border border-zinc-200 p-6 shadow-xs flex justify-between items-center">
+        <div>
+          <h3 className="text-base font-black text-[#003366] uppercase tracking-wider">Gestão Global de Planos &amp; Licenças</h3>
+          <p className="text-xs text-zinc-500">Supervisão centralizada de todas as subscrições, planos e vigências do ecossistema.</p>
+        </div>
+        <button onClick={loadData} className="px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-bold uppercase flex items-center gap-2 cursor-pointer">
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Recarregar Licenças
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {[
+          { label: 'Básico (25.000 Kz)', count: safeCompanies.filter(c => c?.plano === 'Básico').length, color: 'border-zinc-300' },
+          { label: 'Standard (55.000 Kz)', count: safeCompanies.filter(c => c?.plano === 'Standard').length, color: 'border-blue-300' },
+          { label: 'Profissional (65.000 Kz)', count: safeCompanies.filter(c => c?.plano === 'Profissional' || !c?.plano).length, color: 'border-emerald-400' },
+          { label: 'Enterprise (150.000 Kz)', count: safeCompanies.filter(c => c?.plano === 'Enterprise').length, color: 'border-indigo-400' },
+        ].map((plan, i) => (
+          <div key={i} className={`bg-white border-2 ${plan.color} p-5 shadow-xs`}>
+            <p className="text-[10px] font-black uppercase text-zinc-500 tracking-wider">{plan.label}</p>
+            <p className="text-2xl font-black text-[#003366] mt-2">{plan.count} <span className="text-xs text-zinc-400 font-bold">empresas</span></p>
+          </div>
+        ))}
+      </div>
+
+      <div className="bg-white border border-zinc-200 overflow-x-auto shadow-xs">
+        <table className="w-full text-left border-collapse text-xs">
+          <thead>
+            <tr className="bg-zinc-50 border-b border-zinc-200 font-bold uppercase text-[10px] text-zinc-500">
+              <th className="p-4">Empresa</th>
+              <th className="p-4">Plano Atual</th>
+              <th className="p-4">Início</th>
+              <th className="p-4">Vencimento</th>
+              <th className="p-4">Dias Restantes</th>
+              <th className="p-4">Estado</th>
+              <th className="p-4 text-center">Ações</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-100">
+            {safeCompanies.map(c => {
+              const lic = calcularLicenca(c);
+              return (
+                <tr key={c.id} className="hover:bg-zinc-50">
+                  <td className="p-4">
+                    <p className="font-bold text-zinc-900 uppercase">{c.nome_empresa}</p>
+                    <p className="text-[10px] text-zinc-400 font-mono">NIF: {c.nif}</p>
+                  </td>
+                  <td className="p-4 font-bold uppercase text-[#003366]">{c.plano || 'Profissional'}</td>
+                  <td className="p-4 font-mono text-zinc-600">{lic.dataInicioStr}</td>
+                  <td className="p-4 font-mono font-bold text-zinc-800">{lic.dataFimStr}</td>
+                  <td className="p-4 font-mono font-black">
+                    <span className={lic.diasRestantes <= 7 ? 'text-red-600' : 'text-emerald-700'}>
+                      {lic.diasRestantes} dias
+                    </span>
+                  </td>
+                  <td className="p-4">
+                    <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded ${
+                      lic.isAtiva ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                    }`}>
+                      {lic.statusNormalizado}
+                    </span>
+                  </td>
+                  <td className="p-4 text-center">
+                    <button 
+                      onClick={() => {
+                        setSelectedCompany(c);
+                        setCompanySubTab('licenca');
+                      }}
+                      className="px-3 py-1.5 bg-[#003366] text-white text-[10px] font-black uppercase tracking-wider cursor-pointer shadow-xs"
+                    >
+                      Gerir Licença
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -933,15 +1038,24 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
-                <tr className="hover:bg-zinc-50">
-                  <td className="p-3 font-mono">{safeFormatDate(selectedCompany.created_at)}</td>
-                  <td className="p-3 font-bold uppercase">Banco BAI</td>
-                  <td className="p-3 font-mono font-bold">TRX-882182</td>
-                  <td className="p-3 text-right font-mono font-black text-emerald-700">65.000,00 AOA</td>
-                  <td className="p-3 text-center">
-                    <span className="bg-emerald-100 text-emerald-800 text-[9px] font-black uppercase px-2 py-0.5">Aprovado</span>
-                  </td>
-                </tr>
+                {safeComprovativos.map((comp, idx) => (
+                  <tr key={comp.id || idx} className="hover:bg-zinc-50">
+                    <td className="p-3 font-mono">{safeFormatDate(comp.created_at)}</td>
+                    <td className="p-3 font-bold uppercase">{comp.banco || 'Banco Comercial'}</td>
+                    <td className="p-3 font-mono font-bold">{comp.numero_transacao || '---'}</td>
+                    <td className="p-3 text-right font-mono font-black text-emerald-700">{safeFormatCurrency(comp.montante || 65000)}</td>
+                    <td className="p-3 text-center">
+                      <span className="bg-emerald-100 text-emerald-800 text-[9px] font-black uppercase px-2 py-0.5">{comp.status || 'Aprovado'}</span>
+                    </td>
+                  </tr>
+                ))}
+                {safeComprovativos.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="p-8 text-center text-zinc-400 italic">
+                      Nenhum comprovativo de pagamento anexado até ao momento.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -1153,12 +1267,110 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
           <div className="max-w-7xl mx-auto">
             {activeTab === 'dashboard' && renderDashboard()}
             {activeTab === 'empresas' && renderEmpresas()}
-            {activeTab === 'licencas' && renderEmpresas()}
+            {activeTab === 'licencas' && renderLicencas()}
             {activeTab === 'usuarios' && renderUsuarios()}
             {activeTab === 'auditoria' && renderAuditoria()}
           </div>
         )}
       </div>
+
+      {/* MODAL REGISTAR NOVA EMPRESA */}
+      {showCreateCompanyModal && (
+        <div className="fixed inset-0 bg-zinc-900/60 backdrop-blur-xs z-[200] flex items-center justify-center p-4">
+          <div className="bg-white border border-zinc-200 w-full max-w-xl shadow-2xl p-6 space-y-4 text-xs">
+            <h3 className="text-base font-black text-[#003366] uppercase">Registar Nova Empresa no Sistema</h3>
+            <p className="text-zinc-500">A nova empresa será cadastrada no Supabase e associada imediatamente com licença ativa.</p>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              const form = e.target as any;
+              const payload = {
+                nome_empresa: form.nome_empresa.value,
+                nif: form.nif.value,
+                email: form.email.value,
+                telefone: form.telefone.value,
+                responsavel: form.responsavel.value,
+                municipio: form.municipio.value,
+                provincia: form.provincia.value,
+                endereco: form.endereco.value,
+                plano: form.plano.value,
+                duracao_dias: Number(form.duracao_dias.value)
+              };
+              try {
+                if (typeof fetchJson === 'function') {
+                  await fetchJson('/api/crm/companies', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                  });
+                }
+                toast.success('Empresa registada com sucesso no Supabase!');
+                setShowCreateCompanyModal(false);
+                loadData();
+              } catch (err: any) {
+                toast.error(err.message || 'Erro ao registar empresa.');
+              }
+            }} className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold uppercase mb-1">Nome / Razão Social *</label>
+                  <input type="text" name="nome_empresa" required placeholder="Ex: Matita Comercial Lda" className="w-full bg-zinc-50 border p-2 font-bold" />
+                </div>
+                <div>
+                  <label className="block font-bold uppercase mb-1">NIF Fiscal *</label>
+                  <input type="text" name="nif" required placeholder="Ex: 5002123665" className="w-full bg-zinc-50 border p-2 font-bold font-mono" />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold uppercase mb-1">Email de Contacto</label>
+                  <input type="email" name="email" placeholder="geral@empresa.ao" className="w-full bg-zinc-50 border p-2 font-bold" />
+                </div>
+                <div>
+                  <label className="block font-bold uppercase mb-1">Telefone</label>
+                  <input type="text" name="telefone" placeholder="+244 9..." className="w-full bg-zinc-50 border p-2 font-bold font-mono" />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-bold uppercase mb-1">Responsável</label>
+                  <input type="text" name="responsavel" placeholder="Nome do Gestor" className="w-full bg-zinc-50 border p-2 font-bold" />
+                </div>
+                <div>
+                  <label className="block font-bold uppercase mb-1">Município</label>
+                  <input type="text" name="municipio" placeholder="Luanda" className="w-full bg-zinc-50 border p-2 font-bold" />
+                </div>
+                <div>
+                  <label className="block font-bold uppercase mb-1">Província</label>
+                  <input type="text" name="provincia" defaultValue="Luanda" className="w-full bg-zinc-50 border p-2 font-bold" />
+                </div>
+              </div>
+              <div>
+                <label className="block font-bold uppercase mb-1">Endereço Completo</label>
+                <input type="text" name="endereco" placeholder="Rua / Bairro..." className="w-full bg-zinc-50 border p-2 font-bold" />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 border-t">
+                <div>
+                  <label className="block font-bold uppercase mb-1">Plano Inicial</label>
+                  <select name="plano" defaultValue="Profissional" className="w-full bg-zinc-50 border p-2 font-bold">
+                    <option value="Básico">Básico</option>
+                    <option value="Standard">Standard</option>
+                    <option value="Profissional">Profissional</option>
+                    <option value="Enterprise">Enterprise</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold uppercase mb-1">Validade Inicial (Dias)</label>
+                  <input type="number" name="duracao_dias" defaultValue={30} className="w-full bg-zinc-50 border p-2 font-bold font-mono" />
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 pt-4 border-t">
+                <button type="button" onClick={() => setShowCreateCompanyModal(false)} className="px-4 py-2 uppercase font-bold cursor-pointer">Cancelar</button>
+                <button type="submit" className="bg-[#003366] text-white px-5 py-2 uppercase font-bold cursor-pointer shadow-sm">Gravar Empresa</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* MODAL EDITAR EMPRESA */}
       {showEditCompanyModal && selectedCompany && (
@@ -1173,7 +1385,10 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                 nif: form.nif.value,
                 email: form.email.value,
                 telefone: form.telefone.value,
-                responsavel: form.responsavel.value
+                responsavel: form.responsavel.value,
+                municipio: form.municipio.value,
+                provincia: form.provincia.value,
+                endereco: form.endereco.value
               };
               if (typeof fetchJson === 'function') {
                 await fetchJson(`/api/crm/companies/${selectedCompany.id}`, {
@@ -1186,25 +1401,43 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
               setShowEditCompanyModal(false);
               loadData();
             }} className="space-y-3">
-              <div>
-                <label className="block font-bold uppercase mb-1">Nome / Razão Social</label>
-                <input type="text" name="nome_empresa" defaultValue={selectedCompany.nome_empresa} required className="w-full bg-zinc-50 border p-2 font-bold" />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold uppercase mb-1">Nome / Razão Social</label>
+                  <input type="text" name="nome_empresa" defaultValue={selectedCompany.nome_empresa} required className="w-full bg-zinc-50 border p-2 font-bold" />
+                </div>
+                <div>
+                  <label className="block font-bold uppercase mb-1">NIF Fiscal</label>
+                  <input type="text" name="nif" defaultValue={selectedCompany.nif} required className="w-full bg-zinc-50 border p-2 font-bold" />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold uppercase mb-1">Email</label>
+                  <input type="email" name="email" defaultValue={selectedCompany.email} required className="w-full bg-zinc-50 border p-2 font-bold" />
+                </div>
+                <div>
+                  <label className="block font-bold uppercase mb-1">Telefone</label>
+                  <input type="text" name="telefone" defaultValue={selectedCompany.telefone} className="w-full bg-zinc-50 border p-2 font-bold" />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-bold uppercase mb-1">Pessoa Responsável</label>
+                  <input type="text" name="responsavel" defaultValue={selectedCompany.responsavel} className="w-full bg-zinc-50 border p-2 font-bold" />
+                </div>
+                <div>
+                  <label className="block font-bold uppercase mb-1">Município</label>
+                  <input type="text" name="municipio" defaultValue={selectedCompany.municipio} className="w-full bg-zinc-50 border p-2 font-bold" />
+                </div>
+                <div>
+                  <label className="block font-bold uppercase mb-1">Província</label>
+                  <input type="text" name="provincia" defaultValue={selectedCompany.provincia} className="w-full bg-zinc-50 border p-2 font-bold" />
+                </div>
               </div>
               <div>
-                <label className="block font-bold uppercase mb-1">NIF Fiscal</label>
-                <input type="text" name="nif" defaultValue={selectedCompany.nif} required className="w-full bg-zinc-50 border p-2 font-bold" />
-              </div>
-              <div>
-                <label className="block font-bold uppercase mb-1">Email</label>
-                <input type="email" name="email" defaultValue={selectedCompany.email} required className="w-full bg-zinc-50 border p-2 font-bold" />
-              </div>
-              <div>
-                <label className="block font-bold uppercase mb-1">Telefone</label>
-                <input type="text" name="telefone" defaultValue={selectedCompany.telefone} className="w-full bg-zinc-50 border p-2 font-bold" />
-              </div>
-              <div>
-                <label className="block font-bold uppercase mb-1">Pessoa Responsável</label>
-                <input type="text" name="responsavel" defaultValue={selectedCompany.responsavel} className="w-full bg-zinc-50 border p-2 font-bold" />
+                <label className="block font-bold uppercase mb-1">Endereço</label>
+                <input type="text" name="endereco" defaultValue={selectedCompany.endereco} className="w-full bg-zinc-50 border p-2 font-bold" />
               </div>
               <div className="flex justify-end gap-3 pt-4 border-t">
                 <button type="button" onClick={() => setShowEditCompanyModal(false)} className="px-4 py-2 uppercase font-bold">Cancelar</button>

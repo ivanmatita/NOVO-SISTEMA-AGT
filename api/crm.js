@@ -181,6 +181,33 @@ export default async function handler(req, res) {
 
         return res.status(200).json(occurrences);
       }
+
+      // 6. /api/crm/comprovativos?empresa_id=...
+      if (pathname === 'comprovativos') {
+        const targetId = urlObj.searchParams.get('empresa_id') || empresaId;
+        let comprovativos = [];
+
+        if (targetId) {
+          const compRes = await fetch(
+            `${config.supabaseUrl}/rest/v1/licencas_empresas?empresa_id=eq.${targetId}&select=*&limit=50`,
+            { headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader } }
+          ).then(r => r.ok ? r.json() : []).catch(() => []);
+
+          const rawComp = Array.isArray(compRes) ? compRes : [];
+          comprovativos = rawComp.map(l => ({
+            id: l.id,
+            empresa_id: l.empresa_id,
+            created_at: l.created_at,
+            banco: l.banco || l.banco_emissor || 'N/D',
+            numero_transacao: l.numero_transacao || l.referencia || l.comprovativo_nome || 'N/D',
+            montante: Number(l.montante || l.valor_licenca || l.valor || 0),
+            status: l.estado || l.status_licenca || 'Registado',
+            comprovativo_url: l.comprovativo_url || null
+          }));
+        }
+
+        return res.status(200).json(comprovativos);
+      }
     }
 
     // =========================================================================
@@ -188,6 +215,88 @@ export default async function handler(req, res) {
     // =========================================================================
     if (req.method === 'POST' || req.method === 'PUT') {
       const body = req.body || {};
+
+      // 0. Create new company: POST /api/crm/companies
+      if ((pathname === 'companies' || pathname === '') && req.method === 'POST') {
+        const { nome_empresa, nif, email, telefone, endereco, municipio, provincia, pais, responsavel, plano, duracao_dias } = body;
+        if (!nome_empresa || !nif) {
+          return res.status(400).json({ error: 'Nome da Empresa e NIF são obrigatórios' });
+        }
+
+        const duracao = Number(duracao_dias || 30);
+        const planoAtivo = plano || 'Profissional';
+        const now = new Date();
+        const endDate = new Date(now.getTime() + duracao * 24 * 60 * 60 * 1000);
+
+        // 1. Insert into empresas
+        const newCompRes = await fetch(`${config.supabaseUrl}/rest/v1/empresas`, {
+          method: 'POST',
+          headers: {
+            'apikey': config.serviceRoleKey,
+            'Authorization': authHeader,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+          },
+          body: JSON.stringify({
+            nome_empresa,
+            nif,
+            email: email || `${nif.toLowerCase()}@empresa.ao`,
+            telefone: telefone || '',
+            endereco: endereco || '',
+            municipio: municipio || '',
+            provincia: provincia || 'Luanda',
+            pais: pais || 'Angola',
+            responsavel: responsavel || 'Administrador',
+            plano: planoAtivo,
+            status_licenca: 'ATIVA',
+            created_at: now.toISOString(),
+            updated_at: now.toISOString()
+          })
+        });
+
+        const createdComp = await newCompRes.json();
+        const companyObj = Array.isArray(createdComp) && createdComp.length > 0 ? createdComp[0] : (createdComp?.id ? createdComp : null);
+
+        if (companyObj && companyObj.id) {
+          // 2. Insert into licencas_empresas
+          await fetch(`${config.supabaseUrl}/rest/v1/licencas_empresas`, {
+            method: 'POST',
+            headers: {
+              'apikey': config.serviceRoleKey,
+              'Authorization': authHeader,
+              'Content-Type': 'application/json',
+              'Prefer': 'resolution=merge-duplicates'
+            },
+            body: JSON.stringify({
+              empresa_id: companyObj.id,
+              status_licenca: 'ATIVA',
+              plano: planoAtivo,
+              tipo_licenca: planoAtivo,
+              data_inicio: now.toISOString(),
+              data_fim: endDate.toISOString(),
+              duracao_dias: duracao,
+              ativado_por: auth.user?.email || 'SuperAdmin CRM'
+            })
+          }).catch(() => {});
+
+          // 3. Log to historico_licencas
+          await fetch(`${config.supabaseUrl}/rest/v1/historico_licencas`, {
+            method: 'POST',
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              empresa_id: companyObj.id,
+              estado_anterior: 'NOVO_CADASTRO',
+              estado_novo: 'ATIVA',
+              alterado_por: auth.user?.email || 'SuperAdmin CRM',
+              motivo: `Empresa cadastrada com plano ${planoAtivo} (${duracao} dias) pelo SuperAdmin`
+            })
+          }).catch(() => {});
+
+          return res.status(201).json({ success: true, company: companyObj });
+        }
+
+        return res.status(400).json({ error: 'Não foi possível registar a empresa. Verifique se o NIF já existe.' });
+      }
 
       // Toggle status: /api/crm/companies/:id/toggle-status
       if (pathname.includes('/toggle-status')) {
@@ -265,25 +374,35 @@ export default async function handler(req, res) {
         return res.status(200).json({ success: true, plano: novoPlano });
       }
 
-      // Update company: /api/crm/companies/:id
-      if (pathname.startsWith('companies/') && !pathname.includes('/')) {
+      // Update company: PUT /api/crm/companies/:id
+      if (pathname.match(/^companies\/[a-zA-Z0-9\-]{8,}$/) && req.method === 'PUT') {
         const targetId = pathname.replace('companies/', '');
-        const { nome_empresa, nif, email, telefone, responsavel } = body;
+        const { nome_empresa, nif, email, telefone, responsavel, municipio, provincia, endereco } = body;
 
-        await fetch(`${config.supabaseUrl}/rest/v1/empresas?id=eq.${targetId}`, {
+        const updatePayload = { updated_at: new Date().toISOString() };
+        if (nome_empresa !== undefined) updatePayload.nome_empresa = nome_empresa;
+        if (nif !== undefined) updatePayload.nif = nif;
+        if (email !== undefined) updatePayload.email = email;
+        if (telefone !== undefined) updatePayload.telefone = telefone;
+        if (responsavel !== undefined) updatePayload.responsavel = responsavel;
+        if (municipio !== undefined) updatePayload.municipio = municipio;
+        if (provincia !== undefined) updatePayload.provincia = provincia;
+        if (endereco !== undefined) updatePayload.endereco = endereco;
+
+        const updateRes = await fetch(`${config.supabaseUrl}/rest/v1/empresas?id=eq.${targetId}`, {
           method: 'PATCH',
-          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            nome_empresa: nome_empresa || undefined,
-            nif: nif || undefined,
-            email: email || undefined,
-            telefone: telefone || undefined,
-            responsavel: responsavel || undefined,
-            updated_at: new Date().toISOString()
-          })
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          body: JSON.stringify(updatePayload)
         });
 
-        return res.status(200).json({ success: true });
+        // Log to historico_licencas
+        await fetch(`${config.supabaseUrl}/rest/v1/historico_licencas`, {
+          method: 'POST',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ empresa_id: targetId, estado_anterior: 'DADOS_ANTERIORES', estado_novo: 'DADOS_ACTUALIZADOS', alterado_por: auth.user?.email || 'SuperAdmin CRM', motivo: `Dados cadastrais editados: ${Object.keys(updatePayload).filter(k => k !== 'updated_at').join(', ')}` })
+        }).catch(() => {});
+
+        return res.status(updateRes.ok ? 200 : updateRes.status).json({ success: updateRes.ok, message: updateRes.ok ? 'Empresa atualizada com sucesso' : 'Erro ao atualizar empresa' });
       }
 
       // Send email simulation / log

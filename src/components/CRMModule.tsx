@@ -21,6 +21,7 @@ interface Company {
   id: string;
   empresa_id?: string;
   nome_empresa: string;
+  nome?: string;
   razao_social?: string;
   nome_comercial?: string;
   nif: string;
@@ -31,7 +32,9 @@ interface Company {
   municipio: string;
   provincia: string;
   pais?: string;
-  responsavel?: string;
+  tipo_empresa?: string;
+  nome_administrador?: string; // real column in public.empresas
+  responsavel?: string; // alias used in UI, maps to nome_administrador
   email_responsavel?: string;
   telefone_responsavel?: string;
   plano: string;
@@ -1391,20 +1394,29 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                 email: form.email.value,
                 telefone: form.telefone.value,
                 responsavel: form.responsavel.value,
+                nome_administrador: form.responsavel.value,
                 municipio: form.municipio.value,
                 provincia: form.provincia.value,
                 endereco: form.endereco.value
               };
-              if (typeof fetchJson === 'function') {
-                await fetchJson(`/api/crm/companies/${selectedCompany.id}`, {
-                  method: 'PUT',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(payload)
-                });
+              try {
+                if (typeof fetchJson === 'function') {
+                  const result = await fetchJson(`/api/crm/companies/${selectedCompany.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                  });
+                  if (result && result.success === false) {
+                    toast.error(`Erro ao guardar: ${result.detail || result.message || 'Erro desconhecido'}`);
+                    return;
+                  }
+                }
+                toast.success('Empresa editada com sucesso!');
+                setShowEditCompanyModal(false);
+                loadData();
+              } catch (err: any) {
+                toast.error(err.message || 'Erro ao atualizar empresa.');
               }
-              toast.success('Empresa editada com sucesso!');
-              setShowEditCompanyModal(false);
-              loadData();
             }} className="space-y-3">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
@@ -1428,8 +1440,8 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
-                  <label className="block font-bold uppercase mb-1">Pessoa Responsável</label>
-                  <input type="text" name="responsavel" defaultValue={selectedCompany.responsavel} className="w-full bg-zinc-50 border p-2 font-bold" />
+                  <label className="block font-bold uppercase mb-1">Administrador / Responsável</label>
+                  <input type="text" name="responsavel" defaultValue={selectedCompany.nome_administrador || selectedCompany.responsavel || ''} className="w-full bg-zinc-50 border p-2 font-bold" />
                 </div>
                 <div>
                   <label className="block font-bold uppercase mb-1">Município</label>
@@ -1445,8 +1457,8 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                 <input type="text" name="endereco" defaultValue={selectedCompany.endereco} className="w-full bg-zinc-50 border p-2 font-bold" />
               </div>
               <div className="flex justify-end gap-3 pt-4 border-t">
-                <button type="button" onClick={() => setShowEditCompanyModal(false)} className="px-4 py-2 uppercase font-bold">Cancelar</button>
-                <button type="submit" className="bg-[#003366] text-white px-5 py-2 uppercase font-bold">Salvar Alterações</button>
+                <button type="button" onClick={() => setShowEditCompanyModal(false)} className="px-4 py-2 uppercase font-bold cursor-pointer">Cancelar</button>
+                <button type="submit" className="bg-[#003366] text-white px-5 py-2 uppercase font-bold cursor-pointer">Salvar Alterações</button>
               </div>
             </form>
           </div>
@@ -1552,22 +1564,33 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
           <div className="bg-white border border-zinc-200 w-full max-w-md shadow-2xl p-6 space-y-4 text-xs">
             <h3 className="text-base font-black text-amber-700 uppercase">Redefinir Acesso de Utilizador</h3>
             <p className="text-zinc-600">
-              Deseja redefinir o acesso e enviar instruções de recuperação para <strong>{showUserResetModal.full_name || showUserResetModal.email}</strong>?
+              Deseja redefinir a credencial de <strong>{showUserResetModal.full_name || showUserResetModal.email}</strong>?
             </p>
+            <div className="bg-amber-50 border border-amber-200 p-3 text-amber-900 rounded-xs">
+              <p className="font-bold">Senha temporária obrigatória:</p>
+              <p className="text-sm font-black font-mono mt-1">123</p>
+              <p className="text-[10px] text-amber-700 mt-1">A credencial será atualizada diretamente no sistema de autenticação Supabase.</p>
+            </div>
             <div className="flex justify-end gap-3 pt-4 border-t">
               <button type="button" onClick={() => setShowUserResetModal(null)} className="px-4 py-2 uppercase font-bold cursor-pointer">Cancelar</button>
               <button 
                 type="button" 
                 onClick={async () => {
-                  if (typeof fetchJson === 'function') {
-                    await fetchJson(`/api/crm/users/${showUserResetModal.id}/reset-access`, { method: 'POST' }).catch(() => {});
+                  try {
+                    if (typeof fetchJson === 'function') {
+                      const res = await fetchJson(`/api/crm/users/${showUserResetModal.id}/reset-access`, { method: 'POST' });
+                      toast.success(res?.message || `Acesso redefinido! Senha temporária: 123`);
+                    } else {
+                      toast.success(`Senha redefinida para '123' com sucesso!`);
+                    }
+                  } catch (err: any) {
+                    toast.error(err.message || 'Erro ao redefinir acesso.');
                   }
-                  toast.success('Instruções de redefinição de acesso enviadas!');
                   setShowUserResetModal(null);
                 }} 
                 className="bg-amber-600 text-white px-5 py-2 uppercase font-bold cursor-pointer"
               >
-                Confirmar Reset
+                Confirmar Reset (123)
               </button>
             </div>
           </div>

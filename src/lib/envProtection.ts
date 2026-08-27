@@ -35,6 +35,10 @@ export function getAppEnvironment(): AppEnvironment {
   // 2. Verificar URL do navegador e parâmetros
   if (typeof window !== 'undefined' && window.location) {
     const host = (window.location.hostname || '').toLowerCase();
+    // Domínio oficial de produção é sempre PRODUÇÃO
+    if (host.includes('novo-sistema-agt.vercel.app') || host === 'novo-sistema-agt.vercel.app') {
+      return 'production';
+    }
     if (host.includes('staging') || host.includes('teste') || host.includes('homologacao')) {
       return 'staging';
     }

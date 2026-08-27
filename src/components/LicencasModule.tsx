@@ -108,8 +108,12 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
     }
   };
 
+  const safeLicencas = Array.isArray(licencas) ? licencas : [];
+  const safeOcorrencias = Array.isArray(ocorrencias) ? ocorrencias : [];
+  const safeComprovativos = Array.isArray(comprovativos) ? comprovativos : [];
+
   // Active Company License computation
-  const myLicense = licencas.find(l => String(l.empresa_id) === String(empresaId)) || licencas[0] || {
+  const myLicense = safeLicencas.find(l => l && String(l.empresa_id) === String(empresaId)) || safeLicencas[0] || {
     id: 'lic-default',
     empresa_id: empresaId,
     tipo_licenca: userProfile?.pacote_licenca || 'Profissional',
@@ -130,14 +134,14 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
   };
 
   const daysRemaining = calculateDaysRemaining(myLicense.data_fim);
-  const isExpiringSoon = daysRemaining <= 15 && myLicense.status_licenca === 'activa';
-  const isExpired = daysRemaining === 0 || myLicense.status_licenca === 'vencida' || myLicense.status_licenca === 'bloqueada';
+  const isExpiringSoon = daysRemaining <= 15 && (myLicense.status_licenca === 'activa' || myLicense.status_licenca === 'active');
+  const isExpired = daysRemaining === 0 || myLicense.status_licenca === 'vencida' || myLicense.status_licenca === 'bloqueada' || myLicense.status_licenca === 'expirada';
 
   const stats = [
-    { label: 'Licenças Ativas', value: licencas.filter(l => l.status_licenca === 'activa' || l.status_licenca === 'active').length, icon: ShieldCheck, color: 'text-emerald-600' },
-    { label: 'Pendentes de Validação', value: licencas.filter(l => l.status_licenca === 'pendente' || l.status_licenca === 'aguardando_validacao').length, icon: Clock, color: 'text-amber-600' },
-    { label: 'Vencidas / Expiradas', value: licencas.filter(l => l.status_licenca === 'vencida' || l.status_licenca === 'bloqueada').length, icon: AlertOctagon, color: 'text-rose-600' },
-    { label: 'Receita Licenciamento', value: licencas.filter(l => l.status_licenca === 'activa' || l.status_licenca === 'active').reduce((acc, curr) => acc + Number(curr.valor_licenca || 0), 0).toLocaleString() + ' AOA', icon: BadgeCent, color: 'text-[#003366]' },
+    { label: 'Licenças Ativas', value: safeLicencas.filter(l => l && (l.status_licenca === 'activa' || l.status_licenca === 'active' || l.status_licenca === 'ATIVA')).length, icon: ShieldCheck, color: 'text-emerald-600' },
+    { label: 'Pendentes de Validação', value: safeLicencas.filter(l => l && (l.status_licenca === 'pendente' || l.status_licenca === 'aguardando_validacao')).length, icon: Clock, color: 'text-amber-600' },
+    { label: 'Vencidas / Expiradas', value: safeLicencas.filter(l => l && (l.status_licenca === 'vencida' || l.status_licenca === 'bloqueada' || l.status_licenca === 'EXPIRADA' || l.status_licenca === 'expirada')).length, icon: AlertOctagon, color: 'text-rose-600' },
+    { label: 'Receita Licenciamento', value: safeLicencas.filter(l => l && (l.status_licenca === 'activa' || l.status_licenca === 'active' || l.status_licenca === 'ATIVA')).reduce((acc, curr) => acc + Number(curr.valor_licenca || 0), 0).toLocaleString() + ' AOA', icon: BadgeCent, color: 'text-[#003366]' },
   ];
 
   const chartData = [
@@ -149,9 +153,9 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
   ];
 
   const planUsage = [
-    { name: 'Básico', value: licencas.filter(l => l.tipo_licenca === 'Básico').length || 1 },
-    { name: 'Profissional', value: licencas.filter(l => l.tipo_licenca === 'Profissional').length || 2 },
-    { name: 'Enterprise', value: licencas.filter(l => l.tipo_licenca === 'Enterprise').length || 1 },
+    { name: 'Básico', value: safeLicencas.filter(l => l && l.tipo_licenca === 'Básico').length || 1 },
+    { name: 'Profissional', value: safeLicencas.filter(l => l && l.tipo_licenca === 'Profissional').length || 2 },
+    { name: 'Enterprise', value: safeLicencas.filter(l => l && l.tipo_licenca === 'Enterprise').length || 1 },
   ].filter(p => p.value > 0);
 
   const COLORS = ['#003366', '#10b981', '#f59e0b', '#ef4444'];
@@ -375,7 +379,7 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
-                  {licencas.map((lic, idx) => {
+                  {safeLicencas.map((lic, idx) => {
                     const days = calculateDaysRemaining(lic.data_fim);
                     return (
                       <tr key={idx} className="text-xs hover:bg-zinc-50/50 transition-colors group">
@@ -440,7 +444,7 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
                       </tr>
                     );
                   })}
-                  {licencas.length === 0 && (
+                  {safeLicencas.length === 0 && (
                     <tr>
                       <td colSpan={7} className="px-6 py-20 text-center text-zinc-400 font-bold uppercase tracking-widest">
                         Nenhuma licença registada na base de dados.
@@ -488,7 +492,7 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100 text-xs">
-                  {comprovativos.map((comp, idx) => (
+                  {safeComprovativos.map((comp, idx) => (
                     <tr key={idx} className="hover:bg-zinc-50 transition-colors">
                       <td className="px-6 py-4 font-mono text-zinc-600">{new Date(comp.created_at || Date.now()).toLocaleString('pt-AO')}</td>
                       <td className="px-6 py-4 font-bold text-zinc-800 uppercase">{comp.banco || 'BAI / BFA'}</td>
@@ -506,7 +510,7 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
                       </td>
                     </tr>
                   ))}
-                  {comprovativos.length === 0 && (
+                  {safeComprovativos.length === 0 && (
                     <tr>
                       <td colSpan={6} className="px-6 py-12 text-center text-zinc-400 italic">Nenhum comprovativo enviado anteriormente.</td>
                     </tr>
@@ -551,7 +555,7 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100 text-xs">
-                  {ocorrencias.map((oc, idx) => (
+                  {safeOcorrencias.map((oc, idx) => (
                     <tr key={idx} className="hover:bg-zinc-50 transition-colors">
                       <td className="px-6 py-4 font-mono text-zinc-500">{new Date(oc.created_at || Date.now()).toLocaleDateString('pt-AO')}</td>
                       <td className="px-6 py-4 font-bold text-zinc-800">{oc.assunto || 'Solicitação de Alteração de Dados'}</td>
@@ -564,7 +568,7 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
                       <td className="px-6 py-4 text-zinc-600 italic">{oc.resposta || 'Atendido pela equipa CRM de licenciamento.'}</td>
                     </tr>
                   ))}
-                  {ocorrencias.length === 0 && (
+                  {safeOcorrencias.length === 0 && (
                     <tr>
                       <td colSpan={5} className="px-6 py-12 text-center text-zinc-400 italic">Nenhuma ocorrência registada.</td>
                     </tr>

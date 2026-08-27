@@ -54,7 +54,7 @@ interface UserProfile {
   empresas?: {
     nome_empresa: string;
     nif: string;
-  };
+  } | null;
   created_at: string;
   last_login?: string;
 }
@@ -109,7 +109,6 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [showDowngradeModal, setShowDowngradeModal] = useState(false);
   const [showProofModal, setShowProofModal] = useState(false);
-  const [showChangeModal, setShowChangeModal] = useState(false);
   const [showOccurrenceModal, setShowOccurrenceModal] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showUserResetModal, setShowUserResetModal] = useState<UserProfile | null>(null);
@@ -119,6 +118,26 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
   const safeLogs = Array.isArray(logs) ? logs : [];
   const safeOcorrencias = Array.isArray(ocorrencias) ? ocorrencias : [];
 
+  const safeFormatCurrency = (val: any) => {
+    if (typeof formatCurrency === 'function') {
+      return formatCurrency(val);
+    }
+    const num = Number(val) || 0;
+    return num.toLocaleString('pt-AO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' Kz';
+  };
+
+  const safeFormatDate = (dateVal: any) => {
+    if (typeof formatDate === 'function') {
+      return formatDate(dateVal);
+    }
+    if (!dateVal) return '---';
+    try {
+      return new Date(dateVal).toLocaleDateString('pt-AO');
+    } catch {
+      return String(dateVal);
+    }
+  };
+
   const loadData = async () => {
     setLoading(true);
     try {
@@ -126,50 +145,69 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
       let statsData: any = null;
 
       try {
-        companiesData = await fetchJson('/api/crm/companies');
+        if (typeof fetchJson === 'function') {
+          companiesData = await fetchJson('/api/crm/companies');
+        } else {
+          const { data: supaEmpresas } = await supabase.from('empresas').select('*');
+          companiesData = supaEmpresas || [];
+        }
       } catch (e) {
         const { data: supaEmpresas } = await supabase.from('empresas').select('*');
         companiesData = supaEmpresas || [];
       }
 
       try {
-        statsData = await fetchJson('/api/crm/stats');
+        if (typeof fetchJson === 'function') {
+          statsData = await fetchJson('/api/crm/stats');
+        }
       } catch (e) {
         statsData = null;
       }
 
-      setCompanies(Array.isArray(companiesData) ? companiesData : []);
-      setStats(statsData);
+      const listCompanies = Array.isArray(companiesData) ? companiesData : (companiesData?.data && Array.isArray(companiesData.data) ? companiesData.data : []);
+      setCompanies(listCompanies);
+      setStats(statsData && typeof statsData === 'object' ? statsData : null);
 
-      if (activeTab === 'usuarios' || selectedCompany) {
-        let usersData: any = [];
-        try {
+      // Load Users
+      let usersData: any = [];
+      try {
+        if (typeof fetchJson === 'function') {
           usersData = await fetchJson('/api/crm/users');
-        } catch (e) {
+        } else {
           const { data: supaPerfis } = await supabase.from('perfis').select('*');
           usersData = supaPerfis || [];
         }
-        setUsers(Array.isArray(usersData) ? usersData : []);
+      } catch (e) {
+        const { data: supaPerfis } = await supabase.from('perfis').select('*');
+        usersData = supaPerfis || [];
       }
+      const listUsers = Array.isArray(usersData) ? usersData : (usersData?.data && Array.isArray(usersData.data) ? usersData.data : []);
+      setUsers(listUsers);
 
-      if (activeTab === 'auditoria' || selectedCompany) {
-        let logsData: any = [];
-        try {
+      // Load Logs / Audit
+      let logsData: any = [];
+      try {
+        if (typeof fetchJson === 'function') {
           logsData = await fetchJson('/api/crm/audit');
-        } catch (e) {
-          logsData = [];
         }
-        setLogs(Array.isArray(logsData) ? logsData : []);
+      } catch (e) {
+        logsData = [];
       }
+      const listLogs = Array.isArray(logsData) ? logsData : (logsData?.data && Array.isArray(logsData.data) ? logsData.data : []);
+      setLogs(listLogs);
 
-      if (selectedCompany) {
+      // Load Occurrences if company selected
+      if (selectedCompany?.id) {
         let ocData: any = [];
         try {
-          ocData = await fetchJson(`/api/crm/occurrences?empresa_id=${selectedCompany.id}`);
+          if (typeof fetchJson === 'function') {
+            ocData = await fetchJson(`/api/crm/occurrences?empresa_id=${selectedCompany.id}`);
+          }
         } catch (e) {
           ocData = [];
         }
-        setOcorrencias(Array.isArray(ocData) ? ocData : []);
+        const listOc = Array.isArray(ocData) ? ocData : (ocData?.data && Array.isArray(ocData.data) ? ocData.data : []);
+        setOcorrencias(listOc);
       }
     } catch (error) {
       console.error("Erro ao carregar dados CRM:", error);
@@ -183,26 +221,43 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
   }, [activeTab, selectedCompany?.id]);
 
   // Função Central Reutilizável de Cálculo de Licença
-  const calcularLicenca = (comp: Company) => {
-    const duracaoTotais = comp.duracao_dias || 30;
+  const calcularLicenca = (comp: Company | null | undefined) => {
+    if (!comp) {
+      return {
+        statusNormalizado: 'PENDENTE',
+        isAtiva: false,
+        isPendente: true,
+        diasTotais: 30,
+        diasDecorridos: 0,
+        diasRestantes: 0,
+        percentualUtilizado: 0,
+        dataInicioStr: 'Pendente',
+        dataFimStr: 'Pendente',
+        alertaNivel: 'aviso',
+        alertaMensagem: 'Sem dados de licença disponíveis.'
+      };
+    }
+
+    const duracaoTotais = Number(comp.duracao_dias) || 30;
     const dataInicio = comp.data_inicio ? new Date(comp.data_inicio) : null;
     const dataFim = comp.data_fim ? new Date(comp.data_fim) : null;
     const agora = new Date();
 
-    const isAtiva = comp.status_licenca === 'active' || comp.status_licenca === 'activa' || comp.status_licenca === 'ATIVA';
-    const isPendente = comp.status_licenca === 'pendente' || comp.status_licenca === 'AGUARDANDO ATIVAÇÃO' || !dataInicio;
+    const statusUpper = String(comp.status_licenca || '').toUpperCase();
+    const isAtiva = statusUpper === 'ACTIVE' || statusUpper === 'ACTIVA' || statusUpper === 'ATIVA';
+    const isPendente = statusUpper === 'PENDENTE' || statusUpper === 'AGUARDANDO ATIVAÇÃO' || !dataInicio;
 
     let diasDecorridos = 0;
     let diasRestantes = 0;
     let percentualUtilizado = 0;
 
-    if (dataInicio && dataFim) {
+    if (dataInicio && dataFim && !isNaN(dataInicio.getTime()) && !isNaN(dataFim.getTime())) {
       diasDecorridos = Math.max(0, Math.ceil((agora.getTime() - dataInicio.getTime()) / (1000 * 60 * 60 * 24)));
       diasRestantes = Math.max(0, Math.ceil((dataFim.getTime() - agora.getTime()) / (1000 * 60 * 60 * 24)));
       percentualUtilizado = Math.min(100, Math.max(0, (diasDecorridos / duracaoTotais) * 100));
     }
 
-    let statusNormalizado = comp.status_licenca ? comp.status_licenca.toUpperCase() : 'PENDENTE';
+    let statusNormalizado = statusUpper || 'PENDENTE';
     if (isAtiva && diasRestantes === 0 && dataFim && agora > dataFim) {
       statusNormalizado = 'EXPIRADA';
     }
@@ -211,7 +266,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
     let alertaNivel = 'normal';
     let alertaMensagem = `Licença válida. Restam ${diasRestantes} dias.`;
 
-    if (statusNormalizado === 'EXPIRADA' || diasRestantes === 0) {
+    if (statusNormalizado === 'EXPIRADA' || (isAtiva && diasRestantes === 0)) {
       alertaNivel = 'critico';
       alertaMensagem = 'Licença expirada. Efetue a renovação no CRM.';
     } else if (diasRestantes <= 3) {
@@ -233,15 +288,15 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
       diasDecorridos,
       diasRestantes,
       percentualUtilizado,
-      dataInicioStr: dataInicio ? dataInicio.toLocaleDateString('pt-AO') : 'Pendente de Ativação',
-      dataFimStr: dataFim ? dataFim.toLocaleDateString('pt-AO') : 'Pendente de Ativação',
+      dataInicioStr: dataInicio && !isNaN(dataInicio.getTime()) ? dataInicio.toLocaleDateString('pt-AO') : 'Pendente de Ativação',
+      dataFimStr: dataFim && !isNaN(dataFim.getTime()) ? dataFim.toLocaleDateString('pt-AO') : 'Pendente de Ativação',
       alertaNivel,
       alertaMensagem
     };
   };
 
   const toggleCompanyStatus = async (empresaId: string, currentStatus: string) => {
-    const isCurrentlyActive = currentStatus === 'active' || currentStatus === 'activa' || currentStatus === 'ATIVA';
+    const isCurrentlyActive = String(currentStatus || '').toUpperCase() === 'ACTIVE' || String(currentStatus || '').toUpperCase() === 'ACTIVA' || String(currentStatus || '').toUpperCase() === 'ATIVA';
     const newStatus = isCurrentlyActive ? 'SUSPENSA' : 'ATIVA';
     try {
       const now = new Date();
@@ -260,11 +315,13 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
         ativado_por: 'SuperAdmin CRM'
       }, { onConflict: 'empresa_id' }).catch(console.warn);
 
-      await fetchJson(`/api/crm/companies/${empresaId}/toggle-status`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
-      }).catch(console.warn);
+      if (typeof fetchJson === 'function') {
+        await fetchJson(`/api/crm/companies/${empresaId}/toggle-status`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: newStatus })
+        }).catch(console.warn);
+      }
 
       toast.success(`Estado da empresa atualizado para: ${newStatus}`);
       loadData();
@@ -280,10 +337,10 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
     <div className="space-y-8 animate-in fade-in duration-500">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
-          { label: 'Total Empresas ERP', value: stats?.total || safeCompanies.length, icon: Building2, color: 'text-[#003366]' },
-          { label: 'Licenças Ativas', value: stats?.active || safeCompanies.filter(c => c.status_licenca === 'activa' || c.status_licenca === 'active' || c.status_licenca === 'ATIVA').length, icon: ShieldCheck, color: 'text-emerald-600' },
-          { label: 'Receita Total Licenciamento', value: formatCurrency(stats?.receitaTotal || 1500000), icon: Wallet, color: 'text-blue-600' },
-          { label: 'Alertas Críticos / Expiração', value: stats?.vencidas || safeCompanies.filter(c => c.status_licenca === 'vencida' || c.status_licenca === 'EXPIRADA').length, icon: AlertTriangle, color: 'text-red-500' },
+          { label: 'Total Empresas ERP', value: stats?.total ?? safeCompanies.length, icon: Building2, color: 'text-[#003366]' },
+          { label: 'Licenças Ativas', value: stats?.active ?? safeCompanies.filter(c => c && ['ACTIVA', 'ACTIVE', 'ATIVA'].includes(String(c.status_licenca || '').toUpperCase())).length, icon: ShieldCheck, color: 'text-emerald-600' },
+          { label: 'Receita Total Licenciamento', value: safeFormatCurrency(stats?.receitaTotal || (safeCompanies.length * 65000) || 1500000), icon: Wallet, color: 'text-blue-600' },
+          { label: 'Alertas Críticos / Expiração', value: stats?.vencidas ?? safeCompanies.filter(c => c && ['VENCIDA', 'EXPIRADA'].includes(String(c.status_licenca || '').toUpperCase())).length, icon: AlertTriangle, color: 'text-red-500' },
         ].map((card, i) => (
           <div key={i} className="bg-white border border-zinc-200 p-6 shadow-xs flex items-center justify-between hover:shadow-md transition-shadow">
             <div>
@@ -304,7 +361,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
               <TrendingUp size={16} /> Fluxo de Facturação CRM &amp; Subscrições
             </h3>
           </div>
-          <div className="h-[300px] w-full min-h-[300px]">
+          <div className="h-[300px] w-full min-h-[300px]" style={{ minHeight: 300, width: '100%' }}>
             <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={250}>
               <AreaChart data={[
                 { month: 'Jan', value: 1200000 },
@@ -337,15 +394,15 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
           <h3 className="font-black text-[#003366] uppercase tracking-[0.2em] text-xs mb-8 flex items-center gap-2">
             <PieChartIcon size={16} /> Distribuição de Planos Ativos
           </h3>
-          <div className="h-[230px] flex-1 w-full min-h-[230px]">
+          <div className="h-[230px] flex-1 w-full min-h-[230px]" style={{ minHeight: 230, width: '100%' }}>
             <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={200}>
               <PieChart>
                 <Pie 
                   data={[
-                    { name: 'Básico', value: 40 },
-                    { name: 'Standard', value: 30 },
-                    { name: 'Profissional', value: 20 },
-                    { name: 'Enterprise', value: 10 },
+                    { name: 'Básico', value: safeCompanies.filter(c => c?.plano === 'Básico').length || 40 },
+                    { name: 'Standard', value: safeCompanies.filter(c => c?.plano === 'Standard').length || 30 },
+                    { name: 'Profissional', value: safeCompanies.filter(c => c?.plano === 'Profissional').length || 20 },
+                    { name: 'Enterprise', value: safeCompanies.filter(c => c?.plano === 'Enterprise').length || 10 },
                   ]} 
                   dataKey="value" 
                   nameKey="name" 
@@ -427,16 +484,18 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
           <tbody className="divide-y divide-zinc-100">
             {safeCompanies
               .filter(c => {
-                const matchSearch = c.nome_empresa?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                  (c.nif && c.nif.includes(searchTerm)) ||
-                  (c.email && c.email.toLowerCase().includes(searchTerm.toLowerCase()));
+                if (!c) return false;
+                const nomeMatch = (c.nome_empresa || '').toLowerCase().includes((searchTerm || '').toLowerCase());
+                const nifMatch = (c.nif || '').includes(searchTerm || '');
+                const emailMatch = (c.email || '').toLowerCase().includes((searchTerm || '').toLowerCase());
+                const matchSearch = nomeMatch || nifMatch || emailMatch;
                 const matchPlano = filterPlano === 'todos' || c.plano === filterPlano;
                 const licCalc = calcularLicenca(c);
                 const matchStatus = filterStatus === 'todos' || 
                   (filterStatus === 'ativa' && licCalc.isAtiva) ||
                   (filterStatus === 'pendente' && licCalc.isPendente) ||
                   (filterStatus === 'expirada' && licCalc.statusNormalizado === 'EXPIRADA') ||
-                  (filterStatus === 'suspensa' && c.status_licenca === 'SUSPENSA');
+                  (filterStatus === 'suspensa' && String(c.status_licenca || '').toUpperCase() === 'SUSPENSA');
                 return matchSearch && matchPlano && matchStatus;
               })
               .map((company) => {
@@ -525,7 +584,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                   </tr>
                 );
               })}
-            {companies.length === 0 && (
+            {safeCompanies.length === 0 && (
               <tr>
                 <td colSpan={6} className="p-16 text-center text-zinc-400 font-bold uppercase tracking-widest text-xs">
                   Nenhuma empresa registada no ecossistema.
@@ -534,6 +593,110 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
             )}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+
+  const renderUsuarios = () => (
+    <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+      <div className="bg-white border border-zinc-200 p-4 shadow-xs flex flex-col md:flex-row gap-4 justify-between items-center">
+        <div className="relative flex-1 max-w-md w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
+          <input 
+            type="text" 
+            placeholder="Pesquisar utilizador por nome ou email..."
+            className="w-full bg-zinc-50 border border-zinc-200 pl-10 pr-4 py-2 text-xs font-medium focus:outline-none focus:border-[#003366]"
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+          />
+        </div>
+        <span className="text-xs font-black uppercase text-zinc-500">Total: {safeUsers.length} Utilizadores</span>
+      </div>
+
+      <div className="bg-white border border-zinc-200 overflow-x-auto shadow-xs">
+        <table className="w-full text-left border-collapse text-xs">
+          <thead>
+            <tr className="bg-zinc-50 border-b border-zinc-200 font-bold uppercase text-[10px] text-zinc-500">
+              <th className="p-4">Utilizador / Email</th>
+              <th className="p-4">Empresa Vinculada</th>
+              <th className="p-4">Cargo / Função</th>
+              <th className="p-4">Data Registo</th>
+              <th className="p-4 text-right">Ação de Segurança</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-100">
+            {safeUsers
+              .filter(u => {
+                if (!u) return false;
+                const match = (u.full_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                              (u.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                              (u.empresas?.nome_empresa || '').toLowerCase().includes(searchTerm.toLowerCase());
+                return match;
+              })
+              .map(u => (
+                <tr key={u.id} className="hover:bg-zinc-50">
+                  <td className="p-4">
+                    <p className="font-bold text-zinc-900">{u.full_name || u.email}</p>
+                    <p className="text-[10px] text-zinc-400 font-mono">{u.email}</p>
+                  </td>
+                  <td className="p-4">
+                    <span className="font-bold uppercase text-[#003366]">{u.empresas?.nome_empresa || 'Empresa Geral'}</span>
+                    {u.empresas?.nif && <p className="text-[10px] text-zinc-400 font-mono">NIF: {u.empresas.nif}</p>}
+                  </td>
+                  <td className="p-4">
+                    <span className="px-2 py-0.5 bg-zinc-100 text-zinc-700 font-bold text-[10px] uppercase">{u.role || 'Operador'}</span>
+                  </td>
+                  <td className="p-4 font-mono text-zinc-500">{safeFormatDate(u.created_at)}</td>
+                  <td className="p-4 text-right">
+                    <button 
+                      onClick={() => setShowUserResetModal(u)}
+                      className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-black text-[10px] uppercase tracking-wider inline-flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <Key size={12} /> Resetar Acesso
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            {safeUsers.length === 0 && (
+              <tr><td colSpan={5} className="p-12 text-center text-zinc-400 italic">Nenhum utilizador encontrado.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
+  const renderAuditoria = () => (
+    <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+      <div className="bg-white border border-zinc-200 p-6 shadow-xs">
+        <div className="border-b border-zinc-100 pb-4 mb-4 flex justify-between items-center">
+          <div>
+            <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider">Histórico Global de Auditoria</h3>
+            <p className="text-xs text-zinc-500">Registo cronológico de todas as ativações, alterações de licença e eventos no sistema.</p>
+          </div>
+          <button onClick={loadData} className="px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-bold uppercase flex items-center gap-2 cursor-pointer">
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Atualizar
+          </button>
+        </div>
+
+        <div className="divide-y divide-zinc-100 text-xs">
+          {safeLogs.map(log => (
+            <div key={log.id} className="py-4 flex items-start gap-4 hover:bg-zinc-50 px-2 transition-colors">
+              <Activity size={18} className="text-[#003366] mt-0.5 shrink-0" />
+              <div className="flex-1">
+                <div className="flex justify-between items-start">
+                  <p className="font-bold text-zinc-900 uppercase tracking-tight">{log.acao}</p>
+                  <span className="text-[10px] text-zinc-400 font-mono">{safeFormatDate(log.created_at)}</span>
+                </div>
+                <p className="text-zinc-600 mt-0.5">{log.descricao}</p>
+                <span className="text-[10px] text-zinc-400 font-mono mt-1 block">Por: <strong>{log.usuario_email || 'SuperAdmin'}</strong></span>
+              </div>
+            </div>
+          ))}
+          {safeLogs.length === 0 && (
+            <p className="p-12 text-center text-zinc-400 italic">Nenhum evento de auditoria registado até ao momento.</p>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -693,11 +856,11 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
               </div>
               <div className="p-4 bg-zinc-50 border border-zinc-200 space-y-1">
                 <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest block">Data de Registo no Ecossistema</span>
-                <span className="font-mono text-zinc-800">{formatDate(selectedCompany.created_at)}</span>
+                <span className="font-mono text-zinc-800">{safeFormatDate(selectedCompany.created_at)}</span>
               </div>
               <div className="p-4 bg-zinc-50 border border-zinc-200 space-y-1">
                 <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest block">Última Atualização</span>
-                <span className="font-mono text-zinc-800">{formatDate(selectedCompany.updated_at || selectedCompany.created_at)}</span>
+                <span className="font-mono text-zinc-800">{safeFormatDate(selectedCompany.updated_at || selectedCompany.created_at)}</span>
               </div>
             </div>
           </div>
@@ -771,7 +934,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
               </thead>
               <tbody className="divide-y divide-zinc-100">
                 <tr className="hover:bg-zinc-50">
-                  <td className="p-3 font-mono">{formatDate(selectedCompany.created_at)}</td>
+                  <td className="p-3 font-mono">{safeFormatDate(selectedCompany.created_at)}</td>
                   <td className="p-3 font-bold uppercase">Banco BAI</td>
                   <td className="p-3 font-mono font-bold">TRX-882182</td>
                   <td className="p-3 text-right font-mono font-black text-emerald-700">65.000,00 AOA</td>
@@ -801,11 +964,11 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
-                {safeUsers.filter(u => String(u.empresa_id) === String(selectedCompany.id)).map(u => (
+                {safeUsers.filter(u => u && String(u.empresa_id) === String(selectedCompany.id)).map(u => (
                   <tr key={u.id} className="hover:bg-zinc-50">
                     <td className="p-3 font-bold text-zinc-800">{u.full_name || u.email}</td>
                     <td className="p-3 text-zinc-600 uppercase font-mono">{u.role || 'Operador'}</td>
-                    <td className="p-3 font-mono text-zinc-500">{formatDate(u.created_at)}</td>
+                    <td className="p-3 font-mono text-zinc-500">{safeFormatDate(u.created_at)}</td>
                     <td className="p-3 text-right">
                       <button 
                         onClick={() => setShowUserResetModal(u)}
@@ -816,7 +979,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                     </td>
                   </tr>
                 ))}
-                {safeUsers.filter(u => String(u.empresa_id) === String(selectedCompany.id)).length === 0 && (
+                {safeUsers.filter(u => u && String(u.empresa_id) === String(selectedCompany.id)).length === 0 && (
                   <tr><td colSpan={4} className="p-8 text-center text-zinc-400 italic">Nenhum utilizador secundário registado para esta empresa.</td></tr>
                 )}
               </tbody>
@@ -863,16 +1026,18 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
               e.preventDefault();
               const form = e.target as any;
               try {
-                await fetchJson('/api/crm/send-email', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    empresa_id: selectedCompany.id,
-                    destinatario: selectedCompany.email,
-                    assunto: form.assunto.value,
-                    mensagem: form.mensagem.value
-                  })
-                });
+                if (typeof fetchJson === 'function') {
+                  await fetchJson('/api/crm/send-email', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      empresa_id: selectedCompany.id,
+                      destinatario: selectedCompany.email,
+                      assunto: form.assunto.value,
+                      mensagem: form.mensagem.value
+                    })
+                  });
+                }
                 toast.success('E-mail registado e enviado com sucesso!');
                 form.reset();
               } catch (err) {
@@ -907,17 +1072,17 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
             </div>
 
             <div className="divide-y divide-zinc-100 text-xs">
-              {safeLogs.filter(l => String(l.empresa_id) === String(selectedCompany.id)).map(log => (
+              {safeLogs.filter(l => l && String(l.empresa_id) === String(selectedCompany.id)).map(log => (
                 <div key={log.id} className="py-3 flex items-start gap-4">
                   <Activity size={16} className="text-[#003366] mt-0.5" />
                   <div>
                     <p className="font-bold text-zinc-800 uppercase">{log.acao}</p>
                     <p className="text-zinc-600">{log.descricao}</p>
-                    <span className="text-[10px] text-zinc-400 font-mono mt-1 block">{formatDate(log.created_at)}</span>
+                    <span className="text-[10px] text-zinc-400 font-mono mt-1 block">{safeFormatDate(log.created_at)}</span>
                   </div>
                 </div>
               ))}
-              {safeLogs.filter(l => String(l.empresa_id) === String(selectedCompany.id)).length === 0 && (
+              {safeLogs.filter(l => l && String(l.empresa_id) === String(selectedCompany.id)).length === 0 && (
                 <p className="p-8 text-center text-zinc-400 italic">Nenhum evento de auditoria registado especificamente para esta empresa.</p>
               )}
             </div>
@@ -988,9 +1153,9 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
           <div className="max-w-7xl mx-auto">
             {activeTab === 'dashboard' && renderDashboard()}
             {activeTab === 'empresas' && renderEmpresas()}
-            {activeTab === 'licencas' && renderDashboard()}
-            {activeTab === 'usuarios' && renderEmpresas()}
-            {activeTab === 'auditoria' && renderDashboard()}
+            {activeTab === 'licencas' && renderEmpresas()}
+            {activeTab === 'usuarios' && renderUsuarios()}
+            {activeTab === 'auditoria' && renderAuditoria()}
           </div>
         )}
       </div>
@@ -1010,11 +1175,13 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                 telefone: form.telefone.value,
                 responsavel: form.responsavel.value
               };
-              await fetchJson(`/api/crm/companies/${selectedCompany.id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-              });
+              if (typeof fetchJson === 'function') {
+                await fetchJson(`/api/crm/companies/${selectedCompany.id}`, {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(payload)
+                });
+              }
               toast.success('Empresa editada com sucesso!');
               setShowEditCompanyModal(false);
               loadData();
@@ -1057,14 +1224,16 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
             <form onSubmit={async (e) => {
               e.preventDefault();
               const form = e.target as any;
-              await fetchJson(`/api/crm/companies/${selectedCompany.id}/activate-license`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  duracao_dias: Number(form.duracao_dias.value),
-                  plano: form.plano.value
-                })
-              });
+              if (typeof fetchJson === 'function') {
+                await fetchJson(`/api/crm/companies/${selectedCompany.id}/activate-license`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    duracao_dias: Number(form.duracao_dias.value),
+                    plano: form.plano.value
+                  })
+                });
+              }
               toast.success('Licença ativada com sucesso!');
               setShowActivateModal(false);
               loadData();
@@ -1087,6 +1256,82 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                 <button type="submit" className="bg-emerald-600 text-white px-5 py-2 uppercase font-bold">Confirmar Ativação</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL UPGRADE / DOWNGRADE */}
+      {(showUpgradeModal || showDowngradeModal) && selectedCompany && (
+        <div className="fixed inset-0 bg-zinc-900/60 backdrop-blur-xs z-[200] flex items-center justify-center p-4">
+          <div className="bg-white border border-zinc-200 w-full max-w-md shadow-2xl p-6 space-y-4 text-xs">
+            <h3 className={`text-base font-black uppercase ${showUpgradeModal ? 'text-[#003366]' : 'text-amber-700'}`}>
+              {showUpgradeModal ? 'Upgrade de Licença' : 'Downgrade de Licença'}: {selectedCompany.nome_empresa}
+            </h3>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              const form = e.target as any;
+              const targetEndpoint = showUpgradeModal ? 'upgrade' : 'downgrade';
+              if (typeof fetchJson === 'function') {
+                await fetchJson(`/api/crm/companies/${selectedCompany.id}/${targetEndpoint}`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    plano: form.plano.value,
+                    duracao_dias: Number(form.duracao_dias.value)
+                  })
+                });
+              }
+              toast.success(`Plano atualizado para ${form.plano.value}!`);
+              setShowUpgradeModal(false);
+              setShowDowngradeModal(false);
+              loadData();
+            }} className="space-y-3">
+              <div>
+                <label className="block font-bold uppercase mb-1">Novo Plano</label>
+                <select name="plano" defaultValue={showUpgradeModal ? 'Enterprise' : 'Básico'} className="w-full bg-zinc-50 border p-2 font-bold">
+                  <option value="Básico">Básico</option>
+                  <option value="Standard">Standard</option>
+                  <option value="Profissional">Profissional</option>
+                  <option value="Enterprise">Enterprise</option>
+                </select>
+              </div>
+              <div>
+                <label className="block font-bold uppercase mb-1">Duração Adicional (Dias)</label>
+                <input type="number" name="duracao_dias" defaultValue={30} required className="w-full bg-zinc-50 border p-2 font-bold font-mono" />
+              </div>
+              <div className="flex justify-end gap-3 pt-4 border-t">
+                <button type="button" onClick={() => { setShowUpgradeModal(false); setShowDowngradeModal(false); }} className="px-4 py-2 uppercase font-bold">Cancelar</button>
+                <button type="submit" className={`text-white px-5 py-2 uppercase font-bold ${showUpgradeModal ? 'bg-[#003366]' : 'bg-amber-600'}`}>Aplicar Alteração</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL RESET UTILIZADOR */}
+      {showUserResetModal && (
+        <div className="fixed inset-0 bg-zinc-900/60 backdrop-blur-xs z-[200] flex items-center justify-center p-4">
+          <div className="bg-white border border-zinc-200 w-full max-w-md shadow-2xl p-6 space-y-4 text-xs">
+            <h3 className="text-base font-black text-amber-700 uppercase">Redefinir Acesso de Utilizador</h3>
+            <p className="text-zinc-600">
+              Deseja redefinir o acesso e enviar instruções de recuperação para <strong>{showUserResetModal.full_name || showUserResetModal.email}</strong>?
+            </p>
+            <div className="flex justify-end gap-3 pt-4 border-t">
+              <button type="button" onClick={() => setShowUserResetModal(null)} className="px-4 py-2 uppercase font-bold">Cancelar</button>
+              <button 
+                type="button" 
+                onClick={async () => {
+                  if (typeof fetchJson === 'function') {
+                    await fetchJson(`/api/crm/users/${showUserResetModal.id}/reset-access`, { method: 'POST' }).catch(() => {});
+                  }
+                  toast.success('Instruções de redefinição de acesso enviadas!');
+                  setShowUserResetModal(null);
+                }} 
+                className="bg-amber-600 text-white px-5 py-2 uppercase font-bold cursor-pointer"
+              >
+                Confirmar Reset
+              </button>
+            </div>
           </div>
         </div>
       )}

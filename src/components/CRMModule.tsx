@@ -108,11 +108,33 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
 
   // Modals
   const [showCreateCompanyModal, setShowCreateCompanyModal] = useState(false);
+  const [createStep, setCreateStep] = useState(1);
+  const [createForm, setCreateForm] = useState({
+    nome_empresa: '',
+    nif: '',
+    tipo_empresa: 'Comércio Geral',
+    nome_administrador: '',
+    username: '',
+    telefone: '',
+    endereco: '',
+    provincia: 'Luanda',
+    municipio: 'Luanda',
+    pais: 'Angola',
+    plano: 'Profissional',
+    duracao_dias: 30,
+    modulos: ['faturacao', 'stock', 'clientes', 'pos'],
+    admin_email: '',
+    admin_password: '123',
+    admin_confirm_password: '123'
+  });
   const [showEditCompanyModal, setShowEditCompanyModal] = useState(false);
   const [showActivateModal, setShowActivateModal] = useState(false);
+  const [showDeactivateModal, setShowDeactivateModal] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [showDowngradeModal, setShowDowngradeModal] = useState(false);
   const [showProofModal, setShowProofModal] = useState(false);
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [proofUploading, setProofUploading] = useState(false);
   const [showOccurrenceModal, setShowOccurrenceModal] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showUserResetModal, setShowUserResetModal] = useState<UserProfile | null>(null);
@@ -175,6 +197,14 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
       const listCompanies = Array.isArray(companiesData) ? companiesData : (companiesData?.data && Array.isArray(companiesData.data) ? companiesData.data : []);
       setCompanies(listCompanies);
       setStats(statsData && typeof statsData === 'object' ? statsData : null);
+
+      // Sincronizar sempre a empresa selecionada com o registo fresco do banco (evita dados antigos)
+      if (selectedCompany?.id) {
+        const freshSelected = listCompanies.find((c: any) => String(c.id) === String(selectedCompany.id));
+        if (freshSelected) {
+          setSelectedCompany(freshSelected);
+        }
+      }
 
       // Load Users
       let usersData: any = [];
@@ -855,6 +885,9 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
             <button onClick={() => setShowActivateModal(true)} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
               <CheckCircle size={14} /> Ativar Licença
             </button>
+            <button onClick={() => setShowDeactivateModal(true)} className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+              <XCircle size={14} /> Desativar Licença
+            </button>
             <button onClick={() => setShowUpgradeModal(true)} className="px-3 py-1.5 bg-[#003366] hover:bg-[#002244] text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
               <ArrowUpCircle size={14} /> Upgrade
             </button>
@@ -985,8 +1018,11 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
             <div className="flex justify-between items-center border-b border-zinc-100 pb-4">
               <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider">Parâmetros Oficiais da Licença</h3>
               <div className="flex gap-2">
-                <button onClick={() => setShowActivateModal(true)} className="px-4 py-2 bg-emerald-600 text-white text-xs font-black uppercase tracking-widest flex items-center gap-2 cursor-pointer">
-                  <CheckCircle size={14} /> Ativar Licença Agora
+                <button onClick={() => setShowActivateModal(true)} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase tracking-widest flex items-center gap-2 cursor-pointer">
+                  <CheckCircle size={14} /> Ativar Licença
+                </button>
+                <button onClick={() => setShowDeactivateModal(true)} className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-black uppercase tracking-widest flex items-center gap-2 cursor-pointer">
+                  <XCircle size={14} /> Desativar Licença
                 </button>
               </div>
             </div>
@@ -998,7 +1034,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
               </div>
               <div className="p-4 bg-zinc-50 border border-zinc-200">
                 <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Estado no Sistema</span>
-                <span className="text-sm font-black text-emerald-700 uppercase mt-1 block">{lic.statusNormalizado}</span>
+                <span className={`text-sm font-black uppercase mt-1 block ${lic.isAtiva ? 'text-emerald-700' : 'text-rose-700'}`}>{lic.statusNormalizado}</span>
               </div>
               <div className="p-4 bg-zinc-50 border border-zinc-200">
                 <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Data de Ativação</span>
@@ -1040,8 +1076,9 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                 <tr className="bg-zinc-50 border-b border-zinc-200 font-bold uppercase text-[10px] text-zinc-500">
                   <th className="p-3">Data</th>
                   <th className="p-3">Banco</th>
-                  <th className="p-3">N.º Transação</th>
+                  <th className="p-3">N.º Transação / Ref</th>
                   <th className="p-3 text-right">Valor Pago</th>
+                  <th className="p-3 text-center">Ficheiro / Anexo</th>
                   <th className="p-3 text-center">Estado</th>
                 </tr>
               </thead>
@@ -1052,6 +1089,20 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                     <td className="p-3 font-bold uppercase">{comp.banco || 'Banco Comercial'}</td>
                     <td className="p-3 font-mono font-bold">{comp.numero_transacao || '---'}</td>
                     <td className="p-3 text-right font-mono font-black text-emerald-700">{safeFormatCurrency(comp.montante || 65000)}</td>
+                    <td className="p-3 text-center font-mono">
+                      {comp.comprovativo_url ? (
+                        <a 
+                          href={comp.comprovativo_url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-[#003366] hover:underline font-bold"
+                        >
+                          <Download size={12} /> Ver Ficheiro
+                        </a>
+                      ) : (
+                        <span className="text-zinc-400 italic">Sem ficheiro</span>
+                      )}
+                    </td>
                     <td className="p-3 text-center">
                       <span className="bg-emerald-100 text-emerald-800 text-[9px] font-black uppercase px-2 py-0.5">{comp.status || 'Aprovado'}</span>
                     </td>
@@ -1059,7 +1110,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                 ))}
                 {safeComprovativos.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="p-8 text-center text-zinc-400 italic">
+                    <td colSpan={6} className="p-8 text-center text-zinc-400 italic">
                       Nenhum comprovativo de pagamento anexado até ao momento.
                     </td>
                   </tr>
@@ -1282,100 +1333,296 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
         )}
       </div>
 
-      {/* MODAL REGISTAR NOVA EMPRESA */}
+      {/* MODAL REGISTAR NOVA EMPRESA (WIZARD 3 PASSOS COMPLETO) */}
       {showCreateCompanyModal && (
         <div className="fixed inset-0 bg-zinc-900/60 backdrop-blur-xs z-[200] flex items-center justify-center p-4">
-          <div className="bg-white border border-zinc-200 w-full max-w-xl shadow-2xl p-6 space-y-4 text-xs">
-            <h3 className="text-base font-black text-[#003366] uppercase">Registar Nova Empresa no Sistema</h3>
-            <p className="text-zinc-500">A nova empresa será cadastrada no Supabase e associada imediatamente com licença ativa.</p>
-            <form onSubmit={async (e) => {
-              e.preventDefault();
-              const form = e.target as any;
-              const payload = {
-                nome_empresa: form.nome_empresa.value,
-                nif: form.nif.value,
-                email: form.email.value,
-                telefone: form.telefone.value,
-                responsavel: form.responsavel.value,
-                municipio: form.municipio.value,
-                provincia: form.provincia.value,
-                endereco: form.endereco.value,
-                plano: form.plano.value,
-                duracao_dias: Number(form.duracao_dias.value)
-              };
-              try {
-                if (typeof fetchJson === 'function') {
-                  await fetchJson('/api/crm/companies', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                  });
-                }
-                toast.success('Empresa registada com sucesso no Supabase!');
-                setShowCreateCompanyModal(false);
-                loadData();
-              } catch (err: any) {
-                toast.error(err.message || 'Erro ao registar empresa.');
-              }
-            }} className="space-y-3">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold uppercase mb-1">Nome / Razão Social *</label>
-                  <input type="text" name="nome_empresa" required placeholder="Ex: Matita Comercial Lda" className="w-full bg-zinc-50 border p-2 font-bold" />
-                </div>
-                <div>
-                  <label className="block font-bold uppercase mb-1">NIF Fiscal *</label>
-                  <input type="text" name="nif" required placeholder="Ex: 5002123665" className="w-full bg-zinc-50 border p-2 font-bold font-mono" />
-                </div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold uppercase mb-1">Email de Contacto</label>
-                  <input type="email" name="email" placeholder="geral@empresa.ao" className="w-full bg-zinc-50 border p-2 font-bold" />
-                </div>
-                <div>
-                  <label className="block font-bold uppercase mb-1">Telefone</label>
-                  <input type="text" name="telefone" placeholder="+244 9..." className="w-full bg-zinc-50 border p-2 font-bold font-mono" />
-                </div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div>
-                  <label className="block font-bold uppercase mb-1">Responsável</label>
-                  <input type="text" name="responsavel" placeholder="Nome do Gestor" className="w-full bg-zinc-50 border p-2 font-bold" />
-                </div>
-                <div>
-                  <label className="block font-bold uppercase mb-1">Município</label>
-                  <input type="text" name="municipio" placeholder="Luanda" className="w-full bg-zinc-50 border p-2 font-bold" />
-                </div>
-                <div>
-                  <label className="block font-bold uppercase mb-1">Província</label>
-                  <input type="text" name="provincia" defaultValue="Luanda" className="w-full bg-zinc-50 border p-2 font-bold" />
-                </div>
-              </div>
+          <div className="bg-white border border-zinc-200 w-full max-w-2xl shadow-2xl p-6 space-y-4 text-xs max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-zinc-100 pb-3">
               <div>
-                <label className="block font-bold uppercase mb-1">Endereço Completo</label>
-                <input type="text" name="endereco" placeholder="Rua / Bairro..." className="w-full bg-zinc-50 border p-2 font-bold" />
+                <h3 className="text-base font-black text-[#003366] uppercase">Registar Nova Empresa no Sistema</h3>
+                <p className="text-[10px] text-zinc-500 font-medium">Passo {createStep} de 3 — Estrutura Mestre Integrada</p>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 border-t">
-                <div>
-                  <label className="block font-bold uppercase mb-1">Plano Inicial</label>
-                  <select name="plano" defaultValue="Profissional" className="w-full bg-zinc-50 border p-2 font-bold">
-                    <option value="Básico">Básico</option>
-                    <option value="Standard">Standard</option>
-                    <option value="Profissional">Profissional</option>
-                    <option value="Enterprise">Enterprise</option>
-                  </select>
+              <button onClick={() => setShowCreateCompanyModal(false)} className="text-zinc-400 hover:text-zinc-600 font-bold uppercase text-[10px] cursor-pointer">Fechar</button>
+            </div>
+
+            {/* Stepper Visual */}
+            <div className="grid grid-cols-3 gap-2 pb-2">
+              <div className={`p-2 text-center border-b-2 font-black uppercase text-[10px] ${createStep === 1 ? 'border-[#003366] text-[#003366] bg-sky-50/50' : 'border-zinc-200 text-zinc-400'}`}>
+                1. Empresa &amp; Gestor
+              </div>
+              <div className={`p-2 text-center border-b-2 font-black uppercase text-[10px] ${createStep === 2 ? 'border-[#003366] text-[#003366] bg-sky-50/50' : 'border-zinc-200 text-zinc-400'}`}>
+                2. Plano &amp; Módulos
+              </div>
+              <div className={`p-2 text-center border-b-2 font-black uppercase text-[10px] ${createStep === 3 ? 'border-[#003366] text-[#003366] bg-sky-50/50' : 'border-zinc-200 text-zinc-400'}`}>
+                3. Credenciais &amp; Fim
+              </div>
+            </div>
+
+            {/* PASSO 1: DADOS DA EMPRESA E ADMINISTRADOR */}
+            {createStep === 1 && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold uppercase mb-1">Nome / Razão Social *</label>
+                    <input 
+                      type="text" 
+                      value={createForm.nome_empresa} 
+                      onChange={e => setCreateForm({ ...createForm, nome_empresa: e.target.value })}
+                      placeholder="Ex: Matita Comercial Lda" 
+                      className="w-full bg-zinc-50 border p-2 font-bold" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold uppercase mb-1">NIF Fiscal *</label>
+                    <input 
+                      type="text" 
+                      value={createForm.nif} 
+                      onChange={e => setCreateForm({ ...createForm, nif: e.target.value })}
+                      placeholder="Ex: 5002123665" 
+                      className="w-full bg-zinc-50 border p-2 font-bold font-mono" 
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block font-bold uppercase mb-1">Validade Inicial (Dias)</label>
-                  <input type="number" name="duracao_dias" defaultValue={30} className="w-full bg-zinc-50 border p-2 font-bold font-mono" />
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold uppercase mb-1">Tipo de Empresa / Atividade</label>
+                    <select 
+                      value={createForm.tipo_empresa} 
+                      onChange={e => setCreateForm({ ...createForm, tipo_empresa: e.target.value })}
+                      className="w-full bg-zinc-50 border p-2 font-bold"
+                    >
+                      <option value="Comércio Geral">Comércio Geral / Retalho</option>
+                      <option value="Restauração">Restauração / Hotelaria</option>
+                      <option value="Prestação de Serviços">Prestação de Serviços</option>
+                      <option value="Indústria">Indústria e Produção</option>
+                      <option value="Saúde e Farmácia">Saúde e Farmácia</option>
+                      <option value="Tecnologia">Tecnologia e Consultoria</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-bold uppercase mb-1">Nome do Administrador Principal *</label>
+                    <input 
+                      type="text" 
+                      value={createForm.nome_administrador} 
+                      onChange={e => setCreateForm({ ...createForm, nome_administrador: e.target.value })}
+                      placeholder="Ex: João Manuel" 
+                      className="w-full bg-zinc-50 border p-2 font-bold" 
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold uppercase mb-1">Telefone Principal</label>
+                    <input 
+                      type="text" 
+                      value={createForm.telefone} 
+                      onChange={e => setCreateForm({ ...createForm, telefone: e.target.value })}
+                      placeholder="+244 9..." 
+                      className="w-full bg-zinc-50 border p-2 font-bold font-mono" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold uppercase mb-1">Username / Utilizador</label>
+                    <input 
+                      type="text" 
+                      value={createForm.username} 
+                      onChange={e => setCreateForm({ ...createForm, username: e.target.value })}
+                      placeholder="admin" 
+                      className="w-full bg-zinc-50 border p-2 font-bold font-mono" 
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="md:col-span-2">
+                    <label className="block font-bold uppercase mb-1">Endereço / Morada</label>
+                    <input 
+                      type="text" 
+                      value={createForm.endereco} 
+                      onChange={e => setCreateForm({ ...createForm, endereco: e.target.value })}
+                      placeholder="Rua, Bairro..." 
+                      className="w-full bg-zinc-50 border p-2 font-bold" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold uppercase mb-1">Município / Província</label>
+                    <input 
+                      type="text" 
+                      value={createForm.municipio} 
+                      onChange={e => setCreateForm({ ...createForm, municipio: e.target.value, provincia: e.target.value })}
+                      placeholder="Luanda" 
+                      className="w-full bg-zinc-50 border p-2 font-bold" 
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4 border-t">
+                  <button type="button" onClick={() => setShowCreateCompanyModal(false)} className="px-4 py-2 uppercase font-bold cursor-pointer">Cancelar</button>
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      if (!createForm.nome_empresa || !createForm.nif || !createForm.nome_administrador) {
+                        toast.error('Preencha o Nome da Empresa, NIF e Nome do Administrador.');
+                        return;
+                      }
+                      setCreateStep(2);
+                    }} 
+                    className="bg-[#003366] text-white px-5 py-2 uppercase font-bold cursor-pointer"
+                  >
+                    Avançar para Passo 2 &rarr;
+                  </button>
                 </div>
               </div>
-              <div className="flex justify-end gap-3 pt-4 border-t">
-                <button type="button" onClick={() => setShowCreateCompanyModal(false)} className="px-4 py-2 uppercase font-bold cursor-pointer">Cancelar</button>
-                <button type="submit" className="bg-[#003366] text-white px-5 py-2 uppercase font-bold cursor-pointer shadow-sm">Gravar Empresa</button>
+            )}
+
+            {/* PASSO 2: SELEÇÃO DE PLANO & MÓDULOS */}
+            {createStep === 2 && (
+              <div className="space-y-4">
+                <div>
+                  <label className="block font-bold uppercase mb-1">Selecione o Plano Inicial</label>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    {['Básico', 'Standard', 'Profissional', 'Enterprise'].map(p => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setCreateForm({ ...createForm, plano: p })}
+                        className={`p-3 text-center border font-black uppercase text-xs cursor-pointer transition-all ${
+                          createForm.plano === p ? 'border-[#003366] bg-sky-50 text-[#003366] shadow-xs' : 'border-zinc-200 bg-zinc-50 text-zinc-600'
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold uppercase mb-1">Período de Validade (Dias)</label>
+                    <select 
+                      value={createForm.duracao_dias} 
+                      onChange={e => setCreateForm({ ...createForm, duracao_dias: Number(e.target.value) })}
+                      className="w-full bg-zinc-50 border p-2 font-bold"
+                    >
+                      <option value={30}>30 Dias (1 Mês)</option>
+                      <option value={90}>90 Dias (3 Meses)</option>
+                      <option value={180}>180 Dias (Semestral)</option>
+                      <option value={365}>365 Dias (Anual)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-bold uppercase mb-1">Módulos Habilitados</label>
+                    <p className="text-[11px] text-zinc-500 mt-2 font-bold">Faturação AGT, POS, Stock, Clientes, Relatórios e Auditoria</p>
+                  </div>
+                </div>
+
+                <div className="flex justify-between gap-3 pt-4 border-t">
+                  <button type="button" onClick={() => setCreateStep(1)} className="px-4 py-2 uppercase font-bold cursor-pointer">&larr; Voltar ao Passo 1</button>
+                  <button 
+                    type="button" 
+                    onClick={() => setCreateStep(3)} 
+                    className="bg-[#003366] text-white px-5 py-2 uppercase font-bold cursor-pointer"
+                  >
+                    Avançar para Passo 3 &rarr;
+                  </button>
+                </div>
               </div>
-            </form>
+            )}
+
+            {/* PASSO 3: CREDENCIAIS DO ADMINISTRADOR & FINALIZAÇÃO */}
+            {createStep === 3 && (
+              <div className="space-y-4">
+                <div className="bg-sky-50 border border-sky-200 p-3 rounded-xs text-sky-900">
+                  <p className="font-bold">Credenciais de Autenticação do Administrador</p>
+                  <p className="text-[10px] text-sky-700 mt-0.5">O gestor poderá fazer login com este email e a senha temporária configurada.</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold uppercase mb-1">Email de Acesso do Administrador *</label>
+                    <input 
+                      type="email" 
+                      value={createForm.admin_email} 
+                      onChange={e => setCreateForm({ ...createForm, admin_email: e.target.value })}
+                      placeholder="admin@empresa.ao" 
+                      required
+                      className="w-full bg-zinc-50 border p-2 font-bold" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold uppercase mb-1">Senha Provisória (Padrão: 123)</label>
+                    <input 
+                      type="text" 
+                      value={createForm.admin_password} 
+                      onChange={e => setCreateForm({ ...createForm, admin_password: e.target.value, admin_confirm_password: e.target.value })}
+                      className="w-full bg-zinc-50 border p-2 font-bold font-mono" 
+                    />
+                  </div>
+                </div>
+
+                <div className="p-3 bg-zinc-50 border text-zinc-600 space-y-1">
+                  <p className="font-bold text-[#003366] uppercase">Resumo da Nova Empresa:</p>
+                  <p>• <strong>Empresa:</strong> {createForm.nome_empresa} (NIF: {createForm.nif})</p>
+                  <p>• <strong>Administrador:</strong> {createForm.nome_administrador} ({createForm.admin_email || 'email auto'})</p>
+                  <p>• <strong>Licença:</strong> {createForm.plano} ({createForm.duracao_dias} dias)</p>
+                </div>
+
+                <div className="flex justify-between gap-3 pt-4 border-t">
+                  <button type="button" onClick={() => setCreateStep(2)} className="px-4 py-2 uppercase font-bold cursor-pointer">&larr; Voltar ao Passo 2</button>
+                  <button 
+                    type="button" 
+                    onClick={async () => {
+                      if (!createForm.admin_email) {
+                        toast.error('Indique o email de acesso do administrador.');
+                        return;
+                      }
+                      try {
+                        if (typeof fetchJson === 'function') {
+                          const res = await fetchJson('/api/crm/companies', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(createForm)
+                          });
+                          if (res && res.error) {
+                            toast.error(res.error);
+                            return;
+                          }
+                        }
+                        toast.success('Empresa registada com sucesso no Supabase!');
+                        setShowCreateCompanyModal(false);
+                        setCreateStep(1);
+                        setCreateForm({
+                          nome_empresa: '',
+                          nif: '',
+                          tipo_empresa: 'Comércio Geral',
+                          nome_administrador: '',
+                          username: '',
+                          telefone: '',
+                          endereco: '',
+                          provincia: 'Luanda',
+                          municipio: 'Luanda',
+                          pais: 'Angola',
+                          plano: 'Profissional',
+                          duracao_dias: 30,
+                          modulos: ['faturacao', 'stock', 'clientes', 'pos'],
+                          admin_email: '',
+                          admin_password: '123',
+                          admin_confirm_password: '123'
+                        });
+                        loadData();
+                      } catch (err: any) {
+                        toast.error(err.message || 'Erro ao registar empresa.');
+                      }
+                    }} 
+                    className="bg-[#003366] text-white px-6 py-2 uppercase font-black cursor-pointer shadow-md"
+                  >
+                    Finalizar e Gravar Empresa no Supabase
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1502,8 +1749,45 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                 <input type="number" name="duracao_dias" defaultValue={30} required className="w-full bg-zinc-50 border p-2 font-bold font-mono" />
               </div>
               <div className="flex justify-end gap-3 pt-4 border-t">
-                <button type="button" onClick={() => setShowActivateModal(false)} className="px-4 py-2 uppercase font-bold">Cancelar</button>
-                <button type="submit" className="bg-emerald-600 text-white px-5 py-2 uppercase font-bold">Confirmar Ativação</button>
+                <button type="button" onClick={() => setShowActivateModal(false)} className="px-4 py-2 uppercase font-bold cursor-pointer">Cancelar</button>
+                <button type="submit" className="bg-emerald-600 text-white px-5 py-2 uppercase font-bold cursor-pointer">Confirmar Ativação</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DESATIVAR LICENÇA */}
+      {showDeactivateModal && selectedCompany && (
+        <div className="fixed inset-0 bg-zinc-900/60 backdrop-blur-xs z-[200] flex items-center justify-center p-4">
+          <div className="bg-white border border-zinc-200 w-full max-w-md shadow-2xl p-6 space-y-4 text-xs">
+            <h3 className="text-base font-black text-rose-700 uppercase">Desativar / Suspender Licença</h3>
+            <p className="text-zinc-600">A licença de <strong>{selectedCompany.nome_empresa}</strong> será suspensa imediatamente e o acesso será bloqueado.</p>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              const form = e.target as any;
+              try {
+                if (typeof fetchJson === 'function') {
+                  await fetchJson(`/api/crm/companies/${selectedCompany.id}/deactivate-license`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ motivo: form.motivo.value })
+                  });
+                }
+                toast.success('Licença desativada com sucesso!');
+                setShowDeactivateModal(false);
+                loadData();
+              } catch (err: any) {
+                toast.error(err.message || 'Erro ao desativar licença.');
+              }
+            }} className="space-y-3">
+              <div>
+                <label className="block font-bold uppercase mb-1">Motivo da Suspensão *</label>
+                <textarea name="motivo" required defaultValue="Suspensão administrativa de rotina" rows={3} className="w-full bg-zinc-50 border p-2 font-bold text-xs" />
+              </div>
+              <div className="flex justify-end gap-3 pt-4 border-t">
+                <button type="button" onClick={() => setShowDeactivateModal(false)} className="px-4 py-2 uppercase font-bold cursor-pointer">Cancelar</button>
+                <button type="submit" className="bg-rose-600 text-white px-5 py-2 uppercase font-bold cursor-pointer">Confirmar Suspensão</button>
               </div>
             </form>
           </div>
@@ -1550,8 +1834,8 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                 <input type="number" name="duracao_dias" defaultValue={30} required className="w-full bg-zinc-50 border p-2 font-bold font-mono" />
               </div>
               <div className="flex justify-end gap-3 pt-4 border-t">
-                <button type="button" onClick={() => { setShowUpgradeModal(false); setShowDowngradeModal(false); }} className="px-4 py-2 uppercase font-bold">Cancelar</button>
-                <button type="submit" className={`text-white px-5 py-2 uppercase font-bold ${showUpgradeModal ? 'bg-[#003366]' : 'bg-amber-600'}`}>Aplicar Alteração</button>
+                <button type="button" onClick={() => { setShowUpgradeModal(false); setShowDowngradeModal(false); }} className="px-4 py-2 uppercase font-bold cursor-pointer">Cancelar</button>
+                <button type="submit" className={`text-white px-5 py-2 uppercase font-bold cursor-pointer ${showUpgradeModal ? 'bg-[#003366]' : 'bg-amber-600'}`}>Aplicar Alteração</button>
               </div>
             </form>
           </div>
@@ -1597,16 +1881,33 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
         </div>
       )}
 
-      {/* MODAL ANEXAR COMPROVATIVO */}
+      {/* MODAL ANEXAR COMPROVATIVO COM UPLOAD REAL */}
       {showProofModal && selectedCompany && (
         <div className="fixed inset-0 bg-zinc-900/60 backdrop-blur-xs z-[200] flex items-center justify-center p-4">
           <div className="bg-white border border-zinc-200 w-full max-w-md shadow-2xl p-6 space-y-4 text-xs">
             <h3 className="text-base font-black text-[#003366] uppercase">Anexar Comprovativo de Pagamento</h3>
-            <p className="text-zinc-500">Registe os dados do pagamento da licença da empresa {selectedCompany.nome_empresa}.</p>
+            <p className="text-zinc-500">Registe os dados e envie o ficheiro real de pagamento para {selectedCompany.nome_empresa}.</p>
             <form onSubmit={async (e) => {
               e.preventDefault();
               const form = e.target as any;
+              setProofUploading(true);
               try {
+                let uploadedUrl = '';
+
+                // Upload real do ficheiro para o Supabase Storage (bucket: 'media' ou 'anexos')
+                if (proofFile) {
+                  const fileExt = proofFile.name.split('.').pop();
+                  const fileName = `comprovativo_${selectedCompany.id}_${Date.now()}.${fileExt}`;
+                  const { data: uploadData, error: uploadError } = await supabase.storage
+                    .from('media')
+                    .upload(`comprovativos/${fileName}`, proofFile, { cacheControl: '3600', upsert: true });
+
+                  if (!uploadError && uploadData) {
+                    const { data: publicUrlData } = supabase.storage.from('media').getPublicUrl(`comprovativos/${fileName}`);
+                    uploadedUrl = publicUrlData?.publicUrl || '';
+                  }
+                }
+
                 if (typeof fetchJson === 'function') {
                   await fetchJson('/api/crm/comprovativos', {
                     method: 'POST',
@@ -1616,15 +1917,19 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                       banco: form.banco.value,
                       numero_transacao: form.numero_transacao.value,
                       montante: Number(form.montante.value),
-                      comprovativo_nome: `${form.banco.value}_${form.numero_transacao.value}`
+                      comprovativo_nome: `${form.banco.value}_${form.numero_transacao.value}`,
+                      comprovativo_url: uploadedUrl || null
                     })
                   });
                 }
-                toast.success('Comprovativo registado com sucesso no Supabase!');
+                toast.success('Comprovativo gravado com sucesso em media_arquivos!');
                 setShowProofModal(false);
+                setProofFile(null);
                 loadData();
               } catch (err: any) {
                 toast.error(err.message || 'Erro ao anexar comprovativo.');
+              } finally {
+                setProofUploading(false);
               }
             }} className="space-y-3">
               <div>
@@ -1639,9 +1944,27 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                 <label className="block font-bold uppercase mb-1">Valor Pago (Kz) *</label>
                 <input type="number" name="montante" defaultValue={65000} required className="w-full bg-zinc-50 border p-2 font-bold font-mono" />
               </div>
+              <div>
+                <label className="block font-bold uppercase mb-1">Ficheiro do Comprovativo (PDF, PNG, JPG)</label>
+                <input 
+                  type="file" 
+                  accept=".pdf,.png,.jpg,.jpeg" 
+                  onChange={e => setProofFile(e.target.files?.[0] || null)}
+                  className="w-full bg-zinc-50 border p-2 font-bold text-xs" 
+                />
+                {proofFile && (
+                  <p className="text-[10px] text-emerald-600 font-bold mt-1">✓ Ficheiro selecionado: {proofFile.name} ({(proofFile.size / 1024).toFixed(1)} KB)</p>
+                )}
+              </div>
               <div className="flex justify-end gap-3 pt-4 border-t">
-                <button type="button" onClick={() => setShowProofModal(false)} className="px-4 py-2 uppercase font-bold cursor-pointer">Cancelar</button>
-                <button type="submit" className="bg-[#003366] text-white px-5 py-2 uppercase font-bold cursor-pointer shadow-sm">Gravar Comprovativo</button>
+                <button type="button" onClick={() => { setShowProofModal(false); setProofFile(null); }} className="px-4 py-2 uppercase font-bold cursor-pointer">Cancelar</button>
+                <button 
+                  type="submit" 
+                  disabled={proofUploading}
+                  className="bg-[#003366] text-white px-5 py-2 uppercase font-bold cursor-pointer shadow-sm disabled:opacity-50"
+                >
+                  {proofUploading ? 'A Enviar Ficheiro...' : 'Gravar Comprovativo'}
+                </button>
               </div>
             </form>
           </div>

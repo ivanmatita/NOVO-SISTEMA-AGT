@@ -32672,6 +32672,27 @@ export default function App() {
     }
   }, 3000);
 
+  const doLoadEmployees = async (explicitId?: string) => {
+    try {
+      const companyId = explicitId || user?.empresa_id;
+      if (!companyId) return;
+      const emps = await employeeService.getEmployees(companyId);
+      const safeList = Array.isArray(emps) ? emps : [];
+      setEmployees(safeList);
+      setHrLocalEmployees(safeList);
+    } catch (err) {
+      console.error('[App] Erro ao carregar colaboradores:', err);
+    }
+  };
+
+  const loadEmployees = throttle(async (explicitId?: string) => {
+    try {
+      await doLoadEmployees(explicitId);
+    } catch (err) {
+      console.error('[App] Failed to load employees:', err);
+    }
+  }, 3000);
+
   // Real-time synchronization using named callbacks for proper cleanup
   useEffect(() => {
     const companyId = user?.empresa_id;
@@ -32687,6 +32708,7 @@ export default function App() {
       'caixa_movimentacoes', 
       'fornecedores', 
       'compras',
+      'colaboradores',
       'alertas_tarefas'
     ] as const;
 
@@ -32698,6 +32720,7 @@ export default function App() {
       caixa_movimentacoes: () => loadCaixaMovements(),
       fornecedores: () => loadFornecedores(),
       compras: () => loadCompras(),
+      colaboradores: () => loadEmployees(),
       alertas_tarefas: () => loadAlerts()
     };
 
@@ -32780,6 +32803,7 @@ export default function App() {
         await doLoadActiveTaxes(targetCompanyId);
         await doLoadMetrics(targetCompanyId);
         await doLoadGlobalUsers(targetCompanyId);
+        await doLoadEmployees(targetCompanyId);
       } catch (err: any) {
         console.error('[DEBUG-SYNC] Erro nas queries Supabase:', err);
         if (err.message?.includes('fetch') || err.name === 'TypeError') {
@@ -32855,7 +32879,11 @@ export default function App() {
                               isLicAtiva === false || 
                               isEmpresaAtiva === false;
 
-        if (isDeactivated || (expiry && diffDays <= 0)) {
+        if (isStagingEnvironment()) {
+          // REGRA PERMANENTE: Ambiente STAGING / HOMOLOGAÇÃO possui Licença Técnica Permanente que NUNCA expira nem bloqueia
+          setIsLicenseBlocked(false);
+          setLicenseAlert(null);
+        } else if (isDeactivated || (expiry && diffDays <= 0)) {
           setIsLicenseBlocked(true);
           setLicenseAlert('A licença desta empresa encontra-se suspensa ou expirada. O sistema está em Modo Somente Leitura.');
         } else if (expiry && diffDays <= 20) {
@@ -32901,7 +32929,7 @@ export default function App() {
         Promise.resolve(null), // p
         fetchJson(`/api/transactions?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
         Promise.resolve(null), // i
-        fetchJson(`/api/employees?empresa_id=${targetCompanyId}`),
+        Promise.resolve(null), // e (já carregado com isolamento seguro por doLoadEmployees)
         Promise.resolve(fsDataFormatted), // fs
         fetchJson(`/api/cost-centers?empresa_id=${targetCompanyId}`),
         fetchJson(`/api/pos-points?empresa_id=${targetCompanyId}`),
@@ -32934,7 +32962,9 @@ export default function App() {
       setTransactions(Array.isArray(tr) ? tr : []);
       // NOTE: Do NOT call setInvoices([]) here — invoices are already populated by doLoadDocumentosEmitidos above.
       // Clearing them here was causing the accounting module to always show zero totals.
-      setEmployees(Array.isArray(e) ? e : []);
+      if (Array.isArray(e) && e.length > 0) {
+        setEmployees(e);
+      }
       
       if (Array.isArray(fs)) {
         setFiscalSeries(fs);

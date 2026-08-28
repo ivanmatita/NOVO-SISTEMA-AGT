@@ -15,18 +15,42 @@ export const employeeService = {
         .from('colaboradores')
         .select('*')
         .eq('empresa_id', empresa_id)
-        .order('name', { ascending: true });
+        .order('id', { ascending: true });
 
       if (error) {
-        console.error('[EmployeeService] Erro ao buscar da tabela colaboradores:', error.message);
+        console.warn('[EmployeeService] Tentando fallback para API segura...', error.message);
+        const res = await fetch('/api/secure-rh/colaboradores');
+        if (res.ok) {
+          const apiData = await res.json();
+          if (Array.isArray(apiData)) return apiData;
+        }
         await handleSupabaseError(error, OperationType.LIST, 'colaboradores');
         return [];
       }
       
-      console.log(`[EmployeeService] ${data?.length || 0} colaboradores encontrados.`);
-      return (data || []) as any[];
+      const normalized = (data || []).map(emp => ({
+        ...emp,
+        name: emp.name || emp.nome || 'Colaborador',
+        nome: emp.nome || emp.name || 'Colaborador',
+        salary: Number(emp.salary || emp.salario || 0),
+        salario: Number(emp.salario || emp.salary || 0),
+        role: emp.role || emp.cargo || 'Funcionário',
+        cargo: emp.cargo || emp.role || 'Funcionário',
+        department: emp.department || emp.departamento || '',
+        departamento: emp.departamento || emp.department || ''
+      }));
+
+      console.log(`[EmployeeService] ${normalized.length} colaboradores encontrados.`);
+      return normalized as any[];
     } catch (err) {
       console.error('[EmployeeService] Falha crítica ao buscar:', err);
+      try {
+        const res = await fetch('/api/secure-rh/colaboradores');
+        if (res.ok) {
+          const apiData = await res.json();
+          if (Array.isArray(apiData)) return apiData;
+        }
+      } catch (_) {}
       return [];
     }
   },
@@ -35,7 +59,6 @@ export const employeeService = {
     try {
       if (!employee.empresa_id) throw new Error("empresa_id é obrigatório para criar um colaborador.");
 
-      // Sanitize empty string date/numeric fields to null
       const sanitized: any = { ...employee };
       const dateOrNullableFields = [
         'data_nascimento', 'data_admissao', 'data_saida', 'start_date', 'end_date',
@@ -47,17 +70,22 @@ export const employeeService = {
           sanitized[field] = null;
         }
       }
-      if (sanitized.salario === '' || isNaN(Number(sanitized.salario))) {
-        sanitized.salario = 0;
-      }
-      if (!sanitized.nome && sanitized.name) {
-        sanitized.nome = sanitized.name;
-      }
-      if (!sanitized.name && sanitized.nome) {
-        sanitized.name = sanitized.nome;
-      }
+      
+      const salaryNum = Number(sanitized.salary || sanitized.salario || 0);
+      sanitized.salary = isNaN(salaryNum) ? 0 : salaryNum;
+      sanitized.salario = sanitized.salary;
 
-      console.log('[EmployeeService] Inserindo colaborador:', sanitized.name || sanitized.nome);
+      const empName = (sanitized.name || sanitized.nome || '').trim();
+      sanitized.name = empName;
+      sanitized.nome = empName;
+
+      const empRole = sanitized.role || sanitized.cargo || 'Funcionário';
+      sanitized.role = empRole;
+      sanitized.cargo = empRole;
+
+      if (!sanitized.status) sanitized.status = 'active';
+
+      console.log('[EmployeeService] Inserindo colaborador:', sanitized.name);
 
       const { data, error } = await supabase
         .from('colaboradores')
@@ -66,7 +94,15 @@ export const employeeService = {
         .single();
 
       if (error) {
-        console.error('[EmployeeService] Erro no INSERT em colaboradores:', error.message);
+        console.warn('[EmployeeService] Tentando criação via API segura...', error.message);
+        const res = await fetch('/api/secure-rh/colaboradores', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(sanitized)
+        });
+        if (res.ok) {
+          return await res.json();
+        }
         await handleSupabaseError(error, OperationType.CREATE, 'colaboradores');
       }
       return data as any;
@@ -89,14 +125,20 @@ export const employeeService = {
           sanitized[field] = null;
         }
       }
-      if (sanitized.salario === '') {
-        sanitized.salario = 0;
+      if (sanitized.salary !== undefined || sanitized.salario !== undefined) {
+        const salaryNum = Number(sanitized.salary ?? sanitized.salario ?? 0);
+        sanitized.salary = isNaN(salaryNum) ? 0 : salaryNum;
+        sanitized.salario = sanitized.salary;
       }
-      if (sanitized.name && !sanitized.nome) {
-        sanitized.nome = sanitized.name;
+      if (sanitized.name || sanitized.nome) {
+        const empName = (sanitized.name || sanitized.nome || '').trim();
+        sanitized.name = empName;
+        sanitized.nome = empName;
       }
-      if (sanitized.nome && !sanitized.name) {
-        sanitized.name = sanitized.nome;
+      if (sanitized.role || sanitized.cargo) {
+        const empRole = sanitized.role || sanitized.cargo;
+        sanitized.role = empRole;
+        sanitized.cargo = empRole;
       }
 
       console.log('[EmployeeService] Atualizando colaborador ID:', id);
@@ -110,7 +152,15 @@ export const employeeService = {
         .single();
 
       if (error) {
-        console.error('[EmployeeService] Erro no UPDATE em colaboradores:', error.message);
+        console.warn('[EmployeeService] Tentando atualização via API segura...', error.message);
+        const res = await fetch(`/api/secure-rh/colaboradores/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(sanitized)
+        });
+        if (res.ok) {
+          return await res.json();
+        }
         await handleSupabaseError(error, OperationType.UPDATE, 'colaboradores');
       }
       return data as any;
@@ -130,8 +180,13 @@ export const employeeService = {
         .eq('empresa_id', empresa_id);
 
       if (error) {
-        console.error('[EmployeeService] Erro ao deletar em colaboradores:', error.message);
-        await handleSupabaseError(error, OperationType.DELETE, 'colaboradores');
+        console.warn('[EmployeeService] Tentando exclusão via API segura...', error.message);
+        const res = await fetch(`/api/secure-rh/colaboradores/${id}`, {
+          method: 'DELETE'
+        });
+        if (!res.ok) {
+          await handleSupabaseError(error, OperationType.DELETE, 'colaboradores');
+        }
       }
     } catch (err) {
       console.error('[EmployeeService] Erro ao remover colaborador:', err);

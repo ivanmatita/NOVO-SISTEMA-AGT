@@ -18,6 +18,7 @@ import posHandler from './_handlers/pos.js';
 import secureClientesHandler from './_handlers/secure-clientes.js';
 import secureFornecedoresHandler from './_handlers/secure-fornecedores.js';
 import secureLocaisTrabalhoHandler from './_handlers/secure-locais-trabalho.js';
+import secureRhHandler from './_handlers/secure-rh.js';
 import systemUsersHandler from './_handlers/system-users.js';
 
 export default async function handler(req, res) {
@@ -58,6 +59,16 @@ export default async function handler(req, res) {
   // 5. Locais de Trabalho (Multi-tenant Seguro)
   if (pathname.startsWith('/api/secure-locais-trabalho') || pathname === '/api/secure-locais-trabalho') {
     return secureLocaisTrabalhoHandler(req, res);
+  }
+
+  // 6. Recursos Humanos (Colaboradores, Processamento Salarial, Assiduidade)
+  if (
+    pathname.startsWith('/api/secure-rh') ||
+    pathname.startsWith('/api/employees') ||
+    pathname.startsWith('/api/colaboradores') ||
+    pathname.startsWith('/api/hr')
+  ) {
+    return secureRhHandler(req, res);
   }
 
   // 6. Faturação e Documentos Fiscais

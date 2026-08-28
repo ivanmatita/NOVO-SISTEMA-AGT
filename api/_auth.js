@@ -92,10 +92,20 @@ export async function authenticateRequest(req) {
  * Verificar se a empresa tem licenca ativa para o ambiente solicitado.
  * @param {string} empresaId
  * @param {'staging'|'producao'} ambiente
- * @param {object} config - { supabaseUrl, serviceRoleKey }
+ * @param {object} config - { supabaseUrl, serviceRoleKey, isStaging }
  */
 export async function checkLicenseAccess(empresaId, ambiente, config) {
   if (!empresaId) return { allowed: false, reason: 'EMPRESA_NAO_IDENTIFICADA', licenca: null };
+
+  // REGRA PERMANENTE: Ambiente STAGING é uma Licença Técnica Permanente que NUNCA expira
+  if (ambiente === 'staging' || config?.isStaging || config?.supabaseUrl?.includes('sfnibpxfevhelaikqbiq')) {
+    return {
+      allowed: true,
+      reason: 'STAGING_ATIVO_PERMANENTE',
+      isStaging: true,
+      message: 'Ambiente de Teste / Homologação com Licença Técnica Permanente Ativa.'
+    };
+  }
 
   try {
     const licRes = await fetch(
@@ -107,18 +117,7 @@ export async function checkLicenseAccess(empresaId, ambiente, config) {
 
     if (!licenca) return { allowed: false, reason: 'SEM_LICENCA', licenca: null };
 
-    // 1. Staging: sempre acessível exceto se explicitamente bloqueado pelo admin
-    if (ambiente === 'staging') {
-      // Estado 'bloqueado' é uma suspensão explícita de acesso total pelo admin.
-      // Estado 'suspensa' significa que a empresa aguarda ativação da licença de produção,
-      // mas o staging permanece disponível para demonstração/teste.
-      const bloqueadoExplicito = licenca.estado === 'bloqueado';
-      return bloqueadoExplicito
-        ? { allowed: false, reason: 'STAGING_BLOQUEADO', message: 'O acesso ao ambiente de teste (Staging) foi explicitamente bloqueado pelo administrador.', licenca }
-        : { allowed: true, reason: 'STAGING_ATIVO', licenca };
-    }
-
-    // 2. Producao: acesso permitido somente se:
+    // Producao: acesso permitido somente se:
     //    - licenca.producao_liberada === true (liberada pelo SuperAdmin via backend)
     //    - licenca.estado === 'ativa' (licenca ativa e valida)
     //    - licenca.producao_elegivel === true (empresa elegivel)
@@ -162,12 +161,23 @@ export async function checkLicenseAccess(empresaId, ambiente, config) {
  * Valida se a licenca da empresa esta ativa e valida para operacoes de escrita (POST, PUT, DELETE, PATCH).
  * Se a licenca estiver suspensa, desativada ou expirada, retorna { valid: false, readOnly: true }.
  * @param {string} empresaId
- * @param {object} config - { supabaseUrl, serviceRoleKey }
+ * @param {object} config - { supabaseUrl, serviceRoleKey, isStaging }
  * @returns {Promise<{ valid: boolean, readOnly: boolean, reason?: string, message?: string, status?: string }>}
  */
 export async function validateCompanyLicense(empresaId, config) {
   if (!empresaId) {
     return { valid: false, readOnly: true, reason: 'EMPRESA_NAO_IDENTIFICADA', message: 'Empresa não identificada.' };
+  }
+
+  // REGRA PERMANENTE: Ambiente STAGING nunca é bloqueado por expiração comercial
+  if (config?.isStaging || config?.supabaseUrl?.includes('sfnibpxfevhelaikqbiq')) {
+    return {
+      valid: true,
+      readOnly: false,
+      status: 'STAGING_PERMANENTE',
+      isStaging: true,
+      message: 'Licença técnica permanente de Staging ativa para testes e desenvolvimento.'
+    };
   }
 
   try {

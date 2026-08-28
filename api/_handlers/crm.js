@@ -155,10 +155,53 @@ export default async function handler(req, res) {
           acao: l.acao || `Transição: ${l.estado_novo || l.status_novo || 'Alteração'}`,
           descricao: l.observacoes || l.motivo || `Licença atualizada para estado ${l.estado_novo || l.status_novo}`,
           usuario_email: l.alterado_por || l.solicitado_por || 'SuperAdmin CRM',
+          modulo: l.modulo || 'CRM',
           created_at: l.created_at
         }));
 
         return res.status(200).json(logs);
+      }
+
+      // 4b. /api/crm/audit/resets — Histórico específico de reset de senhas
+      if (pathname === 'audit/resets') {
+        // Fetch from logs_auditoria where action is RESET_SENHA or RESET_SENHA_123
+        const [auditRes, histRes] = await Promise.all([
+          fetch(
+            `${config.supabaseUrl}/rest/v1/logs_auditoria?or=(action.eq.RESET_SENHA_123,acao.eq.RESET_SENHA_123)&order=created_at.desc&limit=500`,
+            { headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader } }
+          ).then(r => r.ok ? r.json() : []).catch(() => []),
+          fetch(
+            `${config.supabaseUrl}/rest/v1/historico_licencas?acao=eq.RESET_SENHA&order=created_at.desc&limit=500`,
+            { headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader } }
+          ).then(r => r.ok ? r.json() : []).catch(() => [])
+        ]);
+
+        const fromAudit = (Array.isArray(auditRes) ? auditRes : []).map(r => ({
+          id: r.id,
+          empresa_id: r.empresa_id,
+          user_email: r.user_email || 'SuperAdmin',
+          target_email: r.detalhes || '',
+          acao: r.acao || r.action || 'RESET_SENHA',
+          modulo: r.modulo || 'CRM',
+          created_at: r.created_at
+        }));
+
+        const fromHist = (Array.isArray(histRes) ? histRes : []).map(r => ({
+          id: r.id,
+          empresa_id: r.empresa_id,
+          user_email: r.alterado_por || r.usuario || 'SuperAdmin',
+          target_email: r.descricao || '',
+          acao: r.acao || 'RESET_SENHA',
+          modulo: 'CRM',
+          created_at: r.created_at
+        }));
+
+        // Merge and deduplicate by id, sort descending
+        const allResets = [...fromAudit, ...fromHist]
+          .filter((v, i, a) => a.findIndex(x => x.id === v.id) === i)
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+        return res.status(200).json(allResets);
       }
 
       // 5. /api/crm/occurrences
@@ -839,6 +882,16 @@ export default async function handler(req, res) {
           body: JSON.stringify({ password: '123' })
         });
 
+        // CRITICAL: Check if Supabase Auth update succeeded
+        if (!resetAdminRes.ok) {
+          const resetErr = await resetAdminRes.json().catch(() => ({}));
+          console.error('[CRM reset-access] Supabase Auth update failed:', resetErr);
+          return res.status(500).json({
+            error: `Falha ao atualizar credencial no Supabase Auth: ${resetErr?.message || resetAdminRes.status}`,
+            auth_updated: false
+          });
+        }
+
         // 2. Audit log in historico_licencas
         await fetch(`${config.supabaseUrl}/rest/v1/historico_licencas`, {
           method: 'POST',
@@ -873,7 +926,83 @@ export default async function handler(req, res) {
           success: true, 
           message: `Acesso redefinido com sucesso! A nova senha temporária é '123'.`,
           user_email: targetUser.email,
-          auth_updated: resetAdminRes.ok
+          auth_updated: true
+        });
+      }
+
+      // Change company: POST /api/crm/users/:id/change-company
+      if (pathname.includes('/change-company')) {
+        const userId = pathname.split('/')[1];
+        const body = req.body || {};
+        const nova_empresa_id = body.nova_empresa_id;
+
+        if (!nova_empresa_id) {
+          return res.status(400).json({ error: 'nova_empresa_id é obrigatório.' });
+        }
+
+        // Fetch target user
+        const userRes = await fetch(`${config.supabaseUrl}/rest/v1/perfis?id=eq.${userId}&select=id,user_id,empresa_id,email,nome`, {
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+        });
+        const targetArr = await userRes.json();
+        const targetUser = Array.isArray(targetArr) && targetArr.length > 0 ? targetArr[0] : null;
+
+        if (!targetUser) {
+          return res.status(404).json({ error: 'Utilizador não encontrado.' });
+        }
+
+        const empresaAnterior = targetUser.empresa_id;
+
+        // Update empresa_id in perfis
+        const updateRes = await fetch(`${config.supabaseUrl}/rest/v1/perfis?id=eq.${userId}`, {
+          method: 'PATCH',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ empresa_id: nova_empresa_id, updated_at: new Date().toISOString() })
+        });
+
+        if (!updateRes.ok && updateRes.status !== 204) {
+          return res.status(500).json({ error: 'Falha ao atualizar empresa do utilizador no banco de dados.' });
+        }
+
+        const now = new Date().toISOString();
+
+        // Audit log in historico_licencas (empresa anterior)
+        await fetch(`${config.supabaseUrl}/rest/v1/historico_licencas`, {
+          method: 'POST',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            empresa_id: empresaAnterior,
+            acao: 'TRANSFERENCIA_UTILIZADOR',
+            descricao: `Utilizador ${targetUser.email} transferido para empresa ${nova_empresa_id}`,
+            motivo: 'Alteração de empresa pelo SuperAdmin CRM',
+            usuario: auth.user?.email || 'SuperAdmin CRM',
+            alterado_por: auth.user?.email || 'SuperAdmin CRM',
+            created_at: now
+          })
+        }).catch(() => {});
+
+        // Audit log in logs_auditoria
+        await fetch(`${config.supabaseUrl}/rest/v1/logs_auditoria`, {
+          method: 'POST',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            empresa_id: nova_empresa_id,
+            user_id: auth.user?.id,
+            user_email: auth.user?.email,
+            action: 'CHANGE_COMPANY',
+            acao: 'CHANGE_COMPANY',
+            modulo: 'CRM',
+            detalhes: `Utilizador ${targetUser.email} movido de empresa ${empresaAnterior} para ${nova_empresa_id} pelo SuperAdmin`,
+            created_at: now
+          })
+        }).catch(() => {});
+
+        return res.status(200).json({
+          success: true,
+          message: `Utilizador transferido com sucesso para a nova empresa.`,
+          user_email: targetUser.email,
+          empresa_anterior: empresaAnterior,
+          empresa_nova: nova_empresa_id
         });
       }
     }

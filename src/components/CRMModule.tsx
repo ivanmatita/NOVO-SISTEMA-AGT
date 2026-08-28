@@ -7,7 +7,8 @@ import {
   TrendingUp, Wallet, ArrowUpCircle, ArrowDownCircle, Info, RefreshCw,
   LayoutDashboard, UserCog, PieChart as PieChartIcon, Mail, Send,
   AlertOctagon, CheckCircle2, History, ChevronRight, Eye, CornerDownRight,
-  Sliders, MessageSquare, Lock, Unlock, Phone, MapPin, Globe, User, Upload
+  Sliders, MessageSquare, Lock, Unlock, Phone, MapPin, Globe, User, Upload,
+  KeyRound, ArrowRightLeft, ListFilter, BadgeCheck, XOctagon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -138,6 +139,15 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
   const [showOccurrenceModal, setShowOccurrenceModal] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showUserResetModal, setShowUserResetModal] = useState<UserProfile | null>(null);
+  const [showChangeCompanyModal, setShowChangeCompanyModal] = useState<UserProfile | null>(null);
+  const [changeCompanyTarget, setChangeCompanyTarget] = useState('');
+
+  // Reset de Senhas page state
+  const [resetLogs, setResetLogs] = useState<any[]>([]);
+  const [resetLogsLoading, setResetLogsLoading] = useState(false);
+  const [resetFilterUser, setResetFilterUser] = useState('');
+  const [resetFilterCompany, setResetFilterCompany] = useState('');
+  const [resetFilterDate, setResetFilterDate] = useState('');
 
   const safeCompanies = Array.isArray(companies) ? companies : [];
   const safeUsers = Array.isArray(users) ? users : [];
@@ -272,6 +282,27 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
   useEffect(() => {
     loadData();
   }, [activeTab, selectedCompany?.id]);
+
+  const loadResetLogs = async () => {
+    setResetLogsLoading(true);
+    try {
+      let data: any[] = [];
+      if (typeof fetchJson === 'function') {
+        data = await fetchJson('/api/crm/audit/resets');
+      }
+      setResetLogs(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setResetLogs([]);
+    } finally {
+      setResetLogsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'resetsenhas') {
+      loadResetLogs();
+    }
+  }, [activeTab]);
 
   // Função Central Reutilizável de Cálculo de Licença
   const calcularLicenca = (comp: Company | null | undefined) => {
@@ -851,6 +882,215 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
   // =========================================================================
   // CENTRO COMPLETO DE GESTÃO DA EMPRESA SELECIONADA (SUPERADMIN CRM)
   // =========================================================================
+
+  // -------------------------------------------------------------------------
+  // NOVA PÁGINA: RESET DE SENHAS — Histórico de Redefinições de Acesso
+  // -------------------------------------------------------------------------
+  const renderResetSenhas = () => {
+    const filteredResets = resetLogs.filter(r => {
+      const matchUser = resetFilterUser === '' ||
+        (r.user_email || r.usuario_email || '').toLowerCase().includes(resetFilterUser.toLowerCase()) ||
+        (r.target_email || '').toLowerCase().includes(resetFilterUser.toLowerCase());
+      const matchCompany = resetFilterCompany === '' ||
+        (r.empresa_id || '').toLowerCase().includes(resetFilterCompany.toLowerCase());
+      const matchDate = resetFilterDate === '' ||
+        (r.created_at || '').startsWith(resetFilterDate);
+      return matchUser && matchCompany && matchDate;
+    });
+
+    return (
+      <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+        <div className="bg-white border border-zinc-200 p-6 shadow-xs">
+          <div className="border-b border-zinc-100 pb-4 mb-6 flex justify-between items-center">
+            <div>
+              <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider flex items-center gap-2">
+                <KeyRound size={16} /> Reset de Senhas — Histórico de Redefinições
+              </h3>
+              <p className="text-xs text-zinc-500 mt-1">
+                Registo cronológico e imutável de todas as redefinições de acesso realizadas pelo SuperAdmin.
+              </p>
+            </div>
+            <button onClick={loadResetLogs} className="px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-bold uppercase flex items-center gap-2 cursor-pointer">
+              <RefreshCw size={14} className={resetLogsLoading ? 'animate-spin' : ''} /> Atualizar
+            </button>
+          </div>
+
+          {/* Filtros */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={14} />
+              <input
+                type="text"
+                placeholder="Filtrar por utilizador ou email..."
+                className="w-full bg-zinc-50 border border-zinc-200 pl-9 pr-4 py-2 text-xs font-medium focus:outline-none focus:border-[#003366]"
+                value={resetFilterUser}
+                onChange={e => setResetFilterUser(e.target.value)}
+              />
+            </div>
+            <div className="relative">
+              <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={14} />
+              <input
+                type="text"
+                placeholder="Filtrar por empresa ID..."
+                className="w-full bg-zinc-50 border border-zinc-200 pl-9 pr-4 py-2 text-xs font-medium focus:outline-none focus:border-[#003366]"
+                value={resetFilterCompany}
+                onChange={e => setResetFilterCompany(e.target.value)}
+              />
+            </div>
+            <input
+              type="date"
+              className="w-full bg-zinc-50 border border-zinc-200 px-3 py-2 text-xs font-medium focus:outline-none focus:border-[#003366]"
+              value={resetFilterDate}
+              onChange={e => setResetFilterDate(e.target.value)}
+            />
+          </div>
+
+          {/* Tabela de Logs */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="bg-zinc-50 border-b border-zinc-200 font-bold uppercase text-[10px] text-zinc-500">
+                  <th className="p-3">Data / Hora</th>
+                  <th className="p-3">Operador (SuperAdmin)</th>
+                  <th className="p-3">Utilizador Alvo</th>
+                  <th className="p-3">Empresa</th>
+                  <th className="p-3">Ação</th>
+                  <th className="p-3">Resultado</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {resetLogsLoading && (
+                  <tr><td colSpan={6} className="p-12 text-center text-zinc-400">A carregar...</td></tr>
+                )}
+                {!resetLogsLoading && filteredResets.map((r, i) => (
+                  <tr key={r.id || i} className="hover:bg-zinc-50">
+                    <td className="p-3 font-mono text-zinc-500 whitespace-nowrap">
+                      {r.created_at ? new Date(r.created_at).toLocaleString('pt-AO') : '---'}
+                    </td>
+                    <td className="p-3">
+                      <span className="font-bold text-[#003366]">{r.user_email || r.usuario_email || r.alterado_por || 'SuperAdmin'}</span>
+                    </td>
+                    <td className="p-3">
+                      <span className="font-medium">{r.target_email || r.descricao || '---'}</span>
+                    </td>
+                    <td className="p-3 font-mono text-zinc-400 text-[10px]">{r.empresa_id || '---'}</td>
+                    <td className="p-3">
+                      <span className="px-2 py-0.5 bg-amber-100 text-amber-800 font-black text-[10px] uppercase">{r.acao || r.action || 'RESET_SENHA'}</span>
+                    </td>
+                    <td className="p-3">
+                      <span className="flex items-center gap-1 text-emerald-600 font-bold text-[10px]">
+                        <BadgeCheck size={12} /> EXECUTADO
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+                {!resetLogsLoading && filteredResets.length === 0 && (
+                  <tr><td colSpan={6} className="p-12 text-center text-zinc-400 italic">Nenhum reset de senha registado até ao momento.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[10px] text-zinc-400 mt-4">Total: {filteredResets.length} registo(s) encontrado(s).</p>
+        </div>
+      </div>
+    );
+  };
+
+  // -------------------------------------------------------------------------
+  // NOVA PÁGINA: UTILIZADORES DO SISTEMA — Visão Multi-Empresa para SuperAdmin
+  // -------------------------------------------------------------------------
+  const renderUtilizadoresSistema = () => {
+    const filtered = safeUsers.filter(u => {
+      if (!u) return false;
+      return (u.full_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+             (u.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+             (u.empresas?.nome_empresa || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+             (u.role || '').toLowerCase().includes(searchTerm.toLowerCase());
+    });
+
+    return (
+      <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+        <div className="bg-white border border-zinc-200 p-4 shadow-xs flex flex-col md:flex-row gap-4 justify-between items-center">
+          <div>
+            <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider flex items-center gap-2">
+              <Users size={16} /> Utilizadores do Sistema — Visão Global Multi-Empresa
+            </h3>
+            <p className="text-xs text-zinc-500 mt-1">Todos os utilizadores registados em todas as empresas. Exclusivo para SuperAdmin.</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={14} />
+              <input
+                type="text"
+                placeholder="Pesquisar por nome, email, empresa, cargo..."
+                className="bg-zinc-50 border border-zinc-200 pl-9 pr-4 py-2 text-xs font-medium focus:outline-none focus:border-[#003366] w-64"
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+              />
+            </div>
+            <span className="text-xs font-black uppercase text-zinc-500 whitespace-nowrap">Total: {safeUsers.length}</span>
+          </div>
+        </div>
+
+        <div className="bg-white border border-zinc-200 overflow-x-auto shadow-xs">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr className="bg-zinc-50 border-b border-zinc-200 font-bold uppercase text-[10px] text-zinc-500">
+                <th className="p-4">Utilizador / Email</th>
+                <th className="p-4">Empresa Vinculada</th>
+                <th className="p-4">NIF Empresa</th>
+                <th className="p-4">Cargo / Função</th>
+                <th className="p-4">Data Registo</th>
+                <th className="p-4 text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+              {filtered.map(u => (
+                <tr key={u.id} className="hover:bg-zinc-50">
+                  <td className="p-4">
+                    <p className="font-bold text-zinc-900">{u.full_name || u.email}</p>
+                    <p className="text-[10px] text-zinc-400 font-mono">{u.email}</p>
+                    <p className="text-[10px] text-zinc-300 font-mono">{u.id}</p>
+                  </td>
+                  <td className="p-4">
+                    <span className="font-bold uppercase text-[#003366]">{u.empresas?.nome_empresa || 'Empresa Geral'}</span>
+                  </td>
+                  <td className="p-4 font-mono text-zinc-500">{u.empresas?.nif || '---'}</td>
+                  <td className="p-4">
+                    <span className="px-2 py-0.5 bg-zinc-100 text-zinc-700 font-bold text-[10px] uppercase">{u.role || 'Operador'}</span>
+                  </td>
+                  <td className="p-4 font-mono text-zinc-500">{safeFormatDate(u.created_at)}</td>
+                  <td className="p-4 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => setShowUserResetModal(u)}
+                        title="Resetar Senha"
+                        className="px-2 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-black text-[10px] uppercase inline-flex items-center gap-1 cursor-pointer shadow-xs"
+                      >
+                        <KeyRound size={11} /> Reset
+                      </button>
+                      <button
+                        onClick={() => { setShowChangeCompanyModal(u); setChangeCompanyTarget(''); }}
+                        title="Alterar Empresa"
+                        className="px-2 py-1.5 bg-[#003366] hover:bg-[#002244] text-white font-black text-[10px] uppercase inline-flex items-center gap-1 cursor-pointer shadow-xs"
+                      >
+                        <ArrowRightLeft size={11} /> Empresa
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {filtered.length === 0 && (
+                <tr><td colSpan={6} className="p-12 text-center text-zinc-400 italic">Nenhum utilizador encontrado.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
+
   const renderCompanyDetailPanel = () => {
     if (!selectedCompany) return null;
     const lic = calcularLicenca(selectedCompany);
@@ -1301,6 +1541,8 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
               { id: 'licencas', label: 'Planos & Licenças', icon: Key },
               { id: 'usuarios', label: 'Controlo Utilizadores', icon: Users },
               { id: 'auditoria', label: 'Logs & Auditoria', icon: Activity },
+              { id: 'resetsenhas', label: 'Reset de Senhas', icon: KeyRound },
+              { id: 'utilizadoressistema', label: 'Utilizadores do Sistema', icon: UserCog },
             ].map(tab => (
               <button
                 key={tab.id}
@@ -1333,6 +1575,8 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
             {activeTab === 'licencas' && renderLicencas()}
             {activeTab === 'usuarios' && renderUsuarios()}
             {activeTab === 'auditoria' && renderAuditoria()}
+            {activeTab === 'resetsenhas' && renderResetSenhas()}
+            {activeTab === 'utilizadoressistema' && renderUtilizadoresSistema()}
           </div>
         )}
       </div>
@@ -1879,6 +2123,68 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                 className="bg-amber-600 text-white px-5 py-2 uppercase font-bold cursor-pointer"
               >
                 Confirmar Reset (123)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL ALTERAR EMPRESA DO UTILIZADOR */}
+      {showChangeCompanyModal && (
+        <div className="fixed inset-0 bg-zinc-900/60 backdrop-blur-xs z-[200] flex items-center justify-center p-4">
+          <div className="bg-white border border-zinc-200 w-full max-w-lg shadow-2xl p-6 space-y-4 text-xs">
+            <h3 className="text-base font-black text-[#003366] uppercase">Alterar Empresa do Utilizador</h3>
+            <p className="text-zinc-600">
+              Utilizador: <strong>{showChangeCompanyModal.full_name || showChangeCompanyModal.email}</strong>
+              <br />
+              Empresa atual: <strong className="text-[#003366]">{showChangeCompanyModal.empresas?.nome_empresa || showChangeCompanyModal.empresa_id}</strong>
+            </p>
+            <div className="bg-blue-50 border border-blue-200 p-3 text-blue-900 rounded-xs text-[10px]">
+              Ao confirmar, o utilizador será transferido para a nova empresa. Esta operação será registada no log de auditoria e é irreversível sem nova alteração manual.
+            </div>
+            <div>
+              <label className="block font-bold uppercase text-[10px] text-zinc-600 mb-1">Nova Empresa (ID)</label>
+              <select
+                className="w-full bg-zinc-50 border border-zinc-200 px-3 py-2 text-xs font-medium focus:outline-none focus:border-[#003366]"
+                value={changeCompanyTarget}
+                onChange={e => setChangeCompanyTarget(e.target.value)}
+              >
+                <option value="">-- Selecione uma empresa --</option>
+                {safeCompanies
+                  .filter(c => c && String(c.id) !== String(showChangeCompanyModal.empresa_id))
+                  .map(c => (
+                    <option key={c.id} value={c.id}>{c.nome_empresa} — NIF: {c.nif}</option>
+                  ))}
+              </select>
+            </div>
+            <div className="flex justify-end gap-3 pt-4 border-t">
+              <button type="button" onClick={() => { setShowChangeCompanyModal(null); setChangeCompanyTarget(''); }} className="px-4 py-2 uppercase font-bold cursor-pointer">Cancelar</button>
+              <button
+                type="button"
+                disabled={!changeCompanyTarget}
+                onClick={async () => {
+                  if (!changeCompanyTarget) return;
+                  try {
+                    if (typeof fetchJson === 'function') {
+                      const res = await fetchJson(`/api/crm/users/${showChangeCompanyModal.id}/change-company`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ nova_empresa_id: changeCompanyTarget })
+                      });
+                      toast.success(res?.message || 'Empresa do utilizador alterada com sucesso!');
+                    } else {
+                      toast.error('fetchJson não disponível.');
+                    }
+                  } catch (err: any) {
+                    toast.error(err.message || 'Erro ao alterar empresa do utilizador.');
+                  }
+                  setShowChangeCompanyModal(null);
+                  setChangeCompanyTarget('');
+                  loadData();
+                }}
+                className="bg-[#003366] disabled:opacity-40 text-white px-5 py-2 uppercase font-bold cursor-pointer"
+              >
+                Confirmar Transferência
               </button>
             </div>
           </div>

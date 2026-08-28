@@ -861,14 +861,26 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
         <div className="divide-y divide-zinc-100 text-xs">
           {safeLogs.map(log => (
             <div key={log.id} className="py-4 flex items-start gap-4 hover:bg-zinc-50 px-2 transition-colors">
-              <Activity size={18} className="text-[#003366] mt-0.5 shrink-0" />
-              <div className="flex-1">
+              <div className="p-2 bg-blue-50 text-[#003366] rounded-xs mt-0.5 shrink-0">
+                <Activity size={16} />
+              </div>
+              <div className="flex-1 space-y-1">
                 <div className="flex justify-between items-start">
-                  <p className="font-bold text-zinc-900 uppercase tracking-tight">{log.acao}</p>
-                  <span className="text-[10px] text-zinc-400 font-mono">{safeFormatDate(log.created_at)}</span>
+                  <div className="flex items-center gap-2">
+                    <p className="font-bold text-zinc-900 uppercase tracking-tight">{log.acao}</p>
+                    <span className="px-2 py-0.5 bg-zinc-100 text-zinc-600 font-black text-[9px] uppercase tracking-wider rounded-xs">
+                      {log.modulo || 'CRM'}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-zinc-500 font-mono font-medium">
+                    {log.created_at ? new Date(log.created_at).toLocaleString('pt-AO') : '---'}
+                  </span>
                 </div>
-                <p className="text-zinc-600 mt-0.5">{log.descricao}</p>
-                <span className="text-[10px] text-zinc-400 font-mono mt-1 block">Por: <strong>{log.usuario_email || 'SuperAdmin'}</strong></span>
+                <p className="text-zinc-700 text-xs leading-relaxed">{log.descricao}</p>
+                <div className="flex flex-wrap gap-4 text-[10px] text-zinc-400 font-mono pt-1">
+                  <span>Operador: <strong className="text-zinc-700">{log.usuario_email || 'SuperAdmin'}</strong></span>
+                  {log.empresa_id && <span>Empresa: <strong className="text-[#003366]">{log.empresa_id}</strong></span>}
+                </div>
               </div>
             </div>
           ))}

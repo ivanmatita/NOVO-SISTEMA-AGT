@@ -139,27 +139,39 @@ export default async function handler(req, res) {
 
       // 4. /api/crm/audit ou /api/crm/logs
       if (pathname === 'audit' || pathname === 'logs') {
-        let url = `${config.supabaseUrl}/rest/v1/historico_licencas?select=*&order=created_at.desc&limit=1000`;
-        if (!auth.isSuperAdmin && auth.empresa_id) {
-          url += `&empresa_id=eq.${auth.empresa_id}`;
-        }
+        const [histRes, auditRes] = await Promise.all([
+          fetch(`${config.supabaseUrl}/rest/v1/historico_licencas?select=*&order=created_at.desc&limit=500`, {
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+          }).then(r => r.ok ? r.json() : []).catch(() => []),
+          fetch(`${config.supabaseUrl}/rest/v1/logs_auditoria?select=*&order=created_at.desc&limit=500`, {
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+          }).then(r => r.ok ? r.json() : []).catch(() => [])
+        ]);
 
-        const aRes = await fetch(url, {
-          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
-        }).then(r => r.ok ? r.json() : []).catch(() => []);
-
-        const rawLogs = Array.isArray(aRes) ? aRes : [];
-        const logs = rawLogs.map(l => ({
-          id: l.id,
+        const fromHist = (Array.isArray(histRes) ? histRes : []).map(l => ({
+          id: `h_${l.id}`,
           empresa_id: l.empresa_id,
           acao: l.acao || `Transição: ${l.estado_novo || l.status_novo || 'Alteração'}`,
-          descricao: l.observacoes || l.motivo || `Licença atualizada para estado ${l.estado_novo || l.status_novo}`,
-          usuario_email: l.alterado_por || l.solicitado_por || 'SuperAdmin CRM',
-          modulo: l.modulo || 'CRM',
-          created_at: l.created_at
+          descricao: l.descricao || l.observacoes || l.motivo || `Licença atualizada para estado ${l.estado_novo || l.status_novo}`,
+          usuario_email: l.alterado_por || l.usuario || l.solicitado_por || 'SuperAdmin CRM',
+          modulo: 'Licenciamento / CRM',
+          created_at: l.created_at || l.data_evento || new Date().toISOString()
         }));
 
-        return res.status(200).json(logs);
+        const fromAudit = (Array.isArray(auditRes) ? auditRes : []).map(a => ({
+          id: `a_${a.id}`,
+          empresa_id: a.empresa_id,
+          acao: a.acao || a.action || 'OPERAÇÃO_CRM',
+          descricao: a.detalhes || a.descricao || 'Operação administrativa no sistema',
+          usuario_email: a.user_email || a.usuario || 'SuperAdmin CRM',
+          modulo: a.modulo || 'CRM',
+          created_at: a.created_at || new Date().toISOString()
+        }));
+
+        const merged = [...fromHist, ...fromAudit]
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+        return res.status(200).json(merged);
       }
 
       // 4b. /api/crm/audit/resets — Histórico específico de reset de senhas

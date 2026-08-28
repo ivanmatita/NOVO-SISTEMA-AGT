@@ -14,6 +14,21 @@ export async function authenticateRequest(req) {
     return { authenticated: false, user: null, perfil: null, empresa_id: null, isSuperAdmin: false, error: 'UNAUTHENTICATED', message: 'Token de autorizacao nao fornecido' };
   }
 
+  // Bypass para chamadas de sistema / SuperAdmin autenticadas com Service Role Key
+  if (token === config.serviceRoleKey) {
+    return {
+      authenticated: true,
+      user: { id: '3eb01c00-de1f-479e-941f-8c83bc9523b5', email: 'fffm333atitaifvan7@gmail.com' },
+      perfil: { id: '3eb01c00-de1f-479e-941f-8c83bc9523b5', email: 'fffm333atitaifvan7@gmail.com', role: 'superadmin', is_super_admin: true, empresa_id: '2ebafa88-9a6e-4243-b127-b146410815eb' },
+      empresa_id: '2ebafa88-9a6e-4243-b127-b146410815eb',
+      isSuperAdmin: true,
+      isGlobalSuperAdmin: true,
+      isCompanyAdmin: false,
+      token,
+      error: null
+    };
+  }
+
   try {
     const authRes = await fetch(`${config.supabaseUrl}/auth/v1/user`, {
       headers: { 'apikey': config.anonKey, 'Authorization': `Bearer ${token}` }
@@ -139,3 +154,88 @@ export async function checkLicenseAccess(empresaId, ambiente, config) {
     return { allowed: false, reason: 'ERRO_LICENCA', licenca: null, error: err.message };
   }
 }
+
+/**
+ * Valida se a licenca da empresa esta ativa e valida para operacoes de escrita (POST, PUT, DELETE, PATCH).
+ * Se a licenca estiver suspensa, desativada ou expirada, retorna { valid: false, readOnly: true }.
+ * @param {string} empresaId
+ * @param {object} config - { supabaseUrl, serviceRoleKey }
+ * @returns {Promise<{ valid: boolean, readOnly: boolean, reason?: string, message?: string, status?: string }>}
+ */
+export async function validateCompanyLicense(empresaId, config) {
+  if (!empresaId) {
+    return { valid: false, readOnly: true, reason: 'EMPRESA_NAO_IDENTIFICADA', message: 'Empresa não identificada.' };
+  }
+
+  try {
+    const [licRes, empRes] = await Promise.all([
+      fetch(
+        `${config.supabaseUrl}/rest/v1/licencas_empresas?empresa_id=eq.${empresaId}&select=*&limit=1`,
+        { headers: { 'apikey': config.serviceRoleKey, 'Authorization': `Bearer ${config.serviceRoleKey}` } }
+      ),
+      fetch(
+        `${config.supabaseUrl}/rest/v1/empresas?id=eq.${empresaId}&select=*&limit=1`,
+        { headers: { 'apikey': config.serviceRoleKey, 'Authorization': `Bearer ${config.serviceRoleKey}` } }
+      )
+    ]);
+
+    const licList = await licRes.json();
+    const empList = await empRes.json();
+    const licenca = Array.isArray(licList) && licList.length > 0 ? licList[0] : null;
+    const empresa = Array.isArray(empList) && empList.length > 0 ? empList[0] : null;
+
+    if (!licenca && !empresa) {
+      return { valid: false, readOnly: true, reason: 'EMPRESA_NAO_ENCONTRADA', message: 'Empresa ou licença não encontrada no sistema.' };
+    }
+
+    const isAtivo = (licenca?.ativo !== false) && (empresa?.ativo !== false);
+    const estadoNorm = String(licenca?.estado || licenca?.status_licenca || empresa?.status_licenca || '').toLowerCase();
+
+    // 1. Verificacao de suspensao / desativacao explicita
+    if (!isAtivo || ['suspensa', 'bloqueada', 'desativada', 'inativa', 'cancelada'].includes(estadoNorm)) {
+      return {
+        valid: false,
+        readOnly: true,
+        reason: 'LICENCA_DESATIVADA',
+        status: 'SUSPENSA',
+        message: 'A licença desta empresa encontra-se suspensa/desativada. O sistema está em Modo Somente Leitura.'
+      };
+    }
+
+    // 2. Verificacao de expiracao por data
+    const now = new Date();
+    const dataFimStr = licenca?.data_fim || licenca?.data_validade || empresa?.data_expiracao_licenca || licenca?.trial_fim || empresa?.trial_fim;
+    if (dataFimStr) {
+      const dataFim = new Date(dataFimStr);
+      if (!isNaN(dataFim.getTime()) && dataFim < now) {
+        return {
+          valid: false,
+          readOnly: true,
+          reason: 'LICENCA_EXPIRADA',
+          status: 'EXPIRADA',
+          message: 'A licença desta empresa expirou. O sistema está em Modo Somente Leitura. Por favor regularize a sua subscrição.'
+        };
+      }
+    }
+
+    // 3. Verificacao de licenca ativa ou trial ativo
+    const isLicencaAtiva = licenca?.licenca_ativa === true || empresa?.licenca_ativa === true;
+    const isTrial = estadoNorm.includes('trial') || estadoNorm.includes('teste');
+
+    if (isLicencaAtiva || isTrial || ['ativa', 'activa'].includes(estadoNorm)) {
+      return { valid: true, readOnly: false, status: isTrial ? 'TRIAL' : 'ATIVA', licenca, empresa };
+    }
+
+    return {
+      valid: false,
+      readOnly: true,
+      reason: 'LICENCA_PENDENTE',
+      status: 'PENDENTE',
+      message: 'A licença desta empresa não está ativa. O sistema está em Modo Somente Leitura.'
+    };
+  } catch (err) {
+    console.error('[validateCompanyLicense Error]:', err);
+    return { valid: false, readOnly: true, reason: 'ERRO_VALIDACAO', message: err.message };
+  }
+}
+

@@ -4,7 +4,7 @@
  */
 
 import { getEnvConfig, setCORS } from '../_env.js';
-import { authenticateRequest } from '../_auth.js';
+import { authenticateRequest, validateCompanyLicense } from '../_auth.js';
 
 export default async function handler(req, res) {
   setCORS(res);
@@ -27,6 +27,19 @@ export default async function handler(req, res) {
 
     if (!targetEmpresaId) {
       return res.status(400).json({ error: 'Empresa não identificada na sessão' });
+    }
+
+    // VALIDAÇÃO DE LICENÇA ATIVA PARA OPERAÇÕES DE ESCRITA (MODO SOMENTE LEITURA)
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
+      const licValidation = await validateCompanyLicense(targetEmpresaId, config);
+      if (!licValidation.valid && !auth.isSuperAdmin) {
+        return res.status(403).json({
+          error: licValidation.message || 'Operação de escrita bloqueada: A licença da sua empresa não está ativa. O sistema está em Modo Somente Leitura.',
+          code: 'LICENSE_READ_ONLY',
+          status_licenca: licValidation.status,
+          readOnly: true
+        });
+      }
     }
 
     const pathParts = pathname.split('/').filter(Boolean);
@@ -72,7 +85,13 @@ export default async function handler(req, res) {
         });
         const list = await response.json();
         if (Array.isArray(list) && list.length > 0) {
-          return res.status(200).json(list[0]);
+          const s = list[0];
+          return res.status(200).json({
+            ...s,
+            name: s.nome || s.name || '',
+            endereco: s.morada || s.endereco || '',
+            address: s.morada || s.address || ''
+          });
         }
         return res.status(404).json({ error: 'Fornecedor não encontrado' });
       }
@@ -86,7 +105,13 @@ export default async function handler(req, res) {
         }
       });
       const data = await response.json();
-      return res.status(200).json(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      return res.status(200).json(list.map(s => ({
+        ...s,
+        name: s.nome || s.name || '',
+        endereco: s.morada || s.endereco || '',
+        address: s.morada || s.address || ''
+      })));
     }
 
     // 3. POST (Criar novo fornecedor)
@@ -99,14 +124,16 @@ export default async function handler(req, res) {
 
       const isAtivo = body.activo !== undefined ? body.activo : (body.ativo !== undefined ? body.ativo : true);
 
+      // SCHEMA SEGURO: Apenas colunas existentes na tabela public.fornecedores (morada, etc.)
       const payload = {
         empresa_id: companyId,
         nome: (body.nome || body.name || '').trim(),
         nif: (body.nif || '').trim() || null,
         email: body.email || null,
         telefone: body.telefone || body.phone || null,
-        morada: body.morada || body.endereco || null,
-        endereco: body.morada || body.endereco || null,
+        morada: body.morada || body.endereco || body.address || null,
+        provincia: body.provincia || null,
+        municipio: body.municipio || null,
         localidade: body.localidade || body.cidade || null,
         codigo_postal: body.codigo_postal || null,
         pais: body.pais || 'Angola',
@@ -114,7 +141,9 @@ export default async function handler(req, res) {
         iban: body.iban || null,
         tipo_fornecedor: body.tipo_fornecedor || 'Geral',
         webpage: body.webpage || body.website || null,
+        notas: body.notas || null,
         activo: isAtivo,
+        ativo: isAtivo,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
@@ -135,7 +164,13 @@ export default async function handler(req, res) {
         console.error('[API-SECURE-FORNECEDORES] Erro POST:', inserted);
         return res.status(400).json({ error: inserted.message || 'Erro ao criar fornecedor' });
       }
-      return res.status(201).json(Array.isArray(inserted) ? inserted[0] : inserted);
+      const createdItem = Array.isArray(inserted) ? inserted[0] : inserted;
+      return res.status(201).json({
+        ...createdItem,
+        name: createdItem.nome || createdItem.name || '',
+        endereco: createdItem.morada || createdItem.endereco || '',
+        address: createdItem.morada || createdItem.address || ''
+      });
     }
 
     // 4. PUT /api/secure-fornecedores/:id (Atualizar fornecedor)
@@ -152,10 +187,11 @@ export default async function handler(req, res) {
       if (body.nif !== undefined) payload.nif = (body.nif || '').trim() || null;
       if (body.email !== undefined) payload.email = body.email;
       if (body.telefone !== undefined) payload.telefone = body.telefone;
-      if (body.morada !== undefined || body.endereco !== undefined) {
-        payload.morada = body.morada || body.endereco || null;
-        payload.endereco = body.morada || body.endereco || null;
+      if (body.morada !== undefined || body.endereco !== undefined || body.address !== undefined) {
+        payload.morada = body.morada || body.endereco || body.address || null;
       }
+      if (body.provincia !== undefined) payload.provincia = body.provincia;
+      if (body.municipio !== undefined) payload.municipio = body.municipio;
       if (body.localidade !== undefined) payload.localidade = body.localidade;
       if (body.codigo_postal !== undefined) payload.codigo_postal = body.codigo_postal;
       if (body.pais !== undefined) payload.pais = body.pais;
@@ -163,7 +199,15 @@ export default async function handler(req, res) {
       if (body.iban !== undefined) payload.iban = body.iban;
       if (body.tipo_fornecedor !== undefined) payload.tipo_fornecedor = body.tipo_fornecedor;
       if (body.webpage !== undefined) payload.webpage = body.webpage;
-      if (body.activo !== undefined) payload.activo = body.activo;
+      if (body.notas !== undefined) payload.notas = body.notas;
+      if (body.activo !== undefined) {
+        payload.activo = body.activo;
+        payload.ativo = body.activo;
+      }
+      if (body.ativo !== undefined) {
+        payload.ativo = body.ativo;
+        payload.activo = body.ativo;
+      }
 
       let patchUrl = `${config.supabaseUrl}/rest/v1/fornecedores?id=eq.${targetId}&empresa_id=eq.${targetEmpresaId}`;
 
@@ -182,7 +226,13 @@ export default async function handler(req, res) {
         console.error('[API-SECURE-FORNECEDORES] Erro PATCH:', updated);
         return res.status(400).json({ error: updated.message || 'Erro ao atualizar fornecedor' });
       }
-      return res.status(200).json(Array.isArray(updated) ? updated[0] : updated);
+      const updatedItem = Array.isArray(updated) ? updated[0] : updated;
+      return res.status(200).json({
+        ...updatedItem,
+        name: updatedItem.nome || updatedItem.name || '',
+        endereco: updatedItem.morada || updatedItem.endereco || '',
+        address: updatedItem.morada || updatedItem.address || ''
+      });
     }
 
     return res.status(405).json({ error: 'Método não permitido' });

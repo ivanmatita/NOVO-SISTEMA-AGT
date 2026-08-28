@@ -3069,11 +3069,45 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
         <h2 className="text-white font-black text-lg leading-tight text-center px-4 line-clamp-2 mt-2 uppercase tracking-tight">
           {companyData?.nome_empresa || companyData?.name || 'Admin'}
         </h2>
-        <div className="flex flex-col items-center gap-0.5 mt-2">
+        <div className="flex flex-col items-center gap-1 mt-2">
           <p className="text-[11px] text-white font-black tracking-widest uppercase bg-[#1a4da6] px-3 py-0.5 shadow-sm">
             {companyData?.nif ? `NIF: ${companyData.nif}` : 'ADMIN'}
           </p>
-          <p className="text-[8px] text-zinc-500 font-bold tracking-[0.2em] uppercase">Conta Registada</p>
+          {companyData?.nif !== '5002123665' && (
+            <div className="flex items-center gap-1.5 mt-1">
+              {(() => {
+                const rawStatus = String(companyData?.status_licenca || '').toUpperCase();
+                const isSuspendedOrDeactivated = ['SUSPENSA', 'BLOQUEADA', 'DESATIVADA', 'INATIVA', 'CANCELADA', 'EXPIRADA', 'VENCIDA'].includes(rawStatus) || 
+                                                companyData?.licenca_ativa === false || 
+                                                companyData?.ativo === false;
+                const isExplicitlyActive = ['ACTIVA', 'ACTIVE', 'ATIVA', 'ATIVO'].includes(rawStatus) && (companyData?.licenca_ativa !== false) && (companyData?.ativo !== false);
+                const expiryDate = companyData?.data_expiracao_licenca ? new Date(companyData.data_expiracao_licenca) : null;
+                const isExpiredByDate = expiryDate && expiryDate.getTime() < Date.now();
+                const isLicActive = isExplicitlyActive && !isSuspendedOrDeactivated && !isExpiredByDate;
+
+                const desc = companyData?.licenca?.descricao || (isLicActive ? 'LICENÇA ACTIVA' : 'LICENÇA EXPIRADA');
+
+                return (
+                  <>
+                    <span className={`px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider rounded flex items-center gap-1 shadow-xs ${
+                      desc === 'LICENÇA ACTIVA'
+                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' 
+                        : 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
+                    }`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${desc === 'LICENÇA ACTIVA' ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
+                      {desc}
+                    </span>
+                    {companyData?.plano && (
+                      <span className="text-[9px] text-zinc-400 font-bold uppercase">
+                        • {companyData.plano}
+                      </span>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          )}
+          <p className="text-[8px] text-zinc-500 font-bold tracking-[0.2em] uppercase mt-0.5">Conta Registada</p>
         </div>
       </div>
       
@@ -3225,8 +3259,8 @@ const Dashboard = ({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div className="bg-white border border-zinc-200 p-6 rounded-none shadow-sm">
           <h3 className="font-bold text-[#003366] mb-6">Faturação por Período</h3>
-          <div className="h-[400px] w-full">
-            <ResponsiveContainer width="100%" height="100%" minHeight={400}>
+          <div className="h-[400px] w-full min-h-[400px]">
+            <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={400}>
               <LineChart data={salesData}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="date" />
@@ -3240,8 +3274,8 @@ const Dashboard = ({
 
         <div className="bg-white border border-zinc-200 p-6 rounded-none shadow-sm">
           <h3 className="font-bold text-[#003366] mb-6">Faturação vs Despesas</h3>
-          <div className="h-[400px] w-full">
-            <ResponsiveContainer width="100%" height="100%" minHeight={400}>
+          <div className="h-[400px] w-full min-h-[400px]">
+            <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={400}>
               <BarChart data={profitVsExpenses}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="name" />
@@ -3257,8 +3291,8 @@ const Dashboard = ({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="bg-white border border-zinc-200 p-6 rounded-none shadow-sm lg:col-span-1">
           <h3 className="font-bold text-[#003366] mb-6">Tipos de Documentos</h3>
-          <div className="h-[400px] w-full">
-            <ResponsiveContainer width="100%" height="100%" minHeight={400}>
+          <div className="h-[400px] w-full min-h-[400px]">
+            <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={400}>
               <PieChart>
                 <Pie data={docTypeData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
                   {docTypeData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
@@ -12241,8 +12275,8 @@ const ProfitLossReport = ({ fiscalYear, empresa_id }: { fiscalYear: string, empr
           </p>
           <div className="pt-8">
             <h4 className="text-[10px] font-black text-zinc-800 uppercase tracking-widest mb-4">GRAFICO COMPARATIVO DE RECEITAS E CUSTOS</h4>
-            <div className="h-[350px] w-full">
-              <ResponsiveContainer width="100%" height="100%" minHeight={350}>
+            <div className="h-[350px] w-full min-h-[350px]">
+              <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={350}>
                 <AreaChart data={chartData}>
                   <defs>
                     <linearGradient id="colorReceita" x1="0" y1="0" x2="0" y2="1">
@@ -29911,23 +29945,16 @@ const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas
         webpage: webpage,
         sigla_banco: siglasBanco,
         iban: iban,
-        tipo_fornecedor: tipoCliente
+        tipo_fornecedor: tipoCliente,
+        activo: true,
+        ativo: true
       };
 
-      let result;
       if (selectedSupplier) {
-        result = await supabase
-          .from('fornecedores')
-          .update(supplierData)
-          .eq('id', selectedSupplier.id)
-          .eq('empresa_id', user.empresa_id);
+        await fornecedorService.updateFornecedor(selectedSupplier.id, supplierData);
       } else {
-        result = await supabase
-          .from('fornecedores')
-          .insert([supplierData]);
+        await fornecedorService.createFornecedor(supplierData);
       }
-
-      if (result.error) throw result.error;
 
       setName(''); setNif(''); setEmail(''); setPhone(''); setAddress('');
       setLocalidade(''); setCodigoPostal(''); setProvincia(''); setMunicipio('');
@@ -29935,12 +29962,7 @@ const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas
       setShowForm(false);
       setSelectedSupplier(null);
       
-      const { data: supData } = await supabase
-        .from('fornecedores')
-        .select('*')
-        .eq('empresa_id', user.empresa_id)
-        .order('created_at', { ascending: false });
-
+      const supData = await fornecedorService.getFornecedores();
       if (supData) {
         setSuppliers(supData.map((s: any) => ({ 
           ...s, 
@@ -32808,38 +32830,45 @@ export default function App() {
         console.error('Erro ao carregar dados unificados da empresa:', err);
       }
 
-      // 3. Load License Status
+      // 3. Load License Status (Sincronizado entre licencas_empresas e empresas)
       const { data: licenseData } = await supabase
         .from('licencas_empresas')
         .select('*')
         .eq('empresa_id', targetCompanyId)
         .maybeSingle();
 
-      if (licenseData) {
-        setLicenseStatus(licenseData);
-        const now = new Date();
-        const expiry = new Date(licenseData.data_fim);
-        const diffTime = expiry.getTime() - now.getTime();
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        const statusNorm = String(licenseData.status_licenca || licenseData.estado || '').toLowerCase();
-        const isDeactivated = ['bloqueada', 'vencida', 'suspensa', 'desativada', 'expirada', 'inativa'].includes(statusNorm) || 
-                              licenseData.licenca_ativa === false || 
-                              licenseData.ativo === false;
+      const combinedComp = compSupabase || companyData;
+      const effectiveLicStatus = licenseData?.status_licenca || licenseData?.estado || combinedComp?.status_licenca || 'trial';
+      const isLicAtiva = licenseData?.licenca_ativa !== undefined ? licenseData.licenca_ativa : (combinedComp?.licenca_ativa !== undefined ? combinedComp.licenca_ativa : true);
+      const isEmpresaAtiva = (licenseData?.ativo !== false) && (combinedComp?.ativo !== false);
 
-        if (isDeactivated || diffDays <= 0) {
+      if (licenseData || combinedComp) {
+        setLicenseStatus(licenseData || combinedComp);
+        const now = new Date();
+        const expiryStr = licenseData?.data_fim || licenseData?.data_validade || combinedComp?.data_expiracao_licenca || licenseData?.trial_fim || combinedComp?.trial_fim;
+        const expiry = expiryStr ? new Date(expiryStr) : null;
+        const diffTime = expiry ? expiry.getTime() - now.getTime() : 1000 * 60 * 60 * 24 * 30;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        const statusNorm = String(effectiveLicStatus).toLowerCase();
+        const isDeactivated = ['bloqueada', 'vencida', 'suspensa', 'desativada', 'expirada', 'inativa', 'cancelada'].includes(statusNorm) || 
+                              isLicAtiva === false || 
+                              isEmpresaAtiva === false;
+
+        if (isDeactivated || (expiry && diffDays <= 0)) {
           setIsLicenseBlocked(true);
-        } else if (diffDays <= 20) {
-          setLicenseAlert(`A sua licença expira em ${diffDays} dias (${formatDate(licenseData.data_fim)}). Regularize o pagamento para evitar o bloqueio automático.`);
+          setLicenseAlert('A licença desta empresa encontra-se suspensa ou expirada. O sistema está em Modo Somente Leitura.');
+        } else if (expiry && diffDays <= 20) {
+          setLicenseAlert(`A sua licença expira em ${diffDays} dias (${formatDate(expiryStr)}). Regularize o pagamento para evitar o bloqueio automático.`);
           if (diffDays <= 5 && !localStorage.getItem('license_popup_shown_today')) {
              setShowLicensePopup(true);
              localStorage.setItem('license_popup_shown_today', new Date().toDateString());
           }
+          setIsLicenseBlocked(false);
         } else {
           setIsLicenseBlocked(false);
           setLicenseAlert(null);
         }
       } else {
-        // Fallback or trial
         setIsLicenseBlocked(false);
       }
       

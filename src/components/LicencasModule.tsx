@@ -82,13 +82,18 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
         .select('*')
         .order('created_at', { ascending: false });
 
-      // Fallback or API check
+      // Fallback or API check via backend (com dados do config-empresa)
       const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch('/api/licencas', {
-        headers: { 'Authorization': `Bearer ${session?.access_token || ''}` }
-      }).then(r => r.ok ? r.json() : []).catch(() => []);
+      const [apiLicRes, configEmpRes] = await Promise.all([
+        fetch('/api/licencas', {
+          headers: { 'Authorization': `Bearer ${session?.access_token || ''}` }
+        }).then(r => r.ok ? r.json() : []).catch(() => []),
+        fetch('/api/config-empresa', {
+          headers: { 'Authorization': `Bearer ${session?.access_token || ''}` }
+        }).then(r => r.ok ? r.json() : null).catch(() => null)
+      ]);
 
-      let mergedList = (supaLicencas && supaLicencas.length > 0) ? supaLicencas : res;
+      let mergedList = (supaLicencas && supaLicencas.length > 0) ? supaLicencas : apiLicRes;
 
       // Filter list for non-superadmins to only show their company license
       if (!isSuperAdmin && Array.isArray(mergedList) && mergedList.length > 0) {
@@ -96,6 +101,23 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
         if (companyLic.length > 0) {
           mergedList = companyLic;
         }
+      }
+
+      // Se a lista estiver vazia para a empresa, usar dados frescos do config-empresa
+      if ((!Array.isArray(mergedList) || mergedList.length === 0) && configEmpRes?.id) {
+        mergedList = [{
+          empresa_id: configEmpRes.empresa_id || configEmpRes.id,
+          nome_empresa: configEmpRes.nome_empresa,
+          tipo_licenca: configEmpRes.plano || 'Profissional',
+          plano: configEmpRes.plano || 'Profissional',
+          status_licenca: configEmpRes.status_licenca,
+          licenca_ativa: configEmpRes.licenca_ativa,
+          ativo: configEmpRes.ativo,
+          data_inicio: configEmpRes.data_inicio_licenca || new Date().toISOString(),
+          data_fim: configEmpRes.data_expiracao_licenca,
+          valor_licenca: configEmpRes.valor_licenca || 65000,
+          ativado_por: 'SuperAdmin CRM'
+        }];
       }
 
       setLicencas(Array.isArray(mergedList) ? mergedList : []);
@@ -118,11 +140,13 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
     empresa_id: empresaId,
     tipo_licenca: userProfile?.pacote_licenca || 'Profissional',
     plano: 'Mensal',
-    status_licenca: 'activa',
+    status_licenca: 'EXPIRADA',
+    licenca_ativa: false,
+    ativo: false,
     data_inicio: new Date().toISOString(),
-    data_fim: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    data_fim: new Date().toISOString(),
     valor_licenca: 65000,
-    ativado_por: 'Administrador do Sistema CRM (Supabase)'
+    ativado_por: 'Administrador do Sistema CRM'
   };
 
   const calculateDaysRemaining = (endDateStr: string) => {
@@ -134,14 +158,22 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
   };
 
   const daysRemaining = calculateDaysRemaining(myLicense.data_fim);
-  const isExpiringSoon = daysRemaining <= 15 && (myLicense.status_licenca === 'activa' || myLicense.status_licenca === 'active');
-  const isExpired = daysRemaining === 0 || myLicense.status_licenca === 'vencida' || myLicense.status_licenca === 'bloqueada' || myLicense.status_licenca === 'expirada';
+  const rawStatus = String(myLicense.status_licenca || myLicense.estado || '').toUpperCase();
+  const isSuspendedOrDeactivated = ['SUSPENSA', 'BLOQUEADA', 'DESATIVADA', 'INATIVA', 'CANCELADA', 'EXPIRADA', 'VENCIDA'].includes(rawStatus) || 
+                                  myLicense.licenca_ativa === false || 
+                                  myLicense.ativo === false;
+  const isExplicitlyActive = ['ACTIVA', 'ACTIVE', 'ATIVA', 'ATIVO'].includes(rawStatus) && (myLicense.licenca_ativa !== false) && (myLicense.ativo !== false);
+  
+  const isExpired = isSuspendedOrDeactivated || (daysRemaining === 0 && !rawStatus.includes('TRIAL'));
+  const isLicenseActive = isExplicitlyActive && !isExpired && (daysRemaining > 0 || !myLicense.data_fim);
+  const displayStatus = isLicenseActive ? 'LICENÇA ACTIVA' : 'LICENÇA EXPIRADA';
+  const isExpiringSoon = isLicenseActive && daysRemaining <= 15;
 
   const stats = [
-    { label: 'Licenças Ativas', value: safeLicencas.filter(l => l && (l.status_licenca === 'activa' || l.status_licenca === 'active' || l.status_licenca === 'ATIVA')).length, icon: ShieldCheck, color: 'text-emerald-600' },
-    { label: 'Pendentes de Validação', value: safeLicencas.filter(l => l && (l.status_licenca === 'pendente' || l.status_licenca === 'aguardando_validacao')).length, icon: Clock, color: 'text-amber-600' },
-    { label: 'Vencidas / Expiradas', value: safeLicencas.filter(l => l && (l.status_licenca === 'vencida' || l.status_licenca === 'bloqueada' || l.status_licenca === 'EXPIRADA' || l.status_licenca === 'expirada')).length, icon: AlertOctagon, color: 'text-rose-600' },
-    { label: 'Receita Licenciamento', value: safeLicencas.filter(l => l && (l.status_licenca === 'activa' || l.status_licenca === 'active' || l.status_licenca === 'ATIVA')).reduce((acc, curr) => acc + Number(curr.valor_licenca || 0), 0).toLocaleString() + ' AOA', icon: BadgeCent, color: 'text-[#003366]' },
+    { label: 'Licenças Ativas', value: safeLicencas.filter(l => l && (['ATIVA', 'ACTIVA', 'ACTIVE'].includes(String(l.status_licenca || l.estado).toUpperCase()) && l.licenca_ativa !== false && l.ativo !== false)).length, icon: ShieldCheck, color: 'text-emerald-600' },
+    { label: 'Pendentes de Validação', value: safeLicencas.filter(l => l && (String(l.status_licenca || l.estado).toLowerCase().includes('pendente'))).length, icon: Clock, color: 'text-amber-600' },
+    { label: 'Vencidas / Expiradas', value: safeLicencas.filter(l => l && (['SUSPENSA', 'EXPIRADA', 'VENCIDA', 'BLOQUEADA', 'DESATIVADA'].includes(String(l.status_licenca || l.estado).toUpperCase()) || l.licenca_ativa === false || l.ativo === false)).length, icon: AlertOctagon, color: 'text-rose-600' },
+    { label: 'Receita Licenciamento', value: safeLicencas.filter(l => l && (['ATIVA', 'ACTIVA', 'ACTIVE'].includes(String(l.status_licenca || l.estado).toUpperCase()) && l.licenca_ativa !== false && l.ativo !== false)).reduce((acc, curr) => acc + Number(curr.valor_licenca || 0), 0).toLocaleString() + ' AOA', icon: BadgeCent, color: 'text-[#003366]' },
   ];
 
   const chartData = [
@@ -150,13 +182,8 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
     { name: 'Mar', revenue: 1800000 },
     { name: 'Abr', revenue: 2400000 },
     { name: 'Mai', revenue: 2900000 },
+    { name: 'Jun', revenue: 3500000 },
   ];
-
-  const planUsage = [
-    { name: 'Básico', value: safeLicencas.filter(l => l && l.tipo_licenca === 'Básico').length || 1 },
-    { name: 'Profissional', value: safeLicencas.filter(l => l && l.tipo_licenca === 'Profissional').length || 2 },
-    { name: 'Enterprise', value: safeLicencas.filter(l => l && l.tipo_licenca === 'Enterprise').length || 1 },
-  ].filter(p => p.value > 0);
 
   const COLORS = ['#003366', '#10b981', '#f59e0b', '#ef4444'];
 
@@ -189,20 +216,22 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
         </div>
       </header>
 
-      {/* BANNER DE ANTECEDÊNCIA DE LICENÇA EXPIRANDO OU EXPIRADA */}
-      {(isExpiringSoon || isExpired) && (
-        <div className={`p-5 border-l-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm animate-in slide-in-from-top duration-300 ${
-          isExpired ? 'bg-rose-50 border-rose-600 text-rose-900' : 'bg-amber-50 border-amber-500 text-amber-900'
+      {/* Top Banner Alert (Se a licença estiver a expirar ou expirada) */}
+      {!isSuperAdmin && (isExpired || isExpiringSoon) && (
+        <div className={`p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border shadow-sm ${
+          isExpired ? 'bg-rose-50 border-rose-200 text-rose-800' : 'bg-amber-50 border-amber-200 text-amber-800'
         }`}>
           <div className="flex items-center gap-3">
-            {isExpired ? <AlertOctagon size={28} className="text-rose-600 shrink-0" /> : <AlertTriangle size={28} className="text-amber-600 shrink-0" />}
+            <div className={`p-2 rounded-full ${isExpired ? 'bg-rose-100' : 'bg-amber-100'}`}>
+              <AlertTriangle className={isExpired ? 'text-rose-600' : 'text-amber-600'} size={24} />
+            </div>
             <div>
               <h4 className="text-sm font-black uppercase tracking-wider">
-                {isExpired ? 'ATENÇÃO: A Licença do Sistema Encontra-se Expirada / Pendente!' : `AVISO DE RENOVAÇÃO: Faltam apenas ${daysRemaining} dias para a licença expirar!`}
+                {isExpired ? 'ATENÇÃO: A Licença do Sistema Encontra-se Expirada / Suspensa!' : `AVISO DE RENOVAÇÃO: Faltam apenas ${daysRemaining} dias para a licença expirar!`}
               </h4>
               <p className="text-xs mt-0.5 opacity-90">
                 {isExpired 
-                  ? `A licença venceu no dia ${new Date(myLicense.data_fim).toLocaleDateString('pt-AO')}. Submeta o comprovativo de pagamento para reativar o acesso total.` 
+                  ? `A licença desta empresa encontra-se inativa ou expirada. Submeta o comprovativo de pagamento ou contacte o administrador para reativar o acesso total.` 
                   : `A sua subscrição expira em ${new Date(myLicense.data_fim).toLocaleDateString('pt-AO')}. Efetue o pagamento da renovação para evitar a suspensão automática.`
                 }
               </p>
@@ -230,20 +259,18 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-white/10 pb-4">
               <div>
                 <span className="text-[10px] font-black uppercase tracking-widest text-sky-300 block">Licença da Empresa Registada</span>
-                <h3 className="text-2xl font-black tracking-tight uppercase mt-0.5">{myLicense.tipo_licenca || 'Plano Profissional AGT'}</h3>
+                <h3 className="text-2xl font-black tracking-tight uppercase mt-0.5">{myLicense.tipo_licenca || myLicense.plano || 'Plano Profissional AGT'}</h3>
               </div>
               <div className="flex items-center gap-3">
                 <span className={`px-4 py-1.5 text-xs font-black uppercase tracking-widest flex items-center gap-2 ${
-                  myLicense.status_licenca === 'activa' || myLicense.status_licenca === 'active' 
+                  isLicenseActive 
                     ? 'bg-emerald-500 text-white shadow-sm' 
-                    : myLicense.status_licenca === 'pendente' 
-                    ? 'bg-amber-500 text-white' 
-                    : 'bg-rose-600 text-white'
+                    : 'bg-rose-600 text-white shadow-sm'
                 }`}>
-                  {myLicense.status_licenca === 'activa' || myLicense.status_licenca === 'active' ? (
-                    <><span className="w-2 h-2 rounded-full bg-white animate-ping" /> Licença Ativa</>
+                  {isLicenseActive ? (
+                    <><span className="w-2 h-2 rounded-full bg-white animate-ping" /> LICENÇA ACTIVA</>
                   ) : (
-                    <><AlertTriangle size={14} /> {myLicense.status_licenca?.toUpperCase()}</>
+                    <><AlertTriangle size={14} /> LICENÇA EXPIRADA</>
                   )}
                 </span>
               </div>
@@ -648,8 +675,8 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
             <div className="lg:col-span-2 space-y-6">
               <div className="bg-white p-6 border border-zinc-200">
                 <h3 className="text-xs font-black text-zinc-400 uppercase tracking-widest mb-6">Receita de Licenciamento (6 Meses)</h3>
-                <div className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
+                <div className="h-[300px] w-full min-h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={250}>
                     <BarChart data={chartData}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
                       <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#9ca3af'}} />
@@ -667,8 +694,8 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
             <div className="space-y-6">
               <div className="bg-white p-6 border border-zinc-200">
                 <h3 className="text-xs font-black text-zinc-400 uppercase tracking-widest mb-6">Distribuição de Planos</h3>
-                <div className="h-[200px]">
-                  <ResponsiveContainer width="100%" height="100%">
+                <div className="h-[200px] w-full min-h-[200px]">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={180}>
                     <PieChart>
                       <Pie data={planUsage} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
                         {planUsage.map((entry, index) => (
@@ -1068,17 +1095,18 @@ const AdminActionModal = ({ license, onClose, onSuccess }: { license: any, onClo
           body: JSON.stringify({ id: license.id, acao, motivo })
         });
         
-        // Direct Supabase Update as well for 100% real-time reflection
-        const now = new Date();
-        const endDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-        
-        if (acao === 'activar') {
-          await supabase.from('licencas_empresas').upsert({
-            empresa_id: license.empresa_id || '1',
-            status_licenca: 'activa',
-            data_inicio: now.toISOString(),
-            data_fim: endDate.toISOString()
-          }, { onConflict: 'empresa_id' }).catch(console.warn);
+        // Sincronização segura via API de Licenciamento CRM
+        if (acao === 'activar' && license.empresa_id) {
+          if (typeof fetchJson === 'function') {
+            await fetchJson(`/api/crm/companies/${license.empresa_id}/activate-license`, {
+              method: 'POST',
+              headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session?.access_token || ''}`
+              },
+              body: JSON.stringify({ duracao_dias: 30, plano: license.tipo_licenca || 'Profissional' })
+            }).catch(console.warn);
+          }
         }
 
         toast.success('Operação realizada e sincronizada no Supabase com sucesso!');

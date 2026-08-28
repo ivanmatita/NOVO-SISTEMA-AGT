@@ -5,7 +5,7 @@
  */
 
 import { getEnvConfig, setCORS } from '../_env.js';
-import { authenticateRequest } from '../_auth.js';
+import { authenticateRequest, validateCompanyLicense } from '../_auth.js';
 
 function getDocTypeAbbr(type) {
   if (!type) return 'FT';
@@ -62,6 +62,19 @@ export default async function handler(req, res) {
 
     if (!targetEmpresaId) {
       return res.status(400).json({ error: 'Empresa não identificada na sessão' });
+    }
+
+    // VALIDAÇÃO DE LICENÇA ATIVA PARA OPERAÇÕES DE ESCRITA (MODO SOMENTE LEITURA)
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
+      const licValidation = await validateCompanyLicense(targetEmpresaId, config);
+      if (!licValidation.valid && !auth.isSuperAdmin) {
+        return res.status(403).json({
+          error: licValidation.message || 'Operação de escrita bloqueada: A licença da sua empresa não está ativa. O sistema está em Modo Somente Leitura.',
+          code: 'LICENSE_READ_ONLY',
+          status_licenca: licValidation.status,
+          readOnly: true
+        });
+      }
     }
 
     // 1. GET (Listar documentos ou Obter um documento específico)

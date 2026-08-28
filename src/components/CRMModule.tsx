@@ -208,14 +208,12 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
       const listCompanies = Array.isArray(companiesData) ? companiesData : (companiesData?.data && Array.isArray(companiesData.data) ? companiesData.data : []);
       setCompanies(listCompanies);
       setStats(statsData && typeof statsData === 'object' ? statsData : null);
-
       // Sincronizar sempre a empresa selecionada com o registo fresco do banco (evita dados antigos)
-      if (selectedCompany?.id) {
-        const freshSelected = listCompanies.find((c: any) => String(c.id) === String(selectedCompany.id));
-        if (freshSelected) {
-          setSelectedCompany(freshSelected);
-        }
-      }
+      setSelectedCompany(prev => {
+        if (!prev?.id) return prev;
+        const fresh = listCompanies.find((c: any) => String(c.id) === String(prev.id));
+        return fresh ? { ...prev, ...fresh } : prev;
+      });
 
       // Load Users
       let usersData: any = [];
@@ -260,20 +258,6 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
       const listOc = Array.isArray(ocData) ? ocData : (ocData?.data && Array.isArray(ocData.data) ? ocData.data : []);
       setOcorrencias(listOc);
 
-      // Load Comprovativos if company selected
-      if (selectedCompany?.id) {
-        let compData: any = [];
-        try {
-          if (typeof fetchJson === 'function') {
-            compData = await fetchJson(`/api/crm/comprovativos?empresa_id=${selectedCompany.id}`);
-          }
-        } catch (e) {
-          compData = [];
-        }
-        const listComp = Array.isArray(compData) ? compData : (compData?.data && Array.isArray(compData.data) ? compData.data : []);
-        setCompanyComprovativos(listComp);
-      }
-    } catch (error) {
       console.error("Erro ao carregar dados CRM:", error);
     } finally {
       setLoading(false);
@@ -388,32 +372,21 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
     const isCurrentlyActive = String(currentStatus || '').toUpperCase() === 'ACTIVE' || String(currentStatus || '').toUpperCase() === 'ACTIVA' || String(currentStatus || '').toUpperCase() === 'ATIVA';
     const newStatus = isCurrentlyActive ? 'SUSPENSA' : 'ATIVA';
     try {
-      const now = new Date();
-      const endDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-
-      await supabase.from('empresas').update({
-        status_licenca: newStatus,
-        updated_at: now.toISOString()
-      }).eq('id', empresaId).catch(console.warn);
-
-      await supabase.from('licencas_empresas').upsert({
-        empresa_id: String(empresaId),
-        status_licenca: newStatus,
-        data_inicio: now.toISOString(),
-        data_fim: endDate.toISOString(),
-        ativado_por: 'SuperAdmin CRM'
-      }, { onConflict: 'empresa_id' }).catch(console.warn);
-
       if (typeof fetchJson === 'function') {
-        await fetchJson(`/api/crm/companies/${empresaId}/toggle-status`, {
+        const res = await fetchJson(`/api/crm/companies/${empresaId}/toggle-status`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: newStatus })
-        }).catch(console.warn);
+        });
+        if (res && res.success) {
+          toast.success(`Estado da empresa atualizado para: ${newStatus}`);
+          await loadData();
+          return;
+        }
       }
 
       toast.success(`Estado da empresa atualizado para: ${newStatus}`);
-      loadData();
+      await loadData();
     } catch (err) {
       console.error("Erro ao alterar estado:", err);
       toast.error("Falha ao alterar estado da empresa.");
@@ -1982,19 +1955,35 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
             <form onSubmit={async (e) => {
               e.preventDefault();
               const form = e.target as any;
-              if (typeof fetchJson === 'function') {
-                await fetchJson(`/api/crm/companies/${selectedCompany.id}/activate-license`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    duracao_dias: Number(form.duracao_dias.value),
-                    plano: form.plano.value
-                  })
-                });
+              try {
+                if (typeof fetchJson === 'function') {
+                  const res = await fetchJson(`/api/crm/companies/${selectedCompany.id}/activate-license`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      duracao_dias: Number(form.duracao_dias.value),
+                      plano: form.plano.value
+                    })
+                  });
+                  if (res && (res.error || res.success === false)) {
+                    toast.error(res.error || res.message || 'Erro ao ativar licença');
+                    return;
+                  }
+                  if (res && (res.licenca || res.empresa)) {
+                    setSelectedCompany(prev => prev ? ({
+                      ...prev,
+                      plano: res.licenca?.plano || res.empresa?.plano || form.plano.value || prev.plano,
+                      status_licenca: res.licenca?.status_licenca || res.licenca?.estado || res.empresa?.status_licenca || 'ATIVA',
+                      data_fim: res.licenca?.data_fim || res.empresa?.data_expiracao_licenca || prev.data_fim
+                    }) : null);
+                  }
+                }
+                toast.success('Licença ativada com sucesso!');
+                setShowActivateModal(false);
+                await loadData();
+              } catch (err: any) {
+                toast.error(err.message || 'Erro ao ativar licença.');
               }
-              toast.success('Licença ativada com sucesso!');
-              setShowActivateModal(false);
-              loadData();
             }} className="space-y-3">
               <div>
                 <label className="block font-bold uppercase mb-1">Plano a Ativar</label>
@@ -2029,15 +2018,25 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
               const form = e.target as any;
               try {
                 if (typeof fetchJson === 'function') {
-                  await fetchJson(`/api/crm/companies/${selectedCompany.id}/deactivate-license`, {
+                  const res = await fetchJson(`/api/crm/companies/${selectedCompany.id}/deactivate-license`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ motivo: form.motivo.value })
                   });
+                  if (res && (res.error || res.success === false)) {
+                    toast.error(res.error || res.message || 'Erro ao desativar licença');
+                    return;
+                  }
+                  if (res && (res.licenca || res.empresa)) {
+                    setSelectedCompany(prev => prev ? ({
+                      ...prev,
+                      status_licenca: res.licenca?.status_licenca || res.licenca?.estado || res.empresa?.status_licenca || 'SUSPENSA'
+                    }) : null);
+                  }
                 }
                 toast.success('Licença desativada com sucesso!');
                 setShowDeactivateModal(false);
-                loadData();
+                await loadData();
               } catch (err: any) {
                 toast.error(err.message || 'Erro ao desativar licença.');
               }
@@ -2066,20 +2065,36 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
               e.preventDefault();
               const form = e.target as any;
               const targetEndpoint = showUpgradeModal ? 'upgrade' : 'downgrade';
-              if (typeof fetchJson === 'function') {
-                await fetchJson(`/api/crm/companies/${selectedCompany.id}/${targetEndpoint}`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    plano: form.plano.value,
-                    duracao_dias: Number(form.duracao_dias.value)
-                  })
-                });
+              try {
+                if (typeof fetchJson === 'function') {
+                  const res = await fetchJson(`/api/crm/companies/${selectedCompany.id}/${targetEndpoint}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      plano: form.plano.value,
+                      duracao_dias: Number(form.duracao_dias.value)
+                    })
+                  });
+                  if (res && (res.error || res.success === false)) {
+                    toast.error(res.error || res.message || 'Erro ao alterar plano');
+                    return;
+                  }
+                  if (res && (res.licenca || res.empresa)) {
+                    setSelectedCompany(prev => prev ? ({
+                      ...prev,
+                      plano: res.licenca?.plano || res.empresa?.plano || form.plano.value || prev.plano,
+                      status_licenca: res.licenca?.status_licenca || res.licenca?.estado || res.empresa?.status_licenca || prev.status_licenca,
+                      data_fim: res.licenca?.data_fim || res.empresa?.data_expiracao_licenca || prev.data_fim
+                    }) : null);
+                  }
+                }
+                toast.success(`Plano atualizado para ${form.plano.value}!`);
+                setShowUpgradeModal(false);
+                setShowDowngradeModal(false);
+                await loadData();
+              } catch (err: any) {
+                toast.error(err.message || 'Erro ao alterar plano.');
               }
-              toast.success(`Plano atualizado para ${form.plano.value}!`);
-              setShowUpgradeModal(false);
-              setShowDowngradeModal(false);
-              loadData();
             }} className="space-y-3">
               <div>
                 <label className="block font-bold uppercase mb-1">Novo Plano</label>
@@ -2249,7 +2264,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                 }
 
                 if (typeof fetchJson === 'function') {
-                  await fetchJson('/api/crm/comprovativos', {
+                  const res = await fetchJson('/api/crm/comprovativos', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -2261,11 +2276,15 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                       comprovativo_url: uploadedUrl || null
                     })
                   });
+                  if (res && (res.error || res.success === false)) {
+                    toast.error(res.error || res.message || 'Erro ao anexar comprovativo');
+                    return;
+                  }
                 }
                 toast.success('Comprovativo gravado com sucesso em media_arquivos!');
                 setShowProofModal(false);
                 setProofFile(null);
-                loadData();
+                await loadData();
               } catch (err: any) {
                 toast.error(err.message || 'Erro ao anexar comprovativo.');
               } finally {
@@ -2322,7 +2341,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
               const form = e.target as any;
               try {
                 if (typeof fetchJson === 'function') {
-                  await fetchJson('/api/crm/occurrences', {
+                  const res = await fetchJson('/api/crm/occurrences', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -2333,10 +2352,14 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                       descricao: form.descricao.value
                     })
                   });
+                  if (res && (res.error || res.success === false)) {
+                    toast.error(res.error || res.message || 'Erro ao criar ocorrência');
+                    return;
+                  }
                 }
                 toast.success('Ocorrência CRM registada no Supabase!');
                 setShowOccurrenceModal(false);
-                loadData();
+                await loadData();
               } catch (err: any) {
                 toast.error(err.message || 'Erro ao criar ocorrência.');
               }

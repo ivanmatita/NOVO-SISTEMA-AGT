@@ -3897,11 +3897,11 @@ const POSPage = ({
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-4 bg-sky-50 border border-sky-200 rounded-xl text-center">
                   <p className="text-xs text-slate-500 font-bold">Vendas Dinheiro (Hoje)</p>
-                  <p className="text-lg font-black text-[#003366] mt-1">{formatCurrency(activeSession?.total_cash_sales || 0)}</p>
+                  <p className="text-lg font-black text-[#003366] mt-1">{formatCurrency((activeSession as any)?.total_cash_sales || (activeSession as any)?.total_sales || 0)}</p>
                 </div>
                 <div className="p-4 bg-sky-50 border border-sky-200 rounded-xl text-center">
                   <p className="text-xs text-slate-500 font-bold">Vendas TPA / Cartão</p>
-                  <p className="text-lg font-black text-[#0284c7] mt-1">{formatCurrency(activeSession?.total_card_sales || 0)}</p>
+                  <p className="text-lg font-black text-[#0284c7] mt-1">{formatCurrency((activeSession as any)?.total_card_sales || 0)}</p>
                 </div>
               </div>
               <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl">
@@ -3949,7 +3949,7 @@ const POSPage = ({
                   <button
                     onClick={() => {
                       setShowDevolucoesModal(false);
-                      setHistoryFilter(devolucaoDocSearch);
+                      setHistorySearch(devolucaoDocSearch);
                       setActiveTab('historico');
                     }}
                     className="px-4 py-2 bg-[#0284c7] text-white text-xs font-bold rounded-lg hover:bg-sky-600"

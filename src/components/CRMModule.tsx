@@ -257,8 +257,8 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
       }
       const listOc = Array.isArray(ocData) ? ocData : (ocData?.data && Array.isArray(ocData.data) ? ocData.data : []);
       setOcorrencias(listOc);
-
-      console.error("Erro ao carregar dados CRM:", error);
+    } catch (err) {
+      console.error("Erro ao carregar dados CRM:", err);
     } finally {
       setLoading(false);
     }

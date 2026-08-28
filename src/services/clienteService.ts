@@ -7,6 +7,7 @@ export interface Cliente {
   telefone?: string;
   email?: string;
   endereco?: string;
+  morada?: string;
   tipo_entidade?: string;
   contribuinte?: string;
   nif?: string;

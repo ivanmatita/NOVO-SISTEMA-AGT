@@ -185,6 +185,13 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
     { name: 'Jun', revenue: 3500000 },
   ];
 
+  const planUsage = [
+    { name: 'Profissional', value: safeLicencas.filter(l => (l?.tipo_licenca || l?.plano || '').toLowerCase().includes('prof')).length || 1 },
+    { name: 'Standard', value: safeLicencas.filter(l => (l?.tipo_licenca || l?.plano || '').toLowerCase().includes('stand')).length || 0 },
+    { name: 'Enterprise', value: safeLicencas.filter(l => (l?.tipo_licenca || l?.plano || '').toLowerCase().includes('enter')).length || 0 },
+    { name: 'Trial', value: safeLicencas.filter(l => (l?.tipo_licenca || l?.plano || '').toLowerCase().includes('trial')).length || 0 },
+  ];
+
   const COLORS = ['#003366', '#10b981', '#f59e0b', '#ef4444'];
 
   return (
@@ -738,6 +745,7 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
       {/* Modal Enviar Comprovativo */}
       {showPaymentModal && (
         <SubmitPaymentProofModal
+          empresaId={empresaId}
           onClose={() => setShowPaymentModal(false)}
           onSuccess={() => {
             setShowPaymentModal(false);
@@ -749,6 +757,7 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
       {/* Modal Reportar Ocorrência */}
       {showOcorrenciaModal && (
         <SubmitOcorrenciaModal
+          empresaId={empresaId}
           onClose={() => setShowOcorrenciaModal(false)}
           onSuccess={() => {
             setShowOcorrenciaModal(false);
@@ -761,7 +770,7 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
 };
 
 // MODAL PARA SUBMETER COMPROVATIVO DE PAGAMENTO DA LICENÇA
-const SubmitPaymentProofModal = ({ onClose, onSuccess }: { onClose: () => void, onSuccess: () => void }) => {
+const SubmitPaymentProofModal = ({ empresaId, onClose, onSuccess }: { empresaId?: string, onClose: () => void, onSuccess: () => void }) => {
   const [formData, setFormData] = useState({
     banco: 'Banco BAI',
     montante: 65000,
@@ -884,7 +893,7 @@ const SubmitPaymentProofModal = ({ onClose, onSuccess }: { onClose: () => void, 
 };
 
 // MODAL SUBMETER OCORRÊNCIA DA LICENÇA
-const SubmitOcorrenciaModal = ({ onClose, onSuccess }: { onClose: () => void, onSuccess: () => void }) => {
+const SubmitOcorrenciaModal = ({ empresaId, onClose, onSuccess }: { empresaId?: string, onClose: () => void, onSuccess: () => void }) => {
   const [assunto, setAssunto] = useState('');
   const [descricao, setDescricao] = useState('');
   const [prioridade, setPrioridade] = useState('Alta');
@@ -933,21 +942,21 @@ const SubmitOcorrenciaModal = ({ onClose, onSuccess }: { onClose: () => void, on
             <label className="block font-bold text-zinc-700 uppercase mb-1">Prioridade</label>
             <select value={prioridade} onChange={e => setPrioridade(e.target.value)} className="w-full bg-zinc-50 border border-zinc-300 p-2.5 font-bold">
               <option value="Baixa">Baixa</option>
-              <option value="Média">Média</option>
+              <option value="Normal">Normal</option>
               <option value="Alta">Alta</option>
               <option value="Urgente">Urgente</option>
             </select>
           </div>
 
           <div>
-            <label className="block font-bold text-zinc-700 uppercase mb-1">Descrição Detalhada</label>
-            <textarea value={descricao} onChange={e => setDescricao(e.target.value)} required rows={4} className="w-full bg-zinc-50 border border-zinc-300 p-2 text-xs" placeholder="Descreva em detalhe a ocorrência ou alteração desejada..." />
+            <label className="block font-bold text-zinc-700 uppercase mb-1">Descrição do Problema</label>
+            <textarea value={descricao} onChange={e => setDescricao(e.target.value)} rows={4} required placeholder="Descreva os detalhes da ocorrência..." className="w-full bg-zinc-50 border border-zinc-300 p-2.5 text-xs" />
           </div>
 
           <div className="flex justify-end gap-3 pt-4 border-t border-zinc-100">
             <button type="button" onClick={onClose} className="px-4 py-2 text-zinc-500 font-bold uppercase">Cancelar</button>
-            <button type="submit" disabled={submitting} className="bg-[#003366] text-white px-5 py-2 font-bold uppercase tracking-widest shadow-md">
-              {submitting ? 'A submeter...' : 'Submeter Ocorrência'}
+            <button type="submit" disabled={submitting} className="bg-[#003366] text-white px-5 py-2 font-bold uppercase">
+              {submitting ? 'A submeter...' : 'Submeter'}
             </button>
           </div>
         </form>
@@ -1097,16 +1106,14 @@ const AdminActionModal = ({ license, onClose, onSuccess }: { license: any, onClo
         
         // Sincronização segura via API de Licenciamento CRM
         if (acao === 'activar' && license.empresa_id) {
-          if (typeof fetchJson === 'function') {
-            await fetchJson(`/api/crm/companies/${license.empresa_id}/activate-license`, {
-              method: 'POST',
-              headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${session?.access_token || ''}`
-              },
-              body: JSON.stringify({ duracao_dias: 30, plano: license.tipo_licenca || 'Profissional' })
-            }).catch(console.warn);
-          }
+          await fetch(`/api/crm/companies/${license.empresa_id}/activate-license`, {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session?.access_token || ''}`
+            },
+            body: JSON.stringify({ duracao_dias: 30, plano: license.tipo_licenca || 'Profissional' })
+          }).catch(console.warn);
         }
 
         toast.success('Operação realizada e sincronizada no Supabase com sucesso!');

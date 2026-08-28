@@ -1,4 +1,4 @@
-﻿/**
+/**
  * api/index.js
  * Roteador Serverless Unificado para Vercel (Hobby Plan Compliant: 1 Serverless Function).
  * Encaminha todas as chamadas /api/* para os respetivos handlers isolados em api/_handlers/.

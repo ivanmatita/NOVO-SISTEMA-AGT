@@ -1,13 +1,13 @@
-﻿/**
+/**
  * api/migracao.js
- * Handler Serverless de Migração Controlada por Empresa (Staging -> Produção).
+ * Handler Serverless de Migra��o Controlada por Empresa (Staging -> Produ��o).
  * 100% Nativo, isolamento rigoroso por empresa_id, idempotente e seguro.
  */
 
-import { getEnvConfig, setCORS } from './_env.js';
-import { authenticateRequest } from './_auth.js';
+import { getEnvConfig, setCORS } from '../_env.js';
+import { authenticateRequest } from '../_auth.js';
 
-// Ordem estrita de migração respeitando dependências de chave estrangeira
+// Ordem estrita de migra��o respeitando depend�ncias de chave estrangeira
 const TABELAS_MIGRACAO = [
   'empresas',
   'licencas_empresas',
@@ -49,15 +49,15 @@ export default async function handler(req, res) {
     pathname = req.url || '';
   }
 
-  // 1. Autenticação obrigatória
+  // 1. Autentica��o obrigat�ria
   const auth = await authenticateRequest(req);
   if (!auth.authenticated) {
-    return res.status(401).json({ error: auth.message || 'Não autenticado.' });
+    return res.status(401).json({ error: auth.message || 'N�o autenticado.' });
   }
 
   const { user, empresa_id, isSuperAdmin } = auth;
 
-  // ─── GET /api/migracao/status ───────────────────────────────────────────────
+  // --- GET /api/migracao/status -----------------------------------------------
   if (req.method === 'GET') {
     try {
       const targetEmpresaId = isSuperAdmin 
@@ -65,10 +65,10 @@ export default async function handler(req, res) {
         : empresa_id;
 
       if (!targetEmpresaId) {
-        return res.status(400).json({ error: 'empresa_id não identificado.' });
+        return res.status(400).json({ error: 'empresa_id n�o identificado.' });
       }
 
-      // Buscar licença em Staging
+      // Buscar licen�a em Staging
       const licRes = await fetch(
         `${configStaging.supabaseUrl}/rest/v1/licencas_empresas?empresa_id=eq.${targetEmpresaId}&select=*&limit=1`,
         { headers: { 'apikey': configStaging.serviceRoleKey, 'Authorization': `Bearer ${configStaging.serviceRoleKey}` } }
@@ -76,7 +76,7 @@ export default async function handler(req, res) {
       const licList = await licRes.json();
       const licenca = Array.isArray(licList) && licList.length > 0 ? licList[0] : null;
 
-      // Buscar histórico de migração da empresa
+      // Buscar hist�rico de migra��o da empresa
       const migRes = await fetch(
         `${configStaging.supabaseUrl}/rest/v1/migracoes_empresas?empresa_id=eq.${targetEmpresaId}&select=*&order=created_at.desc&limit=1`,
         { headers: { 'apikey': configStaging.serviceRoleKey, 'Authorization': `Bearer ${configStaging.serviceRoleKey}` } }
@@ -102,7 +102,7 @@ export default async function handler(req, res) {
     }
   }
 
-  // ─── POST /api/migracao/dry-run ─────────────────────────────────────────────
+  // --- POST /api/migracao/dry-run ---------------------------------------------
   if (pathname.includes('dry-run') && req.method === 'POST') {
     try {
       const targetEmpresaId = isSuperAdmin
@@ -110,10 +110,10 @@ export default async function handler(req, res) {
         : empresa_id;
 
       if (!targetEmpresaId) {
-        return res.status(400).json({ error: 'empresa_id é obrigatório para Dry Run.' });
+        return res.status(400).json({ error: 'empresa_id � obrigat�rio para Dry Run.' });
       }
 
-      // Validar licença em Staging
+      // Validar licen�a em Staging
       const licRes = await fetch(
         `${configStaging.supabaseUrl}/rest/v1/licencas_empresas?empresa_id=eq.${targetEmpresaId}&select=*&limit=1`,
         { headers: { 'apikey': configStaging.serviceRoleKey, 'Authorization': `Bearer ${configStaging.serviceRoleKey}` } }
@@ -123,7 +123,7 @@ export default async function handler(req, res) {
 
       if (!licenca || licenca.estado !== 'ativa' || !licenca.producao_elegivel) {
         return res.status(400).json({
-          error: 'Empresa não elegível para migração. A licença deve estar ATIVA e marcada como elegível.',
+          error: 'Empresa n�o eleg�vel para migra��o. A licen�a deve estar ATIVA e marcada como eleg�vel.',
           licenca
         });
       }
@@ -144,11 +144,11 @@ export default async function handler(req, res) {
           contagemStaging[tabela] = Array.isArray(items) ? items.length : 0;
         } catch (e) {
           contagemStaging[tabela] = 0;
-          warnings.push(`Tabela ${tabela} não pôde ser lida em Staging: ${e.message}`);
+          warnings.push(`Tabela ${tabela} n�o p�de ser lida em Staging: ${e.message}`);
         }
       }
 
-      // Verificar se a empresa já existe em Produção
+      // Verificar se a empresa j� existe em Produ��o
       const prodCheck = await fetch(
         `${configProd.supabaseUrl}/rest/v1/empresas?id=eq.${targetEmpresaId}&select=id,nome&limit=1`,
         { headers: { 'apikey': configProd.serviceRoleKey, 'Authorization': `Bearer ${configProd.serviceRoleKey}` } }
@@ -197,24 +197,24 @@ export default async function handler(req, res) {
     }
   }
 
-  // ─── POST /api/migracao/executar (ADMIN GLOBAL ONLY) ────────────────────────
+  // --- POST /api/migracao/executar (ADMIN GLOBAL ONLY) ------------------------
   if (pathname.includes('executar') && req.method === 'POST') {
     try {
       if (!isSuperAdmin) {
         return res.status(403).json({
-          error: 'Acesso negado: Apenas o Administrador Global pode executar migrações para Produção.',
+          error: 'Acesso negado: Apenas o Administrador Global pode executar migra��es para Produ��o.',
           code: 'APENAS_ADMIN_GLOBAL'
         });
       }
 
       const { empresa_id: targetEmpresaId } = req.body || {};
       if (!targetEmpresaId) {
-        return res.status(400).json({ error: 'empresa_id é obrigatório.' });
+        return res.status(400).json({ error: 'empresa_id � obrigat�rio.' });
       }
 
       const dataInicio = new Date().toISOString();
 
-      // Validar licença em Staging
+      // Validar licen�a em Staging
       const licRes = await fetch(
         `${configStaging.supabaseUrl}/rest/v1/licencas_empresas?empresa_id=eq.${targetEmpresaId}&select=*&limit=1`,
         { headers: { 'apikey': configStaging.serviceRoleKey, 'Authorization': `Bearer ${configStaging.serviceRoleKey}` } }
@@ -223,14 +223,14 @@ export default async function handler(req, res) {
       const licenca = Array.isArray(licList) && licList.length > 0 ? licList[0] : null;
 
       if (!licenca || licenca.estado !== 'ativa' || !licenca.producao_elegivel) {
-        return res.status(400).json({ error: 'Licença inválida ou não elegível para migração.' });
+        return res.status(400).json({ error: 'Licen�a inv�lida ou n�o eleg�vel para migra��o.' });
       }
 
       const registosMigrados = {};
       const erros = [];
       const warnings = [];
 
-      // Execução tabela por tabela garantindo isolamento: WHERE empresa_id = targetEmpresaId
+      // Execu��o tabela por tabela garantindo isolamento: WHERE empresa_id = targetEmpresaId
       for (const tabela of TABELAS_MIGRACAO) {
         try {
           const filter = tabela === 'empresas' ? `id=eq.${targetEmpresaId}` : `empresa_id=eq.${targetEmpresaId}`;
@@ -243,18 +243,18 @@ export default async function handler(req, res) {
           const rows = await fetchRes.json();
 
           if (Array.isArray(rows) && rows.length > 0) {
-            // 2. Sanitizar/garantir producao_liberada=false na migração (Regra: Produção permanece bloqueada)
+            // 2. Sanitizar/garantir producao_liberada=false na migra��o (Regra: Produ��o permanece bloqueada)
             const rowsSanitized = rows.map(r => {
               const copy = { ...r };
               if (tabela === 'empresas' || tabela === 'licencas_empresas') {
                 copy.producao_elegivel = true;
-                copy.producao_liberada = false; // Bloqueado aguardando validação
+                copy.producao_liberada = false; // Bloqueado aguardando valida��o
                 copy.ambiente = 'production';
               }
               return copy;
             });
 
-            // 3. Inserir em Produção com resolução de duplicados (idempotência total)
+            // 3. Inserir em Produ��o com resolu��o de duplicados (idempot�ncia total)
             const insertRes = await fetch(
               `${configProd.supabaseUrl}/rest/v1/${tabela}`,
               {
@@ -273,7 +273,7 @@ export default async function handler(req, res) {
               registosMigrados[tabela] = rows.length;
             } else {
               const errData = await insertRes.json().catch(() => ({}));
-              erros.push({ tabela, erro: errData.message || 'Erro ao inserir em produção' });
+              erros.push({ tabela, erro: errData.message || 'Erro ao inserir em produ��o' });
             }
           } else {
             registosMigrados[tabela] = 0;
@@ -286,7 +286,7 @@ export default async function handler(req, res) {
       const dataFim = new Date().toISOString();
       const statusFinal = erros.length === 0 ? 'migracao_concluida_aguardando_aprovacao' : 'migracao_falhou';
 
-      // Registar auditoria de migração em Staging e Produção
+      // Registar auditoria de migra��o em Staging e Produ��o
       const auditPayload = {
         empresa_id: targetEmpresaId,
         licenca_id: licenca.id,
@@ -312,7 +312,7 @@ export default async function handler(req, res) {
         body: JSON.stringify([auditPayload])
       });
 
-      // Validação pós-migração real em Produção
+      // Valida��o p�s-migra��o real em Produ��o
       const comparacao = {};
       for (const [tab, totalStaging] of Object.entries(registosMigrados)) {
         if (totalStaging > 0) {
@@ -336,27 +336,27 @@ export default async function handler(req, res) {
         empresa_id: targetEmpresaId,
         registos_migrados: registosMigrados,
         comparacao_pos_migracao: comparacao,
-        producao_liberada: false, // REQUISITO 28: AINDA BLOQUEADA AGUARDANDO APROVAÇÃO MANUAL
-        mensagem: 'Migração de dados da empresa concluída com sucesso! Os dados foram validados em Produção. Acesso à Produção permanece BLOQUEADO aguardando aprovação manual explícita.'
+        producao_liberada: false, // REQUISITO 28: AINDA BLOQUEADA AGUARDANDO APROVA��O MANUAL
+        mensagem: 'Migra��o de dados da empresa conclu�da com sucesso! Os dados foram validados em Produ��o. Acesso � Produ��o permanece BLOQUEADO aguardando aprova��o manual expl�cita.'
       });
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }
   }
 
-  // ─── POST /api/migracao/liberar-producao (ADMIN GLOBAL ONLY) ────────────────
+  // --- POST /api/migracao/liberar-producao (ADMIN GLOBAL ONLY) ----------------
   if (pathname.includes('liberar-producao') && req.method === 'POST') {
     try {
       if (!isSuperAdmin) {
-        return res.status(403).json({ error: 'Acesso negado: Apenas o Administrador Global pode liberar a Produção.' });
+        return res.status(403).json({ error: 'Acesso negado: Apenas o Administrador Global pode liberar a Produ��o.' });
       }
 
       const { empresa_id: targetEmpresaId } = req.body || {};
-      if (!targetEmpresaId) return res.status(400).json({ error: 'empresa_id é obrigatório.' });
+      if (!targetEmpresaId) return res.status(400).json({ error: 'empresa_id � obrigat�rio.' });
 
       const nowIso = new Date().toISOString();
 
-      // Liberar em Produção
+      // Liberar em Produ��o
       await fetch(
         `${configProd.supabaseUrl}/rest/v1/licencas_empresas?empresa_id=eq.${targetEmpresaId}`,
         {
@@ -375,7 +375,7 @@ export default async function handler(req, res) {
         }
       );
 
-      // Atualizar registo de migração
+      // Atualizar registo de migra��o
       await fetch(
         `${configProd.supabaseUrl}/rest/v1/migracoes_empresas?empresa_id=eq.${targetEmpresaId}`,
         {
@@ -389,12 +389,12 @@ export default async function handler(req, res) {
         success: true,
         empresa_id: targetEmpresaId,
         producao_liberada: true,
-        message: 'Ambiente de Produção LIBERADO com sucesso para a empresa!'
+        message: 'Ambiente de Produ��o LIBERADO com sucesso para a empresa!'
       });
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }
   }
 
-  return res.status(404).json({ error: 'Rota de migração não encontrada.' });
+  return res.status(404).json({ error: 'Rota de migra��o n�o encontrada.' });
 }

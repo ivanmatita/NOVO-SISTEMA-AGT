@@ -4,8 +4,8 @@
  * 100% Compatível com a tabela 'documentos_emitidos' no Supabase com isolamento de tenant.
  */
 
-import { getEnvConfig, setCORS } from './_env.js';
-import { authenticateRequest } from './_auth.js';
+import { getEnvConfig, setCORS } from '../_env.js';
+import { authenticateRequest } from '../_auth.js';
 
 function getDocTypeAbbr(type) {
   if (!type) return 'FT';

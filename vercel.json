@@ -1,4 +1,4 @@
-{
+﻿{
   "version": 2,
   "buildCommand": "npm run vercel-build",
   "outputDirectory": "dist",
@@ -8,140 +8,12 @@
       "destination": "https://portaldocontribuinte.minfin.gov.ao/$1"
     },
     {
-      "source": "/api/health/(.*)",
-      "destination": "/api/health.js"
-    },
-    {
-      "source": "/api/health",
-      "destination": "/api/health.js"
-    },
-    {
-      "source": "/api/auth/(.*)",
-      "destination": "/api/auth-saas.js"
-    },
-    {
-      "source": "/api/auth",
-      "destination": "/api/auth-saas.js"
-    },
-    {
-      "source": "/api/exercicios-fiscais",
-      "destination": "/api/exercicios-fiscais.js"
-    },
-    {
-      "source": "/api/config-empresa",
-      "destination": "/api/config-empresa.js"
-    },
-    {
-      "source": "/api/licencas/(.*)",
-      "destination": "/api/licencas.js"
-    },
-    {
-      "source": "/api/licencas",
-      "destination": "/api/licencas.js"
-    },
-    {
-      "source": "/api/migracao/(.*)",
-      "destination": "/api/migracao.js"
-    },
-    {
-      "source": "/api/migracao",
-      "destination": "/api/migracao.js"
-    },
-    {
-      "source": "/api/stats",
-      "destination": "/api/health.js"
-    },
-    {
-      "source": "/api/secure-clientes/(.*)",
-      "destination": "/api/secure-clientes.js"
-    },
-    {
-      "source": "/api/secure-clientes",
-      "destination": "/api/secure-clientes.js"
-    },
-    {
-      "source": "/api/secure-locais-trabalho",
-      "destination": "/api/secure-locais-trabalho.js"
-    },
-    {
-      "source": "/api/invoices/:id/(.*)",
-      "destination": "/api/invoices.js"
-    },
-    {
-      "source": "/api/invoices/:id",
-      "destination": "/api/invoices.js"
-    },
-    {
-      "source": "/api/invoices",
-      "destination": "/api/invoices.js"
-    },
-    {
-      "source": "/api/secure-locais-trabalho/(.*)",
-      "destination": "/api/secure-locais-trabalho.js"
-    },
-    {
-      "source": "/api/crm/(.*)",
-      "destination": "/api/crm.js"
-    },
-    {
-      "source": "/api/crm",
-      "destination": "/api/crm.js"
-    },
-    {
-      "source": "/api/secure-fornecedores/(.*)",
-      "destination": "/api/secure-fornecedores.js"
-    },
-    {
-      "source": "/api/secure-fornecedores",
-      "destination": "/api/secure-fornecedores.js"
-    },
-    {
-      "source": "/api/pos/(.*)",
-      "destination": "/api/pos.js"
-    },
-    {
-      "source": "/api/pos",
-      "destination": "/api/pos.js"
-    },
-    {
-      "source": "/api/pos-points/(.*)",
-      "destination": "/api/pos.js"
-    },
-    {
-      "source": "/api/pos-points",
-      "destination": "/api/pos.js"
-    },
-    {
-      "source": "/api/cost-centers/(.*)",
-      "destination": "/api/pos.js"
-    },
-    {
-      "source": "/api/cost-centers",
-      "destination": "/api/pos.js"
-    },
-    {
-      "source": "/api/caixa-movements/(.*)",
-      "destination": "/api/pos.js"
-    },
-    {
-      "source": "/api/caixa-movements",
-      "destination": "/api/pos.js"
-    },
-    {
-      "source": "/api/pos-user-configs/(.*)",
-      "destination": "/api/pos.js"
-    },
-    {
-      "source": "/api/pos-user-configs",
-      "destination": "/api/pos.js"
-    },
-    {
-      "source": "/api/system-users",
-      "destination": "/api/system-users.js"
-    },
-    {
       "source": "/api/(.*)",
-      "destination": "/api/health.js"
+      "destination": "/api/index.js"
+    },
+    {
+      "source": "/api",
+      "destination": "/api/index.js"
     },
     {
       "source": "/((?!api).*)",

@@ -1,4 +1,4 @@
-import { getEnvConfig, setCORS } from './_env.js';
+import { getEnvConfig, setCORS } from '../_env.js';
 
 async function getTableCount(table, config) {
   try {

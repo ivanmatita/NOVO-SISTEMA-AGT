@@ -1,11 +1,11 @@
-﻿/**
+/**
  * api/licencas.js
- * Handler Serverless de Gestão, Solicitação e Aprovação de Licenças SaaS.
+ * Handler Serverless de Gest�o, Solicita��o e Aprova��o de Licen�as SaaS.
  * 100% Nativo, isolamento multi-tenant seguro e auditoria completa.
  */
 
-import { getEnvConfig, setCORS } from './_env.js';
-import { authenticateRequest } from './_auth.js';
+import { getEnvConfig, setCORS } from '../_env.js';
+import { authenticateRequest } from '../_auth.js';
 
 export default async function handler(req, res) {
   setCORS(res);
@@ -24,19 +24,19 @@ export default async function handler(req, res) {
     pathname = req.url || '';
   }
 
-  // 1. Autenticação obrigatória
+  // 1. Autentica��o obrigat�ria
   const auth = await authenticateRequest(req);
   if (!auth.authenticated) {
-    return res.status(401).json({ error: auth.message || 'Não autenticado.' });
+    return res.status(401).json({ error: auth.message || 'N�o autenticado.' });
   }
 
   const { user, empresa_id, isSuperAdmin } = auth;
 
-  // ─── GET /api/licencas ───────────────────────────────────────────────────────
+  // --- GET /api/licencas -------------------------------------------------------
   if (req.method === 'GET') {
     try {
       if (isSuperAdmin) {
-        // Admin global: lista todas as licenças com dados da empresa
+        // Admin global: lista todas as licen�as com dados da empresa
         const licRes = await fetch(
           `${config.supabaseUrl}/rest/v1/licencas_empresas?select=*,empresas(id,nome,nome_empresa,nif,email,telefone)&order=created_at.desc`,
           {
@@ -65,9 +65,9 @@ export default async function handler(req, res) {
           historico: Array.isArray(historico) ? historico : []
         });
       } else {
-        // Utilizador da empresa: apenas a sua própria licença e histórico
+        // Utilizador da empresa: apenas a sua pr�pria licen�a e hist�rico
         if (!empresa_id) {
-          return res.status(400).json({ error: 'Empresa não associada a este utilizador.' });
+          return res.status(400).json({ error: 'Empresa n�o associada a este utilizador.' });
         }
 
         const licRes = await fetch(
@@ -104,11 +104,11 @@ export default async function handler(req, res) {
     }
   }
 
-  // ─── POST /api/licencas/solicitar ───────────────────────────────────────────
+  // --- POST /api/licencas/solicitar -------------------------------------------
   if (pathname.includes('solicitar') && req.method === 'POST') {
     try {
       if (!empresa_id) {
-        return res.status(400).json({ error: 'Empresa não identificada.' });
+        return res.status(400).json({ error: 'Empresa n�o identificada.' });
       }
 
       const { plano = 'basico', tipo_licenca, valor = 0, valor_licenca, observacao = '', observacoes = '', periodo = 'mensal', periodo_meses = 1 } = req.body || {};
@@ -154,7 +154,7 @@ export default async function handler(req, res) {
           empresa_id,
           plano: targetPlano,
           acao: 'solicitacao',
-          descricao: `Solicitação de ativação de licença (${targetPlano}, ${periodo}). Valor: ${targetValor} AOA.`,
+          descricao: `Solicita��o de ativa��o de licen�a (${targetPlano}, ${periodo}). Valor: ${targetValor} AOA.`,
           usuario: user.email,
           metadata: { periodo, periodo_meses, valor: targetValor, observacoes: targetObs, solicitante: user.email }
         }])
@@ -162,7 +162,7 @@ export default async function handler(req, res) {
 
       return res.status(200).json({
         success: true,
-        message: 'Solicitação de ativação enviada com sucesso.',
+        message: 'Solicita��o de ativa��o enviada com sucesso.',
         estado: 'pendente_ativacao'
       });
     } catch (err) {
@@ -170,11 +170,11 @@ export default async function handler(req, res) {
     }
   }
 
-  // ─── POST /api/licencas/comprovativo ─────────────────────────────────────────
+  // --- POST /api/licencas/comprovativo -----------------------------------------
   if (pathname.includes('comprovativo') && req.method === 'POST') {
     try {
       if (!empresa_id) {
-        return res.status(400).json({ error: 'Empresa não identificada.' });
+        return res.status(400).json({ error: 'Empresa n�o identificada.' });
       }
 
       const { comprovativo_url, comprovativo_nome, valor = 0, montante, banco, numero_transacao } = req.body || {};
@@ -213,7 +213,7 @@ export default async function handler(req, res) {
         body: JSON.stringify([{
           empresa_id,
           acao: 'comprovativo_enviado',
-          descricao: `Comprovativo de pagamento enviado. Banco: ${banco || 'N/D'}, Transação: ${numero_transacao || 'N/D'}, Montante: ${targetValor} AOA.`,
+          descricao: `Comprovativo de pagamento enviado. Banco: ${banco || 'N/D'}, Transa��o: ${numero_transacao || 'N/D'}, Montante: ${targetValor} AOA.`,
           usuario: user.email,
           metadata: { comprovativo_url, comprovativo_nome, banco, numero_transacao, valor: targetValor }
         }])
@@ -221,7 +221,7 @@ export default async function handler(req, res) {
 
       return res.status(200).json({
         success: true,
-        message: 'Comprovativo enviado com sucesso. Aguardando aprovação do Administrador Global.',
+        message: 'Comprovativo enviado com sucesso. Aguardando aprova��o do Administrador Global.',
         estado: 'comprovativo_enviado'
       });
     } catch (err) {
@@ -229,12 +229,12 @@ export default async function handler(req, res) {
     }
   }
 
-  // ─── POST /api/licencas/aprovar OU /api/licencas/acao (ADMIN GLOBAL ONLY) ─────
+  // --- POST /api/licencas/aprovar OU /api/licencas/acao (ADMIN GLOBAL ONLY) -----
   if ((pathname.includes('aprovar') || pathname.includes('acao')) && req.method === 'POST') {
     try {
       if (!isSuperAdmin) {
         return res.status(403).json({
-          error: 'Acesso negado: Apenas o Administrador Global do Sistema pode aprovar ou gerir licenças.',
+          error: 'Acesso negado: Apenas o Administrador Global do Sistema pode aprovar ou gerir licen�as.',
           code: 'APENAS_ADMIN_GLOBAL'
         });
       }
@@ -267,7 +267,7 @@ export default async function handler(req, res) {
       }
 
       if (!targetEmpresaId) {
-        return res.status(400).json({ error: 'empresa_id ou licença válida é obrigatória.' });
+        return res.status(400).json({ error: 'empresa_id ou licen�a v�lida � obrigat�ria.' });
       }
 
       const now = new Date();
@@ -333,7 +333,7 @@ export default async function handler(req, res) {
           }
         );
 
-        // Auditoria no histórico
+        // Auditoria no hist�rico
         await fetch(`${config.supabaseUrl}/rest/v1/historico_licencas`, {
           method: 'POST',
           headers: {
@@ -347,7 +347,7 @@ export default async function handler(req, res) {
             data_inicio: dataInicio,
             data_fim: dataFim,
             acao: 'aprovacao',
-            descricao: `Licença APROVADA pelo Administrador Global (${user.email}). Plano: ${plano}, Período: ${periodo_meses} meses. Produção elegível marcada; Acesso a Produção permanece bloqueado até à migração da Parte 5.`,
+            descricao: `Licen�a APROVADA pelo Administrador Global (${user.email}). Plano: ${plano}, Per�odo: ${periodo_meses} meses. Produ��o eleg�vel marcada; Acesso a Produ��o permanece bloqueado at� � migra��o da Parte 5.`,
             usuario: user.email,
             metadata: {
               aprovado_por: user.email,
@@ -362,7 +362,7 @@ export default async function handler(req, res) {
 
         return res.status(200).json({
           success: true,
-          message: 'Licença aprovada com sucesso! Empresa marcada como elegível para Produção. Acesso à Produção permanece bloqueado até à migração da Parte 5.',
+          message: 'Licen�a aprovada com sucesso! Empresa marcada como eleg�vel para Produ��o. Acesso � Produ��o permanece bloqueado at� � migra��o da Parte 5.',
           licenca: {
             estado: 'ativa',
             plano,
@@ -387,7 +387,7 @@ export default async function handler(req, res) {
               status_licenca: 'suspensa',
               ativo: false,
               licenca_ativa: false,
-              motivo_rejeicao: motivo || 'Suspensão pelo Administrador Global',
+              motivo_rejeicao: motivo || 'Suspens�o pelo Administrador Global',
               updated_at: nowIso
             })
           }
@@ -403,13 +403,13 @@ export default async function handler(req, res) {
           body: JSON.stringify([{
             empresa_id: targetEmpresaId,
             acao: 'suspensao',
-            descricao: `Licença BLOQUEADA/SUSPENSA por ${user.email}. Motivo: ${motivo || 'N/D'}`,
+            descricao: `Licen�a BLOQUEADA/SUSPENSA por ${user.email}. Motivo: ${motivo || 'N/D'}`,
             usuario: user.email,
             motivo
           }])
         });
 
-        return res.status(200).json({ success: true, message: 'Licença suspensa com sucesso.', estado: 'suspensa' });
+        return res.status(200).json({ success: true, message: 'Licen�a suspensa com sucesso.', estado: 'suspensa' });
       } else if (acao === 'rejeitar') {
         await fetch(
           `${config.supabaseUrl}/rest/v1/licencas_empresas?empresa_id=eq.${targetEmpresaId}`,
@@ -439,20 +439,20 @@ export default async function handler(req, res) {
           body: JSON.stringify([{
             empresa_id: targetEmpresaId,
             acao: 'rejeicao',
-            descricao: `Solicitação REJEITADA por ${user.email}. Motivo: ${motivo}`,
+            descricao: `Solicita��o REJEITADA por ${user.email}. Motivo: ${motivo}`,
             usuario: user.email,
             motivo
           }])
         });
 
-        return res.status(200).json({ success: true, message: 'Solicitação rejeitada.', estado: 'rejeitada' });
+        return res.status(200).json({ success: true, message: 'Solicita��o rejeitada.', estado: 'rejeitada' });
       }
 
-      return res.status(400).json({ error: 'Ação não reconhecida.' });
+      return res.status(400).json({ error: 'A��o n�o reconhecida.' });
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }
   }
 
-  return res.status(404).json({ error: 'Rota não encontrada.' });
+  return res.status(404).json({ error: 'Rota n�o encontrada.' });
 }

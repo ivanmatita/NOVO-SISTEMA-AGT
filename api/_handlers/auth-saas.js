@@ -4,8 +4,8 @@
  * Cria empresa, utilizador administrador, licenca inicial e acesso ao Staging.
  */
 
-import { getEnvConfig, setCORS } from './_env.js';
-import { authenticateRequest, checkLicenseAccess } from './_auth.js';
+import { getEnvConfig, setCORS } from '../_env.js';
+import { authenticateRequest, checkLicenseAccess } from '../_auth.js';
 
 export default async function handler(req, res) {
   setCORS(res);

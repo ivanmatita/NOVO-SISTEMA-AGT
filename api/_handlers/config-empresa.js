@@ -4,8 +4,8 @@
  * Integração e persistência unificada nas tabelas 'empresas' e 'config_empresa'.
  */
 
-import { getEnvConfig, setCORS } from './_env.js';
-import { authenticateRequest } from './_auth.js';
+import { getEnvConfig, setCORS } from '../_env.js';
+import { authenticateRequest } from '../_auth.js';
 
 export default async function handler(req, res) {
   setCORS(res);

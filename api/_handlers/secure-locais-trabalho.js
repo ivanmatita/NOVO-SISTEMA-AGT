@@ -3,8 +3,8 @@
  * Handler Serverless Seguro para Gestão de Locais de Trabalho com Isolamento de Tenant.
  */
 
-import { getEnvConfig, setCORS } from './_env.js';
-import { authenticateRequest } from './_auth.js';
+import { getEnvConfig, setCORS } from '../_env.js';
+import { authenticateRequest } from '../_auth.js';
 
 export default async function handler(req, res) {
   setCORS(res);

@@ -32821,8 +32821,12 @@ export default function App() {
         const expiry = new Date(licenseData.data_fim);
         const diffTime = expiry.getTime() - now.getTime();
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        const statusNorm = String(licenseData.status_licenca || licenseData.estado || '').toLowerCase();
+        const isDeactivated = ['bloqueada', 'vencida', 'suspensa', 'desativada', 'expirada', 'inativa'].includes(statusNorm) || 
+                              licenseData.licenca_ativa === false || 
+                              licenseData.ativo === false;
 
-        if (licenseData.status_licenca === 'bloqueada' || licenseData.status_licenca === 'vencida' || diffDays <= 0) {
+        if (isDeactivated || diffDays <= 0) {
           setIsLicenseBlocked(true);
         } else if (diffDays <= 20) {
           setLicenseAlert(`A sua licença expira em ${diffDays} dias (${formatDate(licenseData.data_fim)}). Regularize o pagamento para evitar o bloqueio automático.`);

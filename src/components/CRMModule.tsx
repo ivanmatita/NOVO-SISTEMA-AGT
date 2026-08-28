@@ -125,8 +125,8 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
     duracao_dias: 30,
     modulos: ['faturacao', 'stock', 'clientes', 'pos'],
     admin_email: '',
-    admin_password: '123',
-    admin_confirm_password: '123'
+    admin_password: '123456',
+    admin_confirm_password: '123456'
   });
   const [showEditCompanyModal, setShowEditCompanyModal] = useState(false);
   const [showActivateModal, setShowActivateModal] = useState(false);
@@ -139,6 +139,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
   const [showOccurrenceModal, setShowOccurrenceModal] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showUserResetModal, setShowUserResetModal] = useState<UserProfile | null>(null);
+  const [resetTempPassword, setResetTempPassword] = useState('123456');
   const [showChangeCompanyModal, setShowChangeCompanyModal] = useState<UserProfile | null>(null);
   const [changeCompanyTarget, setChangeCompanyTarget] = useState('');
 
@@ -2098,31 +2099,48 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
             <p className="text-zinc-600">
               Deseja redefinir a credencial de <strong>{showUserResetModal.full_name || showUserResetModal.email}</strong>?
             </p>
+            <div className="space-y-2">
+              <label className="block font-bold uppercase text-[10px] text-zinc-600">Senha Temporária (Mínimo 6 caracteres)</label>
+              <input
+                type="text"
+                value={resetTempPassword}
+                onChange={e => setResetTempPassword(e.target.value)}
+                placeholder="123456"
+                className="w-full bg-zinc-50 border border-zinc-200 px-3 py-2 text-xs font-mono font-bold focus:outline-none focus:border-[#003366]"
+              />
+            </div>
             <div className="bg-amber-50 border border-amber-200 p-3 text-amber-900 rounded-xs">
-              <p className="font-bold">Senha temporária obrigatória:</p>
-              <p className="text-sm font-black font-mono mt-1">123</p>
-              <p className="text-[10px] text-amber-700 mt-1">A credencial será atualizada diretamente no sistema de autenticação Supabase.</p>
+              <p className="font-bold">Política de Segurança Supabase:</p>
+              <p className="text-[10px] text-amber-700 mt-1">A credencial será atualizada diretamente no sistema de autenticação Supabase Auth. Senha temporária definida: <strong>{resetTempPassword}</strong></p>
             </div>
             <div className="flex justify-end gap-3 pt-4 border-t">
-              <button type="button" onClick={() => setShowUserResetModal(null)} className="px-4 py-2 uppercase font-bold cursor-pointer">Cancelar</button>
+              <button type="button" onClick={() => { setShowUserResetModal(null); setResetTempPassword('123456'); }} className="px-4 py-2 uppercase font-bold cursor-pointer">Cancelar</button>
               <button 
                 type="button" 
+                disabled={resetTempPassword.length < 6}
                 onClick={async () => {
                   try {
                     if (typeof fetchJson === 'function') {
-                      const res = await fetchJson(`/api/crm/users/${showUserResetModal.id}/reset-access`, { method: 'POST' });
-                      toast.success(res?.message || `Acesso redefinido! Senha temporária: 123`);
+                      const res = await fetchJson(`/api/crm/users/${showUserResetModal.id}/reset-access`, { 
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ password: resetTempPassword })
+                      });
+                      toast.success(res?.message || `Acesso redefinido! Nova senha: ${resetTempPassword}`);
                     } else {
-                      toast.success(`Senha redefinida para '123' com sucesso!`);
+                      toast.success(`Senha redefinida com sucesso!`);
                     }
                   } catch (err: any) {
                     toast.error(err.message || 'Erro ao redefinir acesso.');
                   }
                   setShowUserResetModal(null);
+                  setResetTempPassword('123456');
+                  loadData();
+                  loadResetLogs();
                 }} 
-                className="bg-amber-600 text-white px-5 py-2 uppercase font-bold cursor-pointer"
+                className="bg-amber-600 disabled:opacity-40 text-white px-5 py-2 uppercase font-bold cursor-pointer"
               >
-                Confirmar Reset (123)
+                Confirmar Reset ({resetTempPassword})
               </button>
             </div>
           </div>

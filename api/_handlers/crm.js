@@ -340,7 +340,7 @@ export default async function handler(req, res) {
               },
               body: JSON.stringify({
                 email: adminEmail,
-                password: admin_password || '123',
+                password: admin_password || '123456',
                 email_confirm: true,
                 user_metadata: {
                   name: adminName,
@@ -849,9 +849,17 @@ export default async function handler(req, res) {
       }
 
       // Reset access: POST /api/crm/users/:id/reset-access
-      // Mandated rule: Temporary password set to "123" via Supabase Auth Admin API
+      // Rule: Temporary password minimum 6 chars (default "123456") via Supabase Auth Admin API
       if (pathname.includes('/reset-access')) {
         const userId = pathname.split('/')[1];
+        const newPassword = String(body?.password || '123456').trim();
+
+        if (newPassword.length < 6) {
+          return res.status(400).json({ 
+            error: 'A senha temporária deve conter no mínimo 6 caracteres para cumprir a política de segurança do Supabase Auth.',
+            auth_updated: false
+          });
+        }
 
         // Fetch target user profile
         const userRes = await fetch(`${config.supabaseUrl}/rest/v1/perfis?id=eq.${userId}&select=id,user_id,empresa_id,email,nome`, {
@@ -871,7 +879,7 @@ export default async function handler(req, res) {
 
         const authUserId = targetUser.user_id || targetUser.id;
 
-        // 1. Real password reset to "123" in Supabase Auth Admin API
+        // 1. Real password reset in Supabase Auth Admin API
         const resetAdminRes = await fetch(`${config.supabaseUrl}/auth/v1/admin/users/${authUserId}`, {
           method: 'PUT',
           headers: {
@@ -879,7 +887,7 @@ export default async function handler(req, res) {
             'Authorization': authHeader,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ password: '123' })
+          body: JSON.stringify({ password: newPassword })
         });
 
         // CRITICAL: Check if Supabase Auth update succeeded
@@ -887,10 +895,13 @@ export default async function handler(req, res) {
           const resetErr = await resetAdminRes.json().catch(() => ({}));
           console.error('[CRM reset-access] Supabase Auth update failed:', resetErr);
           return res.status(500).json({
-            error: `Falha ao atualizar credencial no Supabase Auth: ${resetErr?.message || resetAdminRes.status}`,
-            auth_updated: false
+            error: `Falha ao atualizar credencial no Supabase Auth: ${resetErr?.msg || resetErr?.message || resetAdminRes.statusText || resetAdminRes.status}`,
+            auth_updated: false,
+            details: resetErr
           });
         }
+
+        const nowIso = new Date().toISOString();
 
         // 2. Audit log in historico_licencas
         await fetch(`${config.supabaseUrl}/rest/v1/historico_licencas`, {
@@ -899,10 +910,11 @@ export default async function handler(req, res) {
           body: JSON.stringify({
             empresa_id: targetUser.empresa_id,
             acao: 'RESET_SENHA',
-            descricao: `Senha redefinida para '123' pelo SuperAdmin para ${targetUser.email || targetUser.nome}`,
+            descricao: `Senha de acesso redefinida pelo SuperAdmin para ${targetUser.email || targetUser.nome} (senha temporária: ${newPassword})`,
             motivo: 'Reset de acesso administrativo',
             usuario: auth.user?.email || 'SuperAdmin CRM',
-            alterado_por: auth.user?.email || 'SuperAdmin CRM'
+            alterado_por: auth.user?.email || 'SuperAdmin CRM',
+            created_at: nowIso
           })
         }).catch(() => {});
 
@@ -914,17 +926,17 @@ export default async function handler(req, res) {
             empresa_id: targetUser.empresa_id,
             user_id: auth.user?.id,
             user_email: auth.user?.email,
-            action: 'RESET_SENHA_123',
-            acao: 'RESET_SENHA_123',
+            action: 'RESET_SENHA',
+            acao: 'RESET_SENHA',
             modulo: 'CRM',
-            detalhes: `Senha do utilizador ${targetUser.email} redefinida para '123'`,
-            created_at: new Date().toISOString()
+            detalhes: `Senha do utilizador ${targetUser.email} (${targetUser.nome || 'N/D'}) redefinida com sucesso no Supabase Auth.`,
+            created_at: nowIso
           })
         }).catch(() => {});
 
         return res.status(200).json({ 
           success: true, 
-          message: `Acesso redefinido com sucesso! A nova senha temporária é '123'.`,
+          message: `Acesso redefinido com sucesso! A nova senha temporária é '${newPassword}'.`,
           user_email: targetUser.email,
           auth_updated: true
         });

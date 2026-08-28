@@ -101,9 +101,10 @@ export default async function handler(req, res) {
     // 2. POST /api/invoices (Emitir novo documento ou acções sub-rotas)
     if (req.method === 'POST') {
       // Sub-rota: Anular documento (/api/invoices/:id/void)
+      // SEGURANÇA: empresa_id=targetEmpresaId garante que só o dono do documento o pode anular
       if (docId && (subAction === 'void' || subAction === 'anular')) {
         const motivo = req.body?.reason || req.body?.motivo_anulacao || 'Anulado pelo operador';
-        const patchRes = await fetch(`${config.supabaseUrl}/rest/v1/documentos_emitidos?id=eq.${docId}`, {
+        const patchRes = await fetch(`${config.supabaseUrl}/rest/v1/documentos_emitidos?id=eq.${docId}&empresa_id=eq.${targetEmpresaId}`, {
           method: 'PATCH',
           headers: {
             'apikey': config.serviceRoleKey,
@@ -123,12 +124,16 @@ export default async function handler(req, res) {
           })
         });
         const updated = await patchRes.json();
-        return res.status(200).json(Array.isArray(updated) ? updated[0] : updated);
+        if (!Array.isArray(updated) || updated.length === 0) {
+          return res.status(404).json({ error: 'Documento não encontrado ou sem permissão para anular' });
+        }
+        return res.status(200).json(updated[0]);
       }
 
       // Sub-rota: Certificar documento (/api/invoices/:id/certify)
+      // SEGURANÇA: empresa_id=targetEmpresaId garante isolamento de tenant
       if (docId && (subAction === 'certify' || subAction === 'certificar')) {
-        const patchRes = await fetch(`${config.supabaseUrl}/rest/v1/documentos_emitidos?id=eq.${docId}`, {
+        const patchRes = await fetch(`${config.supabaseUrl}/rest/v1/documentos_emitidos?id=eq.${docId}&empresa_id=eq.${targetEmpresaId}`, {
           method: 'PATCH',
           headers: {
             'apikey': config.serviceRoleKey,
@@ -145,7 +150,10 @@ export default async function handler(req, res) {
           })
         });
         const updated = await patchRes.json();
-        return res.status(200).json(Array.isArray(updated) ? updated[0] : updated);
+        if (!Array.isArray(updated) || updated.length === 0) {
+          return res.status(404).json({ error: 'Documento não encontrado ou sem permissão para certificar' });
+        }
+        return res.status(200).json(updated[0]);
       }
 
       // Emissão de Novo Documento
@@ -270,11 +278,26 @@ export default async function handler(req, res) {
       if (!targetId) return res.status(400).json({ error: 'ID do documento obrigatório para atualização' });
 
       const body = req.body || {};
+      // SEGURANÇA: Whitelist explícita de campos permitidos — nunca spread body completo
+      // Impede injeção de empresa_id, user_id, ou outros campos críticos via PUT
       const updatePayload = {
-        ...body,
         updated_at: new Date().toISOString()
       };
-      delete updatePayload.id;
+      // Apenas campos de estado de pagamento e metadados são editáveis via PUT
+      if (body.payment_status !== undefined) updatePayload.payment_status = body.payment_status;
+      if (body.estado_pagamento !== undefined) updatePayload.estado_pagamento = body.estado_pagamento;
+      if (body.status_pagamento !== undefined) updatePayload.status_pagamento = body.status_pagamento;
+      if (body.recibo_emitido !== undefined) updatePayload.recibo_emitido = Boolean(body.recibo_emitido);
+      if (body.valor_pago !== undefined) updatePayload.valor_pago = Number(body.valor_pago || 0);
+      if (body.paid_amount !== undefined) updatePayload.paid_amount = Number(body.paid_amount || 0);
+      if (body.saldo_pendente !== undefined) updatePayload.saldo_pendente = Number(body.saldo_pendente || 0);
+      if (body.notas !== undefined) updatePayload.notas = body.notas;
+      if (body.observacoes !== undefined) updatePayload.observacoes = body.observacoes;
+      if (body.pdf_gerado !== undefined) updatePayload.pdf_gerado = Boolean(body.pdf_gerado);
+      if (body.ultima_exportacao_pdf_em !== undefined) updatePayload.ultima_exportacao_pdf_em = body.ultima_exportacao_pdf_em;
+      if (body.data_vencimento !== undefined) updatePayload.data_vencimento = body.data_vencimento;
+      if (body.forma_pagamento !== undefined) updatePayload.forma_pagamento = body.forma_pagamento;
+      if (body.payment_method !== undefined) updatePayload.payment_method = body.payment_method;
 
       let patchUrl = `${config.supabaseUrl}/rest/v1/documentos_emitidos?id=eq.${targetId}&empresa_id=eq.${targetEmpresaId}`;
 

@@ -218,7 +218,9 @@ export const authService = {
               nome_empresa: compName,
               email: authData.user.email,
               plano: 'trial',
-              ativo: true
+              ativo: false,
+              licenca_ativa: false,
+              status_licenca: 'SUSPENSA'
             }])
             .select('id, nome, nome_empresa')
             .single();

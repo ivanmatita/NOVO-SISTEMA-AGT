@@ -107,11 +107,14 @@ export async function checkLicenseAccess(empresaId, ambiente, config) {
 
     if (!licenca) return { allowed: false, reason: 'SEM_LICENCA', licenca: null };
 
-    // 1. Staging: permitido se licenca existe e nao esta bloqueada ou suspensa
+    // 1. Staging: sempre acessível exceto se explicitamente bloqueado pelo admin
     if (ambiente === 'staging') {
-      const bloqueado = licenca.estado === 'bloqueado' || licenca.estado === 'suspensa' || licenca.ativo === false;
-      return bloqueado
-        ? { allowed: false, reason: 'STAGING_BLOQUEADO', message: 'O acesso ao ambiente de teste (Staging) encontra-se suspenso ou bloqueado.', licenca }
+      // Estado 'bloqueado' é uma suspensão explícita de acesso total pelo admin.
+      // Estado 'suspensa' significa que a empresa aguarda ativação da licença de produção,
+      // mas o staging permanece disponível para demonstração/teste.
+      const bloqueadoExplicito = licenca.estado === 'bloqueado';
+      return bloqueadoExplicito
+        ? { allowed: false, reason: 'STAGING_BLOQUEADO', message: 'O acesso ao ambiente de teste (Staging) foi explicitamente bloqueado pelo administrador.', licenca }
         : { allowed: true, reason: 'STAGING_ATIVO', licenca };
     }
 

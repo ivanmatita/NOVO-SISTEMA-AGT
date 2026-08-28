@@ -129,9 +129,9 @@ export default async function handler(req, res) {
           nome_administrador: adminName,
           plano: 'trial',
           ambiente: 'staging',
-          ativo: true,
+          ativo: false,           // BLOQUEADO até ativação pelo SuperAdmin
           licenca_ativa: false,
-          status_licenca: 'em_teste',
+          status_licenca: 'SUSPENSA', // Estado oficial: aguarda ativação
           trial_inicio: trialInicio,
           trial_fim: trialFim
         };
@@ -153,15 +153,15 @@ export default async function handler(req, res) {
         }
         targetCompanyId = Array.isArray(createdComp) ? createdComp[0]?.id : newCompanyId;
 
-        // Criar licenca inicial (staging ativo, producao bloqueada)
+        // Criar licenca inicial — Producao BLOQUEADA, Staging ACESSÍVEL
         const trialFimDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
         const licencaPayload = {
           empresa_id: targetCompanyId,
           plano: 'trial',
           tipo_plano: 'trial',
           ambiente: 'staging',
-          estado: 'em_teste',
-          ativo: true,
+          estado: 'suspensa',      // Estado oficial: aguarda ativação
+          ativo: false,            // Inativa até ativação pelo SuperAdmin
           licenca_ativa: false,
           homologacao_agt: false,
           trial_inicio: new Date().toISOString(),
@@ -194,7 +194,7 @@ export default async function handler(req, res) {
             empresa_id: targetCompanyId,
             plano: 'trial',
             acao: 'criacao',
-            descricao: 'Licenca trial criada no registo da empresa. Staging ativo, Producao bloqueada.',
+            descricao: 'Empresa registada. Licença SUSPENSA — aguarda ativação pelo SuperAdmin. Staging acessível, Produção bloqueada.',
             usuario: cleanEmail
           }])
         });
@@ -324,9 +324,9 @@ export default async function handler(req, res) {
             email: email,
             plano: 'trial',
             ambiente: 'staging',
-            ativo: true,
+            ativo: false,              // BLOQUEADO até ativação pelo SuperAdmin
             licenca_ativa: false,
-            status_licenca: 'em_teste',
+            status_licenca: 'SUSPENSA', // Estado oficial: aguarda ativação
             trial_inicio: new Date().toISOString(),
             trial_fim: trialFim
           }])
@@ -334,7 +334,7 @@ export default async function handler(req, res) {
         const createdEmps = await newEmpRes.json();
         empresa = Array.isArray(createdEmps) ? createdEmps[0] : { id: newComId };
 
-        // Criar licenca
+        // Criar licenca — Producao BLOQUEADA, Staging ACESSÍVEL
         await fetch(`${config.supabaseUrl}/rest/v1/licencas_empresas`, {
           method: 'POST',
           headers: {
@@ -347,8 +347,8 @@ export default async function handler(req, res) {
             empresa_id: empresa.id,
             plano: 'trial',
             ambiente: 'staging',
-            estado: 'em_teste',
-            ativo: true,
+            estado: 'suspensa',  // Aguarda ativação
+            ativo: false,
             licenca_ativa: false
           }])
         });

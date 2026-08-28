@@ -1,5 +1,6 @@
 import { emitirDocumentoFiscal } from './services/fiscalEngine';
 import { StagingBadge } from './components/StagingBadge';
+import { isProductionEnvironment, isStagingEnvironment } from './lib/envProtection';
 import { CentralHomologacaoModule } from './components/CentralHomologacaoModule';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import html2pdf from 'html2pdf.js';
@@ -33441,19 +33442,35 @@ export default function App() {
                 </div>
               )}
               {isLicenseBlocked && companyData?.nif !== '5002123665' && (
-                <div className="mb-6 bg-red-600 text-white p-6 shadow-xl flex flex-col md:flex-row items-center justify-between gap-6 border-b-4 border-red-800">
+                <div className="mb-6 bg-red-600 text-white p-6 shadow-xl flex flex-col md:flex-row items-center justify-between gap-6 border-b-4 border-red-800 rounded-lg">
                   <div className="flex items-center gap-5">
-                    <div className="bg-white/10 p-4 rounded-xl backdrop-blur-sm border border-white/20">
+                    <div className="bg-white/10 p-4 rounded-xl backdrop-blur-sm border border-white/20 shrink-0">
                        <ShieldAlert size={40} className="text-white" />
                     </div>
                     <div>
-                       <p className="text-xl font-black uppercase tracking-tighter italic">Sistema em Modo de Visualização</p>
-                       <p className="text-xs font-bold opacity-90 text-white/80 max-w-lg">Atenção: A sua licença expirou. Novas operações (vendas, RH, stocks, etc) estão temporariamente suspensas. Pode continuar a visualizar os dados existentes.</p>
+                       <p className="text-xl font-black uppercase tracking-tighter italic">
+                         {isProductionEnvironment() ? 'Produção: Licença Suspensa / Aguarda Ativação' : 'Sistema em Modo de Visualização'}
+                       </p>
+                       <p className="text-xs font-bold opacity-90 text-white/80 max-w-xl mt-1">
+                         {isProductionEnvironment() 
+                           ? 'A licença oficial desta empresa ainda não está ativa em Produção. Novas operações estão bloqueadas até aprovação pelo SuperAdmin. Pode experimentar todas as funcionalidades livremente na Área de Demonstração.'
+                           : 'Atenção: A licença desta empresa encontra-se suspensa ou expirou. Novas operações estão temporariamente limitadas.'}
+                       </p>
                     </div>
                   </div>
-                  <div className="flex gap-3">
-                    <button onClick={() => setActiveTab('licencas')} className="bg-white text-red-600 px-8 py-3 font-black uppercase tracking-widest text-[10px] hover:bg-zinc-100 transition-all shadow-xl">
-                      Regularizar Licença Agora
+                  <div className="flex flex-wrap gap-2 shrink-0">
+                    {isProductionEnvironment() && (
+                      <a 
+                        href="https://novo-sistema-agt-staging.vercel.app/"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="bg-amber-400 hover:bg-amber-300 text-slate-950 px-5 py-3 font-black uppercase tracking-widest text-[10px] rounded transition-all shadow-lg flex items-center gap-1.5"
+                      >
+                        <span>🧪 Ir à Área de Teste</span>
+                      </a>
+                    )}
+                    <button onClick={() => setActiveTab('licencas')} className="bg-white text-red-600 px-6 py-3 font-black uppercase tracking-widest text-[10px] rounded hover:bg-zinc-100 transition-all shadow-xl">
+                      Ver Licença / Regularizar
                     </button>
                   </div>
                 </div>

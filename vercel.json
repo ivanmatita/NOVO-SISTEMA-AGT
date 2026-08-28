@@ -88,6 +88,14 @@
       "destination": "/api/crm.js"
     },
     {
+      "source": "/api/secure-fornecedores/(.*)",
+      "destination": "/api/secure-fornecedores.js"
+    },
+    {
+      "source": "/api/secure-fornecedores",
+      "destination": "/api/secure-fornecedores.js"
+    },
+    {
       "source": "/api/pos/(.*)",
       "destination": "/api/pos.js"
     },

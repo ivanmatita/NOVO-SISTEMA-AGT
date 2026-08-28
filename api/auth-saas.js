@@ -1,4 +1,4 @@
-﻿/**
+/**
  * api/auth-saas.js
  * Handler Serverless de Autenticacao e Onboarding SaaS.
  * Cria empresa, utilizador administrador, licenca inicial e acesso ao Staging.
@@ -415,10 +415,28 @@ export default async function handler(req, res) {
       return res.status(401).json({ success: false, error: auth.message || 'Nao autenticado' });
     }
 
+    // CRITICAL FIX: Fetch empresa object so authService.ts fast-path (line 334) works correctly.
+    // Without this, authService falls back to direct RLS queries which can be slow or return wrong data.
+    let empresa = null;
+    if (auth.empresa_id) {
+      try {
+        const config = getEnvConfig(req);
+        const empRes = await fetch(
+          `${config.supabaseUrl}/rest/v1/empresas?id=eq.${auth.empresa_id}&select=*&limit=1`,
+          { headers: { 'apikey': config.serviceRoleKey, 'Authorization': `Bearer ${config.serviceRoleKey}` } }
+        );
+        const empList = await empRes.json();
+        empresa = Array.isArray(empList) && empList.length > 0 ? empList[0] : null;
+      } catch (empErr) {
+        console.error('[api/auth/me] Erro ao buscar empresa:', empErr.message);
+      }
+    }
+
     return res.status(200).json({
       success: true,
       user: { id: auth.user.id, email: auth.user.email, created_at: auth.user.created_at },
       perfil: auth.perfil,
+      empresa: empresa,
       empresa_id: auth.empresa_id,
       isSuperAdmin: auth.isSuperAdmin
     });

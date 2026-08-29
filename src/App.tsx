@@ -4306,12 +4306,8 @@ const HRModule = ({
 
     // Use Managed Realtime sync for 'professions'
     realtimeManager.subscribe('professions', user.empresa_id, async () => {
-      const { data } = await supabase
-        .from('professions')
-        .select('*')
-        .eq('empresa_id', user.empresa_id)
-        .order('name', { ascending: true });
-      if (data) setProfessions(data);
+      const data = await professionService.getProfessions(user.empresa_id);
+      if (Array.isArray(data)) setProfessions(data);
     });
 
     return () => {
@@ -4349,12 +4345,7 @@ const HRModule = ({
     if (!confirm('Tem a certeza que deseja eliminar esta profissão?')) return;
     try {
       if (user?.empresa_id) {
-        const success = await professionService.deleteProfession(user.empresa_id, String(id));
-        if (!success) {
-          // Fallback if needed, though service already handles errors
-          console.warn('Supabase delete failed, trying Express database fallback');
-          await fetchWithAuth(`/api/professions/${id}`, { method: 'DELETE' });
-        }
+        await professionService.deleteProfession(user.empresa_id, String(id));
       }
       fetchHRData();
     } catch (err) {
@@ -8468,50 +8459,20 @@ const HRModule = ({
                           empresa_id: user?.empresa_id
                         };
 
-                        if (editingProfession) {
+                        if (user?.empresa_id) {
                           try {
-                            if (user?.empresa_id) {
-                              const saved = await professionService.saveProfession(user.empresa_id, {
+                            if (editingProfession) {
+                              await professionService.saveProfession(user.empresa_id, {
                                 ...payload,
                                 id: editingProfession.id
                               });
-                              if (!saved) {
-                                console.warn('Supabase update failed, trying Express database fallback');
-                                await fetchWithAuth(`/api/professions/${editingProfession.id}`, {
-                                  method: 'PUT',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify(payload)
-                                });
-                              }
+                            } else {
+                              await professionService.saveProfession(user.empresa_id, payload);
                             }
-                          } catch (err) {
-                            console.warn('DB client error during update, trying Express database fallback.', err);
-                            await fetchWithAuth(`/api/professions/${editingProfession.id}`, {
-                              method: 'PUT',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify(payload)
-                            });
-                          }
-                        } else {
-                          try {
-                            if (user?.empresa_id) {
-                              const saved = await professionService.saveProfession(user.empresa_id, payload);
-                              if (!saved) {
-                                console.warn('Supabase insert failed, trying Express database fallback');
-                                await fetchWithAuth('/api/professions', {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify(payload)
-                                });
-                              }
-                            }
-                          } catch (err) {
-                            console.warn('DB client error during insert, trying Express database fallback.', err);
-                            await fetchWithAuth('/api/professions', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify(payload)
-                            });
+                            fetchHRData();
+                          } catch (err: any) {
+                            console.error('[App] Erro ao salvar profissão:', err);
+                            alert(`Erro ao salvar profissão: ${err.message || 'Verifique a conexão'}`);
                           }
                         }
 
@@ -8521,7 +8482,6 @@ const HRModule = ({
                         setAcertoSalarial('');
                         setEditingProfession(null);
                         setShowProfessionForm(false);
-                        fetchHRData();
                       }}
                       className="bg-[#003366] text-white px-8 py-2 rounded-none text-sm font-bold hover:bg-[#002244] transition-colors shadow-sm flex items-center gap-2 cursor-pointer"
                     >

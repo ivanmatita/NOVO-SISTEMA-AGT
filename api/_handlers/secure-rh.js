@@ -43,10 +43,11 @@ export default async function handler(req, res) {
       }
     }
 
-    // Identificar submódulo: colaboradores, payroll, attendance
+    // Identificar submódulo: colaboradores, payroll, attendance, professions
+    const isProfessions = pathname.includes('profession') || pathname.includes('profiss') || pathname.includes('cargo');
     const isPayroll = pathname.includes('payroll') || pathname.includes('processamento') || pathname.includes('salario');
     const isAttendance = pathname.includes('attendance') || pathname.includes('assiduidade');
-    const isColaboradores = !isPayroll && !isAttendance;
+    const isColaboradores = !isPayroll && !isAttendance && !isProfessions;
 
     // ──────────────────────────────────────────────────────────────────────────
     // 1. SUBMÓDULO: COLABORADORES
@@ -382,6 +383,184 @@ export default async function handler(req, res) {
         }
 
         return res.status(200).json({ success: true, message: 'Assiduidade limpa com sucesso' });
+      }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // 4. SUBMÓDULO: PROFISSÕES (PROFESSIONS)
+    // ──────────────────────────────────────────────────────────────────────────
+    if (isProfessions) {
+      const pathParts = pathname.split('/').filter(Boolean);
+      let professionId = null;
+      if (pathParts.length >= 3 && !['professions', 'profissoes', 'profissao'].includes(pathParts[pathParts.length - 1])) {
+        professionId = pathParts[pathParts.length - 1];
+      }
+      if (!professionId) {
+        professionId = parsedUrl.searchParams.get('id') || req.query?.id;
+      }
+
+      // GET /api/secure-rh/professions ou /api/professions
+      if (req.method === 'GET') {
+        let url = `${config.supabaseUrl}/rest/v1/professions?empresa_id=eq.${targetEmpresaId}&order=name.asc`;
+        if (professionId) {
+          url = `${config.supabaseUrl}/rest/v1/professions?empresa_id=eq.${targetEmpresaId}&id=eq.${professionId}&limit=1`;
+        }
+
+        const fetchRes = await fetch(url, {
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+        });
+
+        const data = await fetchRes.json();
+        if (!fetchRes.ok) {
+          return res.status(fetchRes.status).json({ error: data.message || 'Erro ao consultar profissões' });
+        }
+
+        if (professionId) {
+          const item = Array.isArray(data) && data.length > 0 ? data[0] : null;
+          if (!item) return res.status(404).json({ error: 'Profissão não encontrada' });
+          return res.status(200).json({
+            ...item,
+            name: item.name || item.nome || 'Profissão',
+            nome: item.nome || item.name || 'Profissão',
+            inss_profession: item.inss_profession || '',
+            base_salary: Number(item.base_salary || item.salario_base || 0),
+            salario_base: Number(item.salario_base || item.base_salary || 0),
+            acerto_salarial: Number(item.acerto_salarial || 0),
+            descricao: item.descricao || ''
+          });
+        }
+
+        const normalized = (Array.isArray(data) ? data : []).map(p => ({
+          ...p,
+          name: p.name || p.nome || 'Profissão',
+          nome: p.nome || p.name || 'Profissão',
+          inss_profession: p.inss_profession || '',
+          base_salary: Number(p.base_salary || p.salario_base || 0),
+          salario_base: Number(p.salario_base || p.base_salary || 0),
+          acerto_salarial: Number(p.acerto_salarial || 0),
+          descricao: p.descricao || ''
+        }));
+
+        return res.status(200).json(normalized);
+      }
+
+      // POST /api/secure-rh/professions ou /api/professions
+      if (req.method === 'POST') {
+        const body = req.body || {};
+        const pName = (body.name || body.nome || '').trim();
+        if (!pName) {
+          return res.status(400).json({ error: 'O nome da profissão é obrigatório.' });
+        }
+
+        const baseSalary = Number(body.base_salary || body.salario_base || 0);
+        const acertoSalarial = Number(body.acerto_salarial || 0);
+
+        const payload = {
+          empresa_id: targetEmpresaId,
+          name: pName,
+          nome: pName,
+          inss_profession: body.inss_profession || null,
+          base_salary: baseSalary,
+          salario_base: baseSalary,
+          acerto_salarial: acertoSalarial,
+          descricao: body.descricao || null,
+          created_at: new Date().toISOString()
+        };
+
+        if (body.id && typeof body.id === 'string' && body.id.length > 10) {
+          payload.id = body.id;
+        }
+
+        const insertRes = await fetch(`${config.supabaseUrl}/rest/v1/professions`, {
+          method: 'POST',
+          headers: {
+            'apikey': config.serviceRoleKey,
+            'Authorization': authHeader,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+          },
+          body: JSON.stringify([payload])
+        });
+
+        const created = await insertRes.json();
+        if (!insertRes.ok) {
+          return res.status(400).json({ error: created.message || 'Erro ao criar profissão' });
+        }
+
+        const saved = Array.isArray(created) ? created[0] : created;
+        return res.status(201).json({
+          ...saved,
+          name: saved.name || saved.nome || pName,
+          nome: saved.nome || saved.name || pName,
+          base_salary: Number(saved.base_salary || saved.salario_base || baseSalary),
+          salario_base: Number(saved.salario_base || saved.base_salary || baseSalary)
+        });
+      }
+
+      // PUT /api/secure-rh/professions/:id ou /api/professions/:id
+      if (req.method === 'PUT' || req.method === 'PATCH') {
+        const targetId = professionId || req.body?.id;
+        if (!targetId) {
+          return res.status(400).json({ error: 'ID da profissão é obrigatório para atualização.' });
+        }
+
+        const body = req.body || {};
+        const pName = (body.name || body.nome || '').trim();
+        const baseSalary = body.base_salary !== undefined || body.salario_base !== undefined 
+          ? Number(body.base_salary || body.salario_base || 0) 
+          : undefined;
+
+        const updatePayload = {};
+        if (pName) {
+          updatePayload.name = pName;
+          updatePayload.nome = pName;
+        }
+        if (body.inss_profession !== undefined) updatePayload.inss_profession = body.inss_profession;
+        if (baseSalary !== undefined) {
+          updatePayload.base_salary = baseSalary;
+          updatePayload.salario_base = baseSalary;
+        }
+        if (body.acerto_salarial !== undefined) updatePayload.acerto_salarial = Number(body.acerto_salarial);
+        if (body.descricao !== undefined) updatePayload.descricao = body.descricao;
+
+        const updateRes = await fetch(`${config.supabaseUrl}/rest/v1/professions?empresa_id=eq.${targetEmpresaId}&id=eq.${targetId}`, {
+          method: 'PATCH',
+          headers: {
+            'apikey': config.serviceRoleKey,
+            'Authorization': authHeader,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+          },
+          body: JSON.stringify(updatePayload)
+        });
+
+        const updated = await updateRes.json();
+        if (!updateRes.ok) {
+          return res.status(400).json({ error: updated.message || 'Erro ao atualizar profissão' });
+        }
+
+        const saved = Array.isArray(updated) && updated.length > 0 ? updated[0] : updated;
+        return res.status(200).json(saved);
+      }
+
+      // DELETE /api/secure-rh/professions/:id ou /api/professions/:id
+      if (req.method === 'DELETE') {
+        const targetId = professionId || req.body?.id;
+        if (!targetId) {
+          return res.status(400).json({ error: 'ID da profissão é obrigatório para exclusão.' });
+        }
+
+        const deleteRes = await fetch(`${config.supabaseUrl}/rest/v1/professions?empresa_id=eq.${targetEmpresaId}&id=eq.${targetId}`, {
+          method: 'DELETE',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+        });
+
+        if (!deleteRes.ok) {
+          const errData = await deleteRes.json().catch(() => ({}));
+          return res.status(400).json({ error: errData.message || 'Erro ao excluir profissão' });
+        }
+
+        return res.status(200).json({ success: true, message: 'Profissão removida com sucesso' });
       }
     }
 

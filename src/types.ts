@@ -314,9 +314,14 @@ export interface Employee {
 export interface Profession {
   id: any;
   name: string;
+  nome?: string;
   inss_profession?: string;
   base_salary?: number;
+  salario_base?: number;
   acerto_salarial?: number;
+  descricao?: string;
+  empresa_id?: string;
+  created_at?: string;
 }
 
 export interface EmployeeContract {

@@ -61,13 +61,14 @@ export default async function handler(req, res) {
     return secureLocaisTrabalhoHandler(req, res);
   }
 
-  // 6. Recursos Humanos (Colaboradores, Processamento Salarial, Assiduidade, Profissões)
+  // 6. Recursos Humanos (Colaboradores, Processamento Salarial, Assiduidade, Profissões, Faltas, Rescisões)
   if (
     pathname.startsWith('/api/secure-rh') ||
     pathname.startsWith('/api/employees') ||
     pathname.startsWith('/api/colaboradores') ||
     pathname.startsWith('/api/professions') ||
     pathname.startsWith('/api/profissoes') ||
+    pathname.startsWith('/api/labor-terminations') ||
     pathname.startsWith('/api/hr')
   ) {
     return secureRhHandler(req, res);

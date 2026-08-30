@@ -4218,6 +4218,7 @@ const HRModule = ({
       return;
     }
 
+    // 1. CARREGAMENTO IMEDIATO DE PROFISSÕES
     try {
       let pList: Profession[] = [];
       try {
@@ -4226,7 +4227,13 @@ const HRModule = ({
         console.warn('DB client error during professions fetch. Falling back to local Express database.', err);
         pList = await fetchJson(`/api/professions?empresa_id=${targetEmpresaId}`);
       }
+      setProfessions(Array.isArray(pList) ? pList : []);
+    } catch (profErr) {
+      console.error('[HRModule] Erro ao carregar profissões:', profErr);
+    }
 
+    // 2. CARREGAMENTO IMEDIATO DE COLABORADORES
+    try {
       let e: any[] = [];
       try {
         e = await employeeService.getEmployees(targetEmpresaId);
@@ -4240,13 +4247,6 @@ const HRModule = ({
           console.error('Erro ao buscar do banco local como fallback:', err);
         }
       }
-
-      const [att, abs, lt] = await Promise.all([
-        fetchJson(`/api/employees/attendance?date=${attendanceDate}&empresa_id=${targetEmpresaId}`),
-        fetchJson(`/api/employees/absences?empresa_id=${targetEmpresaId}`),
-        fetchJson(`/api/labor-terminations?empresa_id=${targetEmpresaId}`)
-      ]);
-      setProfessions(Array.isArray(pList) ? pList : []);
       setLocalEmployees(prev => {
         // Deduplicate by ID
         const unique = Array.isArray(e) ? e.filter((item, index, self) =>
@@ -4256,46 +4256,65 @@ const HRModule = ({
         ) : [];
         return unique;
       });
+    } catch (empErr) {
+      console.error('[HRModule] Erro ao carregar colaboradores:', empErr);
+    }
+
+    // 3. CARREGAMENTO RESILIENTE DE ASSIDUIDADE, AUSÊNCIAS E RESCISÕES
+    try {
+      const att = await fetchJson(`/api/employees/attendance?date=${attendanceDate}&empresa_id=${targetEmpresaId}`).catch(() => []);
       setAttendance(Array.isArray(att) ? att : []);
+    } catch (attErr) {
+      setAttendance([]);
+    }
+
+    try {
+      const abs = await fetchJson(`/api/employees/absences?empresa_id=${targetEmpresaId}`).catch(() => []);
       setAbsences(Array.isArray(abs) ? abs : []);
+    } catch (absErr) {
+      setAbsences([]);
+    }
+
+    try {
+      const lt = await fetchJson(`/api/labor-terminations?empresa_id=${targetEmpresaId}`).catch(() => []);
       setLaborTerminations(Array.isArray(lt) ? lt : []);
+    } catch (ltErr) {
+      setLaborTerminations([]);
+    }
 
-      try {
-        if (supabaseStatus.configured) {
-          const { data: penaltiesData } = await supabase
-            .from('employee_penalties')
-            .select('*')
-            .eq('empresa_id', targetEmpresaId);
-          setPenalties(penaltiesData || []);
-        }
-      } catch (err) {
-        console.warn('Could not fetch penalties', err);
-      }
-
-      try {
-        const wsData = await localTrabalhoService.getLocaisTrabalho(targetEmpresaId);
-        setWorkSites(wsData.map((ws: any) => ({
-          ...ws,
-          id: ws.id,
-          title: ws.nome || '',
-          name: ws.nome || '',
-          location: ws.endereco || '',
-          contact: ws.telefone || '',
-          description: ws.descricao || '',
-          observations: ws.observacoes || '',
-          client_id: ws.client_id,
-          client_name: ws.client_name,
-          code: ws.code,
-          start_date: ws.start_date,
-          end_date: ws.end_date,
-          staff_per_day: Number(ws.staff_per_day || 0),
-          total_staff: Number(ws.total_staff || 0)
-        })));
-      } catch (wsErr) {
-        console.error('Error fetching workSites inside HRModule:', wsErr);
+    try {
+      if (supabaseStatus.configured) {
+        const { data: penaltiesData } = await supabase
+          .from('employee_penalties')
+          .select('*')
+          .eq('empresa_id', targetEmpresaId);
+        setPenalties(penaltiesData || []);
       }
     } catch (err) {
-      console.error('Error fetching HR data:', err);
+      console.warn('Could not fetch penalties', err);
+    }
+
+    try {
+      const wsData = await localTrabalhoService.getLocaisTrabalho(targetEmpresaId);
+      setWorkSites(wsData.map((ws: any) => ({
+        ...ws,
+        id: ws.id,
+        title: ws.nome || '',
+        name: ws.nome || '',
+        location: ws.endereco || '',
+        contact: ws.telefone || '',
+        description: ws.descricao || '',
+        observations: ws.observacoes || '',
+        client_id: ws.client_id,
+        client_name: ws.client_name,
+        code: ws.code,
+        start_date: ws.start_date,
+        end_date: ws.end_date,
+        staff_per_day: Number(ws.staff_per_day || 0),
+        total_staff: Number(ws.total_staff || 0)
+      })));
+    } catch (wsErr) {
+      console.error('Error fetching workSites inside HRModule:', wsErr);
     }
   };
 

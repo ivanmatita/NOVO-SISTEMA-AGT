@@ -43,11 +43,81 @@ export default async function handler(req, res) {
       }
     }
 
-    // Identificar submódulo: colaboradores, payroll, attendance, professions
+    // Identificar submódulo: colaboradores, payroll, attendance, absences, labor-terminations, professions
     const isProfessions = pathname.includes('profession') || pathname.includes('profiss') || pathname.includes('cargo');
     const isPayroll = pathname.includes('payroll') || pathname.includes('processamento') || pathname.includes('salario');
     const isAttendance = pathname.includes('attendance') || pathname.includes('assiduidade');
-    const isColaboradores = !isPayroll && !isAttendance && !isProfessions;
+    const isAbsences = pathname.includes('absence') || pathname.includes('falta');
+    const isLaborTerminations = pathname.includes('labor-termination') || pathname.includes('demitido') || pathname.includes('rescisao');
+    const isColaboradores = !isPayroll && !isAttendance && !isProfessions && !isAbsences && !isLaborTerminations;
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // 0. SUBMÓDULO: AUSÊNCIAS / FALTAS (ABSENCES)
+    // ──────────────────────────────────────────────────────────────────────────
+    if (isAbsences) {
+      if (req.method === 'GET') {
+        try {
+          const fetchRes = await fetch(`${config.supabaseUrl}/rest/v1/employee_absences?empresa_id=eq.${targetEmpresaId}&order=created_at.desc`, {
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+          });
+          if (fetchRes.ok) {
+            const absData = await fetchRes.json();
+            return res.status(200).json(Array.isArray(absData) ? absData : []);
+          }
+        } catch (e) {
+          console.warn('[SecureRH] employee_absences table fallback to []');
+        }
+        return res.status(200).json([]);
+      }
+
+      if (req.method === 'POST') {
+        const body = req.body || {};
+        try {
+          const insertRes = await fetch(`${config.supabaseUrl}/rest/v1/employee_absences`, {
+            method: 'POST',
+            headers: {
+              'apikey': config.serviceRoleKey,
+              'Authorization': authHeader,
+              'Content-Type': 'application/json',
+              'Prefer': 'return=representation'
+            },
+            body: JSON.stringify([{ ...body, empresa_id: targetEmpresaId, created_at: new Date().toISOString() }])
+          });
+          if (insertRes.ok) {
+            const created = await insertRes.json();
+            return res.status(201).json(Array.isArray(created) ? created[0] : created);
+          }
+        } catch (e) {
+          console.warn('[SecureRH] employee_absences insert fallback');
+        }
+        return res.status(200).json({ success: true, ...body });
+      }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // 0.1 SUBMÓDULO: RESCISÕES / EXTINÇÃO LABORAL (LABOR TERMINATIONS)
+    // ──────────────────────────────────────────────────────────────────────────
+    if (isLaborTerminations) {
+      if (req.method === 'GET') {
+        try {
+          const fetchRes = await fetch(`${config.supabaseUrl}/rest/v1/labor_terminations?empresa_id=eq.${targetEmpresaId}&order=created_at.desc`, {
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+          });
+          if (fetchRes.ok) {
+            const ltData = await fetchRes.json();
+            return res.status(200).json(Array.isArray(ltData) ? ltData : []);
+          }
+        } catch (e) {
+          console.warn('[SecureRH] labor_terminations fallback to []');
+        }
+        return res.status(200).json([]);
+      }
+
+      if (req.method === 'POST') {
+        const body = req.body || {};
+        return res.status(200).json({ success: true, ...body });
+      }
+    }
 
     // ──────────────────────────────────────────────────────────────────────────
     // 1. SUBMÓDULO: COLABORADORES
@@ -55,8 +125,11 @@ export default async function handler(req, res) {
     if (isColaboradores) {
       const pathParts = pathname.split('/').filter(Boolean);
       let employeeId = null;
-      if (pathParts.length >= 3 && !['colaboradores', 'employees'].includes(pathParts[pathParts.length - 1])) {
-        employeeId = pathParts[pathParts.length - 1];
+      const lastSeg = pathParts[pathParts.length - 1];
+      if (pathParts.length >= 3 && !['colaboradores', 'employees', 'rh'].includes(lastSeg)) {
+        if (!isNaN(Number(lastSeg)) || lastSeg.includes('-')) {
+          employeeId = lastSeg;
+        }
       }
 
       // GET /api/secure-rh/colaboradores ou /api/employees

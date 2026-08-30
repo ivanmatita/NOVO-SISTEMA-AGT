@@ -26333,17 +26333,53 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
     }
     setLoading(true);
     try {
+      const purchaseAno = Number(date ? new Date(date).getFullYear() : new Date().getFullYear());
+      const purchaseNum = invoiceNumber || `PUR-${Date.now()}`;
       const purchaseData: any = {
-        supplier_id: supplierId || null, fornecedor_id: supplierId || null,
-        supplier_name: supplierName, fornecedor_nome: supplierName, supplier_nif: nif, nif,
-        document_type: documentType, tipo_documento: documentType,
-        invoice_number: invoiceNumber, numero_documento: invoiceNumber,
-        date, data_compra: date, due_date: dueDate || null, data_vencimento: dueDate || null,
-        service_date: serviceDate, country_code: countryCode,
-        items, total: finalTotal, valor_total: finalTotal, vat_amount: vatAmount,
-        global_discount: Number(globalDiscount) || 0, payment_method: paymentMethod || null,
-        caixa: cashBox || null, caixa_id: cashBox || null,
-        empresa_id: user?.empresa_id || user?.company_id, status: 'pendente', saldo_pendente: finalTotal,
+        empresa_id: user?.empresa_id || user?.company_id,
+        supplier_id: supplierId || null,
+        fornecedor_id: supplierId || null,
+        supplier_name: supplierName,
+        fornecedor_nome: supplierName,
+        supplier_nif: nif,
+        nif,
+        document_type: documentType,
+        tipo_documento: documentType,
+        invoice_number: invoiceNumber,
+        numero_documento: purchaseNum,
+        numero_compra: purchaseNum,
+        purchase_number: purchaseNum,
+        numero_fatura: invoiceNumber,
+        numero: purchaseNum,
+        date: date || new Date().toISOString().split('T')[0],
+        data_compra: date || new Date().toISOString().split('T')[0],
+        data: date || new Date().toISOString().split('T')[0],
+        due_date: dueDate || null,
+        data_vencimento: dueDate || null,
+        service_date: serviceDate || null,
+        data_servico: serviceDate || null,
+        country_code: countryCode || 'AO',
+        items,
+        itens: items,
+        detalhes: { items, total: finalTotal, document_type: documentType, supplier_name: supplierName },
+        subtotal: total,
+        total: finalTotal,
+        valor_total: finalTotal,
+        vat_amount: vatAmount,
+        valor_iva: vatAmount,
+        desconto: Number(globalDiscount) || 0,
+        global_discount: Number(globalDiscount) || 0,
+        desconto_global: Number(globalDiscount) || 0,
+        payment_method: paymentMethod || null,
+        metodo_pagamento: paymentMethod || null,
+        caixa: cashBox || null,
+        caixa_id: cashBox || null,
+        ano: purchaseAno,
+        status: 'pendente',
+        estado: 'pendente',
+        saldo_pendente: finalTotal,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       };
       const { data, error } = await supabase.from('compras').insert([purchaseData]).select().single();
       if (error) throw error;
@@ -26362,7 +26398,7 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
           <ChevronLeft size={20} />
         </button>
         <h2 className="text-base font-black text-[#003366] uppercase tracking-wider">
-          {fixedDocumentType ? `Emitir ${fixedDocumentType}` : 'InformaÃ§Ãµes do documento de compra'}
+          {fixedDocumentType ? `Emitir ${fixedDocumentType}` : 'Informações do documento de compra'}
         </h2>
       </div>
 
@@ -27270,12 +27306,16 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
       const ano = Number(fiscalYear || new Date().getFullYear());
       console.log(`[SELECT compras] Fetching purchases for empresa_id: ${user.empresa_id} and ano: ${ano}`);
 
-      const { data, error } = await supabase
+      let query = supabase
         .from('compras')
         .select('*')
-        .eq('empresa_id', user.empresa_id)
-        .eq('ano', ano)
-        .order('created_at', { ascending: false });
+        .eq('empresa_id', user.empresa_id);
+
+      if (ano) {
+        query = query.or(`ano.eq.${ano},ano.is.null`);
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
       
       if (error) {
         console.error('[SELECT compras ERROR] Failed to fetch purchases list:', error);

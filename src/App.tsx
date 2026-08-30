@@ -4301,7 +4301,7 @@ const HRModule = ({
 
   useEffect(() => { 
     fetchHRData(); 
-  }, [attendanceDate, companyData?.id, user?.empresa_id]);
+  }, [attendanceDate, activeTab, companyData?.id, user?.empresa_id]);
 
   useEffect(() => {
     const targetEmpresaId = companyData?.id || user?.empresa_id;

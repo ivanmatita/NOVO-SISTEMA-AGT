@@ -23,11 +23,11 @@ export default async function handler(req, res) {
     const parsedUrl = new URL(req.url || '', `http://${req.headers?.host || 'localhost'}`);
     const pathname = parsedUrl.pathname;
     
-    // ISOLAMENTO TENANT ABSOLUTO: empresa_id SEMPRE da sessão autenticada
-    const targetEmpresaId = auth.empresa_id;
+    // ISOLAMENTO TENANT: Prioridade JWT autenticado -> query param/body
+    const targetEmpresaId = auth.empresa_id || parsedUrl.searchParams.get('empresa_id') || req.query?.empresa_id || req.body?.empresa_id;
 
     if (!targetEmpresaId) {
-      return res.status(400).json({ error: 'Empresa não identificada na sessão' });
+      return res.status(400).json({ error: 'Empresa não identificada na sessão ou requisição' });
     }
 
     // VALIDAÇÃO DE LICENÇA ATIVA PARA OPERAÇÕES DE ESCRITA

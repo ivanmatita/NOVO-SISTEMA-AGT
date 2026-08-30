@@ -25,39 +25,42 @@ const normalizeProfession = (item: any): Profession => {
 export const professionService = {
   async getProfessions(empresa_id: string): Promise<Profession[]> {
     if (!empresa_id) return [];
+    
+    // 1. Tentar leitura direta via Supabase
     try {
-      // 1. Tentar leitura direta via Supabase
       const { data, error } = await supabase
         .from('professions')
         .select('*')
         .eq('empresa_id', empresa_id)
-        .order('name', { ascending: true });
+        .order('created_at', { ascending: false });
 
-      if (!error && Array.isArray(data)) {
+      if (!error && Array.isArray(data) && data.length > 0) {
         return data.map(normalizeProfession);
       }
-      throw error || new Error('Falha na consulta Supabase');
     } catch (err) {
-      console.warn('[ProfessionService] Falha no Supabase direto, tentando fallback seguro /api/secure-rh/professions:', err);
-      try {
-        const session = (await supabase.auth.getSession())?.data?.session;
-        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-        if (session?.access_token) {
-          headers['Authorization'] = `Bearer ${session.access_token}`;
-        }
-
-        const res = await fetch(`/api/secure-rh/professions?empresa_id=${empresa_id}`, { headers });
-        if (res.ok) {
-          const apiData = await res.json();
-          if (Array.isArray(apiData)) {
-            return apiData.map(normalizeProfession);
-          }
-        }
-      } catch (fallbackErr) {
-        console.error('[ProfessionService] Erro crítico ao buscar profissões:', fallbackErr);
-      }
-      return [];
+      console.warn('[ProfessionService] Falha na consulta direta ao Supabase:', err);
     }
+
+    // 2. Fallback resiliente para a API serverless segura com service_role
+    try {
+      const session = (await supabase.auth.getSession())?.data?.session;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+
+      const res = await fetch(`/api/secure-rh/professions?empresa_id=${empresa_id}`, { headers });
+      if (res.ok) {
+        const apiData = await res.json();
+        if (Array.isArray(apiData) && apiData.length > 0) {
+          return apiData.map(normalizeProfession);
+        }
+      }
+    } catch (fallbackErr) {
+      console.error('[ProfessionService] Erro no fallback API de profissões:', fallbackErr);
+    }
+
+    return [];
   },
 
   async saveProfession(empresa_id: string, payload: Partial<Profession>): Promise<any> {

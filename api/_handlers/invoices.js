@@ -96,9 +96,14 @@ export default async function handler(req, res) {
       }
 
       // Listar todos os documentos da empresa
+      // BLINDAGEM DE EXERCÍCIO: filtro ESTRITO por campo 'ano' — NÃO usar ano.is.null
       let url = `${config.supabaseUrl}/rest/v1/documentos_emitidos?empresa_id=eq.${targetEmpresaId}&select=*&order=created_at.desc`;
       if (queryYear) {
-        url += `&data_emissao=gte.${queryYear}-01-01T00:00:00Z&data_emissao=lte.${queryYear}-12-31T23:59:59Z`;
+        const yearNum = parseInt(queryYear, 10);
+        if (!isNaN(yearNum) && yearNum >= 2020 && yearNum <= 2050) {
+          // Filtrar pelo campo 'ano' (coluna dedicada) — garante isolamento estrito de exercício
+          url += `&ano=eq.${yearNum}`;
+        }
       }
 
       const response = await fetch(url, {
@@ -180,7 +185,21 @@ export default async function handler(req, res) {
 
       const docTypeRaw = body.document_type || body.tipo_documento || 'Fatura';
       const docTypeAbbr = getDocTypeAbbr(docTypeRaw);
-      const year = new Date(body.date || body.data_emissao || Date.now()).getFullYear();
+      const docDate = new Date(body.date || body.data_emissao || Date.now());
+      const year = docDate.getFullYear();
+      const currentYear = new Date().getFullYear();
+
+      // BLINDAGEM DE EXERCÍCIO: Bloqueio estrito de emissão fora do exercício corrente ativo
+      // Consultar histórico de anos anteriores é permitido, mas emissão retroativa/futura é proibida
+      if (year < currentYear || year > currentYear) {
+        return res.status(400).json({
+          error: `Emissão bloqueada: Apenas é permitida a emissão de novos documentos no exercício corrente (${currentYear}). O ano indicado (${year}) pertence a um exercício fechado ou futuro.`,
+          code: 'EXERCISE_EMISSION_BLOCKED',
+          requested_year: year,
+          active_year: currentYear
+        });
+      }
+
       const seriesRef = (body.series_reference || body.serie || 'A').toUpperCase();
 
       // Gerar ou utilizar número de documento fornecido

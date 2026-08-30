@@ -27304,17 +27304,15 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
     try {
       if (!user?.empresa_id) return;
 
+      // BLINDAGEM DE EXERCÍCIO: filtro ESTRITO por ano — NÃO incluir registos com ano=null
       const ano = Number(fiscalYear || new Date().getFullYear());
       console.log(`[SELECT compras] Fetching purchases for empresa_id: ${user.empresa_id} and ano: ${ano}`);
 
       let query = supabase
         .from('compras')
         .select('*')
-        .eq('empresa_id', user.empresa_id);
-
-      if (ano) {
-        query = query.or(`ano.eq.${ano},ano.is.null`);
-      }
+        .eq('empresa_id', user.empresa_id)
+        .eq('ano', ano);
 
       const { data, error } = await query.order('created_at', { ascending: false });
       
@@ -32412,14 +32410,15 @@ export default function App() {
     }
   };
 
-  const doLoadDocumentosEmitidos = async (explicitId?: string) => {
+  const doLoadDocumentosEmitidos = async (explicitId?: string, explicitYear?: string) => {
     try {
       const companyId = explicitId || user?.empresa_id;
       if (!companyId) return;
 
-      console.log('[App] Carregando documentos emitidos via API para ano:', fiscalYear);
+      const anoToFetch = explicitYear || fiscalYear;
+      console.log('[App] Carregando documentos emitidos via API para ano:', anoToFetch);
       // SEGURANÇA: empresa_id não enviado — API determina tenant da sessão JWT
-      const res = await fetchWithAuth(`/api/invoices?year=${fiscalYear}`);
+      const res = await fetchWithAuth(`/api/invoices?year=${anoToFetch}`);
       
       if (!res.ok) {
         console.error('Erro ao carregar documentos emitidos:', await res.text());
@@ -32692,15 +32691,13 @@ export default function App() {
       const companyId = explicitId || user?.empresa_id;
       if (!companyId) return;
 
+      // BLINDAGEM DE EXERCÍCIO: filtro ESTRITO por ano — NÃO incluir registos com ano=null
       const ano = Number(explicitYear || fiscalYear || new Date().getFullYear());
       let query = supabase
         .from('compras')
         .select('*')
-        .eq('empresa_id', companyId);
-
-      if (ano) {
-        query = query.or(`ano.eq.${ano},ano.is.null`);
-      }
+        .eq('empresa_id', companyId)
+        .eq('ano', ano);
 
       const { data, error } = await query.order('created_at', { ascending: false });
 
@@ -32856,7 +32853,7 @@ export default function App() {
         await Promise.allSettled([
           doLoadClientes(targetCompanyId),
           doLoadLocaisTrabalho(targetCompanyId),
-          doLoadDocumentosEmitidos(targetCompanyId),
+          doLoadDocumentosEmitidos(targetCompanyId, fiscalYear),
           doLoadCaixas(targetCompanyId),
           doLoadCaixaMovements(targetCompanyId),
           doLoadFornecedores(targetCompanyId),
@@ -33441,7 +33438,11 @@ export default function App() {
 
   useEffect(() => {
     if (authReady) {
-      throttledFetchData();
+      // Limpeza imediata de estado de documentos transacionais para isolamento visual estrito
+      setPurchases([]);
+      setIssuedDocuments([]);
+      setInvoices([]);
+      fetchData();
     }
   }, [authReady, fiscalYear]);
 

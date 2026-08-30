@@ -55,6 +55,14 @@ export async function emitirDocumentoFiscal(payload: any) {
       requestID
     });
 
+    // 5b. VALIDAR EXERCÍCIO ATIVO
+    const docDate = payload.data_emissao ? new Date(payload.data_emissao) : new Date();
+    const docYear = docDate.getFullYear();
+    const currentYear = new Date().getFullYear();
+    if (docYear < currentYear || docYear > currentYear) {
+      throw new Error(`Emissão bloqueada: Apenas é permitida a emissão de novos documentos fiscais no exercício corrente (${currentYear}). Ano indicado: ${docYear}.`);
+    }
+
     // 6. CRIAR REGISTO NO BANCO (SOLO - SEM DRAFTS / RECIBOS AUTOMÁTICOS INDEVIDOS)
     const { data: documento, error } = await supabase
       .from("documentos_emitidos")
@@ -75,6 +83,8 @@ export async function emitirDocumentoFiscal(payload: any) {
           codigo_validacao: jwsRequest,
           documento_anulado: false,
           is_draft: payload.is_draft ?? false,
+          ano: docYear,
+          data_emissao: docDate.toISOString(),
           detalhes: {
             items: payload.items || payload.detalhes?.items || [],
             payment_method: payload.payment_method || payload.detalhes?.payment_method || "A Pronto",

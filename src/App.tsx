@@ -29,6 +29,7 @@ import {
 import { professionService } from './services/professionService';
 import { fornecedorService } from './services/fornecedorService';
 import { useAuth } from './contexts/AuthContext';
+import { useExercise } from './contexts/ExerciseContext';
 import { useMedia } from './hooks/useMedia';
 import { useCaixas } from './hooks/useCaixas';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -31798,10 +31799,10 @@ export default function App() {
 
   const [connectionError, setConnectionError] = useState(false);
   const [configuringGraphicSerie, setConfiguringGraphicSerie] = useState<FiscalSeries | null>(null);
-  const [fiscalYear, setFiscalYearState] = useState(() => localStorage.getItem('fiscalYear') || '2026');
-  const setFiscalYear = (year: string) => {
-    setFiscalYearState(year);
-    localStorage.setItem('fiscalYear', year);
+  const { exerciseYear, setExerciseYear: setContextFiscalYear, currentYear, availableYears } = useExercise();
+  const fiscalYear = exerciseYear;
+  const setFiscalYear = (year: string | number) => {
+    setContextFiscalYear(year);
   };
   const [companyName, setCompanyName] = useState('Empresa');
   const [companyNif, setCompanyNif] = useState('500123456');
@@ -32686,25 +32687,32 @@ export default function App() {
     }
   };
 
-  const doLoadCompras = async (explicitId?: string) => {
+  const doLoadCompras = async (explicitId?: string, explicitYear?: string) => {
     try {
       const companyId = explicitId || user?.empresa_id;
       if (!companyId) return;
 
-      const { data, error } = await supabase
+      const ano = Number(explicitYear || fiscalYear || new Date().getFullYear());
+      let query = supabase
         .from('compras')
         .select('*')
-        .eq('empresa_id', companyId)
-        .order('created_at', { ascending: false });
+        .eq('empresa_id', companyId);
+
+      if (ano) {
+        query = query.or(`ano.eq.${ano},ano.is.null`);
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
 
       if (error) throw error;
-      setPurchases(data?.map(p => ({
+      const safePurchases = Array.isArray(data) ? data : [];
+      setPurchases(safePurchases.map(p => ({
         ...p,
         id: p.id,
-        purchase_number: p.numero_compra || p.purchase_number,
-        total: Number(p.total || 0),
-        date: p.data || p.date
-      })) || []);
+        purchase_number: p.numero_compra || p.purchase_number || p.numero_documento || '',
+        total: Number(p.valor_total ?? p.total ?? 0),
+        date: p.data_compra || p.data || p.date || p.created_at
+      })));
     } catch (err) {
       console.error('Erro ao carregar compras:', err);
     }
@@ -32844,20 +32852,22 @@ export default function App() {
       // Fontes de Verdade Principais (Supabase com RLS)
       const syncStartTime = performance.now();
       try {
-        // Carregamos sequencialmente para melhor diagnóstico se um falhar
-        await doLoadClientes(targetCompanyId);
-        await doLoadLocaisTrabalho(targetCompanyId);
-        await doLoadDocumentosEmitidos(targetCompanyId);
-        await doLoadCaixas(targetCompanyId);
-        await doLoadCaixaMovements(targetCompanyId);
-        await doLoadFornecedores(targetCompanyId);
-        await doLoadCompras(targetCompanyId);
-        await doLoadProducts(targetCompanyId);
-        await doLoadStockMovements(targetCompanyId);
-        await doLoadActiveTaxes(targetCompanyId);
-        await doLoadMetrics(targetCompanyId);
-        await doLoadGlobalUsers(targetCompanyId);
-        await doLoadEmployees(targetCompanyId);
+        // Carregamento Concorrente e Paralelo Resiliente (Zero bloqueio sequencial)
+        await Promise.allSettled([
+          doLoadClientes(targetCompanyId),
+          doLoadLocaisTrabalho(targetCompanyId),
+          doLoadDocumentosEmitidos(targetCompanyId),
+          doLoadCaixas(targetCompanyId),
+          doLoadCaixaMovements(targetCompanyId),
+          doLoadFornecedores(targetCompanyId),
+          doLoadCompras(targetCompanyId, fiscalYear),
+          doLoadProducts(targetCompanyId),
+          doLoadStockMovements(targetCompanyId),
+          doLoadActiveTaxes(targetCompanyId),
+          doLoadMetrics(targetCompanyId),
+          doLoadGlobalUsers(targetCompanyId),
+          doLoadEmployees(targetCompanyId)
+        ]);
       } catch (err: any) {
         console.error('[DEBUG-SYNC] Erro nas queries Supabase:', err);
         if (err.message?.includes('fetch') || err.name === 'TypeError') {

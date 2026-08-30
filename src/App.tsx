@@ -29890,30 +29890,57 @@ const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas
   const [iban, setIban] = useState('');
   const [tipoCliente, setTipoCliente] = useState('normal');
 
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        if (!user?.empresa_id) return;
+  const loadData = useCallback(async () => {
+    try {
+      const companyId = user?.empresa_id || user?.company_id;
+      if (!companyId) return;
 
-        const { data: supData } = await supabase
-          .from('fornecedores')
-          .select('*')
-          .eq('empresa_id', user.empresa_id);
-        
-        if (supData) setSuppliers(supData.map((s: any) => ({ ...s, name: s.nome || s.name })));
-
-        const { data: purData } = await supabase
-          .from('compras')
-          .select('*')
-          .eq('empresa_id', user.empresa_id);
-        
-        if (purData) setPurchases(purData);
-      } catch (err) {
-        console.error('Error loading supplier data:', err);
+      const supData = await fornecedorService.getFornecedores(companyId);
+      if (supData && Array.isArray(supData)) {
+        setSuppliers(supData.map((s: any) => ({
+          ...s,
+          id: s.id,
+          name: s.nome || s.name || '',
+          nome: s.nome || s.name || '',
+          nif: s.nif || '',
+          email: s.email || '',
+          phone: s.telefone || s.phone || '',
+          address: s.morada || s.endereco || s.address || '',
+          siglas_banco: s.sigla_banco || s.siglas_banco || '',
+          tipo_cliente: s.tipo_fornecedor || s.tipo_cliente || 'Geral'
+        })));
       }
-    };
+
+      const { data: purData } = await supabase
+        .from('compras')
+        .select('*')
+        .eq('empresa_id', companyId)
+        .order('created_at', { ascending: false });
+
+      if (purData) setPurchases(purData);
+    } catch (err) {
+      console.error('Error loading supplier data:', err);
+    }
+  }, [user?.empresa_id, user?.company_id]);
+
+  useEffect(() => {
     loadData();
-  }, []);
+
+    const companyId = user?.empresa_id || user?.company_id;
+    if (!companyId) return;
+
+    const handleRealtime = () => {
+      loadData();
+    };
+
+    realtimeManager.subscribe('fornecedores', companyId, handleRealtime);
+    realtimeManager.subscribe('compras', companyId, handleRealtime);
+
+    return () => {
+      realtimeManager.unsubscribe('fornecedores', companyId, handleRealtime);
+      realtimeManager.unsubscribe('compras', companyId, handleRealtime);
+    };
+  }, [user?.empresa_id, user?.company_id, activeSubTab, loadData]);
 
   useEffect(() => {
     if (selectedSupplier) {
@@ -29998,18 +30025,10 @@ const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas
       setShowForm(false);
       setSelectedSupplier(null);
       
-      const supData = await fornecedorService.getFornecedores();
-      if (supData) {
-        setSuppliers(supData.map((s: any) => ({ 
-          ...s, 
-          name: s.nome || s.name,
-          siglas_banco: s.sigla_banco,
-          tipo_cliente: s.tipo_fornecedor
-        })));
-      }
-    } catch (err) {
+      await loadData();
+    } catch (err: any) {
       console.error('Error saving supplier:', err);
-      alert('Erro ao salvar fornecedor no Supabase.');
+      alert(err.message || 'Erro ao salvar fornecedor no Supabase.');
     }
   };
 

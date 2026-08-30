@@ -4212,37 +4212,39 @@ const HRModule = ({
   };
 
   const fetchHRData = async () => {
+    const targetEmpresaId = companyData?.id || user?.empresa_id;
+    if (!targetEmpresaId) {
+      console.warn('[HRModule] fetchHRData: empresa_id não identificado no contexto');
+      return;
+    }
+
     try {
       let pList: Profession[] = [];
       try {
-        if (user?.empresa_id) {
-          pList = await professionService.getProfessions(user.empresa_id);
-        }
+        pList = await professionService.getProfessions(targetEmpresaId);
       } catch (err) {
         console.warn('DB client error during professions fetch. Falling back to local Express database.', err);
-        pList = await fetchJson(`/api/professions?empresa_id=${user?.empresa_id}`);
+        pList = await fetchJson(`/api/professions?empresa_id=${targetEmpresaId}`);
       }
 
       let e: any[] = [];
       try {
-        if (user?.empresa_id) {
-          e = await employeeService.getEmployees(user.empresa_id);
-        }
+        e = await employeeService.getEmployees(targetEmpresaId);
       } catch (err) {
         console.warn('Erro ao carregar colaboradores do Supabase, buscando do banco local...', err);
       }
       if (!e || e.length === 0) {
         try {
-          e = await fetchJson(`/api/employees?empresa_id=${user?.empresa_id}`);
+          e = await fetchJson(`/api/employees?empresa_id=${targetEmpresaId}`);
         } catch (err) {
           console.error('Erro ao buscar do banco local como fallback:', err);
         }
       }
 
       const [att, abs, lt] = await Promise.all([
-        fetchJson(`/api/employees/attendance?date=${attendanceDate}&empresa_id=${user?.empresa_id}`),
-        fetchJson(`/api/employees/absences?empresa_id=${user?.empresa_id}`),
-        fetchJson(`/api/labor-terminations?empresa_id=${user?.empresa_id}`)
+        fetchJson(`/api/employees/attendance?date=${attendanceDate}&empresa_id=${targetEmpresaId}`),
+        fetchJson(`/api/employees/absences?empresa_id=${targetEmpresaId}`),
+        fetchJson(`/api/labor-terminations?empresa_id=${targetEmpresaId}`)
       ]);
       setProfessions(Array.isArray(pList) ? pList : []);
       setLocalEmployees(prev => {
@@ -4263,7 +4265,7 @@ const HRModule = ({
           const { data: penaltiesData } = await supabase
             .from('employee_penalties')
             .select('*')
-            .eq('empresa_id', user?.empresa_id);
+            .eq('empresa_id', targetEmpresaId);
           setPenalties(penaltiesData || []);
         }
       } catch (err) {
@@ -4271,26 +4273,24 @@ const HRModule = ({
       }
 
       try {
-        if (user?.empresa_id) {
-          const wsData = await localTrabalhoService.getLocaisTrabalho(user.empresa_id);
-          setWorkSites(wsData.map((ws: any) => ({
-            ...ws,
-            id: ws.id,
-            title: ws.nome || '',
-            name: ws.nome || '',
-            location: ws.endereco || '',
-            contact: ws.telefone || '',
-            description: ws.descricao || '',
-            observations: ws.observacoes || '',
-            client_id: ws.client_id,
-            client_name: ws.client_name,
-            code: ws.code,
-            start_date: ws.start_date,
-            end_date: ws.end_date,
-            staff_per_day: Number(ws.staff_per_day || 0),
-            total_staff: Number(ws.total_staff || 0)
-          })));
-        }
+        const wsData = await localTrabalhoService.getLocaisTrabalho(targetEmpresaId);
+        setWorkSites(wsData.map((ws: any) => ({
+          ...ws,
+          id: ws.id,
+          title: ws.nome || '',
+          name: ws.nome || '',
+          location: ws.endereco || '',
+          contact: ws.telefone || '',
+          description: ws.descricao || '',
+          observations: ws.observacoes || '',
+          client_id: ws.client_id,
+          client_name: ws.client_name,
+          code: ws.code,
+          start_date: ws.start_date,
+          end_date: ws.end_date,
+          staff_per_day: Number(ws.staff_per_day || 0),
+          total_staff: Number(ws.total_staff || 0)
+        })));
       } catch (wsErr) {
         console.error('Error fetching workSites inside HRModule:', wsErr);
       }
@@ -4299,21 +4299,24 @@ const HRModule = ({
     }
   };
 
-  useEffect(() => { fetchHRData(); }, [attendanceDate]);
+  useEffect(() => { 
+    fetchHRData(); 
+  }, [attendanceDate, companyData?.id, user?.empresa_id]);
 
   useEffect(() => {
-    if (!user?.empresa_id) return;
+    const targetEmpresaId = companyData?.id || user?.empresa_id;
+    if (!targetEmpresaId) return;
 
     // Use Managed Realtime sync for 'professions'
-    realtimeManager.subscribe('professions', user.empresa_id, async () => {
-      const data = await professionService.getProfessions(user.empresa_id);
+    realtimeManager.subscribe('professions', targetEmpresaId, async () => {
+      const data = await professionService.getProfessions(targetEmpresaId);
       if (Array.isArray(data)) setProfessions(data);
     });
 
     return () => {
-      realtimeManager.unsubscribe('professions', user.empresa_id);
+      realtimeManager.unsubscribe('professions', targetEmpresaId);
     };
-  }, [user?.empresa_id]);
+  }, [companyData?.id, user?.empresa_id]);
 
   const handleMarkAttendance = async (employeeId: number, status: 'present' | 'absent' | 'late') => {
     try {
@@ -8384,6 +8387,9 @@ const HRModule = ({
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setInssProfession(p);
+                                    if (!companyProfession.trim()) {
+                                      setCompanyProfession(p);
+                                    }
                                     setShowInssList(false);
                                     setInssSearch('');
                                   }}
@@ -8446,34 +8452,44 @@ const HRModule = ({
                     </button>
                     <button 
                       onClick={async () => {
-                        if (!inssProfession || !companyProfession || !baseSalary) {
-                          alert('Por favor preencha todos os campos obrigatórios (INSS, Empresa, Salário Base)');
+                        const cProf = companyProfession.trim();
+                        if (!cProf) {
+                          alert('Por favor preencha o campo Profissão Empresa');
+                          return;
+                        }
+
+                        const bSal = Number(baseSalary || 0);
+                        const aSal = Number(acertoSalarial || 0);
+                        const targetEmpresaId = companyData?.id || user?.empresa_id;
+
+                        if (!targetEmpresaId) {
+                          alert('Empresa não identificada. Por favor recarregue a página.');
                           return;
                         }
 
                         const payload = {
-                          name: companyProfession,
-                          inss_profession: inssProfession,
-                          base_salary: Number(baseSalary),
-                          acerto_salarial: Number(acertoSalarial || 0),
-                          empresa_id: user?.empresa_id
+                          name: cProf,
+                          nome: cProf,
+                          inss_profession: (inssProfession || cProf).trim(),
+                          base_salary: bSal,
+                          salario_base: bSal,
+                          acerto_salarial: aSal,
+                          empresa_id: targetEmpresaId
                         };
 
-                        if (user?.empresa_id) {
-                          try {
-                            if (editingProfession) {
-                              await professionService.saveProfession(user.empresa_id, {
-                                ...payload,
-                                id: editingProfession.id
-                              });
-                            } else {
-                              await professionService.saveProfession(user.empresa_id, payload);
-                            }
-                            fetchHRData();
-                          } catch (err: any) {
-                            console.error('[App] Erro ao salvar profissão:', err);
-                            alert(`Erro ao salvar profissão: ${err.message || 'Verifique a conexão'}`);
+                        try {
+                          if (editingProfession) {
+                            await professionService.saveProfession(targetEmpresaId, {
+                              ...payload,
+                              id: editingProfession.id
+                            });
+                          } else {
+                            await professionService.saveProfession(targetEmpresaId, payload);
                           }
+                          await fetchHRData();
+                        } catch (err: any) {
+                          console.error('[App] Erro ao salvar profissão:', err);
+                          alert(`Erro ao salvar profissão: ${err.message || 'Verifique a conexão'}`);
                         }
 
                         setInssProfession('');
@@ -8515,16 +8531,16 @@ const HRModule = ({
                       </td>
                     </tr>
                   ) : professions.map(p => {
-                    const base = p.base_salary || 0;
-                    const acerto = p.acerto_salarial || 0;
+                    const base = Number(p.base_salary !== undefined ? p.base_salary : (p.salario_base || 0));
+                    const acerto = Number(p.acerto_salarial || 0);
                     const totalBase = base + acerto;
                     const inssTrab = totalBase * 0.03;
                     const inssEmp = totalBase * 0.08;
                     const custoTotal = totalBase + inssEmp;
                     return (
                       <tr key={p.id} className="hover:bg-zinc-50 transition-colors text-sm">
-                        <td className="px-6 py-4 font-bold text-[#003366]">{p.name}</td>
-                        <td className="px-6 py-4 text-zinc-500">{p.inss_profession || '---'}</td>
+                        <td className="px-6 py-4 font-bold text-[#003366]">{p.name || p.nome || '---'}</td>
+                        <td className="px-6 py-4 text-zinc-500">{p.inss_profession || p.name || p.nome || '---'}</td>
                         <td className="px-6 py-4 text-right font-medium text-zinc-900">{formatCurrency(base)}</td>
                         <td className="px-6 py-4 text-right font-medium text-emerald-600">
                           {acerto > 0 ? `+${formatCurrency(acerto)}` : '---'}

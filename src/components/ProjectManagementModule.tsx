@@ -14,6 +14,7 @@ interface ProjectProps {
   companyData?: any;
   onNavigate?: (tab: string) => void;
   onEmitirFatura?: () => void;
+  fiscalYear?: string;
 }
 
 type TabType = 'dashboard' | 'projetos' | 'kanban' | 'equipa' | 'orcamento' | 'milestones' | 'relatorios';
@@ -70,7 +71,7 @@ const ProjBarChart = ({ data, label, color = '#003366' }: { data: { name: string
   );
 };
 
-export default function ProjectManagementModule({ user, companyData, onNavigate, onEmitirFatura }: ProjectProps) {
+export default function ProjectManagementModule({ user, companyData, onNavigate, onEmitirFatura, fiscalYear = '2026' }: ProjectProps) {
   const empresaId: string = user?.empresa_id || user?.company_id || companyData?.id || user?.id || '00000000-0000-0000-0000-000000000000';
 
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
@@ -103,11 +104,12 @@ export default function ProjectManagementModule({ user, companyData, onNavigate,
     if (!empresaId) return;
     setLoading(true);
     try {
+      const year = fiscalYear || new Date().getFullYear().toString();
       const [pRes, tRes, rRes, cRes] = await Promise.all([
         supabase.from('proj_projetos').select('*').eq('empresa_id', empresaId).is('deleted_at', null).order('nome'),
         supabase.from('proj_tarefas').select('*').eq('empresa_id', empresaId).is('deleted_at', null).order('created_at', { ascending: false }),
         supabase.from('proj_equipa_recursos').select('*').eq('empresa_id', empresaId).is('deleted_at', null).order('nome'),
-        supabase.from('proj_orcamentos_custos').select('*').eq('empresa_id', empresaId).is('deleted_at', null).order('data_custo', { ascending: false }),
+        supabase.from('proj_orcamentos_custos').select('*').eq('empresa_id', empresaId).like('data_custo', `${year}%`).is('deleted_at', null).order('data_custo', { ascending: false }),
       ]);
       if (pRes.data) setProjetos(pRes.data);
       if (tRes.data) setTarefas(tRes.data.map((t: any) => ({ ...t, projeto_nome: pRes.data?.find((p: any) => p.id === t.projeto_id)?.nome || '' })));
@@ -118,7 +120,7 @@ export default function ProjectManagementModule({ user, companyData, onNavigate,
     } finally {
       setLoading(false);
     }
-  }, [empresaId]);
+  }, [empresaId, fiscalYear]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -328,7 +330,13 @@ export default function ProjectManagementModule({ user, companyData, onNavigate,
       {/* Top Header */}
       <div className="bg-white border border-zinc-200 shadow-sm p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-black text-[#003366] flex items-center gap-2"><Briefcase size={26}/> Gestão de Projetos & Obras</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-2xl font-black text-[#003366] flex items-center gap-2"><Briefcase size={26}/> Gestão de Projetos & Obras</h2>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 text-[10px] font-black uppercase tracking-wider border border-emerald-200">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Exercício {fiscalYear} Ativo
+            </span>
+          </div>
           <p className="text-zinc-500 text-sm mt-1">Planeamento, acompanhamento orçamental, equipas e cronograma de tarefas — Angola</p>
         </div>
         <div className="flex items-center gap-2">

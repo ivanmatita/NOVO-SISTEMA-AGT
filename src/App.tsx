@@ -4669,13 +4669,28 @@ const HRModule = ({
     { id: 'colaboradores_demitidos', label: 'COLABORADORES DEMITIDOS', icon: <UserMinus size={14} />, description: 'Gestão de demissões' },
   ];
 
+  useEffect(() => {
+    if (fiscalYear) {
+      setSelectedMonth(prev => {
+        const monthPart = prev.split('/')[0].trim();
+        return `${monthPart} / ${fiscalYear}`;
+      });
+    }
+  }, [fiscalYear]);
+
   return (
     <div className="space-y-8">
       <header>
         <Breadcrumbs paths={['Home', 'Área Reservada', 'Recursos Humanos']} />
         <div className="flex justify-between items-center">
           <div>
-            <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Recursos Humanos</h2>
+            <div className="flex items-center gap-3">
+              <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Recursos Humanos</h2>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 text-[10px] font-black uppercase tracking-wider border border-emerald-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Exercício {fiscalYear} Ativo
+              </span>
+            </div>
             <p className="text-zinc-500 text-sm">Gestão completa de capital humano e processamento.</p>
           </div>
         </div>
@@ -12781,7 +12796,8 @@ const FinancialModule = ({
   refreshCaixas,
   refreshMovements,
   issuedDocuments,
-  transactions
+  transactions,
+  fiscalYear = '2026'
 }: { 
   caixas: Caixa[], 
   setCaixas: React.Dispatch<React.SetStateAction<Caixa[]>>,
@@ -12792,7 +12808,8 @@ const FinancialModule = ({
   refreshCaixas?: () => Promise<void>,
   refreshMovements?: () => Promise<void>,
   issuedDocuments: IssuedDocument[],
-  transactions: any[]
+  transactions: any[],
+  fiscalYear?: string
 }) => {
   const [activeSubTab, setActiveSubTab] = useState('menu');
   const [loading, setLoading] = useState(false);
@@ -12848,7 +12865,13 @@ const FinancialModule = ({
       <div className="space-y-8">
         <header>
           <Breadcrumbs paths={['Home', 'Gestão Financeira']} />
-          <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Gestão Financeira</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Gestão Financeira</h2>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 text-[10px] font-black uppercase tracking-wider border border-emerald-200">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Exercício {fiscalYear} Ativo
+            </span>
+          </div>
           <p className="text-zinc-500 text-sm">Selecione uma secção para visualizar relatórios e mapas financeiros.</p>
         </header>
 
@@ -22750,12 +22773,16 @@ const DiariosManagementModule = ({ onBack }: { onBack: () => void }) => {
     </div>
   );
 };
-const BalanceteRazaoModule = ({ onBack, companyData }: { onBack: () => void, companyData?: any }) => {
+const BalanceteRazaoModule = ({ onBack, companyData, fiscalYear }: { onBack: () => void, companyData?: any, fiscalYear?: string }) => {
   const { user } = useAuth();
   const [lancamentos, setLancamentos] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [year, setYear] = useState(String(new Date().getFullYear()));
+  const [year, setYear] = useState(fiscalYear || String(new Date().getFullYear()));
   const [exchangeRate, setExchangeRate] = useState(1);
+
+  useEffect(() => {
+    if (fiscalYear) setYear(fiscalYear);
+  }, [fiscalYear]);
 
   const fetchLancamentos = async () => {
     if (!user?.empresa_id) return;
@@ -22765,6 +22792,7 @@ const BalanceteRazaoModule = ({ onBack, companyData }: { onBack: () => void, com
         .from('lancamentos_contabeis')
         .select('*')
         .eq('empresa_id', user.empresa_id)
+        .like('data_lancamento', `${year}%`)
         .order('conta_pgc', { ascending: true });
       setLancamentos(data || []);
     } catch (e) {
@@ -22807,7 +22835,13 @@ const BalanceteRazaoModule = ({ onBack, companyData }: { onBack: () => void, com
         <div className="flex items-center gap-4">
           <button onClick={onBack} className="p-2 hover:bg-zinc-100 text-zinc-400"><ChevronLeft size={24} /></button>
           <div>
-            <h2 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">Balancete Razão</h2>
+            <div className="flex items-center gap-3">
+              <h2 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">Balancete Razão</h2>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 text-[10px] font-black uppercase tracking-wider border border-emerald-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Exercício {year} Ativo
+              </span>
+            </div>
             <p className="text-sm font-bold text-zinc-400 uppercase">Contabilidade Geral Angolana</p>
           </div>
         </div>
@@ -22924,12 +22958,16 @@ const BalanceteRazaoModule = ({ onBack, companyData }: { onBack: () => void, com
   );
 };
 
-const BalancoModule = ({ onBack, companyData, invoices, purchases }: { onBack: () => void, companyData?: any, invoices: any[], purchases: any[] }) => {
+const BalancoModule = ({ onBack, companyData, invoices, purchases, fiscalYear }: { onBack: () => void, companyData?: any, invoices: any[], purchases: any[], fiscalYear?: string }) => {
   const { user } = useAuth();
   const [lancamentos, setLancamentos] = useState<any[]>([]);
   const [lancamentosAnterior, setLancamentosAnterior] = useState<any[]>([]);
-  const [year, setYear] = useState(String(new Date().getFullYear()));
+  const [year, setYear] = useState(fiscalYear || String(new Date().getFullYear()));
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (fiscalYear) setYear(fiscalYear);
+  }, [fiscalYear]);
 
   const fetchData = async () => {
     if (!user?.empresa_id) return;
@@ -22938,7 +22976,8 @@ const BalancoModule = ({ onBack, companyData, invoices, purchases }: { onBack: (
       const { data: curr } = await supabase
         .from('lancamentos_contabeis')
         .select('*')
-        .eq('empresa_id', user.empresa_id);
+        .eq('empresa_id', user.empresa_id)
+        .like('data_lancamento', `${year}%`);
       setLancamentos(curr || []);
       const prevYear = String(Number(year) - 1);
       const { data: prev } = await supabase
@@ -23093,7 +23132,13 @@ const BalancoModule = ({ onBack, companyData, invoices, purchases }: { onBack: (
         <div className="flex items-center gap-4">
           <button onClick={onBack} className="p-2 hover:bg-zinc-100 text-zinc-400"><ChevronLeft size={24} /></button>
           <div>
-            <h2 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">Balanço</h2>
+            <div className="flex items-center gap-3">
+              <h2 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">Balanço</h2>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 text-[10px] font-black uppercase tracking-wider border border-emerald-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Exercício {year} Ativo
+              </span>
+            </div>
             <p className="text-sm font-bold text-zinc-400 uppercase">Contabilidade Geral Angolana</p>
           </div>
         </div>
@@ -23326,22 +23371,18 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
         if (!user?.empresa_id) return;
 
         const year = fiscalYear || new Date().getFullYear().toString();
+        const yearNum = Number(year);
 
-        // Load Purchases for the selected company and filter by fiscal year locally
+        // Load Purchases for the selected company and filter by fiscal year directly in the DB query
         const { data: purData } = await supabase
           .from('compras')
           .select('*')
-          .eq('empresa_id', user.empresa_id);
+          .eq('empresa_id', user.empresa_id)
+          .eq('ano', yearNum);
         
         if (purData) {
-          const yearNum = Number(year);
-          const filteredByYear = purData.filter((p: any) => {
-            const pAno = p.ano ? Number(p.ano) : (p.data_compra ? new Date(p.data_compra).getFullYear() : (p.created_at ? new Date(p.created_at).getFullYear() : null));
-            return pAno === yearNum;
-          });
-
           // Mapear campos correctos da tabela 'compras' e filtrar apenas documentos de compra reais
-          const purchaseDocsOnly = filteredByYear.filter((p: any) => {
+          const purchaseDocsOnly = purData.filter((p: any) => {
             const tipo = (p.tipo_documento || p.document_type || '').toLowerCase();
             return tipo.includes('fatura') || tipo === 'fatura de compra' || tipo === 'fatura recibo de compra' || tipo === '';
           });
@@ -23425,13 +23466,13 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
       case 'vat-settlement':
         return <VatSettlementModule invoices={issuedDocuments} purchases={purchases} onBack={() => setActiveSubTab(null)} companyData={companyData} vatToPay={vatToPay} vatLiquidated={vatLiquidated} vatDeductible={vatDeductible} />;
       case 'diarios-management':
-        return <DiariosManagementModule onBack={() => setActiveSubTab(null)} />;
+        return <DiariosManagementModule onBack={() => setActiveSubTab(null)} fiscalYear={fiscalYear} />;
       case 'accounting-maps':
-        return <AccountingMapsModule onBack={() => setActiveSubTab(null)} companyData={companyData} />;
+        return <AccountingMapsModule onBack={() => setActiveSubTab(null)} companyData={companyData} fiscalYear={fiscalYear} />;
       case 'balancete-razao':
-        return <BalanceteRazaoModule onBack={() => setActiveSubTab(null)} companyData={companyData} />;
+        return <BalanceteRazaoModule onBack={() => setActiveSubTab(null)} companyData={companyData} fiscalYear={fiscalYear} />;
       case 'balanco':
-        return <BalancoModule onBack={() => setActiveSubTab(null)} companyData={companyData} invoices={invoices} purchases={purchases} />;
+        return <BalancoModule onBack={() => setActiveSubTab(null)} companyData={companyData} invoices={invoices} purchases={purchases} fiscalYear={fiscalYear} />;
       case 'pgc':
         return <PGCModule onBack={() => setActiveSubTab(null)} />;
       case 'classify-movements':
@@ -33954,12 +33995,13 @@ export default function App() {
                                   companyData={companyData}
                                   onNavigate={setActiveTab}
                                   onEmitirFatura={() => { setSelectedDocument(null); setFixedDocumentType(undefined); setActiveTab('electronic_invoices'); setIsCreatingInvoice(true); }}
+                                  fiscalYear={fiscalYear}
                                 />
                               );
                             case 'fleet':
                               return <FleetManagementModule />;
                             case 'projects':
-                              return <ProjectManagementModule user={user} companyData={companyData} onNavigate={setActiveTab} onEmitirFatura={() => { setSelectedDocument(null); setFixedDocumentType(undefined); setActiveTab('electronic_invoices'); setIsCreatingInvoice(true); }} />;
+                              return <ProjectManagementModule user={user} companyData={companyData} onNavigate={setActiveTab} onEmitirFatura={() => { setSelectedDocument(null); setFixedDocumentType(undefined); setActiveTab('electronic_invoices'); setIsCreatingInvoice(true); }} fiscalYear={fiscalYear} />;
                             case 'business_overview':
                             case 'cost-revenue':
                               return (
@@ -34038,6 +34080,7 @@ export default function App() {
                                   refreshMovements={loadCaixaMovements}
                                   issuedDocuments={issuedDocuments}
                                   transactions={invoices} // Overloading invoices as transactions for this module's logic if needed, or separate state
+                                  fiscalYear={fiscalYear}
                                 />
                               );
                              case 'hr':
@@ -34157,9 +34200,9 @@ export default function App() {
                             case 'cartas':
                               return <CartasModule />;
                             case 'church':
-                              return <ChurchModule user={user} companyData={companyData} onNavigate={setActiveTab} onEmitirFatura={() => { setSelectedDocument(null); setFixedDocumentType(undefined); setActiveTab('electronic_invoices'); setIsCreatingInvoice(true); }} />;
+                              return <ChurchModule user={user} companyData={companyData} onNavigate={setActiveTab} onEmitirFatura={() => { setSelectedDocument(null); setFixedDocumentType(undefined); setActiveTab('electronic_invoices'); setIsCreatingInvoice(true); }} fiscalYear={fiscalYear} />;
                             case 'agrobusiness':
-                              return <AgrobusinessModule user={user} companyData={companyData} onNavigate={setActiveTab} onEmitirFatura={() => { setSelectedDocument(null); setFixedDocumentType(undefined); setActiveTab('electronic_invoices'); setIsCreatingInvoice(true); }} />;
+                              return <AgrobusinessModule user={user} companyData={companyData} onNavigate={setActiveTab} onEmitirFatura={() => { setSelectedDocument(null); setFixedDocumentType(undefined); setActiveTab('electronic_invoices'); setIsCreatingInvoice(true); }} fiscalYear={fiscalYear} />;
                             case 'tax-series':
                               return (
                                 <FiscalSeriesModule 

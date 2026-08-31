@@ -13,6 +13,7 @@ interface ChurchProps {
   companyData?: any;
   onNavigate?: (tab: string) => void;
   onEmitirFatura?: () => void;
+  fiscalYear?: string;
 }
 
 type TabType = 'dashboard' | 'membros' | 'departamentos' | 'dizimos' | 'eventos' | 'patrimonio' | 'missoes' | 'relatorios';
@@ -70,7 +71,7 @@ const ChurchBarChart = ({ data, label, color = '#003366' }: { data: { name: stri
   );
 };
 
-export default function ChurchModule({ user, companyData, onNavigate, onEmitirFatura }: ChurchProps) {
+export default function ChurchModule({ user, companyData, onNavigate, onEmitirFatura, fiscalYear = '2026' }: ChurchProps) {
   const empresaId: string = user?.empresa_id || user?.company_id || companyData?.id || user?.id || '00000000-0000-0000-0000-000000000000';
 
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
@@ -106,10 +107,11 @@ export default function ChurchModule({ user, companyData, onNavigate, onEmitirFa
     if (!empresaId) return;
     setLoading(true);
     try {
+      const year = fiscalYear || new Date().getFullYear().toString();
       const [mRes, dRes, eRes, minRes, pRes] = await Promise.all([
         supabase.from('church_membros').select('*').eq('empresa_id', empresaId).is('deleted_at', null).order('nome'),
-        supabase.from('church_dizimos_ofertas').select('*').eq('empresa_id', empresaId).is('deleted_at', null).order('data_movimento', { ascending: false }),
-        supabase.from('church_eventos').select('*').eq('empresa_id', empresaId).is('deleted_at', null).order('data_evento', { ascending: false }),
+        supabase.from('church_dizimos_ofertas').select('*').eq('empresa_id', empresaId).like('data_movimento', `${year}%`).is('deleted_at', null).order('data_movimento', { ascending: false }),
+        supabase.from('church_eventos').select('*').eq('empresa_id', empresaId).like('data_evento', `${year}%`).is('deleted_at', null).order('data_evento', { ascending: false }),
         supabase.from('church_ministerios').select('*').eq('empresa_id', empresaId).is('deleted_at', null).order('nome'),
         supabase.from('church_patrimonio').select('*').eq('empresa_id', empresaId).is('deleted_at', null).order('nome_item'),
       ]);
@@ -123,7 +125,7 @@ export default function ChurchModule({ user, companyData, onNavigate, onEmitirFa
     } finally {
       setLoading(false);
     }
-  }, [empresaId]);
+  }, [empresaId, fiscalYear]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -346,7 +348,13 @@ export default function ChurchModule({ user, companyData, onNavigate, onEmitirFa
       {/* Top Header */}
       <div className="bg-white border border-zinc-200 shadow-sm p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-black text-[#003366] flex items-center gap-2"><Cross size={26}/> Gestão Ecuménica & Igreja</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-2xl font-black text-[#003366] flex items-center gap-2"><Cross size={26}/> Gestão Ecuménica & Igreja</h2>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 text-[10px] font-black uppercase tracking-wider border border-emerald-200">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Exercício {fiscalYear} Ativo
+            </span>
+          </div>
           <p className="text-zinc-500 text-sm mt-1">Administração de membros, tesouraria espiritual, dízimos, cultos e ministérios — Angola</p>
         </div>
         <div className="flex items-center gap-2">

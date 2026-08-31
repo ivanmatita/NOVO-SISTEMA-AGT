@@ -26406,8 +26406,14 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
       {showSupplierModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm">
           <div className="w-full max-w-4xl bg-white shadow-2xl overflow-hidden relative">
-            <button onClick={() => setShowSupplierModal(false)} className="absolute top-4 right-4 text-zinc-400 hover:text-zinc-600 z-10 p-2 hover:bg-zinc-100 rounded-full"><X size={24} /></button>
-            <ClientForm onBack={() => setShowSupplierModal(false)} onSuccess={() => { setShowSupplierModal(false); }} isSupplier={true} />
+            <ClientForm 
+              onBack={() => setShowSupplierModal(false)} 
+              onSuccess={() => { 
+                setShowSupplierModal(false); 
+                window.dispatchEvent(new CustomEvent('refresh_suppliers'));
+              }} 
+              isSupplier={true} 
+            />
           </div>
         </div>
       )}
@@ -27627,6 +27633,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
         onSuccess={(savedData) => {
           setIsCreating(false);
           fetchPurchases();
+          window.dispatchEvent(new CustomEvent('refresh_purchases'));
           if (createType === 'Pagamento' && savedData) {
             setCompletedReceipt(savedData);
           }
@@ -29910,17 +29917,19 @@ const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas
         })));
       }
 
+      const anoNum = Number(fiscalYear || new Date().getFullYear());
       const { data: purData } = await supabase
         .from('compras')
         .select('*')
         .eq('empresa_id', companyId)
+        .eq('ano', anoNum)
         .order('created_at', { ascending: false });
 
       if (purData) setPurchases(purData);
     } catch (err) {
       console.error('Error loading supplier data:', err);
     }
-  }, [user?.empresa_id, user?.company_id]);
+  }, [user?.empresa_id, user?.company_id, fiscalYear]);
 
   useEffect(() => {
     loadData();
@@ -29934,12 +29943,16 @@ const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas
 
     realtimeManager.subscribe('fornecedores', companyId, handleRealtime);
     realtimeManager.subscribe('compras', companyId, handleRealtime);
+    window.addEventListener('refresh_suppliers', handleRealtime);
+    window.addEventListener('refresh_purchases', handleRealtime);
 
     return () => {
       realtimeManager.unsubscribe('fornecedores', companyId, handleRealtime);
       realtimeManager.unsubscribe('compras', companyId, handleRealtime);
+      window.removeEventListener('refresh_suppliers', handleRealtime);
+      window.removeEventListener('refresh_purchases', handleRealtime);
     };
-  }, [user?.empresa_id, user?.company_id, activeSubTab, loadData]);
+  }, [user?.empresa_id, user?.company_id, activeSubTab, loadData, fiscalYear]);
 
   useEffect(() => {
     if (selectedSupplier) {
@@ -32790,6 +32803,15 @@ export default function App() {
       }
     });
 
+    const handleRefreshSuppliers = () => {
+      if (companyId) doLoadFornecedores(companyId);
+    };
+    const handleRefreshPurchases = () => {
+      if (companyId) doLoadCompras(companyId, fiscalYear);
+    };
+    window.addEventListener('refresh_suppliers', handleRefreshSuppliers);
+    window.addEventListener('refresh_purchases', handleRefreshPurchases);
+
     return () => {
       tables.forEach(table => {
         const handler = handlers[table];
@@ -32797,8 +32819,10 @@ export default function App() {
           realtimeManager.unsubscribe(table, companyId, handler);
         }
       });
+      window.removeEventListener('refresh_suppliers', handleRefreshSuppliers);
+      window.removeEventListener('refresh_purchases', handleRefreshPurchases);
     };
-  }, [user?.empresa_id]);
+  }, [user?.empresa_id, fiscalYear]);
 
   const fetchData = async () => {
     if (isFetchingRef.current) {

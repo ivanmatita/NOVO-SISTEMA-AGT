@@ -90,7 +90,7 @@ export const fornecedorService = {
           .eq('empresa_id', companyId)
           .order('nome', { ascending: true });
 
-        if (!error && Array.isArray(data) && data.length > 0) {
+        if (!error && Array.isArray(data)) {
           return data.map(normalizeFornecedor);
         }
       } catch (err) {

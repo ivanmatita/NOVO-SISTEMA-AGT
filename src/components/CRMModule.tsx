@@ -47,14 +47,31 @@ interface Company {
   created_at: string;
   updated_at?: string;
   usuarios_count: number;
+  logo_url?: string;
+  logo_size?: number;
+  watermark_url?: string;
+  watermark_size?: number;
+  footer_image_url?: string;
+  footer_size?: number;
+  texto_rodape?: string;
+  exibir_marca_dagua?: boolean;
+  exibir_rodape?: boolean;
+  exibir_cabecalho?: boolean;
+  cor_primaria?: string;
+  cor_secundaria?: string;
 }
 
 interface UserProfile {
   id: string;
   email: string;
   full_name: string;
+  nome?: string;
   role: string;
   empresa_id: string;
+  ativo?: boolean;
+  is_active?: boolean;
+  permission_areas?: string[];
+  permissions?: string[];
   empresas?: {
     nome_empresa: string;
     nif: string;
@@ -142,6 +159,17 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
   const [resetTempPassword, setResetTempPassword] = useState('123456');
   const [showChangeCompanyModal, setShowChangeCompanyModal] = useState<UserProfile | null>(null);
   const [changeCompanyTarget, setChangeCompanyTarget] = useState('');
+
+  // Permissions modal state
+  const [showPermissionsModal, setShowPermissionsModal] = useState<UserProfile | null>(null);
+  const [editPermissions, setEditPermissions] = useState<string[]>([]);
+
+  // Company identity state
+  const [identityForm, setIdentityForm] = useState<any>({});
+  const [identityLogoFile, setIdentityLogoFile] = useState<File | null>(null);
+  const [identityWatermarkFile, setIdentityWatermarkFile] = useState<File | null>(null);
+  const [identitySaving, setIdentitySaving] = useState(false);
+
 
   // Reset de Senhas page state
   const [resetLogs, setResetLogs] = useState<any[]>([]);
@@ -1172,9 +1200,10 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
             { id: 'licenca', label: '2. Gestão de Licença', icon: Key },
             { id: 'comprovativos', label: '3. Comprovativos Pagamento', icon: CreditCard },
             { id: 'users', label: '4. Utilizadores & Reset', icon: Users },
-            { id: 'ocorrencias', label: '5. Ocorrências CRM', icon: MessageSquare },
-            { id: 'email', label: '6. Enviar Email', icon: Mail },
-            { id: 'auditoria', label: '7. Auditoria da Empresa', icon: Activity },
+            { id: 'identidade', label: '5. Identidade Visual', icon: Upload },
+            { id: 'ocorrencias', label: '6. Ocorrências CRM', icon: MessageSquare },
+            { id: 'email', label: '7. Enviar Email', icon: Mail },
+            { id: 'auditoria', label: '8. Auditoria da Empresa', icon: Activity },
           ].map(sub => (
             <button
               key={sub.id}
@@ -1355,6 +1384,9 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
           <div className="bg-white border border-zinc-200 p-6 space-y-6 animate-in fade-in duration-300">
             <div className="flex justify-between items-center border-b border-zinc-100 pb-4">
               <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider">Utilizadores Registados nesta Empresa</h3>
+              <span className="text-xs text-zinc-500 font-bold">
+                {safeUsers.filter(u => u && String(u.empresa_id) === String(selectedCompany.id)).length} utilizador(es)
+              </span>
             </div>
 
             <table className="w-full text-left text-xs border border-zinc-200">
@@ -1362,35 +1394,229 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                 <tr className="bg-zinc-50 border-b border-zinc-200 font-bold uppercase text-[10px] text-zinc-500">
                   <th className="p-3">Nome / Email</th>
                   <th className="p-3">Cargo / Função</th>
+                  <th className="p-3 text-center">Estado</th>
                   <th className="p-3">Data Cadastro</th>
-                  <th className="p-3 text-right">Ação de Segurança</th>
+                  <th className="p-3 text-right">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
-                {safeUsers.filter(u => u && String(u.empresa_id) === String(selectedCompany.id)).map(u => (
-                  <tr key={u.id} className="hover:bg-zinc-50">
-                    <td className="p-3 font-bold text-zinc-800">{u.full_name || u.email}</td>
-                    <td className="p-3 text-zinc-600 uppercase font-mono">{u.role || 'Operador'}</td>
-                    <td className="p-3 font-mono text-zinc-500">{safeFormatDate(u.created_at)}</td>
-                    <td className="p-3 text-right">
-                      <button 
-                        onClick={() => setShowUserResetModal(u)}
-                        className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-black text-[10px] uppercase tracking-wider flex items-center gap-1.5 ml-auto cursor-pointer"
-                      >
-                        <Key size={12} /> Resetar Acesso
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {safeUsers.filter(u => u && String(u.empresa_id) === String(selectedCompany.id)).map(u => {
+                  const isActive = u.ativo !== false && u.is_active !== false;
+                  return (
+                    <tr key={u.id} className="hover:bg-zinc-50">
+                      <td className="p-3">
+                        <p className="font-bold text-zinc-800">{u.full_name || u.nome || u.email}</p>
+                        <p className="text-[10px] text-zinc-400 font-mono">{u.email}</p>
+                      </td>
+                      <td className="p-3 text-zinc-600 uppercase font-mono">{u.role || 'Operador'}</td>
+                      <td className="p-3 text-center">
+                        <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded ${isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                          {isActive ? '✓ ATIVO' : '✗ BLOQUEADO'}
+                        </span>
+                      </td>
+                      <td className="p-3 font-mono text-zinc-500">{safeFormatDate(u.created_at)}</td>
+                      <td className="p-3 text-right">
+                        <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                          <button
+                            onClick={() => setShowUserResetModal(u)}
+                            className="px-2 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-black text-[10px] uppercase inline-flex items-center gap-1 cursor-pointer shadow-xs"
+                            title="Resetar Senha"
+                          >
+                            <KeyRound size={11} /> Reset
+                          </button>
+                          <button
+                            onClick={async () => {
+                              try {
+                                if (typeof fetchJson === 'function') {
+                                  const res = await fetchJson(`/api/crm/users/${u.id}/toggle-status`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({})
+                                  });
+                                  toast.success(res?.message || 'Estado atualizado!');
+                                  await loadData();
+                                }
+                              } catch (err: any) {
+                                toast.error(err.message || 'Erro ao alterar estado.');
+                              }
+                            }}
+                            className={`px-2 py-1.5 text-white font-black text-[10px] uppercase inline-flex items-center gap-1 cursor-pointer shadow-xs ${isActive ? 'bg-rose-600 hover:bg-rose-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+                            title={isActive ? 'Bloquear acesso' : 'Ativar acesso'}
+                          >
+                            {isActive ? <><Lock size={11} /> Bloquear</> : <><Unlock size={11} /> Ativar</>}
+                          </button>
+                          <button
+                            onClick={() => {
+                              setShowPermissionsModal(u);
+                              setEditPermissions(Array.isArray(u.permission_areas) ? u.permission_areas : (Array.isArray(u.permissions) ? u.permissions : []));
+                            }}
+                            className="px-2 py-1.5 bg-[#003366] hover:bg-[#002244] text-white font-black text-[10px] uppercase inline-flex items-center gap-1 cursor-pointer shadow-xs"
+                            title="Gerir Permissões"
+                          >
+                            <Sliders size={11} /> Permissões
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
                 {safeUsers.filter(u => u && String(u.empresa_id) === String(selectedCompany.id)).length === 0 && (
-                  <tr><td colSpan={4} className="p-8 text-center text-zinc-400 italic">Nenhum utilizador secundário registado para esta empresa.</td></tr>
+                  <tr><td colSpan={5} className="p-8 text-center text-zinc-400 italic">Nenhum utilizador secundário registado para esta empresa.</td></tr>
                 )}
               </tbody>
             </table>
           </div>
         )}
 
-        {/* SUB-ABA 5: OCORRÊNCIAS CRM */}
+        {/* SUB-ABA 5: IDENTIDADE VISUAL DA EMPRESA */}
+        {companySubTab === 'identidade' && (
+          <div className="bg-white border border-zinc-200 p-6 space-y-6 animate-in fade-in duration-300">
+            <div className="flex justify-between items-center border-b border-zinc-100 pb-4">
+              <div>
+                <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider">Identidade Visual & Documentos</h3>
+                <p className="text-xs text-zinc-500 mt-0.5">Logotipo, marca de água e rodapé aplicados nos documentos emitidos por esta empresa.</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-xs">
+              {/* Logotipo */}
+              <div className="space-y-3 p-4 border border-zinc-200 bg-zinc-50">
+                <h4 className="font-black text-[#003366] uppercase tracking-wider text-[10px]">Logotipo da Empresa</h4>
+                {(selectedCompany.logo_url || identityForm.logo_url) && (
+                  <img src={identityForm.logo_url || selectedCompany.logo_url} alt="Logo" className="h-16 object-contain border border-zinc-200 bg-white p-1" />
+                )}
+                <input
+                  type="file"
+                  accept=".png,.jpg,.jpeg,.svg,.webp"
+                  onChange={e => setIdentityLogoFile(e.target.files?.[0] || null)}
+                  className="w-full bg-white border border-zinc-200 p-2 font-medium text-xs"
+                />
+                {identityLogoFile && <p className="text-[10px] text-emerald-600 font-bold">✓ {identityLogoFile.name}</p>}
+                <div>
+                  <label className="block font-bold uppercase mb-1 text-[10px]">Tamanho do Logo (px)</label>
+                  <input type="number" defaultValue={selectedCompany.logo_size || 80} min={40} max={300}
+                    className="w-full bg-white border border-zinc-200 p-2 font-mono"
+                    onChange={e => setIdentityForm((f: any) => ({ ...f, logo_size: Number(e.target.value) }))}
+                  />
+                </div>
+              </div>
+
+              {/* Marca de Água */}
+              <div className="space-y-3 p-4 border border-zinc-200 bg-zinc-50">
+                <h4 className="font-black text-[#003366] uppercase tracking-wider text-[10px]">Marca de Água</h4>
+                {(selectedCompany.watermark_url || identityForm.watermark_url) && (
+                  <img src={identityForm.watermark_url || selectedCompany.watermark_url} alt="Watermark" className="h-16 object-contain border border-zinc-200 bg-white p-1 opacity-50" />
+                )}
+                <input
+                  type="file"
+                  accept=".png,.jpg,.jpeg,.svg,.webp"
+                  onChange={e => setIdentityWatermarkFile(e.target.files?.[0] || null)}
+                  className="w-full bg-white border border-zinc-200 p-2 font-medium text-xs"
+                />
+                {identityWatermarkFile && <p className="text-[10px] text-emerald-600 font-bold">✓ {identityWatermarkFile.name}</p>}
+                <label className="flex items-center gap-2 cursor-pointer mt-1">
+                  <input type="checkbox"
+                    defaultChecked={selectedCompany.exibir_marca_dagua !== false}
+                    onChange={e => setIdentityForm((f: any) => ({ ...f, exibir_marca_dagua: e.target.checked }))}
+                    className="w-4 h-4"
+                  />
+                  <span className="font-bold uppercase text-[10px]">Exibir marca de água nos documentos</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Rodapé dos Documentos */}
+            <div className="space-y-3 p-4 border border-zinc-200 bg-zinc-50">
+              <h4 className="font-black text-[#003366] uppercase tracking-wider text-[10px]">Rodapé dos Documentos</h4>
+              <textarea
+                rows={3}
+                defaultValue={selectedCompany.texto_rodape || ''}
+                placeholder="Ex: IBAN: 0040 0000 0000 0000 | BIC: NCBAAOLU | Tel: +244 9xx xxx xxx"
+                className="w-full bg-white border border-zinc-200 p-3 text-xs font-medium focus:outline-none focus:border-[#003366]"
+                onChange={e => setIdentityForm((f: any) => ({ ...f, texto_rodape: e.target.value }))}
+              />
+              <div className="flex gap-6">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox"
+                    defaultChecked={selectedCompany.exibir_rodape !== false}
+                    onChange={e => setIdentityForm((f: any) => ({ ...f, exibir_rodape: e.target.checked }))}
+                    className="w-4 h-4"
+                  />
+                  <span className="font-bold uppercase text-[10px]">Exibir rodapé nos documentos</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox"
+                    defaultChecked={selectedCompany.exibir_cabecalho !== false}
+                    onChange={e => setIdentityForm((f: any) => ({ ...f, exibir_cabecalho: e.target.checked }))}
+                    className="w-4 h-4"
+                  />
+                  <span className="font-bold uppercase text-[10px]">Exibir cabeçalho nos documentos</span>
+                </label>
+              </div>
+            </div>
+
+            <button
+              disabled={identitySaving}
+              onClick={async () => {
+                setIdentitySaving(true);
+                try {
+                  let logoUrl = selectedCompany.logo_url || identityForm.logo_url || '';
+                  let watermarkUrl = selectedCompany.watermark_url || identityForm.watermark_url || '';
+
+                  // Upload logo
+                  if (identityLogoFile) {
+                    const ext = identityLogoFile.name.split('.').pop();
+                    const path = `logos/${selectedCompany.id}_logo_${Date.now()}.${ext}`;
+                    const { data: up } = await supabase.storage.from('media').upload(path, identityLogoFile, { cacheControl: '3600', upsert: true });
+                    if (up) {
+                      const { data: pub } = supabase.storage.from('media').getPublicUrl(path);
+                      logoUrl = pub?.publicUrl || logoUrl;
+                    }
+                  }
+
+                  // Upload watermark
+                  if (identityWatermarkFile) {
+                    const ext = identityWatermarkFile.name.split('.').pop();
+                    const path = `watermarks/${selectedCompany.id}_wm_${Date.now()}.${ext}`;
+                    const { data: up } = await supabase.storage.from('media').upload(path, identityWatermarkFile, { cacheControl: '3600', upsert: true });
+                    if (up) {
+                      const { data: pub } = supabase.storage.from('media').getPublicUrl(path);
+                      watermarkUrl = pub?.publicUrl || watermarkUrl;
+                    }
+                  }
+
+                  const payload = {
+                    ...identityForm,
+                    logo_url: logoUrl,
+                    watermark_url: watermarkUrl
+                  };
+
+                  if (typeof fetchJson === 'function') {
+                    await fetchJson(`/api/crm/companies/${selectedCompany.id}/identity`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(payload)
+                    });
+                  }
+
+                  toast.success('Identidade visual gravada com sucesso!');
+                  setIdentityLogoFile(null);
+                  setIdentityWatermarkFile(null);
+                  await loadData();
+                } catch (err: any) {
+                  toast.error(err.message || 'Erro ao gravar identidade visual.');
+                } finally {
+                  setIdentitySaving(false);
+                }
+              }}
+              className="px-6 py-3 bg-[#003366] hover:bg-[#002244] text-white text-xs font-black uppercase tracking-widest flex items-center gap-2 cursor-pointer shadow-md disabled:opacity-50"
+            >
+              <Upload size={14} /> {identitySaving ? 'A Gravar...' : 'Gravar Identidade Visual'}
+            </button>
+          </div>
+        )}
+
+
         {companySubTab === 'ocorrencias' && (
           <div className="bg-white border border-zinc-200 p-6 space-y-6 animate-in fade-in duration-300">
             <div className="flex justify-between items-center border-b border-zinc-100 pb-4">
@@ -2397,6 +2623,115 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                 <button type="submit" className="bg-[#003366] text-white px-5 py-2 uppercase font-bold cursor-pointer shadow-sm">Abrir Chamado</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL PERMISSÕES DE UTILIZADOR */}
+      {showPermissionsModal && (
+        <div className="fixed inset-0 bg-zinc-900/60 backdrop-blur-xs z-[200] flex items-center justify-center p-4">
+          <div className="bg-white border border-zinc-200 w-full max-w-xl shadow-2xl p-6 space-y-4 text-xs max-h-[85vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-zinc-100 pb-3">
+              <div>
+                <h3 className="text-base font-black text-[#003366] uppercase">Permissões de Menu</h3>
+                <p className="text-[10px] text-zinc-500 mt-0.5">{showPermissionsModal.full_name || showPermissionsModal.nome || showPermissionsModal.email}</p>
+              </div>
+              <button onClick={() => setShowPermissionsModal(null)} className="text-zinc-400 hover:text-zinc-700 font-bold text-[10px] uppercase cursor-pointer">Fechar</button>
+            </div>
+            <div className="bg-amber-50 border border-amber-200 p-3 text-amber-900 text-[10px] rounded-xs">
+              <strong>Atenção:</strong> Utilizadores com role <strong>admin / admin_empresa / super_admin / proprietario</strong> têm acesso total independentemente das permissões abaixo.
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { id: 'dashboard', label: 'Painel de Bordo' },
+                { id: 'clients', label: 'Clientes' },
+                { id: 'workplaces', label: 'Locais de Trabalho' },
+                { id: 'secretary', label: 'Secretaria Beta' },
+                { id: 'pos', label: 'Ponto de Venda' },
+                { id: 'contracts', label: 'Contratos' },
+                { id: 'electronic_invoices', label: 'Faturação Electrónica' },
+                { id: 'security', label: 'Segurança Privada' },
+                { id: 'specialized', label: 'Gestão Especializada' },
+                { id: 'archive', label: 'Arquivo' },
+                { id: 'cartas', label: 'Gestão de Cartas' },
+                { id: 'invoices', label: 'Vendas' },
+                { id: 'drafts', label: 'Rascunhos (Drafts)' },
+                { id: 'suppliers', label: 'Compras' },
+                { id: 'products', label: 'Stocks & Inventário' },
+                { id: 'financial', label: 'Finanças' },
+                { id: 'accounting', label: 'Contabilidade' },
+                { id: 'hr', label: 'Recursos Humanos' },
+                { id: 'reports', label: 'Relatórios' },
+                { id: 'licencas', label: 'Licenças' },
+                { id: 'empresa', label: 'Documento da Empresa' },
+                { id: 'agrobusiness', label: 'Agronegócio' },
+                { id: 'church', label: 'Gestão de Igreja' },
+                { id: 'settings', label: 'Definições' },
+              ].map(mod => (
+                <label key={mod.id} className="flex items-center gap-2 cursor-pointer p-2 hover:bg-zinc-50 border border-zinc-100">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 accent-[#003366]"
+                    checked={editPermissions.includes(mod.id)}
+                    onChange={e => {
+                      if (e.target.checked) {
+                        setEditPermissions(prev => [...prev, mod.id]);
+                      } else {
+                        setEditPermissions(prev => prev.filter(p => p !== mod.id));
+                      }
+                    }}
+                  />
+                  <span className="font-medium text-zinc-700">{mod.label}</span>
+                </label>
+              ))}
+            </div>
+            <div className="flex justify-between items-center pt-3 border-t">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditPermissions([
+                    'dashboard','clients','workplaces','secretary','pos','contracts','electronic_invoices',
+                    'security','specialized','archive','cartas','invoices','drafts','suppliers','products',
+                    'financial','accounting','hr','reports','licencas','empresa','agrobusiness','church','settings'
+                  ])}
+                  className="px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold text-[10px] uppercase cursor-pointer"
+                >
+                  Todos
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditPermissions(['dashboard'])}
+                  className="px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold text-[10px] uppercase cursor-pointer"
+                >
+                  Limpar
+                </button>
+              </div>
+              <div className="flex gap-3">
+                <button type="button" onClick={() => setShowPermissionsModal(null)} className="px-4 py-2 uppercase font-bold cursor-pointer">Cancelar</button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      if (typeof fetchJson === 'function') {
+                        const res = await fetchJson(`/api/crm/users/${showPermissionsModal!.id}/permissions`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ permission_areas: editPermissions })
+                        });
+                        toast.success(res?.message || 'Permissões atualizadas com sucesso!');
+                      }
+                    } catch (err: any) {
+                      toast.error(err.message || 'Erro ao atualizar permissões.');
+                    }
+                    setShowPermissionsModal(null);
+                    loadData();
+                  }}
+                  className="bg-[#003366] text-white px-5 py-2 uppercase font-bold cursor-pointer"
+                >
+                  Guardar Permissões ({editPermissions.length})
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

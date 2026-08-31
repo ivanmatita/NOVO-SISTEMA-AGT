@@ -8657,7 +8657,145 @@ app.use((req, res, next) => {
     }
   });
 
+  // Toggle User Active/Inactive status via CRM
+  app.post("/api/crm/users/:id/toggle-status", async (req, res) => {
+    try {
+      if (!await isSuperAdmin(req)) return res.status(403).json({ error: "Acesso negado." });
+      if (!supabaseAdmin) return res.status(500).json({ error: "Supabase not available" });
+      const { id } = req.params;
+      const authCtx = await getAuthUserContext(req);
+      const { data: userProfile } = await supabaseAdmin.from('perfis').select('*').eq('id', id).single();
+      if (!userProfile) return res.status(404).json({ error: "Utilizador não encontrado." });
+      const currentlyActive = userProfile.ativo !== false && userProfile.is_active !== false;
+      const newStatus = !currentlyActive;
+      await supabaseAdmin.from('perfis').update({ ativo: newStatus, is_active: newStatus, updated_at: new Date().toISOString() }).eq('id', id);
+      await supabaseAdmin.from('historico_licencas').insert({
+        empresa_id: userProfile.empresa_id || 'system',
+        acao: newStatus ? 'UTILIZADOR_ATIVADO' : 'UTILIZADOR_DESATIVADO',
+        descricao: `Utilizador ${userProfile.email} foi ${newStatus ? 'ativado' : 'desativado'} pelo SuperAdmin ${authCtx?.email || 'system'}`,
+        usuario: authCtx?.email || 'superadmin',
+        data_evento: new Date().toISOString(),
+        created_at: new Date().toISOString()
+      }).catch(() => {});
+      res.json({ success: true, ativo: newStatus, message: `Utilizador ${newStatus ? 'ativado' : 'desativado'} com sucesso.` });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
 
+  // Update user menu permissions via CRM
+  app.post("/api/crm/users/:id/permissions", async (req, res) => {
+    try {
+      if (!await isSuperAdmin(req)) return res.status(403).json({ error: "Acesso negado." });
+      if (!supabaseAdmin) return res.status(500).json({ error: "Supabase not available" });
+      const { id } = req.params;
+      const { permission_areas } = req.body;
+      const authCtx = await getAuthUserContext(req);
+      if (!Array.isArray(permission_areas)) return res.status(400).json({ error: "permission_areas deve ser um array." });
+      const { data: userProfile } = await supabaseAdmin.from('perfis').select('*').eq('id', id).single();
+      if (!userProfile) return res.status(404).json({ error: "Utilizador não encontrado." });
+      await supabaseAdmin.from('perfis').update({ permission_areas, permissions: permission_areas, updated_at: new Date().toISOString() }).eq('id', id);
+      await supabaseAdmin.from('historico_licencas').insert({
+        empresa_id: userProfile.empresa_id || 'system',
+        acao: 'PERMISSOES_ATUALIZADAS',
+        descricao: `Permissões de menu do utilizador ${userProfile.email} atualizadas: ${permission_areas.join(', ')}`,
+        usuario: authCtx?.email || 'superadmin',
+        data_evento: new Date().toISOString(),
+        created_at: new Date().toISOString()
+      }).catch(() => {});
+      res.json({ success: true, permission_areas, message: "Permissões atualizadas com sucesso." });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Save company identity (logo, watermark, rodapé) via CRM SuperAdmin
+  app.post("/api/crm/companies/:id/identity", async (req, res) => {
+    try {
+      if (!await isSuperAdmin(req)) return res.status(403).json({ error: "Acesso negado." });
+      if (!supabaseAdmin) return res.status(500).json({ error: "Supabase not available" });
+      const { id } = req.params;
+      const authCtx = await getAuthUserContext(req);
+      const { logo_url, logo_size, watermark_url, watermark_size, exibir_marca_dagua, footer_image_url, footer_size, texto_rodape, exibir_rodape, exibir_cabecalho, cor_primaria, cor_secundaria } = req.body;
+      const updatePayload: any = { updated_at: new Date().toISOString() };
+      if (logo_url !== undefined) updatePayload.logo_url = logo_url;
+      if (logo_size !== undefined) updatePayload.logo_size = logo_size;
+      if (watermark_url !== undefined) updatePayload.watermark_url = watermark_url;
+      if (watermark_size !== undefined) updatePayload.watermark_size = watermark_size;
+      if (exibir_marca_dagua !== undefined) updatePayload.exibir_marca_dagua = exibir_marca_dagua;
+      if (footer_image_url !== undefined) updatePayload.footer_image_url = footer_image_url;
+      if (footer_size !== undefined) updatePayload.footer_size = footer_size;
+      if (texto_rodape !== undefined) updatePayload.texto_rodape = texto_rodape;
+      if (exibir_rodape !== undefined) updatePayload.exibir_rodape = exibir_rodape;
+      if (exibir_cabecalho !== undefined) updatePayload.exibir_cabecalho = exibir_cabecalho;
+      if (cor_primaria !== undefined) updatePayload.cor_primaria = cor_primaria;
+      if (cor_secundaria !== undefined) updatePayload.cor_secundaria = cor_secundaria;
+      await supabaseAdmin.from('empresas').update(updatePayload).eq('id', id);
+      const configPayload = { ...updatePayload, empresa_id: id };
+      await supabaseAdmin.from('config_empresa').upsert(configPayload, { onConflict: 'empresa_id' });
+      await supabaseAdmin.from('historico_licencas').insert({
+        empresa_id: id,
+        acao: 'IDENTIDADE_VISUAL_ATUALIZADA',
+        descricao: `Identidade visual da empresa atualizada pelo SuperAdmin ${authCtx?.email || 'system'}`,
+        usuario: authCtx?.email || 'superadmin',
+        data_evento: new Date().toISOString(),
+        created_at: new Date().toISOString()
+      }).catch(() => {});
+      res.json({ success: true, message: "Identidade visual gravada com sucesso." });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Deactivate/Suspend license via CRM
+  app.post("/api/crm/companies/:id/deactivate-license", async (req, res) => {
+    try {
+      if (!await isSuperAdmin(req)) return res.status(403).json({ error: "Acesso negado." });
+      if (!supabaseAdmin) return res.status(500).json({ error: "Supabase not available" });
+      const { id } = req.params;
+      const { motivo = 'Suspensão administrativa' } = req.body;
+      const authCtx = await getAuthUserContext(req);
+      await supabaseAdmin.from('empresas').update({ status_licenca: 'SUSPENSA', licenca_ativa: false, ativo: false, updated_at: new Date().toISOString() }).eq('id', id);
+      await supabaseAdmin.from('licencas_empresas').update({ status_licenca: 'SUSPENSA', licenca_ativa: false, ativo: false, updated_at: new Date().toISOString() }).eq('empresa_id', id);
+      await supabaseAdmin.from('historico_licencas').insert({
+        empresa_id: id,
+        acao: 'LICENCA_SUSPENSA',
+        descricao: `Licença suspensa pelo SuperAdmin ${authCtx?.email || 'system'}. Motivo: ${motivo}`,
+        usuario: authCtx?.email || 'superadmin',
+        data_evento: new Date().toISOString(),
+        created_at: new Date().toISOString()
+      });
+      res.json({ success: true, message: "Licença suspensa com sucesso.", empresa: { status_licenca: 'SUSPENSA' }, licenca: { status_licenca: 'SUSPENSA' } });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Change company of a user via CRM
+  app.post("/api/crm/users/:id/change-company", async (req, res) => {
+    try {
+      if (!await isSuperAdmin(req)) return res.status(403).json({ error: "Acesso negado." });
+      if (!supabaseAdmin) return res.status(500).json({ error: "Supabase not available" });
+      const { id } = req.params;
+      const { nova_empresa_id } = req.body;
+      const authCtx = await getAuthUserContext(req);
+      if (!nova_empresa_id) return res.status(400).json({ error: "nova_empresa_id é obrigatório." });
+      const { data: userProfile } = await supabaseAdmin.from('perfis').select('*').eq('id', id).single();
+      if (!userProfile) return res.status(404).json({ error: "Utilizador não encontrado." });
+      await supabaseAdmin.from('perfis').update({ empresa_id: nova_empresa_id, updated_at: new Date().toISOString() }).eq('id', id);
+      await supabaseAdmin.from('historico_licencas').insert({
+        empresa_id: nova_empresa_id,
+        acao: 'UTILIZADOR_TRANSFERIDO',
+        descricao: `Utilizador ${userProfile.email} transferido de empresa ${userProfile.empresa_id} para ${nova_empresa_id} pelo SuperAdmin ${authCtx?.email || 'system'}`,
+        usuario: authCtx?.email || 'superadmin',
+        data_evento: new Date().toISOString(),
+        created_at: new Date().toISOString()
+      }).catch(() => {});
+      res.json({ success: true, message: "Empresa do utilizador alterada com sucesso." });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
 
   // Audit Logs CRM
   app.get("/api/crm/audit", async (req, res) => {

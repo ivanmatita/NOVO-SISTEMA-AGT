@@ -285,6 +285,22 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
       }
       const listOc = Array.isArray(ocData) ? ocData : (ocData?.data && Array.isArray(ocData.data) ? ocData.data : []);
       setOcorrencias(listOc);
+
+      // Load Comprovativos da empresa selecionada
+      if (selectedCompany?.id) {
+        try {
+          let compData: any = [];
+          if (typeof fetchJson === 'function') {
+            compData = await fetchJson(`/api/crm/comprovativos?empresa_id=${selectedCompany.id}`);
+          }
+          const listComp = Array.isArray(compData) ? compData : (compData?.data && Array.isArray(compData.data) ? compData.data : []);
+          setCompanyComprovativos(listComp);
+        } catch {
+          setCompanyComprovativos([]);
+        }
+      } else {
+        setCompanyComprovativos([]);
+      }
     } catch (err) {
       console.error("Erro ao carregar dados CRM:", err);
     } finally {

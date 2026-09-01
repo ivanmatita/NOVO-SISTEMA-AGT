@@ -8683,57 +8683,101 @@ app.use((req, res, next) => {
       const { id } = req.params;
       const authCtx = await getAuthUserContext(req);
 
-      // Localizar perfil por id ou user_id
+      console.log(`[CRM toggle-status] ID recebido: ${id}`);
+
+      // Localizar perfil por id OU user_id (busca flexível)
       const { data: userProfile, error: findErr } = await supabaseAdmin
         .from('perfis')
         .select('*')
         .or(`id.eq.${id},user_id.eq.${id}`)
         .maybeSingle();
 
-      if (findErr || !userProfile) {
-        return res.status(404).json({ error: "Utilizador não encontrado no sistema." });
+      if (findErr) {
+        console.error('[CRM toggle-status] Erro ao localizar perfil:', findErr.message);
+        return res.status(500).json({ success: false, error: `Erro ao localizar utilizador: ${findErr.message}` });
       }
+      if (!userProfile) {
+        console.warn('[CRM toggle-status] Perfil não encontrado para ID:', id);
+        return res.status(404).json({ success: false, error: "Utilizador não encontrado no sistema." });
+      }
+
+      console.log(`[CRM toggle-status] Perfil encontrado: ${userProfile.email} | ativo=${userProfile.ativo} | is_active=${userProfile.is_active}`);
 
       const currentlyActive = userProfile.ativo !== false && userProfile.is_active !== false;
       const newStatus = req.body.ativo !== undefined ? Boolean(req.body.ativo) : !currentlyActive;
 
-      // 1. UPDATE
+      console.log(`[CRM toggle-status] Novo estado: ${newStatus ? 'ATIVO' : 'BLOQUEADO'}`);
+
+      // 1. Construir payload de update (sem updated_at se a coluna não existir)
+      const updatePayload: any = {
+        ativo: newStatus,
+        is_active: newStatus
+      };
+      // Tentar incluir updated_at, mas não falhar se não existir
+      try {
+        updatePayload.updated_at = new Date().toISOString();
+      } catch (_) {}
+
+      // 2. UPDATE na tabela perfis usando o id interno do perfil
       const { error: updateErr } = await supabaseAdmin
         .from('perfis')
-        .update({
-          ativo: newStatus,
-          is_active: newStatus,
-          updated_at: new Date().toISOString()
-        })
+        .update(updatePayload)
         .eq('id', userProfile.id);
 
       if (updateErr) {
-        return res.status(500).json({ success: false, error: `Erro ao atualizar status: ${updateErr.message}` });
+        console.error('[CRM toggle-status] Erro no UPDATE:', updateErr.message);
+        // Tentar sem updated_at se for o problema
+        if (updateErr.message?.includes('updated_at') || updateErr.code === '42703') {
+          const { error: updateErr2 } = await supabaseAdmin
+            .from('perfis')
+            .update({ ativo: newStatus, is_active: newStatus })
+            .eq('id', userProfile.id);
+          if (updateErr2) {
+            return res.status(500).json({ success: false, error: `Erro ao atualizar status: ${updateErr2.message}` });
+          }
+        } else {
+          return res.status(500).json({ success: false, error: `Erro ao atualizar status: ${updateErr.message}` });
+        }
       }
 
-      // 2. SELECT & VALIDAÇÃO (Regra Suprema)
+      // 3. SELECT & VALIDAÇÃO (Ciclo obrigatório — Regra Suprema)
       const { data: confirmedProfile, error: confErr } = await supabaseAdmin
         .from('perfis')
         .select('id, email, ativo, is_active')
         .eq('id', userProfile.id)
-        .single();
+        .maybeSingle();
 
-      if (confErr || !confirmedProfile || (confirmedProfile.ativo !== newStatus && confirmedProfile.is_active !== newStatus)) {
+      if (confErr) {
+        console.error('[CRM toggle-status] Erro no SELECT de confirmação:', confErr.message);
+        return res.status(500).json({ success: false, error: `Erro na validação pós-update: ${confErr.message}` });
+      }
+
+      if (!confirmedProfile) {
+        return res.status(500).json({ success: false, error: "Falha na confirmação: perfil não encontrado após UPDATE." });
+      }
+
+      // Validação: pelo menos um dos dois campos deve ter o valor correcto
+      const atovoOk = confirmedProfile.ativo === newStatus;
+      const isActiveOk = confirmedProfile.is_active === newStatus;
+      if (!atovoOk && !isActiveOk) {
+        console.error('[CRM toggle-status] Validação falhou:', confirmedProfile);
         return res.status(500).json({
           success: false,
           error: "Falha na confirmação de gravação no banco Supabase."
         });
       }
 
-      // 3. Auditoria
-      await supabaseAdmin.from('historico_licencas').insert({
+      console.log(`[CRM toggle-status] ✅ Gravado e confirmado: ativo=${confirmedProfile.ativo}, is_active=${confirmedProfile.is_active}`);
+
+      // 4. Auditoria (não-bloqueante)
+      supabaseAdmin.from('historico_licencas').insert({
         empresa_id: userProfile.empresa_id || 'system',
         acao: newStatus ? 'UTILIZADOR_ATIVADO' : 'UTILIZADOR_BLOQUEADO',
         descricao: `Utilizador ${userProfile.email} foi ${newStatus ? 'ativado' : 'bloqueado'} pelo administrador ${authCtx?.email || 'admin'}`,
         usuario: authCtx?.email || 'admin',
         data_evento: new Date().toISOString(),
         created_at: new Date().toISOString()
-      }).catch(() => {});
+      }).then(() => {}).catch(() => {});
 
       res.json({
         success: true,
@@ -8742,9 +8786,11 @@ app.use((req, res, next) => {
         message: `Utilizador ${newStatus ? 'ativado' : 'bloqueado'} com sucesso e confirmado no Supabase.`
       });
     } catch (e: any) {
+      console.error('[CRM toggle-status] Erro inesperado:', e.message);
       res.status(500).json({ success: false, error: e.message });
     }
   });
+
 
   // Update user menu permissions via CRM (Com Confirmação UPDATE -> SELECT -> VALIDAÇÃO)
   app.post("/api/crm/users/:id/permissions", async (req, res) => {
@@ -8765,24 +8811,26 @@ app.use((req, res, next) => {
         .or(`id.eq.${id},user_id.eq.${id}`)
         .maybeSingle();
 
-      if (findErr || !userProfile) {
+      if (findErr) {
+        return res.status(500).json({ success: false, error: `Erro ao localizar utilizador: ${findErr.message}` });
+      }
+      if (!userProfile) {
         return res.status(404).json({ success: false, error: "Utilizador não encontrado." });
       }
 
-      // 1. UPDATE
-      const { error: updateErr } = await supabaseAdmin
-        .from('perfis')
-        .update({
-          permission_areas,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', userProfile.id);
-
+      // 1. UPDATE — tentar com updated_at, fallback sem
+      let updateErr: any = null;
+      const r1 = await supabaseAdmin.from('perfis').update({ permission_areas, updated_at: new Date().toISOString() }).eq('id', userProfile.id);
+      updateErr = r1.error;
+      if (updateErr && (updateErr.message?.includes('updated_at') || updateErr.code === '42703')) {
+        const r2 = await supabaseAdmin.from('perfis').update({ permission_areas }).eq('id', userProfile.id);
+        updateErr = r2.error;
+      }
       if (updateErr) {
         return res.status(500).json({ success: false, error: `Erro ao gravar permissões: ${updateErr.message}` });
       }
 
-      // 2. SELECT & VALIDAÇÃO (Regra Suprema)
+      // 2. SELECT & VALIDAÇÃO (Regra Suprema — maybeSingle evita PGRST116)
       const { data: confirmedProfile, error: confErr } = await supabaseAdmin
         .from('perfis')
         .select('id, permission_areas')

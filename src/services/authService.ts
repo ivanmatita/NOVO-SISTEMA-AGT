@@ -166,13 +166,20 @@ export const authService = {
       sessionCache = authData.session;
 
       // 1. Tentar buscar Perfil
-      const { data: perfil, error: perfilError } = await supabase
+      let { data: perfil, error: perfilError } = await supabase
         .from('perfis')
         .select('*')
-        .eq('id', authData.user.id)
+        .or(`id.eq.${authData.user.id},user_id.eq.${authData.user.id}`)
         .maybeSingle();
 
       if (perfilError) console.error('[AuthService] Erro de rede ao buscar perfil:', perfilError);
+
+      // Validação Estrita de Bloqueio de Acesso
+      if (perfil && (perfil.ativo === false || perfil.is_active === false)) {
+        await supabase.auth.signOut();
+        sessionCache = null;
+        throw new Error("O seu acesso foi bloqueado. Contacte o administrador da sua empresa para obter mais informações.");
+      }
 
       // Handle profile mappings
       if (perfil && !perfil.empresa_id && perfil.company_id) {
@@ -182,6 +189,7 @@ export const authService = {
       if (perfil && perfil.empresa_id) {
         perfil.company_id = perfil.empresa_id;
       }
+
 
       // 2. Se não houver perfil, tentar buscar Empresa (Auto-reparação)
       if (!perfil) {
@@ -420,6 +428,15 @@ export const authService = {
       if (error) {
         console.error('[AuthService] Erro ao recuperar perfil:', error);
       }
+
+      // Se o perfil do utilizador foi desativado/bloqueado pelo CRM
+      if (perfil && (perfil.ativo === false || perfil.is_active === false)) {
+        console.warn('[AuthService] Utilizador com conta bloqueada detetado em getCurrentUser. Efetuando logout...');
+        await supabase.auth.signOut();
+        sessionCache = null;
+        return null;
+      }
+
 
       let empresa = null;
       const parsedCompanyId = perfil?.empresa_id;

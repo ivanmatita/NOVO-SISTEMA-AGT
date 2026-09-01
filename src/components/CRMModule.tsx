@@ -168,7 +168,12 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
   const [identityForm, setIdentityForm] = useState<any>({});
   const [identityLogoFile, setIdentityLogoFile] = useState<File | null>(null);
   const [identityWatermarkFile, setIdentityWatermarkFile] = useState<File | null>(null);
+  const [identityFooterFile, setIdentityFooterFile] = useState<File | null>(null);
+  const [identityLeftFile, setIdentityLeftFile] = useState<File | null>(null);
+  const [identityRightFile, setIdentityRightFile] = useState<File | null>(null);
   const [identitySaving, setIdentitySaving] = useState(false);
+  const [showDocumentPreviewModal, setShowDocumentPreviewModal] = useState(false);
+
 
 
   // Reset de Senhas page state
@@ -1484,153 +1489,469 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
           </div>
         )}
 
-        {/* SUB-ABA 5: IDENTIDADE VISUAL DA EMPRESA */}
+        {/* SUB-ABA 5: IDENTIDADE VISUAL & MODELO DE DOCUMENTOS */}
         {companySubTab === 'identidade' && (
-          <div className="bg-white border border-zinc-200 p-6 space-y-6 animate-in fade-in duration-300">
-            <div className="flex justify-between items-center border-b border-zinc-100 pb-4">
+          <div className="space-y-8 animate-in fade-in duration-300">
+            <div className="bg-white border border-zinc-200 p-6 shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <div>
-                <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider">Identidade Visual & Documentos</h3>
-                <p className="text-xs text-zinc-500 mt-0.5">Logotipo, marca de água e rodapé aplicados nos documentos emitidos por esta empresa.</p>
+                <h3 className="text-base font-black text-[#003366] uppercase tracking-wider">Identidade Visual &amp; Modelo Oficial de Documentos</h3>
+                <p className="text-xs text-zinc-500 mt-1">Configure logotipo, marca de água, imagem de rodapé e imagens laterais aplicadas nos documentos fiscais emitidos por {selectedCompany.nome_empresa}.</p>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setShowDocumentPreviewModal(true)}
+                  className="px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <Eye size={14} /> Visualizar Modelo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowDocumentPreviewModal(true)}
+                  className="px-4 py-2 bg-[#003366] hover:bg-[#002244] text-white text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <Download size={14} /> Baixar / Imprimir Modelo
+                </button>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-xs">
-              {/* Logotipo */}
-              <div className="space-y-3 p-4 border border-zinc-200 bg-zinc-50">
-                <h4 className="font-black text-[#003366] uppercase tracking-wider text-[10px]">Logotipo da Empresa</h4>
-                {(selectedCompany.logo_url || identityForm.logo_url) && (
-                  <img src={identityForm.logo_url || selectedCompany.logo_url} alt="Logo" className="h-16 object-contain border border-zinc-200 bg-white p-1" />
-                )}
-                <input
-                  type="file"
-                  accept=".png,.jpg,.jpeg,.svg,.webp"
-                  onChange={e => setIdentityLogoFile(e.target.files?.[0] || null)}
-                  className="w-full bg-white border border-zinc-200 p-2 font-medium text-xs"
-                />
-                {identityLogoFile && <p className="text-[10px] text-emerald-600 font-bold">✓ {identityLogoFile.name}</p>}
-                <div>
-                  <label className="block font-bold uppercase mb-1 text-[10px]">Tamanho do Logo (px)</label>
-                  <input type="number" defaultValue={selectedCompany.logo_size || 80} min={40} max={300}
-                    className="w-full bg-white border border-zinc-200 p-2 font-mono"
-                    onChange={e => setIdentityForm((f: any) => ({ ...f, logo_size: Number(e.target.value) }))}
-                  />
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 text-xs">
+              {/* COLUNA ESQUERDA: FORMULÁRIO DE IDENTIDADE (7 COLUNAS) */}
+              <div className="lg:col-span-7 space-y-6">
+                <div className="bg-white border border-zinc-200 p-6 space-y-6 shadow-xs">
+                  <h4 className="font-black text-[#003366] uppercase tracking-wider text-xs border-b pb-2">1. Elementos Visuais Principais</h4>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Logotipo */}
+                    <div className="space-y-3 p-4 border border-zinc-200 bg-zinc-50 rounded-xs">
+                      <div className="flex justify-between items-center">
+                        <span className="font-black text-[#003366] uppercase text-[10px]">Logotipo da Empresa</span>
+                        {(identityForm.logo_url || selectedCompany.logo_url) && (
+                          <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">Ativo</span>
+                        )}
+                      </div>
+                      {(identityForm.logo_url || selectedCompany.logo_url) && (
+                        <div className="h-16 flex items-center justify-center border border-zinc-200 bg-white p-2">
+                          <img src={identityForm.logo_url || selectedCompany.logo_url} alt="Logo" className="max-h-full max-w-full object-contain" />
+                        </div>
+                      )}
+                      <input
+                        type="file"
+                        accept=".png,.jpg,.jpeg,.svg,.webp"
+                        onChange={e => setIdentityLogoFile(e.target.files?.[0] || null)}
+                        className="w-full bg-white border border-zinc-200 p-2 font-medium text-[11px]"
+                      />
+                      {identityLogoFile && <p className="text-[10px] text-emerald-600 font-bold">✓ {identityLogoFile.name}</p>}
+                      <div>
+                        <label className="block font-bold uppercase mb-1 text-[10px] text-zinc-500">Tamanho / Largura do Logo (px)</label>
+                        <input
+                          type="number"
+                          defaultValue={identityForm.logo_size || selectedCompany.logo_size || 80}
+                          min={40}
+                          max={300}
+                          className="w-full bg-white border border-zinc-200 p-2 font-mono"
+                          onChange={e => setIdentityForm((f: any) => ({ ...f, logo_size: Number(e.target.value) }))}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Marca de Água */}
+                    <div className="space-y-3 p-4 border border-zinc-200 bg-zinc-50 rounded-xs">
+                      <div className="flex justify-between items-center">
+                        <span className="font-black text-[#003366] uppercase text-[10px]">Marca de Água</span>
+                        {(identityForm.watermark_url || selectedCompany.watermark_url) && (
+                          <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">Ativa</span>
+                        )}
+                      </div>
+                      {(identityForm.watermark_url || selectedCompany.watermark_url) && (
+                        <div className="h-16 flex items-center justify-center border border-zinc-200 bg-white p-2">
+                          <img src={identityForm.watermark_url || selectedCompany.watermark_url} alt="Watermark" className="max-h-full max-w-full object-contain opacity-40" />
+                        </div>
+                      )}
+                      <input
+                        type="file"
+                        accept=".png,.jpg,.jpeg,.svg,.webp"
+                        onChange={e => setIdentityWatermarkFile(e.target.files?.[0] || null)}
+                        className="w-full bg-white border border-zinc-200 p-2 font-medium text-[11px]"
+                      />
+                      {identityWatermarkFile && <p className="text-[10px] text-emerald-600 font-bold">✓ {identityWatermarkFile.name}</p>}
+                      <div className="space-y-2">
+                        <div>
+                          <label className="block font-bold uppercase mb-1 text-[10px] text-zinc-500">Dimensão da Marca de Água (px)</label>
+                          <input
+                            type="number"
+                            defaultValue={identityForm.watermark_size || selectedCompany.watermark_size || 300}
+                            min={100}
+                            max={600}
+                            className="w-full bg-white border border-zinc-200 p-2 font-mono"
+                            onChange={e => setIdentityForm((f: any) => ({ ...f, watermark_size: Number(e.target.value) }))}
+                          />
+                        </div>
+                        <label className="flex items-center gap-2 cursor-pointer pt-1">
+                          <input
+                            type="checkbox"
+                            defaultChecked={selectedCompany.exibir_marca_dagua !== false}
+                            onChange={e => setIdentityForm((f: any) => ({ ...f, exibir_marca_dagua: e.target.checked }))}
+                            className="w-4 h-4 accent-[#003366]"
+                          />
+                          <span className="font-bold uppercase text-[10px]">Exibir marca de água nos documentos</span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Imagem de Rodapé */}
+                  <div className="space-y-3 p-4 border border-zinc-200 bg-zinc-50 rounded-xs">
+                    <div className="flex justify-between items-center">
+                      <span className="font-black text-[#003366] uppercase text-[10px]">Imagem de Rodapé do Documento</span>
+                      {(identityForm.footer_image_url || selectedCompany.footer_image_url) && (
+                        <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">Carregada</span>
+                      )}
+                    </div>
+                    {(identityForm.footer_image_url || selectedCompany.footer_image_url) && (
+                      <div className="h-16 flex items-center justify-center border border-zinc-200 bg-white p-2">
+                        <img src={identityForm.footer_image_url || selectedCompany.footer_image_url} alt="Footer Image" className="max-h-full max-w-full object-contain" />
+                      </div>
+                    )}
+                    <input
+                      type="file"
+                      accept=".png,.jpg,.jpeg,.svg,.webp"
+                      onChange={e => setIdentityFooterFile(e.target.files?.[0] || null)}
+                      className="w-full bg-white border border-zinc-200 p-2 font-medium text-[11px]"
+                    />
+                    {identityFooterFile && <p className="text-[10px] text-emerald-600 font-bold">✓ {identityFooterFile.name}</p>}
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex-1">
+                        <label className="block font-bold uppercase mb-1 text-[10px] text-zinc-500">Altura da Imagem de Rodapé (px)</label>
+                        <input
+                          type="number"
+                          defaultValue={identityForm.footer_size || selectedCompany.footer_size || 60}
+                          min={30}
+                          max={200}
+                          className="w-full bg-white border border-zinc-200 p-2 font-mono"
+                          onChange={e => setIdentityForm((f: any) => ({ ...f, footer_size: Number(e.target.value) }))}
+                        />
+                      </div>
+                      <label className="flex items-center gap-2 cursor-pointer pt-4">
+                        <input
+                          type="checkbox"
+                          defaultChecked={selectedCompany.exibir_rodape !== false}
+                          onChange={e => setIdentityForm((f: any) => ({ ...f, exibir_rodape: e.target.checked }))}
+                          className="w-4 h-4 accent-[#003366]"
+                        />
+                        <span className="font-bold uppercase text-[10px]">Ativar imagem de rodapé</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Imagens Laterais (Esquerda & Direita) */}
+                  <h4 className="font-black text-[#003366] uppercase tracking-wider text-xs border-b pb-2 pt-2">2. Imagens Laterais do Documento</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Lateral Esquerda */}
+                    <div className="space-y-3 p-4 border border-zinc-200 bg-zinc-50 rounded-xs">
+                      <span className="font-black text-[#003366] uppercase text-[10px]">Imagem Lateral Esquerda</span>
+                      {(identityForm.sidebar_image_url || selectedCompany.sidebar_image_url) && (
+                        <div className="h-16 flex items-center justify-center border border-zinc-200 bg-white p-2">
+                          <img src={identityForm.sidebar_image_url || selectedCompany.sidebar_image_url} alt="Lateral Esquerda" className="max-h-full max-w-full object-contain" />
+                        </div>
+                      )}
+                      <input
+                        type="file"
+                        accept=".png,.jpg,.jpeg,.svg,.webp"
+                        onChange={e => setIdentityLeftFile(e.target.files?.[0] || null)}
+                        className="w-full bg-white border border-zinc-200 p-2 font-medium text-[11px]"
+                      />
+                      {identityLeftFile && <p className="text-[10px] text-emerald-600 font-bold">✓ {identityLeftFile.name}</p>}
+                    </div>
+
+                    {/* Lateral Direita */}
+                    <div className="space-y-3 p-4 border border-zinc-200 bg-zinc-50 rounded-xs">
+                      <span className="font-black text-[#003366] uppercase text-[10px]">Imagem Lateral Direita</span>
+                      {(identityForm.anexo_image_url || selectedCompany.anexo_image_url) && (
+                        <div className="h-16 flex items-center justify-center border border-zinc-200 bg-white p-2">
+                          <img src={identityForm.anexo_image_url || selectedCompany.anexo_image_url} alt="Lateral Direita" className="max-h-full max-w-full object-contain" />
+                        </div>
+                      )}
+                      <input
+                        type="file"
+                        accept=".png,.jpg,.jpeg,.svg,.webp"
+                        onChange={e => setIdentityRightFile(e.target.files?.[0] || null)}
+                        className="w-full bg-white border border-zinc-200 p-2 font-medium text-[11px]"
+                      />
+                      {identityRightFile && <p className="text-[10px] text-emerald-600 font-bold">✓ {identityRightFile.name}</p>}
+                    </div>
+                  </div>
+
+                  {/* Rodapé em Texto e Cores */}
+                  <h4 className="font-black text-[#003366] uppercase tracking-wider text-xs border-b pb-2 pt-2">3. Texto Legal de Rodapé e Cores</h4>
+                  <div className="space-y-3">
+                    <label className="block font-bold uppercase text-[10px] text-zinc-600">Texto Legal de Rodapé (IBAN, Banco, Telefones, Menções Fiscais)</label>
+                    <textarea
+                      rows={3}
+                      defaultValue={identityForm.texto_rodape || selectedCompany.texto_rodape || ''}
+                      placeholder="Ex: IBAN: AO06 0040 0000 1234 5678 9012 3 | Banco BAI | Tel: +244 923 000 000 | Software Validado nº 999/AGT/2026"
+                      className="w-full bg-zinc-50 border border-zinc-200 p-3 text-xs font-medium focus:outline-none focus:border-[#003366]"
+                      onChange={e => setIdentityForm((f: any) => ({ ...f, texto_rodape: e.target.value }))}
+                    />
+                    <div className="grid grid-cols-2 gap-4 pt-2">
+                      <div>
+                        <label className="block font-bold uppercase text-[10px] text-zinc-500 mb-1">Cor Primária do Documento</label>
+                        <input
+                          type="color"
+                          defaultValue={identityForm.cor_primaria || selectedCompany.cor_primaria || '#003366'}
+                          className="w-full h-9 bg-white border border-zinc-200 p-1 cursor-pointer"
+                          onChange={e => setIdentityForm((f: any) => ({ ...f, cor_primaria: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="block font-bold uppercase text-[10px] text-zinc-500 mb-1">Modelo de Documento AGT</label>
+                        <select
+                          defaultValue={identityForm.documento_modelo || selectedCompany.documento_modelo || 'OFICIAL_AGT_MODERNO'}
+                          className="w-full bg-zinc-50 border border-zinc-200 p-2 font-bold text-xs"
+                          onChange={e => setIdentityForm((f: any) => ({ ...f, documento_modelo: e.target.value }))}
+                        >
+                          <option value="OFICIAL_AGT_MODERNO">Oficial AGT Moderno (Padrão)</option>
+                          <option value="OFICIAL_AGT_CLASSICO">Oficial AGT Clássico</option>
+                          <option value="OFICIAL_AGT_COMPACTO">Oficial AGT Compacto</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 border-t flex justify-end">
+                    <button
+                      disabled={identitySaving}
+                      onClick={async () => {
+                        setIdentitySaving(true);
+                        try {
+                          let logoUrl = selectedCompany.logo_url || identityForm.logo_url || '';
+                          let watermarkUrl = selectedCompany.watermark_url || identityForm.watermark_url || '';
+                          let footerUrl = selectedCompany.footer_image_url || identityForm.footer_image_url || '';
+                          let leftUrl = selectedCompany.sidebar_image_url || identityForm.sidebar_image_url || '';
+                          let rightUrl = selectedCompany.anexo_image_url || identityForm.anexo_image_url || '';
+
+                          // Upload logo
+                          if (identityLogoFile) {
+                            const ext = identityLogoFile.name.split('.').pop();
+                            const path = `logos/${selectedCompany.id}_logo_${Date.now()}.${ext}`;
+                            const { data: up } = await supabase.storage.from('media').upload(path, identityLogoFile, { cacheControl: '3600', upsert: true });
+                            if (up) {
+                              const { data: pub } = supabase.storage.from('media').getPublicUrl(path);
+                              logoUrl = pub?.publicUrl || logoUrl;
+                            }
+                          }
+
+                          // Upload watermark
+                          if (identityWatermarkFile) {
+                            const ext = identityWatermarkFile.name.split('.').pop();
+                            const path = `watermarks/${selectedCompany.id}_wm_${Date.now()}.${ext}`;
+                            const { data: up } = await supabase.storage.from('media').upload(path, identityWatermarkFile, { cacheControl: '3600', upsert: true });
+                            if (up) {
+                              const { data: pub } = supabase.storage.from('media').getPublicUrl(path);
+                              watermarkUrl = pub?.publicUrl || watermarkUrl;
+                            }
+                          }
+
+                          // Upload footer image
+                          if (identityFooterFile) {
+                            const ext = identityFooterFile.name.split('.').pop();
+                            const path = `footers/${selectedCompany.id}_footer_${Date.now()}.${ext}`;
+                            const { data: up } = await supabase.storage.from('media').upload(path, identityFooterFile, { cacheControl: '3600', upsert: true });
+                            if (up) {
+                              const { data: pub } = supabase.storage.from('media').getPublicUrl(path);
+                              footerUrl = pub?.publicUrl || footerUrl;
+                            }
+                          }
+
+                          // Upload lateral esquerda
+                          if (identityLeftFile) {
+                            const ext = identityLeftFile.name.split('.').pop();
+                            const path = `sidebars/${selectedCompany.id}_left_${Date.now()}.${ext}`;
+                            const { data: up } = await supabase.storage.from('media').upload(path, identityLeftFile, { cacheControl: '3600', upsert: true });
+                            if (up) {
+                              const { data: pub } = supabase.storage.from('media').getPublicUrl(path);
+                              leftUrl = pub?.publicUrl || leftUrl;
+                            }
+                          }
+
+                          // Upload lateral direita
+                          if (identityRightFile) {
+                            const ext = identityRightFile.name.split('.').pop();
+                            const path = `sidebars/${selectedCompany.id}_right_${Date.now()}.${ext}`;
+                            const { data: up } = await supabase.storage.from('media').upload(path, identityRightFile, { cacheControl: '3600', upsert: true });
+                            if (up) {
+                              const { data: pub } = supabase.storage.from('media').getPublicUrl(path);
+                              rightUrl = pub?.publicUrl || rightUrl;
+                            }
+                          }
+
+                          const payload = {
+                            ...identityForm,
+                            logo_url: logoUrl || null,
+                            watermark_url: watermarkUrl || null,
+                            footer_image_url: footerUrl || null,
+                            sidebar_image_url: leftUrl || null,
+                            anexo_image_url: rightUrl || null
+                          };
+
+                          if (typeof fetchJson === 'function') {
+                            const res = await fetchJson(`/api/crm/companies/${selectedCompany.id}/identity`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify(payload)
+                            });
+                            if (res && res.error) {
+                              toast.error(res.error);
+                              return;
+                            }
+                          }
+
+                          toast.success('Identidade visual gravada e confirmada no Supabase!');
+                          setIdentityLogoFile(null);
+                          setIdentityWatermarkFile(null);
+                          setIdentityFooterFile(null);
+                          setIdentityLeftFile(null);
+                          setIdentityRightFile(null);
+                          await loadData();
+                        } catch (err: any) {
+                          toast.error(err.message || 'Erro ao gravar identidade visual.');
+                        } finally {
+                          setIdentitySaving(false);
+                        }
+                      }}
+                      className="px-6 py-3 bg-[#003366] hover:bg-[#002244] text-white text-xs font-black uppercase tracking-widest flex items-center gap-2 cursor-pointer shadow-md disabled:opacity-50"
+                    >
+                      <Upload size={14} /> {identitySaving ? 'A Gravar no Supabase...' : 'Gravar Identidade Visual'}
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              {/* Marca de Água */}
-              <div className="space-y-3 p-4 border border-zinc-200 bg-zinc-50">
-                <h4 className="font-black text-[#003366] uppercase tracking-wider text-[10px]">Marca de Água</h4>
-                {(selectedCompany.watermark_url || identityForm.watermark_url) && (
-                  <img src={identityForm.watermark_url || selectedCompany.watermark_url} alt="Watermark" className="h-16 object-contain border border-zinc-200 bg-white p-1 opacity-50" />
-                )}
-                <input
-                  type="file"
-                  accept=".png,.jpg,.jpeg,.svg,.webp"
-                  onChange={e => setIdentityWatermarkFile(e.target.files?.[0] || null)}
-                  className="w-full bg-white border border-zinc-200 p-2 font-medium text-xs"
-                />
-                {identityWatermarkFile && <p className="text-[10px] text-emerald-600 font-bold">✓ {identityWatermarkFile.name}</p>}
-                <label className="flex items-center gap-2 cursor-pointer mt-1">
-                  <input type="checkbox"
-                    defaultChecked={selectedCompany.exibir_marca_dagua !== false}
-                    onChange={e => setIdentityForm((f: any) => ({ ...f, exibir_marca_dagua: e.target.checked }))}
-                    className="w-4 h-4"
-                  />
-                  <span className="font-bold uppercase text-[10px]">Exibir marca de água nos documentos</span>
-                </label>
+              {/* COLUNA DIREITA: PREVIEW DO MODELO OFICIAL DA FATURAÇÃO ELETRÓNICA (5 COLUNAS) */}
+              <div className="lg:col-span-5 space-y-4">
+                <div className="bg-white border border-zinc-200 p-4 shadow-xs">
+                  <div className="flex justify-between items-center pb-3 border-b border-zinc-100">
+                    <span className="font-black text-[#003366] uppercase text-xs flex items-center gap-2">
+                      <Eye size={14} /> Preview do Modelo Oficial AGT
+                    </span>
+                    <span className="text-[10px] bg-blue-50 text-[#003366] font-bold px-2 py-0.5 uppercase">Tempo Real</span>
+                  </div>
+
+                  {/* MINIATURA DO DOCUMENTO FISCAL */}
+                  <div className="mt-4 p-5 bg-white border border-zinc-300 shadow-md relative overflow-hidden text-[10px] space-y-4 min-h-[480px]">
+                    {/* Marca de Água Central */}
+                    {(identityForm.exibir_marca_dagua !== false && (identityForm.watermark_url || selectedCompany.watermark_url)) && (
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0">
+                        <img
+                          src={identityForm.watermark_url || selectedCompany.watermark_url}
+                          alt="Watermark"
+                          className="opacity-15 object-contain"
+                          style={{ width: `${Math.min(220, (identityForm.watermark_size || selectedCompany.watermark_size || 300) * 0.6)}px` }}
+                        />
+                      </div>
+                    )}
+
+                    {/* Imagem Lateral Esquerda */}
+                    {(identityForm.sidebar_image_url || selectedCompany.sidebar_image_url) && (
+                      <div className="absolute left-1 top-20 bottom-20 w-4 pointer-events-none opacity-50 z-0">
+                        <img src={identityForm.sidebar_image_url || selectedCompany.sidebar_image_url} alt="Lateral Esquerda" className="h-full object-cover" />
+                      </div>
+                    )}
+
+                    {/* Imagem Lateral Direita */}
+                    {(identityForm.anexo_image_url || selectedCompany.anexo_image_url) && (
+                      <div className="absolute right-1 top-20 bottom-20 w-4 pointer-events-none opacity-50 z-0">
+                        <img src={identityForm.anexo_image_url || selectedCompany.anexo_image_url} alt="Lateral Direita" className="h-full object-cover" />
+                      </div>
+                    )}
+
+                    {/* Cabeçalho do Documento */}
+                    <div className="relative z-10 flex justify-between items-start border-b border-zinc-200 pb-3">
+                      <div>
+                        {(identityForm.logo_url || selectedCompany.logo_url) ? (
+                          <img
+                            src={identityForm.logo_url || selectedCompany.logo_url}
+                            alt="Logo"
+                            className="object-contain mb-1"
+                            style={{ height: `${Math.min(50, (identityForm.logo_size || selectedCompany.logo_size || 80) * 0.5)}px` }}
+                          />
+                        ) : (
+                          <div className="font-black text-[#003366] uppercase text-xs tracking-tight">{selectedCompany.nome_empresa}</div>
+                        )}
+                        <p className="font-bold uppercase text-zinc-800 text-[9px]">{selectedCompany.nome_empresa}</p>
+                        <p className="text-zinc-500 text-[8px]">NIF: {selectedCompany.nif || '5000000000'} • {selectedCompany.municipio || 'Luanda'}, {selectedCompany.provincia || 'Angola'}</p>
+                        <p className="text-zinc-500 text-[8px]">Tel: {selectedCompany.telefone || '+244 9xx xxx xxx'} • {selectedCompany.email}</p>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-black text-[#003366] uppercase text-xs tracking-wider block">FATURA</span>
+                        <p className="font-mono font-bold text-zinc-900 text-[9px]">FT 2026/000001</p>
+                        <p className="text-zinc-400 text-[8px]">Data: {new Date().toLocaleDateString('pt-AO')}</p>
+                        <p className="text-zinc-400 text-[8px]">Moeda: AOA (Kz)</p>
+                      </div>
+                    </div>
+
+                    {/* Dados do Cliente Exemplo */}
+                    <div className="relative z-10 bg-zinc-50 p-2.5 border border-zinc-200">
+                      <span className="font-black text-zinc-400 uppercase text-[7px] tracking-widest block">EXMO.(A) SR.(A) CLIENTE</span>
+                      <p className="font-bold text-zinc-800 text-[9px] uppercase">CLIENTE EXEMPLO DE DEMONSTRAÇÃO LDA</p>
+                      <p className="text-zinc-500 text-[8px]">NIF: 5002123665 • Luanda, Angola</p>
+                    </div>
+
+                    {/* Tabela de Itens */}
+                    <div className="relative z-10">
+                      <table className="w-full text-left text-[8px] border-collapse">
+                        <thead>
+                          <tr className="bg-[#003366] text-white font-bold uppercase text-[7px]">
+                            <th className="p-1.5">Descrição</th>
+                            <th className="p-1.5 text-center">Qtd</th>
+                            <th className="p-1.5 text-right">P. Unit</th>
+                            <th className="p-1.5 text-right">IVA</th>
+                            <th className="p-1.5 text-right">Total</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-200">
+                          <tr>
+                            <td className="p-1.5 font-medium">1. Subscrição / Licenciamento Anual Sistema AGT</td>
+                            <td className="p-1.5 text-center font-mono">1</td>
+                            <td className="p-1.5 text-right font-mono">100.000,00</td>
+                            <td className="p-1.5 text-right font-mono">14%</td>
+                            <td className="p-1.5 text-right font-mono font-bold">114.000,00</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Totais */}
+                    <div className="relative z-10 flex justify-end">
+                      <div className="w-48 bg-zinc-50 p-2 border border-zinc-200 space-y-1 text-[8px]">
+                        <div className="flex justify-between"><span>Total Ilíquido:</span><span className="font-mono">100.000,00 Kz</span></div>
+                        <div className="flex justify-between"><span>Total IVA (14%):</span><span className="font-mono">14.000,00 Kz</span></div>
+                        <div className="flex justify-between font-black text-[#003366] border-t pt-1"><span>Total a Pagar:</span><span className="font-mono text-[9px]">114.000,00 Kz</span></div>
+                      </div>
+                    </div>
+
+                    {/* Rodapé Oficial (Imagem ou Texto) */}
+                    <div className="relative z-10 border-t border-zinc-200 pt-2 text-[7px] text-zinc-500 space-y-1">
+                      {(identityForm.exibir_rodape !== false && (identityForm.footer_image_url || selectedCompany.footer_image_url)) && (
+                        <div className="flex justify-center mb-1">
+                          <img
+                            src={identityForm.footer_image_url || selectedCompany.footer_image_url}
+                            alt="Rodapé Oficial"
+                            className="object-contain max-w-full"
+                            style={{ height: `${Math.min(40, (identityForm.footer_size || selectedCompany.footer_size || 60) * 0.6)}px` }}
+                          />
+                        </div>
+                      )}
+                      <p className="text-center font-medium">{identityForm.texto_rodape || selectedCompany.texto_rodape || 'IBAN: AO06 0040 0000 0000 0000 0000 0 • Banco Comercial • Luanda'}</p>
+                      <p className="text-center text-[6px] text-zinc-400 font-mono">Software Validado nº 999/AGT/2026 • FT 2026/000001 - Processado por Programa Validado</p>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
-
-            {/* Rodapé dos Documentos */}
-            <div className="space-y-3 p-4 border border-zinc-200 bg-zinc-50">
-              <h4 className="font-black text-[#003366] uppercase tracking-wider text-[10px]">Rodapé dos Documentos</h4>
-              <textarea
-                rows={3}
-                defaultValue={selectedCompany.texto_rodape || ''}
-                placeholder="Ex: IBAN: 0040 0000 0000 0000 | BIC: NCBAAOLU | Tel: +244 9xx xxx xxx"
-                className="w-full bg-white border border-zinc-200 p-3 text-xs font-medium focus:outline-none focus:border-[#003366]"
-                onChange={e => setIdentityForm((f: any) => ({ ...f, texto_rodape: e.target.value }))}
-              />
-              <div className="flex gap-6">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox"
-                    defaultChecked={selectedCompany.exibir_rodape !== false}
-                    onChange={e => setIdentityForm((f: any) => ({ ...f, exibir_rodape: e.target.checked }))}
-                    className="w-4 h-4"
-                  />
-                  <span className="font-bold uppercase text-[10px]">Exibir rodapé nos documentos</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox"
-                    defaultChecked={selectedCompany.exibir_cabecalho !== false}
-                    onChange={e => setIdentityForm((f: any) => ({ ...f, exibir_cabecalho: e.target.checked }))}
-                    className="w-4 h-4"
-                  />
-                  <span className="font-bold uppercase text-[10px]">Exibir cabeçalho nos documentos</span>
-                </label>
-              </div>
-            </div>
-
-            <button
-              disabled={identitySaving}
-              onClick={async () => {
-                setIdentitySaving(true);
-                try {
-                  let logoUrl = selectedCompany.logo_url || identityForm.logo_url || '';
-                  let watermarkUrl = selectedCompany.watermark_url || identityForm.watermark_url || '';
-
-                  // Upload logo
-                  if (identityLogoFile) {
-                    const ext = identityLogoFile.name.split('.').pop();
-                    const path = `logos/${selectedCompany.id}_logo_${Date.now()}.${ext}`;
-                    const { data: up } = await supabase.storage.from('media').upload(path, identityLogoFile, { cacheControl: '3600', upsert: true });
-                    if (up) {
-                      const { data: pub } = supabase.storage.from('media').getPublicUrl(path);
-                      logoUrl = pub?.publicUrl || logoUrl;
-                    }
-                  }
-
-                  // Upload watermark
-                  if (identityWatermarkFile) {
-                    const ext = identityWatermarkFile.name.split('.').pop();
-                    const path = `watermarks/${selectedCompany.id}_wm_${Date.now()}.${ext}`;
-                    const { data: up } = await supabase.storage.from('media').upload(path, identityWatermarkFile, { cacheControl: '3600', upsert: true });
-                    if (up) {
-                      const { data: pub } = supabase.storage.from('media').getPublicUrl(path);
-                      watermarkUrl = pub?.publicUrl || watermarkUrl;
-                    }
-                  }
-
-                  const payload = {
-                    ...identityForm,
-                    logo_url: logoUrl,
-                    watermark_url: watermarkUrl
-                  };
-
-                  if (typeof fetchJson === 'function') {
-                    await fetchJson(`/api/crm/companies/${selectedCompany.id}/identity`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify(payload)
-                    });
-                  }
-
-                  toast.success('Identidade visual gravada com sucesso!');
-                  setIdentityLogoFile(null);
-                  setIdentityWatermarkFile(null);
-                  await loadData();
-                } catch (err: any) {
-                  toast.error(err.message || 'Erro ao gravar identidade visual.');
-                } finally {
-                  setIdentitySaving(false);
-                }
-              }}
-              className="px-6 py-3 bg-[#003366] hover:bg-[#002244] text-white text-xs font-black uppercase tracking-widest flex items-center gap-2 cursor-pointer shadow-md disabled:opacity-50"
-            >
-              <Upload size={14} /> {identitySaving ? 'A Gravar...' : 'Gravar Identidade Visual'}
-            </button>
           </div>
         )}
+
 
 
         {companySubTab === 'ocorrencias' && (
@@ -2746,6 +3067,174 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                 >
                   Guardar Permissões ({editPermissions.length})
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* MODAL PREVIEW EM TELA CHEIA DO MODELO OFICIAL DA FATURAÇÃO ELETRÓNICA AGT */}
+      {showDocumentPreviewModal && selectedCompany && (
+        <div className="fixed inset-0 bg-zinc-900/80 backdrop-blur-sm z-[300] flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white border border-zinc-300 w-full max-w-4xl shadow-2xl rounded-xs flex flex-col max-h-[92vh]">
+            <div className="flex justify-between items-center bg-[#003366] text-white p-4 border-b border-zinc-200">
+              <div className="flex items-center gap-2">
+                <FileText size={18} className="text-sky-300" />
+                <h3 className="font-black text-sm uppercase tracking-wider">Modelo Oficial de Documento Fiscal — {selectedCompany.nome_empresa}</h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <Download size={13} /> Imprimir / PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowDocumentPreviewModal(false)}
+                  className="px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white font-bold text-xs uppercase cursor-pointer"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+
+            <div className="p-8 overflow-y-auto flex-1 bg-zinc-100 flex justify-center">
+              {/* FOLHA A4 DO DOCUMENTO FISCAL */}
+              <div className="w-full max-w-2xl bg-white p-8 shadow-xl border border-zinc-300 relative text-xs space-y-6 min-h-[750px]">
+                {/* Marca de Água Centralizada */}
+                {(identityForm.exibir_marca_dagua !== false && (identityForm.watermark_url || selectedCompany.watermark_url)) && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0">
+                    <img
+                      src={identityForm.watermark_url || selectedCompany.watermark_url}
+                      alt="Watermark"
+                      className="opacity-10 object-contain"
+                      style={{ width: `${identityForm.watermark_size || selectedCompany.watermark_size || 350}px` }}
+                    />
+                  </div>
+                )}
+
+                {/* Lateral Esquerda */}
+                {(identityForm.sidebar_image_url || selectedCompany.sidebar_image_url) && (
+                  <div className="absolute left-2 top-24 bottom-24 w-6 pointer-events-none opacity-40 z-0">
+                    <img src={identityForm.sidebar_image_url || selectedCompany.sidebar_image_url} alt="Lateral Esquerda" className="h-full object-cover" />
+                  </div>
+                )}
+
+                {/* Lateral Direita */}
+                {(identityForm.anexo_image_url || selectedCompany.anexo_image_url) && (
+                  <div className="absolute right-2 top-24 bottom-24 w-6 pointer-events-none opacity-40 z-0">
+                    <img src={identityForm.anexo_image_url || selectedCompany.anexo_image_url} alt="Lateral Direita" className="h-full object-cover" />
+                  </div>
+                )}
+
+                {/* Cabeçalho */}
+                <div className="relative z-10 flex justify-between items-start border-b-2 border-[#003366] pb-4">
+                  <div className="space-y-1">
+                    {(identityForm.logo_url || selectedCompany.logo_url) ? (
+                      <img
+                        src={identityForm.logo_url || selectedCompany.logo_url}
+                        alt="Logo"
+                        className="object-contain mb-2"
+                        style={{ height: `${identityForm.logo_size || selectedCompany.logo_size || 80}px` }}
+                      />
+                    ) : (
+                      <h2 className="text-xl font-black text-[#003366] uppercase">{selectedCompany.nome_empresa}</h2>
+                    )}
+                    <p className="font-bold text-zinc-800 text-xs uppercase">{selectedCompany.nome_empresa}</p>
+                    <p className="text-zinc-500 text-[11px]">NIF: {selectedCompany.nif || '5002123665'}</p>
+                    <p className="text-zinc-500 text-[11px]">{selectedCompany.endereco || 'Avenida Principal'} • {selectedCompany.municipio || 'Luanda'}, {selectedCompany.provincia || 'Angola'}</p>
+                    <p className="text-zinc-500 text-[11px]">Tel: {selectedCompany.telefone || '+244 923 000 000'} • Email: {selectedCompany.email}</p>
+                  </div>
+                  <div className="text-right space-y-1 bg-zinc-50 p-4 border border-zinc-200">
+                    <span className="text-xs font-black text-[#003366] uppercase tracking-widest block">FATURA OFICIAL</span>
+                    <p className="font-mono font-black text-sm text-zinc-900">FT 2026/000001</p>
+                    <p className="text-zinc-500 text-[10px]">Data de Emissão: {new Date().toLocaleDateString('pt-AO')}</p>
+                    <p className="text-zinc-500 text-[10px]">Data de Vencimento: {new Date(Date.now() + 30*86400000).toLocaleDateString('pt-AO')}</p>
+                    <span className="inline-block px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold text-[9px] uppercase">ORIGINAL</span>
+                  </div>
+                </div>
+
+                {/* Bloco do Cliente */}
+                <div className="relative z-10 bg-zinc-50 border border-zinc-200 p-4 rounded-xs">
+                  <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest block mb-1">DADOS DO CLIENTE</span>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="font-bold text-zinc-900 uppercase">CLIENTE EXEMPLO DE DEMONSTRAÇÃO LDA</p>
+                      <p className="text-zinc-600 text-[11px]">NIF: 5002123665</p>
+                    </div>
+                    <div>
+                      <p className="text-zinc-600 text-[11px]">Morada: Rua Amílcar Cabral, Luanda</p>
+                      <p className="text-zinc-600 text-[11px]">Regime de IVA: Geral (14%)</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Tabela de Produtos / Serviços */}
+                <div className="relative z-10">
+                  <table className="w-full text-left text-xs border border-zinc-200 border-collapse">
+                    <thead>
+                      <tr className="bg-[#003366] text-white font-bold uppercase text-[10px]">
+                        <th className="p-2.5">Código / Descrição do Serviço</th>
+                        <th className="p-2.5 text-center">Qtd</th>
+                        <th className="p-2.5 text-right">Preço Unit.</th>
+                        <th className="p-2.5 text-right">Taxa IVA</th>
+                        <th className="p-2.5 text-right">Total Líquido</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-200">
+                      <tr>
+                        <td className="p-2.5">
+                          <p className="font-bold text-zinc-800">SERV-001 — Subscrição do Sistema Integrado ERP</p>
+                          <p className="text-[10px] text-zinc-400">Licenciamento anual oficial certificado</p>
+                        </td>
+                        <td className="p-2.5 text-center font-mono">1.00</td>
+                        <td className="p-2.5 text-right font-mono">100.000,00 Kz</td>
+                        <td className="p-2.5 text-right font-mono">14% (14.000,00)</td>
+                        <td className="p-2.5 text-right font-mono font-bold">114.000,00 Kz</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Resumo de Impostos e Totais */}
+                <div className="relative z-10 grid grid-cols-2 gap-6 pt-2">
+                  <div className="p-3 bg-zinc-50 border border-zinc-200 text-[10px] space-y-1">
+                    <p className="font-bold text-zinc-700 uppercase">Quadro Resumo de IVA</p>
+                    <p className="text-zinc-500">Taxa Normal (14%): Base Incidência 100.000,00 Kz • Montante 14.000,00 Kz</p>
+                    <p className="text-zinc-500 font-mono mt-1">Meio de Pagamento: Transferência Bancária</p>
+                  </div>
+                  <div className="bg-zinc-50 p-4 border border-zinc-200 space-y-2 text-xs">
+                    <div className="flex justify-between"><span>Total Ilíquido:</span><span className="font-mono font-bold">100.000,00 Kz</span></div>
+                    <div className="flex justify-between"><span>Total Descontos:</span><span className="font-mono">0,00 Kz</span></div>
+                    <div className="flex justify-between"><span>Total IVA:</span><span className="font-mono font-bold">14.000,00 Kz</span></div>
+                    <div className="flex justify-between font-black text-sm text-[#003366] border-t-2 border-[#003366] pt-2">
+                      <span>TOTAL A PAGAR:</span>
+                      <span className="font-mono">114.000,00 Kz</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Rodapé Oficial com Certificação AGT */}
+                <div className="relative z-10 border-t border-zinc-300 pt-4 text-[10px] text-zinc-500 space-y-2">
+                  {(identityForm.exibir_rodape !== false && (identityForm.footer_image_url || selectedCompany.footer_image_url)) && (
+                    <div className="flex justify-center mb-2">
+                      <img
+                        src={identityForm.footer_image_url || selectedCompany.footer_image_url}
+                        alt="Imagem de Rodapé"
+                        className="object-contain max-w-full"
+                        style={{ height: `${identityForm.footer_size || selectedCompany.footer_size || 60}px` }}
+                      />
+                    </div>
+                  )}
+                  <p className="text-center font-medium text-zinc-700">
+                    {identityForm.texto_rodape || selectedCompany.texto_rodape || 'IBAN: AO06 0040 0000 1234 5678 9012 3 • Banco BAI • Luanda, Angola'}
+                  </p>
+                  <div className="text-center font-mono text-[9px] text-zinc-400 border-t border-zinc-100 pt-2">
+                    <p>FT 2026/000001 - Processado por Programa Validado nº 999/AGT/2026 • IMATEC ERP</p>
+                    <p className="text-[8px] mt-0.5">Hash de Assinatura: f82d-41a9-98cf-192a-3b56-78e0-ac91</p>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

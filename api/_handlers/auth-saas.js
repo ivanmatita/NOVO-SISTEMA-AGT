@@ -415,6 +415,19 @@ export default async function handler(req, res) {
       return res.status(401).json({ success: false, error: auth.message || 'Nao autenticado' });
     }
 
+    // ── BLOQUEIO DE CONTA ─────────────────────────────────────────────────────
+    // Verificar ambos os campos: ativo (campo historico) e is_active (campo novo)
+    // Se qualquer um for explicitamente false, a conta esta bloqueada
+    const perfilBloqueado = auth.perfil &&
+      (auth.perfil.ativo === false || auth.perfil.is_active === false);
+    if (perfilBloqueado) {
+      return res.status(403).json({
+        success: false,
+        error: 'CONTA_BLOQUEADA',
+        message: 'O seu acesso foi bloqueado. Contacte o administrador da sua empresa para obter mais informações.'
+      });
+    }
+
     // CRITICAL FIX: Fetch empresa object so authService.ts fast-path (line 334) works correctly.
     // Without this, authService falls back to direct RLS queries which can be slow or return wrong data.
     let empresa = null;

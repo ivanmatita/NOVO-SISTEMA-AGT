@@ -2841,25 +2841,29 @@ const mapPermissionAreasForDB = (selectedIds: string[]): string[] => {
 };
 
 const hasModulePermission = (user: any, moduleId: string): boolean => {
-  const isGlobalAdmin = user?.is_admin === true || 
-                        user?.role === 'admin' || 
-                        user?.role === 'admin_empresa' || 
-                        user?.role === 'super_admin' || 
-                        user?.role === 'proprietario' || 
-                        (user?.level !== undefined && Number(user.level) >= 10);
-  
-  if (isGlobalAdmin) return true;
+  // Dashboard always accessible
   if (moduleId === 'dashboard') return true;
-  
+
+  // If permission_areas is explicitly set (non-empty), ALWAYS enforce them — even for admins.
+  // This allows CRM to restrict specific areas for any user, including company admins.
   const rawPermissions = user?.permission_areas;
-  const permissions = Array.isArray(rawPermissions) 
-    ? rawPermissions.map(p => String(p).trim().toLowerCase()) 
-    : [];
-    
-  if (permissions.length === 0) return false;
-  
-  const possibleKeys = (PERMISSION_EQUIVALENTS[moduleId] || [moduleId]).map(k => k.trim().toLowerCase());
-  return possibleKeys.some(key => permissions.includes(key));
+  const hasExplicitPermissions = Array.isArray(rawPermissions) && rawPermissions.length > 0;
+
+  if (hasExplicitPermissions) {
+    const permissions = rawPermissions.map((p: any) => String(p).trim().toLowerCase());
+    const possibleKeys = (PERMISSION_EQUIVALENTS[moduleId] || [moduleId]).map((k: string) => k.trim().toLowerCase());
+    return possibleKeys.some(key => permissions.includes(key));
+  }
+
+  // No explicit permissions set → fall back to role-based access
+  const isGlobalAdmin = user?.is_admin === true ||
+                        user?.role === 'admin' ||
+                        user?.role === 'admin_empresa' ||
+                        user?.role === 'super_admin' ||
+                        user?.role === 'proprietario' ||
+                        (user?.level !== undefined && Number(user.level) >= 10);
+
+  return isGlobalAdmin;
 };
 
 const SIDEBAR_MENU_ITEMS = [

@@ -846,8 +846,8 @@ app.use((req, res, next) => {
           sysUser = su;
         } catch (_) {}
 
-        if (perfil && perfil.is_active === false) {
-          return res.status(403).json({ error: "CONTA_BLOQUEADA", message: "Esta conta foi desativada pelo administrador." });
+        if (perfil && (perfil.ativo === false || perfil.is_active === false)) {
+          return res.status(403).json({ error: "CONTA_BLOQUEADA", message: "O seu acesso foi bloqueado. Contacte o administrador da sua empresa para obter mais informações." });
         }
 
         const enrichedPerfil = {

@@ -360,7 +360,7 @@ export const authService = {
             console.warn('[AuthService] Utilizador bloqueado detetado via API. Efetuando logout...');
             await supabase.auth.signOut();
             sessionCache = null;
-            alert("A sua conta foi bloqueada pelo administrador. O acesso ao sistema foi revogado.");
+            alert('O seu acesso foi bloqueado. Contacte o administrador da sua empresa para obter mais informações.');
             window.location.reload();
             return null;
           }
@@ -402,7 +402,7 @@ export const authService = {
       const perfilQuery = supabase
         .from('perfis')
         .select('*')
-        .eq('id', session?.user?.id)
+        .or(`id.eq.${session?.user?.id},user_id.eq.${session?.user?.id}`)
         .maybeSingle();
 
       const pt1 = createTimeout(30000);

@@ -2975,8 +2975,8 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
               </div>
               <button onClick={() => setShowPermissionsModal(null)} className="text-zinc-400 hover:text-zinc-700 font-bold text-[10px] uppercase cursor-pointer">Fechar</button>
             </div>
-            <div className="bg-amber-50 border border-amber-200 p-3 text-amber-900 text-[10px] rounded-xs">
-              <strong>Atenção:</strong> Utilizadores com role <strong>admin / admin_empresa / super_admin / proprietario</strong> têm acesso total independentemente das permissões abaixo.
+            <div className="bg-blue-50 border border-blue-200 p-3 text-blue-900 text-[10px] rounded-xs">
+              <strong>Permissões de Acesso:</strong> As áreas <strong>selecionadas</strong> ficam disponíveis para este utilizador. As áreas <strong>não selecionadas</strong> ficam bloqueadas. Ao guardar, as permissões são aplicadas imediatamente na base de dados e entram em vigor no próximo acesso do utilizador ao sistema.
             </div>
             <div className="grid grid-cols-2 gap-2">
               {[

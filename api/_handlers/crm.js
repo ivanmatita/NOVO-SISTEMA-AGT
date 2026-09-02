@@ -292,6 +292,41 @@ export default async function handler(req, res) {
 
         return res.status(200).json(comprovativos);
       }
+
+      // 7. /api/crm/companies/:id/identity - Leitura de identidade visual da empresa
+      if (pathname.startsWith('companies/') && pathname.endsWith('/identity')) {
+        const companyId = pathname.split('/')[1];
+        const [empRes, cfgRes] = await Promise.all([
+          fetch(`${config.supabaseUrl}/rest/v1/empresas?id=eq.${companyId}&select=*&limit=1`, {
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+          }).then(r => r.ok ? r.json() : []).catch(() => []),
+          fetch(`${config.supabaseUrl}/rest/v1/config_empresa?empresa_id=eq.${companyId}&select=*&limit=1`, {
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+          }).then(r => r.ok ? r.json() : []).catch(() => [])
+        ]);
+
+        const empresa = Array.isArray(empRes) && empRes.length > 0 ? empRes[0] : null;
+        const cfg = Array.isArray(cfgRes) && cfgRes.length > 0 ? cfgRes[0] : null;
+
+        return res.status(200).json({
+          empresa_id: companyId,
+          nome_empresa: empresa?.nome_empresa || cfg?.nome_empresa || '',
+          nif: empresa?.nif || cfg?.nif || '',
+          logo_url: cfg?.logo_url || empresa?.logo_url || null,
+          logo_size: cfg?.logo_size || empresa?.logo_size || 80,
+          watermark_url: cfg?.watermark_url || empresa?.watermark_url || null,
+          watermark_size: cfg?.watermark_size || empresa?.watermark_size || 300,
+          exibir_marca_dagua: empresa?.exibir_marca_dagua !== false && cfg?.exibir_marca_dagua !== false,
+          footer_image_url: cfg?.footer_image_url || empresa?.footer_image_url || null,
+          footer_size: cfg?.footer_size || empresa?.footer_size || 60,
+          sidebar_image_url: empresa?.sidebar_image_url || null,
+          anexo_image_url: empresa?.anexo_image_url || null,
+          texto_rodape: cfg?.texto_rodape || empresa?.texto_rodape || '',
+          exibir_rodape: empresa?.exibir_rodape !== false && cfg?.exibir_rodape !== false,
+          exibir_cabecalho: empresa?.exibir_cabecalho !== false && cfg?.exibir_cabecalho !== false,
+          documento_modelo: empresa?.documento_modelo || 'OFICIAL_AGT'
+        });
+      }
     }
 
     // =========================================================================
@@ -562,8 +597,242 @@ export default async function handler(req, res) {
         }
       };
 
+      // Toggle status utilizador: POST /api/crm/users/:id/toggle-status
+      if (pathname.startsWith('users/') && pathname.endsWith('/toggle-status')) {
+        const userId = pathname.split('/')[1];
+
+        // 1. Localizar perfil por id ou user_id
+        const findRes = await fetch(
+          `${config.supabaseUrl}/rest/v1/perfis?or=(id.eq.${userId},user_id.eq.${userId})&select=*&limit=1`,
+          { headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader } }
+        );
+        const findData = await findRes.json();
+        const userProfile = Array.isArray(findData) && findData.length > 0 ? findData[0] : null;
+
+        if (!userProfile) {
+          return res.status(404).json({ success: false, error: 'Utilizador não encontrado no sistema.' });
+        }
+
+        const currentlyActive = userProfile.ativo !== false && userProfile.is_active !== false;
+        const newStatus = body.ativo !== undefined ? Boolean(body.ativo) : !currentlyActive;
+
+        // 2. UPDATE na tabela perfis
+        let updateRes = await fetch(
+          `${config.supabaseUrl}/rest/v1/perfis?id=eq.${userProfile.id}`,
+          {
+            method: 'PATCH',
+            headers: {
+              'apikey': config.serviceRoleKey,
+              'Authorization': authHeader,
+              'Content-Type': 'application/json',
+              'Prefer': 'return=representation'
+            },
+            body: JSON.stringify({
+              ativo: newStatus,
+              is_active: newStatus,
+              updated_at: new Date().toISOString()
+            })
+          }
+        );
+
+        if (!updateRes.ok) {
+          updateRes = await fetch(
+            `${config.supabaseUrl}/rest/v1/perfis?id=eq.${userProfile.id}`,
+            {
+              method: 'PATCH',
+              headers: {
+                'apikey': config.serviceRoleKey,
+                'Authorization': authHeader,
+                'Content-Type': 'application/json',
+                'Prefer': 'return=representation'
+              },
+              body: JSON.stringify({
+                ativo: newStatus,
+                is_active: newStatus
+              })
+            }
+          );
+        }
+
+        // 3. SELECT de confirmação e validação real (Regra Suprema)
+        const confRes = await fetch(
+          `${config.supabaseUrl}/rest/v1/perfis?id=eq.${userProfile.id}&select=id,email,ativo,is_active&limit=1`,
+          { headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader } }
+        );
+        const confData = await confRes.json();
+        const confirmed = Array.isArray(confData) && confData.length > 0 ? confData[0] : null;
+
+        const atovoOk = confirmed && confirmed.ativo === newStatus;
+        const isActiveOk = confirmed && confirmed.is_active === newStatus;
+        if (!confirmed || (!atovoOk && !isActiveOk)) {
+          return res.status(500).json({ success: false, error: 'Falha na confirmação de gravação no banco Supabase.' });
+        }
+
+        // 4. Auditoria persistente
+        fetch(`${config.supabaseUrl}/rest/v1/historico_licencas`, {
+          method: 'POST',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            empresa_id: userProfile.empresa_id || 'system',
+            acao: newStatus ? 'UTILIZADOR_ATIVADO' : 'UTILIZADOR_BLOQUEADO',
+            descricao: `Utilizador ${userProfile.email} foi ${newStatus ? 'ativado' : 'bloqueado'} pelo administrador ${auth.user?.email || 'admin'}`,
+            usuario: auth.user?.email || 'admin',
+            created_at: new Date().toISOString()
+          })
+        }).catch(() => {});
+
+        return res.status(200).json({
+          success: true,
+          ativo: newStatus,
+          is_active: newStatus,
+          message: `Utilizador ${newStatus ? 'ativado' : 'bloqueado'} com sucesso e confirmado no Supabase.`
+        });
+      }
+
+      // Permissões de menu utilizador: POST /api/crm/users/:id/permissions
+      if (pathname.startsWith('users/') && pathname.endsWith('/permissions')) {
+        const userId = pathname.split('/')[1];
+        const permissionAreas = body.permission_areas;
+
+        if (!Array.isArray(permissionAreas)) {
+          return res.status(400).json({ success: false, error: 'permission_areas deve ser um array de strings.' });
+        }
+
+        const findRes = await fetch(
+          `${config.supabaseUrl}/rest/v1/perfis?or=(id.eq.${userId},user_id.eq.${userId})&select=*&limit=1`,
+          { headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader } }
+        );
+        const findData = await findRes.json();
+        const userProfile = Array.isArray(findData) && findData.length > 0 ? findData[0] : null;
+
+        if (!userProfile) {
+          return res.status(404).json({ success: false, error: 'Utilizador não encontrado no sistema.' });
+        }
+
+        let updateRes = await fetch(
+          `${config.supabaseUrl}/rest/v1/perfis?id=eq.${userProfile.id}`,
+          {
+            method: 'PATCH',
+            headers: {
+              'apikey': config.serviceRoleKey,
+              'Authorization': authHeader,
+              'Content-Type': 'application/json',
+              'Prefer': 'return=representation'
+            },
+            body: JSON.stringify({
+              permission_areas: permissionAreas,
+              updated_at: new Date().toISOString()
+            })
+          }
+        );
+
+        if (!updateRes.ok) {
+          updateRes = await fetch(
+            `${config.supabaseUrl}/rest/v1/perfis?id=eq.${userProfile.id}`,
+            {
+              method: 'PATCH',
+              headers: {
+                'apikey': config.serviceRoleKey,
+                'Authorization': authHeader,
+                'Content-Type': 'application/json',
+                'Prefer': 'return=representation'
+              },
+              body: JSON.stringify({
+                permission_areas: permissionAreas
+              })
+            }
+          );
+        }
+
+        // SELECT de confirmação e validação real
+        const confRes = await fetch(
+          `${config.supabaseUrl}/rest/v1/perfis?id=eq.${userProfile.id}&select=id,permission_areas&limit=1`,
+          { headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader } }
+        );
+        const confData = await confRes.json();
+        const confirmed = Array.isArray(confData) && confData.length > 0 ? confData[0] : null;
+
+        if (!confirmed || !Array.isArray(confirmed.permission_areas)) {
+          return res.status(500).json({ success: false, error: 'Falha na confirmação de gravação das permissões no banco Supabase.' });
+        }
+
+        fetch(`${config.supabaseUrl}/rest/v1/historico_licencas`, {
+          method: 'POST',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            empresa_id: userProfile.empresa_id || 'system',
+            acao: 'PERMISSOES_ATUALIZADAS',
+            descricao: `Permissões do utilizador ${userProfile.email} atualizadas para: ${permissionAreas.join(', ')}`,
+            usuario: auth.user?.email || 'admin',
+            created_at: new Date().toISOString()
+          })
+        }).catch(() => {});
+
+        return res.status(200).json({
+          success: true,
+          permission_areas: confirmed.permission_areas,
+          message: 'Permissões atualizadas com sucesso e confirmadas no banco de dados.'
+        });
+      }
+
+      // Identidade visual empresa: POST /api/crm/companies/:id/identity
+      if (pathname.startsWith('companies/') && pathname.endsWith('/identity')) {
+        const companyId = pathname.split('/')[1];
+        const {
+          logo_url,
+          logo_size,
+          watermark_url,
+          watermark_size,
+          exibir_marca_dagua,
+          footer_image_url,
+          footer_size,
+          sidebar_image_url,
+          anexo_image_url,
+          texto_rodape,
+          exibir_rodape,
+          exibir_cabecalho,
+          documento_modelo
+        } = body;
+
+        const updateData = {
+          logo_url,
+          logo_size: Number(logo_size) || 80,
+          watermark_url,
+          watermark_size: Number(watermark_size) || 300,
+          exibir_marca_dagua: exibir_marca_dagua !== false,
+          footer_image_url,
+          footer_size: Number(footer_size) || 60,
+          sidebar_image_url,
+          anexo_image_url,
+          texto_rodape,
+          exibir_rodape: exibir_rodape !== false,
+          exibir_cabecalho: exibir_cabecalho !== false,
+          documento_modelo: documento_modelo || 'OFICIAL_AGT',
+          updated_at: new Date().toISOString()
+        };
+
+        await Promise.all([
+          fetch(`${config.supabaseUrl}/rest/v1/empresas?id=eq.${companyId}`, {
+            method: 'PATCH',
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+            body: JSON.stringify(updateData)
+          }),
+          fetch(`${config.supabaseUrl}/rest/v1/config_empresa?empresa_id=eq.${companyId}`, {
+            method: 'PATCH',
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+            body: JSON.stringify(updateData)
+          })
+        ]);
+
+        return res.status(200).json({
+          success: true,
+          message: 'Identidade visual gravada e sincronizada com sucesso!',
+          data: updateData
+        });
+      }
+
       // Toggle status: /api/crm/companies/:id/toggle-status
-      if (pathname.includes('/toggle-status')) {
+      if (pathname.startsWith('companies/') && pathname.endsWith('/toggle-status')) {
         if (!auth.isSuperAdmin) {
           return res.status(403).json({ error: 'Apenas o Super Administrador pode alterar o estado das empresas.' });
         }

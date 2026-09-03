@@ -57,8 +57,8 @@ const EcosystemDashboard = ({ stats, issuedDocuments, setActiveTab }: { stats: a
         <h3 className="text-sm font-bold text-zinc-800 flex items-center gap-2 mb-8">
           <Activity className="text-blue-600" size={18} /> TENDÊNCIA DE VOLUME
         </h3>
-        <div className="w-full" style={{ height: "300px" }}>
-          <ResponsiveContainer width="100%" height="100%">
+        <div className="w-full min-w-[100px]" style={{ height: "300px", minHeight: "250px" }}>
+          <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={250}>
             <AreaChart data={volumeData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="colorVolume" x1="0" y1="0" x2="0" y2="1">
@@ -82,8 +82,8 @@ const EcosystemDashboard = ({ stats, issuedDocuments, setActiveTab }: { stats: a
         <h3 className="text-sm font-bold text-zinc-800 flex items-center gap-2 mb-6">
           <PieChartIcon className="text-blue-600" size={18} /> ESTADOS DOCUMENTAIS
         </h3>
-        <div className="h-64 flex justify-center">
-          <ResponsiveContainer width="100%" height="100%">
+        <div className="h-64 w-full min-w-[100px] flex justify-center" style={{ minHeight: "200px" }}>
+          <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={200}>
             <PieChart>
               <Pie data={docStatesData} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
                 {docStatesData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}

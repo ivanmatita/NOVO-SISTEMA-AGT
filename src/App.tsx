@@ -14700,16 +14700,6 @@ const UsersSettings = () => {
                         >
                           <KeyRound size={11} />
                         </button>
-  
-                        {/* Delete Action option */}
-                        <button 
-                          disabled={togglingUserId !== null || isSaving}
-                          onClick={() => handleDeleteUser(u.id)} 
-                          className="p-1 px-1.5 bg-red-100/5 hover:bg-red-600 text-red-600 hover:text-white border border-red-200/10 transition-all font-bold rounded-none flex items-center justify-center disabled:opacity-50"
-                          title="Eliminar Utilizador do Sistema"
-                        >
-                          <Trash2 size={11} />
-                        </button>
                       </div>
                     </td>
                   </tr>
@@ -14720,35 +14710,6 @@ const UsersSettings = () => {
         </table>
       </div>
 
-      {/* Custom and Safe Multi-tenant Deletion Confirmation Modal */}
-      {confirmDeleteId && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm" onClick={() => setConfirmDeleteId(null)} />
-          <div className="relative w-full max-w-md bg-white p-6 shadow-2xl border-t-4 border-red-600 rounded-none animate-fade-in">
-            <h3 className="font-bold text-[#003366] text-lg uppercase mb-2">Eliminar Utilizador</h3>
-            <p className="text-zinc-600 text-sm mb-6">
-              Tem a certeza absoluta de que deseja eliminar este utilizador do sistema? 
-              Esta ação é definitiva, removerá todos os seus dados e acessos e não pode ser desfeita.
-            </p>
-            <div className="flex justify-end gap-2">
-              <button 
-                onClick={() => setConfirmDeleteId(null)}
-                disabled={isDeleting}
-                className="bg-zinc-100 hover:bg-zinc-200 text-zinc-600 text-xs font-bold uppercase px-4 py-2 transition-all"
-              >
-                Cancelar
-              </button>
-              <button 
-                onClick={confirmDeletion}
-                disabled={isDeleting}
-                className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold uppercase px-4 py-2 transition-all flex items-center gap-1"
-              >
-                {isDeleting ? 'A eliminar...' : 'Eliminar Definitivamente'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Custom absolute Toast Notification component */}
       {toast && (

@@ -786,26 +786,47 @@ const SubmitPaymentProofModal = ({ empresaId, onClose, onSuccess }: { empresaId?
     e.preventDefault();
     try {
       setSubmitting(true);
-      const { data: { session } } = await supabase.auth.getSession();
       const userRes = await supabase.auth.getUser();
+      const currentUserEmail = userRes.data.user?.email || 'Utilizador';
 
-      await supabase.from('historico_licencas').insert([{
-        empresa_id: empresaId || '1',
-        banco: formData.banco,
-        valor: Number(formData.montante),
-        numero_transacao: formData.numero_transacao,
-        data_pagamento: formData.data_pagamento,
-        comprovativo_url: formData.comprovativo_url || null,
-        observacoes: formData.observacao || `Comprovativo ${formData.banco} (${formData.numero_transacao})`,
-        status_novo: 'pendente_validacao',
-        alterado_por: userRes.data.user?.email || 'Utilizador'
-      }]).catch(console.warn);
+      // Garantir UUID válido da empresa
+      const targetEmpresaId = (empresaId && empresaId !== '1' && empresaId.length > 10)
+        ? empresaId
+        : (userRes.data.user?.id || null);
+
+      if (!targetEmpresaId) {
+        throw new Error('Identificador da empresa não disponível.');
+      }
+
+      const { error: insertError } = await supabase.from('historico_licencas').insert([{
+        empresa_id: targetEmpresaId,
+        acao: 'COMPROVATIVO_PAGAMENTO',
+        descricao: `Comprovativo de Pagamento - Banco: ${formData.banco} | Ref/Transação: ${formData.numero_transacao} | Valor: ${formData.montante} Kz`,
+        motivo: 'Registo de Comprovativo de Pagamento',
+        usuario: currentUserEmail,
+        alterado_por: currentUserEmail,
+        status: 'PENDENTE',
+        metadata: {
+          banco: formData.banco,
+          valor: Number(formData.montante),
+          numero_transacao: formData.numero_transacao,
+          data_pagamento: formData.data_pagamento,
+          comprovativo_url: formData.comprovativo_url || null,
+          observacoes: formData.observacao || `Comprovativo ${formData.banco} (${formData.numero_transacao})`,
+          status_novo: 'pendente_validacao'
+        }
+      }]);
+
+      if (insertError) {
+        console.error('[LicencasModule] Erro ao inserir no Supabase:', insertError);
+        throw insertError;
+      }
 
       toast.success('Comprovativo de pagamento enviado com sucesso para a validação no CRM!');
       onSuccess();
-    } catch (err) {
-      console.error(err);
-      toast.error('Erro ao enviar comprovativo.');
+    } catch (err: any) {
+      console.error('[LicencasModule] Erro ao submeter comprovativo:', err);
+      toast.error(`Erro ao enviar comprovativo: ${err.message || 'Erro de comunicação'}`);
     } finally {
       setSubmitting(false);
     }
@@ -904,18 +925,42 @@ const SubmitOcorrenciaModal = ({ empresaId, onClose, onSuccess }: { empresaId?: 
     try {
       setSubmitting(true);
       const userRes = await supabase.auth.getUser();
-      await supabase.from('historico_licencas').insert([{
-        empresa_id: empresaId || '1',
-        motivo: `[Ocorrência] ${assunto}`,
-        observacoes: descricao,
-        status_novo: 'aberto',
-        alterado_por: userRes.data.user?.email || 'Utilizador'
-      }]).catch(console.warn);
+      const currentUserEmail = userRes.data.user?.email || 'Utilizador';
+
+      const targetEmpresaId = (empresaId && empresaId !== '1' && empresaId.length > 10)
+        ? empresaId
+        : (userRes.data.user?.id || null);
+
+      if (!targetEmpresaId) {
+        throw new Error('Identificador da empresa não disponível.');
+      }
+
+      const { error: insertError } = await supabase.from('historico_licencas').insert([{
+        empresa_id: targetEmpresaId,
+        acao: `OCORRENCIA_${(tipo || 'SUPORTE').toUpperCase()}`,
+        descricao: `[${prioridade || 'NORMAL'}] ${assunto}: ${descricao}`,
+        motivo: assunto,
+        usuario: currentUserEmail,
+        alterado_por: currentUserEmail,
+        status: 'ABERTO',
+        metadata: {
+          tipo,
+          prioridade,
+          assunto,
+          descricao
+        }
+      }]);
+
+      if (insertError) {
+        console.error('[LicencasModule] Erro ao registar ocorrência:', insertError);
+        throw insertError;
+      }
 
       toast.success('Ocorrência registada com sucesso!');
       onSuccess();
-    } catch (err) {
-      toast.error('Erro ao registar ocorrência');
+    } catch (err: any) {
+      console.error('[LicencasModule] Erro ao submeter ocorrência:', err);
+      toast.error(`Erro ao registar ocorrência: ${err.message || 'Erro de comunicação'}`);
     } finally {
       setSubmitting(false);
     }

@@ -230,8 +230,8 @@ const BusinessOverview: React.FC<{
                 ))}
               </div>
             </div>
-            <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
+            <div className="h-80 w-full min-w-[100px] min-h-[300px]">
+              <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={280}>
                 <AreaChart data={historicalData}>
                   <defs>
                     <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
@@ -253,8 +253,8 @@ const BusinessOverview: React.FC<{
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="bg-white border border-zinc-100 p-8 shadow-sm">
               <h3 className="text-sm font-black text-zinc-800 uppercase tracking-widest mb-6">Estrutura de Balanço</h3>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
+              <div className="h-64 w-full min-w-[100px] min-h-[220px]">
+                <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={200}>
                   <PieChart>
                     <Pie data={chartData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
                       {chartData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}

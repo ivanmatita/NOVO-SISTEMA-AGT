@@ -14019,8 +14019,15 @@ const UsersSettings = () => {
   };
 
   const handleToggleStatus = async (userToToggle: SystemUser) => {
-    if (!user?.empresa_id || togglingUserId === userToToggle.id) return;
+    const currentEmpresaId = user?.empresa_id || user?.company_id || (user?.company as any)?.id || userToToggle.empresa_id || '';
+    if (!currentEmpresaId || togglingUserId === userToToggle.id) return;
     
+    // Proteção: não permitir desativar a própria conta em sessão
+    if (userToToggle.id === user?.id && userToToggle.is_active !== false) {
+      showToast("Não é permitido bloquear a sua própria conta de administrador em sessão!", 'error');
+      return;
+    }
+
     console.log(`[FRONTEND] Toggling status for user: ${userToToggle.id} (${userToToggle.email})`);
     const nextStatus = userToToggle.is_active === false ? true : false;
     
@@ -14029,11 +14036,11 @@ const UsersSettings = () => {
     // Optimistic Update for extreme responsiveness
     const originalUsers = [...users];
     setUsers(prevUsers => 
-      prevUsers.map(u => u.id === userToToggle.id ? { ...u, is_active: nextStatus } : u)
+      prevUsers.map(u => u.id === userToToggle.id ? { ...u, is_active: nextStatus, ativo: nextStatus } : u)
     );
 
     try {
-      await systemUsersService.toggleUserStatus(user.empresa_id, userToToggle.id, !nextStatus);
+      await systemUsersService.toggleUserStatus(currentEmpresaId, userToToggle.id, !nextStatus);
       showToast(`Estado de ${userToToggle.name} atualizado com sucesso!`);
     } catch (err: any) {
       console.error('Error toggling status:', err);
@@ -14056,17 +14063,18 @@ const UsersSettings = () => {
   };
 
   const handleSaveQuickPermissions = async () => {
-    if (!permissionModalUser || !user?.empresa_id) return;
+    const currentEmpresaId = user?.empresa_id || user?.company_id || (user?.company as any)?.id || permissionModalUser?.empresa_id || '';
+    if (!permissionModalUser || !currentEmpresaId) return;
     setIsSaving(true);
     try {
-      await systemUsersService.updateUser(user.empresa_id, permissionModalUser.id, {
+      await systemUsersService.updateUser(currentEmpresaId, permissionModalUser.id, {
         ...permissionModalUser,
         permission_areas: mapPermissionAreasForDB(permissionAreas)
       });
       showToast("Permissões atualizadas com sucesso!");
       
       // If the current user's permissions were updated, refresh auth state
-      if (permissionModalUser.id === user.id) {
+      if (permissionModalUser.id === user?.id) {
         await refreshUser();
       }
       
@@ -14088,7 +14096,8 @@ const UsersSettings = () => {
 
   const handleResetPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!resetPasswordUser || !user?.empresa_id) return;
+    const currentEmpresaId = user?.empresa_id || user?.company_id || (user?.company as any)?.id || resetPasswordUser?.empresa_id || '';
+    if (!resetPasswordUser || !currentEmpresaId) return;
     if (!newPassword || newPassword !== confirmNewPassword) {
       showToast("As senhas não coincidem ou estão vazias!", 'error');
       return;
@@ -14100,7 +14109,7 @@ const UsersSettings = () => {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ password: newPassword })
+        body: JSON.stringify({ password: newPassword, empresa_id: currentEmpresaId })
       });
 
       if (!response.ok) {
@@ -14123,7 +14132,8 @@ const UsersSettings = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     console.log("handleSubmit called");
-    if (!user?.empresa_id) {
+    const currentEmpresaId = user?.empresa_id || user?.company_id || (user?.company as any)?.id || '';
+    if (!currentEmpresaId) {
       showToast("Companhia não identificada.", 'error');
       return;
     }
@@ -14159,10 +14169,10 @@ const UsersSettings = () => {
     try {
       if (editingUser) {
         console.log(`Editing user ${editingUser.id}`);
-        await systemUsersService.updateUser(user.empresa_id, editingUser.id, payload);
+        await systemUsersService.updateUser(currentEmpresaId, editingUser.id, payload);
         
         // If the current user's permissions were updated, refresh auth state
-        if (editingUser.id === user.id) {
+        if (editingUser.id === user?.id) {
             await refreshUser();
         }
         
@@ -14179,10 +14189,10 @@ const UsersSettings = () => {
           return;
         }
         console.log("Creating new user...");
-        await systemUsersService.createUser(user.empresa_id, {
+        await systemUsersService.createUser(currentEmpresaId, {
           ...payload,
           password,
-          created_by: user.id
+          created_by: user?.id
         });
         showToast("Novo utilizador registado com sucesso!");
         fetchUsers();

@@ -36,6 +36,9 @@ export default async function handler(req, res) {
       pathname = req.url || '';
     }
 
+    // Extrair subpath relativo a /api/system-users
+    const subpath = pathname.replace(/^\/api\/system-users\/?/i, '');
+
     // Extrair UUID de forma resiliente em qualquer posição da URL
     const uuidMatch = pathname.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
     const routeUserId = uuidMatch ? uuidMatch[1] : null;
@@ -75,6 +78,14 @@ export default async function handler(req, res) {
         newStatus = Boolean(body.ativo);
       } else {
         newStatus = !currentlyActive;
+      }
+
+      // Proteção de segurança contra bloqueio do utilizador em sessão ou do Administrador Master
+      if ((String(userId) === String(auth.user?.id) || userProfile.email === 'fffm333atitaifvan7@gmail.com') && newStatus === false) {
+        return res.status(400).json({
+          success: false,
+          error: 'Não é permitido bloquear a sua própria conta em sessão ou a conta do Administrador Master.'
+        });
       }
 
       // 1.4 Atualizar em perfis (ambos os campos: ativo e is_active)
@@ -257,7 +268,7 @@ export default async function handler(req, res) {
     }
 
     // ─── 4. POST /api/system-users (Registar novo utilizador) ───────────────────
-    if (req.method === 'POST' && (subpath === '' || subpath === '/')) {
+    if (req.method === 'POST' && !pathname.includes('toggle-status') && !pathname.includes('reset-password') && !routeUserId) {
       const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
       const { email, password, name, profession, date, permission_areas, contact, morada, username, level, is_admin, validade } = body;
 
@@ -312,19 +323,20 @@ export default async function handler(req, res) {
         userId = authData.id || authData.user?.id;
       }
 
-      // 4.2 Montar objeto de perfil com empresa_id e company_id garantidos
+      // 4.2 Montar objeto de perfil (OBS: a tabela perfis utiliza empresa_id. company_id NAO existe nesta tabela)
       const targetRole = is_admin === true ? 'admin' : 'user';
+      const permsArray = Array.isArray(permission_areas) ? permission_areas : [];
       const perfilObj = {
         id: userId,
         empresa_id: targetEmpresaId,
-        company_id: targetEmpresaId,
         nome: (name || '').trim(),
         email: cleanEmail,
         role: targetRole,
         is_active: true,
         ativo: true,
         is_admin: Boolean(is_admin),
-        permission_areas: Array.isArray(permission_areas) ? permission_areas : [],
+        permission_areas: permsArray,
+        permissions: permsArray,
         profession: profession || null,
         contact: contact || null,
         morada: morada || null,
@@ -348,8 +360,21 @@ export default async function handler(req, res) {
       });
 
       if (!profileRes.ok) {
-        const pErr = await profileRes.json().catch(() => ({}));
-        return res.status(400).json({ success: false, error: pErr.message || 'Erro ao gravar perfil do utilizador.' });
+        // Fallback: se houver conflito de chave única, tentar PATCH pelo id
+        const patchRes = await fetch(`${config.supabaseUrl}/rest/v1/perfis?id=eq.${userId}`, {
+          method: 'PATCH',
+          headers: {
+            'apikey': config.serviceRoleKey,
+            'Authorization': authHeader,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+          },
+          body: JSON.stringify(perfilObj)
+        });
+        if (!patchRes.ok) {
+          const pErr = await profileRes.json().catch(() => ({}));
+          return res.status(400).json({ success: false, error: pErr.message || 'Erro ao gravar perfil do utilizador.' });
+        }
       }
 
       // Tentar inserir também em system_users para consistência legada
@@ -366,7 +391,7 @@ export default async function handler(req, res) {
           empresa_id: targetEmpresaId,
           nome: (name || '').trim(),
           email: cleanEmail,
-          permission_areas: Array.isArray(permission_areas) ? permission_areas : [],
+          permission_areas: permsArray,
           is_admin: Boolean(is_admin),
           is_active: true
         }])
@@ -388,14 +413,20 @@ export default async function handler(req, res) {
       return res.status(201).json({
         success: true,
         id: userId,
+        user: perfilObj,
+        ...perfilObj,
         message: 'Utilizador registado com sucesso!'
       });
     }
 
     // ─── 5. PUT / PATCH /api/system-users/:id (Editar utilizador / permissões) ──
-    if ((req.method === 'PUT' || req.method === 'PATCH') && subpath && !subpath.includes('/')) {
-      const userId = subpath;
+    if ((req.method === 'PUT' || req.method === 'PATCH' || (req.method === 'POST' && routeUserId)) && !pathname.includes('toggle-status') && !pathname.includes('reset-password')) {
       const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+      const userId = routeUserId || (subpath ? subpath.split('?')[0].replace('/', '') : null) || body.id || body.userId;
+
+      if (!userId) {
+        return res.status(400).json({ success: false, error: 'ID do utilizador é obrigatório para atualização.' });
+      }
 
       // 5.1 Localizar o perfil existente
       const findRes = await fetch(
@@ -459,7 +490,9 @@ export default async function handler(req, res) {
         updatePayload.username = (body.username || '').trim();
       }
       if (body.permission_areas !== undefined) {
-        updatePayload.permission_areas = Array.isArray(body.permission_areas) ? body.permission_areas : [];
+        const perms = Array.isArray(body.permission_areas) ? body.permission_areas : [];
+        updatePayload.permission_areas = perms;
+        updatePayload.permissions = perms;
       }
       if (body.is_admin !== undefined) {
         updatePayload.is_admin = Boolean(body.is_admin);
@@ -545,14 +578,15 @@ export default async function handler(req, res) {
       return res.status(200).json({
         success: true,
         user: confirmed,
+        ...confirmed,
         message: 'Utilizador atualizado com sucesso e confirmado no banco Supabase.'
       });
     }
 
     // ─── 6. DELETE /api/system-users/:id (SOFT DELETE OBRIGATÓRIO) ──────────────
     // A REGRA SUPREMA PROÍBE APAGAR UTILIZADORES: O sistema aplica Soft-Delete (Desativação)
-    if (req.method === 'DELETE' && subpath && !subpath.includes('/')) {
-      const userId = subpath;
+    if (req.method === 'DELETE') {
+      const userId = routeUserId || (subpath ? subpath.split('?')[0].replace('/', '') : null) || req.query?.id;
 
       // Localizar perfil
       const findRes = await fetch(

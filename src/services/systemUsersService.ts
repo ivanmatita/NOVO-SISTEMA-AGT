@@ -111,7 +111,7 @@ export const systemUsersService = {
   },
 
   /**
-   * Criar utilizador com segurança via backend server.
+   * Criar utilizador com segurança via backend server e fallback resiliente.
    * Evita a Warning/Erro de "Multiple GoTrueClient instances detected" e problemas de RLS/Auth no cliente.
    */
   async createUser(empresaId: string, payload: any): Promise<SystemUser> {
@@ -120,6 +120,7 @@ export const systemUsersService = {
     if (!payload.name) throw new Error('O nome é obrigatório.');
     if (!payload.password) throw new Error('A password é obrigatória.');
 
+    let apiErrorMsg = '';
     try {
       const headers = await getHeaders();
       const response = await fetch('/api/system-users', {
@@ -131,20 +132,96 @@ export const systemUsersService = {
         })
       });
 
-      if (!response.ok) {
+      if (response.ok) {
+        const createdUser = await response.json();
+        return {
+          ...(createdUser.user || createdUser),
+          empresa_id: empresaId,
+          company_id: empresaId
+        };
+      } else {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `Erro ao criar utilizador (${response.status})`);
+        apiErrorMsg = errorData.error || `Erro HTTP ${response.status}`;
+        console.warn(`[SystemUsersService] API /api/system-users POST falhou (${apiErrorMsg}). Ativando Fallback Supabase...`);
+      }
+    } catch (err: any) {
+      apiErrorMsg = err.message || 'Erro de rede';
+      console.warn('[SystemUsersService] Falha de rede no backend. Ativando Fallback Supabase...', err);
+    }
+
+    // ─── FALLBACK DIRETO AO SUPABASE CLIENT ────────────────────────────────────
+    try {
+      const perms = Array.isArray(payload.permission_areas) ? payload.permission_areas : [];
+      const isAdm = Boolean(payload.is_admin);
+      const cleanEmail = payload.email.trim().toLowerCase();
+
+      // 1. Tentar criar no Supabase Auth via cliente
+      let userId: string | null = null;
+      const { data: authData, error: authErr } = await supabase.auth.signUp({
+        email: cleanEmail,
+        password: payload.password,
+        options: {
+          data: { full_name: payload.name.trim() }
+        }
+      });
+
+      if (!authErr && authData?.user?.id) {
+        userId = authData.user.id;
+      } else {
+        // Se usuário já existir no Auth, buscar perfil existente
+        const { data: existingProfile } = await supabase
+          .from('perfis')
+          .select('id')
+          .eq('email', cleanEmail)
+          .maybeSingle();
+        if (existingProfile?.id) {
+          userId = existingProfile.id;
+        } else {
+          throw new Error(apiErrorMsg || authErr?.message || 'Erro ao registar utilizador no Auth.');
+        }
       }
 
-      const createdUser = await response.json();
+      // 2. Inserir / Atualizar na tabela perfis (sem company_id que não existe nesta tabela)
+      const perfilObj: any = {
+        id: userId,
+        empresa_id: empresaId,
+        nome: payload.name.trim(),
+        email: cleanEmail,
+        role: isAdm ? 'admin' : 'user',
+        is_active: true,
+        ativo: true,
+        is_admin: isAdm,
+        permission_areas: perms,
+        permissions: perms,
+        profession: payload.profession || null,
+        contact: payload.contact || null,
+        morada: payload.morada || null,
+        username: payload.username || cleanEmail.split('@')[0],
+        level: isAdm ? 10 : (Number(payload.level) || 1),
+        date: payload.date || null,
+        validade: payload.validade || null,
+        updated_at: new Date().toISOString()
+      };
+
+      const { data: inserted, error: insertErr } = await supabase
+        .from('perfis')
+        .upsert(perfilObj)
+        .select()
+        .maybeSingle();
+
+      if (insertErr) {
+        console.error('[SystemUsersService] Erro ao gravar perfil no Fallback Supabase:', insertErr);
+        throw new Error(insertErr.message);
+      }
+
       return {
-        ...createdUser,
+        ...(inserted || perfilObj),
         empresa_id: empresaId,
         company_id: empresaId
       };
-    } catch (err) {
-      console.error('[SystemUsersService] Erro ao criar utilizador:', err);
-      throw err;
+    } catch (dbErr: any) {
+      console.error('[SystemUsersService] Falha total no cadastro de utilizador:', dbErr);
+      throw new Error(dbErr.message || apiErrorMsg || 'Erro desconhecido ao registar utilizador.');
     }
   },
 

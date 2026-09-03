@@ -1740,8 +1740,8 @@ app.use((req, res, next) => {
   }
 });
 
-  app.put("/api/system-users/:id", async (req, res) => {
-      console.log("[SERVER] PUT /api/system-users received for ID:", req.params.id, req.body);
+  const updateSystemUserHandler = async (req: express.Request, res: express.Response) => {
+      console.log(`[SERVER] ${req.method} /api/system-users received for ID:`, req.params.id, req.body);
       const userId = req.params.id;
       const { email, password, name, profession, date, permission_areas, contact, morada, username, level, is_admin, validade, is_active } = req.body;
       
@@ -1882,10 +1882,13 @@ app.use((req, res, next) => {
 
           res.json({ success: true });
       } catch (e: any) {
-          console.error("[SERVER] PUT /api/system-users error:", e);
+          console.error("[SERVER] PUT/PATCH /api/system-users error:", e);
           res.status(500).json({ error: e.message });
       }
-  });
+  };
+  app.put("/api/system-users/:id", updateSystemUserHandler);
+  app.patch("/api/system-users/:id", updateSystemUserHandler);
+  app.post("/api/system-users/:id", updateSystemUserHandler);
 
   app.delete("/api/system-users/:id", async (req, res) => {
       console.log("[SERVER] DELETE /api/system-users received for ID:", req.params.id);
@@ -2037,8 +2040,8 @@ app.use((req, res, next) => {
       }
   });
 
-  app.post("/api/system-users/:id/toggle-status", async (req, res) => {
-      console.log("[SERVER] POST /api/system-users/:id/toggle-status for ID:", req.params.id);
+  app.all("/api/system-users/:id/toggle-status", async (req, res) => {
+      console.log(`[SERVER] ${req.method} /api/system-users/:id/toggle-status for ID:`, req.params.id);
       const userId = req.params.id;
       const { is_active } = req.body;
 
@@ -2094,10 +2097,10 @@ app.use((req, res, next) => {
 
           const nextActiveStatus = is_active !== undefined ? !!is_active : !targetUser.is_active;
 
-          // 1. Update perfis primarily
+          // 1. Update perfis primarily (both is_active and ativo)
           const { error: dbError } = await supabaseAdmin
               .from('perfis')
-              .update({ is_active: nextActiveStatus })
+              .update({ is_active: nextActiveStatus, ativo: nextActiveStatus })
               .eq('id', userId);
 
           if (dbError) throw dbError;

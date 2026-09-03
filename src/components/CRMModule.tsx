@@ -59,6 +59,9 @@ interface Company {
   exibir_cabecalho?: boolean;
   cor_primaria?: string;
   cor_secundaria?: string;
+  sidebar_image_url?: string;
+  anexo_image_url?: string;
+  documento_modelo?: string;
 }
 
 interface UserProfile {

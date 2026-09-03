@@ -937,14 +937,13 @@ const SubmitOcorrenciaModal = ({ empresaId, onClose, onSuccess }: { empresaId?: 
 
       const { error: insertError } = await supabase.from('historico_licencas').insert([{
         empresa_id: targetEmpresaId,
-        acao: `OCORRENCIA_${(tipo || 'SUPORTE').toUpperCase()}`,
+        acao: 'OCORRENCIA_SUPORTE',
         descricao: `[${prioridade || 'NORMAL'}] ${assunto}: ${descricao}`,
         motivo: assunto,
         usuario: currentUserEmail,
         alterado_por: currentUserEmail,
         status: 'ABERTO',
         metadata: {
-          tipo,
           prioridade,
           assunto,
           descricao

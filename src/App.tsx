@@ -2841,29 +2841,35 @@ const mapPermissionAreasForDB = (selectedIds: string[]): string[] => {
 };
 
 const hasModulePermission = (user: any, moduleId: string): boolean => {
-  // Dashboard always accessible
+  // Super Administrador do Sistema (Imatec Angola / Master)
+  const isSuperAdminGlobal = 
+    user?.email?.toLowerCase() === 'fffm333atitaifvan7@gmail.com' ||
+    user?.empresa_id === '2ebafa88-9a6e-4243-b127-b146410815eb' ||
+    user?.role === 'superadmin' ||
+    user?.role === 'super_admin';
+  if (isSuperAdminGlobal) return true;
+
+  // Dashboard sempre acessível
   if (moduleId === 'dashboard') return true;
+  if (moduleId === 'crm_empresas') return false;
 
-  // If permission_areas is explicitly set (non-empty), ALWAYS enforce them — even for admins.
-  // This allows CRM to restrict specific areas for any user, including company admins.
-  const rawPermissions = user?.permission_areas;
-  const hasExplicitPermissions = Array.isArray(rawPermissions) && rawPermissions.length > 0;
-
-  if (hasExplicitPermissions) {
+  // Se o utilizador tem permission_areas definido (Array, mesmo que vazio):
+  // As permissões da base de dados são a fonte suprema da verdade!
+  const rawPermissions = user?.permission_areas ?? user?.permissions;
+  if (Array.isArray(rawPermissions)) {
     const permissions = rawPermissions.map((p: any) => String(p).trim().toLowerCase());
     const possibleKeys = (PERMISSION_EQUIVALENTS[moduleId] || [moduleId]).map((k: string) => k.trim().toLowerCase());
     return possibleKeys.some(key => permissions.includes(key));
   }
 
-  // No explicit permissions set → fall back to role-based access
-  const isGlobalAdmin = user?.is_admin === true ||
+  // Fallback quando permission_areas nunca foi configurado na base de dados
+  const isCompanyAdmin = user?.is_admin === true ||
                         user?.role === 'admin' ||
                         user?.role === 'admin_empresa' ||
-                        user?.role === 'super_admin' ||
                         user?.role === 'proprietario' ||
                         (user?.level !== undefined && Number(user.level) >= 10);
 
-  return isGlobalAdmin;
+  return isCompanyAdmin;
 };
 
 const SIDEBAR_MENU_ITEMS = [
@@ -3123,54 +3129,36 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
           {SIDEBAR_MENU_ITEMS.filter(item => {
             if (item.id === 'crm_empresas') {
               const currentNif = String(companyData?.nif || user?.empresa_nif || '').replace(/\D/g, '').trim();
-              return currentNif === '5002123665';
+              const isSuper = currentNif === '5002123665' || 
+                              user?.email?.toLowerCase() === 'fffm333atitaifvan7@gmail.com' ||
+                              user?.empresa_id === '2ebafa88-9a6e-4243-b127-b146410815eb' ||
+                              user?.role === 'superadmin' || user?.role === 'super_admin';
+              return isSuper;
             }
-            return true;
+            // Área selecionada = aparece no menu. Área NÃO selecionada = NÃO aparece no menu!
+            return hasModulePermission(user, item.id);
           }).map((item) => {
-            const canAccess = (module: string) => {
-              if (module === 'crm_empresas') return true; 
-              const hasAccess = hasModulePermission(user, module);
-              return hasAccess;
-            };
-
-            const isRestricted = !canAccess(item.id);
-            
             return (
               <button
                 key={item.id}
-                disabled={isRestricted}
-                onClick={() => !isRestricted && setActiveTab(item.id)}
+                onClick={() => setActiveTab(item.id)}
                 className={`w-full flex items-center justify-between px-3 py-2.5 rounded-none transition-all duration-200 mb-0.5 relative group ${
-                  isRestricted 
-                    ? 'bg-zinc-200 text-zinc-500 cursor-not-allowed opacity-60' 
-                    : activeTab === item.id 
-                      ? 'bg-[#1a4da6] text-white font-semibold shadow-md border-l-4 border-white' 
-                      : 'bg-[#123375] text-zinc-300 hover:bg-[#1a4da6] hover:text-white'
+                  activeTab === item.id 
+                    ? 'bg-[#1a4da6] text-white font-semibold shadow-md border-l-4 border-white' 
+                    : 'bg-[#123375] text-zinc-300 hover:bg-[#1a4da6] hover:text-white'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <div className="relative">
-                    <item.icon size={18} className={isRestricted ? 'text-zinc-500' : activeTab === item.id ? 'text-white' : 'text-zinc-400'} />
-                    {isRestricted && (
-                      <div className="absolute -bottom-1 -right-1 bg-zinc-500 rounded-full p-0.5 flex items-center justify-center">
-                        <Lock size={7} className="text-white" />
-                      </div>
-                    )}
-                  </div>
-                  <span className={`text-sm ${isRestricted ? 'text-zinc-500 font-medium' : ''}`}>{item.label}</span>
+                  <item.icon size={18} className={activeTab === item.id ? 'text-white' : 'text-zinc-400'} />
+                  <span className="text-sm">{item.label}</span>
                   {item.badge && (
                     <span className="ml-2 text-[8px] font-black bg-[#1a4da6] text-white px-1.5 py-0.5 rounded-full uppercase tracking-tighter">
                       {item.badge}
                     </span>
                   )}
                 </div>
-                {item.hasChevron && !isRestricted && (
+                {item.hasChevron && (
                   <ChevronRight size={14} className={activeTab === item.id ? 'text-white/70' : 'text-zinc-500'} />
-                )}
-                {isRestricted && (
-                  <div className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <span className="text-[7px] font-black bg-red-600 text-white px-1 py-0.5 rounded uppercase">Bloqueado</span>
-                  </div>
                 )}
               </button>
             );
@@ -23431,9 +23419,9 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
       case 'vat-settlement':
         return <VatSettlementModule invoices={issuedDocuments} purchases={purchases} onBack={() => setActiveSubTab(null)} companyData={companyData} vatToPay={vatToPay} vatLiquidated={vatLiquidated} vatDeductible={vatDeductible} />;
       case 'diarios-management':
-        return <DiariosManagementModule onBack={() => setActiveSubTab(null)} fiscalYear={fiscalYear} />;
+        return <DiariosManagementModule onBack={() => setActiveSubTab(null)} {...({ fiscalYear } as any)} />;
       case 'accounting-maps':
-        return <AccountingMapsModule onBack={() => setActiveSubTab(null)} companyData={companyData} fiscalYear={fiscalYear} />;
+        return <AccountingMapsModule onBack={() => setActiveSubTab(null)} companyData={companyData} {...({ fiscalYear } as any)} />;
       case 'balancete-razao':
         return <BalanceteRazaoModule onBack={() => setActiveSubTab(null)} companyData={companyData} fiscalYear={fiscalYear} />;
       case 'balanco':

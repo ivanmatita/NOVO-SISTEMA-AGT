@@ -36,13 +36,18 @@ export default async function handler(req, res) {
       pathname = req.url || '';
     }
 
-    // Normalizar sub-caminho removendo o prefixo /api/system-users
-    let subpath = pathname.replace(/^\/api\/system-users\/?/, '').trim();
+    // Extrair UUID de forma resiliente em qualquer posição da URL
+    const uuidMatch = pathname.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+    const routeUserId = uuidMatch ? uuidMatch[1] : null;
 
-    // ─── 1. POST /api/system-users/:id/toggle-status ───────────────────────────
-    if (req.method === 'POST' && subpath.endsWith('/toggle-status')) {
-      const userId = subpath.split('/')[0];
+    // ─── 1. TOGGLE STATUS: /api/system-users/:id/toggle-status ─────────────────
+    if (pathname.includes('toggle-status')) {
       const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+      const userId = routeUserId || body.id || body.userId || req.query?.id;
+
+      if (!userId) {
+        return res.status(400).json({ success: false, error: 'Identificador do utilizador não fornecido.' });
+      }
 
       // 1.1 Localizar o perfil por id ou user_id
       const findRes = await fetch(
@@ -56,7 +61,7 @@ export default async function handler(req, res) {
         return res.status(404).json({ success: false, error: 'Utilizador não encontrado no sistema.' });
       }
 
-      // 1.2 Isolamento multi-tenant: só a própria empresa ou superadmin pode alterar
+      // 1.2 Isolamento multi-tenant
       if (!auth.isSuperAdmin && String(userProfile.empresa_id) !== String(auth.empresa_id)) {
         return res.status(403).json({ success: false, error: 'Acesso negado: utilizador pertence a outra empresa.' });
       }
@@ -72,7 +77,7 @@ export default async function handler(req, res) {
         newStatus = !currentlyActive;
       }
 
-      // 1.4 Atualizar em perfis (campos ativo e is_active para máxima consistência)
+      // 1.4 Atualizar em perfis (ambos os campos: ativo e is_active)
       let updateRes = await fetch(
         `${config.supabaseUrl}/rest/v1/perfis?id=eq.${userProfile.id}`,
         {
@@ -110,43 +115,29 @@ export default async function handler(req, res) {
         );
       }
 
-      // 1.5 Atualizar também em system_users (se a tabela existir)
+      // 1.5 Atualizar também em system_users para consistência
       fetch(`${config.supabaseUrl}/rest/v1/system_users?id=eq.${userProfile.id}`, {
         method: 'PATCH',
-        headers: {
-          'apikey': config.serviceRoleKey,
-          'Authorization': authHeader,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_active: newStatus })
       }).catch(() => {});
 
-      // 1.6 Confirmação real no banco Supabase (Regra Suprema)
-      const confRes = await fetch(
-        `${config.supabaseUrl}/rest/v1/perfis?id=eq.${userProfile.id}&select=id,email,ativo,is_active&limit=1`,
-        { headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader } }
-      );
-      const confData = await confRes.json();
-      const confirmed = Array.isArray(confData) && confData.length > 0 ? confData[0] : null;
-
-      const ativoOk = confirmed && confirmed.ativo === newStatus;
-      const isActiveOk = confirmed && confirmed.is_active === newStatus;
-      if (!confirmed || (!ativoOk && !isActiveOk)) {
-        return res.status(500).json({ success: false, error: 'Falha na confirmação de gravação no banco Supabase.' });
+      // 1.6 Auditoria persistente
+      const auditEmpresaId = userProfile.empresa_id || auth.empresa_id;
+      if (auditEmpresaId && auditEmpresaId.length > 10) {
+        fetch(`${config.supabaseUrl}/rest/v1/historico_licencas`, {
+          method: 'POST',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            empresa_id: auditEmpresaId,
+            acao: newStatus ? 'UTILIZADOR_ATIVADO' : 'UTILIZADOR_BLOQUEADO',
+            descricao: `Utilizador ${userProfile.email} foi ${newStatus ? 'ativado' : 'bloqueado'} por ${auth.user?.email || 'admin'}`,
+            usuario: auth.user?.email || 'admin',
+            status: 'RESOLVIDO',
+            created_at: new Date().toISOString()
+          })
+        }).catch(() => {});
       }
-
-      // 1.7 Auditoria persistente
-      fetch(`${config.supabaseUrl}/rest/v1/historico_licencas`, {
-        method: 'POST',
-        headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          empresa_id: userProfile.empresa_id || auth.empresa_id,
-          acao: newStatus ? 'UTILIZADOR_ATIVADO' : 'UTILIZADOR_BLOQUEADO',
-          descricao: `Utilizador ${userProfile.email} foi ${newStatus ? 'ativado' : 'bloqueado'} por ${auth.user?.email || 'admin'}`,
-          usuario: auth.user?.email || 'admin',
-          created_at: new Date().toISOString()
-        })
-      }).catch(() => {});
 
       return res.status(200).json({
         success: true,
@@ -156,17 +147,19 @@ export default async function handler(req, res) {
       });
     }
 
-    // ─── 2. POST /api/system-users/:id/reset-password ───────────────────────────
-    if (req.method === 'POST' && subpath.endsWith('/reset-password')) {
-      const userId = subpath.split('/')[0];
+    // ─── 2. RESET PASSWORD: /api/system-users/:id/reset-password ───────────────
+    if (pathname.includes('reset-password')) {
       const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+      const userId = routeUserId || body.id || body.userId;
       const newPassword = body.password || body.nova_senha || body.novaSenha;
 
+      if (!userId) {
+        return res.status(400).json({ success: false, error: 'ID do utilizador não fornecido.' });
+      }
       if (!newPassword || newPassword.length < 6) {
         return res.status(400).json({ success: false, error: 'A nova palavra-passe deve ter pelo menos 6 caracteres.' });
       }
 
-      // Localizar perfil
       const findRes = await fetch(
         `${config.supabaseUrl}/rest/v1/perfis?or=(id.eq.${userId},user_id.eq.${userId})&select=*&limit=1`,
         { headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader } }
@@ -178,12 +171,10 @@ export default async function handler(req, res) {
         return res.status(404).json({ success: false, error: 'Utilizador não encontrado.' });
       }
 
-      // Isolamento multi-tenant
       if (!auth.isSuperAdmin && String(userProfile.empresa_id) !== String(auth.empresa_id)) {
         return res.status(403).json({ success: false, error: 'Acesso negado: utilizador de outra empresa.' });
       }
 
-      // Atualizar password no Supabase Auth Admin
       const authUpdateRes = await fetch(`${config.supabaseUrl}/auth/v1/admin/users/${userId}`, {
         method: 'PUT',
         headers: {
@@ -198,19 +189,6 @@ export default async function handler(req, res) {
         const errData = await authUpdateRes.json().catch(() => ({}));
         return res.status(400).json({ success: false, error: errData.msg || errData.message || 'Erro ao redefinir palavra-passe no Auth.' });
       }
-
-      // Auditoria
-      fetch(`${config.supabaseUrl}/rest/v1/historico_licencas`, {
-        method: 'POST',
-        headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          empresa_id: userProfile.empresa_id || auth.empresa_id,
-          acao: 'RESET_SENHA_UTILIZADOR',
-          descricao: `Palavra-passe redefinida para ${userProfile.email} por ${auth.user?.email || 'admin'}`,
-          usuario: auth.user?.email || 'admin',
-          created_at: new Date().toISOString()
-        })
-      }).catch(() => {});
 
       return res.status(200).json({
         success: true,

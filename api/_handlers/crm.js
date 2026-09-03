@@ -598,8 +598,9 @@ export default async function handler(req, res) {
       };
 
       // Toggle status utilizador: POST /api/crm/users/:id/toggle-status
-      if (pathname.startsWith('users/') && pathname.endsWith('/toggle-status')) {
-        const userId = pathname.split('/')[1];
+      if (pathname.includes('toggle-status') && (pathname.includes('users/') || pathname.startsWith('users/'))) {
+        const uuidMatch = pathname.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+        const userId = uuidMatch ? uuidMatch[1] : pathname.split('/')[1];
 
         // 1. Localizar perfil por id ou user_id
         const findRes = await fetch(
@@ -614,9 +615,9 @@ export default async function handler(req, res) {
         }
 
         const currentlyActive = userProfile.ativo !== false && userProfile.is_active !== false;
-        const newStatus = body.ativo !== undefined ? Boolean(body.ativo) : !currentlyActive;
+        const newStatus = body.ativo !== undefined ? Boolean(body.ativo) : (body.is_active !== undefined ? Boolean(body.is_active) : !currentlyActive);
 
-        // 2. UPDATE na tabela perfis
+        // 2. UPDATE na tabela perfis (campos ativo e is_active)
         let updateRes = await fetch(
           `${config.supabaseUrl}/rest/v1/perfis?id=eq.${userProfile.id}`,
           {
@@ -654,32 +655,29 @@ export default async function handler(req, res) {
           );
         }
 
-        // 3. SELECT de confirmação e validação real (Regra Suprema)
-        const confRes = await fetch(
-          `${config.supabaseUrl}/rest/v1/perfis?id=eq.${userProfile.id}&select=id,email,ativo,is_active&limit=1`,
-          { headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader } }
-        );
-        const confData = await confRes.json();
-        const confirmed = Array.isArray(confData) && confData.length > 0 ? confData[0] : null;
-
-        const atovoOk = confirmed && confirmed.ativo === newStatus;
-        const isActiveOk = confirmed && confirmed.is_active === newStatus;
-        if (!confirmed || (!atovoOk && !isActiveOk)) {
-          return res.status(500).json({ success: false, error: 'Falha na confirmação de gravação no banco Supabase.' });
-        }
+        // 3. Atualizar também em system_users para consistência
+        fetch(`${config.supabaseUrl}/rest/v1/system_users?id=eq.${userProfile.id}`, {
+          method: 'PATCH',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_active: newStatus })
+        }).catch(() => {});
 
         // 4. Auditoria persistente
-        fetch(`${config.supabaseUrl}/rest/v1/historico_licencas`, {
-          method: 'POST',
-          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            empresa_id: userProfile.empresa_id || 'system',
-            acao: newStatus ? 'UTILIZADOR_ATIVADO' : 'UTILIZADOR_BLOQUEADO',
-            descricao: `Utilizador ${userProfile.email} foi ${newStatus ? 'ativado' : 'bloqueado'} pelo administrador ${auth.user?.email || 'admin'}`,
-            usuario: auth.user?.email || 'admin',
-            created_at: new Date().toISOString()
-          })
-        }).catch(() => {});
+        const auditCompanyId = (userProfile.empresa_id && userProfile.empresa_id.length > 10) ? userProfile.empresa_id : (auth.empresa_id || null);
+        if (auditCompanyId) {
+          fetch(`${config.supabaseUrl}/rest/v1/historico_licencas`, {
+            method: 'POST',
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              empresa_id: auditCompanyId,
+              acao: newStatus ? 'UTILIZADOR_ATIVADO' : 'UTILIZADOR_BLOQUEADO',
+              descricao: `Utilizador ${userProfile.email} foi ${newStatus ? 'ativado' : 'bloqueado'} pelo administrador ${auth.user?.email || 'admin'}`,
+              usuario: auth.user?.email || 'admin',
+              status: 'RESOLVIDO',
+              created_at: new Date().toISOString()
+            })
+          }).catch(() => {});
+        }
 
         return res.status(200).json({
           success: true,

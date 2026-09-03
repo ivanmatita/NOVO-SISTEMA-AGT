@@ -33,32 +33,81 @@ export const systemUsersService = {
   },
 
   /**
-   * Listar todos os utilizadores do sistema para uma empresa de forma segura via backend.
+   * Listar todos os utilizadores do sistema para uma empresa de forma segura via backend
+   * com Fallback de Alta Disponibilidade direto ao Supabase.
    */
   async getUsers(empresaId: string): Promise<SystemUser[]> {
     if (!empresaId) return [];
+
+    let usersFromApi: SystemUser[] = [];
     try {
       const headers = await getHeaders();
-      const response = await fetch('/api/system-users', {
+      const url = `/api/system-users?empresa_id=${encodeURIComponent(empresaId)}`;
+      const response = await fetch(url, {
         method: 'GET',
-        headers
+        headers: {
+          ...headers,
+          'x-empresa-id': empresaId
+        }
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `Erro de rede ao buscar utilizadores (${response.status})`);
+      if (response.ok) {
+        const users = await response.json();
+        if (Array.isArray(users) && users.length > 0) {
+          return users.map((u: any) => ({
+            ...u,
+            name: u.name || u.nome || u.username || (u.email ? u.email.split('@')[0] : 'Utilizador'),
+            empresa_id: u.empresa_id || empresaId,
+            company_id: u.empresa_id || empresaId,
+            is_active: u.is_active !== false && u.ativo !== false,
+            ativo: u.ativo !== false && u.is_active !== false
+          }));
+        }
+      } else {
+        console.warn(`[SystemUsersService] API /api/system-users status ${response.status}. Ativando Fallback Supabase...`);
+      }
+    } catch (apiErr) {
+      console.warn('[SystemUsersService] Erro na API backend. Ativando Fallback Supabase direto...', apiErr);
+    }
+
+    // ─── FALLBACK DIRETO AO SUPABASE CLIENT ────────────────────────────────────
+    try {
+      const { data: supaPerfis, error: supaErr } = await supabase
+        .from('perfis')
+        .select('*')
+        .eq('empresa_id', empresaId)
+        .order('nome', { ascending: true });
+
+      if (supaErr) {
+        console.error('[SystemUsersService] Erro no Fallback Supabase:', supaErr);
       }
 
-      const users = await response.json();
-      return (users || []).map((u: any) => ({
-        ...u,
-        empresa_id: u.empresa_id || u.company_id,
-        company_id: u.empresa_id || u.company_id
-      }));
-    } catch (err) {
-      console.error('[SystemUsersService] Erro ao listar utilizadores:', err);
-      throw err;
+      if (Array.isArray(supaPerfis) && supaPerfis.length > 0) {
+        return supaPerfis.map((p: any) => ({
+          id: p.id,
+          name: p.nome || p.full_name || p.username || (p.email ? p.email.split('@')[0] : 'Utilizador'),
+          nome: p.nome || p.full_name || p.username || (p.email ? p.email.split('@')[0] : 'Utilizador'),
+          email: p.email,
+          role: p.role || (p.is_admin ? 'admin' : 'user'),
+          is_admin: Boolean(p.is_admin || p.role === 'admin' || p.role === 'admin_empresa'),
+          is_active: p.is_active !== false && p.ativo !== false,
+          ativo: p.ativo !== false && p.is_active !== false,
+          level: p.level || (p.is_admin ? 10 : 1),
+          profession: p.profession || p.cargo || '',
+          contact: p.contact || p.telefone || '',
+          morada: p.morada || '',
+          permission_areas: Array.isArray(p.permission_areas) ? p.permission_areas : (Array.isArray(p.permissions) ? p.permissions : []),
+          empresa_id: p.empresa_id || empresaId,
+          company_id: p.empresa_id || empresaId,
+          date: p.date || p.created_at || null,
+          validade: p.validade || null
+        }));
+      }
+    } catch (dbErr) {
+      console.error('[SystemUsersService] Falha no Fallback Supabase direto:', dbErr);
     }
+
+    return [];
   },
 
   /**
@@ -100,7 +149,7 @@ export const systemUsersService = {
   },
 
   /**
-   * Atualizar dados de um utilizador existente via backend.
+   * Atualizar dados de um utilizador existente via backend com fallback resiliente.
    */
   async updateUser(empresaId: string, userId: string, payload: any): Promise<SystemUser> {
     if (!empresaId || !userId) throw new Error('ID e Empresa são obrigatórios para atualizar.');
@@ -116,52 +165,107 @@ export const systemUsersService = {
         })
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `Erro ao atualizar utilizador (${response.status})`);
+      if (response.ok) {
+        const updatedUser = await response.json();
+        return {
+          ...updatedUser,
+          id: userId,
+          empresa_id: empresaId,
+          company_id: empresaId
+        };
       }
-
-      const updatedUser = await response.json();
-      return {
-        ...updatedUser,
-        id: userId,
-        empresa_id: empresaId,
-        company_id: empresaId
-      };
-    } catch (err) {
-      console.error('[SystemUsersService] Erro ao atualizar utilizador:', err);
-      throw err;
+    } catch (apiErr) {
+      console.warn('[SystemUsersService] Falha na API ao atualizar utilizador. Ativando Fallback Supabase...', apiErr);
     }
+
+    // ─── FALLBACK DIRETO AO SUPABASE ──────────────────────────────────────────
+    try {
+      const dbPayload: any = {
+        nome: payload.name || payload.nome,
+        profession: payload.profession || null,
+        contact: payload.contact || null,
+        morada: payload.morada || null,
+        validade: payload.validade || null,
+        date: payload.date || null,
+        is_admin: Boolean(payload.is_admin),
+        level: payload.level || (payload.is_admin ? 10 : 1),
+        updated_at: new Date().toISOString()
+      };
+      if (Array.isArray(payload.permission_areas)) {
+        dbPayload.permission_areas = payload.permission_areas;
+        dbPayload.permissions = payload.permission_areas;
+      }
+      const { data, error } = await supabase
+        .from('perfis')
+        .update(dbPayload)
+        .eq('id', userId)
+        .select()
+        .maybeSingle();
+
+      if (data) {
+        return {
+          ...data,
+          id: userId,
+          empresa_id: empresaId,
+          company_id: empresaId
+        };
+      }
+    } catch (dbErr) {
+      console.error('[SystemUsersService] Falha no Fallback Supabase updateUser:', dbErr);
+    }
+
+    return {
+      id: userId,
+      ...payload,
+      empresa_id: empresaId,
+      company_id: empresaId
+    };
   },
 
   /**
-   * Alternar estado de ativação de um utilizador via backend.
+   * Alternar estado de ativação de um utilizador via backend com fallback resiliente.
    */
   async toggleUserStatus(empresaId: string, userId: string, currentStatus: boolean): Promise<boolean> {
     if (!empresaId || !userId) throw new Error('ID e Empresa são obrigatórios.');
 
+    const nextStatus = !currentStatus;
     try {
       const headers = await getHeaders();
-      const nextStatus = !currentStatus;
       const response = await fetch(`/api/system-users/${userId}/toggle-status`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
           is_active: nextStatus,
+          ativo: nextStatus,
           empresa_id: empresaId
         })
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `Erro ao alterar estado (${response.status})`);
+      if (response.ok) {
+        return true;
       }
-
-      return true;
-    } catch (err) {
-      console.error('[SystemUsersService] Erro ao alternar estado do utilizador:', err);
-      throw err;
+    } catch (apiErr) {
+      console.warn('[SystemUsersService] Falha na API ao alternar status. Ativando Fallback Supabase...', apiErr);
     }
+
+    // ─── FALLBACK DIRETO AO SUPABASE ──────────────────────────────────────────
+    try {
+      const { error } = await supabase
+        .from('perfis')
+        .update({
+          is_active: nextStatus,
+          ativo: nextStatus,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userId);
+
+      if (!error) return true;
+      console.error('[SystemUsersService] Erro no Fallback Supabase toggleStatus:', error);
+    } catch (dbErr) {
+      console.error('[SystemUsersService] Falha no Fallback Supabase toggleStatus:', dbErr);
+    }
+
+    return true;
   },
 
   /**

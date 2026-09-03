@@ -198,25 +198,37 @@ export default async function handler(req, res) {
 
     // ─── 3. GET /api/system-users (Listar utilizadores da empresa) ──────────────
     if (req.method === 'GET') {
-      const targetEmpresaId = auth.isSuperAdmin && req.query?.empresa_id 
-        ? req.query.empresa_id 
-        : auth.empresa_id;
+      let queryEmpresaId = null;
+      try {
+        const parsedUrl = new URL(req.url || '', `http://${host}`);
+        queryEmpresaId = parsedUrl.searchParams.get('empresa_id') || parsedUrl.searchParams.get('company_id');
+      } catch (e) {
+        queryEmpresaId = null;
+      }
+      if (!queryEmpresaId) {
+        queryEmpresaId = req.headers?.['x-empresa-id'] || req.query?.empresa_id || null;
+      }
 
-      if (!targetEmpresaId) {
+      const targetEmpresaId = queryEmpresaId || auth.empresa_id;
+
+      let fetchUrl = '';
+      if (targetEmpresaId) {
+        // A tabela 'perfis' no Supabase utiliza a coluna empresa_id (company_id NAO existe nesta tabela)
+        fetchUrl = `${config.supabaseUrl}/rest/v1/perfis?empresa_id=eq.${targetEmpresaId}&select=*&order=nome.asc`;
+      } else if (auth.isSuperAdmin) {
+        // Superadmin visualiza todos caso nenhuma empresa seja especificada
+        fetchUrl = `${config.supabaseUrl}/rest/v1/perfis?select=*&order=nome.asc&limit=200`;
+      } else {
         return res.status(200).json([]);
       }
 
-      // Buscar perfis associados à empresa
-      const perfisRes = await fetch(
-        `${config.supabaseUrl}/rest/v1/perfis?or=(empresa_id.eq.${targetEmpresaId},company_id.eq.${targetEmpresaId})&select=*&order=nome.asc`,
-        {
-          headers: {
-            'apikey': config.serviceRoleKey,
-            'Authorization': authHeader,
-            'Content-Type': 'application/json'
-          }
+      const perfisRes = await fetch(fetchUrl, {
+        headers: {
+          'apikey': config.serviceRoleKey,
+          'Authorization': authHeader,
+          'Content-Type': 'application/json'
         }
-      );
+      });
       const perfis = await perfisRes.json();
       const userList = Array.isArray(perfis) ? perfis : [];
 

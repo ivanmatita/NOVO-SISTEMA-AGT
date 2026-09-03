@@ -13939,14 +13939,15 @@ const UsersSettings = () => {
   const workspaceOptions = SIDEBAR_MENU_ITEMS.map(item => ({ id: item.id, label: item.label, icon: item.icon }));
 
   const fetchUsers = async (silent = false) => {
-    if (!user?.empresa_id) {
+    const targetEmpresaId = user?.empresa_id || user?.company_id || (user?.company as any)?.id || (user as any)?.empresa?.id || '';
+    if (!targetEmpresaId && user?.role !== 'superadmin' && user?.role !== 'super_admin') {
       console.warn("User empresa_id is missing, skipping fetchUsers");
       return;
     }
     if (!silent) setIsLoading(true);
     try {
-      const data = await systemUsersService.getUsers(user.empresa_id);
-      setUsers(data);
+      const data = await systemUsersService.getUsers(targetEmpresaId);
+      setUsers(data || []);
     } catch (error: any) {
       console.error('Error fetching users:', error);
       showToast('Erro ao carregar utilizadores: ' + (error.message || error), 'error');
@@ -13956,19 +13957,19 @@ const UsersSettings = () => {
   };
 
   useEffect(() => {
-    if (!user?.empresa_id) return;
-    
     fetchUsers();
 
-    // Use Managed Realtime sync for 'perfis'
-    realtimeManager.subscribe('perfis', user.empresa_id, () => {
-      fetchUsers(true);
-    });
+    const targetEmpresaId = user?.empresa_id || user?.company_id || (user?.company as any)?.id;
+    if (targetEmpresaId) {
+      realtimeManager.subscribe('perfis', targetEmpresaId, () => {
+        fetchUsers(true);
+      });
 
-    return () => {
-      realtimeManager.unsubscribe('perfis', user.empresa_id);
-    };
-  }, [user?.empresa_id]);
+      return () => {
+        realtimeManager.unsubscribe('perfis', targetEmpresaId);
+      };
+    }
+  }, [user?.empresa_id, user?.company_id, (user?.company as any)?.id]);
 
   const handleEditUser = (u: any) => {
     setEditingUser(u);

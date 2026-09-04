@@ -33489,9 +33489,6 @@ export default function App() {
               setActiveTab(t);
               setViewingInvoiceId(null);
               setIsCreatingInvoice(false);
-              if (t !== 'dashboard') {
-                setSidebarOpen(false);
-              }
             }} 
             companyData={companyData}
           />

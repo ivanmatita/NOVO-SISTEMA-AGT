@@ -112,7 +112,13 @@ export const TopHeader = ({
       )}
       <header className="bg-white border-b border-zinc-200 h-16 flex items-center justify-between px-4 shadow-sm">
         <div className="flex items-center gap-4 flex-1">
-          {/* Sidebar Toggle removed as requested */}
+          <button
+            onClick={onToggleSidebar}
+            className="p-2 bg-zinc-100 text-[#003366] hover:bg-zinc-200 rounded-md transition-colors flex-shrink-0"
+            title="Abrir/Fechar Menu Lateral"
+          >
+            <Menu size={18} />
+          </button>
 
           
           {showNavButtons && (

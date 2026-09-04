@@ -1,5 +1,6 @@
 import { emitirDocumentoFiscal } from './services/fiscalEngine';
 import { StagingBadge } from './components/StagingBadge';
+import { isProductionEnvironment, isStagingEnvironment } from './lib/envProtection';
 import { CentralHomologacaoModule } from './components/CentralHomologacaoModule';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import html2pdf from 'html2pdf.js';
@@ -28,6 +29,7 @@ import {
 import { professionService } from './services/professionService';
 import { fornecedorService } from './services/fornecedorService';
 import { useAuth } from './contexts/AuthContext';
+import { useExercise } from './contexts/ExerciseContext';
 import { useMedia } from './hooks/useMedia';
 import { useCaixas } from './hooks/useCaixas';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -2839,25 +2841,39 @@ const mapPermissionAreasForDB = (selectedIds: string[]): string[] => {
 };
 
 const hasModulePermission = (user: any, moduleId: string): boolean => {
-  const isGlobalAdmin = user?.is_admin === true || 
-                        user?.role === 'admin' || 
-                        user?.role === 'admin_empresa' || 
-                        user?.role === 'super_admin' || 
-                        user?.role === 'proprietario' || 
-                        (user?.level !== undefined && Number(user.level) >= 10);
-  
-  if (isGlobalAdmin) return true;
+  // Super Administrador do Sistema (Imatec Angola / Master)
+  const isSuperAdminGlobal = 
+    user?.email?.toLowerCase() === 'fffm333atitaifvan7@gmail.com' ||
+    user?.empresa_id === '2ebafa88-9a6e-4243-b127-b146410815eb' ||
+    user?.role === 'superadmin' ||
+    user?.role === 'super_admin';
+  if (isSuperAdminGlobal) return true;
+
+  // Dashboard sempre acessível
   if (moduleId === 'dashboard') return true;
-  
-  const rawPermissions = user?.permission_areas;
-  const permissions = Array.isArray(rawPermissions) 
-    ? rawPermissions.map(p => String(p).trim().toLowerCase()) 
-    : [];
-    
-  if (permissions.length === 0) return false;
-  
-  const possibleKeys = (PERMISSION_EQUIVALENTS[moduleId] || [moduleId]).map(k => k.trim().toLowerCase());
-  return possibleKeys.some(key => permissions.includes(key));
+  if (moduleId === 'crm_empresas') return false;
+
+  const rawPermissions = user?.permission_areas ?? user?.permissions;
+
+  // REGRA SUPREMA: Se o utilizador tem áreas de permissão explicitamente configuradas no banco,
+  // elas são a fonte absoluta da verdade e devem ser estritamente respeitadas (inclusive se for array vazio).
+  if (Array.isArray(rawPermissions)) {
+    if (rawPermissions.length === 0) return false;
+    const permissions = rawPermissions.map((p: any) => String(p).trim().toLowerCase());
+    const possibleKeys = (PERMISSION_EQUIVALENTS[moduleId] || [moduleId]).map((k: string) => k.trim().toLowerCase());
+    return possibleKeys.some(key => permissions.includes(key));
+  }
+
+  // Se NÃO tem permission_areas configuradas (null/undefined), verificar se é Administrador da Empresa
+  const isCompanyAdmin = user?.is_admin === true ||
+                        user?.role === 'admin' ||
+                        user?.role === 'admin_empresa' ||
+                        user?.role === 'proprietario' ||
+                        (user?.level !== undefined && Number(user.level) >= 10);
+  if (isCompanyAdmin) return true;
+
+  // Sem permissões atribuídas e não é admin -> negar acesso
+  return false;
 };
 
 const SIDEBAR_MENU_ITEMS = [
@@ -3069,11 +3085,45 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
         <h2 className="text-white font-black text-lg leading-tight text-center px-4 line-clamp-2 mt-2 uppercase tracking-tight">
           {companyData?.nome_empresa || companyData?.name || 'Admin'}
         </h2>
-        <div className="flex flex-col items-center gap-0.5 mt-2">
+        <div className="flex flex-col items-center gap-1 mt-2">
           <p className="text-[11px] text-white font-black tracking-widest uppercase bg-[#1a4da6] px-3 py-0.5 shadow-sm">
             {companyData?.nif ? `NIF: ${companyData.nif}` : 'ADMIN'}
           </p>
-          <p className="text-[8px] text-zinc-500 font-bold tracking-[0.2em] uppercase">Conta Registada</p>
+          {companyData?.nif !== '5002123665' && (
+            <div className="flex items-center gap-1.5 mt-1">
+              {(() => {
+                const rawStatus = String(companyData?.status_licenca || '').toUpperCase();
+                const isSuspendedOrDeactivated = ['SUSPENSA', 'BLOQUEADA', 'DESATIVADA', 'INATIVA', 'CANCELADA', 'EXPIRADA', 'VENCIDA'].includes(rawStatus) || 
+                                                companyData?.licenca_ativa === false || 
+                                                companyData?.ativo === false;
+                const isExplicitlyActive = ['ACTIVA', 'ACTIVE', 'ATIVA', 'ATIVO'].includes(rawStatus) && (companyData?.licenca_ativa !== false) && (companyData?.ativo !== false);
+                const expiryDate = companyData?.data_expiracao_licenca ? new Date(companyData.data_expiracao_licenca) : null;
+                const isExpiredByDate = expiryDate && expiryDate.getTime() < Date.now();
+                const isLicActive = isExplicitlyActive && !isSuspendedOrDeactivated && !isExpiredByDate;
+
+                const desc = companyData?.licenca?.descricao || (isLicActive ? 'LICENÇA ACTIVA' : 'LICENÇA EXPIRADA');
+
+                return (
+                  <>
+                    <span className={`px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider rounded flex items-center gap-1 shadow-xs ${
+                      desc === 'LICENÇA ACTIVA'
+                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' 
+                        : 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
+                    }`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${desc === 'LICENÇA ACTIVA' ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
+                      {desc}
+                    </span>
+                    {companyData?.plano && (
+                      <span className="text-[9px] text-zinc-400 font-bold uppercase">
+                        • {companyData.plano}
+                      </span>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          )}
+          <p className="text-[8px] text-zinc-500 font-bold tracking-[0.2em] uppercase mt-0.5">Conta Registada</p>
         </div>
       </div>
       
@@ -3083,54 +3133,36 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
           {SIDEBAR_MENU_ITEMS.filter(item => {
             if (item.id === 'crm_empresas') {
               const currentNif = String(companyData?.nif || user?.empresa_nif || '').replace(/\D/g, '').trim();
-              return currentNif === '5002123665';
+              const isSuper = currentNif === '5002123665' || 
+                              user?.email?.toLowerCase() === 'fffm333atitaifvan7@gmail.com' ||
+                              user?.empresa_id === '2ebafa88-9a6e-4243-b127-b146410815eb' ||
+                              user?.role === 'superadmin' || user?.role === 'super_admin';
+              return isSuper;
             }
-            return true;
+            // Área selecionada = aparece no menu. Área NÃO selecionada = NÃO aparece no menu!
+            return hasModulePermission(user, item.id);
           }).map((item) => {
-            const canAccess = (module: string) => {
-              if (module === 'crm_empresas') return true; 
-              const hasAccess = hasModulePermission(user, module);
-              return hasAccess;
-            };
-
-            const isRestricted = !canAccess(item.id);
-            
             return (
               <button
                 key={item.id}
-                disabled={isRestricted}
-                onClick={() => !isRestricted && setActiveTab(item.id)}
+                onClick={() => setActiveTab(item.id)}
                 className={`w-full flex items-center justify-between px-3 py-2.5 rounded-none transition-all duration-200 mb-0.5 relative group ${
-                  isRestricted 
-                    ? 'bg-zinc-200 text-zinc-500 cursor-not-allowed opacity-60' 
-                    : activeTab === item.id 
-                      ? 'bg-[#1a4da6] text-white font-semibold shadow-md border-l-4 border-white' 
-                      : 'bg-[#123375] text-zinc-300 hover:bg-[#1a4da6] hover:text-white'
+                  activeTab === item.id 
+                    ? 'bg-[#1a4da6] text-white font-semibold shadow-md border-l-4 border-white' 
+                    : 'bg-[#123375] text-zinc-300 hover:bg-[#1a4da6] hover:text-white'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <div className="relative">
-                    <item.icon size={18} className={isRestricted ? 'text-zinc-500' : activeTab === item.id ? 'text-white' : 'text-zinc-400'} />
-                    {isRestricted && (
-                      <div className="absolute -bottom-1 -right-1 bg-zinc-500 rounded-full p-0.5 flex items-center justify-center">
-                        <Lock size={7} className="text-white" />
-                      </div>
-                    )}
-                  </div>
-                  <span className={`text-sm ${isRestricted ? 'text-zinc-500 font-medium' : ''}`}>{item.label}</span>
+                  <item.icon size={18} className={activeTab === item.id ? 'text-white' : 'text-zinc-400'} />
+                  <span className="text-sm">{item.label}</span>
                   {item.badge && (
                     <span className="ml-2 text-[8px] font-black bg-[#1a4da6] text-white px-1.5 py-0.5 rounded-full uppercase tracking-tighter">
                       {item.badge}
                     </span>
                   )}
                 </div>
-                {item.hasChevron && !isRestricted && (
+                {item.hasChevron && (
                   <ChevronRight size={14} className={activeTab === item.id ? 'text-white/70' : 'text-zinc-500'} />
-                )}
-                {isRestricted && (
-                  <div className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <span className="text-[7px] font-black bg-red-600 text-white px-1 py-0.5 rounded uppercase">Bloqueado</span>
-                  </div>
                 )}
               </button>
             );
@@ -3225,8 +3257,8 @@ const Dashboard = ({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div className="bg-white border border-zinc-200 p-6 rounded-none shadow-sm">
           <h3 className="font-bold text-[#003366] mb-6">Faturação por Período</h3>
-          <div className="h-[400px] w-full">
-            <ResponsiveContainer width="100%" height="100%" minHeight={400}>
+          <div className="h-[400px] w-full min-h-[400px]">
+            <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={400}>
               <LineChart data={salesData}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="date" />
@@ -3240,8 +3272,8 @@ const Dashboard = ({
 
         <div className="bg-white border border-zinc-200 p-6 rounded-none shadow-sm">
           <h3 className="font-bold text-[#003366] mb-6">Faturação vs Despesas</h3>
-          <div className="h-[400px] w-full">
-            <ResponsiveContainer width="100%" height="100%" minHeight={400}>
+          <div className="h-[400px] w-full min-h-[400px]">
+            <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={400}>
               <BarChart data={profitVsExpenses}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="name" />
@@ -3257,8 +3289,8 @@ const Dashboard = ({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="bg-white border border-zinc-200 p-6 rounded-none shadow-sm lg:col-span-1">
           <h3 className="font-bold text-[#003366] mb-6">Tipos de Documentos</h3>
-          <div className="h-[400px] w-full">
-            <ResponsiveContainer width="100%" height="100%" minHeight={400}>
+          <div className="h-[400px] w-full min-h-[400px]">
+            <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={400}>
               <PieChart>
                 <Pie data={docTypeData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
                   {docTypeData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
@@ -4177,39 +4209,41 @@ const HRModule = ({
   };
 
   const fetchHRData = async () => {
+    const targetEmpresaId = companyData?.id || user?.empresa_id;
+    if (!targetEmpresaId) {
+      console.warn('[HRModule] fetchHRData: empresa_id não identificado no contexto');
+      return;
+    }
+
+    // 1. CARREGAMENTO IMEDIATO DE PROFISSÕES
     try {
       let pList: Profession[] = [];
       try {
-        if (user?.empresa_id) {
-          pList = await professionService.getProfessions(user.empresa_id);
-        }
+        pList = await professionService.getProfessions(targetEmpresaId);
       } catch (err) {
         console.warn('DB client error during professions fetch. Falling back to local Express database.', err);
-        pList = await fetchJson(`/api/professions?empresa_id=${user?.empresa_id}`);
+        pList = await fetchJson(`/api/professions?empresa_id=${targetEmpresaId}`);
       }
+      setProfessions(Array.isArray(pList) ? pList : []);
+    } catch (profErr) {
+      console.error('[HRModule] Erro ao carregar profissões:', profErr);
+    }
 
+    // 2. CARREGAMENTO IMEDIATO DE COLABORADORES
+    try {
       let e: any[] = [];
       try {
-        if (user?.empresa_id) {
-          e = await employeeService.getEmployees(user.empresa_id);
-        }
+        e = await employeeService.getEmployees(targetEmpresaId);
       } catch (err) {
         console.warn('Erro ao carregar colaboradores do Supabase, buscando do banco local...', err);
       }
       if (!e || e.length === 0) {
         try {
-          e = await fetchJson(`/api/employees?empresa_id=${user?.empresa_id}`);
+          e = await fetchJson(`/api/employees?empresa_id=${targetEmpresaId}`);
         } catch (err) {
           console.error('Erro ao buscar do banco local como fallback:', err);
         }
       }
-
-      const [att, abs, lt] = await Promise.all([
-        fetchJson(`/api/employees/attendance?date=${attendanceDate}&empresa_id=${user?.empresa_id}`),
-        fetchJson(`/api/employees/absences?empresa_id=${user?.empresa_id}`),
-        fetchJson(`/api/labor-terminations?empresa_id=${user?.empresa_id}`)
-      ]);
-      setProfessions(Array.isArray(pList) ? pList : []);
       setLocalEmployees(prev => {
         // Deduplicate by ID
         const unique = Array.isArray(e) ? e.filter((item, index, self) =>
@@ -4219,70 +4253,86 @@ const HRModule = ({
         ) : [];
         return unique;
       });
+    } catch (empErr) {
+      console.error('[HRModule] Erro ao carregar colaboradores:', empErr);
+    }
+
+    // 3. CARREGAMENTO RESILIENTE DE ASSIDUIDADE, AUSÊNCIAS E RESCISÕES
+    try {
+      const att = await fetchJson(`/api/employees/attendance?date=${attendanceDate}&empresa_id=${targetEmpresaId}`).catch(() => []);
       setAttendance(Array.isArray(att) ? att : []);
+    } catch (attErr) {
+      setAttendance([]);
+    }
+
+    try {
+      const abs = await fetchJson(`/api/employees/absences?empresa_id=${targetEmpresaId}`).catch(() => []);
       setAbsences(Array.isArray(abs) ? abs : []);
+    } catch (absErr) {
+      setAbsences([]);
+    }
+
+    try {
+      const lt = await fetchJson(`/api/labor-terminations?empresa_id=${targetEmpresaId}`).catch(() => []);
       setLaborTerminations(Array.isArray(lt) ? lt : []);
+    } catch (ltErr) {
+      setLaborTerminations([]);
+    }
 
-      try {
-        if (supabaseStatus.configured) {
-          const { data: penaltiesData } = await supabase
-            .from('employee_penalties')
-            .select('*')
-            .eq('empresa_id', user?.empresa_id);
-          setPenalties(penaltiesData || []);
-        }
-      } catch (err) {
-        console.warn('Could not fetch penalties', err);
-      }
-
-      try {
-        if (user?.empresa_id) {
-          const wsData = await localTrabalhoService.getLocaisTrabalho(user.empresa_id);
-          setWorkSites(wsData.map((ws: any) => ({
-            ...ws,
-            id: ws.id,
-            title: ws.nome || '',
-            name: ws.nome || '',
-            location: ws.endereco || '',
-            contact: ws.telefone || '',
-            description: ws.descricao || '',
-            observations: ws.observacoes || '',
-            client_id: ws.client_id,
-            client_name: ws.client_name,
-            code: ws.code,
-            start_date: ws.start_date,
-            end_date: ws.end_date,
-            staff_per_day: Number(ws.staff_per_day || 0),
-            total_staff: Number(ws.total_staff || 0)
-          })));
-        }
-      } catch (wsErr) {
-        console.error('Error fetching workSites inside HRModule:', wsErr);
+    try {
+      if (supabaseStatus.configured) {
+        const { data: penaltiesData } = await supabase
+          .from('employee_penalties')
+          .select('*')
+          .eq('empresa_id', targetEmpresaId);
+        setPenalties(penaltiesData || []);
       }
     } catch (err) {
-      console.error('Error fetching HR data:', err);
+      console.warn('Could not fetch penalties', err);
+    }
+
+    try {
+      const wsData = await localTrabalhoService.getLocaisTrabalho(targetEmpresaId);
+      setWorkSites(wsData.map((ws: any) => ({
+        ...ws,
+        id: ws.id,
+        title: ws.nome || '',
+        name: ws.nome || '',
+        location: ws.endereco || '',
+        contact: ws.telefone || '',
+        description: ws.descricao || '',
+        observations: ws.observacoes || '',
+        client_id: ws.client_id,
+        client_name: ws.client_name,
+        code: ws.code,
+        start_date: ws.start_date,
+        end_date: ws.end_date,
+        staff_per_day: Number(ws.staff_per_day || 0),
+        total_staff: Number(ws.total_staff || 0)
+      })));
+    } catch (wsErr) {
+      console.error('Error fetching workSites inside HRModule:', wsErr);
     }
   };
 
-  useEffect(() => { fetchHRData(); }, [attendanceDate]);
+  useEffect(() => { 
+    fetchHRData(); 
+  }, [attendanceDate, activeTab, companyData?.id, user?.empresa_id]);
 
   useEffect(() => {
-    if (!user?.empresa_id) return;
+    const targetEmpresaId = companyData?.id || user?.empresa_id;
+    if (!targetEmpresaId) return;
 
     // Use Managed Realtime sync for 'professions'
-    realtimeManager.subscribe('professions', user.empresa_id, async () => {
-      const { data } = await supabase
-        .from('professions')
-        .select('*')
-        .eq('empresa_id', user.empresa_id)
-        .order('name', { ascending: true });
-      if (data) setProfessions(data);
+    realtimeManager.subscribe('professions', targetEmpresaId, async () => {
+      const data = await professionService.getProfessions(targetEmpresaId);
+      if (Array.isArray(data)) setProfessions(data);
     });
 
     return () => {
-      realtimeManager.unsubscribe('professions', user.empresa_id);
+      realtimeManager.unsubscribe('professions', targetEmpresaId);
     };
-  }, [user?.empresa_id]);
+  }, [companyData?.id, user?.empresa_id]);
 
   const handleMarkAttendance = async (employeeId: number, status: 'present' | 'absent' | 'late') => {
     try {
@@ -4314,12 +4364,7 @@ const HRModule = ({
     if (!confirm('Tem a certeza que deseja eliminar esta profissão?')) return;
     try {
       if (user?.empresa_id) {
-        const success = await professionService.deleteProfession(user.empresa_id, String(id));
-        if (!success) {
-          // Fallback if needed, though service already handles errors
-          console.warn('Supabase delete failed, trying Express database fallback');
-          await fetchWithAuth(`/api/professions/${id}`, { method: 'DELETE' });
-        }
+        await professionService.deleteProfession(user.empresa_id, String(id));
       }
       fetchHRData();
     } catch (err) {
@@ -4620,13 +4665,28 @@ const HRModule = ({
     { id: 'colaboradores_demitidos', label: 'COLABORADORES DEMITIDOS', icon: <UserMinus size={14} />, description: 'Gestão de demissões' },
   ];
 
+  useEffect(() => {
+    if (fiscalYear) {
+      setSelectedMonth(prev => {
+        const monthPart = prev.split('/')[0].trim();
+        return `${monthPart} / ${fiscalYear}`;
+      });
+    }
+  }, [fiscalYear]);
+
   return (
     <div className="space-y-8">
       <header>
         <Breadcrumbs paths={['Home', 'Área Reservada', 'Recursos Humanos']} />
         <div className="flex justify-between items-center">
           <div>
-            <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Recursos Humanos</h2>
+            <div className="flex items-center gap-3">
+              <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Recursos Humanos</h2>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 text-[10px] font-black uppercase tracking-wider border border-emerald-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Exercício {fiscalYear} Ativo
+              </span>
+            </div>
             <p className="text-zinc-500 text-sm">Gestão completa de capital humano e processamento.</p>
           </div>
         </div>
@@ -8358,6 +8418,9 @@ const HRModule = ({
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setInssProfession(p);
+                                    if (!companyProfession.trim()) {
+                                      setCompanyProfession(p);
+                                    }
                                     setShowInssList(false);
                                     setInssSearch('');
                                   }}
@@ -8420,64 +8483,44 @@ const HRModule = ({
                     </button>
                     <button 
                       onClick={async () => {
-                        if (!inssProfession || !companyProfession || !baseSalary) {
-                          alert('Por favor preencha todos os campos obrigatórios (INSS, Empresa, Salário Base)');
+                        const cProf = companyProfession.trim();
+                        if (!cProf) {
+                          alert('Por favor preencha o campo Profissão Empresa');
+                          return;
+                        }
+
+                        const bSal = Number(baseSalary || 0);
+                        const aSal = Number(acertoSalarial || 0);
+                        const targetEmpresaId = companyData?.id || user?.empresa_id;
+
+                        if (!targetEmpresaId) {
+                          alert('Empresa não identificada. Por favor recarregue a página.');
                           return;
                         }
 
                         const payload = {
-                          name: companyProfession,
-                          inss_profession: inssProfession,
-                          base_salary: Number(baseSalary),
-                          acerto_salarial: Number(acertoSalarial || 0),
-                          empresa_id: user?.empresa_id
+                          name: cProf,
+                          nome: cProf,
+                          inss_profession: (inssProfession || cProf).trim(),
+                          base_salary: bSal,
+                          salario_base: bSal,
+                          acerto_salarial: aSal,
+                          empresa_id: targetEmpresaId
                         };
 
-                        if (editingProfession) {
-                          try {
-                            if (user?.empresa_id) {
-                              const saved = await professionService.saveProfession(user.empresa_id, {
-                                ...payload,
-                                id: editingProfession.id
-                              });
-                              if (!saved) {
-                                console.warn('Supabase update failed, trying Express database fallback');
-                                await fetchWithAuth(`/api/professions/${editingProfession.id}`, {
-                                  method: 'PUT',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify(payload)
-                                });
-                              }
-                            }
-                          } catch (err) {
-                            console.warn('DB client error during update, trying Express database fallback.', err);
-                            await fetchWithAuth(`/api/professions/${editingProfession.id}`, {
-                              method: 'PUT',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify(payload)
+                        try {
+                          if (editingProfession) {
+                            await professionService.saveProfession(targetEmpresaId, {
+                              ...payload,
+                              id: editingProfession.id
                             });
+                          } else {
+                            await professionService.saveProfession(targetEmpresaId, payload);
                           }
-                        } else {
-                          try {
-                            if (user?.empresa_id) {
-                              const saved = await professionService.saveProfession(user.empresa_id, payload);
-                              if (!saved) {
-                                console.warn('Supabase insert failed, trying Express database fallback');
-                                await fetchWithAuth('/api/professions', {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify(payload)
-                                });
-                              }
-                            }
-                          } catch (err) {
-                            console.warn('DB client error during insert, trying Express database fallback.', err);
-                            await fetchWithAuth('/api/professions', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify(payload)
-                            });
-                          }
+                          await fetchHRData();
+                        } catch (err: any) {
+                          console.error('[App] Erro ao salvar profissão:', err);
+                          alert(`Erro ao salvar profissão: ${err.message || 'Verifique a conexão'}`);
                         }
 
                         setInssProfession('');
@@ -8486,7 +8529,6 @@ const HRModule = ({
                         setAcertoSalarial('');
                         setEditingProfession(null);
                         setShowProfessionForm(false);
-                        fetchHRData();
                       }}
                       className="bg-[#003366] text-white px-8 py-2 rounded-none text-sm font-bold hover:bg-[#002244] transition-colors shadow-sm flex items-center gap-2 cursor-pointer"
                     >
@@ -8520,16 +8562,16 @@ const HRModule = ({
                       </td>
                     </tr>
                   ) : professions.map(p => {
-                    const base = p.base_salary || 0;
-                    const acerto = p.acerto_salarial || 0;
+                    const base = Number(p.base_salary !== undefined ? p.base_salary : (p.salario_base || 0));
+                    const acerto = Number(p.acerto_salarial || 0);
                     const totalBase = base + acerto;
                     const inssTrab = totalBase * 0.03;
                     const inssEmp = totalBase * 0.08;
                     const custoTotal = totalBase + inssEmp;
                     return (
                       <tr key={p.id} className="hover:bg-zinc-50 transition-colors text-sm">
-                        <td className="px-6 py-4 font-bold text-[#003366]">{p.name}</td>
-                        <td className="px-6 py-4 text-zinc-500">{p.inss_profession || '---'}</td>
+                        <td className="px-6 py-4 font-bold text-[#003366]">{p.name || p.nome || '---'}</td>
+                        <td className="px-6 py-4 text-zinc-500">{p.inss_profession || p.name || p.nome || '---'}</td>
                         <td className="px-6 py-4 text-right font-medium text-zinc-900">{formatCurrency(base)}</td>
                         <td className="px-6 py-4 text-right font-medium text-emerald-600">
                           {acerto > 0 ? `+${formatCurrency(acerto)}` : '---'}
@@ -12241,8 +12283,8 @@ const ProfitLossReport = ({ fiscalYear, empresa_id }: { fiscalYear: string, empr
           </p>
           <div className="pt-8">
             <h4 className="text-[10px] font-black text-zinc-800 uppercase tracking-widest mb-4">GRAFICO COMPARATIVO DE RECEITAS E CUSTOS</h4>
-            <div className="h-[350px] w-full">
-              <ResponsiveContainer width="100%" height="100%" minHeight={350}>
+            <div className="h-[350px] w-full min-h-[350px]">
+              <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={350}>
                 <AreaChart data={chartData}>
                   <defs>
                     <linearGradient id="colorReceita" x1="0" y1="0" x2="0" y2="1">
@@ -12750,7 +12792,8 @@ const FinancialModule = ({
   refreshCaixas,
   refreshMovements,
   issuedDocuments,
-  transactions
+  transactions,
+  fiscalYear = '2026'
 }: { 
   caixas: Caixa[], 
   setCaixas: React.Dispatch<React.SetStateAction<Caixa[]>>,
@@ -12761,7 +12804,8 @@ const FinancialModule = ({
   refreshCaixas?: () => Promise<void>,
   refreshMovements?: () => Promise<void>,
   issuedDocuments: IssuedDocument[],
-  transactions: any[]
+  transactions: any[],
+  fiscalYear?: string
 }) => {
   const [activeSubTab, setActiveSubTab] = useState('menu');
   const [loading, setLoading] = useState(false);
@@ -12817,7 +12861,13 @@ const FinancialModule = ({
       <div className="space-y-8">
         <header>
           <Breadcrumbs paths={['Home', 'Gestão Financeira']} />
-          <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Gestão Financeira</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-2xl font-bold text-[#003366] tracking-tight">Gestão Financeira</h2>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 text-[10px] font-black uppercase tracking-wider border border-emerald-200">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Exercício {fiscalYear} Ativo
+            </span>
+          </div>
           <p className="text-zinc-500 text-sm">Selecione uma secção para visualizar relatórios e mapas financeiros.</p>
         </header>
 
@@ -13893,14 +13943,15 @@ const UsersSettings = () => {
   const workspaceOptions = SIDEBAR_MENU_ITEMS.map(item => ({ id: item.id, label: item.label, icon: item.icon }));
 
   const fetchUsers = async (silent = false) => {
-    if (!user?.empresa_id) {
+    const targetEmpresaId = user?.empresa_id || user?.company_id || (user?.company as any)?.id || (user as any)?.empresa?.id || '';
+    if (!targetEmpresaId && user?.role !== 'superadmin' && user?.role !== 'super_admin') {
       console.warn("User empresa_id is missing, skipping fetchUsers");
       return;
     }
     if (!silent) setIsLoading(true);
     try {
-      const data = await systemUsersService.getUsers(user.empresa_id);
-      setUsers(data);
+      const data = await systemUsersService.getUsers(targetEmpresaId);
+      setUsers(data || []);
     } catch (error: any) {
       console.error('Error fetching users:', error);
       showToast('Erro ao carregar utilizadores: ' + (error.message || error), 'error');
@@ -13910,19 +13961,19 @@ const UsersSettings = () => {
   };
 
   useEffect(() => {
-    if (!user?.empresa_id) return;
-    
     fetchUsers();
 
-    // Use Managed Realtime sync for 'perfis'
-    realtimeManager.subscribe('perfis', user.empresa_id, () => {
-      fetchUsers(true);
-    });
+    const targetEmpresaId = user?.empresa_id || user?.company_id || (user?.company as any)?.id;
+    if (targetEmpresaId) {
+      realtimeManager.subscribe('perfis', targetEmpresaId, () => {
+        fetchUsers(true);
+      });
 
-    return () => {
-      realtimeManager.unsubscribe('perfis', user.empresa_id);
-    };
-  }, [user?.empresa_id]);
+      return () => {
+        realtimeManager.unsubscribe('perfis', targetEmpresaId);
+      };
+    }
+  }, [user?.empresa_id, user?.company_id, (user?.company as any)?.id]);
 
   const handleEditUser = (u: any) => {
     setEditingUser(u);
@@ -13972,8 +14023,15 @@ const UsersSettings = () => {
   };
 
   const handleToggleStatus = async (userToToggle: SystemUser) => {
-    if (!user?.empresa_id || togglingUserId === userToToggle.id) return;
+    const currentEmpresaId = user?.empresa_id || user?.company_id || (user?.company as any)?.id || userToToggle.empresa_id || '';
+    if (!currentEmpresaId || togglingUserId === userToToggle.id) return;
     
+    // Proteção: não permitir desativar a própria conta em sessão
+    if (userToToggle.id === user?.id && userToToggle.is_active !== false) {
+      showToast("Não é permitido bloquear a sua própria conta de administrador em sessão!", 'error');
+      return;
+    }
+
     console.log(`[FRONTEND] Toggling status for user: ${userToToggle.id} (${userToToggle.email})`);
     const nextStatus = userToToggle.is_active === false ? true : false;
     
@@ -13982,11 +14040,11 @@ const UsersSettings = () => {
     // Optimistic Update for extreme responsiveness
     const originalUsers = [...users];
     setUsers(prevUsers => 
-      prevUsers.map(u => u.id === userToToggle.id ? { ...u, is_active: nextStatus } : u)
+      prevUsers.map(u => u.id === userToToggle.id ? { ...u, is_active: nextStatus, ativo: nextStatus } : u)
     );
 
     try {
-      await systemUsersService.toggleUserStatus(user.empresa_id, userToToggle.id, !nextStatus);
+      await systemUsersService.toggleUserStatus(currentEmpresaId, userToToggle.id, !nextStatus);
       showToast(`Estado de ${userToToggle.name} atualizado com sucesso!`);
     } catch (err: any) {
       console.error('Error toggling status:', err);
@@ -14009,17 +14067,18 @@ const UsersSettings = () => {
   };
 
   const handleSaveQuickPermissions = async () => {
-    if (!permissionModalUser || !user?.empresa_id) return;
+    const currentEmpresaId = user?.empresa_id || user?.company_id || (user?.company as any)?.id || permissionModalUser?.empresa_id || '';
+    if (!permissionModalUser || !currentEmpresaId) return;
     setIsSaving(true);
     try {
-      await systemUsersService.updateUser(user.empresa_id, permissionModalUser.id, {
+      await systemUsersService.updateUser(currentEmpresaId, permissionModalUser.id, {
         ...permissionModalUser,
         permission_areas: mapPermissionAreasForDB(permissionAreas)
       });
       showToast("Permissões atualizadas com sucesso!");
       
       // If the current user's permissions were updated, refresh auth state
-      if (permissionModalUser.id === user.id) {
+      if (permissionModalUser.id === user?.id) {
         await refreshUser();
       }
       
@@ -14041,7 +14100,8 @@ const UsersSettings = () => {
 
   const handleResetPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!resetPasswordUser || !user?.empresa_id) return;
+    const currentEmpresaId = user?.empresa_id || user?.company_id || (user?.company as any)?.id || resetPasswordUser?.empresa_id || '';
+    if (!resetPasswordUser || !currentEmpresaId) return;
     if (!newPassword || newPassword !== confirmNewPassword) {
       showToast("As senhas não coincidem ou estão vazias!", 'error');
       return;
@@ -14053,7 +14113,7 @@ const UsersSettings = () => {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ password: newPassword })
+        body: JSON.stringify({ password: newPassword, empresa_id: currentEmpresaId })
       });
 
       if (!response.ok) {
@@ -14076,7 +14136,8 @@ const UsersSettings = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     console.log("handleSubmit called");
-    if (!user?.empresa_id) {
+    const currentEmpresaId = user?.empresa_id || user?.company_id || (user?.company as any)?.id || '';
+    if (!currentEmpresaId) {
       showToast("Companhia não identificada.", 'error');
       return;
     }
@@ -14112,10 +14173,10 @@ const UsersSettings = () => {
     try {
       if (editingUser) {
         console.log(`Editing user ${editingUser.id}`);
-        await systemUsersService.updateUser(user.empresa_id, editingUser.id, payload);
+        await systemUsersService.updateUser(currentEmpresaId, editingUser.id, payload);
         
         // If the current user's permissions were updated, refresh auth state
-        if (editingUser.id === user.id) {
+        if (editingUser.id === user?.id) {
             await refreshUser();
         }
         
@@ -14132,10 +14193,10 @@ const UsersSettings = () => {
           return;
         }
         console.log("Creating new user...");
-        await systemUsersService.createUser(user.empresa_id, {
+        await systemUsersService.createUser(currentEmpresaId, {
           ...payload,
           password,
-          created_by: user.id
+          created_by: user?.id
         });
         showToast("Novo utilizador registado com sucesso!");
         fetchUsers();
@@ -14642,16 +14703,6 @@ const UsersSettings = () => {
                         >
                           <KeyRound size={11} />
                         </button>
-  
-                        {/* Delete Action option */}
-                        <button 
-                          disabled={togglingUserId !== null || isSaving}
-                          onClick={() => handleDeleteUser(u.id)} 
-                          className="p-1 px-1.5 bg-red-100/5 hover:bg-red-600 text-red-600 hover:text-white border border-red-200/10 transition-all font-bold rounded-none flex items-center justify-center disabled:opacity-50"
-                          title="Eliminar Utilizador do Sistema"
-                        >
-                          <Trash2 size={11} />
-                        </button>
                       </div>
                     </td>
                   </tr>
@@ -14662,35 +14713,6 @@ const UsersSettings = () => {
         </table>
       </div>
 
-      {/* Custom and Safe Multi-tenant Deletion Confirmation Modal */}
-      {confirmDeleteId && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm" onClick={() => setConfirmDeleteId(null)} />
-          <div className="relative w-full max-w-md bg-white p-6 shadow-2xl border-t-4 border-red-600 rounded-none animate-fade-in">
-            <h3 className="font-bold text-[#003366] text-lg uppercase mb-2">Eliminar Utilizador</h3>
-            <p className="text-zinc-600 text-sm mb-6">
-              Tem a certeza absoluta de que deseja eliminar este utilizador do sistema? 
-              Esta ação é definitiva, removerá todos os seus dados e acessos e não pode ser desfeita.
-            </p>
-            <div className="flex justify-end gap-2">
-              <button 
-                onClick={() => setConfirmDeleteId(null)}
-                disabled={isDeleting}
-                className="bg-zinc-100 hover:bg-zinc-200 text-zinc-600 text-xs font-bold uppercase px-4 py-2 transition-all"
-              >
-                Cancelar
-              </button>
-              <button 
-                onClick={confirmDeletion}
-                disabled={isDeleting}
-                className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold uppercase px-4 py-2 transition-all flex items-center gap-1"
-              >
-                {isDeleting ? 'A eliminar...' : 'Eliminar Definitivamente'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Custom absolute Toast Notification component */}
       {toast && (
@@ -15505,7 +15527,7 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
       } else if (activeSection === 'docs') {
          // Load via custom bypass API
          const data = await fetchJson(`/api/company-documents?empresa_id=${companyId}`);
-         setRecords(data || []);
+         setRecords(Array.isArray(data) ? data : []);
       } else {
          // Default logic for other sections
          const { data, error } = await supabase
@@ -15729,7 +15751,8 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
   };
 
   const renderSectionContent = () => {
-    const filteredRecords = records.filter(r => {
+    const safeRecords = Array.isArray(records) ? records : [];
+    const filteredRecords = safeRecords.filter(r => {
       if (activeSection === 'letters') {
          return (
            (r.referencia || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -17925,7 +17948,7 @@ const DailyMovementsModule = ({ onBack }: { onBack: () => void }) => {
   const fetchJournals = async () => {
     try {
       const data = await fetchJson(`/api/accounting/journals?empresa_id=${user?.empresa_id}`);
-      setJournals(data);
+      setJournals(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching journals:', error);
     } finally {
@@ -22718,12 +22741,16 @@ const DiariosManagementModule = ({ onBack }: { onBack: () => void }) => {
     </div>
   );
 };
-const BalanceteRazaoModule = ({ onBack, companyData }: { onBack: () => void, companyData?: any }) => {
+const BalanceteRazaoModule = ({ onBack, companyData, fiscalYear }: { onBack: () => void, companyData?: any, fiscalYear?: string }) => {
   const { user } = useAuth();
   const [lancamentos, setLancamentos] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [year, setYear] = useState(String(new Date().getFullYear()));
+  const [year, setYear] = useState(fiscalYear || String(new Date().getFullYear()));
   const [exchangeRate, setExchangeRate] = useState(1);
+
+  useEffect(() => {
+    if (fiscalYear) setYear(fiscalYear);
+  }, [fiscalYear]);
 
   const fetchLancamentos = async () => {
     if (!user?.empresa_id) return;
@@ -22733,6 +22760,7 @@ const BalanceteRazaoModule = ({ onBack, companyData }: { onBack: () => void, com
         .from('lancamentos_contabeis')
         .select('*')
         .eq('empresa_id', user.empresa_id)
+        .like('data_lancamento', `${year}%`)
         .order('conta_pgc', { ascending: true });
       setLancamentos(data || []);
     } catch (e) {
@@ -22775,7 +22803,13 @@ const BalanceteRazaoModule = ({ onBack, companyData }: { onBack: () => void, com
         <div className="flex items-center gap-4">
           <button onClick={onBack} className="p-2 hover:bg-zinc-100 text-zinc-400"><ChevronLeft size={24} /></button>
           <div>
-            <h2 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">Balancete Razão</h2>
+            <div className="flex items-center gap-3">
+              <h2 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">Balancete Razão</h2>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 text-[10px] font-black uppercase tracking-wider border border-emerald-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Exercício {year} Ativo
+              </span>
+            </div>
             <p className="text-sm font-bold text-zinc-400 uppercase">Contabilidade Geral Angolana</p>
           </div>
         </div>
@@ -22892,12 +22926,16 @@ const BalanceteRazaoModule = ({ onBack, companyData }: { onBack: () => void, com
   );
 };
 
-const BalancoModule = ({ onBack, companyData, invoices, purchases }: { onBack: () => void, companyData?: any, invoices: any[], purchases: any[] }) => {
+const BalancoModule = ({ onBack, companyData, invoices, purchases, fiscalYear }: { onBack: () => void, companyData?: any, invoices: any[], purchases: any[], fiscalYear?: string }) => {
   const { user } = useAuth();
   const [lancamentos, setLancamentos] = useState<any[]>([]);
   const [lancamentosAnterior, setLancamentosAnterior] = useState<any[]>([]);
-  const [year, setYear] = useState(String(new Date().getFullYear()));
+  const [year, setYear] = useState(fiscalYear || String(new Date().getFullYear()));
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (fiscalYear) setYear(fiscalYear);
+  }, [fiscalYear]);
 
   const fetchData = async () => {
     if (!user?.empresa_id) return;
@@ -22906,7 +22944,8 @@ const BalancoModule = ({ onBack, companyData, invoices, purchases }: { onBack: (
       const { data: curr } = await supabase
         .from('lancamentos_contabeis')
         .select('*')
-        .eq('empresa_id', user.empresa_id);
+        .eq('empresa_id', user.empresa_id)
+        .like('data_lancamento', `${year}%`);
       setLancamentos(curr || []);
       const prevYear = String(Number(year) - 1);
       const { data: prev } = await supabase
@@ -23061,7 +23100,13 @@ const BalancoModule = ({ onBack, companyData, invoices, purchases }: { onBack: (
         <div className="flex items-center gap-4">
           <button onClick={onBack} className="p-2 hover:bg-zinc-100 text-zinc-400"><ChevronLeft size={24} /></button>
           <div>
-            <h2 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">Balanço</h2>
+            <div className="flex items-center gap-3">
+              <h2 className="text-2xl font-black text-[#003366] uppercase tracking-tighter">Balanço</h2>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 text-[10px] font-black uppercase tracking-wider border border-emerald-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Exercício {year} Ativo
+              </span>
+            </div>
             <p className="text-sm font-bold text-zinc-400 uppercase">Contabilidade Geral Angolana</p>
           </div>
         </div>
@@ -23294,22 +23339,18 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
         if (!user?.empresa_id) return;
 
         const year = fiscalYear || new Date().getFullYear().toString();
+        const yearNum = Number(year);
 
-        // Load Purchases for the selected company and filter by fiscal year locally
+        // Load Purchases for the selected company and filter by fiscal year directly in the DB query
         const { data: purData } = await supabase
           .from('compras')
           .select('*')
-          .eq('empresa_id', user.empresa_id);
+          .eq('empresa_id', user.empresa_id)
+          .eq('ano', yearNum);
         
         if (purData) {
-          const yearNum = Number(year);
-          const filteredByYear = purData.filter((p: any) => {
-            const pAno = p.ano ? Number(p.ano) : (p.data_compra ? new Date(p.data_compra).getFullYear() : (p.created_at ? new Date(p.created_at).getFullYear() : null));
-            return pAno === yearNum;
-          });
-
           // Mapear campos correctos da tabela 'compras' e filtrar apenas documentos de compra reais
-          const purchaseDocsOnly = filteredByYear.filter((p: any) => {
+          const purchaseDocsOnly = purData.filter((p: any) => {
             const tipo = (p.tipo_documento || p.document_type || '').toLowerCase();
             return tipo.includes('fatura') || tipo === 'fatura de compra' || tipo === 'fatura recibo de compra' || tipo === '';
           });
@@ -23393,13 +23434,13 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
       case 'vat-settlement':
         return <VatSettlementModule invoices={issuedDocuments} purchases={purchases} onBack={() => setActiveSubTab(null)} companyData={companyData} vatToPay={vatToPay} vatLiquidated={vatLiquidated} vatDeductible={vatDeductible} />;
       case 'diarios-management':
-        return <DiariosManagementModule onBack={() => setActiveSubTab(null)} />;
+        return <DiariosManagementModule onBack={() => setActiveSubTab(null)} {...({ fiscalYear } as any)} />;
       case 'accounting-maps':
-        return <AccountingMapsModule onBack={() => setActiveSubTab(null)} companyData={companyData} />;
+        return <AccountingMapsModule onBack={() => setActiveSubTab(null)} companyData={companyData} {...({ fiscalYear } as any)} />;
       case 'balancete-razao':
-        return <BalanceteRazaoModule onBack={() => setActiveSubTab(null)} companyData={companyData} />;
+        return <BalanceteRazaoModule onBack={() => setActiveSubTab(null)} companyData={companyData} fiscalYear={fiscalYear} />;
       case 'balanco':
-        return <BalancoModule onBack={() => setActiveSubTab(null)} companyData={companyData} invoices={invoices} purchases={purchases} />;
+        return <BalancoModule onBack={() => setActiveSubTab(null)} companyData={companyData} invoices={invoices} purchases={purchases} fiscalYear={fiscalYear} />;
       case 'pgc':
         return <PGCModule onBack={() => setActiveSubTab(null)} />;
       case 'classify-movements':
@@ -23920,7 +23961,15 @@ const FiscalSeriesModule = ({
           // Update the relation table
           await supabase.from('series_fiscais_usuarios').delete().eq('serie_id', editingSerie.id);
           if (selectedUsers.length > 0) {
-             const userInserts = selectedUsers.map(uid => ({ empresa_id: user.empresa_id, serie_id: editingSerie.id, usuario_id: uid }));
+             const userInserts = selectedUsers.map(uid => ({
+               empresa_id: user.empresa_id,
+               serie_id: editingSerie.id,
+               serie_fiscal_id: editingSerie.id,
+               utilizador_id: uid,
+               usuario_id: uid,
+               user_id: uid,
+               activo: true
+             }));
              const { error: relError } = await supabase.from('series_fiscais_usuarios').insert(userInserts);
              if (relError) console.error('Erro ao atualizar utilizadores:', relError);
           }
@@ -23957,9 +24006,18 @@ const FiscalSeriesModule = ({
 
         if (!error && data) {
           if (selectedUsers.length > 0) {
-             const userInserts = selectedUsers.map(uid => ({ empresa_id: currentEmpresaId, serie_id: data.id, usuario_id: uid }));
+             const userInserts = selectedUsers.map(uid => ({
+               empresa_id: currentEmpresaId,
+               serie_id: data.id,
+               serie_fiscal_id: data.id,
+               utilizador_id: uid,
+               usuario_id: uid,
+               user_id: uid,
+               activo: true
+             }));
              await supabase.from('series_fiscais_usuarios').insert(userInserts);
           }
+
           
           setShowForm(false);
           onRefresh();
@@ -24272,7 +24330,7 @@ const InvoiceList = ({
       const response = await fetchWithAuth(`/api/work-sites/${workSiteId}/movements?empresa_id=${user?.empresa_id}`);
       if (response.ok) {
         const data = await response.json();
-        setMovements(data);
+        setMovements(Array.isArray(data) ? data : []);
       }
     } catch (error) {
       console.error("Error fetching movements:", error);
@@ -25188,7 +25246,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
             setOriginDocs(faturas.length > 0 ? faturas : data);
           } else {
             // 2. Fallback to API endpoint
-            fetchWithAuth(`/api/invoices?empresa_id=${companyId}`)
+            fetchWithAuth(`/api/invoices`)
               .then(res => res.json())
               .then(apiData => {
                 if (Array.isArray(apiData)) {
@@ -26285,17 +26343,53 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
     }
     setLoading(true);
     try {
+      const purchaseAno = Number(date ? new Date(date).getFullYear() : new Date().getFullYear());
+      const purchaseNum = invoiceNumber || `PUR-${Date.now()}`;
       const purchaseData: any = {
-        supplier_id: supplierId || null, fornecedor_id: supplierId || null,
-        supplier_name: supplierName, fornecedor_nome: supplierName, supplier_nif: nif, nif,
-        document_type: documentType, tipo_documento: documentType,
-        invoice_number: invoiceNumber, numero_documento: invoiceNumber,
-        date, data_compra: date, due_date: dueDate || null, data_vencimento: dueDate || null,
-        service_date: serviceDate, country_code: countryCode,
-        items, total: finalTotal, valor_total: finalTotal, vat_amount: vatAmount,
-        global_discount: Number(globalDiscount) || 0, payment_method: paymentMethod || null,
-        caixa: cashBox || null, caixa_id: cashBox || null,
-        empresa_id: user?.empresa_id || user?.company_id, status: 'pendente', saldo_pendente: finalTotal,
+        empresa_id: user?.empresa_id || user?.company_id,
+        supplier_id: supplierId || null,
+        fornecedor_id: supplierId || null,
+        supplier_name: supplierName,
+        fornecedor_nome: supplierName,
+        supplier_nif: nif,
+        nif,
+        document_type: documentType,
+        tipo_documento: documentType,
+        invoice_number: invoiceNumber,
+        numero_documento: purchaseNum,
+        numero_compra: purchaseNum,
+        purchase_number: purchaseNum,
+        numero_fatura: invoiceNumber,
+        numero: purchaseNum,
+        date: date || new Date().toISOString().split('T')[0],
+        data_compra: date || new Date().toISOString().split('T')[0],
+        data: date || new Date().toISOString().split('T')[0],
+        due_date: dueDate || null,
+        data_vencimento: dueDate || null,
+        service_date: serviceDate || null,
+        data_servico: serviceDate || null,
+        country_code: countryCode || 'AO',
+        items,
+        itens: items,
+        detalhes: { items, total: finalTotal, document_type: documentType, supplier_name: supplierName },
+        subtotal: total,
+        total: finalTotal,
+        valor_total: finalTotal,
+        vat_amount: vatAmount,
+        valor_iva: vatAmount,
+        desconto: Number(globalDiscount) || 0,
+        global_discount: Number(globalDiscount) || 0,
+        desconto_global: Number(globalDiscount) || 0,
+        payment_method: paymentMethod || null,
+        metodo_pagamento: paymentMethod || null,
+        caixa: cashBox || null,
+        caixa_id: cashBox || null,
+        ano: purchaseAno,
+        status: 'pendente',
+        estado: 'pendente',
+        saldo_pendente: finalTotal,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       };
       const { data, error } = await supabase.from('compras').insert([purchaseData]).select().single();
       if (error) throw error;
@@ -26314,15 +26408,21 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
           <ChevronLeft size={20} />
         </button>
         <h2 className="text-base font-black text-[#003366] uppercase tracking-wider">
-          {fixedDocumentType ? `Emitir ${fixedDocumentType}` : 'InformaÃ§Ãµes do documento de compra'}
+          {fixedDocumentType ? `Emitir ${fixedDocumentType}` : 'Informações do documento de compra'}
         </h2>
       </div>
 
       {showSupplierModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-zinc-900/60 backdrop-blur-sm">
           <div className="w-full max-w-4xl bg-white shadow-2xl overflow-hidden relative">
-            <button onClick={() => setShowSupplierModal(false)} className="absolute top-4 right-4 text-zinc-400 hover:text-zinc-600 z-10 p-2 hover:bg-zinc-100 rounded-full"><X size={24} /></button>
-            <ClientForm onBack={() => setShowSupplierModal(false)} onSuccess={() => { setShowSupplierModal(false); }} isSupplier={true} />
+            <ClientForm 
+              onBack={() => setShowSupplierModal(false)} 
+              onSuccess={() => { 
+                setShowSupplierModal(false); 
+                window.dispatchEvent(new CustomEvent('refresh_suppliers'));
+              }} 
+              isSupplier={true} 
+            />
           </div>
         </div>
       )}
@@ -27219,15 +27319,17 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
     try {
       if (!user?.empresa_id) return;
 
+      // BLINDAGEM DE EXERCÍCIO: filtro ESTRITO por ano — NÃO incluir registos com ano=null
       const ano = Number(fiscalYear || new Date().getFullYear());
       console.log(`[SELECT compras] Fetching purchases for empresa_id: ${user.empresa_id} and ano: ${ano}`);
 
-      const { data, error } = await supabase
+      let query = supabase
         .from('compras')
         .select('*')
         .eq('empresa_id', user.empresa_id)
-        .eq('ano', ano)
-        .order('created_at', { ascending: false });
+        .eq('ano', ano);
+
+      const { data, error } = await query.order('created_at', { ascending: false });
       
       if (error) {
         console.error('[SELECT compras ERROR] Failed to fetch purchases list:', error);
@@ -27540,6 +27642,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
         onSuccess={(savedData) => {
           setIsCreating(false);
           fetchPurchases();
+          window.dispatchEvent(new CustomEvent('refresh_purchases'));
           if (createType === 'Pagamento' && savedData) {
             setCompletedReceipt(savedData);
           }
@@ -29802,30 +29905,63 @@ const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas
   const [iban, setIban] = useState('');
   const [tipoCliente, setTipoCliente] = useState('normal');
 
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        if (!user?.empresa_id) return;
+  const loadData = useCallback(async () => {
+    try {
+      const companyId = user?.empresa_id || user?.company_id;
+      if (!companyId) return;
 
-        const { data: supData } = await supabase
-          .from('fornecedores')
-          .select('*')
-          .eq('empresa_id', user.empresa_id);
-        
-        if (supData) setSuppliers(supData.map((s: any) => ({ ...s, name: s.nome || s.name })));
-
-        const { data: purData } = await supabase
-          .from('compras')
-          .select('*')
-          .eq('empresa_id', user.empresa_id);
-        
-        if (purData) setPurchases(purData);
-      } catch (err) {
-        console.error('Error loading supplier data:', err);
+      const supData = await fornecedorService.getFornecedores(companyId);
+      if (supData && Array.isArray(supData)) {
+        setSuppliers(supData.map((s: any) => ({
+          ...s,
+          id: s.id,
+          name: s.nome || s.name || '',
+          nome: s.nome || s.name || '',
+          nif: s.nif || '',
+          email: s.email || '',
+          phone: s.telefone || s.phone || '',
+          address: s.morada || s.endereco || s.address || '',
+          siglas_banco: s.sigla_banco || s.siglas_banco || '',
+          tipo_cliente: s.tipo_fornecedor || s.tipo_cliente || 'Geral'
+        })));
       }
-    };
+
+      const anoNum = Number(fiscalYear || new Date().getFullYear());
+      const { data: purData } = await supabase
+        .from('compras')
+        .select('*')
+        .eq('empresa_id', companyId)
+        .eq('ano', anoNum)
+        .order('created_at', { ascending: false });
+
+      if (purData) setPurchases(purData);
+    } catch (err) {
+      console.error('Error loading supplier data:', err);
+    }
+  }, [user?.empresa_id, user?.company_id, fiscalYear]);
+
+  useEffect(() => {
     loadData();
-  }, []);
+
+    const companyId = user?.empresa_id || user?.company_id;
+    if (!companyId) return;
+
+    const handleRealtime = () => {
+      loadData();
+    };
+
+    realtimeManager.subscribe('fornecedores', companyId, handleRealtime);
+    realtimeManager.subscribe('compras', companyId, handleRealtime);
+    window.addEventListener('refresh_suppliers', handleRealtime);
+    window.addEventListener('refresh_purchases', handleRealtime);
+
+    return () => {
+      realtimeManager.unsubscribe('fornecedores', companyId, handleRealtime);
+      realtimeManager.unsubscribe('compras', companyId, handleRealtime);
+      window.removeEventListener('refresh_suppliers', handleRealtime);
+      window.removeEventListener('refresh_purchases', handleRealtime);
+    };
+  }, [user?.empresa_id, user?.company_id, activeSubTab, loadData, fiscalYear]);
 
   useEffect(() => {
     if (selectedSupplier) {
@@ -29893,23 +30029,16 @@ const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas
         webpage: webpage,
         sigla_banco: siglasBanco,
         iban: iban,
-        tipo_fornecedor: tipoCliente
+        tipo_fornecedor: tipoCliente,
+        activo: true,
+        ativo: true
       };
 
-      let result;
       if (selectedSupplier) {
-        result = await supabase
-          .from('fornecedores')
-          .update(supplierData)
-          .eq('id', selectedSupplier.id)
-          .eq('empresa_id', user.empresa_id);
+        await fornecedorService.updateFornecedor(selectedSupplier.id, supplierData);
       } else {
-        result = await supabase
-          .from('fornecedores')
-          .insert([supplierData]);
+        await fornecedorService.createFornecedor(supplierData);
       }
-
-      if (result.error) throw result.error;
 
       setName(''); setNif(''); setEmail(''); setPhone(''); setAddress('');
       setLocalidade(''); setCodigoPostal(''); setProvincia(''); setMunicipio('');
@@ -29917,23 +30046,10 @@ const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas
       setShowForm(false);
       setSelectedSupplier(null);
       
-      const { data: supData } = await supabase
-        .from('fornecedores')
-        .select('*')
-        .eq('empresa_id', user.empresa_id)
-        .order('created_at', { ascending: false });
-
-      if (supData) {
-        setSuppliers(supData.map((s: any) => ({ 
-          ...s, 
-          name: s.nome || s.name,
-          siglas_banco: s.sigla_banco,
-          tipo_cliente: s.tipo_fornecedor
-        })));
-      }
-    } catch (err) {
+      await loadData();
+    } catch (err: any) {
       console.error('Error saving supplier:', err);
-      alert('Erro ao salvar fornecedor no Supabase.');
+      alert(err.message || 'Erro ao salvar fornecedor no Supabase.');
     }
   };
 
@@ -31703,10 +31819,10 @@ export default function App() {
 
   const [connectionError, setConnectionError] = useState(false);
   const [configuringGraphicSerie, setConfiguringGraphicSerie] = useState<FiscalSeries | null>(null);
-  const [fiscalYear, setFiscalYearState] = useState(() => localStorage.getItem('fiscalYear') || '2026');
-  const setFiscalYear = (year: string) => {
-    setFiscalYearState(year);
-    localStorage.setItem('fiscalYear', year);
+  const { exerciseYear, setExerciseYear: setContextFiscalYear, currentYear, availableYears } = useExercise();
+  const fiscalYear = exerciseYear;
+  const setFiscalYear = (year: string | number) => {
+    setContextFiscalYear(year);
   };
   const [companyName, setCompanyName] = useState('Empresa');
   const [companyNif, setCompanyNif] = useState('500123456');
@@ -32059,8 +32175,9 @@ export default function App() {
 
       console.log(`[App] Buscando Clientes para ${companyId} via clienteService...`);
       const data = await clienteService.getClientes(companyId);
+      const safeData = Array.isArray(data) ? data : [];
 
-      setClients(data.map((cl: any) => ({
+      setClients(safeData.map((cl: any) => ({
         ...cl,
         id: cl.id,
         name: cl.nome || cl.name || '',
@@ -32087,7 +32204,9 @@ export default function App() {
         empresa_id: cl.empresa_id || companyId
       })));
 
-      localStorage.setItem('clientes_backup', JSON.stringify(data));
+      // Limpeza de chaves legadas e persistência segura isolada por empresa
+      localStorage.removeItem('clientes_backup');
+      localStorage.setItem(`clientes_backup_${companyId}`, JSON.stringify(safeData));
     } catch (err) {
       console.error('[App] Erro ao carregar clientes:', err);
     }
@@ -32100,8 +32219,9 @@ export default function App() {
 
       console.log(`[App] Buscando Locais para ${companyId}...`);
       const data = await localTrabalhoService.getLocaisTrabalho(companyId);
+      const safeData = Array.isArray(data) ? data : [];
 
-      setWorkSites(data.map((ws: any) => ({
+      setWorkSites(safeData.map((ws: any) => ({
         ...ws,
         id: ws.id,
         title: ws.nome || '',
@@ -32119,7 +32239,8 @@ export default function App() {
         total_staff: Number(ws.total_staff || 0)
       })));
 
-      localStorage.setItem('locais_backup', JSON.stringify(data));
+      localStorage.removeItem('locais_backup');
+      localStorage.setItem(`locais_backup_${companyId}`, JSON.stringify(safeData));
     } catch (err) {
       console.error('[App] Erro ao carregar locais:', err);
     }
@@ -32154,8 +32275,9 @@ export default function App() {
         .order('name');
 
       if (error) throw error;
+      const safeData = Array.isArray(data) ? data : [];
 
-      setProducts(data.map((p: any) => ({
+      setProducts(safeData.map((p: any) => ({
         ...p,
         id: p.id,
         name: p.name || '',
@@ -32180,7 +32302,8 @@ export default function App() {
         image_path: p.image_path || ''
       })));
 
-      localStorage.setItem('products_backup', JSON.stringify(data));
+      localStorage.removeItem('products_backup');
+      localStorage.setItem(`products_backup_${companyId}`, JSON.stringify(safeData));
     } catch (err) {
       console.error('[App] Erro ao carregar produtos:', err);
     }
@@ -32309,15 +32432,15 @@ export default function App() {
     }
   };
 
-  const doLoadDocumentosEmitidos = async (explicitId?: string) => {
+  const doLoadDocumentosEmitidos = async (explicitId?: string, explicitYear?: string) => {
     try {
       const companyId = explicitId || user?.empresa_id;
       if (!companyId) return;
 
-      console.log('[App] Carregando todos os documentos emitidos via API para (bypass RLS):', companyId, 'no ano:', fiscalYear);
-      // Remove any implicit year filter if necessary, or ensure backend handles it robustly.
-      // Fetching all to guarantee list visibility.
-      const res = await fetchWithAuth(`/api/invoices?empresa_id=${companyId}&year=${fiscalYear}`);
+      const anoToFetch = explicitYear || fiscalYear;
+      console.log('[App] Carregando documentos emitidos via API para ano:', anoToFetch);
+      // SEGURANÇA: empresa_id não enviado — API determina tenant da sessão JWT
+      const res = await fetchWithAuth(`/api/invoices?year=${anoToFetch}`);
       
       if (!res.ok) {
         console.error('Erro ao carregar documentos emitidos:', await res.text());
@@ -32385,7 +32508,8 @@ export default function App() {
         .eq('empresa_id', companyId);
 
       if (error) throw error;
-      const visible = (data || []).filter((c: any) => c.is_deleted !== true);
+      const safeData = Array.isArray(data) ? data : [];
+      const visible = safeData.filter((c: any) => c.is_deleted !== true);
       setCaixas(visible.map(c => ({
         ...c,
         id: c.id,
@@ -32430,14 +32554,15 @@ export default function App() {
         }
       }
 
-      setCaixaMovements(data?.map(m => ({
+      const safeMovements = Array.isArray(data) ? data : [];
+      setCaixaMovements(safeMovements.map(m => ({
         ...m,
         id: m.id,
         caixaId: m.caixa_id,
         targetCaixaId: m.target_caixa_id,
         amount: Number(m.amount || 0),
         date: m.date
-      })) || []);
+      })));
     } catch (err) {
       console.error('Erro ao carregar movimentos de caixa:', err);
     }
@@ -32543,28 +32668,19 @@ export default function App() {
         return;
       }
 
-      const { data, error } = await supabase
-        .from('fornecedores')
-        .select('*')
-        .eq('empresa_id', companyId);
+      console.log(`[App] Buscando Fornecedores para ${companyId} via fornecedorService...`);
+      const data = await fornecedorService.getFornecedores();
+      const safeList = Array.isArray(data) ? data : [];
 
-      if (error) {
-        console.error('[App] doLoadFornecedores error:', error);
-        if (error.message && (error.message.includes('Refresh Token Not Found') || error.message.includes('invalid_grant'))) {
-             console.error('[App] Session expired or invalid, logging out...');
-             await authService.logout();
-             window.location.reload();
-        }
-        throw error;
-      }
-      setSuppliers(data?.map(s => ({
+      setSuppliers(safeList.map((s: any) => ({
         ...s,
         id: s.id,
-        name: s.nome || s.name,
-        nif: s.nif,
-        siglas_banco: s.sigla_banco,
-        tipo_cliente: s.tipo_fornecedor
-      })) || []);
+        name: s.nome || s.name || '',
+        nome: s.nome || s.name || '',
+        nif: s.nif || '',
+        siglas_banco: s.sigla_banco || '',
+        tipo_cliente: s.tipo_fornecedor || 'Geral'
+      })));
     } catch (err) {
       console.error('Erro ao carregar fornecedores:', err);
     }
@@ -32592,25 +32708,30 @@ export default function App() {
     }
   };
 
-  const doLoadCompras = async (explicitId?: string) => {
+  const doLoadCompras = async (explicitId?: string, explicitYear?: string) => {
     try {
       const companyId = explicitId || user?.empresa_id;
       if (!companyId) return;
 
-      const { data, error } = await supabase
+      // BLINDAGEM DE EXERCÍCIO: filtro ESTRITO por ano — NÃO incluir registos com ano=null
+      const ano = Number(explicitYear || fiscalYear || new Date().getFullYear());
+      let query = supabase
         .from('compras')
         .select('*')
         .eq('empresa_id', companyId)
-        .order('created_at', { ascending: false });
+        .eq('ano', ano);
+
+      const { data, error } = await query.order('created_at', { ascending: false });
 
       if (error) throw error;
-      setPurchases(data?.map(p => ({
+      const safePurchases = Array.isArray(data) ? data : [];
+      setPurchases(safePurchases.map(p => ({
         ...p,
         id: p.id,
-        purchase_number: p.numero_compra || p.purchase_number,
-        total: Number(p.total || 0),
-        date: p.data || p.date
-      })) || []);
+        purchase_number: p.numero_compra || p.purchase_number || p.numero_documento || '',
+        total: Number(p.valor_total ?? p.total ?? 0),
+        date: p.data_compra || p.data || p.date || p.created_at
+      })));
     } catch (err) {
       console.error('Erro ao carregar compras:', err);
     }
@@ -32632,6 +32753,27 @@ export default function App() {
     }
   }, 3000);
 
+  const doLoadEmployees = async (explicitId?: string) => {
+    try {
+      const companyId = explicitId || user?.empresa_id;
+      if (!companyId) return;
+      const emps = await employeeService.getEmployees(companyId);
+      const safeList = Array.isArray(emps) ? emps : [];
+      setEmployees(safeList);
+      setHrLocalEmployees(safeList);
+    } catch (err) {
+      console.error('[App] Erro ao carregar colaboradores:', err);
+    }
+  };
+
+  const loadEmployees = throttle(async (explicitId?: string) => {
+    try {
+      await doLoadEmployees(explicitId);
+    } catch (err) {
+      console.error('[App] Failed to load employees:', err);
+    }
+  }, 3000);
+
   // Real-time synchronization using named callbacks for proper cleanup
   useEffect(() => {
     const companyId = user?.empresa_id;
@@ -32647,6 +32789,7 @@ export default function App() {
       'caixa_movimentacoes', 
       'fornecedores', 
       'compras',
+      'colaboradores',
       'alertas_tarefas'
     ] as const;
 
@@ -32658,6 +32801,7 @@ export default function App() {
       caixa_movimentacoes: () => loadCaixaMovements(),
       fornecedores: () => loadFornecedores(),
       compras: () => loadCompras(),
+      colaboradores: () => loadEmployees(),
       alertas_tarefas: () => loadAlerts()
     };
 
@@ -32668,6 +32812,15 @@ export default function App() {
       }
     });
 
+    const handleRefreshSuppliers = () => {
+      if (companyId) doLoadFornecedores(companyId);
+    };
+    const handleRefreshPurchases = () => {
+      if (companyId) doLoadCompras(companyId, fiscalYear);
+    };
+    window.addEventListener('refresh_suppliers', handleRefreshSuppliers);
+    window.addEventListener('refresh_purchases', handleRefreshPurchases);
+
     return () => {
       tables.forEach(table => {
         const handler = handlers[table];
@@ -32675,8 +32828,10 @@ export default function App() {
           realtimeManager.unsubscribe(table, companyId, handler);
         }
       });
+      window.removeEventListener('refresh_suppliers', handleRefreshSuppliers);
+      window.removeEventListener('refresh_purchases', handleRefreshPurchases);
     };
-  }, [user?.empresa_id]);
+  }, [user?.empresa_id, fiscalYear]);
 
   const fetchData = async () => {
     if (isFetchingRef.current) {
@@ -32727,19 +32882,22 @@ export default function App() {
       // Fontes de Verdade Principais (Supabase com RLS)
       const syncStartTime = performance.now();
       try {
-        // Carregamos sequencialmente para melhor diagnóstico se um falhar
-        await doLoadClientes(targetCompanyId);
-        await doLoadLocaisTrabalho(targetCompanyId);
-        await doLoadDocumentosEmitidos(targetCompanyId);
-        await doLoadCaixas(targetCompanyId);
-        await doLoadCaixaMovements(targetCompanyId);
-        await doLoadFornecedores(targetCompanyId);
-        await doLoadCompras(targetCompanyId);
-        await doLoadProducts(targetCompanyId);
-        await doLoadStockMovements(targetCompanyId);
-        await doLoadActiveTaxes(targetCompanyId);
-        await doLoadMetrics(targetCompanyId);
-        await doLoadGlobalUsers(targetCompanyId);
+        // Carregamento Concorrente e Paralelo Resiliente (Zero bloqueio sequencial)
+        await Promise.allSettled([
+          doLoadClientes(targetCompanyId),
+          doLoadLocaisTrabalho(targetCompanyId),
+          doLoadDocumentosEmitidos(targetCompanyId, fiscalYear),
+          doLoadCaixas(targetCompanyId),
+          doLoadCaixaMovements(targetCompanyId),
+          doLoadFornecedores(targetCompanyId),
+          doLoadCompras(targetCompanyId, fiscalYear),
+          doLoadProducts(targetCompanyId),
+          doLoadStockMovements(targetCompanyId),
+          doLoadActiveTaxes(targetCompanyId),
+          doLoadMetrics(targetCompanyId),
+          doLoadGlobalUsers(targetCompanyId),
+          doLoadEmployees(targetCompanyId)
+        ]);
       } catch (err: any) {
         console.error('[DEBUG-SYNC] Erro nas queries Supabase:', err);
         if (err.message?.includes('fetch') || err.name === 'TypeError') {
@@ -32791,34 +32949,49 @@ export default function App() {
         console.error('Erro ao carregar dados unificados da empresa:', err);
       }
 
-      // 3. Load License Status
+      // 3. Load License Status (Sincronizado entre licencas_empresas e empresas)
       const { data: licenseData } = await supabase
         .from('licencas_empresas')
         .select('*')
         .eq('empresa_id', targetCompanyId)
         .maybeSingle();
 
-      if (licenseData) {
-        setLicenseStatus(licenseData);
-        const now = new Date();
-        const expiry = new Date(licenseData.data_fim);
-        const diffTime = expiry.getTime() - now.getTime();
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      const combinedComp = compSupabase || companyData;
+      const effectiveLicStatus = licenseData?.status_licenca || licenseData?.estado || combinedComp?.status_licenca || 'trial';
+      const isLicAtiva = licenseData?.licenca_ativa !== undefined ? licenseData.licenca_ativa : (combinedComp?.licenca_ativa !== undefined ? combinedComp.licenca_ativa : true);
+      const isEmpresaAtiva = (licenseData?.ativo !== false) && (combinedComp?.ativo !== false);
 
-        if (licenseData.status_licenca === 'bloqueada' || licenseData.status_licenca === 'vencida' || diffDays <= 0) {
+      if (licenseData || combinedComp) {
+        setLicenseStatus(licenseData || combinedComp);
+        const now = new Date();
+        const expiryStr = licenseData?.data_fim || licenseData?.data_validade || combinedComp?.data_expiracao_licenca || licenseData?.trial_fim || combinedComp?.trial_fim;
+        const expiry = expiryStr ? new Date(expiryStr) : null;
+        const diffTime = expiry ? expiry.getTime() - now.getTime() : 1000 * 60 * 60 * 24 * 30;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        const statusNorm = String(effectiveLicStatus).toLowerCase();
+        const isDeactivated = ['bloqueada', 'vencida', 'suspensa', 'desativada', 'expirada', 'inativa', 'cancelada'].includes(statusNorm) || 
+                              isLicAtiva === false || 
+                              isEmpresaAtiva === false;
+
+        if (isStagingEnvironment()) {
+          // REGRA PERMANENTE: Ambiente STAGING / HOMOLOGAÇÃO possui Licença Técnica Permanente que NUNCA expira nem bloqueia
+          setIsLicenseBlocked(false);
+          setLicenseAlert(null);
+        } else if (isDeactivated || (expiry && diffDays <= 0)) {
           setIsLicenseBlocked(true);
-        } else if (diffDays <= 20) {
-          setLicenseAlert(`A sua licença expira em ${diffDays} dias (${formatDate(licenseData.data_fim)}). Regularize o pagamento para evitar o bloqueio automático.`);
+          setLicenseAlert('A licença desta empresa encontra-se suspensa ou expirada. O sistema está em Modo Somente Leitura.');
+        } else if (expiry && diffDays <= 20) {
+          setLicenseAlert(`A sua licença expira em ${diffDays} dias (${formatDate(expiryStr)}). Regularize o pagamento para evitar o bloqueio automático.`);
           if (diffDays <= 5 && !localStorage.getItem('license_popup_shown_today')) {
              setShowLicensePopup(true);
              localStorage.setItem('license_popup_shown_today', new Date().toDateString());
           }
+          setIsLicenseBlocked(false);
         } else {
           setIsLicenseBlocked(false);
           setLicenseAlert(null);
         }
       } else {
-        // Fallback or trial
         setIsLicenseBlocked(false);
       }
       
@@ -32850,7 +33023,7 @@ export default function App() {
         Promise.resolve(null), // p
         fetchJson(`/api/transactions?empresa_id=${targetCompanyId}&year=${fiscalYear}`),
         Promise.resolve(null), // i
-        fetchJson(`/api/employees?empresa_id=${targetCompanyId}`),
+        Promise.resolve(null), // e (já carregado com isolamento seguro por doLoadEmployees)
         Promise.resolve(fsDataFormatted), // fs
         fetchJson(`/api/cost-centers?empresa_id=${targetCompanyId}`),
         fetchJson(`/api/pos-points?empresa_id=${targetCompanyId}`),
@@ -32883,7 +33056,9 @@ export default function App() {
       setTransactions(Array.isArray(tr) ? tr : []);
       // NOTE: Do NOT call setInvoices([]) here — invoices are already populated by doLoadDocumentosEmitidos above.
       // Clearing them here was causing the accounting module to always show zero totals.
-      setEmployees(Array.isArray(e) ? e : []);
+      if (Array.isArray(e) && e.length > 0) {
+        setEmployees(e);
+      }
       
       if (Array.isArray(fs)) {
         setFiscalSeries(fs);
@@ -33296,7 +33471,11 @@ export default function App() {
 
   useEffect(() => {
     if (authReady) {
-      throttledFetchData();
+      // Limpeza imediata de estado de documentos transacionais para isolamento visual estrito
+      setPurchases([]);
+      setIssuedDocuments([]);
+      setInvoices([]);
+      fetchData();
     }
   }, [authReady, fiscalYear]);
 
@@ -33391,19 +33570,35 @@ export default function App() {
                 </div>
               )}
               {isLicenseBlocked && companyData?.nif !== '5002123665' && (
-                <div className="mb-6 bg-red-600 text-white p-6 shadow-xl flex flex-col md:flex-row items-center justify-between gap-6 border-b-4 border-red-800">
+                <div className="mb-6 bg-red-600 text-white p-6 shadow-xl flex flex-col md:flex-row items-center justify-between gap-6 border-b-4 border-red-800 rounded-lg">
                   <div className="flex items-center gap-5">
-                    <div className="bg-white/10 p-4 rounded-xl backdrop-blur-sm border border-white/20">
+                    <div className="bg-white/10 p-4 rounded-xl backdrop-blur-sm border border-white/20 shrink-0">
                        <ShieldAlert size={40} className="text-white" />
                     </div>
                     <div>
-                       <p className="text-xl font-black uppercase tracking-tighter italic">Sistema em Modo de Visualização</p>
-                       <p className="text-xs font-bold opacity-90 text-white/80 max-w-lg">Atenção: A sua licença expirou. Novas operações (vendas, RH, stocks, etc) estão temporariamente suspensas. Pode continuar a visualizar os dados existentes.</p>
+                       <p className="text-xl font-black uppercase tracking-tighter italic">
+                         {isProductionEnvironment() ? 'Produção: Licença Suspensa / Aguarda Ativação' : 'Sistema em Modo de Visualização'}
+                       </p>
+                       <p className="text-xs font-bold opacity-90 text-white/80 max-w-xl mt-1">
+                         {isProductionEnvironment() 
+                           ? 'A licença oficial desta empresa ainda não está ativa em Produção. Novas operações estão bloqueadas até aprovação pelo SuperAdmin. Pode experimentar todas as funcionalidades livremente na Área de Demonstração.'
+                           : 'Atenção: A licença desta empresa encontra-se suspensa ou expirou. Novas operações estão temporariamente limitadas.'}
+                       </p>
                     </div>
                   </div>
-                  <div className="flex gap-3">
-                    <button onClick={() => setActiveTab('licencas')} className="bg-white text-red-600 px-8 py-3 font-black uppercase tracking-widest text-[10px] hover:bg-zinc-100 transition-all shadow-xl">
-                      Regularizar Licença Agora
+                  <div className="flex flex-wrap gap-2 shrink-0">
+                    {isProductionEnvironment() && (
+                      <a 
+                        href="https://novo-sistema-agt-staging.vercel.app/"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="bg-amber-400 hover:bg-amber-300 text-slate-950 px-5 py-3 font-black uppercase tracking-widest text-[10px] rounded transition-all shadow-lg flex items-center gap-1.5"
+                      >
+                        <span>🧪 Ir à Área de Teste</span>
+                      </a>
+                    )}
+                    <button onClick={() => setActiveTab('licencas')} className="bg-white text-red-600 px-6 py-3 font-black uppercase tracking-widest text-[10px] rounded hover:bg-zinc-100 transition-all shadow-xl">
+                      Ver Licença / Regularizar
                     </button>
                   </div>
                 </div>
@@ -33768,12 +33963,13 @@ export default function App() {
                                   companyData={companyData}
                                   onNavigate={setActiveTab}
                                   onEmitirFatura={() => { setSelectedDocument(null); setFixedDocumentType(undefined); setActiveTab('electronic_invoices'); setIsCreatingInvoice(true); }}
+                                  fiscalYear={fiscalYear}
                                 />
                               );
                             case 'fleet':
                               return <FleetManagementModule />;
                             case 'projects':
-                              return <ProjectManagementModule user={user} companyData={companyData} onNavigate={setActiveTab} onEmitirFatura={() => { setSelectedDocument(null); setFixedDocumentType(undefined); setActiveTab('electronic_invoices'); setIsCreatingInvoice(true); }} />;
+                              return <ProjectManagementModule user={user} companyData={companyData} onNavigate={setActiveTab} onEmitirFatura={() => { setSelectedDocument(null); setFixedDocumentType(undefined); setActiveTab('electronic_invoices'); setIsCreatingInvoice(true); }} fiscalYear={fiscalYear} />;
                             case 'business_overview':
                             case 'cost-revenue':
                               return (
@@ -33852,6 +34048,7 @@ export default function App() {
                                   refreshMovements={loadCaixaMovements}
                                   issuedDocuments={issuedDocuments}
                                   transactions={invoices} // Overloading invoices as transactions for this module's logic if needed, or separate state
+                                  fiscalYear={fiscalYear}
                                 />
                               );
                              case 'hr':
@@ -33971,9 +34168,9 @@ export default function App() {
                             case 'cartas':
                               return <CartasModule />;
                             case 'church':
-                              return <ChurchModule user={user} companyData={companyData} onNavigate={setActiveTab} onEmitirFatura={() => { setSelectedDocument(null); setFixedDocumentType(undefined); setActiveTab('electronic_invoices'); setIsCreatingInvoice(true); }} />;
+                              return <ChurchModule user={user} companyData={companyData} onNavigate={setActiveTab} onEmitirFatura={() => { setSelectedDocument(null); setFixedDocumentType(undefined); setActiveTab('electronic_invoices'); setIsCreatingInvoice(true); }} fiscalYear={fiscalYear} />;
                             case 'agrobusiness':
-                              return <AgrobusinessModule user={user} companyData={companyData} onNavigate={setActiveTab} onEmitirFatura={() => { setSelectedDocument(null); setFixedDocumentType(undefined); setActiveTab('electronic_invoices'); setIsCreatingInvoice(true); }} />;
+                              return <AgrobusinessModule user={user} companyData={companyData} onNavigate={setActiveTab} onEmitirFatura={() => { setSelectedDocument(null); setFixedDocumentType(undefined); setActiveTab('electronic_invoices'); setIsCreatingInvoice(true); }} fiscalYear={fiscalYear} />;
                             case 'tax-series':
                               return (
                                 <FiscalSeriesModule 

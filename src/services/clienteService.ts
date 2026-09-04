@@ -7,6 +7,7 @@ export interface Cliente {
   telefone?: string;
   email?: string;
   endereco?: string;
+  morada?: string;
   tipo_entidade?: string;
   contribuinte?: string;
   nif?: string;
@@ -52,7 +53,9 @@ export const clienteService = {
       const headers: Record<string, string> = {};
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const response = await fetch('/api/secure-clientes', { headers });
+      // SEGURANÇA: empresa_id nunca enviado pelo frontend — API usa exclusivamente a sessão JWT
+      const url = '/api/secure-clientes';
+      const response = await fetch(url, { headers });
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
         console.warn('[ClienteService] Resposta da API:', response.status, err);
@@ -64,10 +67,12 @@ export const clienteService = {
       return Array.isArray(data) ? data : (data.data || []);
     } catch (err: any) {
       console.error('[ClienteService] Erro ao listar clientes:', err);
-      // Fallback to cache if available
+      // Fallback seguro de cache com chave isolada por empresa
       try {
-        const cached = localStorage.getItem('clientes_backup');
-        if (cached) return JSON.parse(cached);
+        if (_empresa_id) {
+          const cached = localStorage.getItem(`clientes_backup_${_empresa_id}`);
+          if (cached) return JSON.parse(cached);
+        }
       } catch (e) {}
       return [];
     }

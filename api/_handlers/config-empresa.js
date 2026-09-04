@@ -4,8 +4,8 @@
  * Integração e persistência unificada nas tabelas 'empresas' e 'config_empresa'.
  */
 
-import { getEnvConfig, setCORS } from './_env.js';
-import { authenticateRequest } from './_auth.js';
+import { getEnvConfig, setCORS } from '../_env.js';
+import { authenticateRequest } from '../_auth.js';
 
 export default async function handler(req, res) {
   setCORS(res);
@@ -17,10 +17,22 @@ export default async function handler(req, res) {
   try {
     const config = getEnvConfig(req);
     const auth = await authenticateRequest(req);
+    if (!auth.authenticated) {
+      return res.status(401).json({ error: 'Não autenticado' });
+    }
 
-    // Permitir obter empresa_id da sessão ou query param
     const parsedUrl = new URL(req.url || '', `http://${req.headers?.host || 'localhost'}`);
-    let targetEmpresaId = parsedUrl.searchParams.get('empresa_id') || req.query?.empresa_id || auth.empresa_id;
+    
+    // ISOLAMENTO TENANT: Cada empresa gerencia estritamente as suas próprias configurações fiscais
+    let targetEmpresaId = auth.empresa_id;
+
+    // SuperAdmin pode consultar configurações de uma empresa específica se explicitamente solicitado
+    if (auth.isSuperAdmin) {
+      const explicitEmpresaId = parsedUrl.searchParams.get('empresa_id') || req.headers?.['x-target-empresa-id'];
+      if (explicitEmpresaId) {
+        targetEmpresaId = explicitEmpresaId;
+      }
+    }
 
     if (!targetEmpresaId && auth.user?.id) {
       const userRes = await fetch(
@@ -69,7 +81,42 @@ export default async function handler(req, res) {
       const confs = await confRes.json();
       const configData = Array.isArray(confs) && confs.length > 0 ? confs[0] : {};
 
-      // 3. Mesclar dados para resposta unificada
+      // 3. Obter dados da tabela licencas_empresas
+      const licRes = await fetch(
+        `${config.supabaseUrl}/rest/v1/licencas_empresas?empresa_id=eq.${targetEmpresaId}&select=*&limit=1`,
+        {
+          headers: {
+            'apikey': config.serviceRoleKey,
+            'Authorization': `Bearer ${config.serviceRoleKey}`
+          }
+        }
+      );
+      const lics = await licRes.json();
+      const licData = Array.isArray(lics) && lics.length > 0 ? lics[0] : {};
+
+      // 4. Determinar estado normalizado oficial (Regra Determinística e Segura)
+      const rawStatus = String(licData.status_licenca || licData.estado || empresa.status_licenca || '').toUpperCase();
+      const isSuspendedOrDeactivated = ['SUSPENSA', 'BLOQUEADA', 'DESATIVADA', 'INATIVA', 'CANCELADA', 'EXPIRADA', 'VENCIDA'].includes(rawStatus) ||
+                                      licData.licenca_ativa === false ||
+                                      licData.ativo === false ||
+                                      empresa.licenca_ativa === false ||
+                                      empresa.ativo === false;
+      const isExplicitlyActive = ['ACTIVA', 'ACTIVE', 'ATIVA', 'ATIVO'].includes(rawStatus) &&
+                                 (licData.licenca_ativa !== false) &&
+                                 (licData.ativo !== false) &&
+                                 (empresa.licenca_ativa !== false) &&
+                                 (empresa.ativo !== false);
+      const expiryDateStr = licData.data_fim || licData.data_validade || empresa.data_expiracao_licenca || licData.trial_fim || empresa.trial_fim;
+      const expiryDate = expiryDateStr ? new Date(expiryDateStr) : null;
+      const isExpiredByDate = expiryDate && expiryDate.getTime() < Date.now();
+
+      const isAtiva = isExplicitlyActive && !isSuspendedOrDeactivated && !isExpiredByDate;
+      const statusFinal = isAtiva ? 'ATIVA' : 'SUSPENSA';
+      const estadoFinal = isAtiva ? 'ativa' : 'suspensa';
+      const descricaoFinal = isAtiva ? 'LICENÇA ACTIVA' : 'LICENÇA EXPIRADA';
+      const planoFinal = licData.plano || empresa.plano || configData.plano || 'Profissional';
+
+      // 5. Mesclar dados para resposta unificada
       const merged = {
         id: empresa.id || targetEmpresaId,
         empresa_id: targetEmpresaId,
@@ -86,8 +133,26 @@ export default async function handler(req, res) {
         tipo_empresa: empresa.tipo_empresa || configData.tipo_empresa || 'Serviços',
         responsavel: empresa.nome_administrador || configData.responsavel || '',
         nome_administrador: empresa.nome_administrador || configData.responsavel || '',
-        plano: empresa.plano || configData.plano || 'trial',
-        ativo: empresa.ativo !== undefined ? empresa.ativo : true,
+        plano: planoFinal,
+        status_licenca: statusFinal,
+        licenca_ativa: isAtiva,
+        data_expiracao_licenca: expiryDateStr,
+        data_inicio_licenca: licData.data_inicio || empresa.data_inicio || null,
+        trial_inicio: licData.trial_inicio || empresa.trial_inicio || null,
+        trial_fim: licData.trial_fim || empresa.trial_fim || null,
+        ativo: isAtiva,
+        // Objeto normalizado oficial de licença para o ERP
+        licenca: {
+          status: isAtiva ? 'ATIVA' : 'EXPIRADA',
+          ativo: isAtiva,
+          licenca_ativa: isAtiva,
+          estado: estadoFinal,
+          descricao: descricaoFinal,
+          plano: planoFinal,
+          data_inicio: licData.data_inicio || empresa.data_inicio || null,
+          data_fim: expiryDateStr,
+          data_expiracao: expiryDateStr
+        },
         logo_url: empresa.logo_url || configData.logo_url || '',
         logo_size: empresa.logo_size || configData.logo_size || 100,
         watermark_url: empresa.watermark_url || configData.watermark_url || '',
@@ -104,8 +169,8 @@ export default async function handler(req, res) {
         codigo_postal: configData.codigo_postal || '',
         regime: configData.regime || 'Regime geral',
         coordenadas_bancarias: configData.coordenadas_bancarias || '',
-        pacote_licenca: configData.pacote_licenca || 'Gratuito',
-        valor_licenca: configData.valor_licenca || '0'
+        pacote_licenca: planoFinal,
+        valor_licenca: licData.valor_licenca || configData.valor_licenca || '0'
       };
 
       return res.status(200).json(merged);
@@ -113,7 +178,8 @@ export default async function handler(req, res) {
 
     if (req.method === 'POST') {
       const body = req.body || {};
-      const companyId = body.empresa_id || targetEmpresaId;
+      // SEGURANÇA: empresa_id SEMPRE da sessão — nunca aceitar do body (parameter tampering)
+      const companyId = targetEmpresaId;
 
       if (!companyId) {
         return res.status(400).json({ error: 'empresa_id não identificado' });

@@ -1,5 +1,5 @@
-import { getEnvConfig, setCORS } from './_env.js';
-import { authenticateRequest } from './_auth.js';
+import { getEnvConfig, setCORS } from '../_env.js';
+import { authenticateRequest } from '../_auth.js';
 
 export default async function handler(req, res) {
   setCORS(res);
@@ -7,23 +7,23 @@ export default async function handler(req, res) {
 
   try {
     const auth = await authenticateRequest(req);
+    if (!auth.authenticated) {
+      return res.status(401).json({ error: 'Não autenticado' });
+    }
+
     const config = getEnvConfig(req);
     const authHeader = `Bearer ${config.serviceRoleKey}`;
 
-    if (req.method === 'GET') {
-      let queryEmpresaId = req.query?.empresa_id || '';
-      if (!queryEmpresaId && req.url) {
-        try {
-          const parsedUrl = new URL(req.url, `http://${req.headers?.host || 'localhost'}`);
-          queryEmpresaId = parsedUrl.searchParams.get('empresa_id') || '';
-        } catch (e) {}
-      }
-      const targetEmpresaId = queryEmpresaId || auth.empresa_id;
+    const parsedUrl = new URL(req.url || '', `http://${req.headers?.host || 'localhost'}`);
+    const targetEmpresaId = auth.empresa_id;
 
-      let url = `${config.supabaseUrl}/rest/v1/documentos_emitidos?select=*&order=created_at.desc`;
-      if (targetEmpresaId && !auth.isSuperAdmin) {
-        url += `&empresa_id=eq.${targetEmpresaId}`;
-      }
+    if (!targetEmpresaId) {
+      return res.status(400).json({ error: 'Empresa não identificada na sessão' });
+    }
+
+    if (req.method === 'GET') {
+      let url = `${config.supabaseUrl}/rest/v1/exercicios_fiscais?empresa_id=eq.${targetEmpresaId}&select=*&order=ano.desc`;
+
       const response = await fetch(url, {
         headers: {
           'apikey': config.serviceRoleKey,
@@ -32,15 +32,19 @@ export default async function handler(req, res) {
         }
       });
       const data = await response.json();
-      return res.status(200).json(Array.isArray(data) ? data : []);
+      return res.status(response.status).json(Array.isArray(data) ? data : []);
     }
 
     if (req.method === 'POST') {
       const body = req.body || {};
-      if (auth.empresa_id && !body.empresa_id) {
-        body.empresa_id = auth.empresa_id;
-      }
-      const response = await fetch(`${config.supabaseUrl}/rest/v1/documentos_emitidos`, {
+      const companyId = auth.empresa_id;
+
+      const payload = {
+        ...body,
+        empresa_id: companyId
+      };
+
+      const response = await fetch(`${config.supabaseUrl}/rest/v1/exercicios_fiscais`, {
         method: 'POST',
         headers: {
           'apikey': config.serviceRoleKey,
@@ -48,7 +52,7 @@ export default async function handler(req, res) {
           'Content-Type': 'application/json',
           'Prefer': 'return=representation'
         },
-        body: JSON.stringify(body)
+        body: JSON.stringify(payload)
       });
       const data = await response.json();
       return res.status(response.status).json(data);

@@ -8,56 +8,12 @@
       "destination": "https://portaldocontribuinte.minfin.gov.ao/$1"
     },
     {
-      "source": "/api/health/(.*)",
-      "destination": "/api/health.js"
-    },
-    {
-      "source": "/api/health",
-      "destination": "/api/health.js"
-    },
-    {
-      "source": "/api/auth/(.*)",
-      "destination": "/api/auth-saas.js"
-    },
-    {
-      "source": "/api/auth",
-      "destination": "/api/auth-saas.js"
-    },
-    {
-      "source": "/api/exercicios-fiscais",
-      "destination": "/api/exercicios-fiscais.js"
-    },
-    {
-      "source": "/api/config-empresa",
-      "destination": "/api/config-empresa.js"
-    },
-    {
-      "source": "/api/stats",
-      "destination": "/api/stats.js"
-    },
-    {
-      "source": "/api/secure-clientes/(.*)",
-      "destination": "/api/secure-clientes.js"
-    },
-    {
-      "source": "/api/secure-clientes",
-      "destination": "/api/secure-clientes.js"
-    },
-    {
-      "source": "/api/secure-locais-trabalho",
-      "destination": "/api/secure-locais-trabalho.js"
-    },
-    {
-      "source": "/api/invoices",
-      "destination": "/api/invoices.js"
-    },
-    {
-      "source": "/api/system-users",
-      "destination": "/api/system-users.js"
-    },
-    {
       "source": "/api/(.*)",
-      "destination": "/api/health.js"
+      "destination": "/api/index.js"
+    },
+    {
+      "source": "/api",
+      "destination": "/api/index.js"
     },
     {
       "source": "/((?!api).*)",
@@ -68,10 +24,22 @@
     {
       "source": "/api/(.*)",
       "headers": [
-        { "key": "Content-Type", "value": "application/json" },
-        { "key": "Access-Control-Allow-Origin", "value": "*" },
-        { "key": "Access-Control-Allow-Methods", "value": "GET,POST,PUT,DELETE,OPTIONS,PATCH" },
-        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization, X-Requested-With" }
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET,POST,PUT,DELETE,OPTIONS,PATCH"
+        },
+        {
+          "key": "Access-Control-Allow-Headers",
+          "value": "Content-Type, Authorization, X-Requested-With"
+        }
       ]
     }
   ]

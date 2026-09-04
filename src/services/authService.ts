@@ -4,6 +4,31 @@ import { User } from '../types';
 let sessionCache: any = null;
 let sessionLoading = false;
 
+async function safeApiFetch(url: string, options: RequestInit = {}, maxAttempts = 3): Promise<Response> {
+  let attempt = 0;
+  let delay = 1000;
+  while (attempt < maxAttempts) {
+    attempt++;
+    try {
+      const response = await fetch(url, options);
+      return response;
+    } catch (err: any) {
+      const isNetwork = err?.message?.includes('Failed to fetch') || err?.message?.includes('NetworkError') || err?.message?.includes('network');
+      if (isNetwork && attempt < maxAttempts) {
+        console.warn(`[AuthService safeApiFetch] Tentativa ${attempt}/${maxAttempts} para '${url}' falhou. Retentando em ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+        delay *= 2;
+        continue;
+      }
+      if (isNetwork) {
+        throw new Error('Falha de ligação à Internet ou servidor inacessível. Verifique a sua conexão de rede e tente novamente.');
+      }
+      throw err;
+    }
+  }
+  throw new Error('Servidor indisponível após múltiplas tentativas. Verifique a sua ligação.');
+}
+
 export const authService = {
   async getSessionSafe() {
     if (sessionLoading) {
@@ -50,8 +75,8 @@ export const authService = {
       
       const emailToRegister = formData.email?.trim()?.toLowerCase() || '';
 
-      // 🟡 PASSO 1: Chamada ao Servidor para criação Bypass
-      const response = await fetch('/api/auth/register-saas', {
+      // 🟡 PASSO 1: Chamada ao Servidor para criação Bypass com retentativa resiliente
+      const response = await safeApiFetch('/api/auth/register-saas', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -61,18 +86,20 @@ export const authService = {
         })
       });
 
-      const result = await response.json();
+      const result = await response.json().catch(() => ({}));
 
       if (!response.ok) {
         const errorMsg = (result.error || '').toLowerCase();
         if (
           errorMsg.includes('already registered') || 
           errorMsg.includes('already exists') ||
-          errorMsg.includes('email_exists')
+          errorMsg.includes('email_exists') ||
+          errorMsg.includes('ja esta registado') ||
+          errorMsg.includes('já está registado')
         ) {
           console.log('[AuthService] Utilizador já existe no sistema. Procedendo para Login de sessão...');
         } else {
-          throw new Error(result.error || 'Falha no registo via servidor.');
+          throw new Error(result.error || 'Falha no registo da empresa via servidor.');
         }
       }
 
@@ -84,10 +111,10 @@ export const authService = {
       });
 
       if (loginError) {
-        throw new Error(`Utilizador criado, mas falha no login: ${loginError.message}`);
+        throw new Error(`Empresa criada com sucesso, mas ocorreu um problema ao iniciar sessão: ${loginError.message}`);
       }
 
-      console.log('[AuthService] Fluxo SaaS concluído via API Servidor!');
+      console.log('[AuthService] Fluxo SaaS concluído com sucesso!');
       return null as any;
     } catch (err: any) {
       console.error('[AuthService] Falha Crítica no Fluxo SaaS:', err.message);
@@ -103,7 +130,7 @@ export const authService = {
       // If it is a username instead of an email, look up the email first
       if (emailToLogin && !emailToLogin.includes('@')) {
         console.log('[AuthService] Input is not an email. Attempting username lookup for:', emailToLogin);
-        const res = await fetch(`/api/auth/email-by-username?username=${encodeURIComponent(emailToLogin)}`);
+        const res = await safeApiFetch(`/api/auth/email-by-username?username=${encodeURIComponent(emailToLogin)}`);
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
           throw new Error(errData.error || 'Username não encontrado no sistema. Por favor introduza o seu e-mail de registo ou verifique o username.');
@@ -139,13 +166,20 @@ export const authService = {
       sessionCache = authData.session;
 
       // 1. Tentar buscar Perfil
-      const { data: perfil, error: perfilError } = await supabase
+      let { data: perfil, error: perfilError } = await supabase
         .from('perfis')
         .select('*')
-        .eq('id', authData.user.id)
+        .or(`id.eq.${authData.user.id},user_id.eq.${authData.user.id}`)
         .maybeSingle();
 
       if (perfilError) console.error('[AuthService] Erro de rede ao buscar perfil:', perfilError);
+
+      // Validação Estrita de Bloqueio de Acesso
+      if (perfil && (perfil.ativo === false || perfil.is_active === false)) {
+        await supabase.auth.signOut();
+        sessionCache = null;
+        throw new Error("O seu acesso foi bloqueado. Contacte o administrador da sua empresa para obter mais informações.");
+      }
 
       // Handle profile mappings
       if (perfil && !perfil.empresa_id && perfil.company_id) {
@@ -155,6 +189,7 @@ export const authService = {
       if (perfil && perfil.empresa_id) {
         perfil.company_id = perfil.empresa_id;
       }
+
 
       // 2. Se não houver perfil, tentar buscar Empresa (Auto-reparação)
       if (!perfil) {
@@ -218,7 +253,9 @@ export const authService = {
               nome_empresa: compName,
               email: authData.user.email,
               plano: 'trial',
-              ativo: true
+              ativo: false,
+              licenca_ativa: false,
+              status_licenca: 'SUSPENSA'
             }])
             .select('id, nome, nome_empresa')
             .single();
@@ -323,7 +360,7 @@ export const authService = {
             console.warn('[AuthService] Utilizador bloqueado detetado via API. Efetuando logout...');
             await supabase.auth.signOut();
             sessionCache = null;
-            alert("A sua conta foi bloqueada pelo administrador. O acesso ao sistema foi revogado.");
+            alert('O seu acesso foi bloqueado. Contacte o administrador da sua empresa para obter mais informações.');
             window.location.reload();
             return null;
           }
@@ -365,7 +402,7 @@ export const authService = {
       const perfilQuery = supabase
         .from('perfis')
         .select('*')
-        .eq('id', session?.user?.id)
+        .or(`id.eq.${session?.user?.id},user_id.eq.${session?.user?.id}`)
         .maybeSingle();
 
       const pt1 = createTimeout(30000);
@@ -391,6 +428,15 @@ export const authService = {
       if (error) {
         console.error('[AuthService] Erro ao recuperar perfil:', error);
       }
+
+      // Se o perfil do utilizador foi desativado/bloqueado pelo CRM
+      if (perfil && (perfil.ativo === false || perfil.is_active === false)) {
+        console.warn('[AuthService] Utilizador com conta bloqueada detetado em getCurrentUser. Efetuando logout...');
+        await supabase.auth.signOut();
+        sessionCache = null;
+        return null;
+      }
+
 
       let empresa = null;
       const parsedCompanyId = perfil?.empresa_id;

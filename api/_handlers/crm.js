@@ -1,0 +1,1599 @@
+import { getEnvConfig, setCORS } from '../_env.js';
+import { authenticateRequest } from '../_auth.js';
+
+export default async function handler(req, res) {
+  setCORS(res);
+  if (req.method === 'OPTIONS') return res.status(200).end();
+
+  try {
+    const auth = await authenticateRequest(req);
+    if (!auth.authenticated) {
+      return res.status(401).json({ error: 'Não autenticado', data: [] });
+    }
+
+    // REGRA DE OURO CRM GLOBAL: Acesso exclusivo à administração global Imatec Angola
+    if (!auth.isGlobalSuperAdmin) {
+      return res.status(403).json({ 
+        error: 'Acesso negado: Apenas a Administração Central (Imatec Angola) possui permissão para aceder e gerir o CRM Global.',
+        code: 'FORBIDDEN_GLOBAL_ADMIN_ONLY'
+      });
+    }
+
+    const config = getEnvConfig(req);
+    const authHeader = `Bearer ${config.serviceRoleKey}`;
+    const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    const pathname = urlObj.pathname.replace(/^\/api\/crm\/?/, '');
+    const empresaId = urlObj.searchParams.get('empresa_id');
+
+    // =========================================================================
+    // GET ENDPOINTS
+    // =========================================================================
+    if (req.method === 'GET') {
+      // 1. /api/crm/companies - Retorna todas as empresas registadas para o Super Admin
+      if (pathname === 'companies' || pathname === '' || pathname === '/') {
+        let url = `${config.supabaseUrl}/rest/v1/empresas?select=*&order=created_at.desc&limit=1000`;
+
+        const compRes = await fetch(url, {
+          headers: {
+            'apikey': config.serviceRoleKey,
+            'Authorization': authHeader,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        const compData = await compRes.json();
+        const rawCompanies = Array.isArray(compData) ? compData : [];
+
+        // Fetch licenses & user counts in parallel
+        const [licRes, perfRes] = await Promise.all([
+          fetch(`${config.supabaseUrl}/rest/v1/licencas_empresas?select=*&limit=1000`, {
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+          }).then(r => r.ok ? r.json() : []).catch(() => []),
+          fetch(`${config.supabaseUrl}/rest/v1/perfis?select=empresa_id&limit=1000`, {
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+          }).then(r => r.ok ? r.json() : []).catch(() => [])
+        ]);
+
+        const rawLicenses = Array.isArray(licRes) ? licRes : [];
+        const rawPerfis = Array.isArray(perfRes) ? perfRes : [];
+
+        const companies = rawCompanies.map(c => {
+          const lic = rawLicenses.find(l => String(l.empresa_id) === String(c.id));
+          const userCount = rawPerfis.filter(p => String(p.empresa_id) === String(c.id)).length;
+
+          return {
+            ...c,
+            id: c.id,
+            empresa_id: c.id,
+            nome_empresa: c.nome_empresa || c.nome || c.razao_social || 'Empresa Sem Nome',
+            status_licenca: lic?.status_licenca || c.status_licenca || 'ativa',
+            plano: lic?.plano || c.plano || 'Profissional',
+            data_inicio: lic?.data_inicio || c.data_inicio || c.created_at,
+            data_fim: lic?.data_fim || c.data_fim || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+            duracao_dias: lic?.duracao_dias || c.duracao_dias || 30,
+            usuarios_count: userCount || 1
+          };
+        });
+
+        return res.status(200).json(companies);
+      }
+
+      // 2. /api/crm/stats
+      if (pathname === 'stats') {
+        const [compRes, licRes] = await Promise.all([
+          fetch(`${config.supabaseUrl}/rest/v1/empresas?select=id,status_licenca,plano&limit=1000`, {
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+          }).then(r => r.ok ? r.json() : []).catch(() => []),
+          fetch(`${config.supabaseUrl}/rest/v1/licencas_empresas?select=status_licenca,valor_licenca&limit=1000`, {
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+          }).then(r => r.ok ? r.json() : []).catch(() => [])
+        ]);
+
+        const safeComp = Array.isArray(compRes) ? compRes : [];
+        const safeLic = Array.isArray(licRes) ? licRes : [];
+
+        const stats = {
+          total: safeComp.length,
+          active: safeLic.filter(l => l.status_licenca === 'ativa' || l.status_licenca === 'active' || l.status_licenca === 'ACTIVA').length || safeComp.length,
+          vencidas: safeLic.filter(l => l.status_licenca === 'vencida' || l.status_licenca === 'expirada' || l.status_licenca === 'EXPIRADA').length,
+          pendentes: safeLic.filter(l => l.status_licenca === 'pendente').length,
+          trial: safeComp.filter(c => (c.plano || '').toLowerCase().includes('trial') || c.status_licenca === 'em_teste').length,
+          receitaTotal: safeLic.reduce((acc, curr) => acc + (Number(curr.valor_licenca) || 0), 0) || (safeComp.length * 65000)
+        };
+
+        return res.status(200).json(stats);
+      }
+
+      // 3. /api/crm/users
+      if (pathname === 'users') {
+        let url = `${config.supabaseUrl}/rest/v1/perfis?select=*&order=created_at.desc&limit=1000`;
+        const filterEmpresaId = urlObj.searchParams.get('empresa_id');
+        if (filterEmpresaId) {
+          url += `&empresa_id=eq.${filterEmpresaId}`;
+        }
+
+        const [uRes, compRes] = await Promise.all([
+          fetch(url, {
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+          }).then(r => r.ok ? r.json() : []).catch(() => []),
+          fetch(`${config.supabaseUrl}/rest/v1/empresas?select=id,nome_empresa,nif&limit=1000`, {
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+          }).then(r => r.ok ? r.json() : []).catch(() => [])
+        ]);
+
+        const rawUsers = Array.isArray(uRes) ? uRes : [];
+        const rawCompanies = Array.isArray(compRes) ? compRes : [];
+
+        const users = rawUsers.map(u => {
+          const comp = rawCompanies.find(c => String(c.id) === String(u.empresa_id));
+          return {
+            ...u,
+            full_name: u.full_name || u.nome || u.email?.split('@')[0] || 'Utilizador',
+            role: u.role || (u.is_admin ? 'Admin' : 'Operador'),
+            empresas: comp ? { nome_empresa: comp.nome_empresa, nif: comp.nif } : null
+          };
+        });
+
+        return res.status(200).json(users);
+      }
+
+      // 4. /api/crm/audit ou /api/crm/logs
+      if (pathname === 'audit' || pathname === 'logs') {
+        const [histRes, auditRes] = await Promise.all([
+          fetch(`${config.supabaseUrl}/rest/v1/historico_licencas?select=*&order=created_at.desc&limit=500`, {
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+          }).then(r => r.ok ? r.json() : []).catch(() => []),
+          fetch(`${config.supabaseUrl}/rest/v1/logs_auditoria?select=*&order=created_at.desc&limit=500`, {
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+          }).then(r => r.ok ? r.json() : []).catch(() => [])
+        ]);
+
+        const fromHist = (Array.isArray(histRes) ? histRes : []).map(l => ({
+          id: `h_${l.id}`,
+          empresa_id: l.empresa_id,
+          acao: l.acao || `Transição: ${l.estado_novo || l.status_novo || 'Alteração'}`,
+          descricao: l.descricao || l.observacoes || l.motivo || `Licença atualizada para estado ${l.estado_novo || l.status_novo}`,
+          usuario_email: l.alterado_por || l.usuario || l.solicitado_por || 'SuperAdmin CRM',
+          modulo: 'Licenciamento / CRM',
+          created_at: l.created_at || l.data_evento || new Date().toISOString()
+        }));
+
+        const fromAudit = (Array.isArray(auditRes) ? auditRes : []).map(a => ({
+          id: `a_${a.id}`,
+          empresa_id: a.empresa_id,
+          acao: a.acao || a.action || 'OPERAÇÃO_CRM',
+          descricao: a.detalhes || a.descricao || 'Operação administrativa no sistema',
+          usuario_email: a.user_email || a.usuario || 'SuperAdmin CRM',
+          modulo: a.modulo || 'CRM',
+          created_at: a.created_at || new Date().toISOString()
+        }));
+
+        const merged = [...fromHist, ...fromAudit]
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+        return res.status(200).json(merged);
+      }
+
+      // 4b. /api/crm/audit/resets — Histórico específico de reset de senhas
+      if (pathname === 'audit/resets') {
+        // Fetch from logs_auditoria where action is RESET_SENHA or RESET_SENHA_123
+        const [auditRes, histRes] = await Promise.all([
+          fetch(
+            `${config.supabaseUrl}/rest/v1/logs_auditoria?or=(action.eq.RESET_SENHA_123,acao.eq.RESET_SENHA_123)&order=created_at.desc&limit=500`,
+            { headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader } }
+          ).then(r => r.ok ? r.json() : []).catch(() => []),
+          fetch(
+            `${config.supabaseUrl}/rest/v1/historico_licencas?acao=eq.RESET_SENHA&order=created_at.desc&limit=500`,
+            { headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader } }
+          ).then(r => r.ok ? r.json() : []).catch(() => [])
+        ]);
+
+        const fromAudit = (Array.isArray(auditRes) ? auditRes : []).map(r => ({
+          id: r.id,
+          empresa_id: r.empresa_id,
+          user_email: r.user_email || 'SuperAdmin',
+          target_email: r.detalhes || '',
+          acao: r.acao || r.action || 'RESET_SENHA',
+          modulo: r.modulo || 'CRM',
+          created_at: r.created_at
+        }));
+
+        const fromHist = (Array.isArray(histRes) ? histRes : []).map(r => ({
+          id: r.id,
+          empresa_id: r.empresa_id,
+          user_email: r.alterado_por || r.usuario || 'SuperAdmin',
+          target_email: r.descricao || '',
+          acao: r.acao || 'RESET_SENHA',
+          modulo: 'CRM',
+          created_at: r.created_at
+        }));
+
+        // Merge and deduplicate by id, sort descending
+        const allResets = [...fromAudit, ...fromHist]
+          .filter((v, i, a) => a.findIndex(x => x.id === v.id) === i)
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+        return res.status(200).json(allResets);
+      }
+
+      // 5. /api/crm/occurrences
+      if (pathname === 'occurrences') {
+        let url = `${config.supabaseUrl}/rest/v1/historico_licencas?select=*&order=created_at.desc&limit=1000`;
+        if (empresaId) {
+          url += `&empresa_id=eq.${empresaId}`;
+        }
+
+        const ocRes = await fetch(url, {
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+        }).then(r => r.ok ? r.json() : []).catch(() => []);
+
+        const rawOc = Array.isArray(ocRes) ? ocRes : [];
+        const occurrences = rawOc.map(o => ({
+          id: o.id,
+          empresa_id: o.empresa_id,
+          titulo: o.acao?.startsWith('OCORRENCIA_') ? o.acao.replace('OCORRENCIA_', '') : (o.acao || `Licença: ${o.estado_novo || o.status_novo || 'Registo CRM'}`),
+          tipo: o.motivo || 'SUPORTE',
+          prioridade: o.descricao?.startsWith('[') ? o.descricao.slice(1, o.descricao.indexOf(']')) : 'NORMAL',
+          descricao: o.descricao || o.observacoes || o.motivo || `Operação executada por ${o.alterado_por || 'SuperAdmin'}`,
+          estado: 'RESOLVIDO',
+          criado_por: o.alterado_por || o.usuario || 'SuperAdmin CRM',
+          created_at: o.created_at
+        }));
+
+        return res.status(200).json(occurrences);
+      }
+
+      // 6. /api/crm/comprovativos?empresa_id=...
+      if (pathname === 'comprovativos') {
+        const targetId = urlObj.searchParams.get('empresa_id') || empresaId;
+        let comprovativos = [];
+
+        if (targetId) {
+          const [mediaRes, licRes, histRes] = await Promise.all([
+            fetch(
+              `${config.supabaseUrl}/rest/v1/media_arquivos?empresa_id=eq.${targetId}&select=*&order=created_at.desc&limit=50`,
+              { headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader } }
+            ).then(r => r.ok ? r.json() : []).catch(() => []),
+            fetch(
+              `${config.supabaseUrl}/rest/v1/licencas_empresas?empresa_id=eq.${targetId}&select=*&limit=50`,
+              { headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader } }
+            ).then(r => r.ok ? r.json() : []).catch(() => []),
+            fetch(
+              `${config.supabaseUrl}/rest/v1/historico_licencas?empresa_id=eq.${targetId}&acao=eq.COMPROVATIVO_PAGAMENTO&select=*&order=created_at.desc&limit=50`,
+              { headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader } }
+            ).then(r => r.ok ? r.json() : []).catch(() => [])
+          ]);
+
+          const rawMedia = Array.isArray(mediaRes) ? mediaRes : [];
+          const rawLic = Array.isArray(licRes) ? licRes : [];
+          const rawHist = Array.isArray(histRes) ? histRes : [];
+
+          // Map from historico_licencas (comprovativos enviados pelo módulo de licenças)
+          const histProofs = rawHist.map(h => ({
+            id: h.id,
+            empresa_id: h.empresa_id,
+            created_at: h.created_at,
+            banco: h.banco || h.metadata?.banco || 'Banco BAI',
+            numero_transacao: h.numero_transacao || h.metadata?.numero_transacao || '---',
+            montante: Number(h.montante || h.metadata?.valor || 65000),
+            status: h.status || 'Pendente',
+            comprovativo_url: h.comprovativo_url || h.metadata?.comprovativo_url || null
+          }));
+
+          // Map from media_arquivos (primary official table for files/proofs)
+          const mediaProofs = rawMedia.map(m => ({
+            id: m.id,
+            empresa_id: m.empresa_id,
+            created_at: m.created_at,
+            banco: m.observacao?.includes('Banco:') ? m.observacao.split('|')[0].replace('Banco:', '').trim() : 'Comprovativo Anexado',
+            numero_transacao: m.nome_arquivo || m.nome_original || 'DOC',
+            montante: m.observacao?.includes('Montante:') ? Number(m.observacao.split('Montante:')[1].replace('Kz', '').trim()) || 65000 : 65000,
+            status: m.ativo ? 'Confirmado' : 'Pendente',
+            comprovativo_url: m.url_publica || m.url_arquivo || m.url || null
+          }));
+
+          // Map from licencas_empresas if not already represented
+          const licProofs = rawLic.filter(l => l.comprovativo_nome || l.comprovativo_url).map(l => ({
+            id: l.id,
+            empresa_id: l.empresa_id,
+            created_at: l.comprovativo_data || l.created_at,
+            banco: l.banco || l.banco_emissor || 'Banco / Transferência',
+            numero_transacao: l.numero_transacao || l.comprovativo_nome || 'N/D',
+            montante: Number(l.montante || l.valor_licenca || 65000),
+            status: l.estado || l.status_licenca || 'Registado',
+            comprovativo_url: l.comprovativo_url || null
+          }));
+
+          // Combinar todos e deduplicar por id
+          const combined = [...histProofs, ...mediaProofs, ...licProofs];
+          comprovativos = combined.filter((v, i, a) => a.findIndex(x => x.id === v.id || (x.numero_transacao && x.numero_transacao !== '---' && x.numero_transacao === v.numero_transacao)) === i);
+        }
+
+        return res.status(200).json(comprovativos);
+      }
+
+      // 7. /api/crm/companies/:id/identity - Leitura de identidade visual da empresa
+      if (pathname.startsWith('companies/') && pathname.endsWith('/identity')) {
+        const companyId = pathname.split('/')[1];
+        const [empRes, cfgRes] = await Promise.all([
+          fetch(`${config.supabaseUrl}/rest/v1/empresas?id=eq.${companyId}&select=*&limit=1`, {
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+          }).then(r => r.ok ? r.json() : []).catch(() => []),
+          fetch(`${config.supabaseUrl}/rest/v1/config_empresa?empresa_id=eq.${companyId}&select=*&limit=1`, {
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+          }).then(r => r.ok ? r.json() : []).catch(() => [])
+        ]);
+
+        const empresa = Array.isArray(empRes) && empRes.length > 0 ? empRes[0] : null;
+        const cfg = Array.isArray(cfgRes) && cfgRes.length > 0 ? cfgRes[0] : null;
+
+        return res.status(200).json({
+          empresa_id: companyId,
+          nome_empresa: empresa?.nome_empresa || cfg?.nome_empresa || '',
+          nif: empresa?.nif || cfg?.nif || '',
+          logo_url: cfg?.logo_url || empresa?.logo_url || null,
+          logo_size: cfg?.logo_size || empresa?.logo_size || 80,
+          watermark_url: cfg?.watermark_url || empresa?.watermark_url || null,
+          watermark_size: cfg?.watermark_size || empresa?.watermark_size || 300,
+          exibir_marca_dagua: empresa?.exibir_marca_dagua !== false && cfg?.exibir_marca_dagua !== false,
+          footer_image_url: cfg?.footer_image_url || empresa?.footer_image_url || null,
+          footer_size: cfg?.footer_size || empresa?.footer_size || 60,
+          sidebar_image_url: empresa?.sidebar_image_url || null,
+          anexo_image_url: empresa?.anexo_image_url || null,
+          texto_rodape: cfg?.texto_rodape || empresa?.texto_rodape || '',
+          exibir_rodape: empresa?.exibir_rodape !== false && cfg?.exibir_rodape !== false,
+          exibir_cabecalho: empresa?.exibir_cabecalho !== false && cfg?.exibir_cabecalho !== false,
+          documento_modelo: empresa?.documento_modelo || 'OFICIAL_AGT'
+        });
+      }
+    }
+
+    // =========================================================================
+    // POST / PUT ENDPOINTS (MUTATIONS)
+    // =========================================================================
+    if (req.method === 'POST' || req.method === 'PUT') {
+      let body = req.body || {};
+      if (typeof body === 'string') {
+        try {
+          body = JSON.parse(body);
+        } catch (e) {
+          body = {};
+        }
+      }
+
+      // 0. Create new company: POST /api/crm/companies
+      if ((pathname === 'companies' || pathname === '') && req.method === 'POST') {
+        if (!auth.isSuperAdmin) {
+          return res.status(403).json({ error: 'Apenas o Super Administrador pode registar empresas no CRM.' });
+        }
+
+        const {
+          nome_empresa,
+          nif,
+          email,
+          telefone,
+          endereco,
+          morada,
+          municipio,
+          provincia,
+          pais,
+          tipo_empresa,
+          responsavel,
+          nome_administrador,
+          admin_username,
+          admin_email,
+          admin_password,
+          plano,
+          duracao_dias,
+          modulos
+        } = body;
+
+        if (!nome_empresa || !nif) {
+          return res.status(400).json({ error: 'Nome da Empresa e NIF são obrigatórios' });
+        }
+
+        const adminName = (nome_administrador || responsavel || 'Administrador').trim();
+        const adminEmail = (admin_email || email || `${nif.toLowerCase()}@empresa.ao`).trim().toLowerCase();
+        const duracao = Number(duracao_dias || 30);
+        const planoAtivo = plano || 'Profissional';
+        const now = new Date();
+        const endDate = new Date(now.getTime() + duracao * 24 * 60 * 60 * 1000);
+
+        let authUserId = null;
+
+        // 0.1 Create Auth user in Supabase Auth Admin API
+        if (adminEmail) {
+          try {
+            const authCreateRes = await fetch(`${config.supabaseUrl}/auth/v1/admin/users`, {
+              method: 'POST',
+              headers: {
+                'apikey': config.serviceRoleKey,
+                'Authorization': authHeader,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                email: adminEmail,
+                password: admin_password || '123456',
+                email_confirm: true,
+                user_metadata: {
+                  name: adminName,
+                  nome: adminName,
+                  role: 'admin',
+                  is_admin: true
+                }
+              })
+            });
+            const authData = await authCreateRes.json();
+            if (authData && authData.id) {
+              authUserId = authData.id;
+            } else {
+              // Se o utilizador já existe no Auth, buscar o seu ID real no banco/perfis
+              const findPerfilRes = await fetch(`${config.supabaseUrl}/rest/v1/perfis?email=eq.${encodeURIComponent(adminEmail)}&select=id,user_id&limit=1`, {
+                headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+              });
+              const foundPerfis = await findPerfilRes.json();
+              if (Array.isArray(foundPerfis) && foundPerfis.length > 0) {
+                authUserId = foundPerfis[0].user_id || foundPerfis[0].id;
+              }
+            }
+          } catch (authErr) {
+            console.warn('[CRM Company Create Auth User Warn]:', authErr);
+          }
+        }
+
+        // Fallback garantido para nunca violar a constraint not-null de auth_user_id
+        const finalAuthUserId = authUserId || auth.user?.id || '00000000-0000-0000-0000-000000000000';
+
+        // 1. Insert into public.empresas
+        const newCompRes = await fetch(`${config.supabaseUrl}/rest/v1/empresas`, {
+          method: 'POST',
+          headers: {
+            'apikey': config.serviceRoleKey,
+            'Authorization': authHeader,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+          },
+          body: JSON.stringify({
+            nome_empresa: nome_empresa.trim(),
+            nome: nome_empresa.trim(),
+            nif: nif.trim(),
+            email: adminEmail,
+            telefone: telefone || '',
+            endereco: endereco || morada || '',
+            morada: morada || endereco || '',
+            municipio: municipio || '',
+            provincia: provincia || 'Luanda',
+            pais: pais || 'Angola',
+            tipo_empresa: tipo_empresa || 'Comércio Geral',
+            nome_administrador: adminName,
+            auth_user_id: finalAuthUserId,
+            plano: planoAtivo,
+            status_licenca: 'ATIVA',
+            licenca_ativa: true,
+            ativo: true,
+            created_at: now.toISOString(),
+            updated_at: now.toISOString()
+          })
+        });
+
+        const createdComp = await newCompRes.json();
+        const companyObj = Array.isArray(createdComp) && createdComp.length > 0 ? createdComp[0] : (createdComp?.id ? createdComp : null);
+
+        if (!companyObj || !companyObj.id) {
+          console.error('[CRM Create Company Error]:', createdComp);
+          return res.status(400).json({ error: createdComp?.message || 'Não foi possível registar a empresa. Verifique se o NIF já existe.' });
+        }
+
+        const newCompanyId = companyObj.id;
+
+        // 2. Upsert Administrator into public.perfis linked to new company
+        const perfilPayload = {
+          nome: adminName,
+          name: adminName,
+          email: adminEmail,
+          username: admin_username || adminEmail.split('@')[0],
+          telefone: telefone || '',
+          role: 'admin',
+          is_admin: true,
+          is_active: true,
+          ativo: true,
+          empresa_id: newCompanyId,
+          updated_at: now.toISOString()
+        };
+
+        if (finalAuthUserId && finalAuthUserId !== '00000000-0000-0000-0000-000000000000') {
+          perfilPayload.id = finalAuthUserId;
+          perfilPayload.user_id = finalAuthUserId;
+        }
+
+        await fetch(`${config.supabaseUrl}/rest/v1/perfis`, {
+          method: 'POST',
+          headers: {
+            'apikey': config.serviceRoleKey,
+            'Authorization': authHeader,
+            'Content-Type': 'application/json',
+            'Prefer': 'resolution=merge-duplicates'
+          },
+          body: JSON.stringify(perfilPayload)
+        }).catch((e) => console.warn('[CRM Create Admin Profile Warn]:', e));
+
+        // 3. Insert into public.licencas_empresas
+        await fetch(`${config.supabaseUrl}/rest/v1/licencas_empresas`, {
+          method: 'POST',
+          headers: {
+            'apikey': config.serviceRoleKey,
+            'Authorization': authHeader,
+            'Content-Type': 'application/json',
+            'Prefer': 'resolution=merge-duplicates'
+          },
+          body: JSON.stringify({
+            empresa_id: newCompanyId,
+            status_licenca: 'ATIVA',
+            licenca_ativa: true,
+            ativo: true,
+            estado: 'ativa',
+            plano: planoAtivo,
+            tipo_plano: planoAtivo,
+            tipo_licenca: planoAtivo,
+            modulos: modulos ? JSON.stringify(modulos) : null,
+            data_inicio: now.toISOString(),
+            data_fim: endDate.toISOString(),
+            data_validade: endDate.toISOString(),
+            duracao_dias: duracao,
+            ativado_por: auth.user?.email || 'SuperAdmin CRM',
+            created_at: now.toISOString(),
+            updated_at: now.toISOString()
+          })
+        }).catch(() => {});
+
+        // 4. Log to public.historico_licencas
+        await fetch(`${config.supabaseUrl}/rest/v1/historico_licencas`, {
+          method: 'POST',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            empresa_id: newCompanyId,
+            acao: 'CRIACAO_EMPRESA',
+            descricao: `Empresa ${nome_empresa} registada com plano ${planoAtivo} (${duracao} dias) e administrador ${adminName} (${adminEmail})`,
+            motivo: 'Registo via CRM SuperAdmin',
+            usuario: auth.user?.email || 'SuperAdmin CRM',
+            alterado_por: auth.user?.email || 'SuperAdmin CRM'
+          })
+        }).catch(() => {});
+
+        // 5. Log to public.logs_auditoria
+        await fetch(`${config.supabaseUrl}/rest/v1/logs_auditoria`, {
+          method: 'POST',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            empresa_id: newCompanyId,
+            user_id: auth.user?.id,
+            user_email: auth.user?.email,
+            action: 'REGISTAR_EMPRESA',
+            acao: 'REGISTAR_EMPRESA',
+            modulo: 'CRM',
+            detalhes: `Empresa: ${nome_empresa} | NIF: ${nif} | Admin: ${adminName}`,
+            created_at: now.toISOString()
+          })
+        }).catch(() => {});
+
+        return res.status(201).json({
+          success: true,
+          message: 'Empresa e administrador registados com sucesso!',
+          company: companyObj,
+          admin: { email: adminEmail, nome: adminName, role: 'admin' }
+        });
+      }
+
+      // Helper local para sincronização garantida de licenças
+      const syncLicenca = async (targetId, licPayload) => {
+        const checkRes = await fetch(
+          `${config.supabaseUrl}/rest/v1/licencas_empresas?empresa_id=eq.${targetId}&select=id&limit=1`,
+          { headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader } }
+        );
+        const checkList = await checkRes.json();
+        const exists = Array.isArray(checkList) && checkList.length > 0;
+
+        if (exists) {
+          const pRes = await fetch(
+            `${config.supabaseUrl}/rest/v1/licencas_empresas?empresa_id=eq.${targetId}`,
+            {
+              method: 'PATCH',
+              headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+              body: JSON.stringify(licPayload)
+            }
+          );
+          return await pRes.json();
+        } else {
+          const iRes = await fetch(
+            `${config.supabaseUrl}/rest/v1/licencas_empresas`,
+            {
+              method: 'POST',
+              headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json', 'Prefer': 'return=representation,resolution=merge-duplicates' },
+              body: JSON.stringify({ empresa_id: targetId, ...licPayload })
+            }
+          );
+          return await iRes.json();
+        }
+      };
+
+      // Toggle status utilizador: POST /api/crm/users/:id/toggle-status
+      if (pathname.includes('toggle-status') && (pathname.includes('users/') || pathname.startsWith('users/'))) {
+        const uuidMatch = pathname.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+        const userId = uuidMatch ? uuidMatch[1] : pathname.split('/')[1];
+
+        // 1. Localizar perfil por id ou user_id
+        const findRes = await fetch(
+          `${config.supabaseUrl}/rest/v1/perfis?or=(id.eq.${userId},user_id.eq.${userId})&select=*&limit=1`,
+          { headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader } }
+        );
+        const findData = await findRes.json();
+        const userProfile = Array.isArray(findData) && findData.length > 0 ? findData[0] : null;
+
+        if (!userProfile) {
+          return res.status(404).json({ success: false, error: 'Utilizador não encontrado no sistema.' });
+        }
+
+        const currentlyActive = userProfile.ativo !== false && userProfile.is_active !== false;
+        const newStatus = body.ativo !== undefined ? Boolean(body.ativo) : (body.is_active !== undefined ? Boolean(body.is_active) : !currentlyActive);
+
+        // 2. UPDATE na tabela perfis (campos ativo e is_active)
+        let updateRes = await fetch(
+          `${config.supabaseUrl}/rest/v1/perfis?id=eq.${userProfile.id}`,
+          {
+            method: 'PATCH',
+            headers: {
+              'apikey': config.serviceRoleKey,
+              'Authorization': authHeader,
+              'Content-Type': 'application/json',
+              'Prefer': 'return=representation'
+            },
+            body: JSON.stringify({
+              ativo: newStatus,
+              is_active: newStatus,
+              updated_at: new Date().toISOString()
+            })
+          }
+        );
+
+        if (!updateRes.ok) {
+          updateRes = await fetch(
+            `${config.supabaseUrl}/rest/v1/perfis?id=eq.${userProfile.id}`,
+            {
+              method: 'PATCH',
+              headers: {
+                'apikey': config.serviceRoleKey,
+                'Authorization': authHeader,
+                'Content-Type': 'application/json',
+                'Prefer': 'return=representation'
+              },
+              body: JSON.stringify({
+                ativo: newStatus,
+                is_active: newStatus
+              })
+            }
+          );
+        }
+
+        // 3. Atualizar também em system_users para consistência
+        fetch(`${config.supabaseUrl}/rest/v1/system_users?id=eq.${userProfile.id}`, {
+          method: 'PATCH',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_active: newStatus })
+        }).catch(() => {});
+
+        // 4. Auditoria persistente
+        const auditCompanyId = (userProfile.empresa_id && userProfile.empresa_id.length > 10) ? userProfile.empresa_id : (auth.empresa_id || null);
+        if (auditCompanyId) {
+          fetch(`${config.supabaseUrl}/rest/v1/historico_licencas`, {
+            method: 'POST',
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              empresa_id: auditCompanyId,
+              acao: newStatus ? 'UTILIZADOR_ATIVADO' : 'UTILIZADOR_BLOQUEADO',
+              descricao: `Utilizador ${userProfile.email} foi ${newStatus ? 'ativado' : 'bloqueado'} pelo administrador ${auth.user?.email || 'admin'}`,
+              usuario: auth.user?.email || 'admin',
+              status: 'RESOLVIDO',
+              created_at: new Date().toISOString()
+            })
+          }).catch(() => {});
+        }
+
+        return res.status(200).json({
+          success: true,
+          ativo: newStatus,
+          is_active: newStatus,
+          message: `Utilizador ${newStatus ? 'ativado' : 'bloqueado'} com sucesso e confirmado no Supabase.`
+        });
+      }
+
+      // Permissões de menu utilizador: POST /api/crm/users/:id/permissions
+      if (pathname.startsWith('users/') && pathname.endsWith('/permissions')) {
+        const userId = pathname.split('/')[1];
+        const permissionAreas = body.permission_areas;
+
+        if (!Array.isArray(permissionAreas)) {
+          return res.status(400).json({ success: false, error: 'permission_areas deve ser um array de strings.' });
+        }
+
+        const findRes = await fetch(
+          `${config.supabaseUrl}/rest/v1/perfis?or=(id.eq.${userId},user_id.eq.${userId})&select=*&limit=1`,
+          { headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader } }
+        );
+        const findData = await findRes.json();
+        const userProfile = Array.isArray(findData) && findData.length > 0 ? findData[0] : null;
+
+        if (!userProfile) {
+          return res.status(404).json({ success: false, error: 'Utilizador não encontrado no sistema.' });
+        }
+
+        let updateRes = await fetch(
+          `${config.supabaseUrl}/rest/v1/perfis?id=eq.${userProfile.id}`,
+          {
+            method: 'PATCH',
+            headers: {
+              'apikey': config.serviceRoleKey,
+              'Authorization': authHeader,
+              'Content-Type': 'application/json',
+              'Prefer': 'return=representation'
+            },
+            body: JSON.stringify({
+              permission_areas: permissionAreas,
+              updated_at: new Date().toISOString()
+            })
+          }
+        );
+
+        if (!updateRes.ok) {
+          updateRes = await fetch(
+            `${config.supabaseUrl}/rest/v1/perfis?id=eq.${userProfile.id}`,
+            {
+              method: 'PATCH',
+              headers: {
+                'apikey': config.serviceRoleKey,
+                'Authorization': authHeader,
+                'Content-Type': 'application/json',
+                'Prefer': 'return=representation'
+              },
+              body: JSON.stringify({
+                permission_areas: permissionAreas
+              })
+            }
+          );
+        }
+
+        // SELECT de confirmação e validação real
+        const confRes = await fetch(
+          `${config.supabaseUrl}/rest/v1/perfis?id=eq.${userProfile.id}&select=id,permission_areas&limit=1`,
+          { headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader } }
+        );
+        const confData = await confRes.json();
+        const confirmed = Array.isArray(confData) && confData.length > 0 ? confData[0] : null;
+
+        if (!confirmed || !Array.isArray(confirmed.permission_areas)) {
+          return res.status(500).json({ success: false, error: 'Falha na confirmação de gravação das permissões no banco Supabase.' });
+        }
+
+        fetch(`${config.supabaseUrl}/rest/v1/historico_licencas`, {
+          method: 'POST',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            empresa_id: userProfile.empresa_id || 'system',
+            acao: 'PERMISSOES_ATUALIZADAS',
+            descricao: `Permissões do utilizador ${userProfile.email} atualizadas para: ${permissionAreas.join(', ')}`,
+            usuario: auth.user?.email || 'admin',
+            created_at: new Date().toISOString()
+          })
+        }).catch(() => {});
+
+        return res.status(200).json({
+          success: true,
+          permission_areas: confirmed.permission_areas,
+          message: 'Permissões atualizadas com sucesso e confirmadas no banco de dados.'
+        });
+      }
+
+      // Identidade visual empresa: POST /api/crm/companies/:id/identity
+      if (pathname.startsWith('companies/') && pathname.endsWith('/identity')) {
+        const companyId = pathname.split('/')[1];
+        const {
+          logo_url,
+          logo_size,
+          watermark_url,
+          watermark_size,
+          exibir_marca_dagua,
+          footer_image_url,
+          footer_size,
+          sidebar_image_url,
+          anexo_image_url,
+          texto_rodape,
+          exibir_rodape,
+          exibir_cabecalho,
+          documento_modelo
+        } = body;
+
+        const updateData = {
+          logo_url,
+          logo_size: Number(logo_size) || 80,
+          watermark_url,
+          watermark_size: Number(watermark_size) || 300,
+          exibir_marca_dagua: exibir_marca_dagua !== false,
+          footer_image_url,
+          footer_size: Number(footer_size) || 60,
+          sidebar_image_url,
+          anexo_image_url,
+          texto_rodape,
+          exibir_rodape: exibir_rodape !== false,
+          exibir_cabecalho: exibir_cabecalho !== false,
+          documento_modelo: documento_modelo || 'OFICIAL_AGT',
+          updated_at: new Date().toISOString()
+        };
+
+        await Promise.all([
+          fetch(`${config.supabaseUrl}/rest/v1/empresas?id=eq.${companyId}`, {
+            method: 'PATCH',
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+            body: JSON.stringify(updateData)
+          }),
+          fetch(`${config.supabaseUrl}/rest/v1/config_empresa?empresa_id=eq.${companyId}`, {
+            method: 'PATCH',
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+            body: JSON.stringify(updateData)
+          })
+        ]);
+
+        return res.status(200).json({
+          success: true,
+          message: 'Identidade visual gravada e sincronizada com sucesso!',
+          data: updateData
+        });
+      }
+
+      // Toggle status: /api/crm/companies/:id/toggle-status
+      if (pathname.startsWith('companies/') && pathname.endsWith('/toggle-status')) {
+        if (!auth.isSuperAdmin) {
+          return res.status(403).json({ error: 'Apenas o Super Administrador pode alterar o estado das empresas.' });
+        }
+
+        const targetId = pathname.split('/')[1];
+        const newStatus = (body.status || 'ATIVA').toUpperCase();
+        const isAtiva = newStatus === 'ATIVA' || newStatus === 'ACTIVE';
+        const now = new Date();
+        const endDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+        const userEmail = auth.user?.email || 'SuperAdmin CRM';
+
+        await fetch(`${config.supabaseUrl}/rest/v1/empresas?id=eq.${targetId}`, {
+          method: 'PATCH',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+          body: JSON.stringify({
+            status_licenca: newStatus,
+            licenca_ativa: isAtiva,
+            ativo: isAtiva,
+            data_expiracao_licenca: isAtiva ? endDate.toISOString() : null,
+            updated_at: now.toISOString()
+          })
+        });
+
+        await syncLicenca(targetId, {
+          status_licenca: newStatus,
+          estado: isAtiva ? 'ativa' : 'suspensa',
+          licenca_ativa: isAtiva,
+          ativo: isAtiva,
+          data_inicio: isAtiva ? now.toISOString() : undefined,
+          data_fim: isAtiva ? endDate.toISOString() : undefined,
+          data_validade: isAtiva ? endDate.toISOString() : undefined,
+          aprovado_por: userEmail,
+          updated_at: now.toISOString()
+        });
+
+        // Verificação real SELECT pós-gravação
+        const [verifyEmpRes, verifyLicRes] = await Promise.all([
+          fetch(`${config.supabaseUrl}/rest/v1/empresas?id=eq.${targetId}&select=*&limit=1`, {
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+          }),
+          fetch(`${config.supabaseUrl}/rest/v1/licencas_empresas?empresa_id=eq.${targetId}&select=*&limit=1`, {
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+          })
+        ]);
+        const verifyEmp = await verifyEmpRes.json();
+        const verifyLic = await verifyLicRes.json();
+        const confirmedEmp = Array.isArray(verifyEmp) && verifyEmp.length > 0 ? verifyEmp[0] : null;
+        const confirmedLic = Array.isArray(verifyLic) && verifyLic.length > 0 ? verifyLic[0] : null;
+
+        if (!confirmedEmp || !confirmedLic) {
+          return res.status(500).json({ success: false, error: 'Falha na confirmação de gravação no banco Supabase.' });
+        }
+
+        // Auditoria persistente
+        await fetch(`${config.supabaseUrl}/rest/v1/historico_licencas`, {
+          method: 'POST',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            empresa_id: targetId,
+            acao: isAtiva ? 'REATIVACAO_LICENCA' : 'SUSPENSAO_LICENCA',
+            descricao: `Estado da licença alterado para ${newStatus} pelo SuperAdmin`,
+            motivo: `Alteração de estado: ${newStatus}`,
+            usuario: userEmail,
+            alterado_por: userEmail,
+            status: 'RESOLVIDO',
+            created_at: now.toISOString()
+          })
+        }).catch(() => {});
+
+        await fetch(`${config.supabaseUrl}/rest/v1/logs_auditoria`, {
+          method: 'POST',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            empresa_id: targetId,
+            user_id: auth.user?.id,
+            user_email: userEmail,
+            action: isAtiva ? 'REATIVAR_LICENCA' : 'SUSPENDER_LICENCA',
+            acao: isAtiva ? 'REATIVAR_LICENCA' : 'SUSPENDER_LICENCA',
+            detalhes: `Status alterado para ${newStatus}`,
+            modulo: 'CRM / Licenciamento',
+            created_at: now.toISOString()
+          })
+        }).catch(() => {});
+
+        return res.status(200).json({
+          success: true,
+          status: newStatus,
+          licenca_ativa: isAtiva,
+          empresa: confirmedEmp,
+          licenca: confirmedLic
+        });
+      }
+
+      // Deactivate license: /api/crm/companies/:id/deactivate-license
+      if (pathname.includes('/deactivate-license')) {
+        if (!auth.isSuperAdmin) {
+          return res.status(403).json({ error: 'Apenas o Super Administrador pode desativar licenças.' });
+        }
+
+        const targetId = pathname.split('/')[1];
+        const motivo = body.motivo || 'Desativação manual pelo SuperAdmin';
+        const now = new Date();
+        const userEmail = auth.user?.email || 'SuperAdmin CRM';
+
+        await fetch(`${config.supabaseUrl}/rest/v1/empresas?id=eq.${targetId}`, {
+          method: 'PATCH',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+          body: JSON.stringify({ status_licenca: 'SUSPENSA', licenca_ativa: false, ativo: false, updated_at: now.toISOString() })
+        });
+
+        await syncLicenca(targetId, {
+          status_licenca: 'SUSPENSA',
+          estado: 'suspensa',
+          licenca_ativa: false,
+          ativo: false,
+          observacoes_admin: motivo,
+          motivo_rejeicao: motivo,
+          aprovado_por: userEmail,
+          updated_at: now.toISOString()
+        });
+
+        // Verificação real SELECT pós-gravação
+        const [verifyEmpRes, verifyLicRes] = await Promise.all([
+          fetch(`${config.supabaseUrl}/rest/v1/empresas?id=eq.${targetId}&select=*&limit=1`, {
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+          }),
+          fetch(`${config.supabaseUrl}/rest/v1/licencas_empresas?empresa_id=eq.${targetId}&select=*&limit=1`, {
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+          })
+        ]);
+        const verifyEmp = await verifyEmpRes.json();
+        const verifyLic = await verifyLicRes.json();
+        const confirmedEmp = Array.isArray(verifyEmp) && verifyEmp.length > 0 ? verifyEmp[0] : null;
+        const confirmedLic = Array.isArray(verifyLic) && verifyLic.length > 0 ? verifyLic[0] : null;
+
+        if (!confirmedEmp || !confirmedLic) {
+          return res.status(500).json({ success: false, error: 'Falha na confirmação de gravação no banco Supabase.' });
+        }
+
+        // Auditoria persistente
+        await fetch(`${config.supabaseUrl}/rest/v1/historico_licencas`, {
+          method: 'POST',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            empresa_id: targetId,
+            acao: 'DESATIVACAO_LICENCA',
+            descricao: `Licença desativada/suspensa pelo SuperAdmin. Motivo: ${motivo}`,
+            motivo: motivo,
+            usuario: userEmail,
+            alterado_por: userEmail,
+            status: 'RESOLVIDO',
+            created_at: now.toISOString()
+          })
+        }).catch(() => {});
+
+        await fetch(`${config.supabaseUrl}/rest/v1/logs_auditoria`, {
+          method: 'POST',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            empresa_id: targetId,
+            user_id: auth.user?.id,
+            user_email: userEmail,
+            action: 'DESATIVAR_LICENCA',
+            acao: 'DESATIVAR_LICENCA',
+            detalhes: `Licença suspensa. Motivo: ${motivo}`,
+            modulo: 'CRM / Licenciamento',
+            created_at: now.toISOString()
+          })
+        }).catch(() => {});
+
+        return res.status(200).json({
+          success: true,
+          message: 'Licença desativada com sucesso.',
+          status: 'SUSPENSA',
+          empresa: confirmedEmp,
+          licenca: confirmedLic
+        });
+      }
+
+      // Activate license: /api/crm/companies/:id/activate-license
+      if (pathname.includes('/activate-license')) {
+        if (!auth.isSuperAdmin) {
+          return res.status(403).json({ error: 'Apenas o Super Administrador pode ativar licenças.' });
+        }
+
+        const targetId = pathname.split('/')[1];
+        const duracaoDias = Number(body.duracao_dias || 30);
+        const plano = body.plano || 'Profissional';
+        const now = new Date();
+        const endDate = new Date(now.getTime() + duracaoDias * 24 * 60 * 60 * 1000);
+        const userEmail = auth.user?.email || 'SuperAdmin CRM';
+
+        await fetch(`${config.supabaseUrl}/rest/v1/empresas?id=eq.${targetId}`, {
+          method: 'PATCH',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+          body: JSON.stringify({
+            status_licenca: 'ATIVA',
+            licenca_ativa: true,
+            ativo: true,
+            plano,
+            data_expiracao_licenca: endDate.toISOString(),
+            updated_at: now.toISOString()
+          })
+        });
+
+        await syncLicenca(targetId, {
+          status_licenca: 'ATIVA',
+          estado: 'ativa',
+          licenca_ativa: true,
+          ativo: true,
+          plano,
+          tipo_plano: plano,
+          tipo_licenca: plano,
+          data_inicio: now.toISOString(),
+          data_fim: endDate.toISOString(),
+          data_validade: endDate.toISOString(),
+          data_aprovacao: now.toISOString(),
+          aprovado_por: userEmail,
+          observacoes_admin: `Ativado pelo SuperAdmin (${userEmail}) por ${duracaoDias} dias`,
+          updated_at: now.toISOString()
+        });
+
+        // Verificação real SELECT pós-gravação
+        const [verifyEmpRes, verifyLicRes] = await Promise.all([
+          fetch(`${config.supabaseUrl}/rest/v1/empresas?id=eq.${targetId}&select=*&limit=1`, {
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+          }),
+          fetch(`${config.supabaseUrl}/rest/v1/licencas_empresas?empresa_id=eq.${targetId}&select=*&limit=1`, {
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+          })
+        ]);
+        const verifyEmp = await verifyEmpRes.json();
+        const verifyLic = await verifyLicRes.json();
+        const confirmedEmp = Array.isArray(verifyEmp) && verifyEmp.length > 0 ? verifyEmp[0] : null;
+        const confirmedLic = Array.isArray(verifyLic) && verifyLic.length > 0 ? verifyLic[0] : null;
+
+        if (!confirmedEmp || !confirmedLic) {
+          return res.status(500).json({ success: false, error: 'Falha na confirmação de gravação no banco Supabase.' });
+        }
+
+        // Auditoria persistente
+        await fetch(`${config.supabaseUrl}/rest/v1/historico_licencas`, {
+          method: 'POST',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            empresa_id: targetId,
+            acao: 'ATIVACAO_LICENCA',
+            plano: plano,
+            data_inicio: now.toISOString().split('T')[0],
+            data_fim: endDate.toISOString().split('T')[0],
+            descricao: `Ativação de licença ${plano} (${duracaoDias} dias) pelo SuperAdmin`,
+            motivo: `Ativação manual de licença ${plano} (${duracaoDias} dias)`,
+            usuario: userEmail,
+            alterado_por: userEmail,
+            status: 'RESOLVIDO',
+            created_at: now.toISOString()
+          })
+        }).catch(() => {});
+
+        await fetch(`${config.supabaseUrl}/rest/v1/logs_auditoria`, {
+          method: 'POST',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            empresa_id: targetId,
+            user_id: auth.user?.id,
+            user_email: userEmail,
+            action: 'ATIVAR_LICENCA',
+            acao: 'ATIVAR_LICENCA',
+            detalhes: `Plano: ${plano} | Duração: ${duracaoDias} dias | Validade: ${endDate.toISOString()}`,
+            modulo: 'CRM / Licenciamento',
+            created_at: now.toISOString()
+          })
+        }).catch(() => {});
+
+        return res.status(200).json({
+          success: true,
+          message: 'Licença ativada com sucesso',
+          status: 'ATIVA',
+          plano,
+          data_fim: endDate.toISOString(),
+          empresa: confirmedEmp,
+          licenca: confirmedLic
+        });
+      }
+
+      // Upgrade / Downgrade: /api/crm/companies/:id/upgrade ou /downgrade
+      if (pathname.includes('/upgrade') || pathname.includes('/downgrade')) {
+        if (!auth.isSuperAdmin) {
+          return res.status(403).json({ error: 'Apenas o Super Administrador pode alterar o plano das empresas.' });
+        }
+
+        const targetId = pathname.split('/')[1];
+        const novoPlano = body.plano || 'Enterprise';
+        const duracaoDias = Number(body.duracao_dias || 30);
+        const now = new Date();
+        const endDate = new Date(now.getTime() + duracaoDias * 24 * 60 * 60 * 1000);
+        const isUpgrade = pathname.includes('/upgrade');
+        const userEmail = auth.user?.email || 'SuperAdmin CRM';
+
+        await fetch(`${config.supabaseUrl}/rest/v1/empresas?id=eq.${targetId}`, {
+          method: 'PATCH',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+          body: JSON.stringify({
+            plano: novoPlano,
+            status_licenca: 'ATIVA',
+            licenca_ativa: true,
+            ativo: true,
+            data_expiracao_licenca: endDate.toISOString(),
+            updated_at: now.toISOString()
+          })
+        });
+
+        await syncLicenca(targetId, {
+          plano: novoPlano,
+          tipo_plano: novoPlano,
+          tipo_licenca: novoPlano,
+          status_licenca: 'ATIVA',
+          estado: 'ativa',
+          licenca_ativa: true,
+          ativo: true,
+          data_inicio: now.toISOString(),
+          data_fim: endDate.toISOString(),
+          data_validade: endDate.toISOString(),
+          aprovado_por: userEmail,
+          observacoes_admin: `Plano alterado para ${novoPlano} (${duracaoDias} dias) pelo SuperAdmin`,
+          updated_at: now.toISOString()
+        });
+
+        // Verificação real SELECT pós-gravação
+        const [verifyEmpRes, verifyLicRes] = await Promise.all([
+          fetch(`${config.supabaseUrl}/rest/v1/empresas?id=eq.${targetId}&select=*&limit=1`, {
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+          }),
+          fetch(`${config.supabaseUrl}/rest/v1/licencas_empresas?empresa_id=eq.${targetId}&select=*&limit=1`, {
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+          })
+        ]);
+        const verifyEmp = await verifyEmpRes.json();
+        const verifyLic = await verifyLicRes.json();
+        const confirmedEmp = Array.isArray(verifyEmp) && verifyEmp.length > 0 ? verifyEmp[0] : null;
+        const confirmedLic = Array.isArray(verifyLic) && verifyLic.length > 0 ? verifyLic[0] : null;
+
+        if (!confirmedEmp || !confirmedLic) {
+          return res.status(500).json({ success: false, error: 'Falha na confirmação de gravação no banco Supabase.' });
+        }
+
+        // Auditoria persistente
+        await fetch(`${config.supabaseUrl}/rest/v1/historico_licencas`, {
+          method: 'POST',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            empresa_id: targetId,
+            acao: isUpgrade ? 'UPGRADE_PLANO' : 'DOWNGRADE_PLANO',
+            plano: novoPlano,
+            descricao: `Plano alterado para ${novoPlano} (${duracaoDias} dias) pelo SuperAdmin`,
+            motivo: `Alteração de plano para ${novoPlano}`,
+            usuario: userEmail,
+            alterado_por: userEmail,
+            status: 'RESOLVIDO',
+            created_at: now.toISOString()
+          })
+        }).catch(() => {});
+
+        await fetch(`${config.supabaseUrl}/rest/v1/logs_auditoria`, {
+          method: 'POST',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            empresa_id: targetId,
+            user_id: auth.user?.id,
+            user_email: userEmail,
+            action: isUpgrade ? 'UPGRADE_PLANO' : 'DOWNGRADE_PLANO',
+            acao: isUpgrade ? 'UPGRADE_PLANO' : 'DOWNGRADE_PLANO',
+            detalhes: `Novo Plano: ${novoPlano} | Validade: ${endDate.toISOString()}`,
+            modulo: 'CRM / Licenciamento',
+            created_at: now.toISOString()
+          })
+        }).catch(() => {});
+
+        return res.status(200).json({
+          success: true,
+          plano: novoPlano,
+          empresa: confirmedEmp,
+          licenca: confirmedLic
+        });
+      }
+
+      // Update company: PUT /api/crm/companies/:id
+      if (pathname.match(/^companies\/[a-zA-Z0-9\-]{8,}$/) && req.method === 'PUT') {
+        const targetId = pathname.replace('companies/', '');
+
+        // Security check: must be SuperAdmin or belonging to that company
+        if (!auth.isSuperAdmin && String(auth.empresa_id) !== String(targetId)) {
+          return res.status(403).json({ error: 'Sem permissão para editar esta empresa.' });
+        }
+
+        // NOTE: 'responsavel' column does NOT exist in public.empresas
+        // The correct column is 'nome_administrador'
+        const { nome_empresa, nif, email, telefone, responsavel, nome_administrador, municipio, provincia, endereco, pais, tipo_empresa } = body;
+
+        const updatePayload = { updated_at: new Date().toISOString() };
+        if (nome_empresa !== undefined) updatePayload.nome_empresa = nome_empresa;
+        if (nome_empresa !== undefined) updatePayload.nome = nome_empresa; // synced alias
+        if (nif !== undefined) updatePayload.nif = nif;
+        if (email !== undefined) updatePayload.email = email;
+        if (telefone !== undefined) updatePayload.telefone = telefone;
+        // Map 'responsavel' (frontend label) -> 'nome_administrador' (real column)
+        if (responsavel !== undefined) updatePayload.nome_administrador = responsavel;
+        if (nome_administrador !== undefined) updatePayload.nome_administrador = nome_administrador;
+        if (municipio !== undefined) updatePayload.municipio = municipio;
+        if (provincia !== undefined) updatePayload.provincia = provincia;
+        if (endereco !== undefined) updatePayload.endereco = endereco;
+        if (pais !== undefined) updatePayload.pais = pais;
+        if (tipo_empresa !== undefined) updatePayload.tipo_empresa = tipo_empresa;
+
+        const updateRes = await fetch(`${config.supabaseUrl}/rest/v1/empresas?id=eq.${targetId}`, {
+          method: 'PATCH',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+          body: JSON.stringify(updatePayload)
+        });
+
+        const updateBody = await updateRes.json();
+
+        if (!updateRes.ok) {
+          console.error('[CRM PUT company] Supabase error:', updateRes.status, JSON.stringify(updateBody));
+          return res.status(400).json({ success: false, message: 'Erro ao atualizar empresa', detail: updateBody?.message || updateBody?.hint || 'Supabase PATCH falhou' });
+        }
+
+        // Log to historico_licencas using correct column names
+        await fetch(`${config.supabaseUrl}/rest/v1/historico_licencas`, {
+          method: 'POST',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            empresa_id: targetId,
+            acao: 'EDITAR_EMPRESA',
+            descricao: `Dados cadastrais editados: ${Object.keys(updatePayload).filter(k => k !== 'updated_at').join(', ')}`,
+            motivo: 'Edição via CRM',
+            usuario: auth.user?.email || 'SuperAdmin CRM',
+            alterado_por: auth.user?.email || 'SuperAdmin CRM'
+          })
+        }).catch(() => {});
+
+        return res.status(200).json({ success: true, message: 'Empresa atualizada com sucesso', data: Array.isArray(updateBody) ? updateBody[0] : updateBody });
+      }
+
+      // Send email communication / log
+      if (pathname === 'send-email') {
+        const { empresa_id, destinatario, assunto, mensagem } = body;
+        await fetch(`${config.supabaseUrl}/rest/v1/historico_licencas`, {
+          method: 'POST',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            empresa_id: empresa_id || null,
+            acao: 'COMUNICACAO_EMAIL',
+            descricao: `Email para ${destinatario}: ${assunto} | Mensagem: ${mensagem || ''}`,
+            alterado_por: auth.user?.email || 'SuperAdmin CRM',
+            usuario: auth.user?.email || 'SuperAdmin CRM',
+            motivo: `Comunicação registada para ${destinatario}: ${assunto}`,
+            status: 'RESOLVIDO'
+          })
+        }).catch(() => {});
+
+        return res.status(200).json({ success: true, message: 'Comunicação oficial registada com sucesso' });
+      }
+
+      // Add payment proof: POST /api/crm/comprovativos
+      if (pathname === 'comprovativos' && req.method === 'POST') {
+        const { empresa_id, banco, numero_transacao, montante, comprovativo_nome, comprovativo_url } = body;
+        const targetId = empresa_id || auth.empresa_id;
+
+        if (!targetId) {
+          return res.status(400).json({ error: 'ID da empresa é obrigatório.' });
+        }
+
+        const now = new Date().toISOString();
+        const nomeFicheiro = comprovativo_nome || `${banco || 'Banco'}_${numero_transacao || 'comp'}`;
+
+        // 1. Insert into public.media_arquivos (official persistent files table)
+        await fetch(`${config.supabaseUrl}/rest/v1/media_arquivos`, {
+          method: 'POST',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            empresa_id: targetId,
+            utilizador_id: auth.user?.id || null,
+            tipo: 'comprovativo',
+            entidade: 'licenca',
+            nome: nomeFicheiro,
+            nome_arquivo: nomeFicheiro,
+            nome_original: nomeFicheiro,
+            url: comprovativo_url || null,
+            url_publica: comprovativo_url || null,
+            url_arquivo: comprovativo_url || null,
+            observacao: `Banco: ${banco || 'N/D'} | N.º Transação: ${numero_transacao || 'N/D'} | Montante: ${montante || 65000} Kz`,
+            ativo: true,
+            created_at: now,
+            updated_at: now
+          })
+        }).catch((e) => console.error('[media_arquivos insert error]', e));
+
+        // 2. Sincronizar em licencas_empresas com UPSERT garantido
+        await syncLicenca(targetId, {
+          comprovativo_url: comprovativo_url || null,
+          comprovativo_nome: nomeFicheiro,
+          comprovativo_data: now,
+          estado: 'comprovativo_anexado',
+          valor_licenca: montante || 65000,
+          updated_at: now
+        });
+
+        // 3. Audit log in historico_licencas
+        await fetch(`${config.supabaseUrl}/rest/v1/historico_licencas`, {
+          method: 'POST',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            empresa_id: targetId,
+            acao: 'COMPROVATIVO_ANEXADO',
+            descricao: `Comprovativo anexado: Banco ${banco || 'N/D'} / Ref ${numero_transacao || 'N/D'} / Valor: ${montante || 0} Kz`,
+            motivo: 'Registo de pagamento de licença',
+            usuario: auth.user?.email || 'SuperAdmin CRM',
+            alterado_por: auth.user?.email || 'SuperAdmin CRM'
+          })
+        }).catch(() => {});
+
+        return res.status(200).json({ success: true, message: 'Comprovativo anexado com sucesso em media_arquivos e licenças!' });
+      }
+
+      // Create CRM Occurrence: POST /api/crm/occurrences
+      if (pathname === 'occurrences' && req.method === 'POST') {
+        const { empresa_id, titulo, tipo, prioridade, descricao } = body;
+        const targetId = empresa_id || auth.empresa_id;
+
+        if (!targetId || !titulo) {
+          return res.status(400).json({ error: 'Empresa e Título da ocorrência são obrigatórios.' });
+        }
+
+        const now = new Date().toISOString();
+
+        // Insert into historico_licencas
+        const logRes = await fetch(`${config.supabaseUrl}/rest/v1/historico_licencas`, {
+          method: 'POST',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+          body: JSON.stringify({
+            empresa_id: targetId,
+            acao: `OCORRENCIA_${(tipo || 'SUPORTE').toUpperCase()}`,
+            descricao: `[${prioridade || 'NORMAL'}] ${titulo}: ${descricao || ''}`,
+            motivo: tipo || 'Suporte Técnico CRM',
+            usuario: auth.user?.email || 'SuperAdmin CRM',
+            alterado_por: auth.user?.email || 'SuperAdmin CRM',
+            created_at: now
+          })
+        });
+
+        // Also log in logs_auditoria
+        await fetch(`${config.supabaseUrl}/rest/v1/logs_auditoria`, {
+          method: 'POST',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            empresa_id: targetId,
+            user_id: auth.user?.id,
+            user_email: auth.user?.email,
+            action: 'CRIAR_OCORRENCIA',
+            acao: 'CRIAR_OCORRENCIA',
+            modulo: 'CRM',
+            detalhes: `${titulo} (${prioridade || 'NORMAL'}) - ${descricao || ''}`,
+            created_at: now
+          })
+        }).catch(() => {});
+
+        return res.status(201).json({ success: true, message: 'Ocorrência registada com sucesso!' });
+      }
+
+      // Reset access: POST /api/crm/users/:id/reset-access
+      // Rule: Temporary password minimum 6 chars (default "123456") via Supabase Auth Admin API
+      if (pathname.includes('/reset-access')) {
+        const userId = pathname.split('/')[1];
+        const newPassword = String(body?.password || '123456').trim();
+
+        if (newPassword.length < 6) {
+          return res.status(400).json({ 
+            error: 'A senha temporária deve conter no mínimo 6 caracteres para cumprir a política de segurança do Supabase Auth.',
+            auth_updated: false
+          });
+        }
+
+        // Fetch target user profile
+        const userRes = await fetch(`${config.supabaseUrl}/rest/v1/perfis?id=eq.${userId}&select=id,user_id,empresa_id,email,nome`, {
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+        });
+        const targetUserArr = await userRes.json();
+        const targetUser = Array.isArray(targetUserArr) && targetUserArr.length > 0 ? targetUserArr[0] : null;
+
+        if (!targetUser) {
+          return res.status(404).json({ error: 'Utilizador não encontrado.' });
+        }
+
+        // Security check: Must be SuperAdmin or admin of the same company
+        if (!auth.isSuperAdmin && String(auth.empresa_id) !== String(targetUser.empresa_id)) {
+          return res.status(403).json({ error: 'Sem autorização para redefinir acesso deste utilizador.' });
+        }
+
+        const authUserId = targetUser.user_id || targetUser.id;
+
+        // 1. Real password reset in Supabase Auth Admin API
+        const resetAdminRes = await fetch(`${config.supabaseUrl}/auth/v1/admin/users/${authUserId}`, {
+          method: 'PUT',
+          headers: {
+            'apikey': config.serviceRoleKey,
+            'Authorization': authHeader,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ password: newPassword })
+        });
+
+        // CRITICAL: Check if Supabase Auth update succeeded
+        if (!resetAdminRes.ok) {
+          const resetErr = await resetAdminRes.json().catch(() => ({}));
+          console.error('[CRM reset-access] Supabase Auth update failed:', resetErr);
+          return res.status(500).json({
+            error: `Falha ao atualizar credencial no Supabase Auth: ${resetErr?.msg || resetErr?.message || resetAdminRes.statusText || resetAdminRes.status}`,
+            auth_updated: false,
+            details: resetErr
+          });
+        }
+
+        const nowIso = new Date().toISOString();
+
+        // 2. Audit log in historico_licencas
+        await fetch(`${config.supabaseUrl}/rest/v1/historico_licencas`, {
+          method: 'POST',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            empresa_id: targetUser.empresa_id,
+            acao: 'RESET_SENHA',
+            descricao: `Senha de acesso redefinida pelo SuperAdmin para ${targetUser.email || targetUser.nome} (senha temporária: ${newPassword})`,
+            motivo: 'Reset de acesso administrativo',
+            usuario: auth.user?.email || 'SuperAdmin CRM',
+            alterado_por: auth.user?.email || 'SuperAdmin CRM',
+            created_at: nowIso
+          })
+        }).catch(() => {});
+
+        // 3. Audit log in logs_auditoria
+        await fetch(`${config.supabaseUrl}/rest/v1/logs_auditoria`, {
+          method: 'POST',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            empresa_id: targetUser.empresa_id,
+            user_id: auth.user?.id,
+            user_email: auth.user?.email,
+            action: 'RESET_SENHA',
+            acao: 'RESET_SENHA',
+            modulo: 'CRM',
+            detalhes: `Senha do utilizador ${targetUser.email} (${targetUser.nome || 'N/D'}) redefinida com sucesso no Supabase Auth.`,
+            created_at: nowIso
+          })
+        }).catch(() => {});
+
+        return res.status(200).json({ 
+          success: true, 
+          message: `Acesso redefinido com sucesso! A nova senha temporária é '${newPassword}'.`,
+          user_email: targetUser.email,
+          auth_updated: true
+        });
+      }
+
+      // Change company: POST /api/crm/users/:id/change-company
+      if (pathname.includes('/change-company')) {
+        const userId = pathname.split('/')[1];
+        const body = req.body || {};
+        const nova_empresa_id = body.nova_empresa_id;
+
+        if (!nova_empresa_id) {
+          return res.status(400).json({ error: 'nova_empresa_id é obrigatório.' });
+        }
+
+        // Fetch target user
+        const userRes = await fetch(`${config.supabaseUrl}/rest/v1/perfis?id=eq.${userId}&select=id,user_id,empresa_id,email,nome`, {
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+        });
+        const targetArr = await userRes.json();
+        const targetUser = Array.isArray(targetArr) && targetArr.length > 0 ? targetArr[0] : null;
+
+        if (!targetUser) {
+          return res.status(404).json({ error: 'Utilizador não encontrado.' });
+        }
+
+        const empresaAnterior = targetUser.empresa_id;
+
+        // Update empresa_id in perfis
+        const updateRes = await fetch(`${config.supabaseUrl}/rest/v1/perfis?id=eq.${userId}`, {
+          method: 'PATCH',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ empresa_id: nova_empresa_id, updated_at: new Date().toISOString() })
+        });
+
+        if (!updateRes.ok && updateRes.status !== 204) {
+          return res.status(500).json({ error: 'Falha ao atualizar empresa do utilizador no banco de dados.' });
+        }
+
+        const now = new Date().toISOString();
+
+        // Audit log in historico_licencas (empresa anterior)
+        await fetch(`${config.supabaseUrl}/rest/v1/historico_licencas`, {
+          method: 'POST',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            empresa_id: empresaAnterior,
+            acao: 'TRANSFERENCIA_UTILIZADOR',
+            descricao: `Utilizador ${targetUser.email} transferido para empresa ${nova_empresa_id}`,
+            motivo: 'Alteração de empresa pelo SuperAdmin CRM',
+            usuario: auth.user?.email || 'SuperAdmin CRM',
+            alterado_por: auth.user?.email || 'SuperAdmin CRM',
+            created_at: now
+          })
+        }).catch(() => {});
+
+        // Audit log in logs_auditoria
+        await fetch(`${config.supabaseUrl}/rest/v1/logs_auditoria`, {
+          method: 'POST',
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            empresa_id: nova_empresa_id,
+            user_id: auth.user?.id,
+            user_email: auth.user?.email,
+            action: 'CHANGE_COMPANY',
+            acao: 'CHANGE_COMPANY',
+            modulo: 'CRM',
+            detalhes: `Utilizador ${targetUser.email} movido de empresa ${empresaAnterior} para ${nova_empresa_id} pelo SuperAdmin`,
+            created_at: now
+          })
+        }).catch(() => {});
+
+        return res.status(200).json({
+          success: true,
+          message: `Utilizador transferido com sucesso para a nova empresa.`,
+          user_email: targetUser.email,
+          empresa_anterior: empresaAnterior,
+          empresa_nova: nova_empresa_id
+        });
+      }
+    }
+
+    return res.status(200).json([]);
+  } catch (err) {
+    console.error('[API CRM Error]:', err);
+    return res.status(200).json([]);
+  }
+}

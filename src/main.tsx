@@ -129,12 +129,16 @@ if (typeof window !== 'undefined') {
   };
 }
 
+import { ExerciseProvider } from './contexts/ExerciseContext';
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
       <AuthProvider>
-        <App />
-        <Toaster position="top-right" />
+        <ExerciseProvider>
+          <App />
+          <Toaster position="top-right" />
+        </ExerciseProvider>
       </AuthProvider>
     </ErrorBoundary>
   </StrictMode>,

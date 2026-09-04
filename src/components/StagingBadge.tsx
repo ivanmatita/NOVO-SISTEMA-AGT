@@ -41,10 +41,10 @@ export const StagingBadge: React.FC<StagingBadgeProps> = ({ onOpenCentral }) => 
         <div className="flex items-center gap-1.5 font-mono">
           <FlaskConical className="w-3.5 h-3.5 text-amber-200" />
           <span className="uppercase tracking-wide font-black">
-            🧪 AMBIENTE DE TESTE
+            🧪 ÁREA DE DEMONSTRAÇÃO
           </span>
           <span className="hidden sm:inline text-amber-100/90 text-[11px] font-normal">
-            — Dados fictícios (não reais) | Supabase Staging Isolado
+            — Ambiente de Teste Partilhado | Os dados criados aqui não afectam a sua conta oficial de produção
           </span>
         </div>
       </div>

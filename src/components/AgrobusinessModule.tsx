@@ -19,6 +19,7 @@ interface AgroProps {
   companyData?: any;
   onNavigate?: (tab: string) => void;
   onEmitirFatura?: () => void;
+  fiscalYear?: string;
 }
 
 interface Fazenda {
@@ -146,7 +147,7 @@ const selectCls = "w-full bg-zinc-50 border border-zinc-200 px-3 py-2 text-sm fo
 // ─────────────────────────────────────────────────────────────────
 // MAIN MODULE
 // ─────────────────────────────────────────────────────────────────
-export default function AgrobusinessModule({ user, companyData, onNavigate, onEmitirFatura }: AgroProps) {
+export default function AgrobusinessModule({ user, companyData, onNavigate, onEmitirFatura, fiscalYear = '2026' }: AgroProps) {
   const empresaId: string = user?.empresa_id || user?.company_id || companyData?.id || user?.id || '00000000-0000-0000-0000-000000000000';
 
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
@@ -188,14 +189,15 @@ export default function AgrobusinessModule({ user, companyData, onNavigate, onEm
     if (!empresaId) return;
     setLoading(true);
     try {
+      const year = fiscalYear || new Date().getFullYear().toString();
       const [faz, cul, ani, ins, ven, maq, cus] = await Promise.all([
         supabase.from('agro_fazendas').select('*').eq('empresa_id', empresaId).is('deleted_at', null).order('nome'),
         supabase.from('agro_culturas').select('*').eq('empresa_id', empresaId).is('deleted_at', null).order('created_at', { ascending: false }),
         supabase.from('agro_animais').select('*').eq('empresa_id', empresaId).is('deleted_at', null).order('created_at', { ascending: false }),
         supabase.from('agro_insumos').select('*').eq('empresa_id', empresaId).is('deleted_at', null).order('nome'),
-        supabase.from('agro_vendas_agro').select('*').eq('empresa_id', empresaId).is('deleted_at', null).order('data_venda', { ascending: false }),
+        supabase.from('agro_vendas_agro').select('*').eq('empresa_id', empresaId).like('data_venda', `${year}%`).is('deleted_at', null).order('data_venda', { ascending: false }),
         supabase.from('agro_maquinaria').select('*').eq('empresa_id', empresaId).is('deleted_at', null).order('nome'),
-        supabase.from('agro_custos').select('*').eq('empresa_id', empresaId).is('deleted_at', null).order('data_custo', { ascending: false }),
+        supabase.from('agro_custos').select('*').eq('empresa_id', empresaId).like('data_custo', `${year}%`).is('deleted_at', null).order('data_custo', { ascending: false }),
       ]);
       if (faz.data)  setFazendas(faz.data);
       if (cul.data)  setCulturas(cul.data.map((c: any) => ({ ...c, fazenda: faz.data?.find((f: any) => f.id === c.fazenda_id)?.nome || '' })));
@@ -213,7 +215,7 @@ export default function AgrobusinessModule({ user, companyData, onNavigate, onEm
     } finally {
       setLoading(false);
     }
-  }, [empresaId]);
+  }, [empresaId, fiscalYear]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -589,7 +591,13 @@ export default function AgrobusinessModule({ user, companyData, onNavigate, onEm
         </div>
         <div className="relative z-10 p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
-            <h2 className="text-2xl font-black text-emerald-800 flex items-center gap-2"><Leaf size={26}/> Gestão de Agronegócio</h2>
+            <div className="flex items-center gap-3">
+              <h2 className="text-2xl font-black text-emerald-800 flex items-center gap-2"><Leaf size={26}/> Gestão de Agronegócio</h2>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 text-[10px] font-black uppercase tracking-wider border border-emerald-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Exercício {fiscalYear} Ativo
+              </span>
+            </div>
             <p className="text-zinc-500 text-sm mt-1">Painel integrado de fazendas, culturas, pecuária, insumos e comercialização — Angola</p>
             {!empresaId && <p className="text-amber-600 text-xs font-bold mt-2 bg-amber-50 border border-amber-200 px-3 py-1 rounded-sm inline-block">⚠ Sessão não autenticada — dados locais apenas</p>}
           </div>

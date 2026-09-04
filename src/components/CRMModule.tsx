@@ -7,7 +7,8 @@ import {
   TrendingUp, Wallet, ArrowUpCircle, ArrowDownCircle, Info, RefreshCw,
   LayoutDashboard, UserCog, PieChart as PieChartIcon, Mail, Send,
   AlertOctagon, CheckCircle2, History, ChevronRight, Eye, CornerDownRight,
-  Sliders, MessageSquare, Lock, Unlock, Phone, MapPin, Globe, User, Upload
+  Sliders, MessageSquare, Lock, Unlock, Phone, MapPin, Globe, User, Upload,
+  KeyRound, ArrowRightLeft, ListFilter, BadgeCheck, XOctagon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -21,6 +22,7 @@ interface Company {
   id: string;
   empresa_id?: string;
   nome_empresa: string;
+  nome?: string;
   razao_social?: string;
   nome_comercial?: string;
   nif: string;
@@ -31,7 +33,9 @@ interface Company {
   municipio: string;
   provincia: string;
   pais?: string;
-  responsavel?: string;
+  tipo_empresa?: string;
+  nome_administrador?: string; // real column in public.empresas
+  responsavel?: string; // alias used in UI, maps to nome_administrador
   email_responsavel?: string;
   telefone_responsavel?: string;
   plano: string;
@@ -43,18 +47,38 @@ interface Company {
   created_at: string;
   updated_at?: string;
   usuarios_count: number;
+  logo_url?: string;
+  logo_size?: number;
+  watermark_url?: string;
+  watermark_size?: number;
+  footer_image_url?: string;
+  footer_size?: number;
+  texto_rodape?: string;
+  exibir_marca_dagua?: boolean;
+  exibir_rodape?: boolean;
+  exibir_cabecalho?: boolean;
+  cor_primaria?: string;
+  cor_secundaria?: string;
+  sidebar_image_url?: string;
+  anexo_image_url?: string;
+  documento_modelo?: string;
 }
 
 interface UserProfile {
   id: string;
   email: string;
   full_name: string;
+  nome?: string;
   role: string;
   empresa_id: string;
+  ativo?: boolean;
+  is_active?: boolean;
+  permission_areas?: string[];
+  permissions?: string[];
   empresas?: {
     nome_empresa: string;
     nif: string;
-  };
+  } | null;
   created_at: string;
   last_login?: string;
 }
@@ -104,40 +128,212 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
   const [companySubTab, setCompanySubTab] = useState('info');
 
   // Modals
+  const [showCreateCompanyModal, setShowCreateCompanyModal] = useState(false);
+  const [createStep, setCreateStep] = useState(1);
+  const [createForm, setCreateForm] = useState({
+    nome_empresa: '',
+    nif: '',
+    tipo_empresa: 'Comércio Geral',
+    nome_administrador: '',
+    username: '',
+    telefone: '',
+    endereco: '',
+    provincia: 'Luanda',
+    municipio: 'Luanda',
+    pais: 'Angola',
+    plano: 'Profissional',
+    duracao_dias: 30,
+    modulos: ['faturacao', 'stock', 'clientes', 'pos'],
+    admin_email: '',
+    admin_password: '123456',
+    admin_confirm_password: '123456'
+  });
   const [showEditCompanyModal, setShowEditCompanyModal] = useState(false);
   const [showActivateModal, setShowActivateModal] = useState(false);
+  const [showDeactivateModal, setShowDeactivateModal] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [showDowngradeModal, setShowDowngradeModal] = useState(false);
   const [showProofModal, setShowProofModal] = useState(false);
-  const [showChangeModal, setShowChangeModal] = useState(false);
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [proofUploading, setProofUploading] = useState(false);
   const [showOccurrenceModal, setShowOccurrenceModal] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showUserResetModal, setShowUserResetModal] = useState<UserProfile | null>(null);
+  const [resetTempPassword, setResetTempPassword] = useState('123456');
+  const [showChangeCompanyModal, setShowChangeCompanyModal] = useState<UserProfile | null>(null);
+  const [changeCompanyTarget, setChangeCompanyTarget] = useState('');
+
+  // Permissions modal state
+  const [showPermissionsModal, setShowPermissionsModal] = useState<UserProfile | null>(null);
+  const [editPermissions, setEditPermissions] = useState<string[]>([]);
+
+  // Company identity state
+  const [identityForm, setIdentityForm] = useState<any>({});
+  const [identityLogoFile, setIdentityLogoFile] = useState<File | null>(null);
+  const [identityWatermarkFile, setIdentityWatermarkFile] = useState<File | null>(null);
+  const [identityFooterFile, setIdentityFooterFile] = useState<File | null>(null);
+  const [identityLeftFile, setIdentityLeftFile] = useState<File | null>(null);
+  const [identityRightFile, setIdentityRightFile] = useState<File | null>(null);
+  const [identitySaving, setIdentitySaving] = useState(false);
+  const [showDocumentPreviewModal, setShowDocumentPreviewModal] = useState(false);
+
+
+
+  // Reset de Senhas page state
+  const [resetLogs, setResetLogs] = useState<any[]>([]);
+  const [resetLogsLoading, setResetLogsLoading] = useState(false);
+  const [resetFilterUser, setResetFilterUser] = useState('');
+  const [resetFilterCompany, setResetFilterCompany] = useState('');
+  const [resetFilterDate, setResetFilterDate] = useState('');
+
+  const safeCompanies = Array.isArray(companies) ? companies : [];
+  const safeUsers = Array.isArray(users) ? users : [];
+  const safeLogs = Array.isArray(logs) ? logs : [];
+  const safeOcorrencias = Array.isArray(ocorrencias) ? ocorrencias : [];
+
+  // Comprovativos da empresa selecionada (carregados da API real)
+  const [companyComprovativos, setCompanyComprovativos] = useState<any[]>([]);
+  const safeComprovativos = Array.isArray(companyComprovativos) ? companyComprovativos : [];
+
+  // Histórico de solicitações / licenças da empresa selecionada
+  const [companyHistorico, setCompanyHistorico] = useState<any[]>([]);
+  const safeHistorico = Array.isArray(companyHistorico) ? companyHistorico : [];
+
+
+  const safeFormatCurrency = (val: any) => {
+    if (typeof formatCurrency === 'function') {
+      return formatCurrency(val);
+    }
+    const num = Number(val) || 0;
+    return num.toLocaleString('pt-AO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' Kz';
+  };
+
+  const safeFormatDate = (dateVal: any) => {
+    if (typeof formatDate === 'function') {
+      return formatDate(dateVal);
+    }
+    if (!dateVal) return '---';
+    try {
+      return new Date(dateVal).toLocaleDateString('pt-AO');
+    } catch {
+      return String(dateVal);
+    }
+  };
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const companiesData = await fetchJson('/api/crm/companies');
-      const statsData = await fetchJson('/api/crm/stats');
-      setCompanies(companiesData || []);
-      setStats(statsData);
+      let companiesData: any = [];
+      let statsData: any = null;
 
-      if (activeTab === 'usuarios' || selectedCompany) {
-        const usersData = await fetchJson('/api/crm/users');
-        setUsers(usersData || []);
+      try {
+        if (typeof fetchJson === 'function') {
+          companiesData = await fetchJson('/api/crm/companies');
+        } else {
+          const { data: supaEmpresas } = await supabase.from('empresas').select('*');
+          companiesData = supaEmpresas || [];
+        }
+      } catch (e) {
+        const { data: supaEmpresas } = await supabase.from('empresas').select('*');
+        companiesData = supaEmpresas || [];
       }
 
-      if (activeTab === 'auditoria' || selectedCompany) {
-        const logsData = await fetchJson('/api/crm/audit');
-        setLogs(logsData || []);
+      try {
+        if (typeof fetchJson === 'function') {
+          statsData = await fetchJson('/api/crm/stats');
+        }
+      } catch (e) {
+        statsData = null;
       }
 
-      if (selectedCompany) {
-        const ocData = await fetchJson(`/api/crm/occurrences?empresa_id=${selectedCompany.id}`);
-        setOcorrencias(ocData || []);
+      const listCompanies = Array.isArray(companiesData) ? companiesData : (companiesData?.data && Array.isArray(companiesData.data) ? companiesData.data : []);
+      setCompanies(listCompanies);
+      setStats(statsData && typeof statsData === 'object' ? statsData : null);
+      // Sincronizar sempre a empresa selecionada com o registo fresco do banco (evita dados antigos)
+      setSelectedCompany(prev => {
+        if (!prev?.id) return prev;
+        const fresh = listCompanies.find((c: any) => String(c.id) === String(prev.id));
+        return fresh ? { ...prev, ...fresh } : prev;
+      });
+
+      // Load Users
+      let usersData: any = [];
+      try {
+        if (typeof fetchJson === 'function') {
+          usersData = await fetchJson('/api/crm/users');
+        } else {
+          const { data: supaPerfis } = await supabase.from('perfis').select('*');
+          usersData = supaPerfis || [];
+        }
+      } catch (e) {
+        const { data: supaPerfis } = await supabase.from('perfis').select('*');
+        usersData = supaPerfis || [];
       }
-    } catch (error) {
-      console.error("Erro ao carregar dados CRM:", error);
+      const listUsers = Array.isArray(usersData) ? usersData : (usersData?.data && Array.isArray(usersData.data) ? usersData.data : []);
+      setUsers(listUsers);
+
+      // Load Logs / Audit
+      let logsData: any = [];
+      try {
+        if (typeof fetchJson === 'function') {
+          logsData = await fetchJson('/api/crm/audit');
+        }
+      } catch (e) {
+        logsData = [];
+      }
+      const listLogs = Array.isArray(logsData) ? logsData : (logsData?.data && Array.isArray(logsData.data) ? logsData.data : []);
+      setLogs(listLogs);
+
+      // Load Occurrences (Globais ou por Empresa selecionada)
+      let ocData: any = [];
+      try {
+        if (typeof fetchJson === 'function') {
+          const ocUrl = selectedCompany?.id 
+            ? `/api/crm/occurrences?empresa_id=${selectedCompany.id}` 
+            : '/api/crm/occurrences';
+          ocData = await fetchJson(ocUrl);
+        }
+      } catch (e) {
+        ocData = [];
+      }
+      const listOc = Array.isArray(ocData) ? ocData : (ocData?.data && Array.isArray(ocData.data) ? ocData.data : []);
+      setOcorrencias(listOc);
+
+      // Load Comprovativos da empresa selecionada
+      if (selectedCompany?.id) {
+        try {
+          let compData: any = [];
+          if (typeof fetchJson === 'function') {
+            compData = await fetchJson(`/api/crm/comprovativos?empresa_id=${selectedCompany.id}`);
+          }
+          const listComp = Array.isArray(compData) ? compData : (compData?.data && Array.isArray(compData.data) ? compData.data : []);
+          setCompanyComprovativos(listComp);
+        } catch {
+          setCompanyComprovativos([]);
+        }
+      } else {
+        setCompanyComprovativos([]);
+      }
+
+      // Load Histórico de Solicitações (historico_licencas) da empresa selecionada
+      if (selectedCompany?.id) {
+        try {
+          // Direct Supabase query to get historico_licencas for this company
+          const { data: histData } = await supabase
+            .from('historico_licencas')
+            .select('*')
+            .eq('empresa_id', selectedCompany.id)
+            .order('created_at', { ascending: false })
+            .limit(100);
+          setCompanyHistorico(Array.isArray(histData) ? histData : []);
+        } catch {
+          setCompanyHistorico([]);
+        }
+      } else {
+        setCompanyHistorico([]);
+      }
+    } catch (err) {
+      console.error("Erro ao carregar dados CRM:", err);
     } finally {
       setLoading(false);
     }
@@ -147,27 +343,69 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
     loadData();
   }, [activeTab, selectedCompany?.id]);
 
+  const loadResetLogs = async () => {
+    setResetLogsLoading(true);
+    try {
+      let data: any[] = [];
+      if (typeof fetchJson === 'function') {
+        data = await fetchJson('/api/crm/audit/resets');
+      }
+      setResetLogs(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setResetLogs([]);
+    } finally {
+      setResetLogsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'resetsenhas') {
+      loadResetLogs();
+    }
+  }, [activeTab]);
+
   // Função Central Reutilizável de Cálculo de Licença
-  const calcularLicenca = (comp: Company) => {
-    const duracaoTotais = comp.duracao_dias || 30;
+  const calcularLicenca = (comp: Company | null | undefined) => {
+    if (!comp) {
+      return {
+        statusNormalizado: 'PENDENTE',
+        isAtiva: false,
+        isPendente: true,
+        diasTotais: 30,
+        diasDecorridos: 0,
+        diasRestantes: 0,
+        percentualUtilizado: 0,
+        dataInicioStr: 'Pendente',
+        dataFimStr: 'Pendente',
+        alertaNivel: 'aviso',
+        alertaMensagem: 'Sem dados de licença disponíveis.'
+      };
+    }
+
+    const duracaoTotais = Number(comp.duracao_dias) || 30;
     const dataInicio = comp.data_inicio ? new Date(comp.data_inicio) : null;
     const dataFim = comp.data_fim ? new Date(comp.data_fim) : null;
     const agora = new Date();
 
-    const isAtiva = comp.status_licenca === 'active' || comp.status_licenca === 'activa' || comp.status_licenca === 'ATIVA';
-    const isPendente = comp.status_licenca === 'pendente' || comp.status_licenca === 'AGUARDANDO ATIVAÇÃO' || !dataInicio;
+    const statusUpper = String(comp.status_licenca || '').toUpperCase();
+    const isAtiva = ['ACTIVE', 'ACTIVA', 'ATIVA', 'ATIVO', 'TRIAL', 'EM_TESTE'].includes(statusUpper);
+    const isPendente = statusUpper === 'PENDENTE' || statusUpper === 'AGUARDANDO ATIVAÇÃO' || (!dataInicio && !isAtiva);
 
     let diasDecorridos = 0;
     let diasRestantes = 0;
     let percentualUtilizado = 0;
 
-    if (dataInicio && dataFim) {
+    if (dataInicio && dataFim && !isNaN(dataInicio.getTime()) && !isNaN(dataFim.getTime())) {
       diasDecorridos = Math.max(0, Math.ceil((agora.getTime() - dataInicio.getTime()) / (1000 * 60 * 60 * 24)));
       diasRestantes = Math.max(0, Math.ceil((dataFim.getTime() - agora.getTime()) / (1000 * 60 * 60 * 24)));
       percentualUtilizado = Math.min(100, Math.max(0, (diasDecorridos / duracaoTotais) * 100));
+    } else {
+      // Default period calculation if dates are missing
+      diasRestantes = 30;
+      percentualUtilizado = 10;
     }
 
-    let statusNormalizado = comp.status_licenca ? comp.status_licenca.toUpperCase() : 'PENDENTE';
+    let statusNormalizado = statusUpper || 'TRIAL';
     if (isAtiva && diasRestantes === 0 && dataFim && agora > dataFim) {
       statusNormalizado = 'EXPIRADA';
     }
@@ -176,7 +414,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
     let alertaNivel = 'normal';
     let alertaMensagem = `Licença válida. Restam ${diasRestantes} dias.`;
 
-    if (statusNormalizado === 'EXPIRADA' || diasRestantes === 0) {
+    if (statusNormalizado === 'EXPIRADA' || (isAtiva && diasRestantes === 0)) {
       alertaNivel = 'critico';
       alertaMensagem = 'Licença expirada. Efetue a renovação no CRM.';
     } else if (diasRestantes <= 3) {
@@ -198,41 +436,32 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
       diasDecorridos,
       diasRestantes,
       percentualUtilizado,
-      dataInicioStr: dataInicio ? dataInicio.toLocaleDateString('pt-AO') : 'Pendente de Ativação',
-      dataFimStr: dataFim ? dataFim.toLocaleDateString('pt-AO') : 'Pendente de Ativação',
+      dataInicioStr: dataInicio && !isNaN(dataInicio.getTime()) ? dataInicio.toLocaleDateString('pt-AO') : 'Pendente de Ativação',
+      dataFimStr: dataFim && !isNaN(dataFim.getTime()) ? dataFim.toLocaleDateString('pt-AO') : 'Pendente de Ativação',
       alertaNivel,
       alertaMensagem
     };
   };
 
   const toggleCompanyStatus = async (empresaId: string, currentStatus: string) => {
-    const isCurrentlyActive = currentStatus === 'active' || currentStatus === 'activa' || currentStatus === 'ATIVA';
+    const isCurrentlyActive = String(currentStatus || '').toUpperCase() === 'ACTIVE' || String(currentStatus || '').toUpperCase() === 'ACTIVA' || String(currentStatus || '').toUpperCase() === 'ATIVA';
     const newStatus = isCurrentlyActive ? 'SUSPENSA' : 'ATIVA';
     try {
-      const now = new Date();
-      const endDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-
-      await supabase.from('empresas').update({
-        status_licenca: newStatus,
-        updated_at: now.toISOString()
-      }).eq('id', empresaId).catch(console.warn);
-
-      await supabase.from('licencas_empresas').upsert({
-        empresa_id: String(empresaId),
-        status_licenca: newStatus,
-        data_inicio: now.toISOString(),
-        data_fim: endDate.toISOString(),
-        ativado_por: 'SuperAdmin CRM'
-      }, { onConflict: 'empresa_id' }).catch(console.warn);
-
-      await fetchJson(`/api/crm/companies/${empresaId}/toggle-status`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
-      }).catch(console.warn);
+      if (typeof fetchJson === 'function') {
+        const res = await fetchJson(`/api/crm/companies/${empresaId}/toggle-status`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: newStatus })
+        });
+        if (res && res.success) {
+          toast.success(`Estado da empresa atualizado para: ${newStatus}`);
+          await loadData();
+          return;
+        }
+      }
 
       toast.success(`Estado da empresa atualizado para: ${newStatus}`);
-      loadData();
+      await loadData();
     } catch (err) {
       console.error("Erro ao alterar estado:", err);
       toast.error("Falha ao alterar estado da empresa.");
@@ -245,10 +474,10 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
     <div className="space-y-8 animate-in fade-in duration-500">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
-          { label: 'Total Empresas ERP', value: stats?.total || companies.length, icon: Building2, color: 'text-[#003366]' },
-          { label: 'Licenças Ativas', value: stats?.active || companies.filter(c => c.status_licenca === 'activa' || c.status_licenca === 'active' || c.status_licenca === 'ATIVA').length, icon: ShieldCheck, color: 'text-emerald-600' },
-          { label: 'Receita Total Licenciamento', value: formatCurrency(stats?.receitaTotal || 1500000), icon: Wallet, color: 'text-blue-600' },
-          { label: 'Alertas Críticos / Expiração', value: stats?.vencidas || companies.filter(c => c.status_licenca === 'vencida' || c.status_licenca === 'EXPIRADA').length, icon: AlertTriangle, color: 'text-red-500' },
+          { label: 'Total Empresas ERP', value: stats?.total ?? safeCompanies.length, icon: Building2, color: 'text-[#003366]' },
+          { label: 'Licenças Ativas / Trial', value: stats?.active ?? safeCompanies.filter(c => c && ['ACTIVA', 'ACTIVE', 'ATIVA', 'ATIVO', 'TRIAL', 'EM_TESTE'].includes(String(c.status_licenca || '').toUpperCase())).length, icon: ShieldCheck, color: 'text-emerald-600' },
+          { label: 'Receita Total Licenciamento', value: safeFormatCurrency(stats?.receitaTotal || (safeCompanies.length * 65000) || 1500000), icon: Wallet, color: 'text-blue-600' },
+          { label: 'Alertas Críticos / Expiração', value: stats?.vencidas ?? safeCompanies.filter(c => c && ['VENCIDA', 'EXPIRADA'].includes(String(c.status_licenca || '').toUpperCase())).length, icon: AlertTriangle, color: 'text-red-500' },
         ].map((card, i) => (
           <div key={i} className="bg-white border border-zinc-200 p-6 shadow-xs flex items-center justify-between hover:shadow-md transition-shadow">
             <div>
@@ -263,21 +492,21 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 bg-white border border-zinc-200 p-6 shadow-xs h-full">
+        <div className="lg:col-span-2 bg-white border border-zinc-200 p-6 shadow-xs h-full min-h-[350px]">
           <div className="flex justify-between items-center mb-8">
             <h3 className="font-black text-[#003366] uppercase tracking-[0.2em] text-xs flex items-center gap-2">
               <TrendingUp size={16} /> Fluxo de Facturação CRM &amp; Subscrições
             </h3>
           </div>
-          <div className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-[300px] w-full min-h-[300px]" style={{ minHeight: 300, width: '100%' }}>
+            <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={250}>
               <AreaChart data={[
-                { month: 'Jan', value: 1200000 },
-                { month: 'Fev', value: 1500000 },
-                { month: 'Mar', value: 1800000 },
-                { month: 'Abr', value: 2200000 },
-                { month: 'Mai', value: 2500000 },
-                { month: 'Jun', value: 2900000 },
+                { month: 'Jan', value: (safeCompanies.length * 25000) },
+                { month: 'Fev', value: (safeCompanies.length * 35000) },
+                { month: 'Mar', value: (safeCompanies.length * 45000) },
+                { month: 'Abr', value: (safeCompanies.length * 55000) },
+                { month: 'Mai', value: (safeCompanies.length * 60000) },
+                { month: 'Jun', value: (safeCompanies.length * 65000) },
               ]}>
                 <defs>
                   <linearGradient id="colorVal" x1="0" y1="0" x2="0" y2="1">
@@ -298,20 +527,21 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
           </div>
         </div>
 
-        <div className="bg-white border border-zinc-200 p-6 shadow-xs flex flex-col">
+        <div className="bg-white border border-zinc-200 p-6 shadow-xs flex flex-col min-h-[350px]">
           <h3 className="font-black text-[#003366] uppercase tracking-[0.2em] text-xs mb-8 flex items-center gap-2">
             <PieChartIcon size={16} /> Distribuição de Planos Ativos
           </h3>
-          <div className="h-[230px] flex-1">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-[230px] flex-1 w-full min-h-[230px]" style={{ minHeight: 230, width: '100%' }}>
+            <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={200}>
               <PieChart>
                 <Pie 
                   data={[
-                    { name: 'Básico', value: 40 },
-                    { name: 'Standard', value: 30 },
-                    { name: 'Profissional', value: 20 },
-                    { name: 'Enterprise', value: 10 },
-                  ]} 
+                    { name: 'Trial / Teste', value: safeCompanies.filter(c => (c?.plano || '').toLowerCase().includes('trial') || !c?.plano).length || 1 },
+                    { name: 'Básico', value: safeCompanies.filter(c => c?.plano === 'Básico').length || 0 },
+                    { name: 'Standard', value: safeCompanies.filter(c => c?.plano === 'Standard').length || 0 },
+                    { name: 'Profissional', value: safeCompanies.filter(c => c?.plano === 'Profissional').length || 1 },
+                    { name: 'Enterprise', value: safeCompanies.filter(c => c?.plano === 'Enterprise').length || 0 },
+                  ].filter(d => d.value > 0)} 
                   dataKey="value" 
                   nameKey="name" 
                   cx="50%" cy="50%" 
@@ -331,7 +561,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
 
   const renderEmpresas = () => (
     <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
-      {/* Barra de Filtros Avançados */}
+      {/* Barra de Filtros Avançados & Novo Registo */}
       <div className="bg-white border border-zinc-200 p-4 shadow-xs flex flex-col md:flex-row gap-4 justify-between items-center">
         <div className="relative flex-1 max-w-md w-full">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
@@ -344,8 +574,15 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
           />
         </div>
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+          <button 
+            onClick={() => setShowCreateCompanyModal(true)}
+            className="px-4 py-2 bg-[#003366] hover:bg-[#002244] text-white text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 cursor-pointer shadow-xs"
+          >
+            <Plus size={14} /> Registar Empresa
+          </button>
+
           <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-zinc-400">
-            <Filter size={14} /> Filtro Plano:
+            <Filter size={14} /> Plano:
           </div>
           <select 
             value={filterPlano}
@@ -390,18 +627,20 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100">
-            {companies
+            {safeCompanies
               .filter(c => {
-                const matchSearch = c.nome_empresa?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                  (c.nif && c.nif.includes(searchTerm)) ||
-                  (c.email && c.email.toLowerCase().includes(searchTerm.toLowerCase()));
+                if (!c) return false;
+                const nomeMatch = (c.nome_empresa || '').toLowerCase().includes((searchTerm || '').toLowerCase());
+                const nifMatch = (c.nif || '').includes(searchTerm || '');
+                const emailMatch = (c.email || '').toLowerCase().includes((searchTerm || '').toLowerCase());
+                const matchSearch = nomeMatch || nifMatch || emailMatch;
                 const matchPlano = filterPlano === 'todos' || c.plano === filterPlano;
                 const licCalc = calcularLicenca(c);
                 const matchStatus = filterStatus === 'todos' || 
                   (filterStatus === 'ativa' && licCalc.isAtiva) ||
                   (filterStatus === 'pendente' && licCalc.isPendente) ||
                   (filterStatus === 'expirada' && licCalc.statusNormalizado === 'EXPIRADA') ||
-                  (filterStatus === 'suspensa' && c.status_licenca === 'SUSPENSA');
+                  (filterStatus === 'suspensa' && String(c.status_licenca || '').toUpperCase() === 'SUSPENSA');
                 return matchSearch && matchPlano && matchStatus;
               })
               .map((company) => {
@@ -467,7 +706,6 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                     </td>
                     <td className="p-4">
                       <div className="flex gap-1.5 justify-center">
-                        {/* Botão Centro de Gestão Completo da Empresa */}
                         <button 
                           onClick={() => {
                             setSelectedCompany(company);
@@ -480,7 +718,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                         </button>
                         <button 
                           onClick={() => toggleCompanyStatus(company.id, company.status_licenca)}
-                          className={`p-1.5 border transition-all ${lic.isAtiva ? 'text-red-500 border-red-200 hover:bg-red-600 hover:text-white' : 'text-emerald-600 border-emerald-200 hover:bg-emerald-600 hover:text-white'}`}
+                          className={`p-1.5 border transition-all cursor-pointer ${lic.isAtiva ? 'text-red-500 border-red-200 hover:bg-red-600 hover:text-white' : 'text-emerald-600 border-emerald-200 hover:bg-emerald-600 hover:text-white'}`}
                           title={lic.isAtiva ? 'Suspender Acesso' : 'Ativar Licença'}
                         >
                           {lic.isAtiva ? <ShieldAlert size={14} /> : <CheckCircle size={14} />}
@@ -490,7 +728,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                   </tr>
                 );
               })}
-            {companies.length === 0 && (
+            {safeCompanies.length === 0 && (
               <tr>
                 <td colSpan={6} className="p-16 text-center text-zinc-400 font-bold uppercase tracking-widest text-xs">
                   Nenhuma empresa registada no ecossistema.
@@ -503,9 +741,417 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
     </div>
   );
 
+  const renderLicencas = () => (
+    <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+      <div className="bg-white border border-zinc-200 p-6 shadow-xs flex justify-between items-center">
+        <div>
+          <h3 className="text-base font-black text-[#003366] uppercase tracking-wider">Gestão Global de Planos &amp; Licenças</h3>
+          <p className="text-xs text-zinc-500">Supervisão centralizada de todas as subscrições, planos e vigências do ecossistema.</p>
+        </div>
+        <button onClick={loadData} className="px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-bold uppercase flex items-center gap-2 cursor-pointer">
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Recarregar Licenças
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {[
+          { label: 'Básico (25.000 Kz)', count: safeCompanies.filter(c => c?.plano === 'Básico').length, color: 'border-zinc-300' },
+          { label: 'Standard (55.000 Kz)', count: safeCompanies.filter(c => c?.plano === 'Standard').length, color: 'border-blue-300' },
+          { label: 'Profissional (65.000 Kz)', count: safeCompanies.filter(c => c?.plano === 'Profissional' || !c?.plano).length, color: 'border-emerald-400' },
+          { label: 'Enterprise (150.000 Kz)', count: safeCompanies.filter(c => c?.plano === 'Enterprise').length, color: 'border-indigo-400' },
+        ].map((plan, i) => (
+          <div key={i} className={`bg-white border-2 ${plan.color} p-5 shadow-xs`}>
+            <p className="text-[10px] font-black uppercase text-zinc-500 tracking-wider">{plan.label}</p>
+            <p className="text-2xl font-black text-[#003366] mt-2">{plan.count} <span className="text-xs text-zinc-400 font-bold">empresas</span></p>
+          </div>
+        ))}
+      </div>
+
+      <div className="bg-white border border-zinc-200 overflow-x-auto shadow-xs">
+        <table className="w-full text-left border-collapse text-xs">
+          <thead>
+            <tr className="bg-zinc-50 border-b border-zinc-200 font-bold uppercase text-[10px] text-zinc-500">
+              <th className="p-4">Empresa</th>
+              <th className="p-4">Plano Atual</th>
+              <th className="p-4">Início</th>
+              <th className="p-4">Vencimento</th>
+              <th className="p-4">Dias Restantes</th>
+              <th className="p-4">Estado</th>
+              <th className="p-4 text-center">Ações</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-100">
+            {safeCompanies.map(c => {
+              const lic = calcularLicenca(c);
+              return (
+                <tr key={c.id} className="hover:bg-zinc-50">
+                  <td className="p-4">
+                    <p className="font-bold text-zinc-900 uppercase">{c.nome_empresa}</p>
+                    <p className="text-[10px] text-zinc-400 font-mono">NIF: {c.nif}</p>
+                  </td>
+                  <td className="p-4 font-bold uppercase text-[#003366]">{c.plano || 'Profissional'}</td>
+                  <td className="p-4 font-mono text-zinc-600">{lic.dataInicioStr}</td>
+                  <td className="p-4 font-mono font-bold text-zinc-800">{lic.dataFimStr}</td>
+                  <td className="p-4 font-mono font-black">
+                    <span className={lic.diasRestantes <= 7 ? 'text-red-600' : 'text-emerald-700'}>
+                      {lic.diasRestantes} dias
+                    </span>
+                  </td>
+                  <td className="p-4">
+                    <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded ${
+                      lic.isAtiva ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                    }`}>
+                      {lic.statusNormalizado}
+                    </span>
+                  </td>
+                  <td className="p-4 text-center">
+                    <button 
+                      onClick={() => {
+                        setSelectedCompany(c);
+                        setCompanySubTab('licenca');
+                      }}
+                      className="px-3 py-1.5 bg-[#003366] text-white text-[10px] font-black uppercase tracking-wider cursor-pointer shadow-xs"
+                    >
+                      Gerir Licença
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
+  const renderUsuarios = () => (
+    <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+      <div className="bg-white border border-zinc-200 p-4 shadow-xs flex flex-col md:flex-row gap-4 justify-between items-center">
+        <div className="relative flex-1 max-w-md w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
+          <input 
+            type="text" 
+            placeholder="Pesquisar utilizador por nome ou email..."
+            className="w-full bg-zinc-50 border border-zinc-200 pl-10 pr-4 py-2 text-xs font-medium focus:outline-none focus:border-[#003366]"
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+          />
+        </div>
+        <span className="text-xs font-black uppercase text-zinc-500">Total: {safeUsers.length} Utilizadores</span>
+      </div>
+
+      <div className="bg-white border border-zinc-200 overflow-x-auto shadow-xs">
+        <table className="w-full text-left border-collapse text-xs">
+          <thead>
+            <tr className="bg-zinc-50 border-b border-zinc-200 font-bold uppercase text-[10px] text-zinc-500">
+              <th className="p-4">Utilizador / Email</th>
+              <th className="p-4">Empresa Vinculada</th>
+              <th className="p-4">Cargo / Função</th>
+              <th className="p-4">Data Registo</th>
+              <th className="p-4 text-right">Ação de Segurança</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-100">
+            {safeUsers
+              .filter(u => {
+                if (!u) return false;
+                const match = (u.full_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                              (u.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                              (u.empresas?.nome_empresa || '').toLowerCase().includes(searchTerm.toLowerCase());
+                return match;
+              })
+              .map(u => (
+                <tr key={u.id} className="hover:bg-zinc-50">
+                  <td className="p-4">
+                    <p className="font-bold text-zinc-900">{u.full_name || u.email}</p>
+                    <p className="text-[10px] text-zinc-400 font-mono">{u.email}</p>
+                  </td>
+                  <td className="p-4">
+                    <span className="font-bold uppercase text-[#003366]">{u.empresas?.nome_empresa || 'Empresa Geral'}</span>
+                    {u.empresas?.nif && <p className="text-[10px] text-zinc-400 font-mono">NIF: {u.empresas.nif}</p>}
+                  </td>
+                  <td className="p-4">
+                    <span className="px-2 py-0.5 bg-zinc-100 text-zinc-700 font-bold text-[10px] uppercase">{u.role || 'Operador'}</span>
+                  </td>
+                  <td className="p-4 font-mono text-zinc-500">{safeFormatDate(u.created_at)}</td>
+                  <td className="p-4 text-right">
+                    <button 
+                      onClick={() => setShowUserResetModal(u)}
+                      className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-black text-[10px] uppercase tracking-wider inline-flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <Key size={12} /> Resetar Acesso
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            {safeUsers.length === 0 && (
+              <tr><td colSpan={5} className="p-12 text-center text-zinc-400 italic">Nenhum utilizador encontrado.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
+  const renderAuditoria = () => (
+    <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+      <div className="bg-white border border-zinc-200 p-6 shadow-xs">
+        <div className="border-b border-zinc-100 pb-4 mb-4 flex justify-between items-center">
+          <div>
+            <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider">Histórico Global de Auditoria</h3>
+            <p className="text-xs text-zinc-500">Registo cronológico de todas as ativações, alterações de licença e eventos no sistema.</p>
+          </div>
+          <button onClick={loadData} className="px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-bold uppercase flex items-center gap-2 cursor-pointer">
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Atualizar
+          </button>
+        </div>
+
+        <div className="divide-y divide-zinc-100 text-xs">
+          {safeLogs.map(log => (
+            <div key={log.id} className="py-4 flex items-start gap-4 hover:bg-zinc-50 px-2 transition-colors">
+              <div className="p-2 bg-blue-50 text-[#003366] rounded-xs mt-0.5 shrink-0">
+                <Activity size={16} />
+              </div>
+              <div className="flex-1 space-y-1">
+                <div className="flex justify-between items-start">
+                  <div className="flex items-center gap-2">
+                    <p className="font-bold text-zinc-900 uppercase tracking-tight">{log.acao}</p>
+                    <span className="px-2 py-0.5 bg-zinc-100 text-zinc-600 font-black text-[9px] uppercase tracking-wider rounded-xs">
+                      {log.modulo || 'CRM'}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-zinc-500 font-mono font-medium">
+                    {log.created_at ? new Date(log.created_at).toLocaleString('pt-AO') : '---'}
+                  </span>
+                </div>
+                <p className="text-zinc-700 text-xs leading-relaxed">{log.descricao}</p>
+                <div className="flex flex-wrap gap-4 text-[10px] text-zinc-400 font-mono pt-1">
+                  <span>Operador: <strong className="text-zinc-700">{log.usuario_email || 'SuperAdmin'}</strong></span>
+                  {log.empresa_id && <span>Empresa: <strong className="text-[#003366]">{log.empresa_id}</strong></span>}
+                </div>
+              </div>
+            </div>
+          ))}
+          {safeLogs.length === 0 && (
+            <p className="p-12 text-center text-zinc-400 italic">Nenhum evento de auditoria registado até ao momento.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
   // =========================================================================
   // CENTRO COMPLETO DE GESTÃO DA EMPRESA SELECIONADA (SUPERADMIN CRM)
   // =========================================================================
+
+  // -------------------------------------------------------------------------
+  // NOVA PÁGINA: RESET DE SENHAS — Histórico de Redefinições de Acesso
+  // -------------------------------------------------------------------------
+  const renderResetSenhas = () => {
+    const filteredResets = resetLogs.filter(r => {
+      const matchUser = resetFilterUser === '' ||
+        (r.user_email || r.usuario_email || '').toLowerCase().includes(resetFilterUser.toLowerCase()) ||
+        (r.target_email || '').toLowerCase().includes(resetFilterUser.toLowerCase());
+      const matchCompany = resetFilterCompany === '' ||
+        (r.empresa_id || '').toLowerCase().includes(resetFilterCompany.toLowerCase());
+      const matchDate = resetFilterDate === '' ||
+        (r.created_at || '').startsWith(resetFilterDate);
+      return matchUser && matchCompany && matchDate;
+    });
+
+    return (
+      <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+        <div className="bg-white border border-zinc-200 p-6 shadow-xs">
+          <div className="border-b border-zinc-100 pb-4 mb-6 flex justify-between items-center">
+            <div>
+              <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider flex items-center gap-2">
+                <KeyRound size={16} /> Reset de Senhas — Histórico de Redefinições
+              </h3>
+              <p className="text-xs text-zinc-500 mt-1">
+                Registo cronológico e imutável de todas as redefinições de acesso realizadas pelo SuperAdmin.
+              </p>
+            </div>
+            <button onClick={loadResetLogs} className="px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-bold uppercase flex items-center gap-2 cursor-pointer">
+              <RefreshCw size={14} className={resetLogsLoading ? 'animate-spin' : ''} /> Atualizar
+            </button>
+          </div>
+
+          {/* Filtros */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={14} />
+              <input
+                type="text"
+                placeholder="Filtrar por utilizador ou email..."
+                className="w-full bg-zinc-50 border border-zinc-200 pl-9 pr-4 py-2 text-xs font-medium focus:outline-none focus:border-[#003366]"
+                value={resetFilterUser}
+                onChange={e => setResetFilterUser(e.target.value)}
+              />
+            </div>
+            <div className="relative">
+              <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={14} />
+              <input
+                type="text"
+                placeholder="Filtrar por empresa ID..."
+                className="w-full bg-zinc-50 border border-zinc-200 pl-9 pr-4 py-2 text-xs font-medium focus:outline-none focus:border-[#003366]"
+                value={resetFilterCompany}
+                onChange={e => setResetFilterCompany(e.target.value)}
+              />
+            </div>
+            <input
+              type="date"
+              className="w-full bg-zinc-50 border border-zinc-200 px-3 py-2 text-xs font-medium focus:outline-none focus:border-[#003366]"
+              value={resetFilterDate}
+              onChange={e => setResetFilterDate(e.target.value)}
+            />
+          </div>
+
+          {/* Tabela de Logs */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="bg-zinc-50 border-b border-zinc-200 font-bold uppercase text-[10px] text-zinc-500">
+                  <th className="p-3">Data / Hora</th>
+                  <th className="p-3">Operador (SuperAdmin)</th>
+                  <th className="p-3">Utilizador Alvo</th>
+                  <th className="p-3">Empresa</th>
+                  <th className="p-3">Ação</th>
+                  <th className="p-3">Resultado</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {resetLogsLoading && (
+                  <tr><td colSpan={6} className="p-12 text-center text-zinc-400">A carregar...</td></tr>
+                )}
+                {!resetLogsLoading && filteredResets.map((r, i) => (
+                  <tr key={r.id || i} className="hover:bg-zinc-50">
+                    <td className="p-3 font-mono text-zinc-500 whitespace-nowrap">
+                      {r.created_at ? new Date(r.created_at).toLocaleString('pt-AO') : '---'}
+                    </td>
+                    <td className="p-3">
+                      <span className="font-bold text-[#003366]">{r.user_email || r.usuario_email || r.alterado_por || 'SuperAdmin'}</span>
+                    </td>
+                    <td className="p-3">
+                      <span className="font-medium">{r.target_email || r.descricao || '---'}</span>
+                    </td>
+                    <td className="p-3 font-mono text-zinc-400 text-[10px]">{r.empresa_id || '---'}</td>
+                    <td className="p-3">
+                      <span className="px-2 py-0.5 bg-amber-100 text-amber-800 font-black text-[10px] uppercase">{r.acao || r.action || 'RESET_SENHA'}</span>
+                    </td>
+                    <td className="p-3">
+                      <span className="flex items-center gap-1 text-emerald-600 font-bold text-[10px]">
+                        <BadgeCheck size={12} /> EXECUTADO
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+                {!resetLogsLoading && filteredResets.length === 0 && (
+                  <tr><td colSpan={6} className="p-12 text-center text-zinc-400 italic">Nenhum reset de senha registado até ao momento.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[10px] text-zinc-400 mt-4">Total: {filteredResets.length} registo(s) encontrado(s).</p>
+        </div>
+      </div>
+    );
+  };
+
+  // -------------------------------------------------------------------------
+  // NOVA PÁGINA: UTILIZADORES DO SISTEMA — Visão Multi-Empresa para SuperAdmin
+  // -------------------------------------------------------------------------
+  const renderUtilizadoresSistema = () => {
+    const filtered = safeUsers.filter(u => {
+      if (!u) return false;
+      return (u.full_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+             (u.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+             (u.empresas?.nome_empresa || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+             (u.role || '').toLowerCase().includes(searchTerm.toLowerCase());
+    });
+
+    return (
+      <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+        <div className="bg-white border border-zinc-200 p-4 shadow-xs flex flex-col md:flex-row gap-4 justify-between items-center">
+          <div>
+            <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider flex items-center gap-2">
+              <Users size={16} /> Utilizadores do Sistema — Visão Global Multi-Empresa
+            </h3>
+            <p className="text-xs text-zinc-500 mt-1">Todos os utilizadores registados em todas as empresas. Exclusivo para SuperAdmin.</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={14} />
+              <input
+                type="text"
+                placeholder="Pesquisar por nome, email, empresa, cargo..."
+                className="bg-zinc-50 border border-zinc-200 pl-9 pr-4 py-2 text-xs font-medium focus:outline-none focus:border-[#003366] w-64"
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+              />
+            </div>
+            <span className="text-xs font-black uppercase text-zinc-500 whitespace-nowrap">Total: {safeUsers.length}</span>
+          </div>
+        </div>
+
+        <div className="bg-white border border-zinc-200 overflow-x-auto shadow-xs">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr className="bg-zinc-50 border-b border-zinc-200 font-bold uppercase text-[10px] text-zinc-500">
+                <th className="p-4">Utilizador / Email</th>
+                <th className="p-4">Empresa Vinculada</th>
+                <th className="p-4">NIF Empresa</th>
+                <th className="p-4">Cargo / Função</th>
+                <th className="p-4">Data Registo</th>
+                <th className="p-4 text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+              {filtered.map(u => (
+                <tr key={u.id} className="hover:bg-zinc-50">
+                  <td className="p-4">
+                    <p className="font-bold text-zinc-900">{u.full_name || u.email}</p>
+                    <p className="text-[10px] text-zinc-400 font-mono">{u.email}</p>
+                    <p className="text-[10px] text-zinc-300 font-mono">{u.id}</p>
+                  </td>
+                  <td className="p-4">
+                    <span className="font-bold uppercase text-[#003366]">{u.empresas?.nome_empresa || 'Empresa Geral'}</span>
+                  </td>
+                  <td className="p-4 font-mono text-zinc-500">{u.empresas?.nif || '---'}</td>
+                  <td className="p-4">
+                    <span className="px-2 py-0.5 bg-zinc-100 text-zinc-700 font-bold text-[10px] uppercase">{u.role || 'Operador'}</span>
+                  </td>
+                  <td className="p-4 font-mono text-zinc-500">{safeFormatDate(u.created_at)}</td>
+                  <td className="p-4 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => setShowUserResetModal(u)}
+                        title="Resetar Senha"
+                        className="px-2 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-black text-[10px] uppercase inline-flex items-center gap-1 cursor-pointer shadow-xs"
+                      >
+                        <KeyRound size={11} /> Reset
+                      </button>
+                      <button
+                        onClick={() => { setShowChangeCompanyModal(u); setChangeCompanyTarget(''); }}
+                        title="Alterar Empresa"
+                        className="px-2 py-1.5 bg-[#003366] hover:bg-[#002244] text-white font-black text-[10px] uppercase inline-flex items-center gap-1 cursor-pointer shadow-xs"
+                      >
+                        <ArrowRightLeft size={11} /> Empresa
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {filtered.length === 0 && (
+                <tr><td colSpan={6} className="p-12 text-center text-zinc-400 italic">Nenhum utilizador encontrado.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
+
   const renderCompanyDetailPanel = () => {
     if (!selectedCompany) return null;
     const lic = calcularLicenca(selectedCompany);
@@ -543,6 +1189,9 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
             </button>
             <button onClick={() => setShowActivateModal(true)} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
               <CheckCircle size={14} /> Ativar Licença
+            </button>
+            <button onClick={() => setShowDeactivateModal(true)} className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
+              <XCircle size={14} /> Desativar Licença
             </button>
             <button onClick={() => setShowUpgradeModal(true)} className="px-3 py-1.5 bg-[#003366] hover:bg-[#002244] text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer">
               <ArrowUpCircle size={14} /> Upgrade
@@ -598,9 +1247,11 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
             { id: 'licenca', label: '2. Gestão de Licença', icon: Key },
             { id: 'comprovativos', label: '3. Comprovativos Pagamento', icon: CreditCard },
             { id: 'users', label: '4. Utilizadores & Reset', icon: Users },
-            { id: 'ocorrencias', label: '5. Ocorrências CRM', icon: MessageSquare },
-            { id: 'email', label: '6. Enviar Email', icon: Mail },
-            { id: 'auditoria', label: '7. Auditoria da Empresa', icon: Activity },
+            { id: 'identidade', label: '5. Identidade Visual', icon: Upload },
+            { id: 'ocorrencias', label: '6. Ocorrências CRM', icon: MessageSquare },
+            { id: 'email', label: '7. Enviar Email', icon: Mail },
+            { id: 'auditoria', label: '8. Auditoria da Empresa', icon: Activity },
+            { id: 'solicitacoes', label: '9. Histórico Solicitações', icon: History },
           ].map(sub => (
             <button
               key={sub.id}
@@ -658,11 +1309,11 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
               </div>
               <div className="p-4 bg-zinc-50 border border-zinc-200 space-y-1">
                 <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest block">Data de Registo no Ecossistema</span>
-                <span className="font-mono text-zinc-800">{formatDate(selectedCompany.created_at)}</span>
+                <span className="font-mono text-zinc-800">{safeFormatDate(selectedCompany.created_at)}</span>
               </div>
               <div className="p-4 bg-zinc-50 border border-zinc-200 space-y-1">
                 <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest block">Última Atualização</span>
-                <span className="font-mono text-zinc-800">{formatDate(selectedCompany.updated_at || selectedCompany.created_at)}</span>
+                <span className="font-mono text-zinc-800">{safeFormatDate(selectedCompany.updated_at || selectedCompany.created_at)}</span>
               </div>
             </div>
           </div>
@@ -674,8 +1325,11 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
             <div className="flex justify-between items-center border-b border-zinc-100 pb-4">
               <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider">Parâmetros Oficiais da Licença</h3>
               <div className="flex gap-2">
-                <button onClick={() => setShowActivateModal(true)} className="px-4 py-2 bg-emerald-600 text-white text-xs font-black uppercase tracking-widest flex items-center gap-2 cursor-pointer">
-                  <CheckCircle size={14} /> Ativar Licença Agora
+                <button onClick={() => setShowActivateModal(true)} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase tracking-widest flex items-center gap-2 cursor-pointer">
+                  <CheckCircle size={14} /> Ativar Licença
+                </button>
+                <button onClick={() => setShowDeactivateModal(true)} className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-black uppercase tracking-widest flex items-center gap-2 cursor-pointer">
+                  <XCircle size={14} /> Desativar Licença
                 </button>
               </div>
             </div>
@@ -687,7 +1341,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
               </div>
               <div className="p-4 bg-zinc-50 border border-zinc-200">
                 <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Estado no Sistema</span>
-                <span className="text-sm font-black text-emerald-700 uppercase mt-1 block">{lic.statusNormalizado}</span>
+                <span className={`text-sm font-black uppercase mt-1 block ${lic.isAtiva ? 'text-emerald-700' : 'text-rose-700'}`}>{lic.statusNormalizado}</span>
               </div>
               <div className="p-4 bg-zinc-50 border border-zinc-200">
                 <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block">Data de Ativação</span>
@@ -729,21 +1383,45 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                 <tr className="bg-zinc-50 border-b border-zinc-200 font-bold uppercase text-[10px] text-zinc-500">
                   <th className="p-3">Data</th>
                   <th className="p-3">Banco</th>
-                  <th className="p-3">N.º Transação</th>
+                  <th className="p-3">N.º Transação / Ref</th>
                   <th className="p-3 text-right">Valor Pago</th>
+                  <th className="p-3 text-center">Ficheiro / Anexo</th>
                   <th className="p-3 text-center">Estado</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
-                <tr className="hover:bg-zinc-50">
-                  <td className="p-3 font-mono">{formatDate(selectedCompany.created_at)}</td>
-                  <td className="p-3 font-bold uppercase">Banco BAI</td>
-                  <td className="p-3 font-mono font-bold">TRX-882182</td>
-                  <td className="p-3 text-right font-mono font-black text-emerald-700">65.000,00 AOA</td>
-                  <td className="p-3 text-center">
-                    <span className="bg-emerald-100 text-emerald-800 text-[9px] font-black uppercase px-2 py-0.5">Aprovado</span>
-                  </td>
-                </tr>
+                {safeComprovativos.map((comp, idx) => (
+                  <tr key={comp.id || idx} className="hover:bg-zinc-50">
+                    <td className="p-3 font-mono">{safeFormatDate(comp.created_at)}</td>
+                    <td className="p-3 font-bold uppercase">{comp.banco || 'Banco Comercial'}</td>
+                    <td className="p-3 font-mono font-bold">{comp.numero_transacao || '---'}</td>
+                    <td className="p-3 text-right font-mono font-black text-emerald-700">{safeFormatCurrency(comp.montante || 65000)}</td>
+                    <td className="p-3 text-center font-mono">
+                      {comp.comprovativo_url ? (
+                        <a 
+                          href={comp.comprovativo_url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-[#003366] hover:underline font-bold"
+                        >
+                          <Download size={12} /> Ver Ficheiro
+                        </a>
+                      ) : (
+                        <span className="text-zinc-400 italic">Sem ficheiro</span>
+                      )}
+                    </td>
+                    <td className="p-3 text-center">
+                      <span className="bg-emerald-100 text-emerald-800 text-[9px] font-black uppercase px-2 py-0.5">{comp.status || 'Aprovado'}</span>
+                    </td>
+                  </tr>
+                ))}
+                {safeComprovativos.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="p-8 text-center text-zinc-400 italic">
+                      Nenhum comprovativo de pagamento anexado até ao momento.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -754,6 +1432,9 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
           <div className="bg-white border border-zinc-200 p-6 space-y-6 animate-in fade-in duration-300">
             <div className="flex justify-between items-center border-b border-zinc-100 pb-4">
               <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider">Utilizadores Registados nesta Empresa</h3>
+              <span className="text-xs text-zinc-500 font-bold">
+                {safeUsers.filter(u => u && String(u.empresa_id) === String(selectedCompany.id)).length} utilizador(es)
+              </span>
             </div>
 
             <table className="w-full text-left text-xs border border-zinc-200">
@@ -761,35 +1442,545 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                 <tr className="bg-zinc-50 border-b border-zinc-200 font-bold uppercase text-[10px] text-zinc-500">
                   <th className="p-3">Nome / Email</th>
                   <th className="p-3">Cargo / Função</th>
+                  <th className="p-3 text-center">Estado</th>
                   <th className="p-3">Data Cadastro</th>
-                  <th className="p-3 text-right">Ação de Segurança</th>
+                  <th className="p-3 text-right">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
-                {users.filter(u => String(u.empresa_id) === String(selectedCompany.id)).map(u => (
-                  <tr key={u.id} className="hover:bg-zinc-50">
-                    <td className="p-3 font-bold text-zinc-800">{u.full_name || u.email}</td>
-                    <td className="p-3 text-zinc-600 uppercase font-mono">{u.role || 'Operador'}</td>
-                    <td className="p-3 font-mono text-zinc-500">{formatDate(u.created_at)}</td>
-                    <td className="p-3 text-right">
-                      <button 
-                        onClick={() => setShowUserResetModal(u)}
-                        className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-black text-[10px] uppercase tracking-wider flex items-center gap-1.5 ml-auto cursor-pointer"
-                      >
-                        <Key size={12} /> Resetar Acesso
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {users.filter(u => String(u.empresa_id) === String(selectedCompany.id)).length === 0 && (
-                  <tr><td colSpan={4} className="p-8 text-center text-zinc-400 italic">Nenhum utilizador secundário registado para esta empresa.</td></tr>
+                {safeUsers.filter(u => u && String(u.empresa_id) === String(selectedCompany.id)).map(u => {
+                  const isActive = u.ativo !== false && u.is_active !== false;
+                  return (
+                    <tr key={u.id} className="hover:bg-zinc-50">
+                      <td className="p-3">
+                        <p className="font-bold text-zinc-800">{u.full_name || u.nome || u.email}</p>
+                        <p className="text-[10px] text-zinc-400 font-mono">{u.email}</p>
+                      </td>
+                      <td className="p-3 text-zinc-600 uppercase font-mono">{u.role || 'Operador'}</td>
+                      <td className="p-3 text-center">
+                        <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded ${isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                          {isActive ? '✓ ATIVO' : '✗ BLOQUEADO'}
+                        </span>
+                      </td>
+                      <td className="p-3 font-mono text-zinc-500">{safeFormatDate(u.created_at)}</td>
+                      <td className="p-3 text-right">
+                        <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                          <button
+                            onClick={() => setShowUserResetModal(u)}
+                            className="px-2 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-black text-[10px] uppercase inline-flex items-center gap-1 cursor-pointer shadow-xs"
+                            title="Resetar Senha"
+                          >
+                            <KeyRound size={11} /> Reset
+                          </button>
+                          <button
+                            onClick={async () => {
+                              try {
+                                if (typeof fetchJson === 'function') {
+                                  const res = await fetchJson(`/api/crm/users/${u.id}/toggle-status`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({})
+                                  });
+                                  toast.success(res?.message || 'Estado atualizado!');
+                                  await loadData();
+                                }
+                              } catch (err: any) {
+                                toast.error(err.message || 'Erro ao alterar estado.');
+                              }
+                            }}
+                            className={`px-2 py-1.5 text-white font-black text-[10px] uppercase inline-flex items-center gap-1 cursor-pointer shadow-xs ${isActive ? 'bg-rose-600 hover:bg-rose-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+                            title={isActive ? 'Bloquear acesso' : 'Ativar acesso'}
+                          >
+                            {isActive ? <><Lock size={11} /> Bloquear</> : <><Unlock size={11} /> Ativar</>}
+                          </button>
+                          <button
+                            onClick={() => {
+                              setShowPermissionsModal(u);
+                              setEditPermissions(Array.isArray(u.permission_areas) ? u.permission_areas : (Array.isArray(u.permissions) ? u.permissions : []));
+                            }}
+                            className="px-2 py-1.5 bg-[#003366] hover:bg-[#002244] text-white font-black text-[10px] uppercase inline-flex items-center gap-1 cursor-pointer shadow-xs"
+                            title="Gerir Permissões"
+                          >
+                            <Sliders size={11} /> Permissões
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {safeUsers.filter(u => u && String(u.empresa_id) === String(selectedCompany.id)).length === 0 && (
+                  <tr><td colSpan={5} className="p-8 text-center text-zinc-400 italic">Nenhum utilizador secundário registado para esta empresa.</td></tr>
                 )}
               </tbody>
             </table>
           </div>
         )}
 
-        {/* SUB-ABA 5: OCORRÊNCIAS CRM */}
+        {/* SUB-ABA 5: IDENTIDADE VISUAL & MODELO DE DOCUMENTOS */}
+        {companySubTab === 'identidade' && (
+          <div className="space-y-8 animate-in fade-in duration-300">
+            <div className="bg-white border border-zinc-200 p-6 shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div>
+                <h3 className="text-base font-black text-[#003366] uppercase tracking-wider">Identidade Visual &amp; Modelo Oficial de Documentos</h3>
+                <p className="text-xs text-zinc-500 mt-1">Configure logotipo, marca de água, imagem de rodapé e imagens laterais aplicadas nos documentos fiscais emitidos por {selectedCompany.nome_empresa}.</p>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setShowDocumentPreviewModal(true)}
+                  className="px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <Eye size={14} /> Visualizar Modelo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowDocumentPreviewModal(true)}
+                  className="px-4 py-2 bg-[#003366] hover:bg-[#002244] text-white text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <Download size={14} /> Baixar / Imprimir Modelo
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 text-xs">
+              {/* COLUNA ESQUERDA: FORMULÁRIO DE IDENTIDADE (7 COLUNAS) */}
+              <div className="lg:col-span-7 space-y-6">
+                <div className="bg-white border border-zinc-200 p-6 space-y-6 shadow-xs">
+                  <h4 className="font-black text-[#003366] uppercase tracking-wider text-xs border-b pb-2">1. Elementos Visuais Principais</h4>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Logotipo */}
+                    <div className="space-y-3 p-4 border border-zinc-200 bg-zinc-50 rounded-xs">
+                      <div className="flex justify-between items-center">
+                        <span className="font-black text-[#003366] uppercase text-[10px]">Logotipo da Empresa</span>
+                        {(identityForm.logo_url || selectedCompany.logo_url) && (
+                          <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">Ativo</span>
+                        )}
+                      </div>
+                      {(identityForm.logo_url || selectedCompany.logo_url) && (
+                        <div className="h-16 flex items-center justify-center border border-zinc-200 bg-white p-2">
+                          <img src={identityForm.logo_url || selectedCompany.logo_url} alt="Logo" className="max-h-full max-w-full object-contain" />
+                        </div>
+                      )}
+                      <input
+                        type="file"
+                        accept=".png,.jpg,.jpeg,.svg,.webp"
+                        onChange={e => setIdentityLogoFile(e.target.files?.[0] || null)}
+                        className="w-full bg-white border border-zinc-200 p-2 font-medium text-[11px]"
+                      />
+                      {identityLogoFile && <p className="text-[10px] text-emerald-600 font-bold">✓ {identityLogoFile.name}</p>}
+                      <div>
+                        <label className="block font-bold uppercase mb-1 text-[10px] text-zinc-500">Tamanho / Largura do Logo (px)</label>
+                        <input
+                          type="number"
+                          defaultValue={identityForm.logo_size || selectedCompany.logo_size || 80}
+                          min={40}
+                          max={300}
+                          className="w-full bg-white border border-zinc-200 p-2 font-mono"
+                          onChange={e => setIdentityForm((f: any) => ({ ...f, logo_size: Number(e.target.value) }))}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Marca de Água */}
+                    <div className="space-y-3 p-4 border border-zinc-200 bg-zinc-50 rounded-xs">
+                      <div className="flex justify-between items-center">
+                        <span className="font-black text-[#003366] uppercase text-[10px]">Marca de Água</span>
+                        {(identityForm.watermark_url || selectedCompany.watermark_url) && (
+                          <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">Ativa</span>
+                        )}
+                      </div>
+                      {(identityForm.watermark_url || selectedCompany.watermark_url) && (
+                        <div className="h-16 flex items-center justify-center border border-zinc-200 bg-white p-2">
+                          <img src={identityForm.watermark_url || selectedCompany.watermark_url} alt="Watermark" className="max-h-full max-w-full object-contain opacity-40" />
+                        </div>
+                      )}
+                      <input
+                        type="file"
+                        accept=".png,.jpg,.jpeg,.svg,.webp"
+                        onChange={e => setIdentityWatermarkFile(e.target.files?.[0] || null)}
+                        className="w-full bg-white border border-zinc-200 p-2 font-medium text-[11px]"
+                      />
+                      {identityWatermarkFile && <p className="text-[10px] text-emerald-600 font-bold">✓ {identityWatermarkFile.name}</p>}
+                      <div className="space-y-2">
+                        <div>
+                          <label className="block font-bold uppercase mb-1 text-[10px] text-zinc-500">Dimensão da Marca de Água (px)</label>
+                          <input
+                            type="number"
+                            defaultValue={identityForm.watermark_size || selectedCompany.watermark_size || 300}
+                            min={100}
+                            max={600}
+                            className="w-full bg-white border border-zinc-200 p-2 font-mono"
+                            onChange={e => setIdentityForm((f: any) => ({ ...f, watermark_size: Number(e.target.value) }))}
+                          />
+                        </div>
+                        <label className="flex items-center gap-2 cursor-pointer pt-1">
+                          <input
+                            type="checkbox"
+                            defaultChecked={selectedCompany.exibir_marca_dagua !== false}
+                            onChange={e => setIdentityForm((f: any) => ({ ...f, exibir_marca_dagua: e.target.checked }))}
+                            className="w-4 h-4 accent-[#003366]"
+                          />
+                          <span className="font-bold uppercase text-[10px]">Exibir marca de água nos documentos</span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Imagem de Rodapé */}
+                  <div className="space-y-3 p-4 border border-zinc-200 bg-zinc-50 rounded-xs">
+                    <div className="flex justify-between items-center">
+                      <span className="font-black text-[#003366] uppercase text-[10px]">Imagem de Rodapé do Documento</span>
+                      {(identityForm.footer_image_url || selectedCompany.footer_image_url) && (
+                        <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">Carregada</span>
+                      )}
+                    </div>
+                    {(identityForm.footer_image_url || selectedCompany.footer_image_url) && (
+                      <div className="h-16 flex items-center justify-center border border-zinc-200 bg-white p-2">
+                        <img src={identityForm.footer_image_url || selectedCompany.footer_image_url} alt="Footer Image" className="max-h-full max-w-full object-contain" />
+                      </div>
+                    )}
+                    <input
+                      type="file"
+                      accept=".png,.jpg,.jpeg,.svg,.webp"
+                      onChange={e => setIdentityFooterFile(e.target.files?.[0] || null)}
+                      className="w-full bg-white border border-zinc-200 p-2 font-medium text-[11px]"
+                    />
+                    {identityFooterFile && <p className="text-[10px] text-emerald-600 font-bold">✓ {identityFooterFile.name}</p>}
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex-1">
+                        <label className="block font-bold uppercase mb-1 text-[10px] text-zinc-500">Altura da Imagem de Rodapé (px)</label>
+                        <input
+                          type="number"
+                          defaultValue={identityForm.footer_size || selectedCompany.footer_size || 60}
+                          min={30}
+                          max={200}
+                          className="w-full bg-white border border-zinc-200 p-2 font-mono"
+                          onChange={e => setIdentityForm((f: any) => ({ ...f, footer_size: Number(e.target.value) }))}
+                        />
+                      </div>
+                      <label className="flex items-center gap-2 cursor-pointer pt-4">
+                        <input
+                          type="checkbox"
+                          defaultChecked={selectedCompany.exibir_rodape !== false}
+                          onChange={e => setIdentityForm((f: any) => ({ ...f, exibir_rodape: e.target.checked }))}
+                          className="w-4 h-4 accent-[#003366]"
+                        />
+                        <span className="font-bold uppercase text-[10px]">Ativar imagem de rodapé</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Imagens Laterais (Esquerda & Direita) */}
+                  <h4 className="font-black text-[#003366] uppercase tracking-wider text-xs border-b pb-2 pt-2">2. Imagens Laterais do Documento</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Lateral Esquerda */}
+                    <div className="space-y-3 p-4 border border-zinc-200 bg-zinc-50 rounded-xs">
+                      <span className="font-black text-[#003366] uppercase text-[10px]">Imagem Lateral Esquerda</span>
+                      {(identityForm.sidebar_image_url || selectedCompany.sidebar_image_url) && (
+                        <div className="h-16 flex items-center justify-center border border-zinc-200 bg-white p-2">
+                          <img src={identityForm.sidebar_image_url || selectedCompany.sidebar_image_url} alt="Lateral Esquerda" className="max-h-full max-w-full object-contain" />
+                        </div>
+                      )}
+                      <input
+                        type="file"
+                        accept=".png,.jpg,.jpeg,.svg,.webp"
+                        onChange={e => setIdentityLeftFile(e.target.files?.[0] || null)}
+                        className="w-full bg-white border border-zinc-200 p-2 font-medium text-[11px]"
+                      />
+                      {identityLeftFile && <p className="text-[10px] text-emerald-600 font-bold">✓ {identityLeftFile.name}</p>}
+                    </div>
+
+                    {/* Lateral Direita */}
+                    <div className="space-y-3 p-4 border border-zinc-200 bg-zinc-50 rounded-xs">
+                      <span className="font-black text-[#003366] uppercase text-[10px]">Imagem Lateral Direita</span>
+                      {(identityForm.anexo_image_url || selectedCompany.anexo_image_url) && (
+                        <div className="h-16 flex items-center justify-center border border-zinc-200 bg-white p-2">
+                          <img src={identityForm.anexo_image_url || selectedCompany.anexo_image_url} alt="Lateral Direita" className="max-h-full max-w-full object-contain" />
+                        </div>
+                      )}
+                      <input
+                        type="file"
+                        accept=".png,.jpg,.jpeg,.svg,.webp"
+                        onChange={e => setIdentityRightFile(e.target.files?.[0] || null)}
+                        className="w-full bg-white border border-zinc-200 p-2 font-medium text-[11px]"
+                      />
+                      {identityRightFile && <p className="text-[10px] text-emerald-600 font-bold">✓ {identityRightFile.name}</p>}
+                    </div>
+                  </div>
+
+                  {/* Rodapé em Texto e Cores */}
+                  <h4 className="font-black text-[#003366] uppercase tracking-wider text-xs border-b pb-2 pt-2">3. Texto Legal de Rodapé e Cores</h4>
+                  <div className="space-y-3">
+                    <label className="block font-bold uppercase text-[10px] text-zinc-600">Texto Legal de Rodapé (IBAN, Banco, Telefones, Menções Fiscais)</label>
+                    <textarea
+                      rows={3}
+                      defaultValue={identityForm.texto_rodape || selectedCompany.texto_rodape || ''}
+                      placeholder="Ex: IBAN: AO06 0040 0000 1234 5678 9012 3 | Banco BAI | Tel: +244 923 000 000 | Software Validado nº 999/AGT/2026"
+                      className="w-full bg-zinc-50 border border-zinc-200 p-3 text-xs font-medium focus:outline-none focus:border-[#003366]"
+                      onChange={e => setIdentityForm((f: any) => ({ ...f, texto_rodape: e.target.value }))}
+                    />
+                    <div className="grid grid-cols-2 gap-4 pt-2">
+                      <div>
+                        <label className="block font-bold uppercase text-[10px] text-zinc-500 mb-1">Cor Primária do Documento</label>
+                        <input
+                          type="color"
+                          defaultValue={identityForm.cor_primaria || selectedCompany.cor_primaria || '#003366'}
+                          className="w-full h-9 bg-white border border-zinc-200 p-1 cursor-pointer"
+                          onChange={e => setIdentityForm((f: any) => ({ ...f, cor_primaria: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="block font-bold uppercase text-[10px] text-zinc-500 mb-1">Modelo de Documento AGT</label>
+                        <select
+                          defaultValue={identityForm.documento_modelo || selectedCompany.documento_modelo || 'OFICIAL_AGT_MODERNO'}
+                          className="w-full bg-zinc-50 border border-zinc-200 p-2 font-bold text-xs"
+                          onChange={e => setIdentityForm((f: any) => ({ ...f, documento_modelo: e.target.value }))}
+                        >
+                          <option value="OFICIAL_AGT_MODERNO">Oficial AGT Moderno (Padrão)</option>
+                          <option value="OFICIAL_AGT_CLASSICO">Oficial AGT Clássico</option>
+                          <option value="OFICIAL_AGT_COMPACTO">Oficial AGT Compacto</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 border-t flex justify-end">
+                    <button
+                      disabled={identitySaving}
+                      onClick={async () => {
+                        setIdentitySaving(true);
+                        try {
+                          let logoUrl = selectedCompany.logo_url || identityForm.logo_url || '';
+                          let watermarkUrl = selectedCompany.watermark_url || identityForm.watermark_url || '';
+                          let footerUrl = selectedCompany.footer_image_url || identityForm.footer_image_url || '';
+                          let leftUrl = selectedCompany.sidebar_image_url || identityForm.sidebar_image_url || '';
+                          let rightUrl = selectedCompany.anexo_image_url || identityForm.anexo_image_url || '';
+
+                          // Upload logo
+                          if (identityLogoFile) {
+                            const ext = identityLogoFile.name.split('.').pop();
+                            const path = `logos/${selectedCompany.id}_logo_${Date.now()}.${ext}`;
+                            const { data: up } = await supabase.storage.from('media').upload(path, identityLogoFile, { cacheControl: '3600', upsert: true });
+                            if (up) {
+                              const { data: pub } = supabase.storage.from('media').getPublicUrl(path);
+                              logoUrl = pub?.publicUrl || logoUrl;
+                            }
+                          }
+
+                          // Upload watermark
+                          if (identityWatermarkFile) {
+                            const ext = identityWatermarkFile.name.split('.').pop();
+                            const path = `watermarks/${selectedCompany.id}_wm_${Date.now()}.${ext}`;
+                            const { data: up } = await supabase.storage.from('media').upload(path, identityWatermarkFile, { cacheControl: '3600', upsert: true });
+                            if (up) {
+                              const { data: pub } = supabase.storage.from('media').getPublicUrl(path);
+                              watermarkUrl = pub?.publicUrl || watermarkUrl;
+                            }
+                          }
+
+                          // Upload footer image
+                          if (identityFooterFile) {
+                            const ext = identityFooterFile.name.split('.').pop();
+                            const path = `footers/${selectedCompany.id}_footer_${Date.now()}.${ext}`;
+                            const { data: up } = await supabase.storage.from('media').upload(path, identityFooterFile, { cacheControl: '3600', upsert: true });
+                            if (up) {
+                              const { data: pub } = supabase.storage.from('media').getPublicUrl(path);
+                              footerUrl = pub?.publicUrl || footerUrl;
+                            }
+                          }
+
+                          // Upload lateral esquerda
+                          if (identityLeftFile) {
+                            const ext = identityLeftFile.name.split('.').pop();
+                            const path = `sidebars/${selectedCompany.id}_left_${Date.now()}.${ext}`;
+                            const { data: up } = await supabase.storage.from('media').upload(path, identityLeftFile, { cacheControl: '3600', upsert: true });
+                            if (up) {
+                              const { data: pub } = supabase.storage.from('media').getPublicUrl(path);
+                              leftUrl = pub?.publicUrl || leftUrl;
+                            }
+                          }
+
+                          // Upload lateral direita
+                          if (identityRightFile) {
+                            const ext = identityRightFile.name.split('.').pop();
+                            const path = `sidebars/${selectedCompany.id}_right_${Date.now()}.${ext}`;
+                            const { data: up } = await supabase.storage.from('media').upload(path, identityRightFile, { cacheControl: '3600', upsert: true });
+                            if (up) {
+                              const { data: pub } = supabase.storage.from('media').getPublicUrl(path);
+                              rightUrl = pub?.publicUrl || rightUrl;
+                            }
+                          }
+
+                          const payload = {
+                            ...identityForm,
+                            logo_url: logoUrl || null,
+                            watermark_url: watermarkUrl || null,
+                            footer_image_url: footerUrl || null,
+                            sidebar_image_url: leftUrl || null,
+                            anexo_image_url: rightUrl || null
+                          };
+
+                          if (typeof fetchJson === 'function') {
+                            const res = await fetchJson(`/api/crm/companies/${selectedCompany.id}/identity`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify(payload)
+                            });
+                            if (res && res.error) {
+                              toast.error(res.error);
+                              return;
+                            }
+                          }
+
+                          toast.success('Identidade visual gravada e confirmada no Supabase!');
+                          setIdentityLogoFile(null);
+                          setIdentityWatermarkFile(null);
+                          setIdentityFooterFile(null);
+                          setIdentityLeftFile(null);
+                          setIdentityRightFile(null);
+                          await loadData();
+                        } catch (err: any) {
+                          toast.error(err.message || 'Erro ao gravar identidade visual.');
+                        } finally {
+                          setIdentitySaving(false);
+                        }
+                      }}
+                      className="px-6 py-3 bg-[#003366] hover:bg-[#002244] text-white text-xs font-black uppercase tracking-widest flex items-center gap-2 cursor-pointer shadow-md disabled:opacity-50"
+                    >
+                      <Upload size={14} /> {identitySaving ? 'A Gravar no Supabase...' : 'Gravar Identidade Visual'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* COLUNA DIREITA: PREVIEW DO MODELO OFICIAL DA FATURAÇÃO ELETRÓNICA (5 COLUNAS) */}
+              <div className="lg:col-span-5 space-y-4">
+                <div className="bg-white border border-zinc-200 p-4 shadow-xs">
+                  <div className="flex justify-between items-center pb-3 border-b border-zinc-100">
+                    <span className="font-black text-[#003366] uppercase text-xs flex items-center gap-2">
+                      <Eye size={14} /> Preview do Modelo Oficial AGT
+                    </span>
+                    <span className="text-[10px] bg-blue-50 text-[#003366] font-bold px-2 py-0.5 uppercase">Tempo Real</span>
+                  </div>
+
+                  {/* MINIATURA DO DOCUMENTO FISCAL */}
+                  <div className="mt-4 p-5 bg-white border border-zinc-300 shadow-md relative overflow-hidden text-[10px] space-y-4 min-h-[480px]">
+                    {/* Marca de Água Central */}
+                    {(identityForm.exibir_marca_dagua !== false && (identityForm.watermark_url || selectedCompany.watermark_url)) && (
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0">
+                        <img
+                          src={identityForm.watermark_url || selectedCompany.watermark_url}
+                          alt="Watermark"
+                          className="opacity-15 object-contain"
+                          style={{ width: `${Math.min(220, (identityForm.watermark_size || selectedCompany.watermark_size || 300) * 0.6)}px` }}
+                        />
+                      </div>
+                    )}
+
+                    {/* Imagem Lateral Esquerda */}
+                    {(identityForm.sidebar_image_url || selectedCompany.sidebar_image_url) && (
+                      <div className="absolute left-1 top-20 bottom-20 w-4 pointer-events-none opacity-50 z-0">
+                        <img src={identityForm.sidebar_image_url || selectedCompany.sidebar_image_url} alt="Lateral Esquerda" className="h-full object-cover" />
+                      </div>
+                    )}
+
+                    {/* Imagem Lateral Direita */}
+                    {(identityForm.anexo_image_url || selectedCompany.anexo_image_url) && (
+                      <div className="absolute right-1 top-20 bottom-20 w-4 pointer-events-none opacity-50 z-0">
+                        <img src={identityForm.anexo_image_url || selectedCompany.anexo_image_url} alt="Lateral Direita" className="h-full object-cover" />
+                      </div>
+                    )}
+
+                    {/* Cabeçalho do Documento */}
+                    <div className="relative z-10 flex justify-between items-start border-b border-zinc-200 pb-3">
+                      <div>
+                        {(identityForm.logo_url || selectedCompany.logo_url) ? (
+                          <img
+                            src={identityForm.logo_url || selectedCompany.logo_url}
+                            alt="Logo"
+                            className="object-contain mb-1"
+                            style={{ height: `${Math.min(50, (identityForm.logo_size || selectedCompany.logo_size || 80) * 0.5)}px` }}
+                          />
+                        ) : (
+                          <div className="font-black text-[#003366] uppercase text-xs tracking-tight">{selectedCompany.nome_empresa}</div>
+                        )}
+                        <p className="font-bold uppercase text-zinc-800 text-[9px]">{selectedCompany.nome_empresa}</p>
+                        <p className="text-zinc-500 text-[8px]">NIF: {selectedCompany.nif || '5000000000'} • {selectedCompany.municipio || 'Luanda'}, {selectedCompany.provincia || 'Angola'}</p>
+                        <p className="text-zinc-500 text-[8px]">Tel: {selectedCompany.telefone || '+244 9xx xxx xxx'} • {selectedCompany.email}</p>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-black text-[#003366] uppercase text-xs tracking-wider block">FATURA</span>
+                        <p className="font-mono font-bold text-zinc-900 text-[9px]">FT 2026/000001</p>
+                        <p className="text-zinc-400 text-[8px]">Data: {new Date().toLocaleDateString('pt-AO')}</p>
+                        <p className="text-zinc-400 text-[8px]">Moeda: AOA (Kz)</p>
+                      </div>
+                    </div>
+
+                    {/* Dados do Cliente Exemplo */}
+                    <div className="relative z-10 bg-zinc-50 p-2.5 border border-zinc-200">
+                      <span className="font-black text-zinc-400 uppercase text-[7px] tracking-widest block">EXMO.(A) SR.(A) CLIENTE</span>
+                      <p className="font-bold text-zinc-800 text-[9px] uppercase">CLIENTE EXEMPLO DE DEMONSTRAÇÃO LDA</p>
+                      <p className="text-zinc-500 text-[8px]">NIF: 5002123665 • Luanda, Angola</p>
+                    </div>
+
+                    {/* Tabela de Itens */}
+                    <div className="relative z-10">
+                      <table className="w-full text-left text-[8px] border-collapse">
+                        <thead>
+                          <tr className="bg-[#003366] text-white font-bold uppercase text-[7px]">
+                            <th className="p-1.5">Descrição</th>
+                            <th className="p-1.5 text-center">Qtd</th>
+                            <th className="p-1.5 text-right">P. Unit</th>
+                            <th className="p-1.5 text-right">IVA</th>
+                            <th className="p-1.5 text-right">Total</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-200">
+                          <tr>
+                            <td className="p-1.5 font-medium">1. Subscrição / Licenciamento Anual Sistema AGT</td>
+                            <td className="p-1.5 text-center font-mono">1</td>
+                            <td className="p-1.5 text-right font-mono">100.000,00</td>
+                            <td className="p-1.5 text-right font-mono">14%</td>
+                            <td className="p-1.5 text-right font-mono font-bold">114.000,00</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Totais */}
+                    <div className="relative z-10 flex justify-end">
+                      <div className="w-48 bg-zinc-50 p-2 border border-zinc-200 space-y-1 text-[8px]">
+                        <div className="flex justify-between"><span>Total Ilíquido:</span><span className="font-mono">100.000,00 Kz</span></div>
+                        <div className="flex justify-between"><span>Total IVA (14%):</span><span className="font-mono">14.000,00 Kz</span></div>
+                        <div className="flex justify-between font-black text-[#003366] border-t pt-1"><span>Total a Pagar:</span><span className="font-mono text-[9px]">114.000,00 Kz</span></div>
+                      </div>
+                    </div>
+
+                    {/* Rodapé Oficial (Imagem ou Texto) */}
+                    <div className="relative z-10 border-t border-zinc-200 pt-2 text-[7px] text-zinc-500 space-y-1">
+                      {(identityForm.exibir_rodape !== false && (identityForm.footer_image_url || selectedCompany.footer_image_url)) && (
+                        <div className="flex justify-center mb-1">
+                          <img
+                            src={identityForm.footer_image_url || selectedCompany.footer_image_url}
+                            alt="Rodapé Oficial"
+                            className="object-contain max-w-full"
+                            style={{ height: `${Math.min(40, (identityForm.footer_size || selectedCompany.footer_size || 60) * 0.6)}px` }}
+                          />
+                        </div>
+                      )}
+                      <p className="text-center font-medium">{identityForm.texto_rodape || selectedCompany.texto_rodape || 'IBAN: AO06 0040 0000 0000 0000 0000 0 • Banco Comercial • Luanda'}</p>
+                      <p className="text-center text-[6px] text-zinc-400 font-mono">Software Validado nº 999/AGT/2026 • FT 2026/000001 - Processado por Programa Validado</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+
+
         {companySubTab === 'ocorrencias' && (
           <div className="bg-white border border-zinc-200 p-6 space-y-6 animate-in fade-in duration-300">
             <div className="flex justify-between items-center border-b border-zinc-100 pb-4">
@@ -800,7 +1991,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
             </div>
 
             <div className="space-y-3">
-              {ocorrencias.map(oc => (
+              {safeOcorrencias.map(oc => (
                 <div key={oc.id} className="p-4 border border-zinc-200 bg-zinc-50 space-y-2">
                   <div className="flex justify-between items-center">
                     <h4 className="font-black text-[#003366] text-xs uppercase">{oc.titulo}</h4>
@@ -809,7 +2000,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                   <p className="text-xs text-zinc-600">{oc.descricao}</p>
                 </div>
               ))}
-              {ocorrencias.length === 0 && (
+              {safeOcorrencias.length === 0 && (
                 <p className="p-8 text-center text-zinc-400 italic text-xs">Nenhuma ocorrência registada para esta empresa.</p>
               )}
             </div>
@@ -828,16 +2019,18 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
               e.preventDefault();
               const form = e.target as any;
               try {
-                await fetchJson('/api/crm/send-email', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    empresa_id: selectedCompany.id,
-                    destinatario: selectedCompany.email,
-                    assunto: form.assunto.value,
-                    mensagem: form.mensagem.value
-                  })
-                });
+                if (typeof fetchJson === 'function') {
+                  await fetchJson('/api/crm/send-email', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      empresa_id: selectedCompany.id,
+                      destinatario: selectedCompany.email,
+                      assunto: form.assunto.value,
+                      mensagem: form.mensagem.value
+                    })
+                  });
+                }
                 toast.success('E-mail registado e enviado com sucesso!');
                 form.reset();
               } catch (err) {
@@ -872,19 +2065,147 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
             </div>
 
             <div className="divide-y divide-zinc-100 text-xs">
-              {logs.filter(l => String(l.empresa_id) === String(selectedCompany.id)).map(log => (
+              {safeLogs.filter(l => l && String(l.empresa_id) === String(selectedCompany.id)).map(log => (
                 <div key={log.id} className="py-3 flex items-start gap-4">
                   <Activity size={16} className="text-[#003366] mt-0.5" />
                   <div>
                     <p className="font-bold text-zinc-800 uppercase">{log.acao}</p>
                     <p className="text-zinc-600">{log.descricao}</p>
-                    <span className="text-[10px] text-zinc-400 font-mono mt-1 block">{formatDate(log.created_at)}</span>
+                    <span className="text-[10px] text-zinc-400 font-mono mt-1 block">{safeFormatDate(log.created_at)}</span>
                   </div>
                 </div>
               ))}
-              {logs.filter(l => String(l.empresa_id) === String(selectedCompany.id)).length === 0 && (
+              {safeLogs.filter(l => l && String(l.empresa_id) === String(selectedCompany.id)).length === 0 && (
                 <p className="p-8 text-center text-zinc-400 italic">Nenhum evento de auditoria registado especificamente para esta empresa.</p>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            SUB-ABA 9: HISTÓRICO DE SOLICITAÇÕES
+        ═══════════════════════════════════════════════════════════════════ */}
+        {companySubTab === 'solicitacoes' && (
+          <div className="bg-white border border-zinc-200 animate-in fade-in duration-300">
+            <div className="p-5 bg-zinc-50 border-b border-zinc-200 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-[#003366] text-white flex items-center justify-center shrink-0">
+                  <History size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider">Histórico de Solicitações</h3>
+                  <p className="text-xs text-zinc-500">
+                    Upgrades, Downgrades, Comprovativos e Ocorrências submetidas pela empresa na área de Licenças.
+                  </p>
+                </div>
+              </div>
+              <span className="bg-[#003366] text-white text-[10px] font-black uppercase tracking-widest px-3 py-1.5">
+                {safeHistorico.length} Registos
+              </span>
+            </div>
+
+            <div className="px-5 py-3 border-b border-zinc-100 flex gap-2 flex-wrap">
+              {[
+                { key: 'TODOS', label: 'Todos', count: safeHistorico.length },
+                { key: 'UPGRADE', label: 'Upgrade', count: safeHistorico.filter(h => String(h.acao || '').toUpperCase().includes('UPGRADE')).length },
+                { key: 'DOWNGRADE', label: 'Downgrade', count: safeHistorico.filter(h => String(h.acao || '').toUpperCase().includes('DOWNGRADE')).length },
+                { key: 'COMPROVATIVO', label: 'Comprovativo', count: safeHistorico.filter(h => String(h.acao || '').toUpperCase().includes('COMPROVATIVO')).length },
+                { key: 'OCORRENCIA', label: 'Ocorrência', count: safeHistorico.filter(h => String(h.acao || '').toUpperCase().includes('OCORRENCIA')).length },
+                { key: 'SOLICITACAO', label: 'Solicitação', count: safeHistorico.filter(h => String(h.acao || '').toUpperCase().includes('SOLICITACAO')).length },
+              ].map(item => (
+                <span key={item.key} className="px-2.5 py-1 text-[9px] font-black uppercase tracking-widest bg-zinc-100 text-zinc-600">
+                  {item.label} ({item.count})
+                </span>
+              ))}
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="bg-zinc-50 text-[10px] font-black text-zinc-500 uppercase tracking-widest border-b border-zinc-200">
+                    <th className="px-5 py-3">Data / Hora</th>
+                    <th className="px-5 py-3">Tipo de Ação</th>
+                    <th className="px-5 py-3">Descrição</th>
+                    <th className="px-5 py-3">Submetido Por</th>
+                    <th className="px-5 py-3 text-center">Estado</th>
+                    <th className="px-5 py-3 text-center">Documento</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100 text-xs">
+                  {safeHistorico.map((hist, idx) => {
+                    const acao = String(hist.acao || '').toUpperCase();
+                    const isUpgrade = acao.includes('UPGRADE');
+                    const isDowngrade = acao.includes('DOWNGRADE');
+                    const isComprovativo = acao.includes('COMPROVATIVO');
+                    const isOcorrencia = acao.includes('OCORRENCIA');
+                    const acaoBadge = isUpgrade ? { label: 'Upgrade', cls: 'bg-emerald-100 text-emerald-700' }
+                      : isDowngrade ? { label: 'Downgrade', cls: 'bg-amber-100 text-amber-700' }
+                      : isComprovativo ? { label: 'Comprovativo', cls: 'bg-sky-100 text-sky-700' }
+                      : isOcorrencia ? { label: 'Ocorrência', cls: 'bg-rose-100 text-rose-700' }
+                      : { label: hist.acao || 'Evento', cls: 'bg-zinc-100 text-zinc-600' };
+                    const status = String(hist.status || 'PENDENTE').toUpperCase();
+                    const statusCls = status === 'APROVADO' || status === 'ATIVO' || status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700'
+                      : status === 'PENDENTE' ? 'bg-amber-100 text-amber-700'
+                      : status === 'REJEITADO' || status === 'RECUSADO' ? 'bg-rose-100 text-rose-700'
+                      : status === 'ABERTO' ? 'bg-blue-100 text-blue-700'
+                      : 'bg-zinc-100 text-zinc-500';
+                    const compUrl = hist.comprovativo_url || hist.metadata?.comprovativo_url;
+                    return (
+                      <tr key={hist.id || idx} className="hover:bg-zinc-50/70 transition-colors">
+                        <td className="px-5 py-3 font-mono text-zinc-500 text-[10px] whitespace-nowrap">
+                          {new Date(hist.created_at || Date.now()).toLocaleString('pt-AO')}
+                        </td>
+                        <td className="px-5 py-3">
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${acaoBadge.cls}`}>
+                            {isUpgrade && <TrendingUp size={10} />}
+                            {isDowngrade && <ArrowDownCircle size={10} />}
+                            {isComprovativo && <CreditCard size={10} />}
+                            {isOcorrencia && <AlertTriangle size={10} />}
+                            {acaoBadge.label}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3 text-zinc-700 max-w-xs">
+                          <p className="font-medium truncate" title={hist.descricao || ''}>
+                            {hist.descricao || hist.motivo || '---'}
+                          </p>
+                          {(hist.metadata?.banco || hist.metadata?.numero_transacao) && (
+                            <p className="text-[10px] text-zinc-400 font-mono mt-0.5">
+                              {[hist.metadata?.banco, hist.metadata?.numero_transacao].filter(Boolean).join(' — ')}
+                              {hist.metadata?.valor ? ` | ${Number(hist.metadata.valor).toLocaleString('pt-AO')} AOA` : ''}
+                            </p>
+                          )}
+                        </td>
+                        <td className="px-5 py-3 text-zinc-600 text-[10px] font-medium">
+                          {hist.usuario || hist.alterado_por || hist.criado_por || '---'}
+                        </td>
+                        <td className="px-5 py-3 text-center">
+                          <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${statusCls}`}>
+                            {hist.status || 'PENDENTE'}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3 text-center">
+                          {compUrl ? (
+                            <a href={compUrl} target="_blank" rel="noreferrer" className="text-sky-600 font-bold underline text-[10px] hover:text-sky-800">Ver Ficheiro</a>
+                          ) : <span className="text-zinc-300 text-[10px]">—</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {safeHistorico.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-16 text-center">
+                        <History size={32} className="mx-auto text-zinc-200 mb-3" />
+                        <p className="text-zinc-400 font-bold uppercase tracking-widest text-xs">
+                          Nenhuma solicitação registada para esta empresa.
+                        </p>
+                        <p className="text-zinc-300 text-[10px] mt-1">
+                          Upgrades, downgrades e comprovativos submetidos aparecerão aqui.
+                        </p>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
@@ -924,6 +2245,8 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
               { id: 'licencas', label: 'Planos & Licenças', icon: Key },
               { id: 'usuarios', label: 'Controlo Utilizadores', icon: Users },
               { id: 'auditoria', label: 'Logs & Auditoria', icon: Activity },
+              { id: 'resetsenhas', label: 'Reset de Senhas', icon: KeyRound },
+              { id: 'utilizadoressistema', label: 'Utilizadores do Sistema', icon: UserCog },
             ].map(tab => (
               <button
                 key={tab.id}
@@ -953,12 +2276,308 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
           <div className="max-w-7xl mx-auto">
             {activeTab === 'dashboard' && renderDashboard()}
             {activeTab === 'empresas' && renderEmpresas()}
-            {activeTab === 'licencas' && renderDashboard()}
-            {activeTab === 'usuarios' && renderEmpresas()}
-            {activeTab === 'auditoria' && renderDashboard()}
+            {activeTab === 'licencas' && renderLicencas()}
+            {activeTab === 'usuarios' && renderUsuarios()}
+            {activeTab === 'auditoria' && renderAuditoria()}
+            {activeTab === 'resetsenhas' && renderResetSenhas()}
+            {activeTab === 'utilizadoressistema' && renderUtilizadoresSistema()}
           </div>
         )}
       </div>
+
+      {/* MODAL REGISTAR NOVA EMPRESA (WIZARD 3 PASSOS COMPLETO) */}
+      {showCreateCompanyModal && (
+        <div className="fixed inset-0 bg-zinc-900/60 backdrop-blur-xs z-[200] flex items-center justify-center p-4">
+          <div className="bg-white border border-zinc-200 w-full max-w-2xl shadow-2xl p-6 space-y-4 text-xs max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-zinc-100 pb-3">
+              <div>
+                <h3 className="text-base font-black text-[#003366] uppercase">Registar Nova Empresa no Sistema</h3>
+                <p className="text-[10px] text-zinc-500 font-medium">Passo {createStep} de 3 — Estrutura Mestre Integrada</p>
+              </div>
+              <button onClick={() => setShowCreateCompanyModal(false)} className="text-zinc-400 hover:text-zinc-600 font-bold uppercase text-[10px] cursor-pointer">Fechar</button>
+            </div>
+
+            {/* Stepper Visual */}
+            <div className="grid grid-cols-3 gap-2 pb-2">
+              <div className={`p-2 text-center border-b-2 font-black uppercase text-[10px] ${createStep === 1 ? 'border-[#003366] text-[#003366] bg-sky-50/50' : 'border-zinc-200 text-zinc-400'}`}>
+                1. Empresa &amp; Gestor
+              </div>
+              <div className={`p-2 text-center border-b-2 font-black uppercase text-[10px] ${createStep === 2 ? 'border-[#003366] text-[#003366] bg-sky-50/50' : 'border-zinc-200 text-zinc-400'}`}>
+                2. Plano &amp; Módulos
+              </div>
+              <div className={`p-2 text-center border-b-2 font-black uppercase text-[10px] ${createStep === 3 ? 'border-[#003366] text-[#003366] bg-sky-50/50' : 'border-zinc-200 text-zinc-400'}`}>
+                3. Credenciais &amp; Fim
+              </div>
+            </div>
+
+            {/* PASSO 1: DADOS DA EMPRESA E ADMINISTRADOR */}
+            {createStep === 1 && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold uppercase mb-1">Nome / Razão Social *</label>
+                    <input 
+                      type="text" 
+                      value={createForm.nome_empresa} 
+                      onChange={e => setCreateForm({ ...createForm, nome_empresa: e.target.value })}
+                      placeholder="Ex: Matita Comercial Lda" 
+                      className="w-full bg-zinc-50 border p-2 font-bold" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold uppercase mb-1">NIF Fiscal *</label>
+                    <input 
+                      type="text" 
+                      value={createForm.nif} 
+                      onChange={e => setCreateForm({ ...createForm, nif: e.target.value })}
+                      placeholder="Ex: 5002123665" 
+                      className="w-full bg-zinc-50 border p-2 font-bold font-mono" 
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold uppercase mb-1">Tipo de Empresa / Atividade</label>
+                    <select 
+                      value={createForm.tipo_empresa} 
+                      onChange={e => setCreateForm({ ...createForm, tipo_empresa: e.target.value })}
+                      className="w-full bg-zinc-50 border p-2 font-bold"
+                    >
+                      <option value="Comércio Geral">Comércio Geral / Retalho</option>
+                      <option value="Restauração">Restauração / Hotelaria</option>
+                      <option value="Prestação de Serviços">Prestação de Serviços</option>
+                      <option value="Indústria">Indústria e Produção</option>
+                      <option value="Saúde e Farmácia">Saúde e Farmácia</option>
+                      <option value="Tecnologia">Tecnologia e Consultoria</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-bold uppercase mb-1">Nome do Administrador Principal *</label>
+                    <input 
+                      type="text" 
+                      value={createForm.nome_administrador} 
+                      onChange={e => setCreateForm({ ...createForm, nome_administrador: e.target.value })}
+                      placeholder="Ex: João Manuel" 
+                      className="w-full bg-zinc-50 border p-2 font-bold" 
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold uppercase mb-1">Telefone Principal</label>
+                    <input 
+                      type="text" 
+                      value={createForm.telefone} 
+                      onChange={e => setCreateForm({ ...createForm, telefone: e.target.value })}
+                      placeholder="+244 9..." 
+                      className="w-full bg-zinc-50 border p-2 font-bold font-mono" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold uppercase mb-1">Username / Utilizador</label>
+                    <input 
+                      type="text" 
+                      value={createForm.username} 
+                      onChange={e => setCreateForm({ ...createForm, username: e.target.value })}
+                      placeholder="admin" 
+                      className="w-full bg-zinc-50 border p-2 font-bold font-mono" 
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="md:col-span-2">
+                    <label className="block font-bold uppercase mb-1">Endereço / Morada</label>
+                    <input 
+                      type="text" 
+                      value={createForm.endereco} 
+                      onChange={e => setCreateForm({ ...createForm, endereco: e.target.value })}
+                      placeholder="Rua, Bairro..." 
+                      className="w-full bg-zinc-50 border p-2 font-bold" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold uppercase mb-1">Município / Província</label>
+                    <input 
+                      type="text" 
+                      value={createForm.municipio} 
+                      onChange={e => setCreateForm({ ...createForm, municipio: e.target.value, provincia: e.target.value })}
+                      placeholder="Luanda" 
+                      className="w-full bg-zinc-50 border p-2 font-bold" 
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4 border-t">
+                  <button type="button" onClick={() => setShowCreateCompanyModal(false)} className="px-4 py-2 uppercase font-bold cursor-pointer">Cancelar</button>
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      if (!createForm.nome_empresa || !createForm.nif || !createForm.nome_administrador) {
+                        toast.error('Preencha o Nome da Empresa, NIF e Nome do Administrador.');
+                        return;
+                      }
+                      setCreateStep(2);
+                    }} 
+                    className="bg-[#003366] text-white px-5 py-2 uppercase font-bold cursor-pointer"
+                  >
+                    Avançar para Passo 2 &rarr;
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* PASSO 2: SELEÇÃO DE PLANO & MÓDULOS */}
+            {createStep === 2 && (
+              <div className="space-y-4">
+                <div>
+                  <label className="block font-bold uppercase mb-1">Selecione o Plano Inicial</label>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    {['Básico', 'Standard', 'Profissional', 'Enterprise'].map(p => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setCreateForm({ ...createForm, plano: p })}
+                        className={`p-3 text-center border font-black uppercase text-xs cursor-pointer transition-all ${
+                          createForm.plano === p ? 'border-[#003366] bg-sky-50 text-[#003366] shadow-xs' : 'border-zinc-200 bg-zinc-50 text-zinc-600'
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold uppercase mb-1">Período de Validade (Dias)</label>
+                    <select 
+                      value={createForm.duracao_dias} 
+                      onChange={e => setCreateForm({ ...createForm, duracao_dias: Number(e.target.value) })}
+                      className="w-full bg-zinc-50 border p-2 font-bold"
+                    >
+                      <option value={30}>30 Dias (1 Mês)</option>
+                      <option value={90}>90 Dias (3 Meses)</option>
+                      <option value={180}>180 Dias (Semestral)</option>
+                      <option value={365}>365 Dias (Anual)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-bold uppercase mb-1">Módulos Habilitados</label>
+                    <p className="text-[11px] text-zinc-500 mt-2 font-bold">Faturação AGT, POS, Stock, Clientes, Relatórios e Auditoria</p>
+                  </div>
+                </div>
+
+                <div className="flex justify-between gap-3 pt-4 border-t">
+                  <button type="button" onClick={() => setCreateStep(1)} className="px-4 py-2 uppercase font-bold cursor-pointer">&larr; Voltar ao Passo 1</button>
+                  <button 
+                    type="button" 
+                    onClick={() => setCreateStep(3)} 
+                    className="bg-[#003366] text-white px-5 py-2 uppercase font-bold cursor-pointer"
+                  >
+                    Avançar para Passo 3 &rarr;
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* PASSO 3: CREDENCIAIS DO ADMINISTRADOR & FINALIZAÇÃO */}
+            {createStep === 3 && (
+              <div className="space-y-4">
+                <div className="bg-sky-50 border border-sky-200 p-3 rounded-xs text-sky-900">
+                  <p className="font-bold">Credenciais de Autenticação do Administrador</p>
+                  <p className="text-[10px] text-sky-700 mt-0.5">O gestor poderá fazer login com este email e a senha temporária configurada.</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold uppercase mb-1">Email de Acesso do Administrador *</label>
+                    <input 
+                      type="email" 
+                      value={createForm.admin_email} 
+                      onChange={e => setCreateForm({ ...createForm, admin_email: e.target.value })}
+                      placeholder="admin@empresa.ao" 
+                      required
+                      className="w-full bg-zinc-50 border p-2 font-bold" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold uppercase mb-1">Senha Provisória (Padrão: 123)</label>
+                    <input 
+                      type="text" 
+                      value={createForm.admin_password} 
+                      onChange={e => setCreateForm({ ...createForm, admin_password: e.target.value, admin_confirm_password: e.target.value })}
+                      className="w-full bg-zinc-50 border p-2 font-bold font-mono" 
+                    />
+                  </div>
+                </div>
+
+                <div className="p-3 bg-zinc-50 border text-zinc-600 space-y-1">
+                  <p className="font-bold text-[#003366] uppercase">Resumo da Nova Empresa:</p>
+                  <p>• <strong>Empresa:</strong> {createForm.nome_empresa} (NIF: {createForm.nif})</p>
+                  <p>• <strong>Administrador:</strong> {createForm.nome_administrador} ({createForm.admin_email || 'email auto'})</p>
+                  <p>• <strong>Licença:</strong> {createForm.plano} ({createForm.duracao_dias} dias)</p>
+                </div>
+
+                <div className="flex justify-between gap-3 pt-4 border-t">
+                  <button type="button" onClick={() => setCreateStep(2)} className="px-4 py-2 uppercase font-bold cursor-pointer">&larr; Voltar ao Passo 2</button>
+                  <button 
+                    type="button" 
+                    onClick={async () => {
+                      if (!createForm.admin_email) {
+                        toast.error('Indique o email de acesso do administrador.');
+                        return;
+                      }
+                      try {
+                        if (typeof fetchJson === 'function') {
+                          const res = await fetchJson('/api/crm/companies', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(createForm)
+                          });
+                          if (res && res.error) {
+                            toast.error(res.error);
+                            return;
+                          }
+                        }
+                        toast.success('Empresa registada com sucesso no Supabase!');
+                        setShowCreateCompanyModal(false);
+                        setCreateStep(1);
+                        setCreateForm({
+                          nome_empresa: '',
+                          nif: '',
+                          tipo_empresa: 'Comércio Geral',
+                          nome_administrador: '',
+                          username: '',
+                          telefone: '',
+                          endereco: '',
+                          provincia: 'Luanda',
+                          municipio: 'Luanda',
+                          pais: 'Angola',
+                          plano: 'Profissional',
+                          duracao_dias: 30,
+                          modulos: ['faturacao', 'stock', 'clientes', 'pos'],
+                          admin_email: '',
+                          admin_password: '123',
+                          admin_confirm_password: '123'
+                        });
+                        loadData();
+                      } catch (err: any) {
+                        toast.error(err.message || 'Erro ao registar empresa.');
+                      }
+                    }} 
+                    className="bg-[#003366] text-white px-6 py-2 uppercase font-black cursor-pointer shadow-md"
+                  >
+                    Finalizar e Gravar Empresa no Supabase
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* MODAL EDITAR EMPRESA */}
       {showEditCompanyModal && selectedCompany && (
@@ -973,40 +2592,72 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                 nif: form.nif.value,
                 email: form.email.value,
                 telefone: form.telefone.value,
-                responsavel: form.responsavel.value
+                responsavel: form.responsavel.value,
+                nome_administrador: form.responsavel.value,
+                municipio: form.municipio.value,
+                provincia: form.provincia.value,
+                endereco: form.endereco.value
               };
-              await fetchJson(`/api/crm/companies/${selectedCompany.id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-              });
-              toast.success('Empresa editada com sucesso!');
-              setShowEditCompanyModal(false);
-              loadData();
+              try {
+                if (typeof fetchJson === 'function') {
+                  const result = await fetchJson(`/api/crm/companies/${selectedCompany.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                  });
+                  if (result && result.success === false) {
+                    toast.error(`Erro ao guardar: ${result.detail || result.message || 'Erro desconhecido'}`);
+                    return;
+                  }
+                }
+                toast.success('Empresa editada com sucesso!');
+                setShowEditCompanyModal(false);
+                loadData();
+              } catch (err: any) {
+                toast.error(err.message || 'Erro ao atualizar empresa.');
+              }
             }} className="space-y-3">
-              <div>
-                <label className="block font-bold uppercase mb-1">Nome / Razão Social</label>
-                <input type="text" name="nome_empresa" defaultValue={selectedCompany.nome_empresa} required className="w-full bg-zinc-50 border p-2 font-bold" />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold uppercase mb-1">Nome / Razão Social</label>
+                  <input type="text" name="nome_empresa" defaultValue={selectedCompany.nome_empresa} required className="w-full bg-zinc-50 border p-2 font-bold" />
+                </div>
+                <div>
+                  <label className="block font-bold uppercase mb-1">NIF Fiscal</label>
+                  <input type="text" name="nif" defaultValue={selectedCompany.nif} required className="w-full bg-zinc-50 border p-2 font-bold" />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold uppercase mb-1">Email</label>
+                  <input type="email" name="email" defaultValue={selectedCompany.email} required className="w-full bg-zinc-50 border p-2 font-bold" />
+                </div>
+                <div>
+                  <label className="block font-bold uppercase mb-1">Telefone</label>
+                  <input type="text" name="telefone" defaultValue={selectedCompany.telefone} className="w-full bg-zinc-50 border p-2 font-bold" />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-bold uppercase mb-1">Administrador / Responsável</label>
+                  <input type="text" name="responsavel" defaultValue={selectedCompany.nome_administrador || selectedCompany.responsavel || ''} className="w-full bg-zinc-50 border p-2 font-bold" />
+                </div>
+                <div>
+                  <label className="block font-bold uppercase mb-1">Município</label>
+                  <input type="text" name="municipio" defaultValue={selectedCompany.municipio} className="w-full bg-zinc-50 border p-2 font-bold" />
+                </div>
+                <div>
+                  <label className="block font-bold uppercase mb-1">Província</label>
+                  <input type="text" name="provincia" defaultValue={selectedCompany.provincia} className="w-full bg-zinc-50 border p-2 font-bold" />
+                </div>
               </div>
               <div>
-                <label className="block font-bold uppercase mb-1">NIF Fiscal</label>
-                <input type="text" name="nif" defaultValue={selectedCompany.nif} required className="w-full bg-zinc-50 border p-2 font-bold" />
-              </div>
-              <div>
-                <label className="block font-bold uppercase mb-1">Email</label>
-                <input type="email" name="email" defaultValue={selectedCompany.email} required className="w-full bg-zinc-50 border p-2 font-bold" />
-              </div>
-              <div>
-                <label className="block font-bold uppercase mb-1">Telefone</label>
-                <input type="text" name="telefone" defaultValue={selectedCompany.telefone} className="w-full bg-zinc-50 border p-2 font-bold" />
-              </div>
-              <div>
-                <label className="block font-bold uppercase mb-1">Pessoa Responsável</label>
-                <input type="text" name="responsavel" defaultValue={selectedCompany.responsavel} className="w-full bg-zinc-50 border p-2 font-bold" />
+                <label className="block font-bold uppercase mb-1">Endereço</label>
+                <input type="text" name="endereco" defaultValue={selectedCompany.endereco} className="w-full bg-zinc-50 border p-2 font-bold" />
               </div>
               <div className="flex justify-end gap-3 pt-4 border-t">
-                <button type="button" onClick={() => setShowEditCompanyModal(false)} className="px-4 py-2 uppercase font-bold">Cancelar</button>
-                <button type="submit" className="bg-[#003366] text-white px-5 py-2 uppercase font-bold">Salvar Alterações</button>
+                <button type="button" onClick={() => setShowEditCompanyModal(false)} className="px-4 py-2 uppercase font-bold cursor-pointer">Cancelar</button>
+                <button type="submit" className="bg-[#003366] text-white px-5 py-2 uppercase font-bold cursor-pointer">Salvar Alterações</button>
               </div>
             </form>
           </div>
@@ -1022,17 +2673,35 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
             <form onSubmit={async (e) => {
               e.preventDefault();
               const form = e.target as any;
-              await fetchJson(`/api/crm/companies/${selectedCompany.id}/activate-license`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  duracao_dias: Number(form.duracao_dias.value),
-                  plano: form.plano.value
-                })
-              });
-              toast.success('Licença ativada com sucesso!');
-              setShowActivateModal(false);
-              loadData();
+              try {
+                if (typeof fetchJson === 'function') {
+                  const res = await fetchJson(`/api/crm/companies/${selectedCompany.id}/activate-license`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      duracao_dias: Number(form.duracao_dias.value),
+                      plano: form.plano.value
+                    })
+                  });
+                  if (res && (res.error || res.success === false)) {
+                    toast.error(res.error || res.message || 'Erro ao ativar licença');
+                    return;
+                  }
+                  if (res && (res.licenca || res.empresa)) {
+                    setSelectedCompany(prev => prev ? ({
+                      ...prev,
+                      plano: res.licenca?.plano || res.empresa?.plano || form.plano.value || prev.plano,
+                      status_licenca: res.licenca?.status_licenca || res.licenca?.estado || res.empresa?.status_licenca || 'ATIVA',
+                      data_fim: res.licenca?.data_fim || res.empresa?.data_expiracao_licenca || prev.data_fim
+                    }) : null);
+                  }
+                }
+                toast.success('Licença ativada com sucesso!');
+                setShowActivateModal(false);
+                await loadData();
+              } catch (err: any) {
+                toast.error(err.message || 'Erro ao ativar licença.');
+              }
             }} className="space-y-3">
               <div>
                 <label className="block font-bold uppercase mb-1">Plano a Ativar</label>
@@ -1048,10 +2717,681 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                 <input type="number" name="duracao_dias" defaultValue={30} required className="w-full bg-zinc-50 border p-2 font-bold font-mono" />
               </div>
               <div className="flex justify-end gap-3 pt-4 border-t">
-                <button type="button" onClick={() => setShowActivateModal(false)} className="px-4 py-2 uppercase font-bold">Cancelar</button>
-                <button type="submit" className="bg-emerald-600 text-white px-5 py-2 uppercase font-bold">Confirmar Ativação</button>
+                <button type="button" onClick={() => setShowActivateModal(false)} className="px-4 py-2 uppercase font-bold cursor-pointer">Cancelar</button>
+                <button type="submit" className="bg-emerald-600 text-white px-5 py-2 uppercase font-bold cursor-pointer">Confirmar Ativação</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DESATIVAR LICENÇA */}
+      {showDeactivateModal && selectedCompany && (
+        <div className="fixed inset-0 bg-zinc-900/60 backdrop-blur-xs z-[200] flex items-center justify-center p-4">
+          <div className="bg-white border border-zinc-200 w-full max-w-md shadow-2xl p-6 space-y-4 text-xs">
+            <h3 className="text-base font-black text-rose-700 uppercase">Desativar / Suspender Licença</h3>
+            <p className="text-zinc-600">A licença de <strong>{selectedCompany.nome_empresa}</strong> será suspensa imediatamente e o acesso será bloqueado.</p>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              const form = e.target as any;
+              try {
+                if (typeof fetchJson === 'function') {
+                  const res = await fetchJson(`/api/crm/companies/${selectedCompany.id}/deactivate-license`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ motivo: form.motivo.value })
+                  });
+                  if (res && (res.error || res.success === false)) {
+                    toast.error(res.error || res.message || 'Erro ao desativar licença');
+                    return;
+                  }
+                  if (res && (res.licenca || res.empresa)) {
+                    setSelectedCompany(prev => prev ? ({
+                      ...prev,
+                      status_licenca: res.licenca?.status_licenca || res.licenca?.estado || res.empresa?.status_licenca || 'SUSPENSA'
+                    }) : null);
+                  }
+                }
+                toast.success('Licença desativada com sucesso!');
+                setShowDeactivateModal(false);
+                await loadData();
+              } catch (err: any) {
+                toast.error(err.message || 'Erro ao desativar licença.');
+              }
+            }} className="space-y-3">
+              <div>
+                <label className="block font-bold uppercase mb-1">Motivo da Suspensão *</label>
+                <textarea name="motivo" required defaultValue="Suspensão administrativa de rotina" rows={3} className="w-full bg-zinc-50 border p-2 font-bold text-xs" />
+              </div>
+              <div className="flex justify-end gap-3 pt-4 border-t">
+                <button type="button" onClick={() => setShowDeactivateModal(false)} className="px-4 py-2 uppercase font-bold cursor-pointer">Cancelar</button>
+                <button type="submit" className="bg-rose-600 text-white px-5 py-2 uppercase font-bold cursor-pointer">Confirmar Suspensão</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL UPGRADE / DOWNGRADE */}
+      {(showUpgradeModal || showDowngradeModal) && selectedCompany && (
+        <div className="fixed inset-0 bg-zinc-900/60 backdrop-blur-xs z-[200] flex items-center justify-center p-4">
+          <div className="bg-white border border-zinc-200 w-full max-w-md shadow-2xl p-6 space-y-4 text-xs">
+            <h3 className={`text-base font-black uppercase ${showUpgradeModal ? 'text-[#003366]' : 'text-amber-700'}`}>
+              {showUpgradeModal ? 'Upgrade de Licença' : 'Downgrade de Licença'}: {selectedCompany.nome_empresa}
+            </h3>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              const form = e.target as any;
+              const targetEndpoint = showUpgradeModal ? 'upgrade' : 'downgrade';
+              try {
+                if (typeof fetchJson === 'function') {
+                  const res = await fetchJson(`/api/crm/companies/${selectedCompany.id}/${targetEndpoint}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      plano: form.plano.value,
+                      duracao_dias: Number(form.duracao_dias.value)
+                    })
+                  });
+                  if (res && (res.error || res.success === false)) {
+                    toast.error(res.error || res.message || 'Erro ao alterar plano');
+                    return;
+                  }
+                  if (res && (res.licenca || res.empresa)) {
+                    setSelectedCompany(prev => prev ? ({
+                      ...prev,
+                      plano: res.licenca?.plano || res.empresa?.plano || form.plano.value || prev.plano,
+                      status_licenca: res.licenca?.status_licenca || res.licenca?.estado || res.empresa?.status_licenca || prev.status_licenca,
+                      data_fim: res.licenca?.data_fim || res.empresa?.data_expiracao_licenca || prev.data_fim
+                    }) : null);
+                  }
+                }
+                toast.success(`Plano atualizado para ${form.plano.value}!`);
+                setShowUpgradeModal(false);
+                setShowDowngradeModal(false);
+                await loadData();
+              } catch (err: any) {
+                toast.error(err.message || 'Erro ao alterar plano.');
+              }
+            }} className="space-y-3">
+              <div>
+                <label className="block font-bold uppercase mb-1">Novo Plano</label>
+                <select name="plano" defaultValue={showUpgradeModal ? 'Enterprise' : 'Básico'} className="w-full bg-zinc-50 border p-2 font-bold">
+                  <option value="Básico">Básico</option>
+                  <option value="Standard">Standard</option>
+                  <option value="Profissional">Profissional</option>
+                  <option value="Enterprise">Enterprise</option>
+                </select>
+              </div>
+              <div>
+                <label className="block font-bold uppercase mb-1">Duração Adicional (Dias)</label>
+                <input type="number" name="duracao_dias" defaultValue={30} required className="w-full bg-zinc-50 border p-2 font-bold font-mono" />
+              </div>
+              <div className="flex justify-end gap-3 pt-4 border-t">
+                <button type="button" onClick={() => { setShowUpgradeModal(false); setShowDowngradeModal(false); }} className="px-4 py-2 uppercase font-bold cursor-pointer">Cancelar</button>
+                <button type="submit" className={`text-white px-5 py-2 uppercase font-bold cursor-pointer ${showUpgradeModal ? 'bg-[#003366]' : 'bg-amber-600'}`}>Aplicar Alteração</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL RESET UTILIZADOR */}
+      {showUserResetModal && (
+        <div className="fixed inset-0 bg-zinc-900/60 backdrop-blur-xs z-[200] flex items-center justify-center p-4">
+          <div className="bg-white border border-zinc-200 w-full max-w-md shadow-2xl p-6 space-y-4 text-xs">
+            <h3 className="text-base font-black text-amber-700 uppercase">Redefinir Acesso de Utilizador</h3>
+            <p className="text-zinc-600">
+              Deseja redefinir a credencial de <strong>{showUserResetModal.full_name || showUserResetModal.email}</strong>?
+            </p>
+            <div className="space-y-2">
+              <label className="block font-bold uppercase text-[10px] text-zinc-600">Senha Temporária (Mínimo 6 caracteres)</label>
+              <input
+                type="text"
+                value={resetTempPassword}
+                onChange={e => setResetTempPassword(e.target.value)}
+                placeholder="123456"
+                className="w-full bg-zinc-50 border border-zinc-200 px-3 py-2 text-xs font-mono font-bold focus:outline-none focus:border-[#003366]"
+              />
+            </div>
+            <div className="bg-amber-50 border border-amber-200 p-3 text-amber-900 rounded-xs">
+              <p className="font-bold">Política de Segurança Supabase:</p>
+              <p className="text-[10px] text-amber-700 mt-1">A credencial será atualizada diretamente no sistema de autenticação Supabase Auth. Senha temporária definida: <strong>{resetTempPassword}</strong></p>
+            </div>
+            <div className="flex justify-end gap-3 pt-4 border-t">
+              <button type="button" onClick={() => { setShowUserResetModal(null); setResetTempPassword('123456'); }} className="px-4 py-2 uppercase font-bold cursor-pointer">Cancelar</button>
+              <button 
+                type="button" 
+                disabled={resetTempPassword.length < 6}
+                onClick={async () => {
+                  try {
+                    if (typeof fetchJson === 'function') {
+                      const res = await fetchJson(`/api/crm/users/${showUserResetModal.id}/reset-access`, { 
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ password: resetTempPassword })
+                      });
+                      toast.success(res?.message || `Acesso redefinido! Nova senha: ${resetTempPassword}`);
+                    } else {
+                      toast.success(`Senha redefinida com sucesso!`);
+                    }
+                  } catch (err: any) {
+                    toast.error(err.message || 'Erro ao redefinir acesso.');
+                  }
+                  setShowUserResetModal(null);
+                  setResetTempPassword('123456');
+                  loadData();
+                  loadResetLogs();
+                }} 
+                className="bg-amber-600 disabled:opacity-40 text-white px-5 py-2 uppercase font-bold cursor-pointer"
+              >
+                Confirmar Reset ({resetTempPassword})
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL ALTERAR EMPRESA DO UTILIZADOR */}
+      {showChangeCompanyModal && (
+        <div className="fixed inset-0 bg-zinc-900/60 backdrop-blur-xs z-[200] flex items-center justify-center p-4">
+          <div className="bg-white border border-zinc-200 w-full max-w-lg shadow-2xl p-6 space-y-4 text-xs">
+            <h3 className="text-base font-black text-[#003366] uppercase">Alterar Empresa do Utilizador</h3>
+            <p className="text-zinc-600">
+              Utilizador: <strong>{showChangeCompanyModal.full_name || showChangeCompanyModal.email}</strong>
+              <br />
+              Empresa atual: <strong className="text-[#003366]">{showChangeCompanyModal.empresas?.nome_empresa || showChangeCompanyModal.empresa_id}</strong>
+            </p>
+            <div className="bg-blue-50 border border-blue-200 p-3 text-blue-900 rounded-xs text-[10px]">
+              Ao confirmar, o utilizador será transferido para a nova empresa. Esta operação será registada no log de auditoria e é irreversível sem nova alteração manual.
+            </div>
+            <div>
+              <label className="block font-bold uppercase text-[10px] text-zinc-600 mb-1">Nova Empresa (ID)</label>
+              <select
+                className="w-full bg-zinc-50 border border-zinc-200 px-3 py-2 text-xs font-medium focus:outline-none focus:border-[#003366]"
+                value={changeCompanyTarget}
+                onChange={e => setChangeCompanyTarget(e.target.value)}
+              >
+                <option value="">-- Selecione uma empresa --</option>
+                {safeCompanies
+                  .filter(c => c && String(c.id) !== String(showChangeCompanyModal.empresa_id))
+                  .map(c => (
+                    <option key={c.id} value={c.id}>{c.nome_empresa} — NIF: {c.nif}</option>
+                  ))}
+              </select>
+            </div>
+            <div className="flex justify-end gap-3 pt-4 border-t">
+              <button type="button" onClick={() => { setShowChangeCompanyModal(null); setChangeCompanyTarget(''); }} className="px-4 py-2 uppercase font-bold cursor-pointer">Cancelar</button>
+              <button
+                type="button"
+                disabled={!changeCompanyTarget}
+                onClick={async () => {
+                  if (!changeCompanyTarget) return;
+                  try {
+                    if (typeof fetchJson === 'function') {
+                      const res = await fetchJson(`/api/crm/users/${showChangeCompanyModal.id}/change-company`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ nova_empresa_id: changeCompanyTarget })
+                      });
+                      toast.success(res?.message || 'Empresa do utilizador alterada com sucesso!');
+                    } else {
+                      toast.error('fetchJson não disponível.');
+                    }
+                  } catch (err: any) {
+                    toast.error(err.message || 'Erro ao alterar empresa do utilizador.');
+                  }
+                  setShowChangeCompanyModal(null);
+                  setChangeCompanyTarget('');
+                  loadData();
+                }}
+                className="bg-[#003366] disabled:opacity-40 text-white px-5 py-2 uppercase font-bold cursor-pointer"
+              >
+                Confirmar Transferência
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL ANEXAR COMPROVATIVO COM UPLOAD REAL */}
+      {showProofModal && selectedCompany && (
+        <div className="fixed inset-0 bg-zinc-900/60 backdrop-blur-xs z-[200] flex items-center justify-center p-4">
+          <div className="bg-white border border-zinc-200 w-full max-w-md shadow-2xl p-6 space-y-4 text-xs">
+            <h3 className="text-base font-black text-[#003366] uppercase">Anexar Comprovativo de Pagamento</h3>
+            <p className="text-zinc-500">Registe os dados e envie o ficheiro real de pagamento para {selectedCompany.nome_empresa}.</p>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              const form = e.target as any;
+              setProofUploading(true);
+              try {
+                let uploadedUrl = '';
+
+                // Upload real do ficheiro para o Supabase Storage (bucket: 'media' ou 'anexos')
+                if (proofFile) {
+                  const fileExt = proofFile.name.split('.').pop();
+                  const fileName = `comprovativo_${selectedCompany.id}_${Date.now()}.${fileExt}`;
+                  const { data: uploadData, error: uploadError } = await supabase.storage
+                    .from('media')
+                    .upload(`comprovativos/${fileName}`, proofFile, { cacheControl: '3600', upsert: true });
+
+                  if (!uploadError && uploadData) {
+                    const { data: publicUrlData } = supabase.storage.from('media').getPublicUrl(`comprovativos/${fileName}`);
+                    uploadedUrl = publicUrlData?.publicUrl || '';
+                  }
+                }
+
+                if (typeof fetchJson === 'function') {
+                  const res = await fetchJson('/api/crm/comprovativos', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      empresa_id: selectedCompany.id,
+                      banco: form.banco.value,
+                      numero_transacao: form.numero_transacao.value,
+                      montante: Number(form.montante.value),
+                      comprovativo_nome: `${form.banco.value}_${form.numero_transacao.value}`,
+                      comprovativo_url: uploadedUrl || null
+                    })
+                  });
+                  if (res && (res.error || res.success === false)) {
+                    toast.error(res.error || res.message || 'Erro ao anexar comprovativo');
+                    return;
+                  }
+                }
+                toast.success('Comprovativo gravado com sucesso em media_arquivos!');
+                setShowProofModal(false);
+                setProofFile(null);
+                await loadData();
+              } catch (err: any) {
+                toast.error(err.message || 'Erro ao anexar comprovativo.');
+              } finally {
+                setProofUploading(false);
+              }
+            }} className="space-y-3">
+              <div>
+                <label className="block font-bold uppercase mb-1">Banco Emissor *</label>
+                <input type="text" name="banco" required placeholder="Ex: Banco BAI / BFA / BPC" className="w-full bg-zinc-50 border p-2 font-bold" />
+              </div>
+              <div>
+                <label className="block font-bold uppercase mb-1">N.º da Transação / Borderô *</label>
+                <input type="text" name="numero_transacao" required placeholder="Ex: TRX-998231" className="w-full bg-zinc-50 border p-2 font-bold font-mono" />
+              </div>
+              <div>
+                <label className="block font-bold uppercase mb-1">Valor Pago (Kz) *</label>
+                <input type="number" name="montante" defaultValue={65000} required className="w-full bg-zinc-50 border p-2 font-bold font-mono" />
+              </div>
+              <div>
+                <label className="block font-bold uppercase mb-1">Ficheiro do Comprovativo (PDF, PNG, JPG)</label>
+                <input 
+                  type="file" 
+                  accept=".pdf,.png,.jpg,.jpeg" 
+                  onChange={e => setProofFile(e.target.files?.[0] || null)}
+                  className="w-full bg-zinc-50 border p-2 font-bold text-xs" 
+                />
+                {proofFile && (
+                  <p className="text-[10px] text-emerald-600 font-bold mt-1">✓ Ficheiro selecionado: {proofFile.name} ({(proofFile.size / 1024).toFixed(1)} KB)</p>
+                )}
+              </div>
+              <div className="flex justify-end gap-3 pt-4 border-t">
+                <button type="button" onClick={() => { setShowProofModal(false); setProofFile(null); }} className="px-4 py-2 uppercase font-bold cursor-pointer">Cancelar</button>
+                <button 
+                  type="submit" 
+                  disabled={proofUploading}
+                  className="bg-[#003366] text-white px-5 py-2 uppercase font-bold cursor-pointer shadow-sm disabled:opacity-50"
+                >
+                  {proofUploading ? 'A Enviar Ficheiro...' : 'Gravar Comprovativo'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CRIAR OCORRÊNCIA */}
+      {showOccurrenceModal && selectedCompany && (
+        <div className="fixed inset-0 bg-zinc-900/60 backdrop-blur-xs z-[200] flex items-center justify-center p-4">
+          <div className="bg-white border border-zinc-200 w-full max-w-md shadow-2xl p-6 space-y-4 text-xs">
+            <h3 className="text-base font-black text-[#003366] uppercase">Abrir Nova Ocorrência CRM</h3>
+            <p className="text-zinc-500">Registe um chamado de suporte ou evento técnico para {selectedCompany.nome_empresa}.</p>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              const form = e.target as any;
+              try {
+                if (typeof fetchJson === 'function') {
+                  const res = await fetchJson('/api/crm/occurrences', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      empresa_id: selectedCompany.id,
+                      titulo: form.titulo.value,
+                      tipo: form.tipo.value,
+                      prioridade: form.prioridade.value,
+                      descricao: form.descricao.value
+                    })
+                  });
+                  if (res && (res.error || res.success === false)) {
+                    toast.error(res.error || res.message || 'Erro ao criar ocorrência');
+                    return;
+                  }
+                }
+                toast.success('Ocorrência CRM registada no Supabase!');
+                setShowOccurrenceModal(false);
+                await loadData();
+              } catch (err: any) {
+                toast.error(err.message || 'Erro ao criar ocorrência.');
+              }
+            }} className="space-y-3">
+              <div>
+                <label className="block font-bold uppercase mb-1">Título da Ocorrência *</label>
+                <input type="text" name="titulo" required placeholder="Ex: Solicitação de Apoio em Certificação AGT" className="w-full bg-zinc-50 border p-2 font-bold" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold uppercase mb-1">Tipo</label>
+                  <select name="tipo" defaultValue="Suporte Técnico" className="w-full bg-zinc-50 border p-2 font-bold">
+                    <option value="Suporte Técnico">Suporte Técnico</option>
+                    <option value="Faturação">Faturação</option>
+                    <option value="Licenciamento">Licenciamento</option>
+                    <option value="AGT">Homologação AGT</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold uppercase mb-1">Prioridade</label>
+                  <select name="prioridade" defaultValue="NORMAL" className="w-full bg-zinc-50 border p-2 font-bold">
+                    <option value="BAIXA">Baixa</option>
+                    <option value="NORMAL">Normal</option>
+                    <option value="ALTA">Alta</option>
+                    <option value="CRITICA">Crítica</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block font-bold uppercase mb-1">Descrição / Detalhes</label>
+                <textarea name="descricao" rows={3} className="w-full bg-zinc-50 border p-2 text-xs" placeholder="Descreva os detalhes da ocorrência..." />
+              </div>
+              <div className="flex justify-end gap-3 pt-4 border-t">
+                <button type="button" onClick={() => setShowOccurrenceModal(false)} className="px-4 py-2 uppercase font-bold cursor-pointer">Cancelar</button>
+                <button type="submit" className="bg-[#003366] text-white px-5 py-2 uppercase font-bold cursor-pointer shadow-sm">Abrir Chamado</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL PERMISSÕES DE UTILIZADOR */}
+      {showPermissionsModal && (
+        <div className="fixed inset-0 bg-zinc-900/60 backdrop-blur-xs z-[200] flex items-center justify-center p-4">
+          <div className="bg-white border border-zinc-200 w-full max-w-xl shadow-2xl p-6 space-y-4 text-xs max-h-[85vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-zinc-100 pb-3">
+              <div>
+                <h3 className="text-base font-black text-[#003366] uppercase">Permissões de Menu</h3>
+                <p className="text-[10px] text-zinc-500 mt-0.5">{showPermissionsModal.full_name || showPermissionsModal.nome || showPermissionsModal.email}</p>
+              </div>
+              <button onClick={() => setShowPermissionsModal(null)} className="text-zinc-400 hover:text-zinc-700 font-bold text-[10px] uppercase cursor-pointer">Fechar</button>
+            </div>
+            <div className="bg-blue-50 border border-blue-200 p-3 text-blue-900 text-[10px] rounded-xs">
+              <strong>Permissões de Acesso:</strong> As áreas <strong>selecionadas</strong> ficam disponíveis para este utilizador. As áreas <strong>não selecionadas</strong> ficam bloqueadas. Ao guardar, as permissões são aplicadas imediatamente na base de dados e entram em vigor no próximo acesso do utilizador ao sistema.
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { id: 'dashboard', label: 'Painel de Bordo' },
+                { id: 'clients', label: 'Clientes' },
+                { id: 'workplaces', label: 'Locais de Trabalho' },
+                { id: 'secretary', label: 'Secretaria Beta' },
+                { id: 'pos', label: 'Ponto de Venda' },
+                { id: 'contracts', label: 'Contratos' },
+                { id: 'electronic_invoices', label: 'Faturação Electrónica' },
+                { id: 'security', label: 'Segurança Privada' },
+                { id: 'specialized', label: 'Gestão Especializada' },
+                { id: 'archive', label: 'Arquivo' },
+                { id: 'cartas', label: 'Gestão de Cartas' },
+                { id: 'invoices', label: 'Vendas' },
+                { id: 'drafts', label: 'Rascunhos (Drafts)' },
+                { id: 'suppliers', label: 'Compras' },
+                { id: 'products', label: 'Stocks & Inventário' },
+                { id: 'financial', label: 'Finanças' },
+                { id: 'accounting', label: 'Contabilidade' },
+                { id: 'hr', label: 'Recursos Humanos' },
+                { id: 'reports', label: 'Relatórios' },
+                { id: 'licencas', label: 'Licenças' },
+                { id: 'empresa', label: 'Documento da Empresa' },
+                { id: 'agrobusiness', label: 'Agronegócio' },
+                { id: 'church', label: 'Gestão de Igreja' },
+                { id: 'settings', label: 'Definições' },
+              ].map(mod => (
+                <label key={mod.id} className="flex items-center gap-2 cursor-pointer p-2 hover:bg-zinc-50 border border-zinc-100">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 accent-[#003366]"
+                    checked={editPermissions.includes(mod.id)}
+                    onChange={e => {
+                      if (e.target.checked) {
+                        setEditPermissions(prev => [...prev, mod.id]);
+                      } else {
+                        setEditPermissions(prev => prev.filter(p => p !== mod.id));
+                      }
+                    }}
+                  />
+                  <span className="font-medium text-zinc-700">{mod.label}</span>
+                </label>
+              ))}
+            </div>
+            <div className="flex justify-between items-center pt-3 border-t">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditPermissions([
+                    'dashboard','clients','workplaces','secretary','pos','contracts','electronic_invoices',
+                    'security','specialized','archive','cartas','invoices','drafts','suppliers','products',
+                    'financial','accounting','hr','reports','licencas','empresa','agrobusiness','church','settings'
+                  ])}
+                  className="px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold text-[10px] uppercase cursor-pointer"
+                >
+                  Todos
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditPermissions(['dashboard'])}
+                  className="px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold text-[10px] uppercase cursor-pointer"
+                >
+                  Limpar
+                </button>
+              </div>
+              <div className="flex gap-3">
+                <button type="button" onClick={() => setShowPermissionsModal(null)} className="px-4 py-2 uppercase font-bold cursor-pointer">Cancelar</button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      if (typeof fetchJson === 'function') {
+                        const res = await fetchJson(`/api/crm/users/${showPermissionsModal!.id}/permissions`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ permission_areas: editPermissions })
+                        });
+                        toast.success(res?.message || 'Permissões atualizadas com sucesso!');
+                      }
+                    } catch (err: any) {
+                      toast.error(err.message || 'Erro ao atualizar permissões.');
+                    }
+                    setShowPermissionsModal(null);
+                    loadData();
+                  }}
+                  className="bg-[#003366] text-white px-5 py-2 uppercase font-bold cursor-pointer"
+                >
+                  Guardar Permissões ({editPermissions.length})
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* MODAL PREVIEW EM TELA CHEIA DO MODELO OFICIAL DA FATURAÇÃO ELETRÓNICA AGT */}
+      {showDocumentPreviewModal && selectedCompany && (
+        <div className="fixed inset-0 bg-zinc-900/80 backdrop-blur-sm z-[300] flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white border border-zinc-300 w-full max-w-4xl shadow-2xl rounded-xs flex flex-col max-h-[92vh]">
+            <div className="flex justify-between items-center bg-[#003366] text-white p-4 border-b border-zinc-200">
+              <div className="flex items-center gap-2">
+                <FileText size={18} className="text-sky-300" />
+                <h3 className="font-black text-sm uppercase tracking-wider">Modelo Oficial de Documento Fiscal — {selectedCompany.nome_empresa}</h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <Download size={13} /> Imprimir / PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowDocumentPreviewModal(false)}
+                  className="px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white font-bold text-xs uppercase cursor-pointer"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+
+            <div className="p-8 overflow-y-auto flex-1 bg-zinc-100 flex justify-center">
+              {/* FOLHA A4 DO DOCUMENTO FISCAL */}
+              <div className="w-full max-w-2xl bg-white p-8 shadow-xl border border-zinc-300 relative text-xs space-y-6 min-h-[750px]">
+                {/* Marca de Água Centralizada */}
+                {(identityForm.exibir_marca_dagua !== false && (identityForm.watermark_url || selectedCompany.watermark_url)) && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0">
+                    <img
+                      src={identityForm.watermark_url || selectedCompany.watermark_url}
+                      alt="Watermark"
+                      className="opacity-10 object-contain"
+                      style={{ width: `${identityForm.watermark_size || selectedCompany.watermark_size || 350}px` }}
+                    />
+                  </div>
+                )}
+
+                {/* Lateral Esquerda */}
+                {(identityForm.sidebar_image_url || selectedCompany.sidebar_image_url) && (
+                  <div className="absolute left-2 top-24 bottom-24 w-6 pointer-events-none opacity-40 z-0">
+                    <img src={identityForm.sidebar_image_url || selectedCompany.sidebar_image_url} alt="Lateral Esquerda" className="h-full object-cover" />
+                  </div>
+                )}
+
+                {/* Lateral Direita */}
+                {(identityForm.anexo_image_url || selectedCompany.anexo_image_url) && (
+                  <div className="absolute right-2 top-24 bottom-24 w-6 pointer-events-none opacity-40 z-0">
+                    <img src={identityForm.anexo_image_url || selectedCompany.anexo_image_url} alt="Lateral Direita" className="h-full object-cover" />
+                  </div>
+                )}
+
+                {/* Cabeçalho */}
+                <div className="relative z-10 flex justify-between items-start border-b-2 border-[#003366] pb-4">
+                  <div className="space-y-1">
+                    {(identityForm.logo_url || selectedCompany.logo_url) ? (
+                      <img
+                        src={identityForm.logo_url || selectedCompany.logo_url}
+                        alt="Logo"
+                        className="object-contain mb-2"
+                        style={{ height: `${identityForm.logo_size || selectedCompany.logo_size || 80}px` }}
+                      />
+                    ) : (
+                      <h2 className="text-xl font-black text-[#003366] uppercase">{selectedCompany.nome_empresa}</h2>
+                    )}
+                    <p className="font-bold text-zinc-800 text-xs uppercase">{selectedCompany.nome_empresa}</p>
+                    <p className="text-zinc-500 text-[11px]">NIF: {selectedCompany.nif || '5002123665'}</p>
+                    <p className="text-zinc-500 text-[11px]">{selectedCompany.endereco || 'Avenida Principal'} • {selectedCompany.municipio || 'Luanda'}, {selectedCompany.provincia || 'Angola'}</p>
+                    <p className="text-zinc-500 text-[11px]">Tel: {selectedCompany.telefone || '+244 923 000 000'} • Email: {selectedCompany.email}</p>
+                  </div>
+                  <div className="text-right space-y-1 bg-zinc-50 p-4 border border-zinc-200">
+                    <span className="text-xs font-black text-[#003366] uppercase tracking-widest block">FATURA OFICIAL</span>
+                    <p className="font-mono font-black text-sm text-zinc-900">FT 2026/000001</p>
+                    <p className="text-zinc-500 text-[10px]">Data de Emissão: {new Date().toLocaleDateString('pt-AO')}</p>
+                    <p className="text-zinc-500 text-[10px]">Data de Vencimento: {new Date(Date.now() + 30*86400000).toLocaleDateString('pt-AO')}</p>
+                    <span className="inline-block px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold text-[9px] uppercase">ORIGINAL</span>
+                  </div>
+                </div>
+
+                {/* Bloco do Cliente */}
+                <div className="relative z-10 bg-zinc-50 border border-zinc-200 p-4 rounded-xs">
+                  <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest block mb-1">DADOS DO CLIENTE</span>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="font-bold text-zinc-900 uppercase">CLIENTE EXEMPLO DE DEMONSTRAÇÃO LDA</p>
+                      <p className="text-zinc-600 text-[11px]">NIF: 5002123665</p>
+                    </div>
+                    <div>
+                      <p className="text-zinc-600 text-[11px]">Morada: Rua Amílcar Cabral, Luanda</p>
+                      <p className="text-zinc-600 text-[11px]">Regime de IVA: Geral (14%)</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Tabela de Produtos / Serviços */}
+                <div className="relative z-10">
+                  <table className="w-full text-left text-xs border border-zinc-200 border-collapse">
+                    <thead>
+                      <tr className="bg-[#003366] text-white font-bold uppercase text-[10px]">
+                        <th className="p-2.5">Código / Descrição do Serviço</th>
+                        <th className="p-2.5 text-center">Qtd</th>
+                        <th className="p-2.5 text-right">Preço Unit.</th>
+                        <th className="p-2.5 text-right">Taxa IVA</th>
+                        <th className="p-2.5 text-right">Total Líquido</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-200">
+                      <tr>
+                        <td className="p-2.5">
+                          <p className="font-bold text-zinc-800">SERV-001 — Subscrição do Sistema Integrado ERP</p>
+                          <p className="text-[10px] text-zinc-400">Licenciamento anual oficial certificado</p>
+                        </td>
+                        <td className="p-2.5 text-center font-mono">1.00</td>
+                        <td className="p-2.5 text-right font-mono">100.000,00 Kz</td>
+                        <td className="p-2.5 text-right font-mono">14% (14.000,00)</td>
+                        <td className="p-2.5 text-right font-mono font-bold">114.000,00 Kz</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Resumo de Impostos e Totais */}
+                <div className="relative z-10 grid grid-cols-2 gap-6 pt-2">
+                  <div className="p-3 bg-zinc-50 border border-zinc-200 text-[10px] space-y-1">
+                    <p className="font-bold text-zinc-700 uppercase">Quadro Resumo de IVA</p>
+                    <p className="text-zinc-500">Taxa Normal (14%): Base Incidência 100.000,00 Kz • Montante 14.000,00 Kz</p>
+                    <p className="text-zinc-500 font-mono mt-1">Meio de Pagamento: Transferência Bancária</p>
+                  </div>
+                  <div className="bg-zinc-50 p-4 border border-zinc-200 space-y-2 text-xs">
+                    <div className="flex justify-between"><span>Total Ilíquido:</span><span className="font-mono font-bold">100.000,00 Kz</span></div>
+                    <div className="flex justify-between"><span>Total Descontos:</span><span className="font-mono">0,00 Kz</span></div>
+                    <div className="flex justify-between"><span>Total IVA:</span><span className="font-mono font-bold">14.000,00 Kz</span></div>
+                    <div className="flex justify-between font-black text-sm text-[#003366] border-t-2 border-[#003366] pt-2">
+                      <span>TOTAL A PAGAR:</span>
+                      <span className="font-mono">114.000,00 Kz</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Rodapé Oficial com Certificação AGT */}
+                <div className="relative z-10 border-t border-zinc-300 pt-4 text-[10px] text-zinc-500 space-y-2">
+                  {(identityForm.exibir_rodape !== false && (identityForm.footer_image_url || selectedCompany.footer_image_url)) && (
+                    <div className="flex justify-center mb-2">
+                      <img
+                        src={identityForm.footer_image_url || selectedCompany.footer_image_url}
+                        alt="Imagem de Rodapé"
+                        className="object-contain max-w-full"
+                        style={{ height: `${identityForm.footer_size || selectedCompany.footer_size || 60}px` }}
+                      />
+                    </div>
+                  )}
+                  <p className="text-center font-medium text-zinc-700">
+                    {identityForm.texto_rodape || selectedCompany.texto_rodape || 'IBAN: AO06 0040 0000 1234 5678 9012 3 • Banco BAI • Luanda, Angola'}
+                  </p>
+                  <div className="text-center font-mono text-[9px] text-zinc-400 border-t border-zinc-100 pt-2">
+                    <p>FT 2026/000001 - Processado por Programa Validado nº 999/AGT/2026 • IMATEC ERP</p>
+                    <p className="text-[8px] mt-0.5">Hash de Assinatura: f82d-41a9-98cf-192a-3b56-78e0-ac91</p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}

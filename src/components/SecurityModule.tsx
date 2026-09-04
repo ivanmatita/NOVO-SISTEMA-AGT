@@ -55,6 +55,7 @@ interface SecurityModuleProps {
   companyData?: any;
   onNavigate?: (tab: string) => void;
   onEmitirFatura?: () => void;
+  fiscalYear?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -125,7 +126,7 @@ const TABS = [
 // ─────────────────────────────────────────────────────────────────────────────
 const SecurityModule: React.FC<SecurityModuleProps> = ({
   occurrences = [], armory = [], roster = [], employees = [], workSites = [], onRefresh, empresaId,
-  user, companyData, onNavigate, onEmitirFatura
+  user, companyData, onNavigate, onEmitirFatura, fiscalYear = '2026'
 }) => {
   const [activeTab, setActiveTab] = useState('dashboard');
 
@@ -269,7 +270,13 @@ const SecurityModule: React.FC<SecurityModuleProps> = ({
             <Shield size={20} className="text-white" />
           </div>
           <div>
-            <h2 className="text-lg font-black text-[#003366] tracking-tight uppercase">Gestão de Segurança Privada</h2>
+            <div className="flex items-center gap-3">
+              <h2 className="text-lg font-black text-[#003366] tracking-tight uppercase">Gestão de Segurança Privada</h2>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 text-[10px] font-black uppercase tracking-wider border border-emerald-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Exercício {fiscalYear} Ativo
+              </span>
+            </div>
             <p className="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider">SGP — Sistema Integrado de Gestão Operacional</p>
           </div>
         </div>

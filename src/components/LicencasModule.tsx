@@ -72,38 +72,80 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
   const fetchLicencas = async () => {
     setLoading(true);
     try {
-      // 1. Direct fetch from Supabase
-      const { data: supaLicencas, error: supaErr } = await supabase
-        .from('licencas_empresa')
+      // 1. Direct fetch from Supabase using correct schema tables
+      const { data: supaLicencas } = await supabase
+        .from('licencas_empresas')
         .select('*');
       
-      const { data: supaOcorrencias } = await supabase
-        .from('ocorrencias_licenca')
-        .select('*');
+      const { data: supaHistorico } = await supabase
+        .from('historico_licencas')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-      const { data: supaComprovativos } = await supabase
-        .from('comprovativos_licenca')
-        .select('*');
-
-      // Fallback or API check
+      // Fallback or API check via backend (com dados do config-empresa)
       const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch('/api/licencas', {
-        headers: { 'Authorization': `Bearer ${session?.access_token || ''}` }
-      }).then(r => r.ok ? r.json() : []).catch(() => []);
+      const [apiLicRes, configEmpRes] = await Promise.all([
+        fetch('/api/licencas', {
+          headers: { 'Authorization': `Bearer ${session?.access_token || ''}` }
+        }).then(r => r.ok ? r.json() : []).catch(() => []),
+        fetch('/api/config-empresa', {
+          headers: { 'Authorization': `Bearer ${session?.access_token || ''}` }
+        }).then(r => r.ok ? r.json() : null).catch(() => null)
+      ]);
 
-      let mergedList = (supaLicencas && supaLicencas.length > 0) ? supaLicencas : res;
+      let mergedList = (supaLicencas && supaLicencas.length > 0) ? supaLicencas : apiLicRes;
 
       // Filter list for non-superadmins to only show their company license
-      if (!isSuperAdmin && mergedList && mergedList.length > 0) {
+      if (!isSuperAdmin && Array.isArray(mergedList) && mergedList.length > 0) {
         const companyLic = mergedList.filter((l: any) => String(l.empresa_id) === String(empresaId));
         if (companyLic.length > 0) {
           mergedList = companyLic;
         }
       }
 
+      // Se a lista estiver vazia para a empresa, usar dados frescos do config-empresa
+      if ((!Array.isArray(mergedList) || mergedList.length === 0) && configEmpRes?.id) {
+        mergedList = [{
+          empresa_id: configEmpRes.empresa_id || configEmpRes.id,
+          nome_empresa: configEmpRes.nome_empresa,
+          tipo_licenca: configEmpRes.plano || 'Profissional',
+          plano: configEmpRes.plano || 'Profissional',
+          status_licenca: configEmpRes.status_licenca,
+          licenca_ativa: configEmpRes.licenca_ativa,
+          ativo: configEmpRes.ativo,
+          data_inicio: configEmpRes.data_inicio_licenca || new Date().toISOString(),
+          data_fim: configEmpRes.data_expiracao_licenca,
+          valor_licenca: configEmpRes.valor_licenca || 65000,
+          ativado_por: 'SuperAdmin CRM'
+        }];
+      }
+
       setLicencas(Array.isArray(mergedList) ? mergedList : []);
-      setOcorrencias(supaOcorrencias || []);
-      setComprovativos(supaComprovativos || []);
+      setOcorrencias(Array.isArray(supaHistorico) ? supaHistorico : []);
+
+      const rawProofs = (Array.isArray(supaHistorico) ? supaHistorico : []).filter((h: any) => 
+        String(h.acao || '').toUpperCase().includes('COMPROVATIVO') || 
+        h.comprovativo_url || 
+        h.metadata?.comprovativo_url
+      );
+
+      // Fallback: se nenhum comprovativo for encontrado em historico_licencas, buscar também na API crm
+      if (rawProofs.length === 0 && empresaId) {
+        try {
+          const crmCompRes = await fetch(`/api/crm/comprovativos?empresa_id=${empresaId}`, {
+            headers: { 'Authorization': `Bearer ${session?.access_token || ''}` }
+          }).then(r => r.ok ? r.json() : []).catch(() => []);
+          if (Array.isArray(crmCompRes) && crmCompRes.length > 0) {
+            setComprovativos(crmCompRes);
+          } else {
+            setComprovativos([]);
+          }
+        } catch {
+          setComprovativos([]);
+        }
+      } else {
+        setComprovativos(rawProofs);
+      }
     } catch (error) {
       console.error("Erro ao buscar licenças:", error);
     } finally {
@@ -111,17 +153,23 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
     }
   };
 
+  const safeLicencas = Array.isArray(licencas) ? licencas : [];
+  const safeOcorrencias = Array.isArray(ocorrencias) ? ocorrencias : [];
+  const safeComprovativos = Array.isArray(comprovativos) ? comprovativos : [];
+
   // Active Company License computation
-  const myLicense = licencas.find(l => String(l.empresa_id) === String(empresaId)) || licencas[0] || {
+  const myLicense = safeLicencas.find(l => l && String(l.empresa_id) === String(empresaId)) || safeLicencas[0] || {
     id: 'lic-default',
     empresa_id: empresaId,
     tipo_licenca: userProfile?.pacote_licenca || 'Profissional',
     plano: 'Mensal',
-    status_licenca: 'activa',
+    status_licenca: 'EXPIRADA',
+    licenca_ativa: false,
+    ativo: false,
     data_inicio: new Date().toISOString(),
-    data_fim: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    data_fim: new Date().toISOString(),
     valor_licenca: 65000,
-    ativado_por: 'Administrador do Sistema CRM (Supabase)'
+    ativado_por: 'Administrador do Sistema CRM'
   };
 
   const calculateDaysRemaining = (endDateStr: string) => {
@@ -133,14 +181,22 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
   };
 
   const daysRemaining = calculateDaysRemaining(myLicense.data_fim);
-  const isExpiringSoon = daysRemaining <= 15 && myLicense.status_licenca === 'activa';
-  const isExpired = daysRemaining === 0 || myLicense.status_licenca === 'vencida' || myLicense.status_licenca === 'bloqueada';
+  const rawStatus = String(myLicense.status_licenca || myLicense.estado || '').toUpperCase();
+  const isSuspendedOrDeactivated = ['SUSPENSA', 'BLOQUEADA', 'DESATIVADA', 'INATIVA', 'CANCELADA', 'EXPIRADA', 'VENCIDA'].includes(rawStatus) || 
+                                  myLicense.licenca_ativa === false || 
+                                  myLicense.ativo === false;
+  const isExplicitlyActive = ['ACTIVA', 'ACTIVE', 'ATIVA', 'ATIVO'].includes(rawStatus) && (myLicense.licenca_ativa !== false) && (myLicense.ativo !== false);
+  
+  const isExpired = isSuspendedOrDeactivated || (daysRemaining === 0 && !rawStatus.includes('TRIAL'));
+  const isLicenseActive = isExplicitlyActive && !isExpired && (daysRemaining > 0 || !myLicense.data_fim);
+  const displayStatus = isLicenseActive ? 'LICENÇA ACTIVA' : 'LICENÇA EXPIRADA';
+  const isExpiringSoon = isLicenseActive && daysRemaining <= 15;
 
   const stats = [
-    { label: 'Licenças Ativas', value: licencas.filter(l => l.status_licenca === 'activa' || l.status_licenca === 'active').length, icon: ShieldCheck, color: 'text-emerald-600' },
-    { label: 'Pendentes de Validação', value: licencas.filter(l => l.status_licenca === 'pendente' || l.status_licenca === 'aguardando_validacao').length, icon: Clock, color: 'text-amber-600' },
-    { label: 'Vencidas / Expiradas', value: licencas.filter(l => l.status_licenca === 'vencida' || l.status_licenca === 'bloqueada').length, icon: AlertOctagon, color: 'text-rose-600' },
-    { label: 'Receita Licenciamento', value: licencas.filter(l => l.status_licenca === 'activa' || l.status_licenca === 'active').reduce((acc, curr) => acc + Number(curr.valor_licenca || 0), 0).toLocaleString() + ' AOA', icon: BadgeCent, color: 'text-[#003366]' },
+    { label: 'Licenças Ativas', value: safeLicencas.filter(l => l && (['ATIVA', 'ACTIVA', 'ACTIVE'].includes(String(l.status_licenca || l.estado).toUpperCase()) && l.licenca_ativa !== false && l.ativo !== false)).length, icon: ShieldCheck, color: 'text-emerald-600' },
+    { label: 'Pendentes de Validação', value: safeLicencas.filter(l => l && (String(l.status_licenca || l.estado).toLowerCase().includes('pendente'))).length, icon: Clock, color: 'text-amber-600' },
+    { label: 'Vencidas / Expiradas', value: safeLicencas.filter(l => l && (['SUSPENSA', 'EXPIRADA', 'VENCIDA', 'BLOQUEADA', 'DESATIVADA'].includes(String(l.status_licenca || l.estado).toUpperCase()) || l.licenca_ativa === false || l.ativo === false)).length, icon: AlertOctagon, color: 'text-rose-600' },
+    { label: 'Receita Licenciamento', value: safeLicencas.filter(l => l && (['ATIVA', 'ACTIVA', 'ACTIVE'].includes(String(l.status_licenca || l.estado).toUpperCase()) && l.licenca_ativa !== false && l.ativo !== false)).reduce((acc, curr) => acc + Number(curr.valor_licenca || 0), 0).toLocaleString() + ' AOA', icon: BadgeCent, color: 'text-[#003366]' },
   ];
 
   const chartData = [
@@ -149,13 +205,15 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
     { name: 'Mar', revenue: 1800000 },
     { name: 'Abr', revenue: 2400000 },
     { name: 'Mai', revenue: 2900000 },
+    { name: 'Jun', revenue: 3500000 },
   ];
 
   const planUsage = [
-    { name: 'Básico', value: licencas.filter(l => l.tipo_licenca === 'Básico').length || 1 },
-    { name: 'Profissional', value: licencas.filter(l => l.tipo_licenca === 'Profissional').length || 2 },
-    { name: 'Enterprise', value: licencas.filter(l => l.tipo_licenca === 'Enterprise').length || 1 },
-  ].filter(p => p.value > 0);
+    { name: 'Profissional', value: safeLicencas.filter(l => (l?.tipo_licenca || l?.plano || '').toLowerCase().includes('prof')).length || 1 },
+    { name: 'Standard', value: safeLicencas.filter(l => (l?.tipo_licenca || l?.plano || '').toLowerCase().includes('stand')).length || 0 },
+    { name: 'Enterprise', value: safeLicencas.filter(l => (l?.tipo_licenca || l?.plano || '').toLowerCase().includes('enter')).length || 0 },
+    { name: 'Trial', value: safeLicencas.filter(l => (l?.tipo_licenca || l?.plano || '').toLowerCase().includes('trial')).length || 0 },
+  ];
 
   const COLORS = ['#003366', '#10b981', '#f59e0b', '#ef4444'];
 
@@ -188,20 +246,22 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
         </div>
       </header>
 
-      {/* BANNER DE ANTECEDÊNCIA DE LICENÇA EXPIRANDO OU EXPIRADA */}
-      {(isExpiringSoon || isExpired) && (
-        <div className={`p-5 border-l-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm animate-in slide-in-from-top duration-300 ${
-          isExpired ? 'bg-rose-50 border-rose-600 text-rose-900' : 'bg-amber-50 border-amber-500 text-amber-900'
+      {/* Top Banner Alert (Se a licença estiver a expirar ou expirada) */}
+      {!isSuperAdmin && (isExpired || isExpiringSoon) && (
+        <div className={`p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border shadow-sm ${
+          isExpired ? 'bg-rose-50 border-rose-200 text-rose-800' : 'bg-amber-50 border-amber-200 text-amber-800'
         }`}>
           <div className="flex items-center gap-3">
-            {isExpired ? <AlertOctagon size={28} className="text-rose-600 shrink-0" /> : <AlertTriangle size={28} className="text-amber-600 shrink-0" />}
+            <div className={`p-2 rounded-full ${isExpired ? 'bg-rose-100' : 'bg-amber-100'}`}>
+              <AlertTriangle className={isExpired ? 'text-rose-600' : 'text-amber-600'} size={24} />
+            </div>
             <div>
               <h4 className="text-sm font-black uppercase tracking-wider">
-                {isExpired ? 'ATENÇÃO: A Licença do Sistema Encontra-se Expirada / Pendente!' : `AVISO DE RENOVAÇÃO: Faltam apenas ${daysRemaining} dias para a licença expirar!`}
+                {isExpired ? 'ATENÇÃO: A Licença do Sistema Encontra-se Expirada / Suspensa!' : `AVISO DE RENOVAÇÃO: Faltam apenas ${daysRemaining} dias para a licença expirar!`}
               </h4>
               <p className="text-xs mt-0.5 opacity-90">
                 {isExpired 
-                  ? `A licença venceu no dia ${new Date(myLicense.data_fim).toLocaleDateString('pt-AO')}. Submeta o comprovativo de pagamento para reativar o acesso total.` 
+                  ? `A licença desta empresa encontra-se inativa ou expirada. Submeta o comprovativo de pagamento ou contacte o administrador para reativar o acesso total.` 
                   : `A sua subscrição expira em ${new Date(myLicense.data_fim).toLocaleDateString('pt-AO')}. Efetue o pagamento da renovação para evitar a suspensão automática.`
                 }
               </p>
@@ -229,20 +289,18 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-white/10 pb-4">
               <div>
                 <span className="text-[10px] font-black uppercase tracking-widest text-sky-300 block">Licença da Empresa Registada</span>
-                <h3 className="text-2xl font-black tracking-tight uppercase mt-0.5">{myLicense.tipo_licenca || 'Plano Profissional AGT'}</h3>
+                <h3 className="text-2xl font-black tracking-tight uppercase mt-0.5">{myLicense.tipo_licenca || myLicense.plano || 'Plano Profissional AGT'}</h3>
               </div>
               <div className="flex items-center gap-3">
                 <span className={`px-4 py-1.5 text-xs font-black uppercase tracking-widest flex items-center gap-2 ${
-                  myLicense.status_licenca === 'activa' || myLicense.status_licenca === 'active' 
+                  isLicenseActive 
                     ? 'bg-emerald-500 text-white shadow-sm' 
-                    : myLicense.status_licenca === 'pendente' 
-                    ? 'bg-amber-500 text-white' 
-                    : 'bg-rose-600 text-white'
+                    : 'bg-rose-600 text-white shadow-sm'
                 }`}>
-                  {myLicense.status_licenca === 'activa' || myLicense.status_licenca === 'active' ? (
-                    <><span className="w-2 h-2 rounded-full bg-white animate-ping" /> Licença Ativa</>
+                  {isLicenseActive ? (
+                    <><span className="w-2 h-2 rounded-full bg-white animate-ping" /> LICENÇA ACTIVA</>
                   ) : (
-                    <><AlertTriangle size={14} /> {myLicense.status_licenca?.toUpperCase()}</>
+                    <><AlertTriangle size={14} /> LICENÇA EXPIRADA</>
                   )}
                 </span>
               </div>
@@ -378,7 +436,7 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
-                  {licencas.map((lic, idx) => {
+                  {safeLicencas.map((lic, idx) => {
                     const days = calculateDaysRemaining(lic.data_fim);
                     return (
                       <tr key={idx} className="text-xs hover:bg-zinc-50/50 transition-colors group">
@@ -443,7 +501,7 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
                       </tr>
                     );
                   })}
-                  {licencas.length === 0 && (
+                  {safeLicencas.length === 0 && (
                     <tr>
                       <td colSpan={7} className="px-6 py-20 text-center text-zinc-400 font-bold uppercase tracking-widest">
                         Nenhuma licença registada na base de dados.
@@ -452,6 +510,119 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
                   )}
                 </tbody>
               </table>
+            </div>
+
+            {/* ─── COMPROVATIVOS DE PAGAMENTO inline ─── */}
+            <div className="border-t-4 border-t-[#003366] mt-0">
+              <div className="p-5 bg-zinc-50 border-b border-zinc-200 flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 bg-[#003366] text-white flex items-center justify-center shrink-0">
+                    <Upload size={16} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider">Comprovativos de Pagamento</h3>
+                    <p className="text-xs text-zinc-500">Histórico de transferências bancárias submetidas para ativação da licença.</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowPaymentModal(true)}
+                  className="bg-[#003366] hover:bg-[#002244] text-white px-4 py-2 text-xs font-black uppercase tracking-widest flex items-center gap-2 cursor-pointer"
+                >
+                  <Upload size={14} /> Novo Comprovativo
+                </button>
+              </div>
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="bg-zinc-50 text-[10px] font-black text-zinc-500 uppercase tracking-widest border-b border-zinc-200">
+                    <th className="px-6 py-3">Data / Hora</th>
+                    <th className="px-6 py-3">Banco Emissor</th>
+                    <th className="px-6 py-3">N.º Borderô / Transação</th>
+                    <th className="px-6 py-3 text-right">Montante Pago</th>
+                    <th className="px-6 py-3 text-center">Estado Validação</th>
+                    <th className="px-6 py-3 text-center">Documento</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100 text-xs">
+                  {safeComprovativos.map((comp, idx) => (
+                    <tr key={idx} className="hover:bg-zinc-50 transition-colors">
+                      <td className="px-6 py-3 font-mono text-zinc-600">{new Date(comp.created_at || Date.now()).toLocaleString('pt-AO')}</td>
+                      <td className="px-6 py-3 font-bold text-zinc-800 uppercase">{comp.banco || comp.metadata?.banco || 'BAI / BFA'}</td>
+                      <td className="px-6 py-3 font-mono font-bold text-zinc-700">{comp.numero_transacao || comp.metadata?.numero_transacao || '---'}</td>
+                      <td className="px-6 py-3 text-right font-mono font-black text-emerald-700">{Number(comp.montante || comp.metadata?.valor || 65000).toLocaleString('pt-AO')} AOA</td>
+                      <td className="px-6 py-3 text-center">
+                        <span className={`px-2.5 py-0.5 text-[9px] font-black uppercase tracking-widest ${
+                          String(comp.status || '').toUpperCase() === 'PENDENTE' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-800'
+                        }`}>
+                          {comp.status || 'PENDENTE'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-3 text-center">
+                        {(comp.comprovativo_url || comp.metadata?.comprovativo_url) ? (
+                          <a href={comp.comprovativo_url || comp.metadata?.comprovativo_url} target="_blank" rel="noreferrer" className="text-sky-700 font-bold underline text-xs">Ver Ficheiro</a>
+                        ) : <span className="text-zinc-400 italic text-[10px]">Sem ficheiro</span>}
+                      </td>
+                    </tr>
+                  ))}
+                  {safeComprovativos.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-8 text-center text-zinc-400 italic text-xs">Nenhum comprovativo enviado. Clique em "Novo Comprovativo" para submeter.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* ─── PLANOS & RECURSOS inline ─── */}
+            <div className="p-5 border-t-4 border-t-emerald-600 bg-white border border-zinc-200 mt-6">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-9 h-9 bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                  <TrendingUp size={16} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider">Planos & Recursos Disponíveis</h3>
+                  <p className="text-xs text-zinc-500">Solicite upgrade ou downgrade do plano atual da sua empresa.</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {[
+                  { name: 'Básico', price: 25000, users: 5, storage: '2GB', modules: ['Faturamento', 'Dashboard Base'] },
+                  { name: 'Standard', price: 55000, users: 15, storage: '10GB', modules: ['Faturamento', 'RH Base', 'Stock Base'] },
+                  { name: 'Profissional', price: 65000, users: 50, storage: '50GB', modules: ['Todos os Módulos', 'Suporte 24/7', 'Backups Hora'], featured: true },
+                  { name: 'Enterprise', price: 150000, users: 'Ilimitado', storage: '200GB', modules: ['Ecossistema Completo', 'API Access', 'Contas Custom'] }
+                ].map((plan, i) => {
+                  const isCurrentPlan = (myLicense.tipo_licenca || '').toLowerCase() === plan.name.toLowerCase();
+                  return (
+                    <div key={i} className={`p-4 border flex flex-col relative ${plan.featured ? 'border-[#003366] ring-1 ring-[#003366] shadow-md' : 'border-zinc-200'}`}>
+                      {plan.featured && <div className="absolute top-0 right-0 bg-[#003366] text-white text-[8px] font-black uppercase px-3 py-0.5">Recomendado</div>}
+                      {isCurrentPlan && <div className="absolute top-0 left-0 bg-emerald-600 text-white text-[8px] font-black uppercase px-3 py-0.5">Plano Atual</div>}
+                      <h4 className={`text-base font-black uppercase tracking-tight mb-1 ${isCurrentPlan ? 'mt-5' : plan.featured ? 'mt-5' : 'mt-1'}`}>{plan.name}</h4>
+                      <div className="flex items-baseline gap-1 mb-4">
+                        <span className="text-lg font-black text-[#003366]">{plan.price.toLocaleString()}</span>
+                        <span className="text-[10px] font-bold text-zinc-400 uppercase">AOA / Mês</span>
+                      </div>
+                      <div className="space-y-1.5 mb-5 flex-grow text-[10px]">
+                        <div className="flex items-center gap-2 text-zinc-600 font-bold uppercase"><Users size={12} className="text-zinc-400" /> {plan.users} Utilizadores</div>
+                        <div className="flex items-center gap-2 text-zinc-600 font-bold uppercase"><FileText size={12} className="text-zinc-400" /> {plan.storage} Armazenamento</div>
+                        <div className="pt-2 border-t border-zinc-100 space-y-1">
+                          {plan.modules.map((m, k) => (
+                            <div key={k} className="flex items-center gap-2 text-zinc-500 font-bold uppercase">
+                              <CheckCircle2 size={10} className="text-emerald-500 shrink-0" /> {m}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => !isCurrentPlan && setShowApplyModal(true)}
+                        className={`w-full py-2 text-[10px] font-black uppercase tracking-widest transition-all ${
+                          isCurrentPlan ? 'bg-emerald-600 text-white cursor-default' : plan.featured ? 'bg-[#003366] text-white hover:bg-[#002244] cursor-pointer' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-800 hover:text-white cursor-pointer'
+                        }`}
+                      >
+                        {isCurrentPlan ? '✓ Plano Contratado' : 'Solicitar Upgrade'}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </motion.div>
         )}
@@ -491,25 +662,35 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100 text-xs">
-                  {comprovativos.map((comp, idx) => (
-                    <tr key={idx} className="hover:bg-zinc-50 transition-colors">
-                      <td className="px-6 py-4 font-mono text-zinc-600">{new Date(comp.created_at || Date.now()).toLocaleString('pt-AO')}</td>
-                      <td className="px-6 py-4 font-bold text-zinc-800 uppercase">{comp.banco || 'BAI / BFA'}</td>
-                      <td className="px-6 py-4 font-mono font-bold text-zinc-700">{comp.numero_transacao || 'TRX-982183'}</td>
-                      <td className="px-6 py-4 text-right font-mono font-black text-emerald-700">{Number(comp.montante || 65000).toLocaleString('pt-AO')} AOA</td>
-                      <td className="px-6 py-4 text-center">
-                        <span className="px-2.5 py-1 text-[9px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-800">
-                          {comp.status || 'Aprovado / Licença Ativa'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        {comp.comprovativo_url ? (
-                          <a href={comp.comprovativo_url} target="_blank" rel="noreferrer" className="text-sky-700 font-bold underline text-xs">Ver Ficheiro</a>
-                        ) : <span className="text-zinc-400 italic">Simulado</span>}
-                      </td>
-                    </tr>
-                  ))}
-                  {comprovativos.length === 0 && (
+                  {safeComprovativos.map((comp, idx) => {
+                    const banco = comp.banco || comp.metadata?.banco || 'BAI / BFA';
+                    const numTrx = comp.numero_transacao || comp.metadata?.numero_transacao || '---';
+                    const montante = Number(comp.montante || comp.metadata?.valor || 65000);
+                    const status = comp.status || comp.metadata?.status_novo || 'Pendente Validação';
+                    const docUrl = comp.comprovativo_url || comp.metadata?.comprovativo_url;
+
+                    return (
+                      <tr key={idx} className="hover:bg-zinc-50 transition-colors">
+                        <td className="px-6 py-4 font-mono text-zinc-600">{new Date(comp.created_at || Date.now()).toLocaleString('pt-AO')}</td>
+                        <td className="px-6 py-4 font-bold text-zinc-800 uppercase">{banco}</td>
+                        <td className="px-6 py-4 font-mono font-bold text-zinc-700">{numTrx}</td>
+                        <td className="px-6 py-4 text-right font-mono font-black text-emerald-700">{montante.toLocaleString('pt-AO')} AOA</td>
+                        <td className="px-6 py-4 text-center">
+                          <span className={`px-2.5 py-1 text-[9px] font-black uppercase tracking-widest ${
+                            String(status).toLowerCase().includes('pendente') ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
+                          }`}>
+                            {status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          {docUrl ? (
+                            <a href={docUrl} target="_blank" rel="noreferrer" className="text-sky-700 font-bold underline text-xs">Ver Ficheiro</a>
+                          ) : <span className="text-zinc-400 italic">Sem anexo</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {safeComprovativos.length === 0 && (
                     <tr>
                       <td colSpan={6} className="px-6 py-12 text-center text-zinc-400 italic">Nenhum comprovativo enviado anteriormente.</td>
                     </tr>
@@ -554,7 +735,7 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100 text-xs">
-                  {ocorrencias.map((oc, idx) => (
+                  {safeOcorrencias.map((oc, idx) => (
                     <tr key={idx} className="hover:bg-zinc-50 transition-colors">
                       <td className="px-6 py-4 font-mono text-zinc-500">{new Date(oc.created_at || Date.now()).toLocaleDateString('pt-AO')}</td>
                       <td className="px-6 py-4 font-bold text-zinc-800">{oc.assunto || 'Solicitação de Alteração de Dados'}</td>
@@ -567,7 +748,7 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
                       <td className="px-6 py-4 text-zinc-600 italic">{oc.resposta || 'Atendido pela equipa CRM de licenciamento.'}</td>
                     </tr>
                   ))}
-                  {ocorrencias.length === 0 && (
+                  {safeOcorrencias.length === 0 && (
                     <tr>
                       <td colSpan={5} className="px-6 py-12 text-center text-zinc-400 italic">Nenhuma ocorrência registada.</td>
                     </tr>
@@ -647,8 +828,8 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
             <div className="lg:col-span-2 space-y-6">
               <div className="bg-white p-6 border border-zinc-200">
                 <h3 className="text-xs font-black text-zinc-400 uppercase tracking-widest mb-6">Receita de Licenciamento (6 Meses)</h3>
-                <div className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
+                <div className="h-[300px] w-full min-h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={250}>
                     <BarChart data={chartData}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
                       <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#9ca3af'}} />
@@ -666,8 +847,8 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
             <div className="space-y-6">
               <div className="bg-white p-6 border border-zinc-200">
                 <h3 className="text-xs font-black text-zinc-400 uppercase tracking-widest mb-6">Distribuição de Planos</h3>
-                <div className="h-[200px]">
-                  <ResponsiveContainer width="100%" height="100%">
+                <div className="h-[200px] w-full min-h-[200px]">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={180}>
                     <PieChart>
                       <Pie data={planUsage} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
                         {planUsage.map((entry, index) => (
@@ -710,6 +891,7 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
       {/* Modal Enviar Comprovativo */}
       {showPaymentModal && (
         <SubmitPaymentProofModal
+          empresaId={empresaId}
           onClose={() => setShowPaymentModal(false)}
           onSuccess={() => {
             setShowPaymentModal(false);
@@ -721,6 +903,7 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
       {/* Modal Reportar Ocorrência */}
       {showOcorrenciaModal && (
         <SubmitOcorrenciaModal
+          empresaId={empresaId}
           onClose={() => setShowOcorrenciaModal(false)}
           onSuccess={() => {
             setShowOcorrenciaModal(false);
@@ -733,7 +916,7 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
 };
 
 // MODAL PARA SUBMETER COMPROVATIVO DE PAGAMENTO DA LICENÇA
-const SubmitPaymentProofModal = ({ onClose, onSuccess }: { onClose: () => void, onSuccess: () => void }) => {
+const SubmitPaymentProofModal = ({ empresaId, onClose, onSuccess }: { empresaId?: string, onClose: () => void, onSuccess: () => void }) => {
   const [formData, setFormData] = useState({
     banco: 'Banco BAI',
     montante: 65000,
@@ -742,6 +925,7 @@ const SubmitPaymentProofModal = ({ onClose, onSuccess }: { onClose: () => void, 
     comprovativo_url: '',
     observacao: ''
   });
+  const [proofFile, setProofFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -749,25 +933,96 @@ const SubmitPaymentProofModal = ({ onClose, onSuccess }: { onClose: () => void, 
     e.preventDefault();
     try {
       setSubmitting(true);
-      const { data: { session } } = await supabase.auth.getSession();
       const userRes = await supabase.auth.getUser();
+      const currentUserEmail = userRes.data.user?.email || 'Utilizador';
 
-      await supabase.from('comprovativos_licenca').insert([{
+      // Garantir UUID válido da empresa
+      const targetEmpresaId = (empresaId && empresaId !== '1' && empresaId.length > 10)
+        ? empresaId
+        : (userRes.data.user?.id || null);
+
+      if (!targetEmpresaId) {
+        throw new Error('Identificador da empresa não disponível.');
+      }
+
+      let finalProofUrl = formData.comprovativo_url || '';
+
+      // Upload real do ficheiro para Supabase Storage (bucket: media)
+      if (proofFile) {
+        try {
+          const fileExt = proofFile.name.split('.').pop();
+          const fileName = `comprovativo_${targetEmpresaId}_${Date.now()}.${fileExt}`;
+          const { data: uploadData, error: uploadError } = await supabase.storage
+            .from('media')
+            .upload(`comprovativos/${fileName}`, proofFile, { cacheControl: '3600', upsert: true });
+
+          if (!uploadError && uploadData) {
+            const { data: publicUrlData } = supabase.storage.from('media').getPublicUrl(`comprovativos/${fileName}`);
+            if (publicUrlData?.publicUrl) {
+              finalProofUrl = publicUrlData.publicUrl;
+            }
+          }
+        } catch (uploadErr) {
+          console.warn('[LicencasModule] Upload storage warning:', uploadErr);
+        }
+      }
+
+      // 1. Inserir em historico_licencas com colunas raiz E metadata
+      const { error: insertError } = await supabase.from('historico_licencas').insert([{
+        empresa_id: targetEmpresaId,
+        acao: 'COMPROVATIVO_PAGAMENTO',
+        descricao: `Comprovativo de Pagamento - Banco: ${formData.banco} | Ref/Transação: ${formData.numero_transacao} | Valor: ${formData.montante} Kz`,
+        motivo: 'Registo de Comprovativo de Pagamento',
+        usuario: currentUserEmail,
+        alterado_por: currentUserEmail,
+        status: 'PENDENTE',
         banco: formData.banco,
         montante: Number(formData.montante),
         numero_transacao: formData.numero_transacao,
-        data_pagamento: formData.data_pagamento,
-        comprovativo_url: formData.comprovativo_url || null,
-        observacao: formData.observacao,
-        status: 'pendente_validacao',
-        user_id: userRes.data.user?.id
-      }]).catch(console.warn);
+        comprovativo_url: finalProofUrl || null,
+        metadata: {
+          banco: formData.banco,
+          valor: Number(formData.montante),
+          numero_transacao: formData.numero_transacao,
+          data_pagamento: formData.data_pagamento,
+          comprovativo_url: finalProofUrl || null,
+          observacoes: formData.observacao || `Comprovativo ${formData.banco} (${formData.numero_transacao})`,
+          status_novo: 'pendente_validacao'
+        }
+      }]);
+
+      if (insertError) {
+        console.error('[LicencasModule] Erro ao inserir no Supabase:', insertError);
+        throw insertError;
+      }
+
+      // 2. Chamar endpoint do CRM para sincronizar em media_arquivos e licencas_empresas
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        await fetch('/api/crm/comprovativos', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token || ''}`
+          },
+          body: JSON.stringify({
+            empresa_id: targetEmpresaId,
+            banco: formData.banco,
+            numero_transacao: formData.numero_transacao,
+            montante: Number(formData.montante),
+            comprovativo_nome: `${formData.banco}_${formData.numero_transacao}`,
+            comprovativo_url: finalProofUrl || null
+          })
+        });
+      } catch (crmSyncErr) {
+        console.warn('[LicencasModule] Sync com CRM comprovativos:', crmSyncErr);
+      }
 
       toast.success('Comprovativo de pagamento enviado com sucesso para a validação no CRM!');
       onSuccess();
-    } catch (err) {
-      console.error(err);
-      toast.error('Erro ao enviar comprovativo.');
+    } catch (err: any) {
+      console.error('[LicencasModule] Erro ao submeter comprovativo:', err);
+      toast.error(`Erro ao enviar comprovativo: ${err.message || 'Erro de comunicação'}`);
     } finally {
       setSubmitting(false);
     }
@@ -833,8 +1088,22 @@ const SubmitPaymentProofModal = ({ onClose, onSuccess }: { onClose: () => void, 
           </div>
 
           <div>
-            <label className="block font-bold text-zinc-700 uppercase mb-1">Anexar Comprovativo (PDF / JPG)</label>
-            <input type="file" onChange={() => setFormData({...formData, comprovativo_url: 'https://demo.comprovativo.pdf'})} className="w-full bg-zinc-50 border border-zinc-300 p-2 text-xs" />
+            <label className="block font-bold text-zinc-700 uppercase mb-1">Anexar Comprovativo (PDF / JPG / PNG)</label>
+            <input 
+              type="file" 
+              accept=".pdf,image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0] || null;
+                setProofFile(file);
+                if (file) {
+                  setFormData(p => ({ ...p, comprovativo_url: URL.createObjectURL(file) }));
+                }
+              }} 
+              className="w-full bg-zinc-50 border border-zinc-300 p-2 text-xs" 
+            />
+            {proofFile && (
+              <p className="text-[10px] text-emerald-600 font-bold mt-1">✓ Ficheiro selecionado: {proofFile.name} ({(proofFile.size / 1024).toFixed(1)} KB)</p>
+            )}
           </div>
 
           <div>
@@ -855,7 +1124,7 @@ const SubmitPaymentProofModal = ({ onClose, onSuccess }: { onClose: () => void, 
 };
 
 // MODAL SUBMETER OCORRÊNCIA DA LICENÇA
-const SubmitOcorrenciaModal = ({ onClose, onSuccess }: { onClose: () => void, onSuccess: () => void }) => {
+const SubmitOcorrenciaModal = ({ empresaId, onClose, onSuccess }: { empresaId?: string, onClose: () => void, onSuccess: () => void }) => {
   const [assunto, setAssunto] = useState('');
   const [descricao, setDescricao] = useState('');
   const [prioridade, setPrioridade] = useState('Alta');
@@ -866,18 +1135,41 @@ const SubmitOcorrenciaModal = ({ onClose, onSuccess }: { onClose: () => void, on
     try {
       setSubmitting(true);
       const userRes = await supabase.auth.getUser();
-      await supabase.from('ocorrencias_licenca').insert([{
-        assunto,
-        descricao,
-        prioridade,
-        status: 'aberto',
-        user_id: userRes.data.user?.id
-      }]).catch(console.warn);
+      const currentUserEmail = userRes.data.user?.email || 'Utilizador';
+
+      const targetEmpresaId = (empresaId && empresaId !== '1' && empresaId.length > 10)
+        ? empresaId
+        : (userRes.data.user?.id || null);
+
+      if (!targetEmpresaId) {
+        throw new Error('Identificador da empresa não disponível.');
+      }
+
+      const { error: insertError } = await supabase.from('historico_licencas').insert([{
+        empresa_id: targetEmpresaId,
+        acao: 'OCORRENCIA_SUPORTE',
+        descricao: `[${prioridade || 'NORMAL'}] ${assunto}: ${descricao}`,
+        motivo: assunto,
+        usuario: currentUserEmail,
+        alterado_por: currentUserEmail,
+        status: 'ABERTO',
+        metadata: {
+          prioridade,
+          assunto,
+          descricao
+        }
+      }]);
+
+      if (insertError) {
+        console.error('[LicencasModule] Erro ao registar ocorrência:', insertError);
+        throw insertError;
+      }
 
       toast.success('Ocorrência registada com sucesso!');
       onSuccess();
-    } catch (err) {
-      toast.error('Erro ao registar ocorrência');
+    } catch (err: any) {
+      console.error('[LicencasModule] Erro ao submeter ocorrência:', err);
+      toast.error(`Erro ao registar ocorrência: ${err.message || 'Erro de comunicação'}`);
     } finally {
       setSubmitting(false);
     }
@@ -904,21 +1196,21 @@ const SubmitOcorrenciaModal = ({ onClose, onSuccess }: { onClose: () => void, on
             <label className="block font-bold text-zinc-700 uppercase mb-1">Prioridade</label>
             <select value={prioridade} onChange={e => setPrioridade(e.target.value)} className="w-full bg-zinc-50 border border-zinc-300 p-2.5 font-bold">
               <option value="Baixa">Baixa</option>
-              <option value="Média">Média</option>
+              <option value="Normal">Normal</option>
               <option value="Alta">Alta</option>
               <option value="Urgente">Urgente</option>
             </select>
           </div>
 
           <div>
-            <label className="block font-bold text-zinc-700 uppercase mb-1">Descrição Detalhada</label>
-            <textarea value={descricao} onChange={e => setDescricao(e.target.value)} required rows={4} className="w-full bg-zinc-50 border border-zinc-300 p-2 text-xs" placeholder="Descreva em detalhe a ocorrência ou alteração desejada..." />
+            <label className="block font-bold text-zinc-700 uppercase mb-1">Descrição do Problema</label>
+            <textarea value={descricao} onChange={e => setDescricao(e.target.value)} rows={4} required placeholder="Descreva os detalhes da ocorrência..." className="w-full bg-zinc-50 border border-zinc-300 p-2.5 text-xs" />
           </div>
 
           <div className="flex justify-end gap-3 pt-4 border-t border-zinc-100">
             <button type="button" onClick={onClose} className="px-4 py-2 text-zinc-500 font-bold uppercase">Cancelar</button>
-            <button type="submit" disabled={submitting} className="bg-[#003366] text-white px-5 py-2 font-bold uppercase tracking-widest shadow-md">
-              {submitting ? 'A submeter...' : 'Submeter Ocorrência'}
+            <button type="submit" disabled={submitting} className="bg-[#003366] text-white px-5 py-2 font-bold uppercase">
+              {submitting ? 'A submeter...' : 'Submeter'}
             </button>
           </div>
         </form>
@@ -1066,18 +1358,16 @@ const AdminActionModal = ({ license, onClose, onSuccess }: { license: any, onClo
           body: JSON.stringify({ id: license.id, acao, motivo })
         });
         
-        // Direct Supabase Update as well for 100% real-time reflection
-        const now = new Date();
-        const endDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-        
-        if (acao === 'activar') {
-          await supabase.from('licencas_empresa').upsert({
-            empresa_id: license.empresa_id || '1',
-            status_licenca: 'activa',
-            data_inicio: now.toISOString(),
-            data_fim: endDate.toISOString(),
-            ativado_por: 'Administrador CRM (Supabase)'
-          }, { onConflict: 'empresa_id' }).catch(console.warn);
+        // Sincronização segura via API de Licenciamento CRM
+        if (acao === 'activar' && license.empresa_id) {
+          await fetch(`/api/crm/companies/${license.empresa_id}/activate-license`, {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session?.access_token || ''}`
+            },
+            body: JSON.stringify({ duracao_dias: 30, plano: license.tipo_licenca || 'Profissional' })
+          }).catch(console.warn);
         }
 
         toast.success('Operação realizada e sincronizada no Supabase com sucesso!');

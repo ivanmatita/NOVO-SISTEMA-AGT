@@ -378,7 +378,9 @@ export const authService = {
               role: perfil.role || 'admin',
               created_at: empresa.created_at || userAuth.created_at,
               company: empresa,
-              permission_areas: perfil.permission_areas || [],
+              permission_areas: (perfil.permission_areas && Array.isArray(perfil.permission_areas)) 
+                ? perfil.permission_areas 
+                : ((perfil.is_admin || perfil.role === 'admin' || perfil.role === 'admin_empresa' || perfil.role === 'proprietario') ? null : []),
               is_admin: perfil.is_admin || perfil.role === 'admin' || false,
               level: perfil.level || (perfil.role === 'admin' ? 10 : 1)
             };
@@ -533,7 +535,9 @@ export const authService = {
         level: perfil.level || 1,
         created_at: empresa.created_at || session?.user?.created_at,
         company: empresa,
-        permission_areas: perfil.permission_areas || []
+        permission_areas: (perfil.permission_areas && Array.isArray(perfil.permission_areas)) 
+          ? perfil.permission_areas 
+          : ((perfil.is_admin || perfil.role === 'admin' || perfil.role === 'admin_empresa' || perfil.role === 'proprietario') ? null : [])
       };
     } catch (err) {
       console.error('[AuthService] Falha crítica em getCurrentUser:', err);

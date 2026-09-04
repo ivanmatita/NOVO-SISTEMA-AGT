@@ -249,7 +249,7 @@ export default async function handler(req, res) {
         let comprovativos = [];
 
         if (targetId) {
-          const [mediaRes, licRes] = await Promise.all([
+          const [mediaRes, licRes, histRes] = await Promise.all([
             fetch(
               `${config.supabaseUrl}/rest/v1/media_arquivos?empresa_id=eq.${targetId}&select=*&order=created_at.desc&limit=50`,
               { headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader } }
@@ -257,11 +257,28 @@ export default async function handler(req, res) {
             fetch(
               `${config.supabaseUrl}/rest/v1/licencas_empresas?empresa_id=eq.${targetId}&select=*&limit=50`,
               { headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader } }
+            ).then(r => r.ok ? r.json() : []).catch(() => []),
+            fetch(
+              `${config.supabaseUrl}/rest/v1/historico_licencas?empresa_id=eq.${targetId}&acao=eq.COMPROVATIVO_PAGAMENTO&select=*&order=created_at.desc&limit=50`,
+              { headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader } }
             ).then(r => r.ok ? r.json() : []).catch(() => [])
           ]);
 
           const rawMedia = Array.isArray(mediaRes) ? mediaRes : [];
           const rawLic = Array.isArray(licRes) ? licRes : [];
+          const rawHist = Array.isArray(histRes) ? histRes : [];
+
+          // Map from historico_licencas (comprovativos enviados pelo módulo de licenças)
+          const histProofs = rawHist.map(h => ({
+            id: h.id,
+            empresa_id: h.empresa_id,
+            created_at: h.created_at,
+            banco: h.banco || h.metadata?.banco || 'Banco BAI',
+            numero_transacao: h.numero_transacao || h.metadata?.numero_transacao || '---',
+            montante: Number(h.montante || h.metadata?.valor || 65000),
+            status: h.status || 'Pendente',
+            comprovativo_url: h.comprovativo_url || h.metadata?.comprovativo_url || null
+          }));
 
           // Map from media_arquivos (primary official table for files/proofs)
           const mediaProofs = rawMedia.map(m => ({
@@ -287,7 +304,9 @@ export default async function handler(req, res) {
             comprovativo_url: l.comprovativo_url || null
           }));
 
-          comprovativos = [...mediaProofs, ...licProofs.filter(lp => !mediaProofs.some(mp => mp.numero_transacao === lp.numero_transacao))];
+          // Combinar todos e deduplicar por id
+          const combined = [...histProofs, ...mediaProofs, ...licProofs];
+          comprovativos = combined.filter((v, i, a) => a.findIndex(x => x.id === v.id || (x.numero_transacao && x.numero_transacao !== '---' && x.numero_transacao === v.numero_transacao)) === i);
         }
 
         return res.status(200).json(comprovativos);

@@ -2853,8 +2853,18 @@ const hasModulePermission = (user: any, moduleId: string): boolean => {
   if (moduleId === 'dashboard') return true;
   if (moduleId === 'crm_empresas') return false;
 
-  // Administrador da Empresa tem acesso completo a todos os módulos da sua empresa
-  // (exceto crm_empresas que é exclusivo do SuperAdmin)
+  const rawPermissions = user?.permission_areas ?? user?.permissions;
+
+  // REGRA SUPREMA: Se o utilizador tem áreas de permissão explicitamente configuradas no banco,
+  // elas são a fonte absoluta da verdade e devem ser estritamente respeitadas (inclusive se for array vazio).
+  if (Array.isArray(rawPermissions)) {
+    if (rawPermissions.length === 0) return false;
+    const permissions = rawPermissions.map((p: any) => String(p).trim().toLowerCase());
+    const possibleKeys = (PERMISSION_EQUIVALENTS[moduleId] || [moduleId]).map((k: string) => k.trim().toLowerCase());
+    return possibleKeys.some(key => permissions.includes(key));
+  }
+
+  // Se NÃO tem permission_areas configuradas (null/undefined), verificar se é Administrador da Empresa
   const isCompanyAdmin = user?.is_admin === true ||
                         user?.role === 'admin' ||
                         user?.role === 'admin_empresa' ||
@@ -2862,19 +2872,8 @@ const hasModulePermission = (user: any, moduleId: string): boolean => {
                         (user?.level !== undefined && Number(user.level) >= 10);
   if (isCompanyAdmin) return true;
 
-  // Para utilizadores não-admin: verificar permission_areas da base de dados
-  // permission_areas é a fonte suprema de verdade para utilizadores não-admin
-  const rawPermissions = user?.permission_areas ?? user?.permissions;
-
-  // Nunca configurado (null/undefined) → negar acesso por segurança
-  if (!Array.isArray(rawPermissions)) return false;
-
-  // Array vazio = sem permissões atribuídas
-  if (rawPermissions.length === 0) return false;
-
-  const permissions = rawPermissions.map((p: any) => String(p).trim().toLowerCase());
-  const possibleKeys = (PERMISSION_EQUIVALENTS[moduleId] || [moduleId]).map((k: string) => k.trim().toLowerCase());
-  return possibleKeys.some(key => permissions.includes(key));
+  // Sem permissões atribuídas e não é admin -> negar acesso
+  return false;
 };
 
 const SIDEBAR_MENU_ITEMS = [

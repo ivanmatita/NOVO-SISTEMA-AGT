@@ -122,7 +122,30 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
 
       setLicencas(Array.isArray(mergedList) ? mergedList : []);
       setOcorrencias(Array.isArray(supaHistorico) ? supaHistorico : []);
-      setComprovativos(Array.isArray(supaHistorico) ? supaHistorico.filter((h: any) => h.comprovativo_url) : []);
+
+      const rawProofs = (Array.isArray(supaHistorico) ? supaHistorico : []).filter((h: any) => 
+        String(h.acao || '').toUpperCase().includes('COMPROVATIVO') || 
+        h.comprovativo_url || 
+        h.metadata?.comprovativo_url
+      );
+
+      // Fallback: se nenhum comprovativo for encontrado em historico_licencas, buscar também na API crm
+      if (rawProofs.length === 0 && empresaId) {
+        try {
+          const crmCompRes = await fetch(`/api/crm/comprovativos?empresa_id=${empresaId}`, {
+            headers: { 'Authorization': `Bearer ${session?.access_token || ''}` }
+          }).then(r => r.ok ? r.json() : []).catch(() => []);
+          if (Array.isArray(crmCompRes) && crmCompRes.length > 0) {
+            setComprovativos(crmCompRes);
+          } else {
+            setComprovativos([]);
+          }
+        } catch {
+          setComprovativos([]);
+        }
+      } else {
+        setComprovativos(rawProofs);
+      }
     } catch (error) {
       console.error("Erro ao buscar licenças:", error);
     } finally {
@@ -639,24 +662,34 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100 text-xs">
-                  {safeComprovativos.map((comp, idx) => (
-                    <tr key={idx} className="hover:bg-zinc-50 transition-colors">
-                      <td className="px-6 py-4 font-mono text-zinc-600">{new Date(comp.created_at || Date.now()).toLocaleString('pt-AO')}</td>
-                      <td className="px-6 py-4 font-bold text-zinc-800 uppercase">{comp.banco || 'BAI / BFA'}</td>
-                      <td className="px-6 py-4 font-mono font-bold text-zinc-700">{comp.numero_transacao || 'TRX-982183'}</td>
-                      <td className="px-6 py-4 text-right font-mono font-black text-emerald-700">{Number(comp.montante || 65000).toLocaleString('pt-AO')} AOA</td>
-                      <td className="px-6 py-4 text-center">
-                        <span className="px-2.5 py-1 text-[9px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-800">
-                          {comp.status || 'Aprovado / Licença Ativa'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        {comp.comprovativo_url ? (
-                          <a href={comp.comprovativo_url} target="_blank" rel="noreferrer" className="text-sky-700 font-bold underline text-xs">Ver Ficheiro</a>
-                        ) : <span className="text-zinc-400 italic">Simulado</span>}
-                      </td>
-                    </tr>
-                  ))}
+                  {safeComprovativos.map((comp, idx) => {
+                    const banco = comp.banco || comp.metadata?.banco || 'BAI / BFA';
+                    const numTrx = comp.numero_transacao || comp.metadata?.numero_transacao || '---';
+                    const montante = Number(comp.montante || comp.metadata?.valor || 65000);
+                    const status = comp.status || comp.metadata?.status_novo || 'Pendente Validação';
+                    const docUrl = comp.comprovativo_url || comp.metadata?.comprovativo_url;
+
+                    return (
+                      <tr key={idx} className="hover:bg-zinc-50 transition-colors">
+                        <td className="px-6 py-4 font-mono text-zinc-600">{new Date(comp.created_at || Date.now()).toLocaleString('pt-AO')}</td>
+                        <td className="px-6 py-4 font-bold text-zinc-800 uppercase">{banco}</td>
+                        <td className="px-6 py-4 font-mono font-bold text-zinc-700">{numTrx}</td>
+                        <td className="px-6 py-4 text-right font-mono font-black text-emerald-700">{montante.toLocaleString('pt-AO')} AOA</td>
+                        <td className="px-6 py-4 text-center">
+                          <span className={`px-2.5 py-1 text-[9px] font-black uppercase tracking-widest ${
+                            String(status).toLowerCase().includes('pendente') ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
+                          }`}>
+                            {status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          {docUrl ? (
+                            <a href={docUrl} target="_blank" rel="noreferrer" className="text-sky-700 font-bold underline text-xs">Ver Ficheiro</a>
+                          ) : <span className="text-zinc-400 italic">Sem anexo</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
                   {safeComprovativos.length === 0 && (
                     <tr>
                       <td colSpan={6} className="px-6 py-12 text-center text-zinc-400 italic">Nenhum comprovativo enviado anteriormente.</td>
@@ -892,6 +925,7 @@ const SubmitPaymentProofModal = ({ empresaId, onClose, onSuccess }: { empresaId?
     comprovativo_url: '',
     observacao: ''
   });
+  const [proofFile, setProofFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -911,6 +945,29 @@ const SubmitPaymentProofModal = ({ empresaId, onClose, onSuccess }: { empresaId?
         throw new Error('Identificador da empresa não disponível.');
       }
 
+      let finalProofUrl = formData.comprovativo_url || '';
+
+      // Upload real do ficheiro para Supabase Storage (bucket: media)
+      if (proofFile) {
+        try {
+          const fileExt = proofFile.name.split('.').pop();
+          const fileName = `comprovativo_${targetEmpresaId}_${Date.now()}.${fileExt}`;
+          const { data: uploadData, error: uploadError } = await supabase.storage
+            .from('media')
+            .upload(`comprovativos/${fileName}`, proofFile, { cacheControl: '3600', upsert: true });
+
+          if (!uploadError && uploadData) {
+            const { data: publicUrlData } = supabase.storage.from('media').getPublicUrl(`comprovativos/${fileName}`);
+            if (publicUrlData?.publicUrl) {
+              finalProofUrl = publicUrlData.publicUrl;
+            }
+          }
+        } catch (uploadErr) {
+          console.warn('[LicencasModule] Upload storage warning:', uploadErr);
+        }
+      }
+
+      // 1. Inserir em historico_licencas com colunas raiz E metadata
       const { error: insertError } = await supabase.from('historico_licencas').insert([{
         empresa_id: targetEmpresaId,
         acao: 'COMPROVATIVO_PAGAMENTO',
@@ -919,12 +976,16 @@ const SubmitPaymentProofModal = ({ empresaId, onClose, onSuccess }: { empresaId?
         usuario: currentUserEmail,
         alterado_por: currentUserEmail,
         status: 'PENDENTE',
+        banco: formData.banco,
+        montante: Number(formData.montante),
+        numero_transacao: formData.numero_transacao,
+        comprovativo_url: finalProofUrl || null,
         metadata: {
           banco: formData.banco,
           valor: Number(formData.montante),
           numero_transacao: formData.numero_transacao,
           data_pagamento: formData.data_pagamento,
-          comprovativo_url: formData.comprovativo_url || null,
+          comprovativo_url: finalProofUrl || null,
           observacoes: formData.observacao || `Comprovativo ${formData.banco} (${formData.numero_transacao})`,
           status_novo: 'pendente_validacao'
         }
@@ -933,6 +994,28 @@ const SubmitPaymentProofModal = ({ empresaId, onClose, onSuccess }: { empresaId?
       if (insertError) {
         console.error('[LicencasModule] Erro ao inserir no Supabase:', insertError);
         throw insertError;
+      }
+
+      // 2. Chamar endpoint do CRM para sincronizar em media_arquivos e licencas_empresas
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        await fetch('/api/crm/comprovativos', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token || ''}`
+          },
+          body: JSON.stringify({
+            empresa_id: targetEmpresaId,
+            banco: formData.banco,
+            numero_transacao: formData.numero_transacao,
+            montante: Number(formData.montante),
+            comprovativo_nome: `${formData.banco}_${formData.numero_transacao}`,
+            comprovativo_url: finalProofUrl || null
+          })
+        });
+      } catch (crmSyncErr) {
+        console.warn('[LicencasModule] Sync com CRM comprovativos:', crmSyncErr);
       }
 
       toast.success('Comprovativo de pagamento enviado com sucesso para a validação no CRM!');
@@ -1005,8 +1088,22 @@ const SubmitPaymentProofModal = ({ empresaId, onClose, onSuccess }: { empresaId?
           </div>
 
           <div>
-            <label className="block font-bold text-zinc-700 uppercase mb-1">Anexar Comprovativo (PDF / JPG)</label>
-            <input type="file" onChange={() => setFormData({...formData, comprovativo_url: 'https://demo.comprovativo.pdf'})} className="w-full bg-zinc-50 border border-zinc-300 p-2 text-xs" />
+            <label className="block font-bold text-zinc-700 uppercase mb-1">Anexar Comprovativo (PDF / JPG / PNG)</label>
+            <input 
+              type="file" 
+              accept=".pdf,image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0] || null;
+                setProofFile(file);
+                if (file) {
+                  setFormData(p => ({ ...p, comprovativo_url: URL.createObjectURL(file) }));
+                }
+              }} 
+              className="w-full bg-zinc-50 border border-zinc-300 p-2 text-xs" 
+            />
+            {proofFile && (
+              <p className="text-[10px] text-emerald-600 font-bold mt-1">✓ Ficheiro selecionado: {proofFile.name} ({(proofFile.size / 1024).toFixed(1)} KB)</p>
+            )}
           </div>
 
           <div>

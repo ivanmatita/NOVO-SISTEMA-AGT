@@ -195,6 +195,11 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
   const [companyComprovativos, setCompanyComprovativos] = useState<any[]>([]);
   const safeComprovativos = Array.isArray(companyComprovativos) ? companyComprovativos : [];
 
+  // Histórico de solicitações / licenças da empresa selecionada
+  const [companyHistorico, setCompanyHistorico] = useState<any[]>([]);
+  const safeHistorico = Array.isArray(companyHistorico) ? companyHistorico : [];
+
+
   const safeFormatCurrency = (val: any) => {
     if (typeof formatCurrency === 'function') {
       return formatCurrency(val);
@@ -308,6 +313,24 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
         }
       } else {
         setCompanyComprovativos([]);
+      }
+
+      // Load Histórico de Solicitações (historico_licencas) da empresa selecionada
+      if (selectedCompany?.id) {
+        try {
+          // Direct Supabase query to get historico_licencas for this company
+          const { data: histData } = await supabase
+            .from('historico_licencas')
+            .select('*')
+            .eq('empresa_id', selectedCompany.id)
+            .order('created_at', { ascending: false })
+            .limit(100);
+          setCompanyHistorico(Array.isArray(histData) ? histData : []);
+        } catch {
+          setCompanyHistorico([]);
+        }
+      } else {
+        setCompanyHistorico([]);
       }
     } catch (err) {
       console.error("Erro ao carregar dados CRM:", err);
@@ -1228,6 +1251,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
             { id: 'ocorrencias', label: '6. Ocorrências CRM', icon: MessageSquare },
             { id: 'email', label: '7. Enviar Email', icon: Mail },
             { id: 'auditoria', label: '8. Auditoria da Empresa', icon: Activity },
+            { id: 'solicitacoes', label: '9. Histórico Solicitações', icon: History },
           ].map(sub => (
             <button
               key={sub.id}
@@ -2054,6 +2078,134 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
               {safeLogs.filter(l => l && String(l.empresa_id) === String(selectedCompany.id)).length === 0 && (
                 <p className="p-8 text-center text-zinc-400 italic">Nenhum evento de auditoria registado especificamente para esta empresa.</p>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            SUB-ABA 9: HISTÓRICO DE SOLICITAÇÕES
+        ═══════════════════════════════════════════════════════════════════ */}
+        {companySubTab === 'solicitacoes' && (
+          <div className="bg-white border border-zinc-200 animate-in fade-in duration-300">
+            <div className="p-5 bg-zinc-50 border-b border-zinc-200 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-[#003366] text-white flex items-center justify-center shrink-0">
+                  <History size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider">Histórico de Solicitações</h3>
+                  <p className="text-xs text-zinc-500">
+                    Upgrades, Downgrades, Comprovativos e Ocorrências submetidas pela empresa na área de Licenças.
+                  </p>
+                </div>
+              </div>
+              <span className="bg-[#003366] text-white text-[10px] font-black uppercase tracking-widest px-3 py-1.5">
+                {safeHistorico.length} Registos
+              </span>
+            </div>
+
+            <div className="px-5 py-3 border-b border-zinc-100 flex gap-2 flex-wrap">
+              {[
+                { key: 'TODOS', label: 'Todos', count: safeHistorico.length },
+                { key: 'UPGRADE', label: 'Upgrade', count: safeHistorico.filter(h => String(h.acao || '').toUpperCase().includes('UPGRADE')).length },
+                { key: 'DOWNGRADE', label: 'Downgrade', count: safeHistorico.filter(h => String(h.acao || '').toUpperCase().includes('DOWNGRADE')).length },
+                { key: 'COMPROVATIVO', label: 'Comprovativo', count: safeHistorico.filter(h => String(h.acao || '').toUpperCase().includes('COMPROVATIVO')).length },
+                { key: 'OCORRENCIA', label: 'Ocorrência', count: safeHistorico.filter(h => String(h.acao || '').toUpperCase().includes('OCORRENCIA')).length },
+                { key: 'SOLICITACAO', label: 'Solicitação', count: safeHistorico.filter(h => String(h.acao || '').toUpperCase().includes('SOLICITACAO')).length },
+              ].map(item => (
+                <span key={item.key} className="px-2.5 py-1 text-[9px] font-black uppercase tracking-widest bg-zinc-100 text-zinc-600">
+                  {item.label} ({item.count})
+                </span>
+              ))}
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="bg-zinc-50 text-[10px] font-black text-zinc-500 uppercase tracking-widest border-b border-zinc-200">
+                    <th className="px-5 py-3">Data / Hora</th>
+                    <th className="px-5 py-3">Tipo de Ação</th>
+                    <th className="px-5 py-3">Descrição</th>
+                    <th className="px-5 py-3">Submetido Por</th>
+                    <th className="px-5 py-3 text-center">Estado</th>
+                    <th className="px-5 py-3 text-center">Documento</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100 text-xs">
+                  {safeHistorico.map((hist, idx) => {
+                    const acao = String(hist.acao || '').toUpperCase();
+                    const isUpgrade = acao.includes('UPGRADE');
+                    const isDowngrade = acao.includes('DOWNGRADE');
+                    const isComprovativo = acao.includes('COMPROVATIVO');
+                    const isOcorrencia = acao.includes('OCORRENCIA');
+                    const acaoBadge = isUpgrade ? { label: 'Upgrade', cls: 'bg-emerald-100 text-emerald-700' }
+                      : isDowngrade ? { label: 'Downgrade', cls: 'bg-amber-100 text-amber-700' }
+                      : isComprovativo ? { label: 'Comprovativo', cls: 'bg-sky-100 text-sky-700' }
+                      : isOcorrencia ? { label: 'Ocorrência', cls: 'bg-rose-100 text-rose-700' }
+                      : { label: hist.acao || 'Evento', cls: 'bg-zinc-100 text-zinc-600' };
+                    const status = String(hist.status || 'PENDENTE').toUpperCase();
+                    const statusCls = status === 'APROVADO' || status === 'ATIVO' || status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700'
+                      : status === 'PENDENTE' ? 'bg-amber-100 text-amber-700'
+                      : status === 'REJEITADO' || status === 'RECUSADO' ? 'bg-rose-100 text-rose-700'
+                      : status === 'ABERTO' ? 'bg-blue-100 text-blue-700'
+                      : 'bg-zinc-100 text-zinc-500';
+                    const compUrl = hist.comprovativo_url || hist.metadata?.comprovativo_url;
+                    return (
+                      <tr key={hist.id || idx} className="hover:bg-zinc-50/70 transition-colors">
+                        <td className="px-5 py-3 font-mono text-zinc-500 text-[10px] whitespace-nowrap">
+                          {new Date(hist.created_at || Date.now()).toLocaleString('pt-AO')}
+                        </td>
+                        <td className="px-5 py-3">
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${acaoBadge.cls}`}>
+                            {isUpgrade && <TrendingUp size={10} />}
+                            {isDowngrade && <ArrowDownCircle size={10} />}
+                            {isComprovativo && <CreditCard size={10} />}
+                            {isOcorrencia && <AlertTriangle size={10} />}
+                            {acaoBadge.label}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3 text-zinc-700 max-w-xs">
+                          <p className="font-medium truncate" title={hist.descricao || ''}>
+                            {hist.descricao || hist.motivo || '---'}
+                          </p>
+                          {(hist.metadata?.banco || hist.metadata?.numero_transacao) && (
+                            <p className="text-[10px] text-zinc-400 font-mono mt-0.5">
+                              {[hist.metadata?.banco, hist.metadata?.numero_transacao].filter(Boolean).join(' — ')}
+                              {hist.metadata?.valor ? ` | ${Number(hist.metadata.valor).toLocaleString('pt-AO')} AOA` : ''}
+                            </p>
+                          )}
+                        </td>
+                        <td className="px-5 py-3 text-zinc-600 text-[10px] font-medium">
+                          {hist.usuario || hist.alterado_por || hist.criado_por || '---'}
+                        </td>
+                        <td className="px-5 py-3 text-center">
+                          <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${statusCls}`}>
+                            {hist.status || 'PENDENTE'}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3 text-center">
+                          {compUrl ? (
+                            <a href={compUrl} target="_blank" rel="noreferrer" className="text-sky-600 font-bold underline text-[10px] hover:text-sky-800">Ver Ficheiro</a>
+                          ) : <span className="text-zinc-300 text-[10px]">—</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {safeHistorico.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-16 text-center">
+                        <History size={32} className="mx-auto text-zinc-200 mb-3" />
+                        <p className="text-zinc-400 font-bold uppercase tracking-widest text-xs">
+                          Nenhuma solicitação registada para esta empresa.
+                        </p>
+                        <p className="text-zinc-300 text-[10px] mt-1">
+                          Upgrades, downgrades e comprovativos submetidos aparecerão aqui.
+                        </p>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         )}

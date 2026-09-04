@@ -2853,23 +2853,28 @@ const hasModulePermission = (user: any, moduleId: string): boolean => {
   if (moduleId === 'dashboard') return true;
   if (moduleId === 'crm_empresas') return false;
 
-  // Se o utilizador tem permission_areas definido (Array, mesmo que vazio):
-  // As permissões da base de dados são a fonte suprema da verdade!
-  const rawPermissions = user?.permission_areas ?? user?.permissions;
-  if (Array.isArray(rawPermissions)) {
-    const permissions = rawPermissions.map((p: any) => String(p).trim().toLowerCase());
-    const possibleKeys = (PERMISSION_EQUIVALENTS[moduleId] || [moduleId]).map((k: string) => k.trim().toLowerCase());
-    return possibleKeys.some(key => permissions.includes(key));
-  }
-
-  // Fallback quando permission_areas nunca foi configurado na base de dados
+  // Administrador da Empresa tem acesso completo a todos os módulos da sua empresa
+  // (exceto crm_empresas que é exclusivo do SuperAdmin)
   const isCompanyAdmin = user?.is_admin === true ||
                         user?.role === 'admin' ||
                         user?.role === 'admin_empresa' ||
                         user?.role === 'proprietario' ||
                         (user?.level !== undefined && Number(user.level) >= 10);
+  if (isCompanyAdmin) return true;
 
-  return isCompanyAdmin;
+  // Para utilizadores não-admin: verificar permission_areas da base de dados
+  // permission_areas é a fonte suprema de verdade para utilizadores não-admin
+  const rawPermissions = user?.permission_areas ?? user?.permissions;
+
+  // Nunca configurado (null/undefined) → negar acesso por segurança
+  if (!Array.isArray(rawPermissions)) return false;
+
+  // Array vazio = sem permissões atribuídas
+  if (rawPermissions.length === 0) return false;
+
+  const permissions = rawPermissions.map((p: any) => String(p).trim().toLowerCase());
+  const possibleKeys = (PERMISSION_EQUIVALENTS[moduleId] || [moduleId]).map((k: string) => k.trim().toLowerCase());
+  return possibleKeys.some(key => permissions.includes(key));
 };
 
 const SIDEBAR_MENU_ITEMS = [

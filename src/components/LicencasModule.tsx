@@ -488,6 +488,119 @@ export const LicencasModule: React.FC<LicencasModuleProps> = ({ user, userProfil
                 </tbody>
               </table>
             </div>
+
+            {/* ─── COMPROVATIVOS DE PAGAMENTO inline ─── */}
+            <div className="border-t-4 border-t-[#003366] mt-0">
+              <div className="p-5 bg-zinc-50 border-b border-zinc-200 flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 bg-[#003366] text-white flex items-center justify-center shrink-0">
+                    <Upload size={16} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider">Comprovativos de Pagamento</h3>
+                    <p className="text-xs text-zinc-500">Histórico de transferências bancárias submetidas para ativação da licença.</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowPaymentModal(true)}
+                  className="bg-[#003366] hover:bg-[#002244] text-white px-4 py-2 text-xs font-black uppercase tracking-widest flex items-center gap-2 cursor-pointer"
+                >
+                  <Upload size={14} /> Novo Comprovativo
+                </button>
+              </div>
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="bg-zinc-50 text-[10px] font-black text-zinc-500 uppercase tracking-widest border-b border-zinc-200">
+                    <th className="px-6 py-3">Data / Hora</th>
+                    <th className="px-6 py-3">Banco Emissor</th>
+                    <th className="px-6 py-3">N.º Borderô / Transação</th>
+                    <th className="px-6 py-3 text-right">Montante Pago</th>
+                    <th className="px-6 py-3 text-center">Estado Validação</th>
+                    <th className="px-6 py-3 text-center">Documento</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100 text-xs">
+                  {safeComprovativos.map((comp, idx) => (
+                    <tr key={idx} className="hover:bg-zinc-50 transition-colors">
+                      <td className="px-6 py-3 font-mono text-zinc-600">{new Date(comp.created_at || Date.now()).toLocaleString('pt-AO')}</td>
+                      <td className="px-6 py-3 font-bold text-zinc-800 uppercase">{comp.banco || comp.metadata?.banco || 'BAI / BFA'}</td>
+                      <td className="px-6 py-3 font-mono font-bold text-zinc-700">{comp.numero_transacao || comp.metadata?.numero_transacao || '---'}</td>
+                      <td className="px-6 py-3 text-right font-mono font-black text-emerald-700">{Number(comp.montante || comp.metadata?.valor || 65000).toLocaleString('pt-AO')} AOA</td>
+                      <td className="px-6 py-3 text-center">
+                        <span className={`px-2.5 py-0.5 text-[9px] font-black uppercase tracking-widest ${
+                          String(comp.status || '').toUpperCase() === 'PENDENTE' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-800'
+                        }`}>
+                          {comp.status || 'PENDENTE'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-3 text-center">
+                        {(comp.comprovativo_url || comp.metadata?.comprovativo_url) ? (
+                          <a href={comp.comprovativo_url || comp.metadata?.comprovativo_url} target="_blank" rel="noreferrer" className="text-sky-700 font-bold underline text-xs">Ver Ficheiro</a>
+                        ) : <span className="text-zinc-400 italic text-[10px]">Sem ficheiro</span>}
+                      </td>
+                    </tr>
+                  ))}
+                  {safeComprovativos.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-8 text-center text-zinc-400 italic text-xs">Nenhum comprovativo enviado. Clique em "Novo Comprovativo" para submeter.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* ─── PLANOS & RECURSOS inline ─── */}
+            <div className="p-5 border-t-4 border-t-emerald-600 bg-white border border-zinc-200 mt-6">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-9 h-9 bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                  <TrendingUp size={16} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider">Planos & Recursos Disponíveis</h3>
+                  <p className="text-xs text-zinc-500">Solicite upgrade ou downgrade do plano atual da sua empresa.</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {[
+                  { name: 'Básico', price: 25000, users: 5, storage: '2GB', modules: ['Faturamento', 'Dashboard Base'] },
+                  { name: 'Standard', price: 55000, users: 15, storage: '10GB', modules: ['Faturamento', 'RH Base', 'Stock Base'] },
+                  { name: 'Profissional', price: 65000, users: 50, storage: '50GB', modules: ['Todos os Módulos', 'Suporte 24/7', 'Backups Hora'], featured: true },
+                  { name: 'Enterprise', price: 150000, users: 'Ilimitado', storage: '200GB', modules: ['Ecossistema Completo', 'API Access', 'Contas Custom'] }
+                ].map((plan, i) => {
+                  const isCurrentPlan = (myLicense.tipo_licenca || '').toLowerCase() === plan.name.toLowerCase();
+                  return (
+                    <div key={i} className={`p-4 border flex flex-col relative ${plan.featured ? 'border-[#003366] ring-1 ring-[#003366] shadow-md' : 'border-zinc-200'}`}>
+                      {plan.featured && <div className="absolute top-0 right-0 bg-[#003366] text-white text-[8px] font-black uppercase px-3 py-0.5">Recomendado</div>}
+                      {isCurrentPlan && <div className="absolute top-0 left-0 bg-emerald-600 text-white text-[8px] font-black uppercase px-3 py-0.5">Plano Atual</div>}
+                      <h4 className={`text-base font-black uppercase tracking-tight mb-1 ${isCurrentPlan ? 'mt-5' : plan.featured ? 'mt-5' : 'mt-1'}`}>{plan.name}</h4>
+                      <div className="flex items-baseline gap-1 mb-4">
+                        <span className="text-lg font-black text-[#003366]">{plan.price.toLocaleString()}</span>
+                        <span className="text-[10px] font-bold text-zinc-400 uppercase">AOA / Mês</span>
+                      </div>
+                      <div className="space-y-1.5 mb-5 flex-grow text-[10px]">
+                        <div className="flex items-center gap-2 text-zinc-600 font-bold uppercase"><Users size={12} className="text-zinc-400" /> {plan.users} Utilizadores</div>
+                        <div className="flex items-center gap-2 text-zinc-600 font-bold uppercase"><FileText size={12} className="text-zinc-400" /> {plan.storage} Armazenamento</div>
+                        <div className="pt-2 border-t border-zinc-100 space-y-1">
+                          {plan.modules.map((m, k) => (
+                            <div key={k} className="flex items-center gap-2 text-zinc-500 font-bold uppercase">
+                              <CheckCircle2 size={10} className="text-emerald-500 shrink-0" /> {m}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => !isCurrentPlan && setShowApplyModal(true)}
+                        className={`w-full py-2 text-[10px] font-black uppercase tracking-widest transition-all ${
+                          isCurrentPlan ? 'bg-emerald-600 text-white cursor-default' : plan.featured ? 'bg-[#003366] text-white hover:bg-[#002244] cursor-pointer' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-800 hover:text-white cursor-pointer'
+                        }`}
+                      >
+                        {isCurrentPlan ? '✓ Plano Contratado' : 'Solicitar Upgrade'}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </motion.div>
         )}
 

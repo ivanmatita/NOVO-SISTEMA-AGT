@@ -106,28 +106,110 @@ export default async function handler(req, res) {
 
       // 3. /api/crm/users
       if (pathname === 'users') {
-        let url = `${config.supabaseUrl}/rest/v1/perfis?select=*&order=created_at.desc&limit=1000`;
         const filterEmpresaId = urlObj.searchParams.get('empresa_id');
+
+        let targetEmpresa = null;
         if (filterEmpresaId) {
-          url += `&empresa_id=eq.${filterEmpresaId}`;
+          const empRes = await fetch(`${config.supabaseUrl}/rest/v1/empresas?id=eq.${filterEmpresaId}&limit=1`, {
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+          }).then(r => r.ok ? r.json() : []).catch(() => []);
+          targetEmpresa = Array.isArray(empRes) && empRes.length > 0 ? empRes[0] : null;
+        }
+
+        let url = `${config.supabaseUrl}/rest/v1/perfis?select=*&order=created_at.desc&limit=1000`;
+        if (filterEmpresaId) {
+          const conds = [`empresa_id.eq.${filterEmpresaId}`];
+          if (targetEmpresa?.auth_user_id) {
+            conds.push(`id.eq.${targetEmpresa.auth_user_id}`);
+            conds.push(`user_id.eq.${targetEmpresa.auth_user_id}`);
+          }
+          const empEmail = (targetEmpresa?.email_responsavel || targetEmpresa?.email || '').trim();
+          if (empEmail) {
+            conds.push(`email.eq.${encodeURIComponent(empEmail)}`);
+          }
+          url = `${config.supabaseUrl}/rest/v1/perfis?or=(${conds.join(',')})&order=created_at.desc&limit=1000`;
         }
 
         const [uRes, compRes] = await Promise.all([
           fetch(url, {
             headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
           }).then(r => r.ok ? r.json() : []).catch(() => []),
-          fetch(`${config.supabaseUrl}/rest/v1/empresas?select=id,nome_empresa,nif&limit=1000`, {
+          fetch(`${config.supabaseUrl}/rest/v1/empresas?select=id,nome_empresa,nif,email,email_responsavel,nome_administrador,responsavel,auth_user_id&limit=1000`, {
             headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
           }).then(r => r.ok ? r.json() : []).catch(() => [])
         ]);
 
-        const rawUsers = Array.isArray(uRes) ? uRes : [];
+        let rawUsers = Array.isArray(uRes) ? uRes : [];
         const rawCompanies = Array.isArray(compRes) ? compRes : [];
 
+        // Se uma empresa específica foi pedida e ainda não foram encontrados utilizadores em perfis
+        if (filterEmpresaId && rawUsers.length === 0 && targetEmpresa) {
+          const empEmail = (targetEmpresa.email_responsavel || targetEmpresa.email || '').trim();
+          let authUser = null;
+
+          if (targetEmpresa.auth_user_id) {
+            const aRes = await fetch(`${config.supabaseUrl}/auth/v1/admin/users/${targetEmpresa.auth_user_id}`, {
+              headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+            }).then(r => r.ok ? r.json() : null).catch(() => null);
+            if (aRes && aRes.id) authUser = aRes;
+          }
+
+          if (!authUser && empEmail) {
+            const aListRes = await fetch(`${config.supabaseUrl}/auth/v1/admin/users?per_page=1000`, {
+              headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+            }).then(r => r.ok ? r.json() : null).catch(() => null);
+            const authList = aListRes?.users || (Array.isArray(aListRes) ? aListRes : []);
+            authUser = authList.find(au => au.email && au.email.toLowerCase() === empEmail.toLowerCase());
+          }
+
+          if (authUser) {
+            const newPerfil = {
+              id: authUser.id,
+              user_id: authUser.id,
+              empresa_id: filterEmpresaId,
+              email: authUser.email || empEmail,
+              nome: targetEmpresa.nome_administrador || targetEmpresa.responsavel || authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'Administrador',
+              full_name: targetEmpresa.nome_administrador || targetEmpresa.responsavel || authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'Administrador',
+              role: 'admin',
+              is_admin: true,
+              is_active: true,
+              ativo: true,
+              created_at: authUser.created_at || targetEmpresa.created_at || new Date().toISOString()
+            };
+            // Salvar silenciosamente em perfis para persistência permanente
+            fetch(`${config.supabaseUrl}/rest/v1/perfis`, {
+              method: 'POST',
+              headers: {
+                'apikey': config.serviceRoleKey,
+                'Authorization': authHeader,
+                'Content-Type': 'application/json',
+                'Prefer': 'resolution=merge-duplicates'
+              },
+              body: JSON.stringify([newPerfil])
+            }).catch(() => {});
+            rawUsers = [newPerfil];
+          } else if (empEmail) {
+            rawUsers = [{
+              id: `admin_${targetEmpresa.id}`,
+              user_id: `admin_${targetEmpresa.id}`,
+              empresa_id: filterEmpresaId,
+              email: empEmail,
+              nome: targetEmpresa.nome_administrador || targetEmpresa.responsavel || 'Administrador Principal',
+              full_name: targetEmpresa.nome_administrador || targetEmpresa.responsavel || 'Administrador Principal',
+              role: 'admin',
+              is_admin: true,
+              is_active: true,
+              ativo: true,
+              created_at: targetEmpresa.created_at || new Date().toISOString()
+            }];
+          }
+        }
+
         const users = rawUsers.map(u => {
-          const comp = rawCompanies.find(c => String(c.id) === String(u.empresa_id));
+          const comp = rawCompanies.find(c => String(c.id) === String(u.empresa_id || filterEmpresaId));
           return {
             ...u,
+            empresa_id: u.empresa_id || filterEmpresaId || comp?.id,
             full_name: u.full_name || u.nome || u.email?.split('@')[0] || 'Utilizador',
             role: u.role || (u.is_admin ? 'Admin' : 'Operador'),
             empresas: comp ? { nome_empresa: comp.nome_empresa, nif: comp.nif } : null
@@ -622,12 +704,57 @@ export default async function handler(req, res) {
         const userId = uuidMatch ? uuidMatch[1] : pathname.split('/')[1];
 
         // 1. Localizar perfil por id ou user_id
-        const findRes = await fetch(
-          `${config.supabaseUrl}/rest/v1/perfis?or=(id.eq.${userId},user_id.eq.${userId})&select=*&limit=1`,
-          { headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader } }
-        );
-        const findData = await findRes.json();
-        const userProfile = Array.isArray(findData) && findData.length > 0 ? findData[0] : null;
+        let userProfile = null;
+        if (userId && !userId.startsWith('admin_')) {
+          const findRes = await fetch(
+            `${config.supabaseUrl}/rest/v1/perfis?or=(id.eq.${userId},user_id.eq.${userId})&select=*&limit=1`,
+            { headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader } }
+          );
+          const findData = await findRes.json().catch(() => []);
+          userProfile = Array.isArray(findData) && findData.length > 0 ? findData[0] : null;
+        }
+
+        // Se não encontrado por ID, buscar por email ou admin_ prefixo
+        if (!userProfile && (body.email || (userId && userId.startsWith('admin_')))) {
+          let emailToFind = (body.email || '').trim();
+          let empId = body.empresa_id || null;
+
+          if (userId && userId.startsWith('admin_')) {
+            empId = userId.replace('admin_', '');
+            const empRes = await fetch(`${config.supabaseUrl}/rest/v1/empresas?id=eq.${empId}&limit=1`, {
+              headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+            }).then(r => r.json()).catch(() => []);
+            const emp = Array.isArray(empRes) && empRes[0] ? empRes[0] : null;
+            if (emp) {
+              emailToFind = emailToFind || emp.email_responsavel || emp.email;
+            }
+          }
+
+          if (emailToFind) {
+            const pRes = await fetch(`${config.supabaseUrl}/rest/v1/perfis?email=eq.${encodeURIComponent(emailToFind)}&limit=1`, {
+              headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+            }).then(r => r.json()).catch(() => []);
+            userProfile = Array.isArray(pRes) && pRes[0] ? pRes[0] : null;
+
+            if (!userProfile && empId) {
+              const newProf = {
+                empresa_id: empId,
+                email: emailToFind,
+                nome: emailToFind.split('@')[0],
+                role: 'admin',
+                is_admin: true,
+                ativo: true,
+                is_active: true
+              };
+              const crRes = await fetch(`${config.supabaseUrl}/rest/v1/perfis`, {
+                method: 'POST',
+                headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+                body: JSON.stringify([newProf])
+              }).then(r => r.json()).catch(() => []);
+              userProfile = Array.isArray(crRes) && crRes[0] ? crRes[0] : null;
+            }
+          }
+        }
 
         if (!userProfile) {
           return res.status(404).json({ success: false, error: 'Utilizador não encontrado no sistema.' });
@@ -715,12 +842,57 @@ export default async function handler(req, res) {
           return res.status(400).json({ success: false, error: 'permission_areas deve ser um array de strings.' });
         }
 
-        const findRes = await fetch(
-          `${config.supabaseUrl}/rest/v1/perfis?or=(id.eq.${userId},user_id.eq.${userId})&select=*&limit=1`,
-          { headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader } }
-        );
-        const findData = await findRes.json();
-        const userProfile = Array.isArray(findData) && findData.length > 0 ? findData[0] : null;
+        let userProfile = null;
+        if (userId && !userId.startsWith('admin_')) {
+          const findRes = await fetch(
+            `${config.supabaseUrl}/rest/v1/perfis?or=(id.eq.${userId},user_id.eq.${userId})&select=*&limit=1`,
+            { headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader } }
+          );
+          const findData = await findRes.json().catch(() => []);
+          userProfile = Array.isArray(findData) && findData.length > 0 ? findData[0] : null;
+        }
+
+        if (!userProfile && (body.email || (userId && userId.startsWith('admin_')))) {
+          let emailToFind = (body.email || '').trim();
+          let empId = body.empresa_id || null;
+
+          if (userId && userId.startsWith('admin_')) {
+            empId = userId.replace('admin_', '');
+            const empRes = await fetch(`${config.supabaseUrl}/rest/v1/empresas?id=eq.${empId}&limit=1`, {
+              headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+            }).then(r => r.json()).catch(() => []);
+            const emp = Array.isArray(empRes) && empRes[0] ? empRes[0] : null;
+            if (emp) {
+              emailToFind = emailToFind || emp.email_responsavel || emp.email;
+            }
+          }
+
+          if (emailToFind) {
+            const pRes = await fetch(`${config.supabaseUrl}/rest/v1/perfis?email=eq.${encodeURIComponent(emailToFind)}&limit=1`, {
+              headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+            }).then(r => r.json()).catch(() => []);
+            userProfile = Array.isArray(pRes) && pRes[0] ? pRes[0] : null;
+
+            if (!userProfile && empId) {
+              const newProf = {
+                empresa_id: empId,
+                email: emailToFind,
+                nome: emailToFind.split('@')[0],
+                role: 'admin',
+                is_admin: true,
+                ativo: true,
+                is_active: true,
+                permission_areas: permissionAreas
+              };
+              const crRes = await fetch(`${config.supabaseUrl}/rest/v1/perfis`, {
+                method: 'POST',
+                headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+                body: JSON.stringify([newProf])
+              }).then(r => r.json()).catch(() => []);
+              userProfile = Array.isArray(crRes) && crRes[0] ? crRes[0] : null;
+            }
+          }
+        }
 
         if (!userProfile) {
           return res.status(404).json({ success: false, error: 'Utilizador não encontrado no sistema.' });
@@ -1433,12 +1605,51 @@ export default async function handler(req, res) {
           });
         }
 
-        // Fetch target user profile
-        const userRes = await fetch(`${config.supabaseUrl}/rest/v1/perfis?id=eq.${userId}&select=id,user_id,empresa_id,email,nome`, {
-          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
-        });
-        const targetUserArr = await userRes.json();
-        const targetUser = Array.isArray(targetUserArr) && targetUserArr.length > 0 ? targetUserArr[0] : null;
+        // Fetch target user profile with multi-criteria fallback
+        let targetUser = null;
+        const targetEmail = (body?.email || '').trim();
+        const targetEmpresaId = (body?.empresa_id || '').trim();
+
+        if (userId && !userId.startsWith('admin_')) {
+          const userRes = await fetch(`${config.supabaseUrl}/rest/v1/perfis?or=(id.eq.${userId},user_id.eq.${userId})&select=id,user_id,empresa_id,email,nome&limit=1`, {
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+          });
+          const targetUserArr = await userRes.json().catch(() => []);
+          targetUser = Array.isArray(targetUserArr) && targetUserArr.length > 0 ? targetUserArr[0] : null;
+        }
+
+        if (!targetUser && (targetEmail || (userId && userId.startsWith('admin_')))) {
+          let emailToFind = targetEmail;
+          let emp = null;
+
+          if (userId && userId.startsWith('admin_')) {
+            const empId = userId.replace('admin_', '');
+            const empRes = await fetch(`${config.supabaseUrl}/rest/v1/empresas?id=eq.${empId}&limit=1`, {
+              headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+            }).then(r => r.json()).catch(() => []);
+            emp = Array.isArray(empRes) && empRes[0] ? empRes[0] : null;
+            if (emp) {
+              emailToFind = emailToFind || emp.email_responsavel || emp.email;
+            }
+          }
+
+          if (emailToFind) {
+            const pRes = await fetch(`${config.supabaseUrl}/rest/v1/perfis?email=eq.${encodeURIComponent(emailToFind)}&limit=1`, {
+              headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+            }).then(r => r.json()).catch(() => []);
+            targetUser = Array.isArray(pRes) && pRes[0] ? pRes[0] : null;
+
+            if (!targetUser) {
+              targetUser = {
+                id: emp ? `admin_${emp.id}` : userId,
+                user_id: null,
+                empresa_id: emp?.id || targetEmpresaId,
+                email: emailToFind,
+                nome: emp?.nome_administrador || emp?.responsavel || emailToFind.split('@')[0]
+              };
+            }
+          }
+        }
 
         if (!targetUser) {
           return res.status(404).json({ error: 'Utilizador não encontrado.' });
@@ -1449,18 +1660,54 @@ export default async function handler(req, res) {
           return res.status(403).json({ error: 'Sem autorização para redefinir acesso deste utilizador.' });
         }
 
-        const authUserId = targetUser.user_id || targetUser.id;
+        let authUserId = targetUser.user_id || (!String(targetUser.id).startsWith('admin_') ? targetUser.id : null);
 
-        // 1. Real password reset in Supabase Auth Admin API
-        const resetAdminRes = await fetch(`${config.supabaseUrl}/auth/v1/admin/users/${authUserId}`, {
-          method: 'PUT',
-          headers: {
-            'apikey': config.serviceRoleKey,
-            'Authorization': authHeader,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ password: newPassword })
-        });
+        // Se não tiver authUserId ou precisar de localizar no Supabase Auth
+        if (!authUserId && targetUser.email) {
+          const aListRes = await fetch(`${config.supabaseUrl}/auth/v1/admin/users?per_page=1000`, {
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+          }).then(r => r.ok ? r.json() : null).catch(() => null);
+          const authList = aListRes?.users || (Array.isArray(aListRes) ? aListRes : []);
+          const matchedAuth = authList.find(au => au.email && au.email.toLowerCase() === targetUser.email.toLowerCase());
+          if (matchedAuth) {
+            authUserId = matchedAuth.id;
+          }
+        }
+
+        // 1. Atualizar ou criar no Supabase Auth Admin API
+        let resetAdminRes;
+        if (authUserId) {
+          resetAdminRes = await fetch(`${config.supabaseUrl}/auth/v1/admin/users/${authUserId}`, {
+            method: 'PUT',
+            headers: {
+              'apikey': config.serviceRoleKey,
+              'Authorization': authHeader,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ password: newPassword })
+          });
+        } else if (targetUser.email) {
+          resetAdminRes = await fetch(`${config.supabaseUrl}/auth/v1/admin/users`, {
+            method: 'POST',
+            headers: {
+              'apikey': config.serviceRoleKey,
+              'Authorization': authHeader,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              email: targetUser.email,
+              password: newPassword,
+              email_confirm: true,
+              user_metadata: { full_name: targetUser.nome || 'Administrador' }
+            })
+          });
+          if (resetAdminRes.ok) {
+            const created = await resetAdminRes.json().catch(() => ({}));
+            authUserId = created.id;
+          }
+        } else {
+          return res.status(400).json({ error: 'Não foi possível determinar o email do utilizador para redefinir a senha.' });
+        }
 
         // CRITICAL: Check if Supabase Auth update succeeded
         if (!resetAdminRes.ok) {
@@ -1471,6 +1718,30 @@ export default async function handler(req, res) {
             auth_updated: false,
             details: resetErr
           });
+        }
+
+        // Sincronizar na tabela perfis para permanência
+        if (authUserId && targetUser.email) {
+          fetch(`${config.supabaseUrl}/rest/v1/perfis`, {
+            method: 'POST',
+            headers: {
+              'apikey': config.serviceRoleKey,
+              'Authorization': authHeader,
+              'Content-Type': 'application/json',
+              'Prefer': 'resolution=merge-duplicates'
+            },
+            body: JSON.stringify([{
+              id: authUserId,
+              user_id: authUserId,
+              empresa_id: targetUser.empresa_id || targetEmpresaId,
+              email: targetUser.email,
+              nome: targetUser.nome || 'Administrador',
+              role: 'admin',
+              is_admin: true,
+              is_active: true,
+              ativo: true
+            }])
+          }).catch(() => {});
         }
 
         const nowIso = new Date().toISOString();

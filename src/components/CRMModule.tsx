@@ -199,6 +199,70 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
   const [companyHistorico, setCompanyHistorico] = useState<any[]>([]);
   const safeHistorico = Array.isArray(companyHistorico) ? companyHistorico : [];
 
+  // Utilizadores da empresa selecionada (carregados especificamente por empresa_id)
+  const [companyUsers, setCompanyUsers] = useState<any[]>([]);
+  const [companyUsersLoading, setCompanyUsersLoading] = useState(false);
+
+  // Lista de utilizadores da empresa selecionada com resolução inteligente multi-critério
+  const displayedCompanyUsers = React.useMemo(() => {
+    if (!selectedCompany) return [];
+
+    const map = new Map<string, any>();
+
+    // 1. Prioridade: Utilizadores carregados especificamente via /api/crm/users?empresa_id=...
+    (companyUsers || []).forEach(u => {
+      if (u) {
+        const key = String(u.id || u.user_id || u.email);
+        map.set(key, u);
+      }
+    });
+
+    // 2. Complementar com a lista global (safeUsers) com comparações flexíveis
+    const compId = String(selectedCompany.id || '').trim().toLowerCase();
+    const compEmpresaId = String(selectedCompany.empresa_id || '').trim().toLowerCase();
+    const compEmail = String(selectedCompany.email || '').trim().toLowerCase();
+    const compRespEmail = String(selectedCompany.email_responsavel || '').trim().toLowerCase();
+
+    safeUsers.forEach(u => {
+      if (!u) return;
+      const uEmpId = String(u.empresa_id || '').trim().toLowerCase();
+      const uEmail = String(u.email || '').trim().toLowerCase();
+
+      const matchId = (compId && uEmpId === compId) || (compEmpresaId && uEmpId === compEmpresaId);
+      const matchEmail = (compEmail && uEmail === compEmail) || (compRespEmail && uEmail === compRespEmail);
+
+      if (matchId || matchEmail) {
+        const key = String(u.id || u.user_id || u.email);
+        if (!map.has(key)) {
+          map.set(key, u);
+        } else {
+          map.set(key, { ...map.get(key), ...u });
+        }
+      }
+    });
+
+    // 3. Se ainda não houver utilizador, mas a empresa tiver administrador registado, criar perfil administrativo
+    if (map.size === 0 && (selectedCompany.email || selectedCompany.email_responsavel || selectedCompany.nome_administrador)) {
+      const email = selectedCompany.email_responsavel || selectedCompany.email;
+      if (email) {
+        map.set(email, {
+          id: `admin_${selectedCompany.id}`,
+          user_id: `admin_${selectedCompany.id}`,
+          empresa_id: selectedCompany.id,
+          full_name: selectedCompany.nome_administrador || selectedCompany.responsavel || 'Administrador Principal',
+          nome: selectedCompany.nome_administrador || selectedCompany.responsavel || 'Administrador Principal',
+          email: email,
+          role: 'Admin',
+          ativo: true,
+          is_active: true,
+          created_at: selectedCompany.created_at || new Date().toISOString()
+        });
+      }
+    }
+
+    return Array.from(map.values());
+  }, [companyUsers, safeUsers, selectedCompany]);
+
 
   const safeFormatCurrency = (val: any) => {
     if (typeof formatCurrency === 'function') {
@@ -271,6 +335,20 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
       }
       const listUsers = Array.isArray(usersData) ? usersData : (usersData?.data && Array.isArray(usersData.data) ? usersData.data : []);
       setUsers(listUsers);
+
+      // Sincronizar utilizadores específicos da empresa selecionada se ativa
+      if (selectedCompany?.id) {
+        try {
+          if (typeof fetchJson === 'function') {
+            const compUsersRes = await fetchJson(`/api/crm/users?empresa_id=${selectedCompany.id}`);
+            const listCUsers = Array.isArray(compUsersRes) ? compUsersRes : (compUsersRes?.data && Array.isArray(compUsersRes.data) ? compUsersRes.data : []);
+            setCompanyUsers(listCUsers);
+          } else {
+            const { data: supaPerfis } = await supabase.from('perfis').select('*').eq('empresa_id', selectedCompany.id);
+            setCompanyUsers(supaPerfis || []);
+          }
+        } catch {}
+      }
 
       // Load Logs / Audit
       let logsData: any = [];
@@ -363,6 +441,44 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
       loadResetLogs();
     }
   }, [activeTab]);
+
+  // Carregar utilizadores específicos da empresa selecionada ao entrar na sub-aba 'users'
+  useEffect(() => {
+    if (companySubTab !== 'users' || !selectedCompany?.id) {
+      return;
+    }
+    let cancelled = false;
+    const fetchCompanyUsers = async () => {
+      setCompanyUsersLoading(true);
+      try {
+        let data: any[] = [];
+        if (typeof fetchJson === 'function') {
+          data = await fetchJson(`/api/crm/users?empresa_id=${selectedCompany.id}`);
+        } else {
+          const { data: supaPerfis } = await supabase
+            .from('perfis')
+            .select('*')
+            .eq('empresa_id', selectedCompany.id);
+          data = supaPerfis || [];
+        }
+        if (!cancelled) {
+          const list = Array.isArray(data) ? data : (data?.data && Array.isArray(data.data) ? data.data : []);
+          setCompanyUsers(list);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          // Fallback: filtrar da lista global
+          setCompanyUsers(
+            (users || []).filter((u: any) => u && String(u.empresa_id) === String(selectedCompany.id))
+          );
+        }
+      } finally {
+        if (!cancelled) setCompanyUsersLoading(false);
+      }
+    };
+    fetchCompanyUsers();
+    return () => { cancelled = true; };
+  }, [companySubTab, selectedCompany?.id]);
 
   // Função Central Reutilizável de Cálculo de Licença
   const calcularLicenca = (comp: Company | null | undefined) => {
@@ -1433,7 +1549,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
             <div className="flex justify-between items-center border-b border-zinc-100 pb-4">
               <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider">Utilizadores Registados nesta Empresa</h3>
               <span className="text-xs text-zinc-500 font-bold">
-                {safeUsers.filter(u => u && String(u.empresa_id) === String(selectedCompany.id)).length} utilizador(es)
+                {displayedCompanyUsers.length} utilizador(es)
               </span>
             </div>
 
@@ -1448,15 +1564,24 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
-                {safeUsers.filter(u => u && String(u.empresa_id) === String(selectedCompany.id)).map(u => {
+                {companyUsersLoading && displayedCompanyUsers.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="p-8 text-center text-zinc-500">
+                      <RefreshCw size={16} className="animate-spin inline mr-2 text-[#003366]" />
+                      A carregar utilizadores da empresa...
+                    </td>
+                  </tr>
+                )}
+                {displayedCompanyUsers.map(u => {
                   const isActive = u.ativo !== false && u.is_active !== false;
+                  const userIdToUse = u.id || u.user_id;
                   return (
-                    <tr key={u.id} className="hover:bg-zinc-50">
+                    <tr key={String(userIdToUse || u.email)} className="hover:bg-zinc-50">
                       <td className="p-3">
                         <p className="font-bold text-zinc-800">{u.full_name || u.nome || u.email}</p>
                         <p className="text-[10px] text-zinc-400 font-mono">{u.email}</p>
                       </td>
-                      <td className="p-3 text-zinc-600 uppercase font-mono">{u.role || 'Operador'}</td>
+                      <td className="p-3 text-zinc-600 uppercase font-mono">{u.role || (u.is_admin ? 'Admin' : 'Operador')}</td>
                       <td className="p-3 text-center">
                         <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded ${isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
                           {isActive ? '✓ ATIVO' : '✗ BLOQUEADO'}
@@ -1476,10 +1601,10 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                             onClick={async () => {
                               try {
                                 if (typeof fetchJson === 'function') {
-                                  const res = await fetchJson(`/api/crm/users/${u.id}/toggle-status`, {
+                                  const res = await fetchJson(`/api/crm/users/${userIdToUse}/toggle-status`, {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({})
+                                    body: JSON.stringify({ email: u.email, empresa_id: selectedCompany.id })
                                   });
                                   toast.success(res?.message || 'Estado atualizado!');
                                   await loadData();
@@ -1508,8 +1633,8 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                     </tr>
                   );
                 })}
-                {safeUsers.filter(u => u && String(u.empresa_id) === String(selectedCompany.id)).length === 0 && (
-                  <tr><td colSpan={5} className="p-8 text-center text-zinc-400 italic">Nenhum utilizador secundário registado para esta empresa.</td></tr>
+                {!companyUsersLoading && displayedCompanyUsers.length === 0 && (
+                  <tr><td colSpan={5} className="p-8 text-center text-zinc-400 italic">Nenhum utilizador registado para esta empresa.</td></tr>
                 )}
               </tbody>
             </table>
@@ -2866,10 +2991,15 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                 onClick={async () => {
                   try {
                     if (typeof fetchJson === 'function') {
-                      const res = await fetchJson(`/api/crm/users/${showUserResetModal.id}/reset-access`, { 
+                      const targetId = showUserResetModal.id || (showUserResetModal as any).user_id;
+                      const res = await fetchJson(`/api/crm/users/${targetId}/reset-access`, { 
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ password: resetTempPassword })
+                        body: JSON.stringify({ 
+                          password: resetTempPassword,
+                          email: showUserResetModal.email,
+                          empresa_id: showUserResetModal.empresa_id || selectedCompany?.id
+                        })
                       });
                       toast.success(res?.message || `Acesso redefinido! Nova senha: ${resetTempPassword}`);
                     } else {

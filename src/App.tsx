@@ -2790,6 +2790,7 @@ const WorkplaceModule = ({
 
 const PERMISSION_EQUIVALENTS: Record<string, string[]> = {
   dashboard: ['dashboard', 'painel', 'painel_de_bordo', 'painel de bordo'],
+  crm_empresas: ['crm_empresas', 'crm', 'crm empresas'],
   clients: ['clients', 'clientes'],
   workplaces: ['workplaces', 'locais_trabalho', 'locais de trabalho'],
   secretary: ['secretary', 'secretaria', 'secretaria beta', 'secretaria_beta'],
@@ -2799,26 +2800,57 @@ const PERMISSION_EQUIVALENTS: Record<string, string[]> = {
   security: ['security', 'seguranca', 'segurança', 'segurança gestão privada', 'segurança gestão', 'seguranca gestao privada'],
   specialized: ['specialized', 'gestao_especializada', 'gestão especializada'],
   archive: ['archive', 'arquivo'],
+  cartas: ['cartas', 'gestao_de_cartas', 'gestão de cartas', 'cartas_emitidas', 'cartas emitidas', 'gestao cartas'],
   invoices: ['invoices', 'vendas'],
-  drafts: ['drafts', 'rascunhos', 'rascunhos (drafts)'],
+  drafts: ['drafts', 'rascunhos', 'rascunhos (drafts)', 'rascunhos drafts'],
   suppliers: ['suppliers', 'compras'],
-  products: ['products', 'produtos', 'stocks', 'inventário', 'stocks & inventário'],
+  products: ['products', 'produtos', 'stocks', 'inventário', 'stocks & inventário', 'inventario'],
   financial: ['financial', 'financas', 'finanças'],
   accounting: ['accounting', 'contabilidade'],
   hr: ['hr', 'rh', 'recursos_humanos', 'recursos humanos'],
   reports: ['reports', 'relatorios', 'relatórios'],
+  licencas: ['licencas', 'licenças', 'gestao_licencas', 'gestão de licenças', 'gestao licencas'],
+  empresa: ['empresa', 'documento_da_empresa', 'documento da empresa', 'dados_empresa', 'dados da empresa'],
   agrobusiness: ['agrobusiness', 'agronegocio', 'agronegócio'],
   church: ['church', 'igreja', 'gestao_de_igreja', 'gestão de igreja'],
   settings: ['settings', 'definicoes', 'definições']
 };
 
-const mapPermissionAreasFromDB = (dbAreas: string[]): string[] => {
+const mapPermissionAreasFromDB = (dbAreas: any): string[] => {
   const result = new Set<string>();
-  const areas = (dbAreas || []).map(a => String(a).trim().toLowerCase());
+  if (!dbAreas) return [];
   
+  let areasArray: string[] = [];
+  if (Array.isArray(dbAreas)) {
+    areasArray = dbAreas.map(a => String(a).trim().toLowerCase());
+  } else if (typeof dbAreas === 'string') {
+    try {
+      const parsed = JSON.parse(dbAreas);
+      if (Array.isArray(parsed)) {
+        areasArray = parsed.map(a => String(a).trim().toLowerCase());
+      } else {
+        areasArray = [dbAreas.trim().toLowerCase()];
+      }
+    } catch {
+      if (dbAreas.startsWith('{') && dbAreas.endsWith('}')) {
+        areasArray = dbAreas.slice(1, -1).split(',').map(s => s.trim().replace(/^"|"$/g, '').toLowerCase());
+      } else {
+        areasArray = dbAreas.split(',').map(a => a.trim().toLowerCase());
+      }
+    }
+  }
+
+  // 1. Direct match with any SIDEBAR_MENU_ITEMS id
+  SIDEBAR_MENU_ITEMS.forEach(item => {
+    if (areasArray.includes(item.id.toLowerCase())) {
+      result.add(item.id);
+    }
+  });
+
+  // 2. Equivalents match
   Object.keys(PERMISSION_EQUIVALENTS).forEach(moduleId => {
     const possibleKeys = (PERMISSION_EQUIVALENTS[moduleId] || []).map(k => k.trim().toLowerCase());
-    if (possibleKeys.some(key => areas.includes(key))) {
+    if (possibleKeys.some(key => areasArray.includes(key))) {
       result.add(moduleId);
     }
   });
@@ -2830,14 +2862,15 @@ const mapPermissionAreasForDB = (selectedIds: string[]): string[] => {
   const result = new Set<string>();
   
   (selectedIds || []).forEach(id => {
-    result.add(id);
-    const equivalentsList = PERMISSION_EQUIVALENTS[id];
+    const cleanId = String(id).trim().toLowerCase();
+    result.add(cleanId);
+    const equivalentsList = PERMISSION_EQUIVALENTS[cleanId];
     if (equivalentsList) {
       equivalentsList.forEach(eq => result.add(eq.trim().toLowerCase()));
     }
   });
   
-  return Array.from(result).map(a => a.toLowerCase());
+  return Array.from(result);
 };
 
 const hasModulePermission = (user: any, moduleId: string): boolean => {
@@ -2853,18 +2886,36 @@ const hasModulePermission = (user: any, moduleId: string): boolean => {
   if (moduleId === 'dashboard') return true;
   if (moduleId === 'crm_empresas') return false;
 
-  const rawPermissions = user?.permission_areas ?? user?.permissions;
+  const rawPermissions = user?.permission_areas ?? user?.permissions ?? user?.permissoes;
 
-  // REGRA SUPREMA: Se o utilizador tem áreas de permissão explicitamente configuradas no banco,
-  // elas são a fonte absoluta da verdade e devem ser estritamente respeitadas (inclusive se for array vazio).
+  let parsedList: string[] | null = null;
   if (Array.isArray(rawPermissions)) {
-    if (rawPermissions.length === 0) return false;
-    const permissions = rawPermissions.map((p: any) => String(p).trim().toLowerCase());
-    const possibleKeys = (PERMISSION_EQUIVALENTS[moduleId] || [moduleId]).map((k: string) => k.trim().toLowerCase());
-    return possibleKeys.some(key => permissions.includes(key));
+    parsedList = rawPermissions.map((p: any) => String(p).trim().toLowerCase());
+  } else if (typeof rawPermissions === 'string' && rawPermissions.trim().length > 0) {
+    try {
+      const parsed = JSON.parse(rawPermissions);
+      if (Array.isArray(parsed)) {
+        parsedList = parsed.map((p: any) => String(p).trim().toLowerCase());
+      }
+    } catch {
+      if (rawPermissions.startsWith('{') && rawPermissions.endsWith('}')) {
+        parsedList = rawPermissions.slice(1, -1).split(',').map((s: string) => s.trim().replace(/^"|"$/g, '').toLowerCase());
+      } else {
+        parsedList = rawPermissions.split(',').map((p: string) => p.trim().toLowerCase());
+      }
+    }
   }
 
-  // Se NÃO tem permission_areas configuradas (null/undefined), verificar se é Administrador da Empresa
+  // REGRA SUPREMA: Se o utilizador possui áreas de permissão configuradas no banco,
+  // elas são a autoridade absoluta, MESMO QUE o utilizador tenha cargo de administrador.
+  if (parsedList !== null) {
+    if (parsedList.length === 0) return false;
+    const possibleKeys = (PERMISSION_EQUIVALENTS[moduleId] || [moduleId]).map((k: string) => k.trim().toLowerCase());
+    return possibleKeys.some(key => parsedList!.includes(key)) || parsedList!.includes(moduleId.toLowerCase());
+  }
+
+  // Se NÃO tem permissões explicitamente configuradas no banco (null/undefined),
+  // recorrer ao perfil de administrador de empresa:
   const isCompanyAdmin = user?.is_admin === true ||
                         user?.role === 'admin' ||
                         user?.role === 'admin_empresa' ||
@@ -13984,13 +14035,19 @@ const UsersSettings = () => {
     setProfession(u.profession || '');
     setDate(u.date || '');
     
-    const isAdmin = u.is_admin || u.role === 'admin' || u.role === 'admin_empresa' || u.role === 'super_admin' || u.role === 'proprietario' || (u.level && Number(u.level) >= 10);
+    const isAdmin = Boolean(u.is_admin || u.role === 'admin' || u.role === 'admin_empresa' || u.role === 'super_admin' || u.role === 'proprietario' || (u.level && Number(u.level) >= 10));
     
-    // If admin, auto-select all areas as requested by user
-    if (isAdmin) {
+    // REGRA SUPREMA: Se o utilizador possui áreas de permissão gravadas, carregar estritamente essas áreas
+    const rawAreas = u.permission_areas ?? u.permissions ?? u.permissoes ?? (u.permission_area ? [u.permission_area] : null);
+    const parsedSavedAreas = mapPermissionAreasFromDB(rawAreas);
+    
+    if (parsedSavedAreas.length > 0) {
+      setPermissionAreas(parsedSavedAreas);
+    } else if (isAdmin && (rawAreas === null || rawAreas === undefined)) {
+      // Se é admin e NÃO tem nenhuma restrição gravada no banco, pré-selecionar todas
       setPermissionAreas(SIDEBAR_MENU_ITEMS.map(m => m.id));
     } else {
-      setPermissionAreas(mapPermissionAreasFromDB(u.permission_areas || (u.permission_area ? [u.permission_area] : [])));
+      setPermissionAreas(parsedSavedAreas);
     }
     
     setContact(u.contact || '');
@@ -14058,11 +14115,15 @@ const UsersSettings = () => {
 
   const handleOpenQuickPermissions = (u: SystemUser) => {
     setPermissionModalUser(u);
-    const isAdmin = u.is_admin || u.role === 'admin' || u.role === 'super_admin' || u.role === 'admin_empresa' || u.role === 'proprietario' || (u.level && Number(u.level) >= 10);
-    if (isAdmin) {
+    const isAdmin = Boolean(u.is_admin || u.role === 'admin' || u.role === 'super_admin' || u.role === 'admin_empresa' || u.role === 'proprietario' || (u.level && Number(u.level) >= 10));
+    const rawAreas = u.permission_areas ?? (u as any).permissions ?? (u as any).permissoes;
+    const parsedSavedAreas = mapPermissionAreasFromDB(rawAreas);
+    if (parsedSavedAreas.length > 0) {
+      setPermissionAreas(parsedSavedAreas);
+    } else if (isAdmin && (rawAreas === null || rawAreas === undefined)) {
       setPermissionAreas(SIDEBAR_MENU_ITEMS.map(m => m.id));
     } else {
-      setPermissionAreas(mapPermissionAreasFromDB(u.permission_areas || []));
+      setPermissionAreas(parsedSavedAreas);
     }
   };
 
@@ -14157,7 +14218,7 @@ const UsersSettings = () => {
       email,
       profession,
       date: validadeState || date || null,
-      permission_areas: isAdminState ? mapPermissionAreasForDB(SIDEBAR_MENU_ITEMS.map(m => m.id)) : mapPermissionAreasForDB(permissionAreas),
+      permission_areas: mapPermissionAreasForDB(permissionAreas),
       contact,
       morada,
       username: usernameState || email.split('@')[0],
@@ -14372,27 +14433,44 @@ const UsersSettings = () => {
               </div>
 
               <div className="space-y-1 md:col-span-2">
-                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-1">Módulos e Áreas de Permissão (Exatamente conforme Menu Lateral)</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">Módulos e Áreas de Permissão (Exatamente conforme Menu Lateral)</label>
+                  <div className="flex gap-2">
+                    <button 
+                      type="button" 
+                      onClick={() => setPermissionAreas(SIDEBAR_MENU_ITEMS.map(m => m.id))}
+                      className="text-[9px] font-black uppercase text-[#003366] bg-blue-50 hover:bg-blue-100 px-2 py-0.5 border border-blue-200 cursor-pointer"
+                    >
+                      Selecionar Todos
+                    </button>
+                    <button 
+                      type="button" 
+                      onClick={() => setPermissionAreas(['dashboard'])}
+                      className="text-[9px] font-black uppercase text-zinc-600 bg-zinc-100 hover:bg-zinc-200 px-2 py-0.5 border border-zinc-200 cursor-pointer"
+                    >
+                      Limpar
+                    </button>
+                  </div>
+                </div>
                 <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 p-3 bg-zinc-50 border border-zinc-300">
                   {workspaceOptions.map(opt => {
-                    const isSelected = permissionAreas.includes(opt.id) || isAdminState;
+                    const isSelected = permissionAreas.includes(opt.id);
                     return (
                       <button
                         key={opt.id}
                         type="button"
-                        disabled={isAdminState}
                         onClick={() => {
                           setPermissionAreas(prev => 
                             prev.includes(opt.id) ? prev.filter(a => a !== opt.id) : [...prev, opt.id]
                           );
                         }}
-                        className={`flex items-center gap-3 px-3 py-3 text-left text-[11px] font-black uppercase border transition-all shadow-sm relative ${isSelected ? 'bg-emerald-50 text-emerald-900 border-emerald-600 ring-1 ring-emerald-600/20' : 'bg-white text-zinc-400 border-zinc-200 hover:bg-zinc-100'} ${isAdminState ? 'cursor-default opacity-80' : 'hover:scale-[1.01]'}`}
+                        className={`flex items-center gap-3 px-3 py-3 text-left text-[11px] font-black uppercase border transition-all shadow-sm relative cursor-pointer ${isSelected ? 'bg-emerald-50 text-emerald-900 border-emerald-600 ring-1 ring-emerald-600/20' : 'bg-white text-zinc-400 border-zinc-200 hover:bg-zinc-100'} hover:scale-[1.01]`}
                       >
                         <opt.icon size={18} className={isSelected ? 'text-emerald-600' : 'text-zinc-300'} />
                         <div className="flex-1 flex flex-col min-w-0">
                           <span className="truncate">{opt.label}</span>
                           {isSelected && (
-                            <span className="text-[8px] text-emerald-600 font-bold tracking-widest mt-0.5">● ÁREA PERMITIDA {isAdminState && '(MODO ADMIN)'}</span>
+                            <span className="text-[8px] text-emerald-600 font-bold tracking-widest mt-0.5">● ÁREA PERMITIDA</span>
                           )}
                         </div>
                         <div className={`w-4 h-4 border flex items-center justify-center transition-colors ${isSelected ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-zinc-300 bg-zinc-50 text-transparent'}`}>
@@ -14448,6 +14526,25 @@ const UsersSettings = () => {
             <p className="text-xs text-zinc-500 mb-6 font-medium">Controlar as permissões de acesso do utilizador: <span className="font-bold text-[#003366]">{permissionModalUser.name}</span></p>
             
             <div className="space-y-4">
+              <div className="flex justify-between items-center px-1">
+                <span className="text-[10px] font-bold text-zinc-500 uppercase">Módulos Selecionados ({permissionAreas.length})</span>
+                <div className="flex gap-2">
+                  <button 
+                    type="button" 
+                    onClick={() => setPermissionAreas(SIDEBAR_MENU_ITEMS.map(m => m.id))}
+                    className="text-[9px] font-black uppercase text-[#003366] bg-blue-50 hover:bg-blue-100 px-2 py-0.5 border border-blue-200 cursor-pointer"
+                  >
+                    Selecionar Todos
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => setPermissionAreas(['dashboard'])}
+                    className="text-[9px] font-black uppercase text-zinc-600 bg-zinc-100 hover:bg-zinc-200 px-2 py-0.5 border border-zinc-200 cursor-pointer"
+                  >
+                    Limpar
+                  </button>
+                </div>
+              </div>
               <div className="grid grid-cols-1 gap-2 p-1 max-h-60 overflow-y-auto">
                 {workspaceOptions.map(opt => {
                   const active = permissionAreas.includes(opt.id);

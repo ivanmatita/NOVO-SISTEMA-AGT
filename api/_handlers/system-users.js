@@ -257,7 +257,22 @@ export default async function handler(req, res) {
         profession: p.profession || p.cargo || '',
         contact: p.contact || p.telefone || '',
         morada: p.morada || '',
-        permission_areas: Array.isArray(p.permission_areas) ? p.permission_areas : [],
+        permission_areas: (() => {
+          const raw = p.permission_areas ?? p.permissions ?? p.permissoes;
+          if (Array.isArray(raw)) return raw;
+          if (typeof raw === 'string' && raw.trim().length > 0) {
+            try {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) return parsed;
+            } catch {
+              if (raw.startsWith('{') && raw.endsWith('}')) {
+                return raw.slice(1, -1).split(',').map(s => s.trim().replace(/^"|"$/g, ''));
+              }
+              return raw.split(',').map(s => s.trim());
+            }
+          }
+          return [];
+        })(),
         empresa_id: p.empresa_id || targetEmpresaId,
         company_id: p.empresa_id || targetEmpresaId,
         date: p.date || p.created_at || null,
@@ -536,6 +551,8 @@ export default async function handler(req, res) {
       );
 
       if (!updateRes.ok) {
+        const errTxt = await updateRes.text();
+        console.warn('[system-users] PATCH perfis falhou na 1ª tentativa:', updateRes.status, errTxt);
         delete updatePayload.updated_at;
         updateRes = await fetch(
           `${config.supabaseUrl}/rest/v1/perfis?id=eq.${userProfile.id}`,
@@ -550,6 +567,28 @@ export default async function handler(req, res) {
             body: JSON.stringify(updatePayload)
           }
         );
+        if (!updateRes.ok) {
+          delete updatePayload.permissions;
+          updateRes = await fetch(
+            `${config.supabaseUrl}/rest/v1/perfis?id=eq.${userProfile.id}`,
+            {
+              method: 'PATCH',
+              headers: {
+                'apikey': config.serviceRoleKey,
+                'Authorization': authHeader,
+                'Content-Type': 'application/json',
+                'Prefer': 'return=representation'
+              },
+              body: JSON.stringify(updatePayload)
+            }
+          );
+        }
+      }
+
+      if (!updateRes.ok) {
+        const finalErr = await updateRes.text();
+        console.error('[system-users] Falha definitiva no PATCH perfis:', updateRes.status, finalErr);
+        return res.status(500).json({ success: false, error: `Falha ao gravar no banco Supabase: ${finalErr}` });
       }
 
       // Atualizar também em system_users (se existir)

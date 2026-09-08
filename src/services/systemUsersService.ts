@@ -96,7 +96,22 @@ export const systemUsersService = {
           profession: p.profession || p.cargo || '',
           contact: p.contact || p.telefone || '',
           morada: p.morada || '',
-          permission_areas: Array.isArray(p.permission_areas) ? p.permission_areas : (Array.isArray(p.permissions) ? p.permissions : []),
+          permission_areas: (() => {
+            const raw = p.permission_areas ?? p.permissions ?? p.permissoes;
+            if (Array.isArray(raw)) return raw;
+            if (typeof raw === 'string' && raw.trim().length > 0) {
+              try {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) return parsed;
+              } catch {
+                if (raw.startsWith('{') && raw.endsWith('}')) {
+                  return raw.slice(1, -1).split(',').map((s: string) => s.trim().replace(/^"|"$/g, ''));
+                }
+                return raw.split(',').map((s: string) => s.trim());
+              }
+            }
+            return [];
+          })(),
           empresa_id: p.empresa_id || empresaId,
           company_id: p.empresa_id || empresaId,
           date: p.date || p.created_at || null,
@@ -231,6 +246,7 @@ export const systemUsersService = {
   async updateUser(empresaId: string, userId: string, payload: any): Promise<SystemUser> {
     if (!empresaId || !userId) throw new Error('ID e Empresa são obrigatórios para atualizar.');
 
+    let apiErrorMsg = '';
     try {
       const headers = await getHeaders();
       const response = await fetch(`/api/system-users/${userId}`, {
@@ -245,13 +261,18 @@ export const systemUsersService = {
       if (response.ok) {
         const updatedUser = await response.json();
         return {
-          ...updatedUser,
+          ...(updatedUser.user || updatedUser),
           id: userId,
           empresa_id: empresaId,
           company_id: empresaId
         };
+      } else {
+        const errData = await response.json().catch(() => ({}));
+        apiErrorMsg = errData.error || `Erro HTTP ${response.status}`;
+        console.warn(`[SystemUsersService] API PUT /api/system-users/${userId} falhou (${apiErrorMsg}). Ativando Fallback Supabase...`);
       }
-    } catch (apiErr) {
+    } catch (apiErr: any) {
+      apiErrorMsg = apiErr.message || 'Erro de rede';
       console.warn('[SystemUsersService] Falha na API ao atualizar utilizador. Ativando Fallback Supabase...', apiErr);
     }
 
@@ -275,7 +296,7 @@ export const systemUsersService = {
       const { data, error } = await supabase
         .from('perfis')
         .update(dbPayload)
-        .eq('id', userId)
+        .or(`id.eq.${userId},user_id.eq.${userId}`)
         .select()
         .maybeSingle();
 
@@ -287,8 +308,12 @@ export const systemUsersService = {
           company_id: empresaId
         };
       }
-    } catch (dbErr) {
+    } catch (dbErr: any) {
       console.error('[SystemUsersService] Falha no Fallback Supabase updateUser:', dbErr);
+    }
+
+    if (apiErrorMsg) {
+      throw new Error(apiErrorMsg);
     }
 
     return {

@@ -3153,7 +3153,7 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
           {companyData?.nome_empresa || companyData?.name || 'Admin'}
         </h2>
         <div className="flex flex-col items-center gap-1 mt-2">
-          <p className="text-[11px] text-white font-black tracking-widest uppercase bg-[#003366] px-3 py-0.5 shadow-sm rounded-sm">
+          <p className="text-[11px] text-white font-black tracking-widest uppercase bg-[#1a4da6] px-3 py-0.5 shadow-sm">
             {companyData?.nif ? `NIF: ${companyData.nif}` : 'ADMIN'}
           </p>
           {companyData?.nif !== '5002123665' && (
@@ -3174,8 +3174,8 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
                   <>
                     <span className={`px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider rounded flex items-center gap-1 shadow-xs ${
                       desc === 'LICENÇA ACTIVA'
-                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-300' 
-                        : 'bg-rose-50 text-rose-700 border border-rose-300'
+                        ? 'bg-emerald-500/20 text-emerald-600 border border-emerald-500/40' 
+                        : 'bg-rose-500/20 text-rose-600 border border-rose-500/40'
                     }`}>
                       <span className={`w-1.5 h-1.5 rounded-full ${desc === 'LICENÇA ACTIVA' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
                       {desc}
@@ -3219,25 +3219,23 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-md transition-all duration-200 mb-0.5 relative group ${
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-none transition-all duration-200 mb-0.5 relative group ${
                   activeTab === item.id 
-                    ? 'bg-[#003366] text-white font-bold shadow-sm border-l-4 border-[#002244]' 
-                    : 'bg-zinc-50/70 text-zinc-700 hover:bg-blue-50/70 hover:text-[#003366] border border-zinc-100'
+                    ? 'bg-[#1a4da6] text-white font-semibold shadow-md border-l-4 border-white' 
+                    : 'bg-[#123375] text-zinc-300 hover:bg-[#1a4da6] hover:text-white'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <item.icon size={18} className={activeTab === item.id ? 'text-white' : 'text-zinc-500 group-hover:text-[#003366]'} />
-                  <span className="text-sm font-medium">{item.label}</span>
+                  <item.icon size={18} className={activeTab === item.id ? 'text-white' : 'text-zinc-400'} />
+                  <span className="text-sm">{item.label}</span>
                   {item.badge && (
-                    <span className={`ml-2 text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-tighter ${
-                      activeTab === item.id ? 'bg-white text-[#003366]' : 'bg-[#003366] text-white'
-                    }`}>
+                    <span className="ml-2 text-[8px] font-black bg-[#1a4da6] text-white px-1.5 py-0.5 rounded-full uppercase tracking-tighter">
                       {item.badge}
                     </span>
                   )}
                 </div>
                 {item.hasChevron && (
-                  <ChevronRight size={14} className={activeTab === item.id ? 'text-white/80' : 'text-zinc-400 group-hover:text-[#003366]'} />
+                  <ChevronRight size={14} className={activeTab === item.id ? 'text-white/70' : 'text-zinc-500'} />
                 )}
               </button>
             );

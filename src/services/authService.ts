@@ -380,7 +380,13 @@ export const authService = {
               company: empresa,
               permission_areas: (() => {
                 const raw = perfil.permission_areas ?? perfil.permissions ?? perfil.permissoes;
-                if (Array.isArray(raw)) return raw.map((p: any) => String(p).trim().toLowerCase());
+                const isAdminProfile = perfil.is_admin || perfil.role === 'admin' || perfil.role === 'admin_empresa' || perfil.role === 'proprietario';
+                if (Array.isArray(raw)) {
+                  const mapped = raw.map((p: any) => String(p).trim().toLowerCase()).filter(s => s.length > 0);
+                  // Array vazio para admin = sem restrições explícitas (null = acesso irrestrito)
+                  if (mapped.length === 0 && isAdminProfile) return null;
+                  return mapped;
+                }
                 if (typeof raw === 'string' && raw.trim().length > 0) {
                   try {
                     const parsed = JSON.parse(raw);
@@ -392,7 +398,7 @@ export const authService = {
                     return raw.split(',').map((s: string) => s.trim().toLowerCase());
                   }
                 }
-                return (perfil.is_admin || perfil.role === 'admin' || perfil.role === 'admin_empresa' || perfil.role === 'proprietario') ? null : [];
+                return isAdminProfile ? null : [];
               })(),
               is_admin: perfil.is_admin || perfil.role === 'admin' || false,
               level: perfil.level || (perfil.role === 'admin' ? 10 : 1)
@@ -550,7 +556,13 @@ export const authService = {
         company: empresa,
         permission_areas: (() => {
           const raw = perfil.permission_areas ?? perfil.permissions ?? perfil.permissoes;
-          if (Array.isArray(raw)) return raw.map((p: any) => String(p).trim().toLowerCase());
+          const isAdminProfile = perfil.is_admin || perfil.role === 'admin' || perfil.role === 'admin_empresa' || perfil.role === 'proprietario';
+          if (Array.isArray(raw)) {
+            const mapped = raw.map((p: any) => String(p).trim().toLowerCase()).filter(s => s.length > 0);
+            // Array vazio para admin = sem restrições explícitas (null = acesso irrestrito)
+            if (mapped.length === 0 && isAdminProfile) return null;
+            return mapped;
+          }
           if (typeof raw === 'string' && raw.trim().length > 0) {
             try {
               const parsed = JSON.parse(raw);
@@ -562,7 +574,7 @@ export const authService = {
               return raw.split(',').map((s: string) => s.trim().toLowerCase());
             }
           }
-          return (perfil.is_admin || perfil.role === 'admin' || perfil.role === 'admin_empresa' || perfil.role === 'proprietario') ? null : [];
+          return isAdminProfile ? null : [];
         })()
       };
     } catch (err) {

@@ -2884,13 +2884,28 @@ const hasModulePermission = (user: any, moduleId: string): boolean => {
 
   // Dashboard sempre acessível
   if (moduleId === 'dashboard') return true;
-  if (moduleId === 'crm_empresas') return false;
+
+  // crm_empresas: em staging, qualquer admin pode aceder; em produção, apenas super-admin (tratado na sidebar)
+  if (moduleId === 'crm_empresas') {
+    if (isStagingEnvironment()) {
+      const isAdminUser = user?.is_admin === true || user?.role === 'admin' ||
+                         user?.role === 'admin_empresa' || user?.role === 'proprietario' ||
+                         (user?.level !== undefined && Number(user.level) >= 10);
+      if (isAdminUser) return true;
+    }
+    return false;
+  }
 
   const rawPermissions = user?.permission_areas ?? user?.permissions ?? user?.permissoes;
 
   let parsedList: string[] | null = null;
   if (Array.isArray(rawPermissions)) {
-    parsedList = rawPermissions.map((p: any) => String(p).trim().toLowerCase());
+    const filtered = rawPermissions.map((p: any) => String(p).trim().toLowerCase()).filter(s => s.length > 0);
+    // Array vazio para admin = sem restrições explícitas (tratar como null = acesso irrestrito)
+    const isAdminFallback = user?.is_admin === true || user?.role === 'admin' ||
+                            user?.role === 'admin_empresa' || user?.role === 'proprietario' ||
+                            (user?.level !== undefined && Number(user.level) >= 10);
+    parsedList = (filtered.length === 0 && isAdminFallback) ? null : filtered;
   } else if (typeof rawPermissions === 'string' && rawPermissions.trim().length > 0) {
     try {
       const parsed = JSON.parse(rawPermissions);
@@ -3188,7 +3203,13 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
                               user?.email?.toLowerCase() === 'fffm333atitaifvan7@gmail.com' ||
                               user?.empresa_id === '2ebafa88-9a6e-4243-b127-b146410815eb' ||
                               user?.role === 'superadmin' || user?.role === 'super_admin';
-              return isSuper;
+              // Em staging: qualquer admin pode ver CRM Empresas para testes
+              const isStagingAdmin = isStagingEnvironment() && (
+                user?.is_admin === true || user?.role === 'admin' ||
+                user?.role === 'admin_empresa' || user?.role === 'proprietario' ||
+                (user?.level !== undefined && Number(user.level) >= 10)
+              );
+              return isSuper || isStagingAdmin;
             }
             // Área selecionada = aparece no menu. Área NÃO selecionada = NÃO aparece no menu!
             return hasModulePermission(user, item.id);

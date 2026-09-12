@@ -190,6 +190,7 @@ import { EmployeeOptionsMenu } from './components/EmployeeOptionsMenu';
 import RegimeExclusaoForm from './components/RegimeExclusaoForm';
 import ImpostoPorContaForm from './components/ImpostoPorContaForm';
 import DeclaracaoAnualForm from './components/DeclaracaoAnualForm';
+import { ImpostoIndustrialRetencaoAnual } from './components/ImpostoIndustrialRetencaoAnual';
 import SaftExportForm from './components/SaftExportForm';
 import { ExerciciosFiscaisManager } from './components/ExerciciosFiscaisManager';
 import { TopHeader } from './components/TopHeader';
@@ -3134,10 +3135,10 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
   };
 
   return (
-    <div className="w-80 bg-[#0a0e1c] text-zinc-300 min-h-screen flex flex-col overflow-y-auto shrink-0 z-20">
-      <div className="flex flex-col items-center pt-8 pb-6 border-b border-white/5">
+    <div className="w-80 bg-white text-zinc-800 min-h-screen flex flex-col overflow-y-auto shrink-0 z-20 border-r border-zinc-200 shadow-sm">
+      <div className="flex flex-col items-center pt-8 pb-6 border-b border-zinc-200 bg-zinc-50/60">
         <label className="relative cursor-pointer group">
-          <div className="w-20 h-20 rounded-full border-2 border-white/10 bg-[#16213e] flex items-center justify-center overflow-hidden mb-3 group-hover:border-blue-500 transition-colors">
+          <div className="w-20 h-20 rounded-full border-2 border-zinc-200 bg-white shadow-xs flex items-center justify-center overflow-hidden mb-3 group-hover:border-[#003366] transition-colors">
             {companyLogo ? (
               <img src={companyLogo} alt="Profile" className="w-full h-full object-cover" />
             ) : profileImg ? (
@@ -3148,11 +3149,11 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
           </div>
           <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
         </label>
-        <h2 className="text-white font-black text-lg leading-tight text-center px-4 line-clamp-2 mt-2 uppercase tracking-tight">
+        <h2 className="text-zinc-900 font-black text-lg leading-tight text-center px-4 line-clamp-2 mt-2 uppercase tracking-tight">
           {companyData?.nome_empresa || companyData?.name || 'Admin'}
         </h2>
         <div className="flex flex-col items-center gap-1 mt-2">
-          <p className="text-[11px] text-white font-black tracking-widest uppercase bg-[#1a4da6] px-3 py-0.5 shadow-sm">
+          <p className="text-[11px] text-white font-black tracking-widest uppercase bg-[#003366] px-3 py-0.5 shadow-sm rounded-sm">
             {companyData?.nif ? `NIF: ${companyData.nif}` : 'ADMIN'}
           </p>
           {companyData?.nif !== '5002123665' && (
@@ -3173,14 +3174,14 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
                   <>
                     <span className={`px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider rounded flex items-center gap-1 shadow-xs ${
                       desc === 'LICENÇA ACTIVA'
-                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' 
-                        : 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-300' 
+                        : 'bg-rose-50 text-rose-700 border border-rose-300'
                     }`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${desc === 'LICENÇA ACTIVA' ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
+                      <span className={`w-1.5 h-1.5 rounded-full ${desc === 'LICENÇA ACTIVA' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
                       {desc}
                     </span>
                     {companyData?.plano && (
-                      <span className="text-[9px] text-zinc-400 font-bold uppercase">
+                      <span className="text-[9px] text-zinc-500 font-bold uppercase">
                         • {companyData.plano}
                       </span>
                     )}
@@ -3189,12 +3190,12 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
               })()}
             </div>
           )}
-          <p className="text-[8px] text-zinc-500 font-bold tracking-[0.2em] uppercase mt-0.5">Conta Registada</p>
+          <p className="text-[8px] text-zinc-400 font-bold tracking-[0.2em] uppercase mt-0.5">Conta Registada</p>
         </div>
       </div>
       
       <div className="flex-1 px-3 py-4 space-y-1 pb-8">
-        <h3 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-3 px-2">Menu Principal</h3>
+        <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-3 px-2">Menu Principal</h3>
         <nav className="space-y-1">
           {SIDEBAR_MENU_ITEMS.filter(item => {
             if (item.id === 'crm_empresas') {
@@ -3218,23 +3219,25 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-none transition-all duration-200 mb-0.5 relative group ${
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-md transition-all duration-200 mb-0.5 relative group ${
                   activeTab === item.id 
-                    ? 'bg-[#1a4da6] text-white font-semibold shadow-md border-l-4 border-white' 
-                    : 'bg-[#123375] text-zinc-300 hover:bg-[#1a4da6] hover:text-white'
+                    ? 'bg-[#003366] text-white font-bold shadow-sm border-l-4 border-[#002244]' 
+                    : 'bg-zinc-50/70 text-zinc-700 hover:bg-blue-50/70 hover:text-[#003366] border border-zinc-100'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <item.icon size={18} className={activeTab === item.id ? 'text-white' : 'text-zinc-400'} />
-                  <span className="text-sm">{item.label}</span>
+                  <item.icon size={18} className={activeTab === item.id ? 'text-white' : 'text-zinc-500 group-hover:text-[#003366]'} />
+                  <span className="text-sm font-medium">{item.label}</span>
                   {item.badge && (
-                    <span className="ml-2 text-[8px] font-black bg-[#1a4da6] text-white px-1.5 py-0.5 rounded-full uppercase tracking-tighter">
+                    <span className={`ml-2 text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-tighter ${
+                      activeTab === item.id ? 'bg-white text-[#003366]' : 'bg-[#003366] text-white'
+                    }`}>
                       {item.badge}
                     </span>
                   )}
                 </div>
                 {item.hasChevron && (
-                  <ChevronRight size={14} className={activeTab === item.id ? 'text-white/70' : 'text-zinc-500'} />
+                  <ChevronRight size={14} className={activeTab === item.id ? 'text-white/80' : 'text-zinc-400 group-hover:text-[#003366]'} />
                 )}
               </button>
             );
@@ -23539,6 +23542,7 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
     { id: 'saft', label: 'Ficheiro SAFT', icon: <FileCode size={24} />, description: 'Exportação do ficheiro de auditoria tributária para a AGT.' },
     { id: 'retencao-pagar', label: 'Retenção na Fonte a Pagar', icon: <FileText size={24} />, description: 'Gestão de retenções na fonte a pagar.' },
     { id: 'retencao-receber', label: 'Retenção na Fonte a Receber', icon: <FileText size={24} />, description: 'Gestão de retenções na fonte a receber.' },
+    { id: 'imposto-industrial-retencao-anual', label: 'Retenção na Fonte Anual', icon: <FileCheck size={24} />, description: 'Declaração anual de retenção na fonte do Imposto Industrial a fornecedores (Artigo 67.º CII).' },
   ];
 
   const renderContent = () => {
@@ -23582,7 +23586,9 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
       case 'accounting-settings':
         return <ExerciciosFiscaisManager onFiscalYearChange={setFiscalYear} />;
       case 'annual-declarations':
-        return <DeclaracaoAnualForm />;
+        return <DeclaracaoAnualForm invoices={issuedDocuments || invoices} purchases={purchases} companyData={companyData} fiscalYear={fiscalYear} employees={employees} onBack={() => setActiveSubTab(null)} />;
+      case 'imposto-industrial-retencao-anual':
+        return <ImpostoIndustrialRetencaoAnual purchases={purchases} suppliers={suppliers} companyData={companyData} fiscalYear={fiscalYear} onBack={() => setActiveSubTab(null)} />;
       case 'saft':
         return <SaftExportForm companyData={companyData} invoices={invoices} clients={clients} />;
       default:

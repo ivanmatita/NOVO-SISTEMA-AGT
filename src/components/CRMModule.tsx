@@ -232,7 +232,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
       const matchEmail = (compEmail && uEmail === compEmail) || (compRespEmail && uEmail === compRespEmail);
 
       if (matchId || matchEmail) {
-        const key = String(u.id || u.user_id || u.email);
+        const key = String(u.id || (u as any).user_id || u.email);
         if (!map.has(key)) {
           map.set(key, u);
         } else {
@@ -451,7 +451,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
     const fetchCompanyUsers = async () => {
       setCompanyUsersLoading(true);
       try {
-        let data: any[] = [];
+        let data: any = [];
         if (typeof fetchJson === 'function') {
           data = await fetchJson(`/api/crm/users?empresa_id=${selectedCompany.id}`);
         } else {
@@ -462,7 +462,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
           data = supaPerfis || [];
         }
         if (!cancelled) {
-          const list = Array.isArray(data) ? data : (data?.data && Array.isArray(data.data) ? data.data : []);
+          const list = Array.isArray(data) ? data : (data && Array.isArray((data as any).data) ? (data as any).data : []);
           setCompanyUsers(list);
         }
       } catch (e) {

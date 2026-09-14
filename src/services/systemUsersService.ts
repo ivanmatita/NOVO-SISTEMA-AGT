@@ -114,9 +114,10 @@ export const systemUsersService = {
           })(),
           empresa_id: p.empresa_id || empresaId,
           company_id: p.empresa_id || empresaId,
-          date: p.date || p.created_at || null,
+          date: p.date || p.created_at || new Date().toISOString(),
+          created_at: p.created_at || p.date || new Date().toISOString(),
           validade: p.validade || null
-        }));
+        })) as unknown as SystemUser[];
       }
     } catch (dbErr) {
       console.error('[SystemUsersService] Falha no Fallback Supabase direto:', dbErr);

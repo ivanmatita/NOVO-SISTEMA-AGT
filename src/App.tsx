@@ -31914,13 +31914,27 @@ export default function App() {
     return VALID_TABS.includes(hash) ? hash : 'dashboard';
   });
 
-  // Wrapper que actualiza o hash da URL quando o tab muda
+  // Wrapper que actualiza o hash da URL quando o tab muda e recolhe automaticamente o menu quando uma página abre
   const setActiveTab = (tab: string) => {
     setActiveTabState(tab);
     if (window.location.hash !== `#${tab}`) {
       window.history.replaceState(null, '', `#${tab}`);
     }
+    if (tab !== 'dashboard') {
+      setSidebarOpen(false);
+    } else {
+      setSidebarOpen(true);
+    }
   };
+
+  // Quando qualquer página é aberta, a barra lateral desaparece automaticamente
+  React.useEffect(() => {
+    if (activeTab !== 'dashboard') {
+      setSidebarOpen(false);
+    } else {
+      setSidebarOpen(true);
+    }
+  }, [activeTab]);
 
   // Escutar mudanças de hash (botão Voltar/Avançar do browser)
   React.useEffect(() => {

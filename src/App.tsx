@@ -3135,10 +3135,10 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
   };
 
   return (
-    <div className="w-80 bg-white text-zinc-800 min-h-screen flex flex-col overflow-y-auto shrink-0 z-20 border-r border-zinc-200 shadow-sm">
-      <div className="flex flex-col items-center pt-8 pb-6 border-b border-zinc-200 bg-zinc-50/60">
+    <div className="w-80 bg-[#0a0e1c] text-zinc-300 min-h-screen flex flex-col overflow-y-auto shrink-0 z-20">
+      <div className="flex flex-col items-center pt-8 pb-6 border-b border-white/5">
         <label className="relative cursor-pointer group">
-          <div className="w-20 h-20 rounded-full border-2 border-zinc-200 bg-white shadow-xs flex items-center justify-center overflow-hidden mb-3 group-hover:border-[#003366] transition-colors">
+          <div className="w-20 h-20 rounded-full border-2 border-white/10 bg-[#16213e] flex items-center justify-center overflow-hidden mb-3 group-hover:border-blue-500 transition-colors">
             {companyLogo ? (
               <img src={companyLogo} alt="Profile" className="w-full h-full object-cover" />
             ) : profileImg ? (
@@ -3149,7 +3149,7 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
           </div>
           <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
         </label>
-        <h2 className="text-zinc-900 font-black text-lg leading-tight text-center px-4 line-clamp-2 mt-2 uppercase tracking-tight">
+        <h2 className="text-white font-black text-lg leading-tight text-center px-4 line-clamp-2 mt-2 uppercase tracking-tight">
           {companyData?.nome_empresa || companyData?.name || 'Admin'}
         </h2>
         <div className="flex flex-col items-center gap-1 mt-2">
@@ -3174,14 +3174,14 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
                   <>
                     <span className={`px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider rounded flex items-center gap-1 shadow-xs ${
                       desc === 'LICENÇA ACTIVA'
-                        ? 'bg-emerald-500/20 text-emerald-600 border border-emerald-500/40' 
-                        : 'bg-rose-500/20 text-rose-600 border border-rose-500/40'
+                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' 
+                        : 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
                     }`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${desc === 'LICENÇA ACTIVA' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
+                      <span className={`w-1.5 h-1.5 rounded-full ${desc === 'LICENÇA ACTIVA' ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
                       {desc}
                     </span>
                     {companyData?.plano && (
-                      <span className="text-[9px] text-zinc-500 font-bold uppercase">
+                      <span className="text-[9px] text-zinc-400 font-bold uppercase">
                         • {companyData.plano}
                       </span>
                     )}
@@ -3190,12 +3190,12 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
               })()}
             </div>
           )}
-          <p className="text-[8px] text-zinc-400 font-bold tracking-[0.2em] uppercase mt-0.5">Conta Registada</p>
+          <p className="text-[8px] text-zinc-500 font-bold tracking-[0.2em] uppercase mt-0.5">Conta Registada</p>
         </div>
       </div>
       
       <div className="flex-1 px-3 py-4 space-y-1 pb-8">
-        <h3 className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-3 px-2">Menu Principal</h3>
+        <h3 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-3 px-2">Menu Principal</h3>
         <nav className="space-y-1">
           {SIDEBAR_MENU_ITEMS.filter(item => {
             if (item.id === 'crm_empresas') {

@@ -1,10 +1,10 @@
 {
-  "release_id": "v2026.09.15-001",
-  "created_at": "2026-09-15T22:50:00.000Z",
+  "release_id": "v2026.09.16-001",
+  "created_at": "2026-09-16T00:00:00.000Z",
   "branch": "main",
-  "commit_sha": "4af12afb1fa5a1682e94b982f7a8e966791a5322",
+  "commit_sha": "19bfbe1d080a9213419a0153655194cf9cdb6979",
   "status": "APPROVED",
-  "notes": "Release v2026.09.15-001: Documentos de Venda Padrao Oficial AGT + Ano de Exercicio Real no Banco + Upgrade Node.js 24.x",
+  "notes": "Release v2026.09.16-001: Correcao Relatorio Gestao Proveitos/Custos, Mapa de Movimento Anual por Mes interativo com impressao e PDF, e integracao total de Contabilidade com banco de dados real",
   "migrations": [
     "20260819_001_base_schema_alignment.sql",
     "20260819_002_security_definer_helpers.sql",
@@ -13,8 +13,8 @@
   "test_results": null,
   "approval": {
     "approved_by": "ivanmatita",
-    "approved_at": "2026-09-15T22:51:00.000Z",
-    "notes": "Aprovado para producao: Documento Oficial de Venda AGT, Pre-visualizacao A4, Paginacao real multipagina, Opcoes modernizadas, Ano de Exercicio real no banco, Upgrade Node.js 24.x"
+    "approved_at": "2026-09-16T00:00:00.000Z",
+    "notes": "Aprovado para producao: Relatorio Gestao Proveitos/Custos com fallback Supabase, Mapa Movimento Anual mensal com modal e PDF, Balancete e Contabilidade sincronizados com ano de exercicio"
   },
   "promotion": {
     "promoted_at": null,

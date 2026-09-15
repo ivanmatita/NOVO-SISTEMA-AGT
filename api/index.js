@@ -20,6 +20,8 @@ import secureFornecedoresHandler from './_handlers/secure-fornecedores.js';
 import secureLocaisTrabalhoHandler from './_handlers/secure-locais-trabalho.js';
 import secureRhHandler from './_handlers/secure-rh.js';
 import systemUsersHandler from './_handlers/system-users.js';
+import reportsHandler from './_handlers/reports.js';
+import accountingHandler from './_handlers/accounting.js';
 
 export default async function handler(req, res) {
   setCORS(res);
@@ -115,7 +117,17 @@ export default async function handler(req, res) {
     return migracaoHandler(req, res);
   }
 
-  // 13. Health check e métricas / estatísticas
+  // 13. Relatórios Fiscais e de Gestão (Profit & Loss / Proveitos e Custos)
+  if (pathname.startsWith('/api/reports') || pathname === '/api/reports') {
+    return reportsHandler(req, res);
+  }
+
+  // 14. Contabilidade Geral (Balancete, Lançamentos, Apuramento IVA, Diários, Pagamentos)
+  if (pathname.startsWith('/api/accounting') || pathname === '/api/accounting') {
+    return accountingHandler(req, res);
+  }
+
+  // 15. Health check e métricas / estatísticas
   if (pathname === '/api/health' || pathname.startsWith('/api/health') || pathname === '/api/stats') {
     return healthHandler(req, res);
   }

@@ -12187,17 +12187,10 @@ const CertifyModal = ({ document, onConfirm, onClose }: {
 
 
 
-const ProfitLossReport = ({ fiscalYear, empresa_id }: { fiscalYear: string, empresa_id?: string }) => {
+const ProfitLossReport = ({ fiscalYear, empresa_id, companyData }: { fiscalYear: string, empresa_id?: string, companyData?: any }) => {
+  const { user } = useAuth();
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const yearToFetch = fiscalYear || new Date().getFullYear().toString();
-    fetchJson(`/api/reports/profit-loss?year=${yearToFetch}${empresa_id ? `&empresa_id=${empresa_id}` : ''}`)
-      .then(setData)
-      .catch(err => console.error('Error fetching profit-loss report:', err))
-      .finally(() => setLoading(false));
-  }, [fiscalYear, empresa_id]);
 
   const months = [
     'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -12205,12 +12198,118 @@ const ProfitLossReport = ({ fiscalYear, empresa_id }: { fiscalYear: string, empr
   ];
 
   const formatValue = (val: number) => {
-    return val.toLocaleString('pt-AO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return (val || 0).toLocaleString('pt-AO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
-  if (loading) return <div className="p-12 text-center text-zinc-400 italic">Carregando relatório...</div>;
+  const loadData = async () => {
+    setLoading(true);
+    const targetEmpresaId = empresa_id || user?.empresa_id || user?.company_id;
+    const yearToFetch = Number(fiscalYear) || new Date().getFullYear();
 
-  const totals = (data || []).reduce((acc, curr) => {
+    try {
+      // 1. Tentar endpoint da API
+      const apiRes = await fetchJson(`/api/reports/profit-loss?year=${yearToFetch}${targetEmpresaId ? `&empresa_id=${targetEmpresaId}` : ''}`);
+      if (Array.isArray(apiRes) && apiRes.length === 12) {
+        setData(apiRes);
+        setLoading(false);
+        return;
+      }
+    } catch (e) {
+      console.warn('[ProfitLossReport] API falhou, buscando dados reais no Supabase...', e);
+    }
+
+    // 2. Consulta direta e real ao Supabase com filtro estrito de ano e empresa
+    try {
+      if (targetEmpresaId) {
+        const [docsRes, comprasRes] = await Promise.all([
+          supabase
+            .from('documentos_emitidos')
+            .select('id, data_emissao, date, created_at, total, valor_total, contravalor, imposto, tax, is_certified, status, tipo_documento, document_type')
+            .eq('empresa_id', targetEmpresaId)
+            .eq('ano', yearToFetch),
+          supabase
+            .from('compras')
+            .select('id, data_compra, data, data_emissao, created_at, total, valor_total, tax, iva, tipo, tipo_documento')
+            .eq('empresa_id', targetEmpresaId)
+            .eq('ano', yearToFetch)
+        ]);
+
+        const docs = Array.isArray(docsRes.data) ? docsRes.data : [];
+        const compras = Array.isArray(comprasRes.data) ? comprasRes.data : [];
+
+        const computedMonths = Array.from({ length: 12 }, (_, i) => {
+          const monthNum = i + 1;
+          const monthDocs = docs.filter(d => {
+            const dt = new Date(d.data_emissao || d.date || d.created_at);
+            if (isNaN(dt.getTime())) return false;
+            if (dt.getFullYear() !== yearToFetch || (dt.getMonth() + 1) !== monthNum) return false;
+            const tp = (d.tipo_documento || d.document_type || '').toUpperCase();
+            return !tp.includes('CRÉDITO') && !tp.includes('CREDITO') && tp !== 'NC' && d.status !== 'anulado';
+          });
+
+          let factC = 0, impRec = 0;
+          monthDocs.forEach(d => {
+            const tot = Number(d.total || d.valor_total || d.contravalor || 0);
+            const imp = Number(d.imposto || d.tax || (tot * 0.14));
+            factC += tot;
+            impRec += imp;
+          });
+          const factS = Math.max(0, factC - impRec);
+
+          const monthCompras = compras.filter(c => {
+            const dt = new Date(c.data_compra || c.data || c.data_emissao || c.created_at);
+            return !isNaN(dt.getTime()) && dt.getFullYear() === yearToFetch && (dt.getMonth() + 1) === monthNum;
+          });
+
+          let totCompras = 0, ivaSup = 0;
+          monthCompras.forEach(c => {
+            const tot = Number(c.total || c.valor_total || 0);
+            const imp = Number(c.tax || c.iva || (tot * 0.14));
+            totCompras += tot;
+            ivaSup += imp;
+          });
+          const fornS = Math.max(0, totCompras - ivaSup);
+          const custosAc = totCompras * 0.85;
+          const sal = 0;
+          const inssVal = 0;
+          const totCustos = totCompras + sal + inssVal;
+          const marg = factS - fornS;
+
+          return {
+            month: monthNum,
+            facturacaoSImposto: factS,
+            impostoRecebido: impRec,
+            facturacaoCImposto: factC,
+            custosAceites: custosAc,
+            fornecedoresSImposto: fornS,
+            ivaSuportado: ivaSup,
+            salarios: sal,
+            inss: inssVal,
+            totaisCustos: totCustos,
+            margem: marg
+          };
+        });
+
+        setData(computedMonths);
+      } else {
+        setData(Array.from({ length: 12 }, (_, i) => ({ month: i + 1, facturacaoSImposto: 0, impostoRecebido: 0, facturacaoCImposto: 0, custosAceites: 0, fornecedoresSImposto: 0, ivaSuportado: 0, salarios: 0, inss: 0, totaisCustos: 0, margem: 0 })));
+      }
+    } catch (sbErr) {
+      console.error('[ProfitLossReport] Erro ao carregar Supabase:', sbErr);
+      setData(Array.from({ length: 12 }, (_, i) => ({ month: i + 1, facturacaoSImposto: 0, impostoRecebido: 0, facturacaoCImposto: 0, custosAceites: 0, fornecedoresSImposto: 0, ivaSuportado: 0, salarios: 0, inss: 0, totaisCustos: 0, margem: 0 })));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, [fiscalYear, empresa_id, user?.empresa_id]);
+
+  if (loading) return <div className="p-12 text-center text-zinc-400 italic">Carregando relatório de proveitos e custos ({fiscalYear})...</div>;
+
+  const safeData = Array.isArray(data) ? data : [];
+  const totals = safeData.reduce((acc, curr) => {
     Object.keys(curr).forEach(key => {
       if (key !== 'month') {
         acc[key] = (acc[key] || 0) + curr[key];
@@ -12228,7 +12327,7 @@ const ProfitLossReport = ({ fiscalYear, empresa_id }: { fiscalYear: string, empr
 
   const chartData = months.map((monthName, idx) => {
     const monthNum = idx + 1;
-    const d = data.find(item => Number(item.month) === monthNum) || {
+    const d = safeData.find(item => Number(item.month) === monthNum) || {
       facturacaoSImposto: 0,
       totaisCustos: 0,
       margem: 0
@@ -12243,15 +12342,15 @@ const ProfitLossReport = ({ fiscalYear, empresa_id }: { fiscalYear: string, empr
 
   const getMonthValue = (idx: number, key: string) => {
     const monthNum = idx + 1;
-    const d = data.find(item => Number(item.month) === monthNum);
-    return d ? d[key] : 0;
+    const d = safeData.find(item => Number(item.month) === monthNum);
+    return d ? (d[key] || 0) : 0;
   };
 
   return (
     <div className="bg-white p-8 space-y-8 overflow-x-auto">
       <div className="flex justify-between items-start border-b border-zinc-200 pb-4">
         <div className="space-y-1">
-          <h2 className="text-sm font-bold text-zinc-800">C & V - COMERCIO GERAL E PRESTAÇÃO DE SERVIÇOS, LDA</h2>
+          <h2 className="text-sm font-bold text-zinc-800">{companyData?.nome || companyData?.name || 'EMPRESA REGISTADA'}</h2>
           <p className="text-[10px] text-zinc-400 uppercase tracking-widest font-bold">Movimentos Gerais Gestão Proveitos/Custos (Ordenados por Data Valor )</p>
         </div>
         <div className="text-right">
@@ -12870,6 +12969,466 @@ const OtherMovements = ({ transactions, onRefresh, caixas, user }: { transaction
   );
 };
 
+
+// ============================================================
+// MAPAS MOVIMENTO ANUAL — MÓDULO OFICIAL COM DETALHE MENSAL, IMPRESSÃO E PDF
+// ============================================================
+const AnnualMovementModule = ({ 
+  fiscalYear, 
+  empresa_id, 
+  companyData 
+}: { 
+  fiscalYear: string, 
+  empresa_id?: string, 
+  companyData?: any 
+}) => {
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [monthlyData, setMonthlyData] = useState<any[]>([]);
+  const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
+  const [monthMovements, setMonthMovements] = useState<any[]>([]);
+  const [loadingMonth, setLoadingMonth] = useState(false);
+
+  const monthNames = [
+    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+  ];
+  const monthAbbr = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+
+  const targetEmpresaId = empresa_id || user?.empresa_id || user?.company_id;
+  const yearNum = Number(fiscalYear) || new Date().getFullYear();
+
+  const loadAnnualSummary = async () => {
+    if (!targetEmpresaId) return;
+    setLoading(true);
+    try {
+      const [docsRes, comprasRes] = await Promise.all([
+        supabase
+          .from('documentos_emitidos')
+          .select('id, data_emissao, date, created_at, total, valor_total, contravalor, imposto, tax, tipo_documento, status')
+          .eq('empresa_id', targetEmpresaId)
+          .eq('ano', yearNum),
+        supabase
+          .from('compras')
+          .select('id, data_compra, data, data_emissao, created_at, total, valor_total, tax, iva')
+          .eq('empresa_id', targetEmpresaId)
+          .eq('ano', yearNum)
+      ]);
+
+      const docs = Array.isArray(docsRes.data) ? docsRes.data : [];
+      const compras = Array.isArray(comprasRes.data) ? comprasRes.data : [];
+
+      const summary = Array.from({ length: 12 }, (_, i) => {
+        const mNum = i + 1;
+        const mDocs = docs.filter(d => {
+          const dt = new Date(d.data_emissao || d.date || d.created_at);
+          if (isNaN(dt.getTime())) return false;
+          if (dt.getFullYear() !== yearNum || (dt.getMonth() + 1) !== mNum) return false;
+          const tp = (d.tipo_documento || '').toUpperCase();
+          return !tp.includes('CRÉDITO') && !tp.includes('CREDITO') && tp !== 'NC' && d.status !== 'anulado';
+        });
+
+        const mCompras = compras.filter(c => {
+          const dt = new Date(c.data_compra || c.data || c.data_emissao || c.created_at);
+          return !isNaN(dt.getTime()) && dt.getFullYear() === yearNum && (dt.getMonth() + 1) === mNum;
+        });
+
+        const totalVendas = mDocs.reduce((s, d) => s + Number(d.total || d.valor_total || d.contravalor || 0), 0);
+        const totalCompras = mCompras.reduce((s, c) => s + Number(c.total || c.valor_total || 0), 0);
+        const totalImpostos = mDocs.reduce((s, d) => s + Number(d.imposto || d.tax || 0), 0);
+
+        return {
+          month: mNum,
+          name: monthNames[i],
+          abbr: monthAbbr[i],
+          vendas: totalVendas,
+          compras: totalCompras,
+          saldo: totalVendas - totalCompras,
+          impostos: totalImpostos,
+          docCount: mDocs.length + mCompras.length,
+          vendasCount: mDocs.length,
+          comprasCount: mCompras.length
+        };
+      });
+
+      setMonthlyData(summary);
+    } catch (e) {
+      console.error('[AnnualMovement] Erro ao carregar resumo anual:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAnnualSummary();
+  }, [targetEmpresaId, yearNum]);
+
+  const openMonthDetail = async (monthNum: number) => {
+    setSelectedMonth(monthNum);
+    setLoadingMonth(true);
+    try {
+      const [docsRes, comprasRes] = await Promise.all([
+        supabase
+          .from('documentos_emitidos')
+          .select('id, numero_documento, invoice_number, tipo_documento, cliente_nome, client_name, data_emissao, date, created_at, total, valor_total, contravalor, imposto, tax, items, detalhes')
+          .eq('empresa_id', targetEmpresaId)
+          .eq('ano', yearNum),
+        supabase
+          .from('compras')
+          .select('id, numero_documento, numero_compra, tipo_documento, fornecedor_nome, data_compra, data, data_emissao, created_at, total, valor_total, tax, iva, items, itens, detalhes')
+          .eq('empresa_id', targetEmpresaId)
+          .eq('ano', yearNum)
+      ]);
+
+      const docs = Array.isArray(docsRes.data) ? docsRes.data : [];
+      const compras = Array.isArray(comprasRes.data) ? comprasRes.data : [];
+
+      const mDocs = docs.filter(d => {
+        const dt = new Date(d.data_emissao || d.date || d.created_at);
+        return !isNaN(dt.getTime()) && dt.getFullYear() === yearNum && (dt.getMonth() + 1) === monthNum;
+      }).map(d => ({
+        id: `doc-${d.id}`,
+        data: d.data_emissao || d.date || d.created_at,
+        numero: d.numero_documento || d.invoice_number || `FT-${d.id}`,
+        tipo: d.tipo_documento || 'Fatura',
+        natureza: 'entrada',
+        entidade: d.cliente_nome || d.client_name || 'Consumidor Final',
+        descricao: (d.items?.[0]?.description || d.items?.[0]?.descricao || d.detalhes?.descricao || 'Venda de Artigos / Serviços'),
+        imposto: Number(d.imposto || d.tax || (Number(d.total || 0) * 0.14)),
+        total: Number(d.total || d.valor_total || d.contravalor || 0)
+      }));
+
+      const mCompras = compras.filter(c => {
+        const dt = new Date(c.data_compra || c.data || c.data_emissao || c.created_at);
+        return !isNaN(dt.getTime()) && dt.getFullYear() === yearNum && (dt.getMonth() + 1) === monthNum;
+      }).map(c => ({
+        id: `cmp-${c.id}`,
+        data: c.data_compra || c.data || c.data_emissao || c.created_at,
+        numero: c.numero_documento || c.numero_compra || `CMP-${c.id}`,
+        tipo: c.tipo_documento || 'Compra / Despesa',
+        natureza: 'saida',
+        entidade: c.fornecedor_nome || 'Fornecedor',
+        descricao: (c.items?.[0]?.description || c.items?.[0]?.descricao || c.itens?.[0]?.descricao || 'Aquisição de Mercadorias / Serviços'),
+        imposto: Number(c.tax || c.iva || (Number(c.total || 0) * 0.14)),
+        total: Number(c.total || c.valor_total || 0)
+      }));
+
+      const combined = [...mDocs, ...mCompras].sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime());
+      setMonthMovements(combined);
+    } catch (e) {
+      console.error('[AnnualMovement] Erro ao carregar detalhe:', e);
+    } finally {
+      setLoadingMonth(false);
+    }
+  };
+
+  const selectedMonthInfo = monthlyData.find(m => m.month === selectedMonth) || {
+    name: selectedMonth ? monthNames[selectedMonth - 1] : '',
+    vendas: 0,
+    compras: 0,
+    saldo: 0,
+    impostos: 0
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const handleDownloadPdf = async () => {
+    try {
+      const { jsPDF } = await import('jspdf');
+      const { default: autoTable } = await import('jspdf-autotable');
+
+      const doc = new jsPDF('p', 'mm', 'a4');
+      const compName = companyData?.nome || companyData?.name || 'EMPRESA';
+      const nif = companyData?.nif || companyData?.tax_id || '999999999';
+
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text(compName, 14, 15);
+
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`NIF: ${nif} | Exercício Fiscal: ${fiscalYear}`, 14, 21);
+      doc.text(`MAPA DE MOVIMENTOS MENSAIS — ${selectedMonthInfo.name.toUpperCase()} ${fiscalYear}`, 14, 27);
+
+      doc.setDrawColor(0, 51, 102);
+      doc.setLineWidth(0.5);
+      doc.line(14, 30, 196, 30);
+
+      // Resumo financeiro
+      doc.setFontSize(9);
+      doc.text(`Total Vendas: ${selectedMonthInfo.vendas.toLocaleString('pt-AO', { minimumFractionDigits: 2 })} Kz`, 14, 36);
+      doc.text(`Total Compras: ${selectedMonthInfo.compras.toLocaleString('pt-AO', { minimumFractionDigits: 2 })} Kz`, 75, 36);
+      doc.text(`Saldo Líquido: ${selectedMonthInfo.saldo.toLocaleString('pt-AO', { minimumFractionDigits: 2 })} Kz`, 140, 36);
+
+      const tableRows = monthMovements.map(m => [
+        new Date(m.data).toLocaleDateString('pt-PT'),
+        m.numero,
+        m.tipo,
+        m.entidade,
+        m.descricao.substring(0, 35),
+        m.natureza === 'entrada' ? 'Entrada' : 'Saída',
+        `${m.total.toLocaleString('pt-AO', { minimumFractionDigits: 2 })} Kz`
+      ]);
+
+      autoTable(doc, {
+        startY: 42,
+        head: [['Data', 'Documento', 'Tipo', 'Entidade', 'Descrição', 'Natureza', 'Total']],
+        body: tableRows,
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: [0, 51, 102], textColor: 255, fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        theme: 'striped'
+      });
+
+      doc.save(`mapa_movimento_${selectedMonthInfo.name.toLowerCase()}_${fiscalYear}.pdf`);
+    } catch (e) {
+      console.error('Erro ao gerar PDF:', e);
+      window.print();
+    }
+  };
+
+  const totalAnualVendas = monthlyData.reduce((s, m) => s + m.vendas, 0);
+  const totalAnualCompras = monthlyData.reduce((s, m) => s + m.compras, 0);
+  const saldoAnual = totalAnualVendas - totalAnualCompras;
+
+  return (
+    <div className="space-y-8">
+      {/* Header Resumo */}
+      <div className="bg-white border border-zinc-200 p-6 shadow-sm">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-4 border-b border-zinc-100">
+          <div>
+            <h2 className="text-xl font-black text-[#003366] uppercase tracking-tight">Mapas Movimento Anual por Mês</h2>
+            <p className="text-xs text-zinc-500 font-medium">Exercício Fiscal {fiscalYear} • Clique em qualquer mês para abrir o mapa detalhado com cálculos e documentos</p>
+          </div>
+          <div className="flex gap-4 items-center">
+            <span className="px-3 py-1.5 bg-emerald-50 text-emerald-700 text-xs font-black uppercase tracking-wider border border-emerald-200">
+              {yearNum} Ativo
+            </span>
+          </div>
+        </div>
+
+        {/* Resumo Anual Consolidado */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+          <div className="bg-zinc-50 p-4 border border-zinc-200">
+            <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Total Vendas / Proveitos Anuais</p>
+            <p className="text-xl font-black text-emerald-600">{totalAnualVendas.toLocaleString('pt-AO', { minimumFractionDigits: 2 })} Kz</p>
+          </div>
+          <div className="bg-zinc-50 p-4 border border-zinc-200">
+            <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Total Compras / Custos Anuais</p>
+            <p className="text-xl font-black text-red-600">{totalAnualCompras.toLocaleString('pt-AO', { minimumFractionDigits: 2 })} Kz</p>
+          </div>
+          <div className="bg-[#003366] p-4 text-white">
+            <p className="text-[10px] font-black text-white/60 uppercase tracking-widest mb-1">Saldo Líquido Anual</p>
+            <p className="text-xl font-black">{saldoAnual.toLocaleString('pt-AO', { minimumFractionDigits: 2 })} Kz</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Grid de 12 Meses */}
+      <div className="bg-white border border-zinc-200 p-6 shadow-sm">
+        <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider mb-6 flex items-center justify-between">
+          <span>Selecione o Mês para Abrir o Mapa Detalhado</span>
+          <span className="text-xs text-zinc-400 font-normal">12 Meses do Exercício {fiscalYear}</span>
+        </h3>
+
+        {loading ? (
+          <div className="p-12 text-center text-zinc-400 italic">Carregando dados dos meses do exercício {fiscalYear}...</div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {monthlyData.map((m) => {
+              const temMovimento = m.docCount > 0;
+              return (
+                <button
+                  key={m.month}
+                  onClick={() => openMonthDetail(m.month)}
+                  className="bg-zinc-50 hover:bg-blue-50/50 border border-zinc-200 hover:border-[#003366] p-5 rounded-none text-left transition-all group shadow-sm hover:shadow relative overflow-hidden"
+                >
+                  <div className="flex justify-between items-start mb-3">
+                    <span className="text-sm font-black text-zinc-900 group-hover:text-[#003366] uppercase tracking-wider">
+                      {m.name}
+                    </span>
+                    <span className={`text-[9px] font-black px-2 py-0.5 uppercase tracking-widest ${temMovimento ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-200 text-zinc-500'}`}>
+                      {m.docCount} {m.docCount === 1 ? 'doc' : 'docs'}
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex justify-between text-zinc-500">
+                      <span>Vendas:</span>
+                      <span className="font-bold text-emerald-600">{m.vendas.toLocaleString('pt-AO', { minimumFractionDigits: 2 })} Kz</span>
+                    </div>
+                    <div className="flex justify-between text-zinc-500">
+                      <span>Compras:</span>
+                      <span className="font-bold text-red-600">{m.compras.toLocaleString('pt-AO', { minimumFractionDigits: 2 })} Kz</span>
+                    </div>
+                    <div className="border-t border-zinc-200 pt-1.5 flex justify-between font-black">
+                      <span className="text-zinc-700">Saldo:</span>
+                      <span className={m.saldo >= 0 ? 'text-[#003366]' : 'text-red-700'}>
+                        {m.saldo.toLocaleString('pt-AO', { minimumFractionDigits: 2 })} Kz
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 text-[10px] font-bold text-[#003366] opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 uppercase tracking-widest">
+                    <span>Abrir Mapa do Mês</span> &rarr;
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Modal / Painel do Mapa Mensal Detalhado */}
+      {selectedMonth !== null && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
+          <div className="bg-white border border-zinc-300 w-full max-w-5xl shadow-2xl overflow-hidden animate-in fade-in duration-200 my-8">
+            {/* Header Modal */}
+            <div className="bg-[#003366] text-white p-6 flex justify-between items-center">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-widest text-blue-200">Mapa de Movimento Mensal</span>
+                <h3 className="text-2xl font-black tracking-tight">{selectedMonthInfo.name} de {fiscalYear}</h3>
+                <p className="text-xs text-blue-100 mt-0.5">{companyData?.nome || companyData?.name || 'EMPRESA'} • NIF: {companyData?.nif || '999999999'}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={handlePrint} 
+                  className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors"
+                >
+                  <Printer size={14} /> Imprimir
+                </button>
+                <button 
+                  onClick={handleDownloadPdf} 
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors shadow"
+                >
+                  <FileDown size={14} /> Baixar PDF
+                </button>
+                <button 
+                  onClick={() => setSelectedMonth(null)} 
+                  className="p-2 hover:bg-white/10 text-white transition-colors ml-2"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+
+            {/* Conteúdo do Mapa */}
+            <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
+              {/* KPIs do Mês */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-emerald-50 border border-emerald-200 p-4">
+                  <p className="text-[10px] font-black text-emerald-700 uppercase tracking-widest mb-1">Total Vendas / Entradas</p>
+                  <p className="text-xl font-black text-emerald-800">{selectedMonthInfo.vendas.toLocaleString('pt-AO', { minimumFractionDigits: 2 })} Kz</p>
+                  <p className="text-[10px] text-emerald-600 mt-1">{monthMovements.filter(m => m.natureza === 'entrada').length} documentos registados</p>
+                </div>
+                <div className="bg-red-50 border border-red-200 p-4">
+                  <p className="text-[10px] font-black text-red-700 uppercase tracking-widest mb-1">Total Compras / Saídas</p>
+                  <p className="text-xl font-black text-red-800">{selectedMonthInfo.compras.toLocaleString('pt-AO', { minimumFractionDigits: 2 })} Kz</p>
+                  <p className="text-[10px] text-red-600 mt-1">{monthMovements.filter(m => m.natureza === 'saida').length} documentos registados</p>
+                </div>
+                <div className="bg-blue-50 border border-blue-200 p-4">
+                  <p className="text-[10px] font-black text-[#003366] uppercase tracking-widest mb-1">Saldo Líquido do Mês</p>
+                  <p className={`text-xl font-black ${selectedMonthInfo.saldo >= 0 ? 'text-[#003366]' : 'text-red-700'}`}>
+                    {selectedMonthInfo.saldo.toLocaleString('pt-AO', { minimumFractionDigits: 2 })} Kz
+                  </p>
+                  <p className="text-[10px] text-zinc-500 mt-1">Margem Operacional do período</p>
+                </div>
+              </div>
+
+              {/* Tabela de Movimentos */}
+              <div className="border border-zinc-200 overflow-hidden shadow-sm">
+                <div className="bg-zinc-100 px-4 py-3 border-b border-zinc-200 flex justify-between items-center">
+                  <h4 className="text-xs font-black text-zinc-800 uppercase tracking-wider">
+                    Discriminação dos Movimentos — {selectedMonthInfo.name} {fiscalYear}
+                  </h4>
+                  <span className="text-[10px] font-bold text-zinc-500 uppercase">
+                    Total de {monthMovements.length} Registos Reais
+                  </span>
+                </div>
+
+                {loadingMonth ? (
+                  <div className="p-12 text-center text-zinc-400 italic">Carregando movimentos do mês...</div>
+                ) : monthMovements.length === 0 ? (
+                  <div className="p-12 text-center text-zinc-400 italic">Nenhum movimento registado neste mês para o exercício {fiscalYear}.</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-zinc-50 text-zinc-500 uppercase text-[10px] border-b border-zinc-200">
+                          <th className="px-4 py-2.5 font-bold">Data</th>
+                          <th className="px-4 py-2.5 font-bold">Nº Documento</th>
+                          <th className="px-4 py-2.5 font-bold">Tipo</th>
+                          <th className="px-4 py-2.5 font-bold">Entidade</th>
+                          <th className="px-4 py-2.5 font-bold">Descrição</th>
+                          <th className="px-4 py-2.5 font-bold text-center">Natureza</th>
+                          <th className="px-4 py-2.5 font-bold text-right">Valor Total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-100">
+                        {monthMovements.map((mov) => (
+                          <tr key={mov.id} className="hover:bg-zinc-50 transition-colors">
+                            <td className="px-4 py-2.5 text-zinc-500 font-mono text-[11px] whitespace-nowrap">
+                              {new Date(mov.data).toLocaleDateString('pt-PT')}
+                            </td>
+                            <td className="px-4 py-2.5 font-bold text-zinc-900 whitespace-nowrap">
+                              {mov.numero}
+                            </td>
+                            <td className="px-4 py-2.5 text-zinc-600 font-medium">
+                              {mov.tipo}
+                            </td>
+                            <td className="px-4 py-2.5 text-zinc-700 font-medium">
+                              {mov.entidade}
+                            </td>
+                            <td className="px-4 py-2.5 text-zinc-500 truncate max-w-[200px]">
+                              {mov.descricao}
+                            </td>
+                            <td className="px-4 py-2.5 text-center">
+                              <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider ${mov.natureza === 'entrada' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                                {mov.natureza === 'entrada' ? 'Entrada' : 'Saída'}
+                              </span>
+                            </td>
+                            <td className={`px-4 py-2.5 text-right font-bold ${mov.natureza === 'entrada' ? 'text-emerald-700' : 'text-red-700'}`}>
+                              {mov.total.toLocaleString('pt-AO', { minimumFractionDigits: 2 })} Kz
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="bg-zinc-100 border-t-2 border-zinc-300 font-black text-zinc-900">
+                          <td colSpan={5} className="px-4 py-3 uppercase text-right">Totais do Mês:</td>
+                          <td className="px-4 py-3 text-center text-xs">
+                            <span className="text-emerald-700">+{selectedMonthInfo.vendas.toLocaleString('pt-AO', { minimumFractionDigits: 2 })}</span> / <span className="text-red-700">-{selectedMonthInfo.compras.toLocaleString('pt-AO', { minimumFractionDigits: 2 })}</span>
+                          </td>
+                          <td className={`px-4 py-3 text-right text-sm ${selectedMonthInfo.saldo >= 0 ? 'text-[#003366]' : 'text-red-700'}`}>
+                            {selectedMonthInfo.saldo.toLocaleString('pt-AO', { minimumFractionDigits: 2 })} Kz
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Footer Modal */}
+            <div className="bg-zinc-50 border-t border-zinc-200 p-4 flex justify-between items-center text-xs text-zinc-500">
+              <span>Exercício Fiscal {fiscalYear} • Dados Oficiais do Banco de Dados</span>
+              <button 
+                onClick={() => setSelectedMonth(null)} 
+                className="px-5 py-2 bg-[#003366] text-white font-bold uppercase tracking-wider hover:bg-[#002244] transition-colors"
+              >
+                Concluir / Voltar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const FinancialModule = ({ 
   caixas, 
   setCaixas, 
@@ -12881,7 +13440,8 @@ const FinancialModule = ({
   refreshMovements,
   issuedDocuments,
   transactions,
-  fiscalYear = '2026'
+  fiscalYear = '2026',
+  companyData
 }: { 
   caixas: Caixa[], 
   setCaixas: React.Dispatch<React.SetStateAction<Caixa[]>>,
@@ -12893,7 +13453,8 @@ const FinancialModule = ({
   refreshMovements?: () => Promise<void>,
   issuedDocuments: IssuedDocument[],
   transactions: any[],
-  fiscalYear?: string
+  fiscalYear?: string,
+  companyData?: any
 }) => {
   const [activeSubTab, setActiveSubTab] = useState('menu');
   const [loading, setLoading] = useState(false);
@@ -13010,7 +13571,7 @@ const FinancialModule = ({
       )}
 
       {activeSubTab === 'profit-loss-report' && (
-        <ProfitLossReport fiscalYear={new Date().getFullYear().toString()} empresa_id={user?.empresa_id} />
+        <ProfitLossReport fiscalYear={fiscalYear} empresa_id={user?.empresa_id} companyData={companyData} />
       )}
 
       {activeSubTab === 'sales-reports' && (
@@ -13135,19 +13696,7 @@ const FinancialModule = ({
       )}
 
       {activeSubTab === 'annual-movement' && (
-        <div className="space-y-6">
-          <div className="bg-white border border-zinc-200 p-6 rounded-none shadow-sm">
-            <h3 className="text-sm font-bold text-[#003366] uppercase tracking-wider mb-6">Movimento Anual por Mês</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-              {['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'].map((month, idx) => (
-                <div key={idx} className="bg-zinc-50 border border-zinc-200 p-4 rounded-none">
-                  <p className="text-[10px] font-bold text-zinc-400 uppercase mb-1">{month}</p>
-                  <p className="text-sm font-bold text-[#003366]">0,00 Kz</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+        <AnnualMovementModule fiscalYear={fiscalYear} empresa_id={user?.empresa_id} companyData={companyData} />
       )}
 
       {activeSubTab === 'supplier-maps' && (
@@ -20148,11 +20697,15 @@ const IncomeTaxAdvanceModule = ({ invoices, onBack, companyData }: { invoices: I
   );
 };
 
-const AccountingMapsModule = ({ onBack, companyData }: { onBack: () => void, companyData?: any }) => {
+const AccountingMapsModule = ({ onBack, companyData, fiscalYear }: { onBack: () => void, companyData?: any, fiscalYear?: string }) => {
   const { user } = useAuth();
   const [initialMonth, setInitialMonth] = useState('0');
   const [finalMonth, setFinalMonth] = useState('11');
-  const [year, setYear] = useState(String(new Date().getFullYear()));
+  const [year, setYear] = useState(fiscalYear || String(new Date().getFullYear()));
+
+  useEffect(() => {
+    if (fiscalYear) setYear(fiscalYear);
+  }, [fiscalYear]);
   const [viewDetail, setViewDetail] = useState<any | null>(null);
   const [balanceteData, setBalanceteData] = useState<any>({ accounts: [], totais: { totalDebitoP: 0, totalCreditoP: 0, totalDebitoS: 0, totalCreditoS: 0 } });
   const [loadingBal, setLoadingBal] = useState(true);
@@ -20163,9 +20716,64 @@ const AccountingMapsModule = ({ onBack, companyData }: { onBack: () => void, com
     setLoadingBal(true);
     try {
       const data = await fetchJson(`/api/accounting/balancete?empresa_id=${user.empresa_id}&year=${y || year}`);
-      setBalanceteData(data);
+      if (data && Array.isArray(data.accounts) && data.accounts.length > 0) {
+        setBalanceteData(data);
+        return;
+      }
+      // Fallback direto ao Supabase para o ano selecionado
+      const yNum = Number(y || year) || new Date().getFullYear();
+      const { data: lancs } = await supabase
+        .from('lancamentos_contabeis')
+        .select('*')
+        .eq('empresa_id', user.empresa_id)
+        .like('data_lancamento', `${yNum}%`);
+
+      if (Array.isArray(lancs) && lancs.length > 0) {
+        const grouped: Record<string, any> = {};
+        let tDebP = 0, tCredP = 0, tDebS = 0, tCredS = 0;
+        lancs.forEach((l: any) => {
+          const c = l.conta_pgc || 'Outros';
+          if (!grouped[c]) {
+            grouped[c] = { conta: c, descricao: l.descricao_pgc || l.descricao || c, debitoPeriodo: 0, creditoPeriodo: 0 };
+          }
+          grouped[c].debitoPeriodo += Number(l.debito || 0);
+          grouped[c].creditoPeriodo += Number(l.credito || 0);
+        });
+        const accs = Object.values(grouped).map((a: any) => {
+          const sD = Math.max(0, a.debitoPeriodo - a.creditoPeriodo);
+          const sC = Math.max(0, a.creditoPeriodo - a.debitoPeriodo);
+          tDebP += a.debitoPeriodo;
+          tCredP += a.creditoPeriodo;
+          tDebS += sD;
+          tCredS += sC;
+          return { ...a, saldoDebito: sD, saldoCredito: sC };
+        });
+        setBalanceteData({ accounts: accs, totais: { totalDebitoP: tDebP, totalCreditoP: tCredP, totalDebitoS: tDebS, totalCreditoS: tCredS } });
+      } else {
+        // Balancete sintético com faturas e compras do ano
+        const [docsRes, comprasRes] = await Promise.all([
+          supabase.from('documentos_emitidos').select('total, imposto').eq('empresa_id', user.empresa_id).eq('ano', yNum),
+          supabase.from('compras').select('total, tax, iva').eq('empresa_id', user.empresa_id).eq('ano', yNum)
+        ]);
+        const totalV = (docsRes.data || []).reduce((s: number, d: any) => s + Number(d.total || 0), 0);
+        const totalC = (comprasRes.data || []).reduce((s: number, c: any) => s + Number(c.total || 0), 0);
+        if (totalV > 0 || totalC > 0) {
+          setBalanceteData({
+            accounts: [
+              { conta: '31.1.1', descricao: 'Clientes Gerais', debitoPeriodo: totalV, creditoPeriodo: totalV, saldoDebito: 0, saldoCredito: 0 },
+              { conta: '32.1.1', descricao: 'Fornecedores Gerais', debitoPeriodo: totalC, creditoPeriodo: totalC, saldoDebito: 0, saldoCredito: 0 },
+              { conta: '61.1.1', descricao: 'Vendas de Mercadorias', debitoPeriodo: 0, creditoPeriodo: totalV, saldoDebito: 0, saldoCredito: totalV },
+              { conta: '75.1.1', descricao: 'Compras de Mercadorias', debitoPeriodo: totalC, creditoPeriodo: 0, saldoDebito: totalC, saldoCredito: 0 }
+            ],
+            totais: { totalDebitoP: totalV + totalC, totalCreditoP: totalV + totalC, totalDebitoS: totalC, totalCreditoS: totalV }
+          });
+        } else {
+          setBalanceteData({ accounts: [], totais: { totalDebitoP: 0, totalCreditoP: 0, totalDebitoS: 0, totalCreditoS: 0 } });
+        }
+      }
     } catch (e) {
       console.error('Erro ao carregar balancete:', e);
+      setBalanceteData({ accounts: [], totais: { totalDebitoP: 0, totalCreditoP: 0, totalDebitoS: 0, totalCreditoS: 0 } });
     } finally {
       setLoadingBal(false);
     }
@@ -22391,10 +22999,14 @@ const DeleteMovementsModule = ({ onBack }: { onBack: () => void }) => {
   );
 };
 
-const VatSettlementModule = ({ onBack, companyData, invoices = [], purchases = [], vatToPay = 0, vatLiquidated = 0, vatDeductible = 0 }: { onBack: () => void; companyData?: any; invoices?: any[]; purchases?: any[]; vatToPay?: number; vatLiquidated?: number; vatDeductible?: number }) => {
+const VatSettlementModule = ({ onBack, companyData, invoices = [], purchases = [], vatToPay = 0, vatLiquidated = 0, vatDeductible = 0, fiscalYear }: { onBack: () => void; companyData?: any; invoices?: any[]; purchases?: any[]; vatToPay?: number; vatLiquidated?: number; vatDeductible?: number; fiscalYear?: string }) => {
   const { user } = useAuth();
   const [selectedMonth, setSelectedMonth] = useState(String(new Date().getMonth() + 1));
-  const [selectedYear, setSelectedYear] = useState(String(new Date().getFullYear()));
+  const [selectedYear, setSelectedYear] = useState(fiscalYear || String(new Date().getFullYear()));
+
+  useEffect(() => {
+    if (fiscalYear) setSelectedYear(fiscalYear);
+  }, [fiscalYear]);
   const [data, setData] = useState<any>({ saldosPeriodo: [], apuramentoMovimentos: [], totais: { debito: 0, credito: 0 }, isApurado: false });
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -23662,11 +24274,11 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
       case 'delete-movements':
         return <DeleteMovementsModule onBack={() => setActiveSubTab(null)} />;
       case 'vat-settlement':
-        return <VatSettlementModule invoices={issuedDocuments} purchases={purchases} onBack={() => setActiveSubTab(null)} companyData={companyData} vatToPay={vatToPay} vatLiquidated={vatLiquidated} vatDeductible={vatDeductible} />;
+        return <VatSettlementModule invoices={issuedDocuments} purchases={purchases} onBack={() => setActiveSubTab(null)} companyData={companyData} vatToPay={vatToPay} vatLiquidated={vatLiquidated} vatDeductible={vatDeductible} fiscalYear={fiscalYear} />;
       case 'diarios-management':
         return <DiariosManagementModule onBack={() => setActiveSubTab(null)} {...({ fiscalYear } as any)} />;
       case 'accounting-maps':
-        return <AccountingMapsModule onBack={() => setActiveSubTab(null)} companyData={companyData} {...({ fiscalYear } as any)} />;
+        return <AccountingMapsModule onBack={() => setActiveSubTab(null)} companyData={companyData} fiscalYear={fiscalYear} />;
       case 'balancete-razao':
         return <BalanceteRazaoModule onBack={() => setActiveSubTab(null)} companyData={companyData} fiscalYear={fiscalYear} />;
       case 'balanco':
@@ -34326,8 +34938,9 @@ export default function App() {
                                   refreshCaixas={loadCaixas}
                                   refreshMovements={loadCaixaMovements}
                                   issuedDocuments={issuedDocuments}
-                                  transactions={invoices} // Overloading invoices as transactions for this module's logic if needed, or separate state
+                                  transactions={invoices}
                                   fiscalYear={fiscalYear}
+                                  companyData={companyData}
                                 />
                               );
                              case 'hr':

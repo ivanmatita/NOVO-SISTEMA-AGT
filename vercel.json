@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "nodeVersion": "22.x",
   "buildCommand": "npm run vercel-build",
   "outputDirectory": "dist",
   "rewrites": [

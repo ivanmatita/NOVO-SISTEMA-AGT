@@ -13360,14 +13360,10 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
                   <button 
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (!doc.is_certified) {
-                        onCertify(doc);
-                      } else {
-                        onAction('print_a4', doc);
-                      }
+                      onAction('print_a4', doc);
                     }} 
-                    title={doc.is_certified ? "Imprimir" : "Certificar e Imprimir"}
-                    className={`transition-all p-1.5 hover:bg-zinc-100 text-[#003366]`}
+                    title="Pré-visualizar e Imprimir (A4)"
+                    className="transition-all p-1.5 hover:bg-zinc-100 text-[#003366] rounded-sm"
                   >
                     <Printer size={14} />
                   </button>
@@ -13424,280 +13420,364 @@ const IssuedDocumentsList = ({ documents, onAction, onCertify, onViewDetail, isD
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm" 
+              className="absolute inset-0 bg-zinc-950/70 backdrop-blur-sm" 
               onClick={() => setShowActionsModal(null)} 
             />
             <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              initial={{ opacity: 0, scale: 0.96, y: 15 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-xl bg-white p-8 rounded-none shadow-2xl border-t-4 border-[#003366]"
+              exit={{ opacity: 0, scale: 0.96, y: 15 }}
+              className="relative w-full max-w-2xl bg-white rounded-none shadow-2xl border-t-4 border-[#003366] overflow-hidden flex flex-col max-h-[90vh]"
             >
-              <div className="flex justify-between items-center mb-6">
+              {/* Header */}
+              <div className="p-6 bg-zinc-50 border-b border-zinc-200 flex justify-between items-start">
                 <div>
-                   <h3 className="text-lg font-black text-[#003366] uppercase tracking-tighter">Opções do Documento</h3>
-                   <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">{showActionsModal.invoice_number || showActionsModal.numero_documento}</p>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-[#003366] bg-blue-100/60 px-2 py-0.5 border border-blue-200">
+                      {showActionsModal.document_type || showActionsModal.tipo_documento || 'Documento'}
+                    </span>
+                    {showActionsModal.is_certified ? (
+                      <span className="text-[9px] font-black uppercase tracking-widest text-emerald-700 bg-emerald-50 px-2 py-0.5 border border-emerald-200">
+                        Certificado
+                      </span>
+                    ) : (
+                      <span className="text-[9px] font-black uppercase tracking-widest text-amber-700 bg-amber-50 px-2 py-0.5 border border-amber-200">
+                        Rascunho
+                      </span>
+                    )}
+                    {(showActionsModal.status === 'anulado' || showActionsModal.estado_documento === 'anulado' || showActionsModal.documento_anulado) && (
+                      <span className="text-[9px] font-black uppercase tracking-widest text-red-700 bg-red-50 px-2 py-0.5 border border-red-200">
+                        Anulado
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="text-xl font-black text-zinc-900 uppercase tracking-tight mt-1">
+                    {showActionsModal.invoice_number || showActionsModal.numero_documento}
+                  </h3>
+                  <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider mt-0.5">
+                    Cliente: <span className="text-zinc-800">{showActionsModal.client_name || showActionsModal.cliente_id || 'Consumidor Final'}</span> • Total: <span className="text-[#003366] font-black">{formatCurrency(showActionsModal.counter_value || showActionsModal.total || showActionsModal.contravalor || 0)}</span>
+                  </p>
                 </div>
-                <button onClick={() => setShowActionsModal(null)} className="p-2 hover:bg-zinc-100 rounded-full transition-colors">
-                  <X size={20} className="text-zinc-400" />
+                <button 
+                  onClick={() => setShowActionsModal(null)} 
+                  className="p-1.5 text-zinc-400 hover:text-zinc-800 hover:bg-zinc-200 transition-colors"
+                >
+                  <X size={20} />
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
-                {/* 1. Editar Documento (Apenas para documentos não certificados) */}
-                {!showActionsModal.is_certified && (
-                     <button 
-                      onClick={() => { onAction('edit', showActionsModal); setShowActionsModal(null); }}
-                      className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-all border border-zinc-100 group shadow-sm bg-white"
+              {/* Body with structured sections */}
+              <div className="p-6 space-y-5 overflow-y-auto custom-scrollbar">
+                {/* 1. Visualização e Exportação */}
+                <div>
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Visualização e Exportação</h4>
+                  <div className="grid grid-cols-3 gap-2.5">
+                    <button 
+                      onClick={() => { onAction('print_a4', showActionsModal); setShowActionsModal(null); }}
+                      className="flex items-center gap-3 p-3 bg-white border border-zinc-200 hover:border-[#003366] hover:bg-blue-50/50 transition-all text-left group shadow-xs"
                     >
-                      <div className="w-10 h-10 bg-blue-100 text-[#003366] flex items-center justify-center group-hover:bg-[#003366] group-hover:text-white transition-colors">
-                        <Edit size={20} />
+                      <div className="w-8 h-8 rounded-none bg-blue-100/60 text-[#003366] flex items-center justify-center shrink-0 group-hover:bg-[#003366] group-hover:text-white transition-colors">
+                        <Eye size={16} />
                       </div>
-                      <div className="text-left">
-                        <p className="font-bold text-zinc-900 text-xs uppercase">Editar Documento</p>
-                        <p className="text-[9px] text-zinc-500 uppercase tracking-tighter">Edição completa permitida para rascunhos</p>
+                      <div>
+                        <div className="text-[11px] font-black uppercase text-zinc-900 group-hover:text-[#003366]">Pré-visualizar A4</div>
+                        <div className="text-[9px] text-zinc-400 font-semibold uppercase tracking-tight">Ver antes de imprimir</div>
                       </div>
                     </button>
-                  )}
 
-                  {/* 2. Clonar Documento */}
-                  <button 
-                    onClick={() => { onAction('clone', showActionsModal); setShowActionsModal(null); }}
-                    className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-all border border-zinc-100 group shadow-sm bg-white"
-                  >
-                    <div className="w-10 h-10 bg-zinc-100 text-zinc-600 flex items-center justify-center group-hover:bg-[#003366] group-hover:text-white transition-colors">
-                      <Copy size={20} />
-                    </div>
-                    <div className="text-left">
-                      <p className="font-bold text-zinc-900 text-xs uppercase">Clonar Documento</p>
-                      <p className="text-[9px] text-zinc-500 uppercase tracking-tighter">Duplicar c/ nova numeração</p>
-                    </div>
-                  </button>
-
-                  {/* 3. Exportar PDF */}
-                  <button 
-                    onClick={() => { onAction('export_pdf', showActionsModal); setShowActionsModal(null); }}
-                    className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-all border border-zinc-100 group shadow-sm bg-white"
-                  >
-                    <div className="w-10 h-10 bg-zinc-100 text-red-600 flex items-center justify-center group-hover:bg-red-600 group-hover:text-white transition-colors">
-                      <FileDown size={20} />
-                    </div>
-                    <div className="text-left">
-                      <p className="font-bold text-zinc-900 text-xs uppercase">Exportar PDF</p>
-                      <p className="text-[9px] text-zinc-500 uppercase tracking-tighter">Baixar formato A4 Profissional</p>
-                    </div>
-                  </button>
-
-                  {/* Relatórios do Documento */}
-                  <button 
-                    onClick={() => { onAction('reports', showActionsModal); setShowActionsModal(null); }}
-                    className="w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-all border border-zinc-100 group shadow-sm bg-white"
-                  >
-                    <div className="w-10 h-10 bg-zinc-100 text-[#003366] flex items-center justify-center group-hover:bg-[#003366] group-hover:text-white transition-colors">
-                      <FileBarChart size={20} />
-                    </div>
-                    <div className="text-left">
-                      <p className="font-bold text-zinc-900 text-xs uppercase">Análise do Documento</p>
-                      <p className="text-[9px] text-zinc-500 uppercase tracking-tighter">Visualizar cálculos e detalhes</p>
-                    </div>
-                  </button>
-
-                  {/* 4. Enviar Email / WhatsApp */}
-                  <div className="grid grid-cols-2 gap-2">
                     <button 
-                      onClick={() => { onAction('send_email', showActionsModal); setShowActionsModal(null); }}
-                      className="flex flex-col items-center justify-center gap-2 p-3 hover:bg-zinc-50 transition-all border border-zinc-100 group bg-white"
+                      onClick={() => { onAction('export_pdf', showActionsModal); setShowActionsModal(null); }}
+                      className="flex items-center gap-3 p-3 bg-white border border-zinc-200 hover:border-red-500 hover:bg-red-50/50 transition-all text-left group shadow-xs"
                     >
-                      <Mail size={18} className="text-[#003366] group-hover:scale-110 transition-transform" />
-                      <span className="font-bold text-zinc-900 text-[9px] uppercase tracking-widest">Email</span>
+                      <div className="w-8 h-8 rounded-none bg-red-100/60 text-red-600 flex items-center justify-center shrink-0 group-hover:bg-red-600 group-hover:text-white transition-colors">
+                        <FileDown size={16} />
+                      </div>
+                      <div>
+                        <div className="text-[11px] font-black uppercase text-zinc-900 group-hover:text-red-700">Baixar PDF</div>
+                        <div className="text-[9px] text-zinc-400 font-semibold uppercase tracking-tight">Download do ficheiro A4</div>
+                      </div>
+                    </button>
+
+                    <button 
+                      onClick={() => { onAction('reports', showActionsModal); setShowActionsModal(null); }}
+                      className="flex items-center gap-3 p-3 bg-white border border-zinc-200 hover:border-[#003366] hover:bg-zinc-50 transition-all text-left group shadow-xs"
+                    >
+                      <div className="w-8 h-8 rounded-none bg-zinc-100 text-zinc-700 flex items-center justify-center shrink-0 group-hover:bg-zinc-800 group-hover:text-white transition-colors">
+                        <FileBarChart size={16} />
+                      </div>
+                      <div>
+                        <div className="text-[11px] font-black uppercase text-zinc-900">Análise do Documento</div>
+                        <div className="text-[9px] text-zinc-400 font-semibold uppercase tracking-tight">Cálculos e impostos</div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 2. Vias e Formatos de Impressão */}
+                <div>
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Vias & Formatos de Impressão</h4>
+                  <div className="grid grid-cols-7 gap-2">
+                    <button 
+                      onClick={() => { onAction('print_a4_orig', showActionsModal); setShowActionsModal(null); }}
+                      className="flex flex-col items-center justify-center p-2.5 bg-zinc-50 border border-zinc-200 hover:border-[#003366] hover:bg-[#003366] hover:text-white transition-all text-center group"
+                    >
+                      <Printer size={15} className="mb-1 text-[#003366] group-hover:text-white" />
+                      <span className="text-[9px] font-black uppercase">Original</span>
+                      <span className="text-[8px] text-zinc-400 group-hover:text-blue-100 font-semibold">A4</span>
                     </button>
                     <button 
-                      onClick={() => { onAction('share_whatsapp', showActionsModal); setShowActionsModal(null); }}
-                      className="flex flex-col items-center justify-center gap-2 p-3 hover:bg-zinc-50 transition-all border border-zinc-100 group bg-white"
+                      onClick={() => { onAction('print_a4_dup', showActionsModal); setShowActionsModal(null); }}
+                      className="flex flex-col items-center justify-center p-2.5 bg-zinc-50 border border-zinc-200 hover:border-[#003366] hover:bg-[#003366] hover:text-white transition-all text-center group"
                     >
-                      <MessageCircle size={18} className="text-emerald-600 group-hover:scale-110 transition-transform" />
-                      <span className="font-bold text-zinc-900 text-[9px] uppercase tracking-widest">WhatsApp</span>
+                      <Printer size={15} className="mb-1 text-[#003366] group-hover:text-white" />
+                      <span className="text-[9px] font-black uppercase">Duplicado</span>
+                      <span className="text-[8px] text-zinc-400 group-hover:text-blue-100 font-semibold">A4</span>
+                    </button>
+                    <button 
+                      onClick={() => { onAction('print_a4_tri', showActionsModal); setShowActionsModal(null); }}
+                      className="flex flex-col items-center justify-center p-2.5 bg-zinc-50 border border-zinc-200 hover:border-[#003366] hover:bg-[#003366] hover:text-white transition-all text-center group"
+                    >
+                      <Printer size={15} className="mb-1 text-[#003366] group-hover:text-white" />
+                      <span className="text-[9px] font-black uppercase">Triplicado</span>
+                      <span className="text-[8px] text-zinc-400 group-hover:text-blue-100 font-semibold">A4</span>
+                    </button>
+                    <button 
+                      onClick={() => { onAction('print_a4', showActionsModal); setShowActionsModal(null); }}
+                      className="flex flex-col items-center justify-center p-2.5 bg-zinc-50 border border-zinc-200 hover:border-zinc-400 hover:bg-white transition-all text-center group"
+                    >
+                      <Printer size={15} className="mb-1 text-zinc-500" />
+                      <span className="text-[9px] font-black uppercase">Geral</span>
+                      <span className="text-[8px] text-zinc-400 font-semibold">A4</span>
+                    </button>
+                    <button 
+                      onClick={() => { onAction('print_p24', showActionsModal); setShowActionsModal(null); }}
+                      className="flex flex-col items-center justify-center p-2.5 bg-zinc-50 border border-zinc-200 hover:border-zinc-400 hover:bg-white transition-all text-center group"
+                    >
+                      <Printer size={15} className="mb-1 text-zinc-500" />
+                      <span className="text-[9px] font-black uppercase">P24</span>
+                      <span className="text-[8px] text-zinc-400 font-semibold">Térmico</span>
+                    </button>
+                    <button 
+                      onClick={() => { onAction('print_p24xl', showActionsModal); setShowActionsModal(null); }}
+                      className="flex flex-col items-center justify-center p-2.5 bg-zinc-50 border border-zinc-200 hover:border-zinc-400 hover:bg-white transition-all text-center group"
+                    >
+                      <Printer size={15} className="mb-1 text-zinc-500" />
+                      <span className="text-[9px] font-black uppercase">P24-XL</span>
+                      <span className="text-[8px] text-zinc-400 font-semibold">Térmico</span>
+                    </button>
+                    <button 
+                      onClick={() => { onAction('print_p80', showActionsModal); setShowActionsModal(null); }}
+                      className="flex flex-col items-center justify-center p-2.5 bg-zinc-50 border border-zinc-200 hover:border-zinc-400 hover:bg-white transition-all text-center group"
+                    >
+                      <Printer size={15} className="mb-1 text-zinc-500" />
+                      <span className="text-[9px] font-black uppercase">P80</span>
+                      <span className="text-[8px] text-zinc-400 font-semibold">POS 80mm</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 3. Operações Comerciais e Fiscais */}
+                <div>
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Operações Comerciais & Fiscais</h4>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {/* Editar (Apenas Rascunhos) */}
+                    {!showActionsModal.is_certified && (
+                      <button 
+                        onClick={() => { onAction('edit', showActionsModal); setShowActionsModal(null); }}
+                        className="flex items-center gap-3 p-3 bg-white border border-blue-200 hover:border-[#003366] hover:bg-blue-50/50 transition-all text-left group shadow-xs"
+                      >
+                        <div className="w-8 h-8 rounded-none bg-blue-100 text-[#003366] flex items-center justify-center shrink-0 group-hover:bg-[#003366] group-hover:text-white transition-colors">
+                          <Edit size={16} />
+                        </div>
+                        <div>
+                          <div className="text-[11px] font-black uppercase text-zinc-900">Editar Documento</div>
+                          <div className="text-[9px] text-zinc-400 font-semibold uppercase tracking-tight">Permitido para rascunhos</div>
+                        </div>
+                      </button>
+                    )}
+
+                    {/* Clonar Documento */}
+                    <button 
+                      onClick={() => { onAction('clone', showActionsModal); setShowActionsModal(null); }}
+                      className="flex items-center gap-3 p-3 bg-white border border-zinc-200 hover:border-[#003366] hover:bg-zinc-50 transition-all text-left group shadow-xs"
+                    >
+                      <div className="w-8 h-8 rounded-none bg-zinc-100 text-zinc-700 flex items-center justify-center shrink-0 group-hover:bg-[#003366] group-hover:text-white transition-colors">
+                        <Copy size={16} />
+                      </div>
+                      <div>
+                        <div className="text-[11px] font-black uppercase text-zinc-900">Clonar Documento</div>
+                        <div className="text-[9px] text-zinc-400 font-semibold uppercase tracking-tight">Duplicar c/ nova numeração</div>
+                      </div>
+                    </button>
+
+                    {/* Faturar / Converter */}
+                    <button 
+                      onClick={() => { onAction('convert', showActionsModal); setShowActionsModal(null); }}
+                      className="flex items-center gap-3 p-3 bg-white border border-zinc-200 hover:border-[#003366] hover:bg-zinc-50 transition-all text-left group shadow-xs"
+                    >
+                      <div className="w-8 h-8 rounded-none bg-zinc-100 text-[#003366] flex items-center justify-center shrink-0 group-hover:bg-[#003366] group-hover:text-white transition-colors">
+                        <RefreshCw size={16} />
+                      </div>
+                      <div>
+                        <div className="text-[11px] font-black uppercase text-zinc-900">Faturar / Converter</div>
+                        <div className="text-[9px] text-zinc-400 font-semibold uppercase tracking-tight">Transformar noutro documento</div>
+                      </div>
+                    </button>
+
+                    {/* Liquidar / Recibo */}
+                    <button 
+                      disabled={!(showActionsModal.document_type === 'Fatura' || showActionsModal.tipo_documento === 'FT') || showActionsModal.status === 'pago' || !showActionsModal.is_certified || (Number(showActionsModal.paid_amount || 0) >= Number(showActionsModal.total || showActionsModal.counter_value || showActionsModal.contravalor || 0))}
+                      onClick={() => { onAction('receipt', showActionsModal); setShowActionsModal(null); }}
+                      className={`flex items-center gap-3 p-3 border transition-all text-left shadow-xs ${(!(showActionsModal.document_type === 'Fatura' || showActionsModal.tipo_documento === 'FT') || showActionsModal.status === 'pago' || !showActionsModal.is_certified || (Number(showActionsModal.paid_amount || 0) >= Number(showActionsModal.total || showActionsModal.counter_value || showActionsModal.contravalor || 0))) ? 'bg-zinc-50 border-zinc-100 opacity-40 cursor-not-allowed' : 'bg-white border-emerald-200 hover:border-emerald-500 hover:bg-emerald-50/50 group'}`}
+                    >
+                      <div className="w-8 h-8 rounded-none bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                        <Receipt size={16} />
+                      </div>
+                      <div>
+                        <div className="text-[11px] font-black uppercase text-zinc-900">Liquidar / Recibo</div>
+                        <div className="text-[9px] text-zinc-400 font-semibold uppercase tracking-tight">Registar pagamento total/parcial</div>
+                      </div>
+                    </button>
+
+                    {/* Guia de Entrega */}
+                    <button 
+                      disabled={!showActionsModal.is_certified}
+                      onClick={() => { onAction('delivery_guide', showActionsModal); setShowActionsModal(null); }}
+                      className={`flex items-center gap-3 p-3 border transition-all text-left shadow-xs ${!showActionsModal.is_certified ? 'bg-zinc-50 border-zinc-100 opacity-40 cursor-not-allowed' : 'bg-white border-zinc-200 hover:border-blue-500 hover:bg-blue-50/50 group'}`}
+                    >
+                      <div className="w-8 h-8 rounded-none bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                        <Truck size={16} />
+                      </div>
+                      <div>
+                        <div className="text-[11px] font-black uppercase text-zinc-900">Guia de Entrega</div>
+                        <div className="text-[9px] text-zinc-400 font-semibold uppercase tracking-tight">Transporte e remessa</div>
+                      </div>
+                    </button>
+
+                    {/* Nota de Crédito */}
+                    <button 
+                      disabled={!showActionsModal.is_certified}
+                      onClick={() => { onAction('credit_note', showActionsModal); setShowActionsModal(null); }}
+                      className={`flex items-center gap-3 p-3 border transition-all text-left shadow-xs ${!showActionsModal.is_certified ? 'bg-zinc-50 border-zinc-100 opacity-40 cursor-not-allowed' : 'bg-white border-zinc-200 hover:border-red-500 hover:bg-red-50/50 group'}`}
+                    >
+                      <div className="w-8 h-8 rounded-none bg-red-50 text-red-600 flex items-center justify-center shrink-0 group-hover:bg-red-600 group-hover:text-white transition-colors">
+                        <FileMinus2 size={16} />
+                      </div>
+                      <div>
+                        <div className="text-[11px] font-black uppercase text-zinc-900">Nota de Crédito</div>
+                        <div className="text-[9px] text-zinc-400 font-semibold uppercase tracking-tight">Retificação fiscal</div>
+                      </div>
                     </button>
                   </div>
 
-                   {/* 5. Impressões Térmicas e Cópias */}
-                   <div className="col-span-2 space-y-2">
-                     <div className="grid grid-cols-4 gap-2 bg-zinc-50 p-3 border border-zinc-100 text-center">
-                        <button 
-                         disabled={!showActionsModal.is_certified}
-                         onClick={() => { onAction('print_a4', showActionsModal); setShowActionsModal(null); }} 
-                         className={`flex flex-col items-center gap-1 p-2 transition-all border border-transparent ${!showActionsModal.is_certified ? 'opacity-30 cursor-not-allowed' : 'hover:bg-white hover:border-zinc-200'}`}
-                        >
-                          <Printer size={16} className="text-zinc-400" />
-                          <span className="text-[8px] font-black uppercase">A4</span>
-                        </button>
-                        <button 
-                         disabled={!showActionsModal.is_certified}
-                         onClick={() => { onAction('print_p24', showActionsModal); setShowActionsModal(null); }} 
-                         className={`flex flex-col items-center gap-1 p-2 transition-all border border-transparent ${!showActionsModal.is_certified ? 'opacity-30 cursor-not-allowed' : 'hover:bg-white hover:border-zinc-200'}`}
-                        >
-                          <Printer size={16} className="text-zinc-400" />
-                          <span className="text-[8px] font-black uppercase">P24</span>
-                        </button>
-                        <button 
-                         disabled={!showActionsModal.is_certified}
-                         onClick={() => { onAction('print_p24xl', showActionsModal); setShowActionsModal(null); }} 
-                         className={`flex flex-col items-center gap-1 p-2 transition-all border border-transparent ${!showActionsModal.is_certified ? 'opacity-30 cursor-not-allowed' : 'hover:bg-white hover:border-zinc-200'}`}
-                        >
-                          <Printer size={16} className="text-zinc-400" />
-                          <span className="text-[8px] font-black uppercase">P24-XL</span>
-                        </button>
-                        <button 
-                         disabled={!showActionsModal.is_certified}
-                         onClick={() => { onAction('print_p80', showActionsModal); setShowActionsModal(null); }} 
-                         className={`flex flex-col items-center gap-1 p-2 transition-all border border-transparent ${!showActionsModal.is_certified ? 'opacity-30 cursor-not-allowed' : 'hover:bg-white hover:border-zinc-200'}`}
-                        >
-                          <Printer size={16} className="text-zinc-400" />
-                          <span className="text-[8px] font-black uppercase">P80</span>
-                        </button>
-                     </div>
-
-                     <div className="grid grid-cols-3 gap-2 pb-1">
-                        <button 
-                         disabled={!showActionsModal.is_certified}
-                         onClick={() => { onAction('print_a4_orig', showActionsModal); setShowActionsModal(null); }} 
-                         className={`flex flex-col items-center justify-center p-3 bg-white transition-all border border-zinc-100 shadow-sm group ${!showActionsModal.is_certified ? 'opacity-30 cursor-not-allowed' : 'hover:bg-[#003366] hover:text-white'}`}
-                        >
-                          <span className="text-[9px] font-black uppercase tracking-tighter">Imprimir Original</span>
-                        </button>
-                        <button 
-                         disabled={!showActionsModal.is_certified}
-                         onClick={() => { onAction('print_a4_dup', showActionsModal); setShowActionsModal(null); }} 
-                         className={`flex flex-col items-center justify-center p-3 bg-white transition-all border border-zinc-100 shadow-sm group ${!showActionsModal.is_certified ? 'opacity-30 cursor-not-allowed' : 'hover:bg-[#003366] hover:text-white'}`}
-                        >
-                          <span className="text-[9px] font-black uppercase tracking-tighter">Imprimir Duplicado</span>
-                        </button>
-                        <button 
-                         disabled={!showActionsModal.is_certified}
-                         onClick={() => { onAction('print_a4_tri', showActionsModal); setShowActionsModal(null); }} 
-                         className={`flex flex-col items-center justify-center p-3 bg-white transition-all border border-zinc-100 shadow-sm group ${!showActionsModal.is_certified ? 'opacity-30 cursor-not-allowed' : 'hover:bg-[#003366] hover:text-white'}`}
-                        >
-                          <span className="text-[9px] font-black uppercase tracking-tighter">Imprimir Triplicado</span>
-                        </button>
-                     </div>
-                   </div>
-
-                  {/* 6. Recibo (Apenas Faturas Certificadas) */}
-                  <button 
-                    disabled={!(showActionsModal.document_type === 'Fatura' || showActionsModal.tipo_documento === 'FT') || showActionsModal.status === 'pago' || !showActionsModal.is_certified || (Number(showActionsModal.paid_amount || 0) >= Number(showActionsModal.total || showActionsModal.counter_value || showActionsModal.contravalor || 0))}
-                    onClick={() => { onAction('receipt', showActionsModal); setShowActionsModal(null); }}
-                    className={`col-span-2 w-full flex items-center gap-4 p-4 transition-all border shadow-sm ${(!(showActionsModal.document_type === 'Fatura' || showActionsModal.tipo_documento === 'FT') || showActionsModal.status === 'pago' || !showActionsModal.is_certified || (Number(showActionsModal.paid_amount || 0) >= Number(showActionsModal.total || showActionsModal.counter_value || showActionsModal.contravalor || 0))) ? 'bg-zinc-50 border-zinc-100 opacity-50 cursor-not-allowed' : 'bg-white border-zinc-100 hover:bg-zinc-50 group'}`}
-                  >
-                    <div className="w-10 h-10 bg-zinc-100 text-emerald-600 flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-colors">
-                      <Receipt size={20} />
-                    </div>
-                    <div className="text-left">
-                      <p className="font-bold text-zinc-900 text-xs uppercase">Liquidar / Recibo</p>
-                      <p className="text-[9px] text-zinc-500 uppercase tracking-tighter">Registar pagamento parcial ou total</p>
-                    </div>
-                  </button>
-
-                  {/* 7. Guia de Entrega / Nota de Crédito */}
-                  <div className="grid grid-cols-2 gap-2 col-span-2">
-                     <button 
-                       disabled={!showActionsModal.is_certified}
-                       onClick={() => { onAction('delivery_guide', showActionsModal); setShowActionsModal(null); }}
-                       className={`flex items-center gap-3 p-3 transition-all border ${!showActionsModal.is_certified ? 'bg-zinc-50 border-zinc-100 opacity-50 cursor-not-allowed' : 'bg-white border-blue-50 hover:bg-blue-50 group'}`}
-                     >
-                       <Truck size={16} className="text-blue-600" />
-                       <span className="font-bold text-zinc-900 text-[9px] uppercase tracking-widest">Guia de Entrega</span>
-                     </button>
-                     <button 
-                       disabled={!showActionsModal.is_certified}
-                       onClick={() => { onAction('credit_note', showActionsModal); setShowActionsModal(null); }}
-                       className={`flex items-center gap-3 p-3 transition-all border ${!showActionsModal.is_certified ? 'bg-zinc-50 border-zinc-100 opacity-50 cursor-not-allowed' : 'bg-white border-red-50 hover:bg-red-50 group'}`}
-                     >
-                       <FileMinus2 size={16} className="text-red-600" />
-                       <span className="font-bold text-zinc-900 text-[9px] uppercase tracking-widest">Nota de Crédito</span>
-                     </button>
-                  </div>
-
-                  {/* 8. Anular Documento (SENSÍVEL) */}
-                  {(showActionsModal.is_certified && showActionsModal.status !== 'anulado' && showActionsModal.estado_documento !== 'anulado' && !showActionsModal.documento_anulado) ? (
-                    <button 
-                      onClick={() => { 
-                        console.log('Void button clicked for:', showActionsModal.id);
-                        onAction('void', showActionsModal); 
-                        setShowActionsModal(null); 
-                      }}
-                      className="col-span-2 w-full flex items-center gap-4 p-4 transition-all border border-red-100 bg-red-50 hover:bg-red-100 group shadow-sm"
-                    >
-                      <div className="w-10 h-10 bg-white text-red-600 flex items-center justify-center group-hover:bg-red-600 group-hover:text-white transition-colors border border-red-200">
-                        <Trash2 size={20} />
-                      </div>
-                      <div className="text-left">
-                        <p className="font-bold text-red-700 text-xs uppercase">Anular Documento</p>
-                        <p className="text-[9px] text-red-400 uppercase tracking-tighter">Operação irreversível • Fica sem validade</p>
-                      </div>
-                    </button>
-                  ) : (
-                    (showActionsModal.status === 'anulado' || showActionsModal.estado_documento === 'anulado' || showActionsModal.documento_anulado) && (
-                      <div className="col-span-2 p-4 bg-red-50 border border-red-200 text-center">
-                        <span className="text-red-600 font-black uppercase tracking-widest text-xs">Documento Anulado</span>
-                      </div>
-                    )
-                  )}
-
-                  {/* 9. Apagar Documento (Apenas não certificados) */}
-                  {!showActionsModal.is_certified && (
-                    <button 
-                      onClick={() => { onAction('delete', showActionsModal); setShowActionsModal(null); }}
-                      className="col-span-2 w-full flex items-center gap-4 p-4 hover:bg-red-50 transition-all border border-red-100 group shadow-sm bg-white"
-                    >
-                      <div className="w-10 h-10 bg-red-50 text-red-600 flex items-center justify-center group-hover:bg-red-600 group-hover:text-white transition-colors border border-red-200">
-                        <Trash size={20} />
-                      </div>
-                      <div className="text-left">
-                        <p className="font-bold text-red-700 text-xs uppercase">Apagar Documento</p>
-                        <p className="text-[9px] text-red-400 uppercase tracking-tighter">Eliminar permanentemente do sistema</p>
-                      </div>
-                    </button>
-                  )}
-
-                  {/* 10. Documento de Suporte / Draf - Only for foreign currencies */}
+                  {/* Documento de Suporte / Draft - Foreign Currencies */}
                   {((showActionsModal.moeda || showActionsModal.currency) && !['Kwanza', 'AOA', 'Akz', 'Aoa', 'kwanza'].includes(showActionsModal.moeda || showActionsModal.currency)) && (
                     <button 
                       onClick={() => { 
                         onAction('foreign_draft', showActionsModal);
                         setShowActionsModal(null); 
                       }}
-                      className="col-span-2 w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-all border border-zinc-100 group shadow-sm bg-white border-purple-100"
+                      className="mt-2.5 w-full flex items-center gap-3 p-3 bg-purple-50/50 border border-purple-200 hover:border-purple-400 hover:bg-purple-100/50 transition-all text-left group shadow-xs"
                     >
-                      <div className="w-10 h-10 bg-purple-50 text-purple-600 flex items-center justify-center group-hover:bg-purple-600 group-hover:text-white transition-colors">
-                        <FileSignature size={20} />
+                      <div className="w-8 h-8 rounded-none bg-purple-100 text-purple-700 flex items-center justify-center shrink-0 group-hover:bg-purple-700 group-hover:text-white transition-colors">
+                        <FileSignature size={16} />
                       </div>
-                      <div className="text-left">
-                        <p className="font-bold text-purple-700 text-xs uppercase">Draf / Documento de Suporte (Draft)</p>
-                        <p className="text-[9px] text-purple-500 uppercase tracking-tighter">
-                          Gerar ou visualizar rascunho de moedas estrangeiras em {showActionsModal.moeda || showActionsModal.currency}
-                        </p>
+                      <div>
+                        <div className="text-[11px] font-black uppercase text-purple-900">Draft Moeda Estrangeira ({showActionsModal.moeda || showActionsModal.currency})</div>
+                        <div className="text-[9px] text-purple-600 font-semibold uppercase tracking-tight">Documento de suporte em moeda estrangeira</div>
                       </div>
                     </button>
                   )}
+                </div>
 
-                  {/* 11. Faturar / Converter */}
-                  <button 
-                    onClick={() => { onAction('convert', showActionsModal); setShowActionsModal(null); }}
-                    className="col-span-2 w-full flex items-center gap-4 p-4 hover:bg-zinc-50 transition-all border border-zinc-100 group shadow-sm bg-white"
-                  >
-                    <div className="w-10 h-10 bg-zinc-100 text-[#003366] flex items-center justify-center group-hover:bg-[#003366] group-hover:text-white transition-colors">
-                      <RefreshCw size={20} />
+                {/* 4. Envio & Comunicação */}
+                <div>
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Comunicação</h4>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <button 
+                      onClick={() => { onAction('send_email', showActionsModal); setShowActionsModal(null); }}
+                      className="flex items-center gap-3 p-3 bg-white border border-zinc-200 hover:border-[#003366] hover:bg-zinc-50 transition-all text-left group shadow-xs"
+                    >
+                      <div className="w-8 h-8 rounded-none bg-zinc-100 text-[#003366] flex items-center justify-center shrink-0 group-hover:bg-[#003366] group-hover:text-white transition-colors">
+                        <Mail size={16} />
+                      </div>
+                      <div>
+                        <div className="text-[11px] font-black uppercase text-zinc-900">Enviar por Email</div>
+                        <div className="text-[9px] text-zinc-400 font-semibold uppercase tracking-tight">Disparar PDF por email</div>
+                      </div>
+                    </button>
+
+                    <button 
+                      onClick={() => { onAction('share_whatsapp', showActionsModal); setShowActionsModal(null); }}
+                      className="flex items-center gap-3 p-3 bg-white border border-zinc-200 hover:border-emerald-500 hover:bg-emerald-50/50 transition-all text-left group shadow-xs"
+                    >
+                      <div className="w-8 h-8 rounded-none bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                        <MessageCircle size={16} />
+                      </div>
+                      <div>
+                        <div className="text-[11px] font-black uppercase text-zinc-900">Partilhar WhatsApp</div>
+                        <div className="text-[9px] text-zinc-400 font-semibold uppercase tracking-tight">Mensagem com resumo e link</div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 5. Zona Crítica (Anulação / Eliminação) */}
+                <div>
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-red-500 mb-2">Zona Crítica</h4>
+                  {(showActionsModal.is_certified && showActionsModal.status !== 'anulado' && showActionsModal.estado_documento !== 'anulado' && !showActionsModal.documento_anulado) ? (
+                    <button 
+                      onClick={() => { 
+                        onAction('void', showActionsModal); 
+                        setShowActionsModal(null); 
+                      }}
+                      className="w-full flex items-center gap-3 p-3 bg-red-50/60 border border-red-200 hover:bg-red-100/80 transition-all text-left group shadow-xs"
+                    >
+                      <div className="w-8 h-8 rounded-none bg-red-200 text-red-800 flex items-center justify-center shrink-0 group-hover:bg-red-700 group-hover:text-white transition-colors">
+                        <Trash2 size={16} />
+                      </div>
+                      <div>
+                        <div className="text-[11px] font-black uppercase text-red-800">Anular Documento Fiscal</div>
+                        <div className="text-[9px] text-red-600 font-semibold uppercase tracking-tight">Operação irreversível comunicada à AGT</div>
+                      </div>
+                    </button>
+                  ) : (showActionsModal.status === 'anulado' || showActionsModal.estado_documento === 'anulado' || showActionsModal.documento_anulado) ? (
+                    <div className="p-3 bg-red-100/50 border border-red-200 text-center">
+                      <span className="text-red-700 font-black uppercase tracking-widest text-xs">Documento já se encontra Anulado</span>
                     </div>
-                    <div className="text-left">
-                      <p className="font-bold text-zinc-900 text-xs uppercase">Faturar / Converter</p>
-                      <p className="text-[9px] text-zinc-500 uppercase tracking-tighter">Transformar em outro documento fiscal</p>
-                    </div>
-                  </button>
-               </div>
-             </motion.div>
-           </div>
-         )}
-       </AnimatePresence>
+                  ) : null}
+
+                  {!showActionsModal.is_certified && (
+                    <button 
+                      onClick={() => { onAction('delete', showActionsModal); setShowActionsModal(null); }}
+                      className="w-full flex items-center gap-3 p-3 bg-zinc-50 border border-zinc-200 hover:bg-red-50 hover:border-red-200 transition-all text-left group shadow-xs"
+                    >
+                      <div className="w-8 h-8 rounded-none bg-zinc-200 text-zinc-700 flex items-center justify-center shrink-0 group-hover:bg-red-600 group-hover:text-white transition-colors">
+                        <Trash size={16} />
+                      </div>
+                      <div>
+                        <div className="text-[11px] font-black uppercase text-zinc-900 group-hover:text-red-700">Apagar Documento (Rascunho)</div>
+                        <div className="text-[9px] text-zinc-400 font-semibold uppercase tracking-tight">Eliminar permanentemente do sistema</div>
+                      </div>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="p-4 bg-zinc-100 border-t border-zinc-200 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowActionsModal(null)}
+                  className="px-5 py-2 text-xs font-black uppercase tracking-wider text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200 transition-all"
+                >
+                  Fechar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
      </div>
    );
  };
@@ -32151,16 +32231,30 @@ export default function App() {
             const { default: html2canvas } = await import('html2canvas-pro');
             const { jsPDF } = await import('jspdf');
 
-            const canvas = await html2canvas(clone, {
-              scale: 2,
-              useCORS: true,
-              logging: false
-            });
-
-            const imgData = canvas.toDataURL("image/png");
+            const pageElements = Array.from(clone.querySelectorAll('.a4-page')) as HTMLElement[];
             const pdf = new jsPDF("p", "mm", "a4");
 
-            pdf.addImage(imgData, "PNG", 0, 0, 210, 297);
+            if (pageElements.length > 0) {
+              for (let i = 0; i < pageElements.length; i++) {
+                if (i > 0) pdf.addPage("a4", "p");
+                const pageEl = pageElements[i];
+                const canvas = await html2canvas(pageEl, {
+                  scale: 2,
+                  useCORS: true,
+                  logging: false
+                });
+                const imgData = canvas.toDataURL("image/png");
+                pdf.addImage(imgData, "PNG", 0, 0, 210, 297);
+              }
+            } else {
+              const canvas = await html2canvas(clone, {
+                scale: 2,
+                useCORS: true,
+                logging: false
+              });
+              const imgData = canvas.toDataURL("image/png");
+              pdf.addImage(imgData, "PNG", 0, 0, 210, 297);
+            }
             
             const filename = `${printingInvoice.numero_documento || printingInvoice.invoice_number || 'documento'}.pdf`;
             pdf.save(filename);
@@ -33561,21 +33655,25 @@ export default function App() {
             if (action === 'print_p80') {
               setPrintFormat('P80');
               setCopyType('Original');
+              setTimeout(() => {
+                setIsPdfProcessing(false);
+                window.print();
+              }, 500);
             } else if (action === 'print_p24' || action === 'print_p24xl') {
               setPrintFormat('P24');
               setCopyType('Original');
+              setTimeout(() => {
+                setIsPdfProcessing(false);
+                window.print();
+              }, 500);
             } else {
               setPrintFormat('A4');
               if (action === 'print_a4_orig') setCopyType('Original');
               else if (action === 'print_a4_dup') setCopyType('Duplicado');
               else if (action === 'print_a4_tri') setCopyType('Triplicado');
               else setCopyType('Original');
-            }
-
-            setTimeout(() => {
               setIsPdfProcessing(false);
-              window.print();
-            }, 500);
+            }
           }
         } else {
           console.error(`Error fetching document ${doc.id} from Supabase:`, error);
@@ -34449,31 +34547,71 @@ export default function App() {
        )}
 
       {printingInvoice && (
-        <div className={`fixed inset-0 z-[200] overflow-auto print:p-0 ${isExportingPdf ? 'opacity-0 pointer-events-none' : 'bg-white'}`}>
+        <div className={`fixed inset-0 z-[200] overflow-auto print:p-0 ${isExportingPdf ? 'opacity-0 pointer-events-none' : 'bg-zinc-900/85 backdrop-blur-sm'}`}>
           {!isExportingPdf && (
-            <div className="print:hidden p-4 bg-zinc-900 text-white flex justify-between items-center sticky top-0">
-              <span className="font-bold">Visualização de Impressão A4</span>
-              <div className="flex gap-4">
+            <div className="print:hidden p-4 bg-zinc-900 text-white flex flex-wrap justify-between items-center sticky top-0 z-50 border-b border-zinc-800 shadow-2xl">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded bg-[#003366] text-white flex items-center justify-center font-black text-xs shadow-md border border-white/20">
+                  A4
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-black text-sm uppercase tracking-wider text-white">Pré-visualização Oficial de Venda</span>
+                    {printingInvoice.is_certified ? (
+                      <span className="text-[9px] font-black uppercase tracking-widest bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5">Certificado</span>
+                    ) : (
+                      <span className="text-[9px] font-black uppercase tracking-widest bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-0.5">Rascunho</span>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-zinc-400 font-mono mt-0.5">
+                    {printingInvoice.numero_documento || printingInvoice.invoice_number} • {printingInvoice.client_name || 'Consumidor Final'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className="flex bg-zinc-800 p-1 border border-zinc-700 text-xs">
+                  {(['Original', 'Duplicado', 'Triplicado'] as const).map(via => (
+                    <button
+                      key={via}
+                      onClick={() => setCopyType(via)}
+                      className={`px-3 py-1 font-black text-[10px] uppercase transition-all ${copyType === via ? 'bg-[#003366] text-white shadow-sm' : 'text-zinc-400 hover:text-white'}`}
+                    >
+                      {via}
+                    </button>
+                  ))}
+                </div>
+
                 <button 
                   onClick={() => window.print()}
-                  className="bg-[#003366] px-4 py-2 text-sm font-bold flex items-center gap-2"
+                  className="bg-[#003366] hover:bg-[#002244] text-white px-5 py-2 text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all shadow-md active:scale-95"
+                  title="Imprimir documento em papel A4"
                 >
-                  <Printer size={18} /> Imprimir Agora
+                  <Printer size={16} /> Imprimir
                 </button>
+
+                <button 
+                  onClick={() => setIsExportingPdf(true)}
+                  className="bg-red-600 hover:bg-red-700 text-white px-5 py-2 text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all shadow-md active:scale-95"
+                  title="Exportar e descarregar documento em PDF oficial"
+                >
+                  <FileDown size={16} /> Baixar PDF
+                </button>
+
                 <button 
                   onClick={() => {
                     setPrintingInvoice(null);
                     setIsPrintingDraft(false);
                     setIsExportingPdf(false);
                   }}
-                  className="bg-zinc-700 px-4 py-2 text-sm font-bold"
+                  className="bg-zinc-700 hover:bg-zinc-600 text-white px-4 py-2 text-xs font-black uppercase tracking-wider transition-all"
                 >
                   Fechar
                 </button>
               </div>
             </div>
           )}
-          <div className="p-8 print:p-0" id="pdf-export-container">
+          <div className="p-8 print:p-0 flex flex-col items-center min-h-screen" id="pdf-export-container">
             <PrintA4 
               invoice={printingInvoice} 
               isDraft={isPrintingDraft} 

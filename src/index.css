@@ -93,5 +93,18 @@
   img {
     max-width: 100%;
   }
+
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+
+  .a4-page {
+    page-break-after: always !important;
+    break-after: page !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
 }
 

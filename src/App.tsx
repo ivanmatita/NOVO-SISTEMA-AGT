@@ -14156,11 +14156,14 @@ const UsersSettings = () => {
     const rawAreas = u.permission_areas ?? (u as any).permissions ?? (u as any).permissoes;
     const parsedSavedAreas = mapPermissionAreasFromDB(rawAreas);
     if (parsedSavedAreas.length > 0) {
+      // Tem permissões específicas gravadas — mostrar apenas essas
       setPermissionAreas(parsedSavedAreas);
-    } else if (isAdmin && (rawAreas === null || rawAreas === undefined)) {
+    } else if (isAdmin && (rawAreas === null || rawAreas === undefined || (Array.isArray(rawAreas) && rawAreas.length === 0))) {
+      // Admin sem restrições configuradas = acesso total (mostrar todos os módulos selecionados)
       setPermissionAreas(SIDEBAR_MENU_ITEMS.map(m => m.id));
     } else {
-      setPermissionAreas(parsedSavedAreas);
+      // Utilizador normal sem permissões = nenhum módulo (apenas dashboard)
+      setPermissionAreas(['dashboard']);
     }
   };
 
@@ -14175,7 +14178,13 @@ const UsersSettings = () => {
       });
       showToast("Permissões atualizadas com sucesso!");
       
-      // If the current user's permissions were updated, refresh auth state
+      // Sinalizar via localStorage para que a sessão do utilizador alvo detecte a mudança e actualize
+      try {
+        const key = `agt_perm_updated_${permissionModalUser.id}`;
+        localStorage.setItem(key, String(Date.now()));
+      } catch (_) {}
+      
+      // Se as permissões do utilizador atual foram alteradas, actualizar estado de autenticação imediatamente
       if (permissionModalUser.id === user?.id) {
         await refreshUser();
       }
@@ -14607,7 +14616,10 @@ const UsersSettings = () => {
                 })}
               </div>
 
-              <div className="flex justify-end gap-2 pt-4 border-t border-zinc-100">
+              <p className="text-[9px] text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2 font-medium leading-tight">
+                ⚡ As permissões são aplicadas imediatamente. O utilizador verá os módulos actualizados na próxima navegação ou ao recarregar a página.
+              </p>
+              <div className="flex justify-end gap-2 pt-2 border-t border-zinc-100">
                 <button 
                   onClick={() => setPermissionModalUser(null)} 
                   className="bg-zinc-100 hover:bg-zinc-200 text-zinc-600 text-xs font-bold uppercase px-4 py-2"
@@ -31950,6 +31962,20 @@ export default function App() {
       setSidebarOpen(true);
     }
   }, [activeTab]);
+
+  // Detectar mudanças de permissões feitas por admin para este utilizador (via localStorage)
+  React.useEffect(() => {
+    if (!user?.id) return;
+    const permKey = `agt_perm_updated_${user.id}`;
+    const onStorageChange = async (e: StorageEvent) => {
+      if (e.key === permKey && e.newValue) {
+        console.log('[App] Permissões actualizadas pelo administrador. A actualizar sessão...');
+        await refreshUser();
+      }
+    };
+    window.addEventListener('storage', onStorageChange);
+    return () => window.removeEventListener('storage', onStorageChange);
+  }, [user?.id, refreshUser]);
 
   // Escutar mudanças de hash (botão Voltar/Avançar do browser)
   React.useEffect(() => {

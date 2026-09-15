@@ -10,6 +10,7 @@ interface ExerciseContextType {
 }
 
 const STORAGE_KEY = 'imatec_exercise_year';
+const SESSION_KEY = 'active_session_exercise_year';
 const MIN_VALID_YEAR = 2020;
 const MAX_VALID_YEAR = 2050;
 
@@ -27,12 +28,18 @@ function getSafeYear(val: any): string {
 const ExerciseContext = createContext<ExerciseContextType | undefined>(undefined);
 
 export function ExerciseProvider({ children }: { children: React.ReactNode }) {
+  // O ano corrente é sempre determinado dinamicamente pelo calendário do sistema
   const currentYear = useMemo(() => new Date().getFullYear().toString(), []);
 
+  // REGRA 5: A cada nova sessão/login, o padrão deve ser SEMPRE o ano corrente.
+  // Dentro da mesma sessão (aba ativa), respeita a troca manual temporária.
   const [exerciseYear, setExerciseYearState] = useState<string>(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('fiscalYear');
-      return getSafeYear(saved);
+      const inSession = sessionStorage.getItem(SESSION_KEY);
+      if (inSession) {
+        return getSafeYear(inSession);
+      }
+      return currentYear;
     } catch {
       return currentYear;
     }
@@ -44,25 +51,46 @@ export function ExerciseProvider({ children }: { children: React.ReactNode }) {
     for (let y = currentNum - 3; y <= currentNum + 1; y++) {
       years.push(y.toString());
     }
-    return years;
+    const standardYears = ['2024', '2025', '2026', '2027'];
+    return Array.from(new Set([...standardYears, ...years])).sort((a, b) => Number(a) - Number(b));
   }, [currentYear]);
 
   const setExerciseYear = useCallback((year: string | number) => {
     const safeYear = getSafeYear(year);
     setExerciseYearState(safeYear);
     try {
+      sessionStorage.setItem(SESSION_KEY, safeYear);
       localStorage.setItem(STORAGE_KEY, safeYear);
       localStorage.setItem('fiscalYear', safeYear);
+      window.dispatchEvent(new CustomEvent('exercise_year_changed', { detail: { year: safeYear } }));
     } catch (e) {
-      console.warn('[ExerciseContext] Falha ao persistir exercício no localStorage:', e);
+      console.warn('[ExerciseContext] Falha ao persistir exercício:', e);
     }
   }, []);
 
   const resetToCurrentYear = useCallback(() => {
-    setExerciseYear(currentYear);
-  }, [currentYear, setExerciseYear]);
+    try {
+      sessionStorage.removeItem(SESSION_KEY);
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem('fiscalYear');
+      localStorage.removeItem('user_manually_switched_year');
+    } catch {}
+    setExerciseYearState(currentYear);
+    window.dispatchEvent(new CustomEvent('exercise_year_changed', { detail: { year: currentYear } }));
+  }, [currentYear]);
 
   const isCurrentYear = exerciseYear === currentYear;
+
+  // Escuta evento de login para forçar o reset imediato para o ano corrente (Regra 5)
+  useEffect(() => {
+    const handleLoginReset = () => {
+      console.log('[ExerciseContext] Novo login detectado. Redefinindo exercício para o ano corrente:', currentYear);
+      resetToCurrentYear();
+    };
+
+    window.addEventListener('auth_login_reset_exercise', handleLoginReset);
+    return () => window.removeEventListener('auth_login_reset_exercise', handleLoginReset);
+  }, [currentYear, resetToCurrentYear]);
 
   // Sincronização entre tabs via evento 'storage'
   useEffect(() => {

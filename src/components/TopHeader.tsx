@@ -46,21 +46,16 @@ export const TopHeader = ({
       });
       if (res.ok) {
         const data = await res.json();
-        if (data && data.length > 0) {
-          const years = data.map((x: any) => x.ano.toString());
-          const uniqueYears = Array.from(new Set([...years, '2024', '2025', '2026', '2027'])).sort((a: string, b: string) => Number(b) - Number(a));
-          setAvailableYears(uniqueYears);
-          
-          const activeDbYear = data.find((x: any) => x.ativo);
-          if (activeDbYear && !localStorage.getItem('user_manually_switched_year')) {
-            setFiscalYear(activeDbYear.ano.toString());
-          }
-        }
+        const years = data.map((x: any) => x.ano.toString());
+        const currentCalendarYear = new Date().getFullYear().toString();
+        const uniqueYears = Array.from(new Set([...years, '2024', '2025', '2026', '2027', currentCalendarYear])).sort((a: string, b: string) => Number(b) - Number(a));
+        setAvailableYears(uniqueYears);
       }
     } catch (e) {
       console.error("Erro ao carregar anos para o TopHeader:", e);
     }
   };
+
 
   useEffect(() => {
     if (user?.empresa_id) {

@@ -2482,8 +2482,8 @@ app.use((req, res, next) => {
     if (supabaseAdmin && empresa_id) {
        try {
          const [docsRes, comprasRes] = await Promise.all([
-           supabaseAdmin.from('documentos_emitidos').select('*').eq('empresa_id', empresa_id),
-           supabaseAdmin.from('compras').select('*').eq('empresa_id', empresa_id)
+           supabaseAdmin.from('documentos_emitidos').select('*').eq('empresa_id', empresa_id).eq('ano', year),
+           supabaseAdmin.from('compras').select('*').eq('empresa_id', empresa_id).eq('ano', year)
          ]);
          
          if (docsRes.data) docs = docsRes.data;
@@ -2558,8 +2558,7 @@ app.use((req, res, next) => {
           supabaseAdmin.from('documentos_emitidos')
             .select('*')
             .eq('empresa_id', empresa_id)
-            .gte('created_at', `${year}-01-01T00:00:00Z`)
-            .lte('created_at', `${year}-12-31T23:59:59Z`),
+            .eq('ano', year),
           supabaseAdmin.from('clientes')
             .select('id')
             .eq('empresa_id', empresa_id),
@@ -2567,8 +2566,7 @@ app.use((req, res, next) => {
           supabaseAdmin.from('compras')
             .select('total')
             .eq('empresa_id', empresa_id)
-            .gte('created_at', `${year}-01-01T00:00:00Z`)
-            .lte('created_at', `${year}-12-31T23:59:59Z`)
+            .eq('ano', year)
         ]);
 
         const dbDocs = docsRes.data || [];
@@ -3471,6 +3469,8 @@ app.use((req, res, next) => {
     const { empresa_id, year } = req.query;
     if (!empresa_id) return res.json([]);
 
+    const numYear = year && !isNaN(Number(year)) ? Number(year) : null;
+
     if (supabaseAdmin) {
       try {
         let query = supabaseAdmin
@@ -3488,6 +3488,11 @@ app.use((req, res, next) => {
             'Guia de Devolução', 'Guia de Devolucao',
             'VD', 'OR', 'PP'
           ]);
+
+        // FILTRO REAL NO BANCO DE DADOS (Regra 1, 3 e 4)
+        if (numYear) {
+          query = query.eq('ano', numYear);
+        }
 
         const { data, error } = await query.order('created_at', { ascending: false });
 
@@ -3534,10 +3539,17 @@ app.use((req, res, next) => {
             };
           });
 
-          // Merge in-memory POS sales (not yet synced to Supabase)
+          // Merge in-memory POS sales (respeitando o ano de exercício)
           const supabaseIds = new Set(formatted.map((d: any) => String(d.id)));
           const posOnlyForCompany = posSales
-            .filter(s => String(s.empresa_id) === String(empresa_id) && !supabaseIds.has(String(s.invoice_id || s.id)))
+            .filter(s => {
+              if (String(s.empresa_id) !== String(empresa_id) || supabaseIds.has(String(s.invoice_id || s.id))) return false;
+              if (numYear) {
+                const sYear = new Date(s.date || s.created_at).getFullYear();
+                return Number(sYear) === numYear;
+              }
+              return true;
+            })
             .map(s => ({
               ...s,
               id: s.invoice_id || s.id,
@@ -3563,10 +3575,24 @@ app.use((req, res, next) => {
       console.warn('[API-INVOICES] supabaseAdmin not initialized, using in-memory fallback');
     }
 
-    // Fallback: in-memory documents — merge with POS sales
-    const fallbackDocs = issuedDocuments.filter(d => String(d.empresa_id) === String(empresa_id));
+    // Fallback: in-memory documents — merge with POS sales filtrando por ano
+    const fallbackDocs = issuedDocuments.filter(d => {
+      if (String(d.empresa_id) !== String(empresa_id)) return false;
+      if (numYear) {
+        const docYear = d.ano || (d.data_emissao ? new Date(d.data_emissao).getFullYear() : (d.created_at ? new Date(d.created_at).getFullYear() : null));
+        return Number(docYear) === numYear;
+      }
+      return true;
+    });
     const posSalesForCompany = posSales
-      .filter(s => String(s.empresa_id) === String(empresa_id))
+      .filter(s => {
+        if (String(s.empresa_id) !== String(empresa_id)) return false;
+        if (numYear) {
+          const sYear = new Date(s.date || s.created_at).getFullYear();
+          return Number(sYear) === numYear;
+        }
+        return true;
+      })
       .map(s => ({
         ...s,
         id: s.id || s.invoice_id,
@@ -3588,12 +3614,14 @@ app.use((req, res, next) => {
   });
 
   app.get("/api/issued-documents", async (req, res) => {
-    const { empresa_id } = req.query;
+    const { empresa_id, year } = req.query;
     if (!empresa_id) return res.json([]);
+
+    const numYear = year && !isNaN(Number(year)) ? Number(year) : null;
 
     if (supabaseAdmin) {
       try {
-        const { data, error } = await supabaseAdmin
+        let query = supabaseAdmin
           .from('documentos_emitidos')
           .select('*')
           .eq('empresa_id', empresa_id)
@@ -3607,8 +3635,13 @@ app.use((req, res, next) => {
             'Venda', 'Guia de Remessa', 'Guia de Transporte', 'Guia de Entrega',
             'Guia de Devolução', 'Guia de Devolucao',
             'VD', 'OR', 'PP'
-          ])
-          .order('created_at', { ascending: false });
+          ]);
+
+        if (numYear) {
+          query = query.eq('ano', numYear);
+        }
+
+        const { data, error } = await query.order('created_at', { ascending: false });
 
         if (!error && data) {
           const formatted = data.map((d: any) => ({
@@ -3624,26 +3657,39 @@ app.use((req, res, next) => {
             status: (d.status || d.estado || 'ativo').toLowerCase(),
             total: Number(d.total || 0),
             imposto: Number(d.imposto || 0),
-            items: d.detalhes?.items || d.items || [],
+            items: d.detalhes?.items || d.items || d.itens || [],
             client_email: d.cliente_email || d.client_email,
             document_type: d.tipo_documento || d.document_type,
             is_certified: d.is_certified,
             hash: d.hash_documento || d.hash,
-            payment_method: d.detalhes?.payment_method || d.payment_method,
+            ano: d.ano,
+            reference_document: d.reference_document || d.numero_documento_origem || d.associated_document,
+            payment_method: d.forma_pagamento || d.detalhes?.payment_method,
             currency: d.detalhes?.currency || d.moeda || 'AOA',
-            exchange_rate: d.detalhes?.exchange_rate || d.taxa_cambio || 1
+            exchange_rate: d.detalhes?.exchange_rate || d.taxa_cambio || 1,
+            paid_amount: Number(d.valor_pago || d.paid_amount || 0),
+            valor_pago: Number(d.valor_pago || d.paid_amount || 0),
+            payment_status: d.payment_status || d.estado_pagamento || d.status_pagamento,
+            estado_pagamento: d.estado_pagamento || d.status_pagamento || d.payment_status,
+            recibo_emitido: d.recibo_emitido || false,
+            saldo_pendente: Number(d.saldo_pendente || 0),
           }));
           return res.json(formatted);
-        } else if (error) {
-          console.error('[API-ISSUED-DOCS] Supabase query error, using in-memory fallback:', error.message);
         }
       } catch (err) {
-        console.error('[API-ISSUED-DOCS] Supabase unreachable, using in-memory fallback:', (err as any)?.message || err);
+        console.error('[API-ISSUED-DOCS] Erro Supabase:', err);
       }
     }
 
-    // Fallback: in-memory documents
-    res.json(issuedDocuments.filter(d => String(d.empresa_id) === String(empresa_id)));
+    const fallback = issuedDocuments.filter(d => {
+      if (String(d.empresa_id) !== String(empresa_id)) return false;
+      if (numYear) {
+        const docYear = d.ano || (d.data_emissao ? new Date(d.data_emissao).getFullYear() : (d.created_at ? new Date(d.created_at).getFullYear() : null));
+        return Number(docYear) === numYear;
+      }
+      return true;
+    });
+    res.json(fallback);
   });
 
   app.get("/api/invoices/:id", async (req, res) => {
@@ -4789,8 +4835,19 @@ app.use((req, res, next) => {
       const docType = req.body.document_type || 'Fatura';
       let docTypeAbbr = getDocTypeAbbreviation(docType);
       
+      const docDate = req.body.date || req.body.data_emissao || new Date().toISOString();
+      const docDateYear = new Date(docDate).getFullYear();
+      const selectedYear = req.body.ano ? Number(req.body.ano) : (req.body.fiscalYear ? Number(req.body.fiscalYear) : docDateYear);
+
+      // REGRA 9: Validar a correspondência entre Exercício selecionado + data + documento
+      if (docDateYear !== selectedYear) {
+        return res.status(400).json({ 
+          error: `A data do documento (${docDate.split('T')[0]} - ano ${docDateYear}) não corresponde ao Ano de Exercício selecionado (${selectedYear}). Corrija a data ou o exercício antes de emitir.` 
+        });
+      }
+
+      const year = selectedYear;
       const series = fiscalSeries.find(s => s.id === Number(req.body.series_id));
-      const year = new Date().getFullYear();
       const companyId = req.body.empresa_id || (series ? series.empresa_id : undefined);
 
       let counter = null;
@@ -5657,7 +5714,7 @@ app.use((req, res, next) => {
     
     if (supabaseAdmin && empresa_id) {
        try {
-           const { data } = await supabaseAdmin.from('compras').select('*').eq('empresa_id', empresa_id);
+           const { data } = await supabaseAdmin.from('compras').select('*').eq('empresa_id', empresa_id).eq('ano', year);
            if (data) {
               const mapped = data.map((c: any) => ({
                  id: c.id,

@@ -70,6 +70,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const loggedUser = await authService.login(email, password);
       setUser(loggedUser);
+      // REGRA 5: A cada nova sessão/login, o padrão deve ser estritamente o ano corrente
+      try {
+        sessionStorage.removeItem('active_session_exercise_year');
+        localStorage.removeItem('imatec_exercise_year');
+        localStorage.removeItem('fiscalYear');
+        localStorage.removeItem('user_manually_switched_year');
+      } catch {}
+      window.dispatchEvent(new CustomEvent('auth_login_reset_exercise'));
     } catch (err: any) {
       setError(err.message || 'Erro ao entrar');
       throw err;
@@ -99,6 +107,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await authService.logout();
       setUser(null);
+      try {
+        sessionStorage.removeItem('active_session_exercise_year');
+        localStorage.removeItem('imatec_exercise_year');
+        localStorage.removeItem('fiscalYear');
+        localStorage.removeItem('user_manually_switched_year');
+      } catch {}
+      window.dispatchEvent(new CustomEvent('auth_login_reset_exercise'));
     } catch (err) {
       console.error('Erro ao sair:', err);
     } finally {

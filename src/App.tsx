@@ -18368,6 +18368,7 @@ const DailyMovementsModule = ({ onBack }: { onBack: () => void }) => {
 
 const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurchases, onBack }: { invoices: Invoice[], purchases: Purchase[], onBack: () => void }) => {
   const { user } = useAuth();
+  const { exerciseYear: accountingYear } = useExercise();
   const [activeSubView, setActiveSubView] = useState<'vendas' | 'compras' | 'classificar_vendas' | 'classificar_compras' | 'classificar_salario' | 'classificar_pag_salario' | 'classificar_pag_impostos'>('classificar_vendas');
   const [salarioData, setSalarioData] = useState<any[]>([]);
   const [salarioLines, setSalarioLines] = useState<any[]>([]);
@@ -18460,6 +18461,7 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
         .from('documentos_emitidos')
         .select('*')
         .eq('empresa_id', user.empresa_id)
+        .eq('ano', Number(accountingYear))
         .order('data_emissao', { ascending: true });
 
       if (vData && vData.length > 0) {
@@ -18484,6 +18486,7 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
         .from('compras')
         .select('*')
         .eq('empresa_id', user.empresa_id)
+        .eq('ano', Number(accountingYear))
         .order('data_compra', { ascending: true });
 
       if (cData && cData.length > 0) {
@@ -25402,6 +25405,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
   addMovement?: (m: any) => Promise<void>
 }) => {
   const { user } = useAuth();
+  const { exerciseYear: invoiceExerciseYear } = useExercise();
   const [clientId, setClientId] = useState<number | ''>(
     (initialData?.cliente_id && !isNaN(Number(initialData.cliente_id))) ? Number(initialData.cliente_id) : 
     (initialData?.client_id && !isNaN(Number(initialData.client_id))) ? Number(initialData.client_id) : ''
@@ -25451,6 +25455,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
       supabase.from('documentos_emitidos')
         .select('id, numero_documento, invoice_number, total, cliente_nome, client_name, cliente_id, data_emissao, date, items, itens, detalhes, recibo_emitido, payment_status, estado_pagamento, status_pagamento, valor_pago, paid_amount, saldo_pendente, tipo_documento, document_type')
         .eq('empresa_id', companyId)
+        .eq('ano', Number(invoiceExerciseYear))
         .order('created_at', { ascending: false })
         .limit(150)
         .then(({ data, error }) => {
@@ -25475,7 +25480,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
             setOriginDocs(faturas.length > 0 ? faturas : data);
           } else {
             // 2. Fallback to API endpoint
-            fetchWithAuth(`/api/invoices`)
+            fetchWithAuth(`/api/invoices?year=${invoiceExerciseYear}`)
               .then(res => res.json())
               .then(apiData => {
                 if (Array.isArray(apiData)) {
@@ -25785,6 +25790,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
         total_in_words: writeValorPorExtenso(finalTotal),
         retencao_fonte_total: retencaoFonteTotal,
         empresa_id: currentEmpresaId,
+        ano: Number(invoiceExerciseYear),
         criado_por: user?.id
       })
     });

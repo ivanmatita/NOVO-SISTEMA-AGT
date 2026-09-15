@@ -186,14 +186,21 @@ export default async function handler(req, res) {
         return res.status(403).json({ success: false, error: 'Acesso negado: utilizador de outra empresa.' });
       }
 
-      const authUpdateRes = await fetch(`${config.supabaseUrl}/auth/v1/admin/users/${userId}`, {
+      // CRITICAL: Determine the real Supabase Auth UID
+      // In perfis, user_id is the Auth UID when created as sub-user; id may also be Auth UID.
+      const authUserId = userProfile.user_id || userProfile.id || userId;
+
+      const authUpdateRes = await fetch(`${config.supabaseUrl}/auth/v1/admin/users/${authUserId}`, {
         method: 'PUT',
         headers: {
           'apikey': config.serviceRoleKey,
           'Authorization': authHeader,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ password: newPassword })
+        body: JSON.stringify({ 
+          password: newPassword,
+          email_confirm: true 
+        })
       });
 
       if (!authUpdateRes.ok) {

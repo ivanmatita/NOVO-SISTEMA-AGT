@@ -13,7 +13,8 @@ export const TopHeader = ({
   alerts = [],
   showNavButtons = false,
   onHome,
-  onBack
+  onBack,
+  sidebarOpen = true
 }: { 
   fiscalYear: string, 
   setFiscalYear: (y: string) => void,
@@ -25,7 +26,8 @@ export const TopHeader = ({
   alerts?: any[],
   showNavButtons?: boolean,
   onHome?: () => void,
-  onBack?: () => void
+  onBack?: () => void,
+  sidebarOpen?: boolean
 }) => {
   const { user, logout } = useAuth();
   const [time, setTime] = useState(new Date());
@@ -113,8 +115,19 @@ export const TopHeader = ({
       <header className="bg-white border-b border-zinc-200 h-16 flex items-center justify-between px-4 shadow-sm">
         <div className="flex items-center gap-4 flex-1">
 
-          
+          {/* Sidebar Toggle — only visible when sidebar is closed */}
+          {!sidebarOpen && (
+            <button
+              onClick={onToggleSidebar}
+              className="p-2 bg-[#003366] text-white hover:bg-[#1a4da6] rounded-md transition-colors shadow-sm"
+              title="Abrir Menu Lateral"
+            >
+              <Menu size={20} />
+            </button>
+          )}
+
           {showNavButtons && (
+
             <div className="flex items-center gap-2 mr-2">
               <button onClick={onBack} className="p-2 bg-zinc-100 text-[#003366] hover:bg-zinc-200 rounded-md transition-colors" title="Voltar">
                 <ArrowLeft size={18} />

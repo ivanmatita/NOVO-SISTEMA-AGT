@@ -2902,11 +2902,18 @@ const hasModulePermission = (user: any, moduleId: string): boolean => {
   let parsedList: string[] | null = null;
   if (Array.isArray(rawPermissions)) {
     const filtered = rawPermissions.map((p: any) => String(p).trim().toLowerCase()).filter(s => s.length > 0);
-    // Array vazio para admin = sem restrições explícitas (tratar como null = acesso irrestrito)
+    // REGRA DE OURO: Se o array tem permissões selecionadas, elas são o filtro estrito.
+    // Se o array está explicitamente vazio e o utilizador é admin de empresa (sem restrições específicas definidas),
+    // concede acesso total como fallback (null = sem restrições).
+    // Mas para utilizadores normais (role !== admin), array vazio = 0 módulos permitidos.
     const isAdminFallback = user?.is_admin === true || user?.role === 'admin' ||
                             user?.role === 'admin_empresa' || user?.role === 'proprietario' ||
                             (user?.level !== undefined && Number(user.level) >= 10);
-    parsedList = (filtered.length === 0 && isAdminFallback) ? null : filtered;
+    if (filtered.length === 0) {
+      parsedList = isAdminFallback ? null : [];
+    } else {
+      parsedList = filtered;
+    }
   } else if (typeof rawPermissions === 'string' && rawPermissions.trim().length > 0) {
     try {
       const parsed = JSON.parse(rawPermissions);
@@ -3152,6 +3159,14 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
         <h2 className="text-white font-black text-lg leading-tight text-center px-4 line-clamp-2 mt-2 uppercase tracking-tight">
           {companyData?.nome_empresa || companyData?.name || 'Admin'}
         </h2>
+        {(user?.nome || user?.name || user?.username || user?.email) && (
+          <div className="flex items-center gap-1.5 mt-1 px-3 py-0.5 bg-white/5 border border-white/10 rounded">
+            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+            <p className="text-[11px] font-bold text-zinc-300 tracking-wide truncate max-w-[220px]">
+              {user?.nome || user?.name || user?.username || user?.email}
+            </p>
+          </div>
+        )}
         <div className="flex flex-col items-center gap-1 mt-2">
           <p className="text-[11px] text-white font-black tracking-widest uppercase bg-[#1a4da6] px-3 py-0.5 shadow-sm">
             {companyData?.nif ? `NIF: ${companyData.nif}` : 'ADMIN'}
@@ -33634,6 +33649,7 @@ export default function App() {
           <TopHeader 
             fiscalYear={fiscalYear} 
             setFiscalYear={setFiscalYear} 
+            sidebarOpen={sidebarOpen}
             onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
             onToggleRightSidebar={() => setRightSidebarOpen(v => !v)}
             onAddTask={() => {

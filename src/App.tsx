@@ -193,6 +193,9 @@ import RegimeExclusaoForm from './components/RegimeExclusaoForm';
 import ImpostoPorContaForm from './components/ImpostoPorContaForm';
 import DeclaracaoAnualForm from './components/DeclaracaoAnualForm';
 import { ImpostoIndustrialRetencaoAnual } from './components/ImpostoIndustrialRetencaoAnual';
+import { MapaAmortizacaoModule } from './components/MapaAmortizacaoModule';
+import { DemonstracaoResultadosModule } from './components/DemonstracaoResultadosModule';
+import { NotasContasModule } from './components/NotasContasModule';
 import SaftExportForm from './components/SaftExportForm';
 import { ExerciciosFiscaisManager } from './components/ExerciciosFiscaisManager';
 import { TopHeader } from './components/TopHeader';
@@ -24410,6 +24413,9 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
     { id: 'vat-settlement', label: 'Apuramento de IVA', icon: <Calculator size={24} />, description: 'Apuramento periódico do IVA (suportado vs liquidado) com apuramento automático.' },
     { id: 'diarios-management', label: 'Gestão de Diários', icon: <FolderKanban size={24} />, description: 'Gestão de Diários Contabilísticos no Supabase com isolamento de dados.' },
     { id: 'pgc', label: 'PGC Plano de Contas', icon: <Book size={24} />, description: 'Consulta e gestão do Plano Geral de Contas angolano.' },
+    { id: 'mapa-amortizacao', label: 'Mapa de Amortização', icon: <Layers size={24} />, description: 'Quadro Oficial de Amortizações e Reintegrações por exercício, taxas, valor de aquisição e amortizações acumuladas.' },
+    { id: 'demonstracao-resultados', label: 'Demonstração de Resultados', icon: <FileText size={24} />, description: 'Demonstração de Resultados por Natureza oficial com comparativo anual e ligação ao Caderno de Notas e Contas.' },
+    { id: 'notas-contas', label: 'Notas e Contas', icon: <FileCheck size={24} />, description: 'Caderno completo de Notas à Demonstração de Resultados (Notas 22 a 35) com reconciliação fiscal.' },
     { id: 'accounting-maps', label: 'Balancete Analítico', icon: <BarChart3 size={24} />, description: 'Emissão de balancetes, balanços e demonstrações de resultados.' },
     { id: 'balancete-razao', label: 'Balancete Razão', icon: <BarChart3 size={24} />, description: 'Balancete Razão da firma por período contabilístico com movimentos de débito/crédito e saldos por conta PGC.' },
     { id: 'balanco', label: 'Balanço', icon: <Scale size={24} />, description: 'Balanço Patrimonial Angolano (Activo, Capital Próprio e Passivo) com comparativo de exercícios.' },
@@ -24429,6 +24435,12 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
 
   const renderContent = () => {
     switch (activeSubTab) {
+      case 'mapa-amortizacao':
+        return <MapaAmortizacaoModule user={user} companyData={companyData} fiscalYear={fiscalYear} onBack={() => setActiveSubTab(null)} />;
+      case 'demonstracao-resultados':
+        return <DemonstracaoResultadosModule user={user} companyData={companyData} fiscalYear={fiscalYear} onBack={() => setActiveSubTab(null)} onOpenNotasContas={(y) => { if (y) setFiscalYear(y); setActiveSubTab('notas-contas'); }} />;
+      case 'notas-contas':
+        return <NotasContasModule user={user} companyData={companyData} fiscalYear={fiscalYear} onBack={() => setActiveSubTab('demonstracao-resultados')} />;
       case 'tax-payments':
         return <TaxPaymentsModule onBack={() => setActiveSubTab(null)} companyData={companyData} />;
       case 'contas-pag-impostos':

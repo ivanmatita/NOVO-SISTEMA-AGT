@@ -44,31 +44,44 @@ const Modelo7Form = ({ invoices, purchases, companyData, selectedYear, selectedM
         const anoNum = parseInt(ano, 10);
 
         const isMatch = (item: any) => {
-          if (item.ano !== undefined && item.mes !== undefined) {
+          if (item.ano !== undefined && item.mes !== undefined && item.mes !== null) {
             return Number(item.ano) === anoNum && Number(item.mes) === mesNum;
           }
-          const d = item.data || item.date || '';
+          const d = item.data_emissao || item.data_compra || item.data || item.date || item.created_at || '';
           if (!d) return false;
-          const parts = String(d).split('-');
+          const str = String(d);
+          // Handle ISO formats (YYYY-MM-DD or YYYY-MM-DDTHH:mm:ss)
+          const parts = str.split('T')[0].split('-');
           return parts.length >= 2 && Number(parts[0]) === anoNum && Number(parts[1]) === mesNum;
         };
 
         const [{ data: docsFinal }, { data: comps }] = await Promise.all([
           supabase
             .from('documentos_emitidos')
-            .select('id, data, total, imposto, status, is_anulado, items, ano, mes')
+            .select('id, data_emissao, created_at, total, imposto, status, documento_anulado, ano')
             .eq('empresa_id', eId)
             .neq('status', 'anulado'),
           supabase
             .from('compras')
-            .select('id, data, date, total, status, is_anulado, items, ano, mes')
+            .select('id, data_compra, data_emissao, created_at, total, valor_total, imposto, valor_iva, status, items, ano')
             .eq('empresa_id', eId)
             .neq('status', 'anulado'),
         ]);
 
         if (!cancelled) {
-          setDbInvoices((docsFinal || []).filter(isMatch));
-          setDbPurchases((comps || []).filter(isMatch));
+          const mappedDocs = (docsFinal || []).map((doc: any) => ({
+            ...doc,
+            date: doc.data_emissao || doc.created_at,
+          }));
+          const mappedComps = (comps || []).map((c: any) => ({
+            ...c,
+            date: c.data_compra || c.data_emissao || c.created_at,
+            total: c.total !== undefined && c.total !== null ? c.total : c.valor_total,
+            imposto: c.imposto !== undefined && c.imposto !== null ? c.imposto : c.valor_iva,
+          }));
+
+          setDbInvoices(mappedDocs.filter(isMatch));
+          setDbPurchases(mappedComps.filter(isMatch));
         }
       } catch (err) {
         console.error('[Modelo7Form] Query error:', err);

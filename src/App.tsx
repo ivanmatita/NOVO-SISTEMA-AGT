@@ -21032,14 +21032,15 @@ const AccountMovementsPage = ({ account, onBack, companyData }: { account: any, 
 
   useEffect(() => {
     const fetchMovements = async () => {
-      if (!user?.empresa_id || !account) return;
+      const activeEmpresaId = user?.empresa_id || companyData?.empresa_id || companyData?.id;
+      if (!activeEmpresaId || !account) return;
       setLoading(true);
       try {
         const contaCodigo = account.code || account.conta || account.id || '';
         const { data } = await supabase
           .from('lancamentos_contabeis')
           .select('*')
-          .eq('empresa_id', user.empresa_id)
+          .eq('empresa_id', activeEmpresaId)
           .like('data_lancamento', `${selectedYear}%`)
           .or(`conta_pgc.eq.${contaCodigo},conta_debito.eq.${contaCodigo},conta_credito.eq.${contaCodigo}`)
           .order('data_lancamento', { ascending: true });
@@ -21080,7 +21081,7 @@ const AccountMovementsPage = ({ account, onBack, companyData }: { account: any, 
       }
     };
     fetchMovements();
-  }, [user?.empresa_id, account, selectedYear]);
+  }, [user?.empresa_id, companyData?.empresa_id, companyData?.id, account, selectedYear]);
 
   const totalDebitos = movements.reduce((sum, m) => sum + m.debito, 0);
   const totalCreditos = movements.reduce((sum, m) => sum + m.credito, 0);

@@ -32319,7 +32319,12 @@ const ProductList = ({ products, setProducts, onRefresh, stockMovements, warehou
                   image_path = filePath;
                 }
 
-                const currentCompanyId = user?.empresa_id || user?.company_id || '11111111-0000-0000-0000-000000000001';
+                // empresa_id obrigatório — nunca usar UUID fixo/hardcoded como fallback
+                const currentCompanyId = user?.empresa_id || user?.company_id;
+                if (!currentCompanyId) {
+                  alert('Erro: empresa não identificada. Faça login novamente antes de guardar produtos.');
+                  return;
+                }
 
                 const payload: any = {
                   name: data.name,
@@ -32341,7 +32346,7 @@ const ProductList = ({ products, setProducts, onRefresh, stockMovements, warehou
                   data_registo: data.data_registo || new Date().toISOString().split('T')[0],
                   warehouse_id: data.warehouse_id ? Number(data.warehouse_id) : null,
                   empresa_id: currentCompanyId,
-                  company_id: currentCompanyId,
+                  // NOTE: company_id does NOT exist in the produtos table — omitted intentionally
                   image_url,
                   imagem_url: image_url,
                   image: image_url,
@@ -33791,9 +33796,9 @@ export default function App() {
     }
   };
 
-  const loadDocumentosEmitidos = throttle(async (explicitId?: string) => {
+  const loadDocumentosEmitidos = throttle(async (explicitId?: string, explicitYear?: string) => {
     try {
-      await doLoadDocumentosEmitidos(explicitId);
+      await doLoadDocumentosEmitidos(explicitId, explicitYear);
     } catch (err) {
       console.error('[App] Failed to load documents:', err);
     }
@@ -34635,13 +34640,10 @@ export default function App() {
 
   useEffect(() => {
     if (authReady) {
+      // Update the active year ref so race-condition guard in doLoadDocumentosEmitidos works correctly.
+      // fetchData() already calls doLoadDocumentosEmitidos and doLoadCompras internally via
+      // Promise.allSettled — do NOT call them again here to avoid double network load.
       activeFetchDocYearRef.current = String(fiscalYear);
-      const companyId = user?.empresa_id;
-      if (companyId) {
-        // Disparo imediato dos documentos e compras para o ano fiscal selecionado
-        doLoadDocumentosEmitidos(companyId, fiscalYear);
-        doLoadCompras(companyId, fiscalYear);
-      }
       fetchData();
     }
   }, [authReady, fiscalYear]);

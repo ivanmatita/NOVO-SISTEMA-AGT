@@ -45,6 +45,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       try {
         if (session) {
+          // For TOKEN_REFRESHED, if the user ID hasn't changed we only need to
+          // update the session cache — no need to re-fetch the full profile,
+          // which would trigger re-renders, Realtime restarts and multiple fetchData calls.
+          if (event === 'TOKEN_REFRESHED') {
+            const currentUserId = session.user?.id;
+            // Read current user from context state via a closure variable set below
+            // We use a module-level ref trick: if inFlightUserPromise is null, the
+            // previous getCurrentUser already resolved. Check if the resulting user
+            // has the same ID to skip the redundant re-fetch.
+            const cachedUser = await authService.getSessionSafe();
+            if (cachedUser?.user?.id === currentUserId) {
+              // Session token rotated but same user – no profile re-fetch needed.
+              return;
+            }
+          }
           const curr = await authService.getCurrentUser();
           if (mounted) {
             setUser(curr);

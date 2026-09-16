@@ -57,7 +57,7 @@ const EcosystemDashboard = ({ stats, issuedDocuments, setActiveTab }: { stats: a
         <h3 className="text-sm font-bold text-zinc-800 flex items-center gap-2 mb-8">
           <Activity className="text-blue-600" size={18} /> TENDÊNCIA DE VOLUME
         </h3>
-        <div className="w-full min-w-[100px] h-[300px]">
+        <div className="w-full min-w-[100px] h-[300px]" style={{ minHeight: 300 }}>
           <ResponsiveContainer width="100%" height={280} minWidth={100} debounce={50}>
             <AreaChart data={volumeData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
               <defs>
@@ -82,7 +82,7 @@ const EcosystemDashboard = ({ stats, issuedDocuments, setActiveTab }: { stats: a
         <h3 className="text-sm font-bold text-zinc-800 flex items-center gap-2 mb-6">
           <PieChartIcon className="text-blue-600" size={18} /> ESTADOS DOCUMENTAIS
         </h3>
-        <div className="h-64 w-full min-w-[100px] flex justify-center">
+        <div className="h-64 w-full min-w-[100px] flex justify-center" style={{ minHeight: 240 }}>
           <ResponsiveContainer width="100%" height={240} minWidth={100} debounce={50}>
             <PieChart>
               <Pie data={docStatesData} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">

@@ -3,6 +3,9 @@ import { User } from '../types';
 
 let sessionCache: any = null;
 let sessionLoading = false;
+// In-flight deduplication: if getCurrentUser() is already running, new callers
+// await the same Promise instead of launching parallel requests.
+let inFlightUserPromise: Promise<any> | null = null;
 
 async function safeApiFetch(url: string, options: RequestInit = {}, maxAttempts = 3): Promise<Response> {
   let attempt = 0;
@@ -336,6 +339,18 @@ export const authService = {
   },
 
   async getCurrentUser(): Promise<User | null> {
+    // In-flight deduplication: if a call is already in progress, return the
+    // same Promise so INITIAL_SESSION, SIGNED_IN, TOKEN_REFRESHED all share one request.
+    if (inFlightUserPromise) {
+      return inFlightUserPromise;
+    }
+    inFlightUserPromise = this._doGetCurrentUser().finally(() => {
+      inFlightUserPromise = null;
+    });
+    return inFlightUserPromise;
+  },
+
+  async _doGetCurrentUser(): Promise<User | null> {
     try {
       const session = await this.getSessionSafe();
       if (!session) {

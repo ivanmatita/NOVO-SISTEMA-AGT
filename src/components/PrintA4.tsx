@@ -150,6 +150,9 @@ export interface PrintA4Props {
     iban?: string;
     coordenadas_bancarias?: string;
     banco?: string;
+    swift?: string;
+    conta_bancaria?: string;
+    numero_conta?: string;
   };
   graphicConfigs?: {
     tipo: 'logotipo' | 'cabecalho' | 'rodape' | 'marca_dagua';
@@ -184,12 +187,16 @@ const PrintA4: React.FC<PrintA4Props> = ({
 
   const isFinal = !isDraft && invoice.is_certified;
   const isProvisional = isDraft || !invoice.is_certified || !invoice.hash || invoice.document_type === 'DRAFT' || invoice.tipo_documento === 'DRAFT';
-  const isForeignDraft = (isProvisional || forceForeignDraft) && invoice.currency && invoice.currency !== 'AOA';
-  const effectiveExRate = Number((invoice as any).exchange_rate || (invoice as any).taxa_cambio || 1);
+  
+  const rawCurrency = (invoice.currency || (invoice as any).moeda || 'AOA').toUpperCase();
+  const isNonAOA = !['AOA', 'AKZ', 'KWANZA', 'KWANZAS'].includes(rawCurrency);
+  const isForeignDraft = (isProvisional || forceForeignDraft) && isNonAOA;
+  
+  const effectiveExRate = Number((invoice as any).exchange_rate || (invoice as any).taxa_cambio || 1) || 1;
   const divisor = (isForeignDraft && effectiveExRate > 0) ? effectiveExRate : 1;
 
   const cleanInvoiceNumber = (invoice.invoice_number || invoice.numero_documento || 'DRAFT').split('-')[0].trim();
-  const displayCurrency = isForeignDraft ? (invoice.currency || 'AOA') : 'AOA';
+  const displayCurrency = isForeignDraft ? rawCurrency : 'AOA';
 
   const items = invoice.items || [];
   let subtotalRaw = 0;
@@ -437,6 +444,303 @@ const PrintA4: React.FC<PrintA4Props> = ({
   const pages = paginateItems(items.length > 0 ? items : [{ description: 'Item', quantity: 1, unit_price: 0, total: 0 }]);
   const totalPages = pages.length;
 
+  // DEDICATED FOREIGN DRAFT DUAL CURRENCY LAYOUT
+  if (isForeignDraft) {
+    const foreignCur = rawCurrency || 'USD';
+
+    return (
+      <div className="print-document-container flex flex-col items-center w-full">
+        {pages.map((pageItems, pageIdx) => {
+          const isFirstPage = pageIdx === 0;
+          const isLastPage = pageIdx === totalPages - 1;
+
+          return (
+            <div
+              key={pageIdx}
+              className="a4-page bg-white w-[210mm] min-h-[297mm] h-[297mm] max-h-[297mm] p-[10mm_14mm_8mm_14mm] mx-auto shadow-2xl mb-8 relative flex flex-col justify-between text-zinc-900 font-sans border border-zinc-200 print:border-none print:shadow-none print:m-0 print:mb-0 box-border overflow-hidden"
+              style={{ width: '210mm', height: '297mm', minHeight: '297mm' }}
+            >
+              {watermarkSrc && (
+                <div
+                  className="absolute inset-0 flex items-center justify-center pointer-events-none z-0"
+                  style={{
+                    opacity: watermarkConfig?.transparencia || 0.08,
+                    transform: watermarkConfig ? `translate(${watermarkConfig.posicao_x}px, ${watermarkConfig.posicao_y}px)` : 'none'
+                  }}
+                >
+                  <img
+                    src={watermarkSrc}
+                    alt="Watermark"
+                    style={{
+                      height: watermarkConfig ? `${watermarkConfig.altura}px` : `${companyData?.watermark_size || 350}px`,
+                      width: watermarkConfig ? `${watermarkConfig.largura}px` : 'auto'
+                    }}
+                    className="object-contain grayscale"
+                  />
+                </div>
+              )}
+
+              {/* Watermark Draft stamp */}
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.04] rotate-[-35deg] z-[5] text-center">
+                <p className="text-[64px] font-black uppercase tracking-[0.2em] text-red-600 leading-none">
+                  DRAFT / SUPORTE
+                </p>
+              </div>
+
+              <div className="relative z-10 flex-1 flex flex-col">
+                {isFirstPage ? (
+                  <>
+                    {/* Header Row: Company (Left) | Draft Box + QR (Center) | Client Box (Right) */}
+                    <div className="grid grid-cols-12 gap-3 mb-3 items-start">
+                      {/* Left: Company Details (col-span-4) */}
+                      <div className="col-span-4 text-[10px] leading-tight space-y-1">
+                        {logoSrc && (
+                          <img src={logoSrc} alt="Logo" className="max-h-12 max-w-[150px] object-contain mb-1" />
+                        )}
+                        <div className="font-black text-xs uppercase text-zinc-900 leading-snug">{companyName}</div>
+                        <div><span className="font-bold">NIF:</span> <span className="font-mono">{companyNif}</span></div>
+                        <div className="text-zinc-600 uppercase">{companyAddress}</div>
+                        {companyPhone !== '---' && <div><span className="font-bold">Tel:</span> {companyPhone}</div>}
+                        {companyData?.email && <div><span className="font-bold">Email:</span> {companyData.email}</div>}
+                      </div>
+
+                      {/* Center: DRAFT Title + Box + QR Code (col-span-4) */}
+                      <div className="col-span-4 flex flex-col items-center text-center">
+                        <div className="text-2xl font-black uppercase tracking-wider text-red-600 mb-1">
+                          DRAFT
+                        </div>
+                        
+                        <div className="flex items-center gap-2 border-2 border-red-500 rounded p-1.5 bg-red-50/30 w-full justify-center">
+                          <div className="text-left text-[9px] leading-tight">
+                            <div className="font-black text-red-700 uppercase tracking-tight text-[9.5px]">
+                              DRAFT RELATED TO INVOICE Nº
+                            </div>
+                            <div className="font-black text-zinc-900 font-mono text-[11px]">
+                              Doc. Nº: {cleanInvoiceNumber}
+                            </div>
+                            <div className="text-zinc-600 text-[8.5px]">
+                              Data Emissão: {formattedEmissionDate.split(' ')[0]}
+                            </div>
+                          </div>
+                          <div className="shrink-0">
+                            <QRCodeSVG value={qrValue} size={48} level="M" />
+                          </div>
+                        </div>
+
+                        {/* Exchange rate badge */}
+                        <div className="mt-1.5 border border-red-400 bg-red-600 text-white text-[9px] font-black px-2.5 py-0.5 rounded shadow-xs uppercase tracking-wider">
+                          Rate AOA/{foreignCur} = {formatNumber(effectiveExRate)}
+                        </div>
+                      </div>
+
+                      {/* Right: Client Details (col-span-4) */}
+                      <div className="col-span-4 border border-zinc-300 rounded p-2.5 text-[9.5px] leading-snug bg-zinc-50/50">
+                        <div className="font-black text-[10px] text-zinc-700 uppercase mb-1">
+                          Exmo.(s) Sr.(s)
+                        </div>
+                        <div className="font-bold text-zinc-900 uppercase text-[10.5px]">{displayName}</div>
+                        <div className="text-zinc-600 uppercase">{displayAddress}</div>
+                        <div><span className="font-bold">NIF:</span> <span className="font-mono">{displayNif}</span></div>
+                        {displayPhone !== '---' && <div><span className="font-bold">Tel:</span> {displayPhone}</div>}
+                      </div>
+                    </div>
+
+                    {/* Banking details table */}
+                    <div className="mb-3">
+                      <table className="w-full border-collapse border border-zinc-300 text-[8.5px]">
+                        <thead>
+                          <tr className="bg-zinc-100 text-zinc-700 font-bold uppercase text-left border-b border-zinc-300">
+                            <th className="border border-zinc-300 px-2 py-1">Banco</th>
+                            <th className="border border-zinc-300 px-2 py-1">IBAN</th>
+                            <th className="border border-zinc-300 px-2 py-1">SWIFT</th>
+                            <th className="border border-zinc-300 px-2 py-1">Conta Nº</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr className="text-zinc-800">
+                            <td className="border border-zinc-300 px-2 py-1 font-semibold">{companyData?.banco || 'BANCO BFA / BAI'}</td>
+                            <td className="border border-zinc-300 px-2 py-1 font-mono font-bold">{companyIban}</td>
+                            <td className="border border-zinc-300 px-2 py-1 font-mono">{(companyData as any)?.swift || 'BAIAAOLA'}</td>
+                            <td className="border border-zinc-300 px-2 py-1 font-mono">{(companyData as any)?.numero_conta || (companyData as any)?.conta_bancaria || '---'}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                ) : (
+                  <div className="border-b border-zinc-300 pb-2 mb-3 flex justify-between items-center text-[10px]">
+                    <div>
+                      <span className="font-black uppercase text-zinc-800">{companyName}</span>
+                      <span className="text-zinc-400 mx-2">•</span>
+                      <span className="font-bold text-red-600">DRAFT: {cleanInvoiceNumber}</span>
+                    </div>
+                    <div className="font-bold text-zinc-600">
+                      Rate AOA/{foreignCur} = {formatNumber(effectiveExRate)}
+                    </div>
+                    <div className="text-zinc-600">
+                      Data: {formattedEmissionDate.split(' ')[0]} (Cont.)
+                    </div>
+                  </div>
+                )}
+
+                {/* Items Table with Dual Currency Columns */}
+                <div className="w-full">
+                  <table className="w-full border-collapse border border-zinc-300 text-[8.5px] leading-tight">
+                    <thead>
+                      <tr className="bg-[#003366] text-white font-black uppercase text-center border-b border-zinc-300">
+                        <th className="border border-zinc-300 px-1 py-1.5 w-7">Item</th>
+                        <th className="border border-zinc-300 px-1.5 py-1.5 w-20 text-left">Codigo / Serial</th>
+                        <th className="border border-zinc-300 px-2 py-1.5 text-left">Designação / Description</th>
+                        <th className="border border-zinc-300 px-1 py-1.5 w-16 text-center">Quant. / Unity</th>
+                        <th className="border border-zinc-300 px-1.5 py-1.5 w-24 text-right">AOA Unity Price</th>
+                        <th className="border border-zinc-300 px-1.5 py-1.5 w-24 text-right">AOA Subtotal</th>
+                        <th className="border border-zinc-300 px-1.5 py-1.5 w-24 text-right bg-[#002244]">{foreignCur} Unity Price</th>
+                        <th className="border border-zinc-300 px-1.5 py-1.5 w-24 text-right bg-[#002244]">{foreignCur} Subtotal</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pageItems.map((item, idx) => {
+                        const itemIndex = idx + 1;
+                        const q = Number(item.quantity || 0);
+                        const p = Number(item.unit_price || 0); // Price in AOA
+                        const desc = Number(item.desconto || item.desconto_linha || 0);
+                        const lineNetAOA = Math.max(0, (q * p) - desc);
+                        const lineNetForeign = lineNetAOA / effectiveExRate;
+                        const unitPriceForeign = p / effectiveExRate;
+                        const codeSerial = item.serial_number || item.codigo || (item as any).product_code || item.reference || '—';
+                        const unity = item.unidade || (item as any).unit || 'UN';
+
+                        return (
+                          <tr key={idx} className={`border-b border-zinc-200 hover:bg-zinc-50/50 ${idx % 2 === 0 ? 'bg-white' : 'bg-zinc-50/30'}`}>
+                            <td className="border border-zinc-300 px-1 py-1 text-center font-mono text-zinc-500 font-bold">{itemIndex}</td>
+                            <td className="border border-zinc-300 px-1.5 py-1 text-left font-mono text-zinc-600">{codeSerial}</td>
+                            <td className="border border-zinc-300 px-2 py-1 text-left font-medium text-zinc-900 break-words max-w-[180px]">{item.description}</td>
+                            <td className="border border-zinc-300 px-1 py-1 text-center font-bold text-zinc-800">{q} {unity}</td>
+                            <td className="border border-zinc-300 px-1.5 py-1 text-right font-mono text-zinc-800">{formatNumber(p)}</td>
+                            <td className="border border-zinc-300 px-1.5 py-1 text-right font-mono font-bold text-zinc-900">{formatNumber(lineNetAOA)}</td>
+                            <td className="border border-zinc-300 px-1.5 py-1 text-right font-mono text-blue-900 bg-blue-50/20">{formatNumber(unitPriceForeign)}</td>
+                            <td className="border border-zinc-300 px-1.5 py-1 text-right font-mono font-bold text-blue-950 bg-blue-50/20">{formatNumber(lineNetForeign)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  {!isLastPage && (
+                    <div className="text-right text-[9px] text-zinc-500 italic mt-1 font-bold">
+                      (continua na página seguinte...)
+                    </div>
+                  )}
+                </div>
+
+                {isLastPage && (
+                  <div className="mt-3 space-y-2">
+                    {/* Financial Summary Table (Dual Currency) */}
+                    <div className="grid grid-cols-12 gap-4">
+                      {/* Left: Notes / Extenso (col-span-6) */}
+                      <div className="col-span-6 flex flex-col justify-between space-y-2">
+                        <div className="border border-red-400 bg-red-50/40 p-2.5 rounded text-center">
+                          <p className="text-[10px] font-black uppercase text-red-700 tracking-wider">
+                            ESTE DOCUMENTO É UM DRAFT. NÃO SERVE DE FACTURA.
+                          </p>
+                          <p className="text-[8px] text-red-600 font-medium mt-0.5">
+                            THIS DOCUMENT IS A DRAFT. IT DOES NOT SERVE AS AN INVOICE.
+                          </p>
+                        </div>
+
+                        <div className="text-[8.5px] leading-tight space-y-1 text-zinc-700">
+                          <div>
+                            <span className="font-bold text-zinc-900">Valor por extenso ({foreignCur}): </span>
+                            <span className="italic">{writeValorPorExtenso(totalPagar / effectiveExRate, foreignCur)}</span>
+                          </div>
+                          <div>
+                            <span className="font-bold text-zinc-900">Valor por extenso (AOA): </span>
+                            <span className="italic">{writeValorPorExtenso(totalPagar, 'AOA')}</span>
+                          </div>
+                        </div>
+
+                        <div className="text-[8px] text-zinc-500 space-y-0.5">
+                          <div>Local de prestação: <span className="font-semibold text-zinc-700">{localPrestacao}</span></div>
+                          <div>Data de colocação à disposição: <span className="font-semibold text-zinc-700">{dataDisposicao}</span></div>
+                        </div>
+                      </div>
+
+                      {/* Right: Dual Currency Summary Table (col-span-6) */}
+                      <div className="col-span-6">
+                        <table className="w-full border-collapse border border-zinc-300 text-[8.5px]">
+                          <thead>
+                            <tr className="bg-[#003366] text-white font-bold uppercase border-b border-zinc-300">
+                              <th className="border border-zinc-300 px-2 py-1 text-left">Resumo / Financial Summary</th>
+                              <th className="border border-zinc-300 px-2 py-1 text-right w-24">AOA</th>
+                              <th className="border border-zinc-300 px-2 py-1 text-right w-24 bg-[#002244]">{foreignCur}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr>
+                              <td className="border border-zinc-300 px-2 py-1 font-semibold text-zinc-700">Total Amount Services/Goods</td>
+                              <td className="border border-zinc-300 px-2 py-1 text-right font-mono">{formatNumber(subtotalRaw - totalDescontos)}</td>
+                              <td className="border border-zinc-300 px-2 py-1 text-right font-mono bg-blue-50/10">{formatNumber((subtotalRaw - totalDescontos) / effectiveExRate)}</td>
+                            </tr>
+                            <tr>
+                              <td className="border border-zinc-300 px-2 py-1 font-semibold text-zinc-700">VAT / IVA</td>
+                              <td className="border border-zinc-300 px-2 py-1 text-right font-mono">{formatNumber(vatTotal)}</td>
+                              <td className="border border-zinc-300 px-2 py-1 text-right font-mono bg-blue-50/10">{formatNumber(vatTotal / effectiveExRate)}</td>
+                            </tr>
+                            {vatWithholdingAmount > 0 && (
+                              <tr>
+                                <td className="border border-zinc-300 px-2 py-1 font-semibold text-zinc-700">Iva cativo</td>
+                                <td className="border border-zinc-300 px-2 py-1 text-right font-mono text-red-600">-{formatNumber(vatWithholdingAmount)}</td>
+                                <td className="border border-zinc-300 px-2 py-1 text-right font-mono text-red-600 bg-blue-50/10">-{formatNumber(vatWithholdingAmount / effectiveExRate)}</td>
+                              </tr>
+                            )}
+                            {retencaoTotal > 0 && (
+                              <tr>
+                                <td className="border border-zinc-300 px-2 py-1 font-semibold text-zinc-700">WithholdingTax / Retenção</td>
+                                <td className="border border-zinc-300 px-2 py-1 text-right font-mono text-red-600">-{formatNumber(retencaoTotal)}</td>
+                                <td className="border border-zinc-300 px-2 py-1 text-right font-mono text-red-600 bg-blue-50/10">-{formatNumber(retencaoTotal / effectiveExRate)}</td>
+                              </tr>
+                            )}
+                            <tr className="bg-zinc-100 font-black">
+                              <td className="border border-zinc-400 px-2 py-1.5 text-zinc-900 uppercase text-[9px]">Net Amount / Total Líquido</td>
+                              <td className="border border-zinc-400 px-2 py-1.5 text-right font-mono text-zinc-900 text-[10px]">{formatNumber(totalPagar)}</td>
+                              <td className="border border-zinc-400 px-2 py-1.5 text-right font-mono text-blue-950 bg-blue-100 text-[10.5px] font-black">{formatNumber(totalPagar / effectiveExRate)}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Footer metadata info */}
+                    <div className="border-t border-zinc-200 pt-2 flex justify-between items-center text-[8px] text-zinc-500">
+                      <div className="space-y-0.5">
+                        <div><span className="font-bold text-zinc-700">Doc Ref:</span> {cleanInvoiceNumber} | <span className="font-bold text-zinc-700">Regime:</span> {companyRegime}</div>
+                        {invoice.operator_name && <div>Operador: <span className="font-semibold text-zinc-700">{invoice.operator_name}</span></div>}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold uppercase tracking-wider text-zinc-400">Powered By AFROGEST V.1</span>
+                        <QRCodeSVG value={qrValue} size={40} level="L" />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Bottom Page Numbering */}
+              <div className="border-t border-zinc-300 pt-2 mt-auto flex justify-between items-center text-[8.5px] text-zinc-600 relative z-10">
+                <div className="font-medium text-red-600 font-bold uppercase tracking-wider">
+                  DOCUMENTO DE SUPORTE - DRAFT EM MOEDA ESTRANGEIRA
+                </div>
+                <div className="font-bold uppercase tracking-wider">
+                  Página {pageIdx + 1} de {totalPages}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // STANDARD CERTIFIED A4 INVOICE LAYOUT
   return (
     <div className="print-document-container flex flex-col items-center w-full">
       {pages.map((pageItems, pageIdx) => {
@@ -472,7 +776,7 @@ const PrintA4: React.FC<PrintA4Props> = ({
             {isProvisional && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.05] rotate-[-45deg] z-[5] text-center border-8 border-amber-500 m-20">
                 <p className="text-[44px] font-black uppercase tracking-[0.1em] text-amber-600 leading-none">
-                  {isForeignDraft ? 'DOCUMENTO DE SUPORTE' : 'DOCUMENTO NÃO CERTIFICADO'}
+                  DOCUMENTO NÃO CERTIFICADO
                   <br />
                   <span className="text-[20px] font-bold">SEM VALIDADE FISCAL</span>
                 </p>
@@ -661,25 +965,25 @@ const PrintA4: React.FC<PrintA4Props> = ({
                             {q}
                           </td>
                           <td className="border border-zinc-300 px-1.5 py-1 text-right font-mono text-zinc-800">
-                            {formatNumber(p / divisor)}
+                            {formatNumber(p)}
                           </td>
                           <td className="border border-zinc-300 px-1.5 py-1 text-right font-mono text-zinc-800">
-                            {formatNumber(desc / divisor)}
+                            {formatNumber(desc)}
                           </td>
                           <td className="border border-zinc-300 px-2 py-1 text-right font-mono text-zinc-800">
-                            {formatNumber(lineNet / divisor)}
+                            {formatNumber(lineNet)}
                           </td>
                           <td className="border border-zinc-300 px-1 py-1 text-right font-mono text-zinc-700">
-                            {formatNumber(lineIec / divisor)}
+                            {formatNumber(lineIec)}
                           </td>
                           <td className="border border-zinc-300 px-1 py-1 text-right font-mono text-zinc-700">
-                            {formatNumber(lineIva / divisor)}
+                            {formatNumber(lineIva)}
                           </td>
                           <td className="border border-zinc-300 px-1 py-1 text-right font-mono text-zinc-700">
-                            {formatNumber(lineIs / divisor)}
+                            {formatNumber(lineIs)}
                           </td>
                           <td className="border border-zinc-300 px-2 py-1 text-right font-mono font-bold text-zinc-900">
-                            {formatNumber(lineTotal / divisor)}
+                            {formatNumber(lineTotal)}
                           </td>
                         </tr>
                       );
@@ -720,7 +1024,7 @@ const PrintA4: React.FC<PrintA4Props> = ({
                                 <td className="border border-zinc-300 px-1 py-0.5 text-center">II / IRT</td>
                                 <td className="border border-zinc-300 px-1 py-0.5 text-center">6,5%</td>
                                 <td className="border border-zinc-300 px-1.5 py-0.5 text-right font-mono font-bold">
-                                  {formatNumber(retencaoTotal / divisor)}
+                                  {formatNumber(retencaoTotal)}
                                 </td>
                               </tr>
                             ) : null}
@@ -732,7 +1036,7 @@ const PrintA4: React.FC<PrintA4Props> = ({
                                   {vatWithholding * 100}%
                                 </td>
                                 <td className="border border-zinc-300 px-1.5 py-0.5 text-right font-mono font-bold">
-                                  {formatNumber(vatWithholdingAmount / divisor)}
+                                  {formatNumber(vatWithholdingAmount)}
                                 </td>
                               </tr>
                             ) : null}
@@ -775,37 +1079,37 @@ const PrintA4: React.FC<PrintA4Props> = ({
                           <tr>
                             <td className="border border-zinc-300 px-2 py-0.5">Mercadorias e Bens</td>
                             <td className="border border-zinc-300 px-2 py-0.5 text-right font-mono">
-                              {formatNumber(totalMercadorias / divisor)}
+                              {formatNumber(totalMercadorias)}
                             </td>
                           </tr>
                           <tr>
                             <td className="border border-zinc-300 px-2 py-0.5">Prestação de Serviços</td>
                             <td className="border border-zinc-300 px-2 py-0.5 text-right font-mono">
-                              {formatNumber(totalServicos / divisor)}
+                              {formatNumber(totalServicos)}
                             </td>
                           </tr>
                           <tr>
                             <td className="border border-zinc-300 px-2 py-0.5">IVA</td>
                             <td className="border border-zinc-300 px-2 py-0.5 text-right font-mono">
-                              {formatNumber(vatTotal / divisor)}
+                              {formatNumber(vatTotal)}
                             </td>
                           </tr>
                           <tr>
                             <td className="border border-zinc-300 px-2 py-0.5">Imposto de Selo(IS)</td>
                             <td className="border border-zinc-300 px-2 py-0.5 text-right font-mono">
-                              {formatNumber(isTotal / divisor)}
+                              {formatNumber(isTotal)}
                             </td>
                           </tr>
                           <tr>
                             <td className="border border-zinc-300 px-2 py-0.5">Imposto Especial ao Consumo(IEC)</td>
                             <td className="border border-zinc-300 px-2 py-0.5 text-right font-mono">
-                              {formatNumber(iecTotal / divisor)}
+                              {formatNumber(iecTotal)}
                             </td>
                           </tr>
                           <tr>
                             <td className="border border-zinc-300 px-2 py-0.5">Descontos</td>
                             <td className="border border-zinc-300 px-2 py-0.5 text-right font-mono">
-                              {formatNumber(totalDescontos / divisor)}
+                              {formatNumber(totalDescontos)}
                             </td>
                           </tr>
                         </tbody>
@@ -838,7 +1142,7 @@ const PrintA4: React.FC<PrintA4Props> = ({
                               Total sem impostos
                             </td>
                             <td className="border border-zinc-300 px-2 py-1 text-right font-mono font-bold w-28">
-                              {formatNumber(totalSemImpostos / divisor)}
+                              {formatNumber(totalSemImpostos)}
                             </td>
                           </tr>
                           <tr>
@@ -846,7 +1150,7 @@ const PrintA4: React.FC<PrintA4Props> = ({
                               Valor de Impostos
                             </td>
                             <td className="border border-zinc-300 px-2 py-1 text-right font-mono font-bold">
-                              {formatNumber(totalImpostos / divisor)}
+                              {formatNumber(totalImpostos)}
                             </td>
                           </tr>
                           <tr>
@@ -854,7 +1158,7 @@ const PrintA4: React.FC<PrintA4Props> = ({
                               Valor de descontos
                             </td>
                             <td className="border border-zinc-300 px-2 py-1 text-right font-mono font-bold">
-                              {formatNumber(totalDescontos / divisor)}
+                              {formatNumber(totalDescontos)}
                             </td>
                           </tr>
                           <tr className="bg-zinc-200">
@@ -862,7 +1166,7 @@ const PrintA4: React.FC<PrintA4Props> = ({
                               Valor Total do Documento
                             </td>
                             <td className="border border-zinc-400 px-2 py-1.5 text-right font-mono font-black text-[11px] text-zinc-900">
-                              {formatNumber(totalPagar / divisor)}
+                              {formatNumber(totalPagar)}
                             </td>
                           </tr>
                         </tbody>

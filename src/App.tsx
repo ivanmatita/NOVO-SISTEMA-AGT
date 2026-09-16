@@ -35570,6 +35570,7 @@ export default function App() {
               printFormat={printFormat}
               companyData={companyData}
               graphicConfigs={printingGraphicConfigs as any}
+              forceForeignDraft={isPrintingDraft && Boolean(printingInvoice?.currency && !['AOA', 'AKZ', 'KWANZA', 'KWANZAS'].includes(String(printingInvoice.currency).toUpperCase()))}
             />
           </div>
         </div>

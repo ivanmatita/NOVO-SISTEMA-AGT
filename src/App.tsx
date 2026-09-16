@@ -18975,15 +18975,20 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
   // Carregar Diários e PGC
   const loadDiariosAndPgc = async () => {
     try {
-      // Carregar Diários
+      // Carregar Diários — tabela correta: diarios_contabeis
       let fetchedDiarios: any[] = [];
       if (user?.empresa_id) {
         const { data: dData } = await supabase
-          .from('diarios')
-          .select('*')
+          .from('diarios_contabeis')
+          .select('id, codigo, descricao, tipo, is_active, ativo')
           .eq('empresa_id', user.empresa_id)
           .order('codigo', { ascending: true });
-        if (dData && dData.length > 0) fetchedDiarios = dData;
+        if (dData && dData.length > 0) {
+          fetchedDiarios = dData.map((d: any) => ({
+            codigo: d.codigo || d.id,
+            descricao: d.descricao || `Diário ${d.codigo}`
+          }));
+        }
       }
       if (fetchedDiarios.length === 0) {
         fetchedDiarios = [
@@ -18997,15 +19002,21 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
       }
       setDiarios(fetchedDiarios);
 
-      // Carregar PGC
+      // Carregar PGC — tabela correta: pgc_plano_contas
       let fetchedPgc: any[] = [];
-      const { data: pData } = await supabase.from('pgc').select('*').order('codigo', { ascending: true });
-      if (pData && pData.length > 0) {
-        fetchedPgc = pData.map((p: any) => ({
-          id: p.codigo || p.id,
-          codigo: p.codigo || p.id,
-          description: p.descricao || p.description || p.nome || ''
-        }));
+      if (user?.empresa_id) {
+        const { data: pData } = await supabase
+          .from('pgc_plano_contas')
+          .select('id, conta, codigo, descricao, natureza, nivel, tipo')
+          .eq('empresa_id', user.empresa_id)
+          .order('conta', { ascending: true });
+        if (pData && pData.length > 0) {
+          fetchedPgc = pData.map((p: any) => ({
+            id: p.conta || p.codigo || p.id,
+            codigo: p.conta || p.codigo || p.id,
+            description: p.descricao || p.conta || ''
+          }));
+        }
       }
       if (fetchedPgc.length === 0) {
         fetchedPgc = [
@@ -19090,7 +19101,7 @@ const ClassifyMovementsModule = ({ invoices: propInvoices, purchases: propPurcha
     }
   };
 
-  useEffect(() => { loadData(); }, [user?.empresa_id]);
+  useEffect(() => { loadData(); }, [user?.empresa_id, accountingYear]);
 
   // Atualiza selectedDiarioCode por padrão quando a vista muda
   useEffect(() => {
@@ -20763,8 +20774,14 @@ const AccountingMapsModule = ({ onBack, companyData, fiscalYear }: { onBack: () 
           if (!grouped[c]) {
             grouped[c] = { conta: c, descricao: l.descricao_pgc || l.descricao || c, debitoPeriodo: 0, creditoPeriodo: 0 };
           }
-          grouped[c].debitoPeriodo += Number(l.debito || 0);
-          grouped[c].creditoPeriodo += Number(l.credito || 0);
+          // Derivar debito/credito de tipo_movimento+valor se campos zerados
+          const valorBruto = Number(l.valor || 0);
+          const debitoReal = Number(l.debito) > 0 ? Number(l.debito) :
+            (l.tipo_movimento === 'DEBITO' || l.tipo_movimento === 'D' ? valorBruto : 0);
+          const creditoReal = Number(l.credito) > 0 ? Number(l.credito) :
+            (l.tipo_movimento === 'CREDITO' || l.tipo_movimento === 'C' ? valorBruto : 0);
+          grouped[c].debitoPeriodo += debitoReal;
+          grouped[c].creditoPeriodo += creditoReal;
         });
         const accs = Object.values(grouped).map((a: any) => {
           const sD = Math.max(0, a.debitoPeriodo - a.creditoPeriodo);
@@ -20777,7 +20794,7 @@ const AccountingMapsModule = ({ onBack, companyData, fiscalYear }: { onBack: () 
         });
         setBalanceteData({ accounts: accs, totais: { totalDebitoP: tDebP, totalCreditoP: tCredP, totalDebitoS: tDebS, totalCreditoS: tCredS } });
       } else {
-        // Balancete sintético com faturas e compras do ano
+        // Balancete sintético com faturas e compras do ano (apenas quando não há lançamentos)
         const [docsRes, comprasRes] = await Promise.all([
           supabase.from('documentos_emitidos').select('total, imposto').eq('empresa_id', user.empresa_id).eq('ano', yNum),
           supabase.from('compras').select('total, valor_iva, imposto').eq('empresa_id', user.empresa_id).eq('ano', yNum)
@@ -21001,14 +21018,69 @@ const AccountingMapsModule = ({ onBack, companyData, fiscalYear }: { onBack: () 
 };
 
 const AccountMovementsPage = ({ account, onBack, companyData }: { account: any, onBack: () => void, companyData?: any }) => {
+  const { user } = useAuth();
+  const { exerciseYear } = useExercise();
   const [initialMonth, setInitialMonth] = useState('Abertura');
   const [finalMonth, setFinalMonth] = useState('Dezembro');
-  
-  // Fake movements based on the image bl.PNG
-  const movements = [
-    { ord: 1, num: 1, diario: '0000', mov: 1, dataValor: '2025', dataDoc: '2025', account: '11.5.3', designation: 'Cadeiras', description: 'Movimento de Abertura', debito: 35164.44, credito: 0, saldo: 35164.44 },
-    { ord: 2, num: 2, diario: '0000', mov: 2, dataValor: '2025', dataDoc: '2025', account: '11.5.3.2', designation: 'Mesa de Escritório', description: 'Movimento de Abertura', debito: 83156.16, credito: 0, saldo: 83156.16 },
-  ];
+  const [movements, setMovements] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedYear, setSelectedYear] = useState(exerciseYear || String(new Date().getFullYear()));
+
+  useEffect(() => {
+    if (exerciseYear) setSelectedYear(exerciseYear);
+  }, [exerciseYear]);
+
+  useEffect(() => {
+    const fetchMovements = async () => {
+      if (!user?.empresa_id || !account) return;
+      setLoading(true);
+      try {
+        const contaCodigo = account.code || account.conta || account.id || '';
+        const { data } = await supabase
+          .from('lancamentos_contabeis')
+          .select('*')
+          .eq('empresa_id', user.empresa_id)
+          .like('data_lancamento', `${selectedYear}%`)
+          .or(`conta_pgc.eq.${contaCodigo},conta_debito.eq.${contaCodigo},conta_credito.eq.${contaCodigo}`)
+          .order('data_lancamento', { ascending: true });
+
+        if (data && data.length > 0) {
+          let saldoAcum = 0;
+          const mapped = data.map((l: any, idx: number) => {
+            const v = Number(l.valor || 0);
+            const deb = Number(l.debito) > 0 ? Number(l.debito) :
+              (l.tipo_movimento === 'DEBITO' || l.tipo_movimento === 'D' ? v : 0);
+            const cred = Number(l.credito) > 0 ? Number(l.credito) :
+              (l.tipo_movimento === 'CREDITO' || l.tipo_movimento === 'C' ? v : 0);
+            saldoAcum += deb - cred;
+            return {
+              ord: idx + 1,
+              num: idx + 1,
+              diario: l.diario || l.diario_id || '0000',
+              mov: l.id?.toString().substring(0, 6) || idx + 1,
+              dataValor: l.data_lancamento || l.created_at?.split('T')[0] || selectedYear,
+              dataDoc: l.data_lancamento || l.created_at?.split('T')[0] || selectedYear,
+              account: l.conta_pgc || contaCodigo,
+              designation: l.descricao_conta || l.descricao || l.documento_ref || '',
+              description: l.descricao_lancamento || l.descricao || '',
+              debito: deb,
+              credito: cred,
+              saldo: saldoAcum,
+            };
+          });
+          setMovements(mapped);
+        } else {
+          setMovements([]);
+        }
+      } catch (e) {
+        console.error('Erro ao carregar extrato de conta:', e);
+        setMovements([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchMovements();
+  }, [user?.empresa_id, account, selectedYear]);
 
   const totalDebitos = movements.reduce((sum, m) => sum + m.debito, 0);
   const totalCreditos = movements.reduce((sum, m) => sum + m.credito, 0);
@@ -21020,10 +21092,16 @@ const AccountMovementsPage = ({ account, onBack, companyData }: { account: any, 
         <button onClick={onBack} className="p-2 hover:bg-zinc-100 rounded-none text-zinc-400 flex items-center gap-2 font-bold uppercase text-[10px]">
           <ChevronLeft size={18} /> Voltar ao Balancete
         </button>
-        <div className="flex gap-2">
-           <button onClick={() => window.print()} className="bg-[#003366] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-[#002244] shadow-lg">
-             <Printer size={16} /> Imprimir PDF
-           </button>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 bg-zinc-50 border border-zinc-200 px-3 py-1.5">
+            <span className="text-[10px] font-black text-zinc-500 uppercase">Exercício:</span>
+            <select value={selectedYear} onChange={e => setSelectedYear(e.target.value)} className="bg-transparent text-sm font-black text-[#003366] focus:outline-none">
+              {[2024,2025,2026,2027].map(y => <option key={y} value={String(y)}>{y}</option>)}
+            </select>
+          </div>
+          <button onClick={() => window.print()} className="bg-[#003366] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-[#002244] shadow-lg">
+            <Printer size={16} /> Imprimir PDF
+          </button>
         </div>
       </div>
 
@@ -21033,15 +21111,15 @@ const AccountMovementsPage = ({ account, onBack, companyData }: { account: any, 
               <div className="text-left">
                  <div className="bg-[#003366] p-2 inline-block mb-2">
                     <div className="w-12 h-12 bg-white flex items-center justify-center font-bold text-red-600 border-2 border-red-600">
-                       {String(companyData?.name || "Royal Cars").substring(0, 2).toUpperCase()}
+                       {String(companyData?.name || "RC").substring(0, 2).toUpperCase()}
                     </div>
                  </div>
-                 <div className="text-[11px] font-black text-[#003366] uppercase">{companyData?.name || companyData?.nome_empresa || "Royal Cars - Comercio e Prestação de Serviços, LDA"}</div>
-                 <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest">NIF: {companyData?.nif || "5000922200"} • Controlo de Movimentos Analíticos • Software ERP</p>
+                 <div className="text-[11px] font-black text-[#003366] uppercase">{companyData?.name || companyData?.nome_empresa || companyData?.nome || "Empresa"}</div>
+                 <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-widest">NIF: {companyData?.nif || "—"} • Controlo de Movimentos Analíticos • Software ERP</p>
               </div>
               <div className="text-right">
                  <h2 className="text-2xl font-black text-[#003366] tracking-tighter uppercase italic leading-none">Extrato de Conta</h2>
-                 <p className="text-[10px] font-black bg-amber-400 text-[#003366] px-2 py-0.5 inline-block uppercase tracking-[0.2em] mt-2">Analítico {new Date().getFullYear()}</p>
+                 <p className="text-[10px] font-black bg-amber-400 text-[#003366] px-2 py-0.5 inline-block uppercase tracking-[0.2em] mt-2">Analítico {selectedYear}</p>
               </div>
            </div>
            <div className="h-0.5 bg-zinc-100 w-full my-4"></div>
@@ -21050,11 +21128,11 @@ const AccountMovementsPage = ({ account, onBack, companyData }: { account: any, 
         <div className="grid grid-cols-4 gap-4 mb-8">
            <div className="bg-zinc-50 p-4 border border-zinc-100">
               <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1 text-center">Conta Selecionada</p>
-              <p className="text-sm font-black text-[#003366] text-center">{account.code || account.id}</p>
+              <p className="text-sm font-black text-[#003366] text-center">{account.code || account.conta || account.id}</p>
            </div>
            <div className="bg-zinc-50 p-4 border border-zinc-100">
               <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1 text-center">Designação</p>
-              <p className="text-xs font-bold text-zinc-600 text-center uppercase tracking-tight truncate">{account.desc || account.description}</p>
+              <p className="text-xs font-bold text-zinc-600 text-center uppercase tracking-tight truncate">{account.desc || account.description || account.descricao}</p>
            </div>
            <div className="bg-zinc-50 p-4 border border-zinc-100 col-span-2">
              <div className="flex items-center justify-around h-full">
@@ -21100,7 +21178,11 @@ const AccountMovementsPage = ({ account, onBack, companyData }: { account: any, 
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-50">
-              {movements.map((m, i) => (
+              {loading ? (
+                <tr><td colSpan={13} className="py-16 text-center text-zinc-300 italic">A carregar movimentos...</td></tr>
+              ) : movements.length === 0 ? (
+                <tr><td colSpan={13} className="py-16 text-center text-zinc-300 italic uppercase font-black">Sem movimentos para esta conta no exercício {selectedYear}</td></tr>
+              ) : movements.map((m, i) => (
                 <tr key={i} className="hover:bg-zinc-50 transition-colors">
                   <td className="px-2 py-2 text-zinc-500">{m.ord}</td>
                   <td className="px-2 py-2 text-zinc-500">{m.num}</td>
@@ -21113,7 +21195,7 @@ const AccountMovementsPage = ({ account, onBack, companyData }: { account: any, 
                   <td className="px-2 py-2 text-zinc-500">{m.description}</td>
                   <td className="px-2 py-2 text-right font-mono font-bold text-zinc-600">{formatCurrency(m.debito).replace('AOA', '').trim()}</td>
                   <td className="px-2 py-2 text-right font-mono font-bold text-zinc-600">{formatCurrency(m.credito).replace('AOA', '').trim()}</td>
-                  <td className="px-2 py-2 text-right font-mono font-black text-[#003366]">{formatCurrency(m.saldo).replace('AOA', '').trim()} D</td>
+                  <td className="px-2 py-2 text-right font-mono font-black text-[#003366]">{formatCurrency(Math.abs(m.saldo)).replace('AOA', '').trim()} {m.saldo >= 0 ? 'D' : 'C'}</td>
                   <td className="px-2 py-2 text-center"><input type="checkbox" className="rounded-none border-zinc-300" /></td>
                 </tr>
               ))}
@@ -23743,8 +23825,14 @@ const BalanceteRazaoModule = ({ onBack, companyData, fiscalYear }: { onBack: () 
               ) : groups.length === 0 ? (
                 <tr><td colSpan={6} className="py-16 text-center text-zinc-300 italic uppercase font-black">Sem lançamentos contabilísticos registados</td></tr>
               ) : groups.map((g: any) => {
-                const totalDeb = g.linhas.reduce((s: number, l: any) => s + Number(l.debito || 0), 0);
-                const totalCred = g.linhas.reduce((s: number, l: any) => s + Number(l.credito || 0), 0);
+                const totalDeb = g.linhas.reduce((s: number, l: any) => {
+                  const v = Number(l.valor || 0);
+                  return s + (Number(l.debito) > 0 ? Number(l.debito) : (l.tipo_movimento === 'DEBITO' || l.tipo_movimento === 'D' ? v : 0));
+                }, 0);
+                const totalCred = g.linhas.reduce((s: number, l: any) => {
+                  const v = Number(l.valor || 0);
+                  return s + (Number(l.credito) > 0 ? Number(l.credito) : (l.tipo_movimento === 'CREDITO' || l.tipo_movimento === 'C' ? v : 0));
+                }, 0);
                 const saldoDeb = totalDeb > totalCred ? totalDeb - totalCred : 0;
                 const saldoCred = totalCred > totalDeb ? totalCred - totalDeb : 0;
                 totalDebGeral += totalDeb;
@@ -23834,11 +23922,21 @@ const BalancoModule = ({ onBack, companyData, invoices, purchases, fiscalYear }:
   // Helper: sum net (debito - credito) for specific account prefixes
   const netByPrefix = (data: any[], prefixes: string[]) => {
     return data.filter(l => prefixes.some(p => (l.conta_pgc || '').startsWith(p)))
-      .reduce((s, l) => s + Number(l.debito || 0) - Number(l.credito || 0), 0);
+      .reduce((s, l) => {
+        const v = Number(l.valor || 0);
+        const deb = Number(l.debito) > 0 ? Number(l.debito) : (l.tipo_movimento === 'DEBITO' || l.tipo_movimento === 'D' ? v : 0);
+        const cred = Number(l.credito) > 0 ? Number(l.credito) : (l.tipo_movimento === 'CREDITO' || l.tipo_movimento === 'C' ? v : 0);
+        return s + deb - cred;
+      }, 0);
   };
   const creditByPrefix = (data: any[], prefixes: string[]) => {
     return data.filter(l => prefixes.some(p => (l.conta_pgc || '').startsWith(p)))
-      .reduce((s, l) => s + Number(l.credito || 0) - Number(l.debito || 0), 0);
+      .reduce((s, l) => {
+        const v = Number(l.valor || 0);
+        const deb = Number(l.debito) > 0 ? Number(l.debito) : (l.tipo_movimento === 'DEBITO' || l.tipo_movimento === 'D' ? v : 0);
+        const cred = Number(l.credito) > 0 ? Number(l.credito) : (l.tipo_movimento === 'CREDITO' || l.tipo_movimento === 'C' ? v : 0);
+        return s + cred - deb;
+      }, 0);
   };
 
   // Current year figures
@@ -24160,6 +24258,7 @@ const RegimeGeralModule = ({
             purchases={purchases}
             companyData={companyData}
             selectedYear={fiscalYear}
+            empresaId={companyData?.empresa_id || companyData?.id}
           />
         )}
         {activeRegimeTab === 'fornecedores' && (

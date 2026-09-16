@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
 import { Invoice, Purchase } from '../types';
 
 interface Modelo7FormProps {
@@ -7,16 +8,80 @@ interface Modelo7FormProps {
   companyData?: any;
   selectedYear?: string;
   selectedMonth?: string;
+  empresaId?: string;
 }
 
-const Modelo7Form = ({ invoices, purchases, companyData, selectedYear, selectedMonth }: Modelo7FormProps) => {
-  const [ano, setAno] = useState(selectedYear || '2025');
-  const [mes, setMes] = useState(selectedMonth || '05');
+const Modelo7Form = ({ invoices, purchases, companyData, selectedYear, selectedMonth, empresaId }: Modelo7FormProps) => {
+  const [ano, setAno] = useState(selectedYear || String(new Date().getFullYear()));
+  const [mes, setMes] = useState(selectedMonth || String(new Date().getMonth() + 1).padStart(2, '0'));
+  const [loading, setLoading] = useState(false);
+  const [dbInvoices, setDbInvoices] = useState<any[]>([]);
+  const [dbPurchases, setDbPurchases] = useState<any[]>([]);
 
   useEffect(() => {
     if (selectedYear) setAno(selectedYear);
+  }, [selectedYear]);
+
+  useEffect(() => {
     if (selectedMonth) setMes(selectedMonth);
-  }, [selectedYear, selectedMonth]);
+  }, [selectedMonth]);
+
+  // Real query by mes/ano whenever they change
+  useEffect(() => {
+    const eId = empresaId || companyData?.empresa_id || companyData?.id;
+    if (!eId) {
+      setDbInvoices([]);
+      setDbPurchases([]);
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+
+    const fetchData = async () => {
+      try {
+        const mesNum = parseInt(mes, 10);
+        const anoNum = parseInt(ano, 10);
+
+        const isMatch = (item: any) => {
+          if (item.ano !== undefined && item.mes !== undefined) {
+            return Number(item.ano) === anoNum && Number(item.mes) === mesNum;
+          }
+          const d = item.data || item.date || '';
+          if (!d) return false;
+          const parts = String(d).split('-');
+          return parts.length >= 2 && Number(parts[0]) === anoNum && Number(parts[1]) === mesNum;
+        };
+
+        const [{ data: docsFinal }, { data: comps }] = await Promise.all([
+          supabase
+            .from('documentos_emitidos')
+            .select('id, data, total, imposto, status, is_anulado, items, ano, mes')
+            .eq('empresa_id', eId)
+            .neq('status', 'anulado'),
+          supabase
+            .from('compras')
+            .select('id, data, date, total, status, is_anulado, items, ano, mes')
+            .eq('empresa_id', eId)
+            .neq('status', 'anulado'),
+        ]);
+
+        if (!cancelled) {
+          setDbInvoices((docsFinal || []).filter(isMatch));
+          setDbPurchases((comps || []).filter(isMatch));
+        }
+      } catch (err) {
+        console.error('[Modelo7Form] Query error:', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    fetchData();
+    return () => { cancelled = true; };
+  }, [mes, ano, empresaId, companyData?.empresa_id, companyData?.id]);
+
+  const hasDbData = dbInvoices.length > 0 || dbPurchases.length > 0;
 
   const isSelectedPeriod = (dateString: string) => {
     if (!dateString) return false;
@@ -25,13 +90,17 @@ const Modelo7Form = ({ invoices, purchases, companyData, selectedYear, selectedM
     return parts[0] === ano && parts[1] === mes;
   };
 
-  const filteredInvoices = (invoices || []).filter(
-    (inv) => isSelectedPeriod(inv.date) && inv.status !== 'anulado' && !(inv as any).is_anulado
-  );
+  const filteredInvoices = hasDbData
+    ? dbInvoices
+    : (invoices || []).filter(
+        (inv) => isSelectedPeriod(inv.date) && inv.status !== 'anulado' && !(inv as any).is_anulado
+      );
 
-  const filteredPurchases = (purchases || []).filter(
-    (p) => isSelectedPeriod(p.date) && p.status !== 'anulado' && !(p as any).is_anulado
-  );
+  const filteredPurchases = hasDbData
+    ? dbPurchases
+    : (purchases || []).filter(
+        (p) => isSelectedPeriod(p.date) && p.status !== 'anulado' && !(p as any).is_anulado
+      );
 
   // Extract VAT from sales total. Since inv.total includes 14% VAT, the base is total - tax.
   const totalSalesTax = filteredInvoices.reduce((acc, inv) => {
@@ -82,6 +151,13 @@ const Modelo7Form = ({ invoices, purchases, companyData, selectedYear, selectedM
 
   return (
     <div className="bg-white p-4 max-w-[1550px] w-full mx-auto border border-zinc-300 shadow-sm text-[13px] font-sans">
+      {/* Loading indicator */}
+      {loading && (
+        <div className="flex items-center gap-2 mb-2 text-xs text-blue-600 font-bold animate-pulse">
+          <span className="inline-block w-2 h-2 bg-blue-500 rounded-full"></span>
+          A carregar dados do período {mes}/{ano}...
+        </div>
+      )}
       {/* Header sections */}
       <div className="grid grid-cols-12 border-2 border-zinc-800 mb-2">
         <div className="col-span-3 border-r-2 border-zinc-800">
@@ -95,29 +171,29 @@ const Modelo7Form = ({ invoices, purchases, companyData, selectedYear, selectedM
         <div className="col-span-5 border-r-2 border-zinc-800">
           <div className="bg-[#003366] text-white font-bold px-2 py-1 flex justify-between items-center">
             <span>02- PERÍODO DA DECLARAÇÃO</span>
-            {!selectedYear && !selectedMonth && (
-              <div className="flex items-center gap-1.5 text-zinc-950 font-sans">
-                <select value={mes} onChange={e => setMes(e.target.value)} className="bg-white border border-zinc-300 text-[11px] font-bold p-0.5 uppercase">
-                  <option value="01">JANEIRO</option>
-                  <option value="02">FEVEREIRO</option>
-                  <option value="03">MARÇO</option>
-                  <option value="04">ABRIL</option>
-                  <option value="05">MAIO</option>
-                  <option value="06">JUNHO</option>
-                  <option value="07">JULHO</option>
-                  <option value="08">AGOSTO</option>
-                  <option value="09">SETEMBRO</option>
-                  <option value="10">OUTUBRO</option>
-                  <option value="11">NOVEMBRO</option>
-                  <option value="12">DEZEMBRO</option>
-                </select>
-                <select value={ano} onChange={e => setAno(e.target.value)} className="bg-white border border-zinc-300 text-[11px] font-bold p-0.5">
-                  <option value="2024">2024</option>
-                  <option value="2025">2025</option>
-                  <option value="2026">2026</option>
-                </select>
-              </div>
-            )}
+            {/* Always show selects — user can change mes/ano to trigger a real DB query */}
+            <div className="flex items-center gap-1.5 text-zinc-950 font-sans">
+              <select value={mes} onChange={e => setMes(e.target.value)} className="bg-white border border-zinc-300 text-[11px] font-bold p-0.5 uppercase">
+                <option value="01">JANEIRO</option>
+                <option value="02">FEVEREIRO</option>
+                <option value="03">MARÇO</option>
+                <option value="04">ABRIL</option>
+                <option value="05">MAIO</option>
+                <option value="06">JUNHO</option>
+                <option value="07">JULHO</option>
+                <option value="08">AGOSTO</option>
+                <option value="09">SETEMBRO</option>
+                <option value="10">OUTUBRO</option>
+                <option value="11">NOVEMBRO</option>
+                <option value="12">DEZEMBRO</option>
+              </select>
+              <select value={ano} onChange={e => setAno(e.target.value)} className="bg-white border border-zinc-300 text-[11px] font-bold p-0.5">
+                <option value="2024">2024</option>
+                <option value="2025">2025</option>
+                <option value="2026">2026</option>
+                <option value="2027">2027</option>
+              </select>
+            </div>
           </div>
           <div className="p-2 flex gap-4 items-start">
             <div>

@@ -46,8 +46,14 @@ export default async function handler(req, res) {
           if (!grouped[c]) {
             grouped[c] = { conta: c, descricao: l.descricao_pgc || l.descricao || c, debitoPeriodo: 0, creditoPeriodo: 0 };
           }
-          grouped[c].debitoPeriodo += Number(l.debito || 0);
-          grouped[c].creditoPeriodo += Number(l.credito || 0);
+          // Se debito/credito estiverem zerados, derivar de tipo_movimento + valor
+          const valorBruto = Number(l.valor || 0);
+          const debitoReal = Number(l.debito) > 0 ? Number(l.debito) :
+            (l.tipo_movimento === 'DEBITO' || l.tipo_movimento === 'D' ? valorBruto : 0);
+          const creditoReal = Number(l.credito) > 0 ? Number(l.credito) :
+            (l.tipo_movimento === 'CREDITO' || l.tipo_movimento === 'C' ? valorBruto : 0);
+          grouped[c].debitoPeriodo += debitoReal;
+          grouped[c].creditoPeriodo += creditoReal;
         });
 
         accounts = Object.values(grouped).map(a => {

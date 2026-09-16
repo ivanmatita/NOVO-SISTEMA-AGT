@@ -135,57 +135,85 @@ export const caixaService = {
   },
 
   async addMovement(movement: Partial<CaixaMovement>, empresaId: string): Promise<void> {
-    // We use a transaction-like approach or parallel updates since Supabase JS doesn't have standard ACID transactions easily for multiple tables without RPC
-    // But for a simple SaaS, updating balance + inserting movement is common.
-    // Ideally use an RPC for this to ensure consistency.
     try {
+      // Normalize: accept both PT (caixa_id/tipo/valor/descricao/referencia/documento_id)
+      // and EN (caixaId/type/amount/description/documentoId)
+      const cId: string = (movement as any).caixa_id || movement.caixaId || '';
+      const tipoMov: string = (movement as any).tipo || movement.type || '';
+      const valorMov: number = Number((movement as any).valor ?? movement.amount ?? 0);
+      const descMov: string = (movement as any).descricao || movement.description || '';
+      const refMov: string = (movement as any).referencia || '';
+      const docId: string | null = (movement as any).documento_id || (movement as any).documentoId || null;
+      const targetCId: string | null = (movement as any).target_caixa_id || movement.targetCaixaId || null;
+      const now = new Date();
+
+      if (!cId) {
+        console.warn('[caixaService.addMovement] caixa_id vazio — movimento ignorado');
+        return;
+      }
+
       const { error: movError } = await supabase
         .from('caixa_movimentacoes')
         .insert([{
           empresa_id: empresaId,
-          caixa_id: movement.caixaId,
-          target_caixa_id: movement.targetCaixaId,
-          type: movement.type,
-          amount: movement.amount,
-          moeda: movement.moeda || 'AOA',
-          description: movement.description
+          caixa_id: cId,
+          target_caixa_id: targetCId,
+          tipo: tipoMov,
+          type: tipoMov,
+          valor: valorMov,
+          amount: valorMov,
+          descricao: descMov,
+          description: descMov,
+          referencia: refMov || null,
+          documento_id: docId,
+          moeda: (movement as any).moeda || 'AOA',
+          data: now.toISOString(),
+          date: now.toISOString(),
+          ano: now.getFullYear()
         }]);
 
       if (movError) throw movError;
 
-      // Update balance of the primary caixa
+      // Update primary caixa — both current_balance and saldo_actual
       const { data: caixa } = await supabase
         .from('caixas')
-        .select('current_balance')
-        .eq('id', movement.caixaId)
+        .select('current_balance, saldo_actual')
+        .eq('id', cId)
         .single();
-      
-      if (caixa) {
-        let newBalance = Number(caixa.current_balance);
-        if (movement.type === 'entrada') newBalance += movement.amount!;
-        if (movement.type === 'saida' || movement.type === 'transferencia') newBalance -= movement.amount!;
 
+      if (caixa) {
+        let newBalance = Number(caixa.current_balance || 0);
+        let newSaldo = Number(caixa.saldo_actual || caixa.current_balance || 0);
+        if (tipoMov === 'entrada') {
+          newBalance += valorMov;
+          newSaldo += valorMov;
+        }
+        if (tipoMov === 'saida' || tipoMov === 'transferencia') {
+          newBalance -= valorMov;
+          newSaldo -= valorMov;
+        }
         await supabase
           .from('caixas')
-          .update({ current_balance: newBalance })
-          .eq('id', movement.caixaId)
+          .update({ current_balance: newBalance, saldo_actual: newSaldo })
+          .eq('id', cId)
           .eq('empresa_id', empresaId);
       }
 
       // If transfer, update target caixa balance
-      if (movement.type === 'transferencia' && movement.targetCaixaId) {
+      if (tipoMov === 'transferencia' && targetCId) {
         const { data: targetCaixa } = await supabase
           .from('caixas')
-          .select('current_balance')
-          .eq('id', movement.targetCaixaId)
+          .select('current_balance, saldo_actual')
+          .eq('id', targetCId)
           .single();
-        
+
         if (targetCaixa) {
-          const newTargetBalance = Number(targetCaixa.current_balance) + movement.amount!;
+          const newTargetBalance = Number(targetCaixa.current_balance || 0) + valorMov;
+          const newTargetSaldo = Number(targetCaixa.saldo_actual || targetCaixa.current_balance || 0) + valorMov;
           await supabase
             .from('caixas')
-            .update({ current_balance: newTargetBalance })
-            .eq('id', movement.targetCaixaId)
+            .update({ current_balance: newTargetBalance, saldo_actual: newTargetSaldo })
+            .eq('id', targetCId)
             .eq('empresa_id', empresaId);
         }
       }

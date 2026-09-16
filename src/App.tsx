@@ -33755,8 +33755,12 @@ export default function App() {
         id: m.id,
         caixaId: m.caixa_id,
         targetCaixaId: m.target_caixa_id,
-        amount: Number(m.amount || 0),
-        date: m.date
+        amount: Number(m.amount ?? m.valor ?? 0),
+        type: (m.type || m.tipo || 'entrada') as any,
+        description: m.description || m.descricao || '',
+        referencia: m.referencia || '',
+        documento_id: m.documento_id || null,
+        date: m.date || m.data
       })));
     } catch (err) {
       console.error('Erro ao carregar movimentos de caixa:', err);
@@ -33767,59 +33771,85 @@ export default function App() {
     try {
       if (!user?.empresa_id) throw new Error('Não autenticado');
 
-      let { error: movError } = await supabase
+      // Normalize: accept both PT (caixa_id/tipo/valor/descricao) and EN (caixaId/type/amount/description)
+      const cId: string = (movement as any).caixa_id || movement.caixaId || '';
+      const tipoMov: string = (movement as any).tipo || movement.type || '';
+      const valorMov: number = Number((movement as any).valor ?? movement.amount ?? 0);
+      const descMov: string = (movement as any).descricao || movement.description || '';
+      const refMov: string = (movement as any).referencia || '';
+      const docId: string | null = (movement as any).documento_id || (movement as any).documentoId || null;
+      const now = new Date();
+
+      if (!cId) {
+        console.warn('[doAddCaixaMovement] caixa_id vazio — movimento ignorado');
+        return;
+      }
+
+      // Idempotência: verificar se já existe movimento com mesmo documento_id OU (caixa+referencia+tipo)
+      if (docId || refMov) {
+        let idempQ = supabase
+          .from('caixa_movimentacoes')
+          .select('id')
+          .eq('empresa_id', user.empresa_id)
+          .eq('caixa_id', cId);
+        if (docId) {
+          idempQ = idempQ.eq('documento_id', docId);
+        } else {
+          idempQ = (idempQ as any).eq('referencia', refMov).eq('tipo', tipoMov);
+        }
+        const { data: existing } = await idempQ.limit(1);
+        if (existing && existing.length > 0) {
+          console.log('[doAddCaixaMovement] Movimento já existe (idempotência) — ignorado', existing[0].id);
+          await doLoadCaixas();
+          await doLoadCaixaMovements();
+          return;
+        }
+      }
+
+      const { error: movError } = await supabase
         .from('caixa_movimentacoes')
         .insert({
           empresa_id: user.empresa_id,
-          caixa_id: movement.caixaId,
-          target_caixa_id: movement.targetCaixaId,
-          tipo: movement.type,
-          type: movement.type,
-          amount: movement.amount,
-          valor: movement.amount,
+          caixa_id: cId,
+          target_caixa_id: movement.targetCaixaId || null,
+          tipo: tipoMov,
+          type: tipoMov,
+          amount: valorMov,
+          valor: valorMov,
           moeda: movement.moeda || 'AOA',
-          description: movement.description,
-          descricao: movement.description,
-          date: movement.date || new Date().toISOString(),
-          data: movement.date ? new Date(movement.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-          ano: new Date(movement.date || new Date()).getFullYear()
+          description: descMov,
+          descricao: descMov,
+          referencia: refMov || null,
+          documento_id: docId || null,
+          date: movement.date || now.toISOString(),
+          data: movement.date ? new Date(movement.date).toISOString().split('T')[0] : now.toISOString().split('T')[0],
+          ano: new Date(movement.date || now).getFullYear(),
+          utilizador_id: user.id || null,
+          created_by: user.id || null
         });
 
-      if (movError && movError.code === 'PGRST205') {
-         const fallback = await supabase.from('caixa_movements').insert({
-          empresa_id: user.empresa_id,
-          caixa_id: movement.caixaId,
-          target_caixa_id: movement.targetCaixaId,
-          tipo: movement.type,
-          type: movement.type,
-          amount: movement.amount,
-          valor: movement.amount,
-          moeda: movement.moeda || 'AOA',
-          description: movement.description,
-          descricao: movement.description,
-          date: movement.date || new Date().toISOString()
-         });
-         movError = fallback.error;
+      if (movError) {
+        console.error('[doAddCaixaMovement] Erro ao inserir movimento:', movError);
+        throw movError;
       }
 
-      if (movError) throw movError;
-
-      // Update primary caixa balance
+      // Update primary caixa balance — both current_balance and saldo_actual
       const { data: caixa } = await supabase
         .from('caixas')
-        .select('current_balance')
-        .eq('id', movement.caixaId)
+        .select('current_balance, saldo_actual')
+        .eq('id', cId)
         .single();
 
       if (caixa) {
-        let newBalance = Number(caixa.current_balance);
-        if (movement.type === 'entrada') newBalance += (movement.amount || 0);
-        if (movement.type === 'saida' || movement.type === 'transferencia') newBalance -= (movement.amount || 0);
+        const base = Number(caixa.current_balance ?? caixa.saldo_actual ?? 0);
+        let newBalance = base;
+        if (tipoMov === 'entrada') newBalance += valorMov;
+        if (tipoMov === 'saida' || tipoMov === 'transferencia') newBalance -= valorMov;
 
         await supabase
           .from('caixas')
-          .update({ current_balance: newBalance })
-          .eq('id', movement.caixaId)
+          .update({ current_balance: newBalance, saldo_actual: newBalance })
+          .eq('id', cId)
           .eq('empresa_id', user.empresa_id);
       }
 

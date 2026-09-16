@@ -4081,15 +4081,23 @@ app.use((req, res, next) => {
           const matchedDbCaixa = dbCaixas?.find(c => String(c.id) === String(resolvedCaixaId));
           if (matchedDbCaixa) {
             const newBal = Number(matchedDbCaixa.current_balance || 0) + Number(amount);
-            await supabaseAdmin.from('caixas').update({ current_balance: newBal }).eq('id', matchedDbCaixa.id);
+            const newSaldo = Number(matchedDbCaixa.saldo_actual || matchedDbCaixa.current_balance || 0) + Number(amount);
+            await supabaseAdmin.from('caixas').update({ current_balance: newBal, saldo_actual: newSaldo }).eq('id', matchedDbCaixa.id);
             
             await supabaseAdmin.from('caixa_movimentacoes').insert([{
               empresa_id: activeCompanyId,
               caixa_id: matchedDbCaixa.id,
+              tipo: 'entrada',
               type: 'entrada',
+              valor: Number(amount),
               amount: Number(amount),
+              descricao: `Recebimento Ref. ${invoice.invoice_number}`,
               description: `Recebimento Ref. ${invoice.invoice_number}`,
+              referencia: invoice.invoice_number || null,
+              documento_id: invoice.id || null,
               date: date || new Date().toISOString(),
+              data: date || new Date().toISOString(),
+              ano: new Date(date || Date.now()).getFullYear(),
               moeda: invoice.moeda || 'AOA'
             }]);
           }

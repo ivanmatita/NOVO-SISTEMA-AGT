@@ -68,12 +68,14 @@ export const useCaixas = () => {
           id: m.id,
           caixaId: m.caixa_id,
           targetCaixaId: m.target_caixa_id,
-          type: m.type as any,
+          type: (m.type || m.tipo || 'entrada') as any,
           amount: Number(m.amount ?? m.valor ?? m.valor_movimento ?? 0),
-          description: m.description,
+          description: m.description || m.descricao || '',
           date: m.date || m.created_at,
           empresa_id: m.empresa_id,
-          moeda: m.moeda
+          moeda: m.moeda,
+          referencia: m.referencia || '',
+          documento_id: m.documento_id || null
         })));
       }
 
@@ -315,69 +317,117 @@ export const useCaixas = () => {
       const currentEmpresaId = authUser?.empresa_id;
       if (!currentEmpresaId) throw new Error('Empresa não identificada');
 
-      let { error: movError } = await supabase
-        .from('caixa_movimentacoes')
-        .insert({
-          empresa_id: currentEmpresaId,
-          caixa_id: movement.caixaId,
-          target_caixa_id: movement.targetCaixaId || null,
-          type: movement.type,
-          amount: movement.amount,
-          moeda: movement.moeda || 'AOA',
-          description: movement.description
-        });
+      // Normalize: accept both PT (caixa_id/tipo/valor/descricao/referencia/documento_id)
+      // and EN (caixaId/type/amount/description/documentoId)
+      const cId: string = (movement as any).caixa_id || movement.caixaId || '';
+      const tipoMov: string = (movement as any).tipo || movement.type || '';
+      const valorMov: number = Number((movement as any).valor ?? movement.amount ?? 0);
+      const descMov: string = (movement as any).descricao || movement.description || '';
+      const refMov: string = (movement as any).referencia || '';
+      const docId: string | null = (movement as any).documento_id || (movement as any).documentoId || null;
+      const targetCId: string | null = (movement as any).target_caixa_id || movement.targetCaixaId || null;
+      const now = new Date();
 
-      if (movError && (movError.message?.includes("'amount'") || movError.code === 'PGRST204')) {
-        console.warn('[caixa_movimentacoes] Retrying with "valor" column fallback due to schema variation:', movError.message);
-        const { error: retryErr } = await supabase
-          .from('caixa_movimentacoes')
-          .insert({
-            empresa_id: currentEmpresaId,
-            caixa_id: movement.caixaId,
-            target_caixa_id: movement.targetCaixaId || null,
-            type: movement.type,
-            valor: movement.amount,
-            moeda: movement.moeda || 'AOA',
-            description: movement.description
-          });
-        movError = retryErr;
+      if (!cId) {
+        console.warn('[useCaixas.addMovement] caixa_id vazio — movimento ignorado');
+        return;
       }
+
+      // Idempotency: skip if movement with same documento_id already exists, or same caixa+ref+tipo
+      if (docId) {
+        const { data: existing } = await supabase
+          .from('caixa_movimentacoes')
+          .select('id')
+          .eq('empresa_id', currentEmpresaId)
+          .eq('caixa_id', cId)
+          .eq('documento_id', docId)
+          .limit(1);
+        if (existing && existing.length > 0) {
+          console.info('[useCaixas.addMovement] Movimento já existe (documento_id idempotency) — a ignorar');
+          await fetchCaixas();
+          return;
+        }
+      } else if (refMov) {
+        const { data: existing } = await supabase
+          .from('caixa_movimentacoes')
+          .select('id')
+          .eq('empresa_id', currentEmpresaId)
+          .eq('caixa_id', cId)
+          .ilike('referencia', refMov)
+          .eq('tipo', tipoMov)
+          .limit(1);
+        if (existing && existing.length > 0) {
+          console.info('[useCaixas.addMovement] Movimento já existe (referencia idempotency) — a ignorar');
+          await fetchCaixas();
+          return;
+        }
+      }
+
+      // Insert filling both PT and EN column names
+      const { error: movError } = await supabase
+        .from('caixa_movimentacoes')
+        .insert([{
+          empresa_id: currentEmpresaId,
+          caixa_id: cId,
+          target_caixa_id: targetCId,
+          tipo: tipoMov,
+          type: tipoMov,
+          valor: valorMov,
+          amount: valorMov,
+          descricao: descMov,
+          description: descMov,
+          referencia: refMov || null,
+          documento_id: docId,
+          moeda: (movement as any).moeda || 'AOA',
+          data: now.toISOString(),
+          date: now.toISOString(),
+          ano: now.getFullYear(),
+          utilizador_id: authUser?.id || null,
+          created_by: authUser?.id || null
+        }]);
 
       if (movError) throw movError;
 
-      // Update primary caixa balance
+      // Update primary caixa — both current_balance and saldo_actual
       const { data: caixa } = await supabase
         .from('caixas')
-        .select('current_balance')
-        .eq('id', movement.caixaId)
+        .select('current_balance, saldo_actual')
+        .eq('id', cId)
         .single();
 
       if (caixa) {
-        let newBalance = Number(caixa.current_balance);
-        if (movement.type === 'entrada') newBalance += (movement.amount || 0);
-        if (movement.type === 'saida' || movement.type === 'transferencia') newBalance -= (movement.amount || 0);
-
+        let newBalance = Number(caixa.current_balance || 0);
+        let newSaldo = Number(caixa.saldo_actual || caixa.current_balance || 0);
+        if (tipoMov === 'entrada') {
+          newBalance += valorMov;
+          newSaldo += valorMov;
+        }
+        if (tipoMov === 'saida' || tipoMov === 'transferencia') {
+          newBalance -= valorMov;
+          newSaldo -= valorMov;
+        }
         await supabase
           .from('caixas')
-          .update({ current_balance: newBalance })
-          .eq('id', movement.caixaId)
+          .update({ current_balance: newBalance, saldo_actual: newSaldo })
+          .eq('id', cId)
           .eq('empresa_id', currentEmpresaId);
       }
 
       // Update target caixa balance if transfer
-      if (movement.type === 'transferencia' && movement.targetCaixaId) {
+      if (tipoMov === 'transferencia' && targetCId) {
         const { data: targetCaixa } = await supabase
           .from('caixas')
-          .select('current_balance')
-          .eq('id', movement.targetCaixaId)
+          .select('current_balance, saldo_actual')
+          .eq('id', targetCId)
           .single();
 
         if (targetCaixa) {
-          const newTargetBalance = Number(targetCaixa.current_balance) + (movement.amount || 0);
+          const newTargetBalance = Number(targetCaixa.current_balance || 0) + valorMov;
+          const newTargetSaldo = Number(targetCaixa.saldo_actual || targetCaixa.current_balance || 0) + valorMov;
           await supabase
             .from('caixas')
-            .update({ current_balance: newTargetBalance })
-            .eq('id', movement.targetCaixaId)
+            .update({ current_balance: newTargetBalance, saldo_actual: newTargetSaldo })
+            .eq('id', targetCId)
             .eq('empresa_id', currentEmpresaId);
         }
       }

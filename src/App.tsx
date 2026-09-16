@@ -34815,6 +34815,26 @@ export default function App() {
                             case 'empresa':
                               return <EmpresaModule onUpdate={fetchData} />;
                             case 'pos':
+                              if (!hasModulePermission(user, 'pos')) {
+                                return (
+                                  <div className="p-8 max-w-xl mx-auto my-12 bg-white border border-rose-200 shadow-md text-center space-y-4">
+                                    <div className="w-16 h-16 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center mx-auto">
+                                      <Lock size={32} />
+                                    </div>
+                                    <h2 className="text-xl font-black text-rose-900 uppercase tracking-tight">Acesso ao POS Bloqueado</h2>
+                                    <p className="text-xs text-zinc-600 leading-relaxed">
+                                      O seu utilizador encontra-se configurado como <strong>Sem Acesso (Bloqueado)</strong> para o módulo Ponto de Venda.
+                                      Contacte o administrador do sistema para conceder a respetiva autorização no módulo <strong>Configurar POS</strong>.
+                                    </p>
+                                    <button 
+                                      onClick={() => { setActiveTab('dashboard'); window.location.hash = 'dashboard'; }}
+                                      className="px-6 py-2.5 bg-[#003366] text-white text-xs font-black uppercase tracking-wider hover:bg-[#002244] transition-all cursor-pointer shadow-sm"
+                                    >
+                                      Voltar ao Painel Principal
+                                    </button>
+                                  </div>
+                                );
+                              }
                               return <POSModule 
                                 products={products} 
                                 onRefresh={fetchData} 

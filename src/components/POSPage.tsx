@@ -15,12 +15,125 @@ import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   BarChart, Bar, PieChart as RechartsPieChart, Pie, Cell, Legend
 } from 'recharts';
-import { exportToPDF, handlePrint } from '../lib/exportUtils';
+import { exportToPDF, handlePrint, exportThermalReceiptPDF, printThermalReceiptP80 } from '../lib/exportUtils';
 import { QRCodeSVG } from 'qrcode.react';
 import { authService } from '../services/authService';
 import { supabase } from '../lib/supabase';
 import { ClientForm } from './ClientForm';
 import posTerminalImg from '../assets/pos_terminal.png';
+
+const POSTerminalIllustration = () => (
+  <div className="relative w-full max-w-[390px] aspect-[4/3] flex items-center justify-center select-none">
+    <svg viewBox="0 0 420 320" className="w-full h-full drop-shadow-[0_20px_35px_rgba(0,180,255,0.25)]" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="baseGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#1e293b" />
+          <stop offset="50%" stopColor="#0f172a" />
+          <stop offset="100%" stopColor="#020617" />
+        </linearGradient>
+        <linearGradient id="screenBezel" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#334155" />
+          <stop offset="100%" stopColor="#0f172a" />
+        </linearGradient>
+        <linearGradient id="screenGlass" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#0284c7" />
+          <stop offset="40%" stopColor="#0369a1" />
+          <stop offset="100%" stopColor="#0c4a6e" />
+        </linearGradient>
+        <linearGradient id="receiptGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#ffffff" />
+          <stop offset="100%" stopColor="#f1f5f9" />
+        </linearGradient>
+      </defs>
+
+      {/* Glow aura */}
+      <ellipse cx="210" cy="270" rx="170" ry="25" fill="#38bdf8" opacity="0.18" />
+
+      {/* Cash drawer / metallic base */}
+      <rect x="50" y="245" width="320" height="35" rx="6" fill="url(#baseGrad)" stroke="#38bdf8" strokeWidth="1.2" strokeOpacity="0.4" />
+      <line x1="50" y1="262" x2="370" y2="262" stroke="#475569" strokeWidth="1" />
+      {/* Drawer lock & handle */}
+      <circle cx="210" cy="254" r="3.5" fill="#38bdf8" />
+      <rect x="185" y="268" width="50" height="4" rx="2" fill="#64748b" />
+      <rect x="75" y="268" width="22" height="3" rx="1.5" fill="#10b981" />
+      <rect x="105" y="268" width="22" height="3" rx="1.5" fill="#38bdf8" />
+
+      {/* POS Terminal Stand (curved arm) */}
+      <path d="M190 245 L200 190 L220 190 L230 245 Z" fill="#1e293b" stroke="#475569" strokeWidth="1" />
+      <circle cx="210" cy="190" r="14" fill="#334155" stroke="#38bdf8" strokeWidth="1.5" />
+
+      {/* Main Touchscreen Display (incline angle) */}
+      <rect x="70" y="55" width="280" height="175" rx="14" fill="url(#screenBezel)" stroke="#38bdf8" strokeWidth="2" strokeOpacity="0.8" />
+      
+      {/* Inner Active Screen */}
+      <rect x="80" y="65" width="260" height="155" rx="8" fill="url(#screenGlass)" />
+
+      {/* Screen Header */}
+      <rect x="80" y="65" width="260" height="24" rx="8" fill="#034e7b" />
+      <circle cx="95" cy="77" r="4" fill="#10b981" />
+      <text x="105" y="81" fill="#e0f2fe" fontSize="9" fontWeight="bold" fontFamily="sans-serif">AGT POS TERMINAL — SISTEMA ATIVO</text>
+      <rect x="285" y="70" width="45" height="14" rx="3" fill="#0284c7" />
+      <text x="292" y="80" fill="#ffffff" fontSize="8" fontWeight="bold" fontFamily="sans-serif">P80 ON</text>
+
+      {/* Screen Grid / Left Cart & Right Items */}
+      <rect x="90" y="96" width="115" height="114" rx="6" fill="#082f49" fillOpacity="0.85" stroke="#0284c7" strokeWidth="1" />
+      <text x="98" y="109" fill="#38bdf8" fontSize="8" fontWeight="bold" fontFamily="sans-serif">ITENS NO CARRINHO</text>
+      <rect x="96" y="115" width="103" height="16" rx="3" fill="#0369a1" fillOpacity="0.6" />
+      <text x="100" y="126" fill="#ffffff" fontSize="7.5" fontFamily="sans-serif">1x Fatura Recibo (FR)</text>
+      <rect x="96" y="135" width="103" height="16" rx="3" fill="#0369a1" fillOpacity="0.4" />
+      <text x="100" y="146" fill="#cbd5e1" fontSize="7.5" fontFamily="sans-serif">2x Serviço Comercial</text>
+      <line x1="96" y1="175" x2="199" y2="175" stroke="#0284c7" strokeWidth="1" strokeDasharray="2 2" />
+      <text x="98" y="188" fill="#94a3b8" fontSize="7" fontFamily="sans-serif">TOTAL A PAGAR</text>
+      <text x="98" y="202" fill="#00f2fe" fontSize="12" fontWeight="900" fontFamily="monospace">Kz 45.000,00</text>
+
+      {/* Product Quick Tiles side */}
+      <rect x="213" y="96" width="55" height="42" rx="4" fill="#0284c7" stroke="#38bdf8" strokeWidth="1" />
+      <circle cx="240" cy="112" r="8" fill="#0369a1" />
+      <text x="222" y="132" fill="#ffffff" fontSize="7" fontWeight="bold" fontFamily="sans-serif">PRODUTOS</text>
+
+      <rect x="275" y="96" width="55" height="42" rx="4" fill="#0369a1" stroke="#38bdf8" strokeWidth="1" />
+      <circle cx="302" cy="112" r="8" fill="#0284c7" />
+      <text x="286" y="132" fill="#ffffff" fontSize="7" fontWeight="bold" fontFamily="sans-serif">CLIENTES</text>
+
+      <rect x="213" y="145" width="117" height="30" rx="4" fill="#10b981" />
+      <text x="238" y="164" fill="#ffffff" fontSize="10" fontWeight="900" fontFamily="sans-serif">PAGAMENTO [F4]</text>
+
+      <rect x="213" y="180" width="117" height="30" rx="4" fill="#0284c7" />
+      <text x="246" y="199" fill="#ffffff" fontSize="9" fontWeight="bold" fontFamily="sans-serif">EMITIR P80</text>
+
+      {/* Screen Gloss highlight */}
+      <path d="M80 65 L220 65 L110 180 L80 180 Z" fill="#ffffff" opacity="0.04" />
+
+      {/* Attached Thermal Printer on the Right */}
+      <g transform="translate(310, 160)">
+        <rect x="0" y="20" width="75" height="65" rx="8" fill="url(#baseGrad)" stroke="#38bdf8" strokeWidth="1.2" />
+        <rect x="8" y="25" width="59" height="6" rx="2" fill="#0f172a" />
+        <line x1="12" y1="28" x2="63" y2="28" stroke="#38bdf8" strokeWidth="1" />
+        {/* Paper roll ticket coming out */}
+        <path d="M14 26 L14 -12 L61 -12 L61 26 Z" fill="url(#receiptGrad)" stroke="#cbd5e1" strokeWidth="0.8" />
+        {/* Ticket lines */}
+        <line x1="20" y1="-6" x2="55" y2="-6" stroke="#0f172a" strokeWidth="1.2" />
+        <line x1="20" y1="-1" x2="48" y2="-1" stroke="#64748b" strokeWidth="0.9" />
+        <line x1="20" y1="4" x2="55" y2="4" stroke="#0f172a" strokeWidth="1" />
+        <line x1="20" y1="9" x2="42" y2="9" stroke="#64748b" strokeWidth="0.8" />
+        <line x1="20" y1="14" x2="55" y2="14" stroke="#0284c7" strokeWidth="1" />
+        <line x1="20" y1="19" x2="50" y2="19" stroke="#0f172a" strokeWidth="1.5" strokeDasharray="1 1" />
+        {/* LED Status Indicator */}
+        <circle cx="18" cy="74" r="3" fill="#10b981" />
+        <text x="26" y="77" fill="#94a3b8" fontSize="7" fontFamily="sans-serif">ONLINE</text>
+      </g>
+
+      {/* Barcode Scanner on Stand (Left) */}
+      <g transform="translate(35, 175)">
+        <path d="M22 65 L22 45 L32 30 L45 30 L38 45 L32 65 Z" fill="#334155" stroke="#475569" strokeWidth="1" />
+        <rect x="25" y="22" width="28" height="15" rx="3" fill="#0f172a" stroke="#38bdf8" strokeWidth="1" />
+        <line x1="48" y1="25" x2="48" y2="34" stroke="#ef4444" strokeWidth="2" />
+        <path d="M49 29.5 L80 20" stroke="#ef4444" strokeWidth="1" strokeDasharray="3 2" opacity="0.8" />
+      </g>
+    </svg>
+  </div>
+);
+
 
 const fetchJsonWithAuth = async (url: string, options?: RequestInit) => {
   const session = await authService.getSessionSafe();
@@ -381,14 +494,15 @@ const POSPage = ({
     const loadInfrastructure = async () => {
       try {
         const empresaId = companyData?.id || user?.empresa_id || '1';
+        const yearQuery = fiscalYear ? `?year=${fiscalYear}` : '';
         const [cc, pp, cl, sl, suspended, movements, allInv, sysUsers] = await Promise.all([
           fetchJsonWithAuth(`/api/cost-centers`).catch(() => []),
           fetchJsonWithAuth(`/api/pos-points`).catch(() => []),
           fetchJsonWithAuth(`/api/secure-clientes`).catch(() => []),
-          fetchJsonWithAuth(`/api/pos/sales`).catch(() => []),
+          fetchJsonWithAuth(`/api/pos/sales${yearQuery}`).catch(() => []),
           fetchJsonWithAuth(`/api/pos/suspended`).catch(() => []),
           fetchJsonWithAuth(`/api/caixa-movements`).catch(() => []),
-          fetchJsonWithAuth(`/api/invoices`).catch(() => []),
+          fetchJsonWithAuth(`/api/invoices${yearQuery}`).catch(() => []),
           fetchJsonWithAuth(`/api/system-users`).catch(() => [])
         ]);
         setCostCenters(Array.isArray(cc) ? cc : []);
@@ -504,7 +618,7 @@ const POSPage = ({
       }
     };
     loadInfrastructure();
-  }, [clientEmpresaId, fiscalSeries]);
+  }, [clientEmpresaId, fiscalSeries, fiscalYear]);
 
 
   useEffect(() => {
@@ -933,6 +1047,11 @@ const POSPage = ({
         tax_rate: selectedTaxRate,
         tax_exemption_reason: selectedTaxRate === 0 ? taxExemptionReason : null,
         notes: documentNotes || `Venda emitida no Ponto de Venda (POS) - ${businessSection}`,
+        ano: Number(fiscalYear) || new Date().getFullYear(),
+        exercise_year: Number(fiscalYear) || new Date().getFullYear(),
+        is_pos: true,
+        origem: 'POS',
+        source: 'pos',
         items: cart.map(item => ({
           product_id: item.product.id,
           description: item.product.name,
@@ -959,13 +1078,16 @@ const POSPage = ({
         console.warn("Using local invoice fallback for POS:", apiErr);
         const autoSeq = completedSales.length + 1;
         const abbr = documentType === 'Fatura Recibo' ? 'FR' : (documentType === 'Fatura Simplificada' ? 'FS' : 'FT');
+        const activeYearStr = fiscalYear || String(new Date().getFullYear());
         invRes = {
           id: Date.now(),
-          invoice_number: `${abbr} 2026/${String(autoSeq).padStart(6, '0')}`,
-          numero_documento: `${abbr} 2026/${String(autoSeq).padStart(6, '0')}`,
+          invoice_number: `${abbr} ${activeYearStr}/${String(autoSeq).padStart(6, '0')}`,
+          numero_documento: `${abbr} ${activeYearStr}/${String(autoSeq).padStart(6, '0')}`,
           codigo_validacao: `AGT-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
           hash: `AGT-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
-          total: total
+          total: total,
+          ano: Number(fiscalYear) || new Date().getFullYear(),
+          is_pos: true
         };
       }
 
@@ -986,7 +1108,8 @@ const POSPage = ({
       }
 
       const hashCompact = invRes.codigo_validacao || invRes.hash || `AGT-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-      const serialNumber = invRes.invoice_number || invRes.numero_documento || `FR 2026/${String(completedSales.length + 1).padStart(6, '0')}`;
+      const activeYearStr = fiscalYear || String(new Date().getFullYear());
+      const serialNumber = invRes.invoice_number || invRes.numero_documento || `FR ${activeYearStr}/${String(completedSales.length + 1).padStart(6, '0')}`;
 
       const printedPayload = {
         id: invRes.id || Date.now(),
@@ -1231,9 +1354,11 @@ const POSPage = ({
         const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
         return sDate >= weekAgo;
       } else if (reportPeriod === 'mes') {
-        return sDate.getMonth() === now.getMonth() && sDate.getFullYear() === now.getFullYear();
+        const targetYear = Number(fiscalYear) || now.getFullYear();
+        return sDate.getMonth() === now.getMonth() && sDate.getFullYear() === targetYear;
       } else if (reportPeriod === 'ano') {
-        return sDate.getFullYear() === now.getFullYear();
+        const targetYear = Number(fiscalYear) || now.getFullYear();
+        return sDate.getFullYear() === targetYear;
       } else if (reportPeriod === 'custom') {
         const start = new Date(reportStartDate);
         const end = new Date(reportEndDate);
@@ -1247,12 +1372,15 @@ const POSPage = ({
   const periodSales = getFilteredPeriodSales();
 
   const filteredHistory = completedSales.filter(s => {
+    const sDate = parseSaleDate(s);
+    const targetYear = Number(fiscalYear);
+    const matchesYear = !targetYear || sDate.getFullYear() === targetYear || (s.ano && Number(s.ano) === targetYear);
     const matchesSearch = !historySearch || 
       (s.invoice_number || '').toLowerCase().includes(historySearch.toLowerCase()) ||
       (s.client_name || '').toLowerCase().includes(historySearch.toLowerCase()) ||
       (s.pos_hash || '').toLowerCase().includes(historySearch.toLowerCase());
     const matchesType = historyDocTypeFilter === 'todos' || s.document_type === historyDocTypeFilter;
-    return matchesSearch && matchesType;
+    return matchesYear && matchesSearch && matchesType;
   });
 
   return (
@@ -1624,6 +1752,12 @@ const POSPage = ({
           <span>Relatório Caixa</span>
         </button>
 
+        {/* Exercício Fiscal Ativo */}
+        <div className="flex items-center gap-1.5 bg-sky-50 border border-sky-200 text-[#0284c7] px-2.5 py-1.5 rounded-lg mr-2 text-xs font-black shrink-0 shadow-2xs">
+          <Calendar size={13} />
+          <span>Exercício: {fiscalYear}</span>
+        </div>
+
         {/* Timestamp */}
         <div className="ml-auto flex items-center gap-2 text-[11px] text-slate-500 border border-slate-200 bg-slate-50 px-3 py-1.5 rounded-lg shrink-0">
           <Clock size={13} className="text-[#0284c7]" />
@@ -1773,30 +1907,29 @@ const POSPage = ({
 
           {/* Main body: hero left + cards right */}
           <div className="flex flex-1 overflow-hidden">
-            {/* LEFT: Hero with POS Hardware image */}
-            <div className="w-[400px] shrink-0 flex flex-col justify-between p-8 relative overflow-hidden">
-              <div className="flex-1 flex items-center justify-center">
-                <img
-                  src={posTerminalImg}
-                  alt="Terminal POS"
-                  className="w-full max-w-[360px] object-contain"
-                  style={{ filter: 'drop-shadow(0 20px 40px rgba(0,100,255,0.35))' }}
-                />
+            {/* LEFT: Hero with Modern POS Hardware Illustration */}
+            <div className="w-[460px] shrink-0 flex flex-col justify-between p-8 relative overflow-hidden bg-gradient-to-b from-[#0284c7] via-[#0369a1] to-[#082f49] border-r border-sky-500/20">
+              <div className="flex-1 flex items-center justify-center py-1">
+                <POSTerminalIllustration />
               </div>
-              <div className="mt-2">
+              <div className="mt-3">
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-sky-400/20 text-sky-200 text-[10px] font-bold tracking-wider uppercase mb-2 border border-sky-300/30">
+                  <Sparkles size={11} className="text-amber-300" /> Sistema Certificado AGT
+                </div>
                 <h1 className="text-5xl font-black leading-none mb-1">
                   <span className="text-white">XP </span>
                   <span style={{ color: '#00d4ff' }}>POS</span>
                 </h1>
                 <div className="h-0.5 w-16 bg-sky-400 mb-3 rounded-full" />
-                <h2 className="text-white font-black text-xl tracking-widest uppercase mb-3">PONTO DE VENDA</h2>
-                <p className="text-blue-200/80 text-sm leading-relaxed max-w-xs">
-                  Sistema completo para gestão de vendas, produtos, clientes, stock, caixa, faturação e relatórios.
+                <h2 className="text-white font-black text-xl tracking-widest uppercase mb-2">PONTO DE VENDA</h2>
+                <p className="text-blue-100/90 text-xs leading-relaxed max-w-sm font-medium">
+                  Sistema completo e profissional para gestão de vendas a retalho e restauração, stock em tempo real, fecho de caixa, emissão de faturas e relatórios fiscais certificados.
                 </p>
-                <div className="flex items-center gap-5 mt-4 text-blue-300 text-xs font-bold">
-                  <span className="flex items-center gap-1.5"><ShieldCheck size={14} className="text-sky-400" /> Seguro</span>
-                  <span className="flex items-center gap-1.5"><RefreshCw size={14} className="text-sky-400" /> Rápido</span>
-                  <span className="flex items-center gap-1.5"><TrendingUp size={14} className="text-sky-400" /> Eficiente</span>
+                <div className="flex items-center gap-4 mt-4 text-blue-200 text-xs font-bold">
+                  <span className="flex items-center gap-1.5"><ShieldCheck size={14} className="text-sky-300" /> Seguro</span>
+                  <span className="flex items-center gap-1.5"><RefreshCw size={14} className="text-sky-300" /> Rápido</span>
+                  <span className="flex items-center gap-1.5"><TrendingUp size={14} className="text-sky-300" /> Eficiente</span>
+                  <span className="flex items-center gap-1.5"><Receipt size={14} className="text-sky-300" /> P80 Térmico</span>
                 </div>
               </div>
             </div>
@@ -2235,9 +2368,9 @@ const POSPage = ({
               <p className="text-xs text-slate-500 font-medium">Registro oficial de faturas, recibos e documentos emitidos obedecendo às regras da AGT</p>
             </div>
             <div className="bg-white border border-slate-200 px-4 py-2 rounded-xl text-right shadow-xs">
-              <span className="text-[10px] text-slate-400 font-black uppercase tracking-wider block">Total Faturado POS</span>
+              <span className="text-[10px] text-slate-400 font-black uppercase tracking-wider block">Total Faturado POS ({fiscalYear})</span>
               <span className="text-lg font-black text-emerald-600 font-mono">
-                {formatCurrency(completedSales.reduce((acc, s) => acc + (s.total || 0), 0))}
+                {formatCurrency(filteredHistory.reduce((acc, s) => acc + (s.is_anulado ? 0 : (s.total || 0)), 0))}
               </span>
             </div>
           </div>
@@ -2254,6 +2387,10 @@ const POSPage = ({
                   onChange={e => setHistorySearch(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-9 pr-4 py-2 text-xs focus:outline-none focus:border-[#0284c7]"
                 />
+              </div>
+              <div className="flex items-center gap-1.5 bg-sky-50 border border-sky-200 px-3 py-2 text-xs font-bold text-[#0284c7] shrink-0">
+                <Calendar size={14} />
+                <span>Exercício: {fiscalYear}</span>
               </div>
               <select
                 value={historyDocTypeFilter}
@@ -2383,7 +2520,7 @@ const POSPage = ({
                 { id: 'hoje', label: 'Hoje' },
                 { id: 'semana', label: 'Esta Semana' },
                 { id: 'mes', label: 'Este Mês' },
-                { id: 'ano', label: 'Este Ano' },
+                { id: 'ano', label: `Exercício (${fiscalYear})` },
                 { id: 'custom', label: 'Personalizado' },
               ].map(p => (
                 <button
@@ -3046,20 +3183,32 @@ const POSPage = ({
                 <div className="border-t border-b border-dashed border-slate-400 py-2 my-2 space-y-1.5">
                   <div className="flex justify-between font-bold text-[10px] border-b border-slate-300 pb-1">
                     <span>Qtd x Descrição</span>
-                    <span>Total</span>
+                    <span className="text-right">Total</span>
                   </div>
                   {showReceiptDetailModal.items && showReceiptDetailModal.items.length > 0 ? (
-                    showReceiptDetailModal.items.map((it: any, i: number) => (
-                      <div key={i} className="space-y-0.5">
-                        <div className="flex justify-between font-bold">
-                          <span className="truncate max-w-[180px]">{it.product?.name || it.description || 'Produto'}</span>
-                          <span>{formatCurrency(((it.customPrice !== undefined ? it.customPrice : (it.product?.price || it.unit_price || 0)) * (it.qty || it.quantity || 1)) - (it.discount || 0))}</span>
+                    showReceiptDetailModal.items.map((it: any, i: number) => {
+                      const unitPrice = it.customPrice !== undefined ? it.customPrice : (it.product?.price || it.unit_price || 0);
+                      const qty = it.qty || it.quantity || 1;
+                      const itemDiscount = it.discount || 0;
+                      const lineTotal = (unitPrice * qty) - itemDiscount;
+                      const prodName = it.product?.name || it.description || 'Produto';
+                      return (
+                        <div key={i} className="space-y-0.5 border-b border-dotted border-slate-200 pb-1 last:border-0">
+                          <div className="flex justify-between items-start font-bold">
+                            <span className="break-words whitespace-normal text-left text-[10px] leading-tight flex-1 pr-2">
+                              {prodName}
+                            </span>
+                            <span className="shrink-0 font-mono text-[10px] text-right">
+                              {formatCurrency(lineTotal)}
+                            </span>
+                          </div>
+                          <div className="text-[9px] text-slate-500 flex justify-between">
+                            <span>{qty} un x {formatCurrency(unitPrice)}</span>
+                            {itemDiscount > 0 && <span className="text-rose-600">Desc: -{formatCurrency(itemDiscount)}</span>}
+                          </div>
                         </div>
-                        <div className="text-[9px] text-slate-500 pl-2">
-                          {it.qty || it.quantity || 1} x {formatCurrency(it.customPrice !== undefined ? it.customPrice : (it.product?.price || it.unit_price || 0))}
-                        </div>
-                      </div>
-                    ))
+                      );
+                    })
                   ) : (
                     <p className="text-center text-[10px] italic">Itens faturados na transação</p>
                   )}
@@ -3084,7 +3233,7 @@ const POSPage = ({
                   <div className="flex justify-center my-1">
                     <QRCodeSVG value={`https://agt.minfin.gov.ao/verify?doc=${showReceiptDetailModal.invoice_number}&hash=${showReceiptDetailModal.pos_hash || 'OK'}`} size={70} />
                   </div>
-                  <p className="text-[7px] font-bold">Processado por Programa Certificado n.º 472/AGT/2026</p>
+                  <p className="text-[7px] font-bold">Processado por Programa Certificado n.º 472/AGT/{fiscalYear || 2026}</p>
                   <p className="text-[8px] italic font-sans text-slate-600">{posConfig.footerMessage || 'Conserve este documento. Volte sempre!'}</p>
                 </div>
               </div>
@@ -3097,13 +3246,13 @@ const POSPage = ({
               </button>
               <div className="flex gap-2">
                 <button
-                  onClick={() => exportToPDF('p80-receipt-print', `Talao_${showReceiptDetailModal.invoice_number.replace(/\//g, '_')}.pdf`)}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 cursor-pointer"
+                  onClick={() => exportThermalReceiptPDF('p80-receipt-print', `Talao_${showReceiptDetailModal.invoice_number.replace(/\//g, '_')}.pdf`)}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 cursor-pointer shadow-xs"
                 >
-                  <Download size={14} /> Baixar PDF
+                  <Download size={14} /> Baixar PDF P80
                 </button>
                 <button
-                  onClick={() => window.print()}
+                  onClick={() => printThermalReceiptP80('p80-receipt-print')}
                   className="px-5 py-2 bg-[#0284c7] hover:bg-sky-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 cursor-pointer shadow-xs"
                 >
                   <Printer size={14} /> Imprimir P80

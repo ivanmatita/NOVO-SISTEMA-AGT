@@ -103,6 +103,7 @@ export const POSConfigModule = () => {
   const togglePOSAccessQuick = async (u: SystemUser, currentAllowed: boolean) => {
     const newAllowed = !currentAllowed;
     try {
+      setSaving(true);
       const currentUser = user || (await authService.getCurrentUser());
       const companyId = currentUser?.empresa_id || currentUser?.company_id || '1';
 
@@ -112,37 +113,59 @@ export const POSConfigModule = () => {
         user_id: u.id,
         empresa_id: companyId,
         allow_pos: newAllowed,
-        can_access_pos: newAllowed,
-        serie_id: existingConfig?.serie_id || existingConfig?.series_id || (series[0]?.id ? String(series[0].id) : null),
+        serie_id: existingConfig?.serie_id ? Number(existingConfig.serie_id) : (series[0]?.id ? Number(series[0].id) : null),
         caixa_id: existingConfig?.caixa_id || (caixas[0]?.id ? String(caixas[0].id) : null),
         printer_type: existingConfig?.printer_type || 'P80',
-        workplace: existingConfig?.workplace || existingConfig?.workplace_id || (workplaces[0]?.id ? String(workplaces[0].id) : null),
-        initial_balance: existingConfig?.initial_balance || 0,
-        armazem_id: existingConfig?.armazem_id || existingConfig?.warehouse_id || (warehouses[0]?.id ? String(warehouses[0].id) : null),
+        workplace: existingConfig?.workplace || (workplaces[0]?.name || workplaces[0]?.nome || null),
+        initial_balance: Number(existingConfig?.initial_balance || 0),
+        armazem_id: existingConfig?.armazem_id ? Number(existingConfig.armazem_id) : (warehouses[0]?.id && !isNaN(Number(warehouses[0].id)) ? Number(warehouses[0].id) : null),
         updated_at: new Date().toISOString()
       };
 
-      // 1. Direct Supabase Update
-      await supabase.from('pos_user_configs').upsert(recordData, { onConflict: 'user_id' }).catch(console.warn);
-      await supabase.from('perfis').update({ can_access_pos: newAllowed, allow_pos: newAllowed }).eq('id', u.id).catch(console.warn);
-      await supabase.from('system_users').update({ can_access_pos: newAllowed, allow_pos: newAllowed }).eq('id', u.id).catch(console.warn);
-
-      // 2. Server API fallback
+      // 1. API Server-side com service role (garante gravação real no banco e sincronização em perfis)
       const session = await authService.getSessionSafe();
-      await fetch(`/api/pos-user-configs/${u.id}?empresa_id=${companyId}`, {
+      const apiRes = await fetch(`/api/pos-user-configs?empresa_id=${companyId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session?.access_token || ''}`
         },
         body: JSON.stringify(recordData)
-      }).catch(console.warn);
+      });
+
+      if (!apiRes.ok) {
+        // Fallback direto ao Supabase com colunas válidas
+        const { error: sbErr } = await supabase.from('pos_user_configs').upsert(recordData, { onConflict: 'user_id' });
+        if (sbErr) throw sbErr;
+      }
+
+      // 2. Sincronizar permissões na tabela perfis
+      try {
+        const { data: pData } = await supabase.from('perfis').select('id, permission_areas, permissoes').eq('id', u.id).single();
+        if (pData) {
+          let areas: string[] = Array.isArray(pData.permission_areas) ? [...pData.permission_areas] : (Array.isArray(pData.permissoes) ? [...pData.permissoes] : []);
+          if (newAllowed) {
+            if (!areas.includes('pos')) areas.push('pos');
+            if (!areas.includes('ponto_venda')) areas.push('ponto_venda');
+          } else {
+            areas = areas.filter(a => a !== 'pos' && a !== 'ponto_venda' && a !== 'ponto de venda');
+          }
+          await supabase.from('perfis').update({ permission_areas: areas, permissoes: areas, updated_at: new Date().toISOString() }).eq('id', u.id);
+        }
+      } catch (pErr) {
+        console.warn('Aviso ao sincronizar perfis:', pErr);
+      }
+
+      // 3. Notificar sistema globalmente de alteração de permissões
+      window.dispatchEvent(new CustomEvent('agt_permissions_changed', { detail: { user_id: u.id, allow_pos: newAllowed } }));
 
       toast.success(`Acesso ao POS ${newAllowed ? 'CONCEDIDO' : 'REVOGADO'} para ${u.name || (u as any).nome || u.email}!`);
-      loadData();
-    } catch (err) {
+      await loadData();
+    } catch (err: any) {
       console.error('Erro ao alterar permissão POS:', err);
-      toast.error('Erro ao atualizar permissão no Supabase');
+      toast.error('Erro ao atualizar permissão no banco: ' + (err.message || 'Erro desconhecido'));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -150,17 +173,17 @@ export const POSConfigModule = () => {
     setSelectedUser(u);
     const existingConfig = configs.find(c => String(c.user_id) === String(u.id));
     
-    // Default to TRUE if no config exists yet, so users are permitted by default!
-    const isAllowed = existingConfig ? (existingConfig.can_access_pos ?? existingConfig.allow_pos ?? true) : true;
+    // Default to true if not explicitly false
+    const isAllowed = existingConfig ? (existingConfig.allow_pos !== false) : true;
 
     setFormData({
       can_access_pos: isAllowed,
-      series_id: String(existingConfig?.series_id || existingConfig?.serie_id || (series.length > 0 ? series[0].id : '')),
+      series_id: String(existingConfig?.serie_id || (series.length > 0 ? series[0].id : '')),
       caixa_id: String(existingConfig?.caixa_id || (caixas.length > 0 ? caixas[0].id : '')),
       printer_type: existingConfig?.printer_type || 'P80',
-      workplace_id: String(existingConfig?.workplace_id || existingConfig?.workplace || (workplaces.length > 0 ? workplaces[0].id : '')),
+      workplace_id: String(existingConfig?.workplace || (workplaces.length > 0 ? (workplaces[0].name || workplaces[0].id) : '')),
       initial_balance: existingConfig?.initial_balance ?? 0,
-      warehouse_id: String(existingConfig?.warehouse_id || existingConfig?.armazem_id || (warehouses.length > 0 ? warehouses[0].id : '')),
+      warehouse_id: String(existingConfig?.armazem_id || (warehouses.length > 0 ? warehouses[0].id : '')),
     });
     
     setIsModalOpen(true);
@@ -179,45 +202,63 @@ export const POSConfigModule = () => {
         user_id: selectedUser.id,
         empresa_id: companyId,
         allow_pos: formData.can_access_pos,
-        can_access_pos: formData.can_access_pos,
-        serie_id: formData.series_id || null,
-        series_id: formData.series_id || null,
+        serie_id: formData.series_id && !isNaN(Number(formData.series_id)) ? Number(formData.series_id) : null,
         caixa_id: formData.caixa_id || null,
         printer_type: formData.printer_type || 'P80',
         workplace: formData.workplace_id || null,
-        workplace_id: formData.workplace_id || null,
         initial_balance: Number(formData.initial_balance || 0),
-        armazem_id: formData.warehouse_id || null,
-        warehouse_id: formData.warehouse_id || null,
+        armazem_id: formData.warehouse_id && !isNaN(Number(formData.warehouse_id)) ? Number(formData.warehouse_id) : null,
+        configuracoes: {
+          printer_type: formData.printer_type,
+          workplace: formData.workplace_id,
+          initial_balance: formData.initial_balance
+        },
         updated_at: new Date().toISOString()
       };
 
-      // 1. Direct Supabase database sync
-      try {
-        await supabase.from('pos_user_configs').upsert(recordData, { onConflict: 'user_id' });
-        await supabase.from('perfis').update({ can_access_pos: formData.can_access_pos, allow_pos: formData.can_access_pos }).eq('id', selectedUser.id);
-        await supabase.from('system_users').update({ can_access_pos: formData.can_access_pos, allow_pos: formData.can_access_pos }).eq('id', selectedUser.id);
-      } catch (sErr) {
-        console.warn('Upsert Supabase pos_user_configs aviso:', sErr);
-      }
-
-      // 2. Server API fallback sync
+      // 1. Gravação server-side com service role
       const session = await authService.getSessionSafe();
-      await fetch(`/api/pos-user-configs/${selectedUser.id}?empresa_id=${companyId}`, {
+      const apiRes = await fetch(`/api/pos-user-configs?empresa_id=${companyId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session?.access_token || ''}`
         },
         body: JSON.stringify(recordData)
-      }).catch(console.warn);
-      
-      toast.success('Permissões do POS sincronizadas com o Supabase com sucesso!');
+      });
+
+      if (!apiRes.ok) {
+        // Fallback direto ao Supabase com colunas válidas
+        const { error: sbErr } = await supabase.from('pos_user_configs').upsert(recordData, { onConflict: 'user_id' });
+        if (sbErr) throw sbErr;
+      }
+
+      // 2. Sincronizar permissões na tabela perfis
+      try {
+        const { data: pData } = await supabase.from('perfis').select('id, permission_areas, permissoes').eq('id', selectedUser.id).single();
+        if (pData) {
+          let areas: string[] = Array.isArray(pData.permission_areas) ? [...pData.permission_areas] : (Array.isArray(pData.permissoes) ? [...pData.permissoes] : []);
+          if (formData.can_access_pos) {
+            if (!areas.includes('pos')) areas.push('pos');
+            if (!areas.includes('ponto_venda')) areas.push('ponto_venda');
+          } else {
+            areas = areas.filter(a => a !== 'pos' && a !== 'ponto_venda' && a !== 'ponto de venda');
+          }
+          await supabase.from('perfis').update({ permission_areas: areas, permissoes: areas, updated_at: new Date().toISOString() }).eq('id', selectedUser.id);
+        }
+      } catch (pErr) {
+        console.warn('Aviso ao sincronizar perfis:', pErr);
+      }
+
+      // 3. Notificar sistema globalmente de alteração de permissões
+      window.dispatchEvent(new CustomEvent('agt_permissions_changed', { detail: { user_id: selectedUser.id, allow_pos: formData.can_access_pos } }));
+
+      toast.success('Configurações e permissões do POS gravadas com sucesso no banco!');
       setIsModalOpen(false);
-      loadData();
+      await loadData();
     } catch (err: any) {
       console.error('Erro ao guardar no Supabase:', err);
-      toast.error('Erro ao guardar configuração');
+      toast.error('Erro ao guardar configuração: ' + (err.message || 'Erro desconhecido'));
     } finally {
       setSaving(false);
     }
@@ -267,18 +308,32 @@ export const POSConfigModule = () => {
           <tbody className="divide-y divide-zinc-200">
             {users.map(u => {
               const conf = configs.find(c => String(c.user_id) === String(u.id));
-              // Default to true if no explicit block config exists
-              const isAllowed = conf ? (conf.can_access_pos ?? conf.allow_pos ?? true) : true;
+              // Fonte da verdade: allow_pos do banco de dados (default true se não configurado)
+              const isAllowed = conf ? (conf.allow_pos !== false) : true;
               const displayName = u.name || (u as any).nome || u.username || u.email?.split('@')[0] || 'Utilizador';
+              
+              const matchedSeries = series.find(s => String(s.id) === String(conf?.serie_id));
+              const seriesLabel = matchedSeries ? ((matchedSeries as any).descricao || matchedSeries.name || (matchedSeries as any).serie || `Série ${matchedSeries.id}`) : null;
+              const matchedCaixa = caixas.find(c => String(c.id) === String(conf?.caixa_id));
+              const caixaLabel = matchedCaixa ? ((matchedCaixa as any).nome_caixa || matchedCaixa.name || 'Caixa') : null;
+              const printerLabel = conf?.printer_type || 'P80';
               
               return (
                 <tr key={u.id} className="hover:bg-zinc-50 transition-colors">
-                  <td className="px-6 py-4 font-black text-zinc-900">{displayName}</td>
+                  <td className="px-6 py-4">
+                    <div className="font-black text-zinc-900">{displayName}</div>
+                    {conf && (conf.workplace || seriesLabel) && (
+                      <div className="text-[10px] text-zinc-400 font-mono mt-0.5">
+                        {conf.workplace ? `Local: ${conf.workplace}` : ''} {seriesLabel ? `• ${seriesLabel}` : ''}
+                      </div>
+                    )}
+                  </td>
                   <td className="px-6 py-4 text-zinc-500 font-mono text-xs">{u.email}</td>
                   <td className="px-6 py-4 text-zinc-600 text-xs font-bold uppercase">{u.role || ((u as any).is_admin ? 'Administrador' : 'Operador de Caixa')}</td>
                   <td className="px-6 py-4">
                     <button 
                       onClick={() => togglePOSAccessQuick(u, isAllowed)}
+                      disabled={saving}
                       className={`px-3 py-1.5 text-[10px] font-black uppercase rounded-none border flex items-center gap-1.5 transition-all cursor-pointer ${
                         isAllowed 
                           ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300' 
@@ -291,13 +346,18 @@ export const POSConfigModule = () => {
                     </button>
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <button 
-                      onClick={() => handleOpenConfig(u)}
-                      className="bg-[#003366] text-white hover:bg-[#002244] px-4 py-2 rounded-none text-xs font-black uppercase tracking-wider transition-all inline-flex items-center gap-1.5 shadow-sm cursor-pointer"
-                      title="Configurar Parâmetros Completos no Supabase"
-                    >
-                      <Settings size={14} /> Configurar POS
-                    </button>
+                    <div className="flex flex-col items-end gap-1">
+                      <button 
+                        onClick={() => handleOpenConfig(u)}
+                        className="bg-[#003366] text-white hover:bg-[#002244] px-4 py-2 rounded-none text-xs font-black uppercase tracking-wider transition-all inline-flex items-center gap-1.5 shadow-sm cursor-pointer"
+                        title={`Configurar POS — ${displayName}`}
+                      >
+                        <Settings size={14} /> Configurar POS
+                      </button>
+                      <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-tighter">
+                        {caixaLabel ? `${caixaLabel} • ${printerLabel}` : `Formato: ${printerLabel}`}
+                      </span>
+                    </div>
                   </td>
                 </tr>
               );

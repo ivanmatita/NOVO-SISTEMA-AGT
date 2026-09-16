@@ -136,3 +136,154 @@ export const formatCurrencyKz = (value: number) => {
     minimumFractionDigits: 2
   }).format(value).replace('AOA', 'Kz');
 };
+
+/**
+ * Specialized P80 Thermal Receipt PDF Generator.
+ * Generates an 80mm continuous roll PDF matching real POS thermal receipt proportions.
+ */
+export const exportThermalReceiptPDF = async (elementId: string, filename: string = 'recibo_p80.pdf') => {
+  const el = document.getElementById(elementId);
+  if (!el) {
+    console.error(`Element with id ${elementId} not found`);
+    return;
+  }
+
+  try {
+    const clone = el.cloneNode(true) as HTMLElement;
+    clone.style.width = '300px';
+    clone.style.maxWidth = '300px';
+    clone.style.position = 'absolute';
+    clone.style.left = '-9999px';
+    clone.style.top = '0';
+    clone.style.background = '#ffffff';
+    clone.style.padding = '12px';
+    clone.style.boxShadow = 'none';
+    clone.style.border = 'none';
+    document.body.appendChild(clone);
+
+    const canvas = await html2canvas(clone, {
+      scale: 2.5,
+      useCORS: true,
+      logging: false,
+      backgroundColor: '#ffffff'
+    });
+
+    document.body.removeChild(clone);
+
+    const imgData = canvas.toDataURL('image/png');
+    // 80mm roll width: 76mm printable width
+    const pdfWidth = 76;
+    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+
+    const pdf = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: [pdfWidth, Math.max(80, pdfHeight + 4)],
+      compress: true
+    });
+
+    pdf.addImage(imgData, 'PNG', 1, 2, pdfWidth - 2, pdfHeight);
+    pdf.save(filename);
+  } catch (error) {
+    console.error('Error generating thermal PDF:', error);
+    exportToPDF(elementId, filename);
+  }
+};
+
+/**
+ * Specialized P80 Thermal Receipt Printer.
+ * Injects strict 80mm continuous roll CSS via an isolated hidden iframe.
+ */
+export const printThermalReceiptP80 = (elementId: string) => {
+  const element = document.getElementById(elementId);
+  if (!element) {
+    console.error(`Element with id ${elementId} not found`);
+    return;
+  }
+
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.right = '0';
+  iframe.style.bottom = '0';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = '0';
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentWindow?.document;
+  if (!doc) {
+    document.body.removeChild(iframe);
+    window.print();
+    return;
+  }
+
+  doc.open();
+  doc.write(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>Recibo P80 Térmico</title>
+        <style>
+          @page {
+            size: 80mm auto;
+            margin: 0mm;
+          }
+          * {
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          body {
+            margin: 0;
+            padding: 2mm 1mm;
+            width: 76mm;
+            max-width: 76mm;
+            background: #fff;
+            color: #000;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 11px;
+            line-height: 1.25;
+          }
+          img, svg {
+            max-width: 100%;
+          }
+          .break-words {
+            word-break: break-word !important;
+            overflow-wrap: break-word !important;
+            white-space: normal !important;
+          }
+          #${elementId} {
+            width: 100% !important;
+            max-width: 76mm !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            border: none !important;
+            box-shadow: none !important;
+          }
+        </style>
+      </head>
+      <body>
+        ${element.outerHTML}
+      </body>
+    </html>
+  `);
+  doc.close();
+
+  iframe.contentWindow?.focus();
+  setTimeout(() => {
+    try {
+      iframe.contentWindow?.print();
+    } catch (e) {
+      console.warn('Iframe print error fallback:', e);
+      window.print();
+    } finally {
+      setTimeout(() => {
+        try {
+          document.body.removeChild(iframe);
+        } catch (_) {}
+      }, 1500);
+    }
+  }, 400);
+};
+

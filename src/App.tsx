@@ -26490,19 +26490,20 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
   };
 
   const total = (items ?? []).reduce((sum, item) => sum + (item.total || 0), 0);
+  const numGlobalDiscount = Math.max(0, Number(globalDiscount) || 0);
 
-  useEffect(() => {
-    const t = total || 0;
-    const rate = Number(exchangeRate) || 1;
-    setCounterValue((t * rate).toFixed(2));
-  }, [total, exchangeRate, setCounterValue]);
-  
+  // Desconto global rateado proporcionalmente por item sobre a base incidível
   const vatBreakdown: { [key: string]: number } = {};
   const retencaoBreakdown: { [key: string]: number } = {};
   
   (items ?? []).forEach(item => {
+    const itemTotal = item.total || 0;
+    const itemRatio = total > 0 ? (itemTotal / total) : 0;
+    const itemDiscountPart = numGlobalDiscount * itemRatio;
+    const taxableBase = Math.max(0, itemTotal - itemDiscountPart);
+
     const rate = item.tax_rate || 0;
-    const itemTaxAmount = (item.total || 0) * (rate / 100);
+    const itemTaxAmount = taxableBase * (rate / 100);
     const label = item.tax || 'Outros';
     
     // If tax_type is 'Retencao' or 'Retenção'
@@ -26517,10 +26518,15 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
   const vatAmount = Object.values(vatBreakdown).reduce((a, b) => a + b, 0);
   const retencaoTaxesAmount = Object.values(retencaoBreakdown).reduce((a, b) => a + b, 0);
   const vatWithholdingAmount = vatAmount * Number(vatWithholding || 0);
-  // Add legacy retencao_fonte (hardcoded) + taxes retencao setup
   const retencaoFonteTotal = (items ?? []).reduce((sum, item) => sum + (item.retencao_fonte || 0), 0) + retencaoTaxesAmount;
   const lineDiscountsTotal = (items ?? []).reduce((sum, item) => sum + Number(item.desconto || 0), 0);
-  const finalTotal = total + vatAmount - vatWithholdingAmount - Number(globalDiscount || 0) - retencaoFonteTotal;
+  const subtotalSemImpostos = Math.max(0, total - numGlobalDiscount);
+  const finalTotal = Math.max(0, subtotalSemImpostos + vatAmount - vatWithholdingAmount - retencaoFonteTotal);
+
+  useEffect(() => {
+    const rate = Number(exchangeRate) || 1;
+    setCounterValue((finalTotal * rate).toFixed(2));
+  }, [finalTotal, exchangeRate, setCounterValue]);
 
   const selectedSeries = fiscalSeries.find(s => s.id === Number(selectedSerieFiscal));
 
@@ -26628,18 +26634,36 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
     if (res.ok) {
       const savedDoc = await res.json().catch(() => null);
       
-      // Automatic Cash Movement for sales
-      if (savedDoc && (['Fatura Recibo', 'FR', 'Recibo', 'RC', 'FATURA RECIBO', 'RECIBO'].includes(documentType) || paymentCondition === 'Pronto Pagamento') && cashBox && addMovement) {
+      // Automatic Cash Movement strictly for Fatura Recibo (FR) and Recibo (RC) with idempotency check
+      const isFRorRC = ['Fatura Recibo', 'FR', 'Recibo', 'RC', 'FATURA RECIBO', 'RECIBO'].some(
+        t => t.toLowerCase() === (documentType || '').trim().toLowerCase()
+      );
+
+      if (savedDoc && isFRorRC && cashBox && addMovement) {
         try {
-          const selectedCaixa = caixas.find(c => c.id === cashBox || c.name === cashBox);
+          const selectedCaixa = caixas.find(c => String(c.id) === String(cashBox) || c.name === cashBox);
           if (selectedCaixa) {
-            await addMovement({
-              caixaId: selectedCaixa.id,
-              type: 'entrada',
-              amount: finalTotal,
-              description: `${documentType} nº ${savedDoc.numero_documento || savedDoc.invoice_number}`,
-              date: new Date().toISOString()
-            });
+            const docRefNum = savedDoc.numero_documento || savedDoc.invoice_number || `DOC-${savedDoc.id}`;
+            const movementDesc = `${documentType} nº ${docRefNum}`;
+            
+            // Verificação anti-duplicação / idempotência
+            const { data: existingMov } = await supabase
+              .from('caixa_movimentacoes')
+              .select('id')
+              .eq('empresa_id', currentEmpresaId)
+              .eq('caixa_id', selectedCaixa.id)
+              .ilike('descricao', `%${docRefNum}%`)
+              .limit(1);
+
+            if (!existingMov || existingMov.length === 0) {
+              await addMovement({
+                caixaId: selectedCaixa.id,
+                type: 'entrada',
+                amount: finalTotal,
+                description: movementDesc,
+                date: new Date().toISOString()
+              });
+            }
           }
         } catch (movErr) {
           console.error("Erro ao registrar no caixa:", movErr);
@@ -26713,10 +26737,10 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-3">
         {/* Section 1: Informações do documento */}
-        <div className="bg-white border border-zinc-200 p-4 rounded-none shadow-sm space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-white border border-zinc-200 p-3.5 rounded-none shadow-sm space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
             <div className="space-y-1">
               <label className="text-xs font-bold text-zinc-600">Tipo de documento <span className="text-red-500">*</span></label>
               <select 
@@ -26724,7 +26748,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                 onChange={(e) => setDocumentType(e.target.value)}
                 disabled={!!fixedDocumentType}
                 required
-                className={`w-full border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm ${fixedDocumentType ? 'bg-zinc-100 text-zinc-500' : 'bg-zinc-50'}`}
+                className={`w-full border border-zinc-200 rounded-none px-3 py-1.5 text-zinc-800 focus:outline-none focus:border-[#003366] text-xs ${fixedDocumentType ? 'bg-zinc-100 text-zinc-500' : 'bg-zinc-50'}`}
               >
                 {documentTypesList.length > 0 ? (
                   documentTypesList.map(t => <option key={t.codigo} value={t.codigo}>{t.descricao} ({t.codigo})</option>)
@@ -26945,26 +26969,19 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
               <label className="text-xs font-bold text-zinc-600">Desconto global</label>
               <input 
                 type="number" 
+                min="0"
+                step="any"
                 value={globalDiscount} 
                 onChange={(e) => setGlobalDiscount(e.target.value)}
+                placeholder="0.00"
                 className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
               />
             </div>
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-zinc-600">Condição de Pagamento</label>
-              <select 
-                value={paymentCondition} 
-                onChange={(e) => setPaymentCondition(e.target.value)}
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
-              >
-                <option value="Pronto Pagamento">Pronto Pagamento</option>
-                <option value="A Prazo">A Prazo</option>
-              </select>
-            </div>
+            {/* Campo Condição de Pagamento ocultado da interface conforme regra do utilizador (preservado no estado e no payload) */}
             {(() => {
               const isPaymentRequiredDoc = ['Fatura Recibo', 'FR', 'Recibo', 'RC', 'FATURA RECIBO', 'RECIBO'].some(
                 t => t.toLowerCase() === (documentType || '').trim().toLowerCase()
-              ) || (documentType || '').toLowerCase().includes('recibo') || paymentCondition === 'Pronto Pagamento';
+              );
               return isPaymentRequiredDoc ? (
                 <>
                   <div className="space-y-1">
@@ -26991,7 +27008,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                       required={isPaymentRequiredDoc}
                       className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-4 py-2 text-zinc-800 focus:outline-none focus:border-[#003366] text-sm"
                     >
-                      <option value="">Selecione...</option>
+                      <option value="">Selecione o caixa/conta...</option>
                       {caixas.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
                   </div>
@@ -27002,16 +27019,16 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
         </div>
 
         {/* Section 2: Informações do adquirente */}
-        <div className="bg-white border border-zinc-200 p-4 rounded-none shadow-sm space-y-4">
-          <h3 className="text-sm font-bold text-[#0f2a4a] border-b border-zinc-100 pb-2 uppercase tracking-wide">Informações do adquirente</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-white border border-zinc-200 p-3.5 rounded-none shadow-sm space-y-3">
+          <h3 className="text-xs font-bold text-[#0f2a4a] border-b border-zinc-100 pb-1.5 uppercase tracking-wide">Informações do adquirente</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
             <div className="space-y-1">
               <label className="text-xs font-semibold text-zinc-600">Código do país <span className="text-red-500">*</span></label>
               <select
                 value={countryCode}
                 onChange={(e) => setCountryCode(e.target.value)}
                 required
-                className="w-full bg-white border border-zinc-300 rounded-none px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#0f2a4a] text-sm"
+                className="w-full bg-white border border-zinc-300 rounded-none px-3 py-1.5 text-zinc-800 focus:outline-none focus:border-[#0f2a4a] text-xs"
               >
                 <option value="AO">AO - Angola</option>
                 <option value="PT">PT - Portugal</option>
@@ -27037,7 +27054,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                     if (found) setClientId(found.id as (number | ""));
                   }}
                   placeholder="Ex: 5000000001"
-                  className="flex-1 bg-white border border-zinc-300 border-r-0 rounded-none px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#0f2a4a] text-sm"
+                  className="flex-1 bg-white border border-zinc-300 border-r-0 rounded-none px-3 py-1.5 text-zinc-800 focus:outline-none focus:border-[#0f2a4a] text-xs"
                 />
                 <button
                   type="button"
@@ -27045,10 +27062,10 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                     const found = clients.find(c => (c.contribuinte && c.contribuinte.toString().includes(clientNifSearch)) || (c.nif && c.nif.toString().includes(clientNifSearch)));
                     if (found) setClientId(found.id as (number | ""));
                   }}
-                  className="bg-[#0f2a4a] hover:bg-[#1a3f6f] text-white px-4 py-2 transition-colors flex items-center justify-center"
+                  className="bg-[#0f2a4a] hover:bg-[#1a3f6f] text-white px-3 py-1.5 transition-colors flex items-center justify-center"
                   title="Pesquisar por NIF"
                 >
-                  <Search size={16} />
+                  <Search size={14} />
                 </button>
               </div>
             </div>
@@ -27065,7 +27082,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                   }
                 }}
                 required
-                className="w-full bg-white border border-zinc-300 rounded-none px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#0f2a4a] text-sm"
+                className="w-full bg-white border border-zinc-300 rounded-none px-3 py-1.5 text-zinc-800 focus:outline-none focus:border-[#0f2a4a] text-xs"
               >
                 <option value="">Selecione o adquirente...</option>
                 {clients.map(c => <option key={c.id} value={c.id}>{c.name || (c as any).nome}</option>)}
@@ -27078,26 +27095,27 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                 value={serviceDate}
                 onChange={(e) => setServiceDate(e.target.value)}
                 required
-                className="w-full bg-white border border-zinc-300 rounded-none px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#0f2a4a] text-sm"
-              />
+                className="w-full bg-white border border-zinc-300 rounded-none px-3 py-1.5 text-zinc-800 focus:outline-none focus:border-[#0f2a4a] text-xs"
+              >
+              </input>
             </div>
-            <div className="space-y-1 md:col-span-2">
+            <div className="space-y-1 sm:col-span-2 md:col-span-4">
               <label className="text-xs font-semibold text-zinc-600">Local de prestação de bens/serviços <span className="text-red-500">*</span></label>
               <input
                 type="text"
                 value={serviceLocation}
                 onChange={(e) => setServiceLocation(e.target.value)}
                 placeholder="Ex: Luanda, Angola"
-                className="w-full bg-white border border-zinc-300 rounded-none px-3 py-2 text-zinc-800 focus:outline-none focus:border-[#0f2a4a] text-sm"
+                className="w-full bg-white border border-zinc-300 rounded-none px-3 py-1.5 text-zinc-800 focus:outline-none focus:border-[#0f2a4a] text-xs"
               />
             </div>
           </div>
         </div>
 
         {/* Section 3: Bens e serviços */}
-        <div className="bg-white border border-zinc-200 p-4 rounded-none shadow-sm space-y-4">
-          <div className="flex justify-between items-center border-b border-zinc-100 pb-3">
-            <h3 className="text-sm font-bold text-[#0f2a4a] uppercase tracking-wide">Bens e serviços</h3>
+        <div className="bg-white border border-zinc-200 p-3.5 rounded-none shadow-sm space-y-3">
+          <div className="flex justify-between items-center border-b border-zinc-100 pb-2">
+            <h3 className="text-xs font-bold text-[#0f2a4a] uppercase tracking-wide">Bens e serviços</h3>
             <button
               type="button"
               disabled={isCertified}
@@ -27106,9 +27124,9 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                 setEditingAgtItemData(null);
                 setIsAgtItemModalOpen(true);
               }}
-              className={`bg-[#0f2a4a] text-white px-5 py-2 font-semibold flex items-center gap-2 hover:bg-[#1a3f6f] transition-all text-sm rounded-none ${isCertified ? 'opacity-50 cursor-not-allowed' : ''}`}
+              className={`bg-[#0f2a4a] text-white px-4 py-1.5 font-semibold flex items-center gap-1.5 hover:bg-[#1a3f6f] transition-all text-xs rounded-none ${isCertified ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
-              <Plus size={16} /> Adicionar a lista
+              <Plus size={14} /> Adicionar à lista
             </button>
           </div>
 
@@ -27216,6 +27234,13 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                  </div>
                )}
 
+               {numGlobalDiscount > 0 && (
+                 <div className="flex justify-between text-xs font-bold text-red-600 bg-red-50/50 px-1 py-0.5">
+                    <span className="uppercase">DESCONTO GLOBAL</span>
+                    <span>- {formatCurrency(numGlobalDiscount)}</span>
+                 </div>
+               )}
+
                {Object.entries(vatBreakdown).map(([label, value]) => (
                  value > 0 && (
                    <div key={label} className="flex justify-between text-xs font-bold text-emerald-500">
@@ -27232,6 +27257,12 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
                   <span className="text-[10px] font-black text-[#003366] uppercase tracking-widest">Total Documento</span>
                   <span className="text-lg font-black text-[#003366]">{formatCurrency(finalTotal)}</span>
                </div>
+               {currency && !['Kwanza', 'AOA', 'Akz', 'Aoa', 'kwanza'].includes(currency) && (
+                 <div className="pt-1 text-[10px] text-zinc-500 font-bold border-t border-dashed border-zinc-200 flex justify-between">
+                   <span>Contravalor ({currency} @ {exchangeRate}):</span>
+                   <span className="font-mono text-purple-700">{counterValue} {currency}</span>
+                 </div>
+               )}
             </div>
           </div>
         </div>
@@ -34583,10 +34614,6 @@ export default function App() {
       setShowAnularModal(doc);
     } else if (action === 'delete') {
       setShowDeleteModal(doc);
-    } else if (action === 'foreign_draft') {
-      setSelectedDocument(doc);
-      setFixedDocumentType('Provisórios / Documento de Suporte (Draft)');
-      setIsCreatingInvoice(true);
     } else if (action === 'clone') {
       try {
         const { id, numero_documento, invoice_number, ...baseData } = doc;
@@ -34825,6 +34852,7 @@ export default function App() {
                           fetchData();
                         }} 
                         caixas={caixas}
+                        addMovement={doAddCaixaMovement}
                       />
                     </div>
                   )

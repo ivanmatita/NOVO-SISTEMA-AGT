@@ -265,7 +265,7 @@ export const AlertasModule = () => {
                     <input 
                       type="date" 
                       className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" 
-                      value={formData.start_date}
+                      value={formData.start_date ? String(formData.start_date).slice(0, 10) : ''}
                       onChange={e => setFormData({...formData, start_date: e.target.value})}
                     />
                   </div>
@@ -274,7 +274,7 @@ export const AlertasModule = () => {
                     <input 
                       type="date" 
                       className="w-full bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-sm focus:outline-none focus:border-[#003366]" 
-                      value={formData.end_date}
+                      value={formData.end_date ? String(formData.end_date).slice(0, 10) : ''}
                       onChange={e => setFormData({...formData, end_date: e.target.value})}
                     />
                   </div>

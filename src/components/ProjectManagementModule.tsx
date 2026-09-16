@@ -109,7 +109,7 @@ export default function ProjectManagementModule({ user, companyData, onNavigate,
         supabase.from('proj_projetos').select('*').eq('empresa_id', empresaId).is('deleted_at', null).order('nome'),
         supabase.from('proj_tarefas').select('*').eq('empresa_id', empresaId).is('deleted_at', null).order('created_at', { ascending: false }),
         supabase.from('proj_equipa_recursos').select('*').eq('empresa_id', empresaId).is('deleted_at', null).order('nome'),
-        supabase.from('proj_orcamentos_custos').select('*').eq('empresa_id', empresaId).like('data_custo', `${year}%`).is('deleted_at', null).order('data_custo', { ascending: false }),
+        supabase.from('proj_orcamentos_custos').select('*').eq('empresa_id', empresaId).gte('data_custo', `${year}-01-01`).lte('data_custo', `${year}-12-31T23:59:59`).is('deleted_at', null).order('data_custo', { ascending: false }),
       ]);
       if (pRes.data) setProjetos(pRes.data);
       if (tRes.data) setTarefas(tRes.data.map((t: any) => ({ ...t, projeto_nome: pRes.data?.find((p: any) => p.id === t.projeto_id)?.nome || '' })));

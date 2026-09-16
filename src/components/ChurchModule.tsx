@@ -110,8 +110,8 @@ export default function ChurchModule({ user, companyData, onNavigate, onEmitirFa
       const year = fiscalYear || new Date().getFullYear().toString();
       const [mRes, dRes, eRes, minRes, pRes] = await Promise.all([
         supabase.from('church_membros').select('*').eq('empresa_id', empresaId).is('deleted_at', null).order('nome'),
-        supabase.from('church_dizimos_ofertas').select('*').eq('empresa_id', empresaId).like('data_movimento', `${year}%`).is('deleted_at', null).order('data_movimento', { ascending: false }),
-        supabase.from('church_eventos').select('*').eq('empresa_id', empresaId).like('data_evento', `${year}%`).is('deleted_at', null).order('data_evento', { ascending: false }),
+        supabase.from('church_dizimos_ofertas').select('*').eq('empresa_id', empresaId).gte('data_movimento', `${year}-01-01`).lte('data_movimento', `${year}-12-31T23:59:59`).is('deleted_at', null).order('data_movimento', { ascending: false }),
+        supabase.from('church_eventos').select('*').eq('empresa_id', empresaId).gte('data_evento', `${year}-01-01`).lte('data_evento', `${year}-12-31T23:59:59`).is('deleted_at', null).order('data_evento', { ascending: false }),
         supabase.from('church_ministerios').select('*').eq('empresa_id', empresaId).is('deleted_at', null).order('nome'),
         supabase.from('church_patrimonio').select('*').eq('empresa_id', empresaId).is('deleted_at', null).order('nome_item'),
       ]);

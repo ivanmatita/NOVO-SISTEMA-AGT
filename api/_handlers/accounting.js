@@ -33,7 +33,8 @@ export default async function handler(req, res) {
         .from('lancamentos_contabeis')
         .select('*')
         .eq('empresa_id', queryEmpresaId)
-        .like('data_lancamento', `${year}%`)
+        .gte('data_lancamento', `${year}-01-01T00:00:00`)
+        .lte('data_lancamento', `${year}-12-31T23:59:59`)
         .order('conta_pgc', { ascending: true });
 
       let accounts = [];

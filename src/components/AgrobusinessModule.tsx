@@ -195,9 +195,9 @@ export default function AgrobusinessModule({ user, companyData, onNavigate, onEm
         supabase.from('agro_culturas').select('*').eq('empresa_id', empresaId).is('deleted_at', null).order('created_at', { ascending: false }),
         supabase.from('agro_animais').select('*').eq('empresa_id', empresaId).is('deleted_at', null).order('created_at', { ascending: false }),
         supabase.from('agro_insumos').select('*').eq('empresa_id', empresaId).is('deleted_at', null).order('nome'),
-        supabase.from('agro_vendas_agro').select('*').eq('empresa_id', empresaId).like('data_venda', `${year}%`).is('deleted_at', null).order('data_venda', { ascending: false }),
+        supabase.from('agro_vendas_agro').select('*').eq('empresa_id', empresaId).gte('data_venda', `${year}-01-01`).lte('data_venda', `${year}-12-31T23:59:59`).is('deleted_at', null).order('data_venda', { ascending: false }),
         supabase.from('agro_maquinaria').select('*').eq('empresa_id', empresaId).is('deleted_at', null).order('nome'),
-        supabase.from('agro_custos').select('*').eq('empresa_id', empresaId).like('data_custo', `${year}%`).is('deleted_at', null).order('data_custo', { ascending: false }),
+        supabase.from('agro_custos').select('*').eq('empresa_id', empresaId).gte('data_custo', `${year}-01-01`).lte('data_custo', `${year}-12-31T23:59:59`).is('deleted_at', null).order('data_custo', { ascending: false }),
       ]);
       if (faz.data)  setFazendas(faz.data);
       if (cul.data)  setCulturas(cul.data.map((c: any) => ({ ...c, fazenda: faz.data?.find((f: any) => f.id === c.fazenda_id)?.nome || '' })));

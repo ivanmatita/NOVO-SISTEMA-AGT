@@ -20764,7 +20764,8 @@ const AccountingMapsModule = ({ onBack, companyData, fiscalYear }: { onBack: () 
         .from('lancamentos_contabeis')
         .select('*')
         .eq('empresa_id', user.empresa_id)
-        .like('data_lancamento', `${yNum}%`);
+        .gte('data_lancamento', `${yNum}-01-01T00:00:00`)
+        .lte('data_lancamento', `${yNum}-12-31T23:59:59`);
 
       if (Array.isArray(lancs) && lancs.length > 0) {
         const grouped: Record<string, any> = {};
@@ -21041,7 +21042,8 @@ const AccountMovementsPage = ({ account, onBack, companyData }: { account: any, 
           .from('lancamentos_contabeis')
           .select('*')
           .eq('empresa_id', activeEmpresaId)
-          .like('data_lancamento', `${selectedYear}%`)
+          .gte('data_lancamento', `${selectedYear}-01-01T00:00:00`)
+          .lte('data_lancamento', `${selectedYear}-12-31T23:59:59`)
           .or(`conta_pgc.eq.${contaCodigo},conta_debito.eq.${contaCodigo},conta_credito.eq.${contaCodigo}`)
           .order('data_lancamento', { ascending: true });
 
@@ -23711,7 +23713,8 @@ const BalanceteRazaoModule = ({ onBack, companyData, fiscalYear }: { onBack: () 
         .from('lancamentos_contabeis')
         .select('*')
         .eq('empresa_id', user.empresa_id)
-        .like('data_lancamento', `${year}%`)
+        .gte('data_lancamento', `${year}-01-01T00:00:00`)
+        .lte('data_lancamento', `${year}-12-31T23:59:59`)
         .order('conta_pgc', { ascending: true });
       setLancamentos(data || []);
     } catch (e) {
@@ -23902,14 +23905,16 @@ const BalancoModule = ({ onBack, companyData, invoices, purchases, fiscalYear }:
         .from('lancamentos_contabeis')
         .select('*')
         .eq('empresa_id', user.empresa_id)
-        .like('data_lancamento', `${year}%`);
+        .gte('data_lancamento', `${year}-01-01T00:00:00`)
+        .lte('data_lancamento', `${year}-12-31T23:59:59`);
       setLancamentos(curr || []);
       const prevYear = String(Number(year) - 1);
       const { data: prev } = await supabase
         .from('lancamentos_contabeis')
         .select('*')
         .eq('empresa_id', user.empresa_id)
-        .like('data_lancamento', `${prevYear}%`);
+        .gte('data_lancamento', `${prevYear}-01-01T00:00:00`)
+        .lte('data_lancamento', `${prevYear}-12-31T23:59:59`);
       setLancamentosAnterior(prev || []);
     } catch (e) {
       console.error('Erro:', e);
@@ -33174,8 +33179,8 @@ export default function App() {
           type: a.type,
           description: a.description,
           responsible: a.responsible,
-          startDate: a.start_date,
-          endDate: a.end_date,
+          startDate: a.start_date ? String(a.start_date).slice(0, 10) : '',
+          endDate: a.end_date ? String(a.end_date).slice(0, 10) : '',
           advanceTime: a.advance_time,
           obs: a.obs
         })));
@@ -35302,8 +35307,8 @@ export default function App() {
                                         type: alert.type,
                                         description: alert.description,
                                         responsible: alert.responsible,
-                                        startDate: alert.startDate,
-                                        endDate: alert.endDate,
+                                        startDate: alert.startDate ? String(alert.startDate).slice(0, 10) : '',
+                                        endDate: alert.endDate ? String(alert.endDate).slice(0, 10) : '',
                                         advanceTime: alert.advanceTime,
                                         obs: alert.obs || ''
                                       });
@@ -35588,11 +35593,11 @@ export default function App() {
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data de Início</label>
-                      <input required type="date" value={taskFormData.startDate} onChange={e => setTaskFormData({...taskFormData, startDate: e.target.value})} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                      <input required type="date" value={taskFormData.startDate ? String(taskFormData.startDate).slice(0, 10) : ''} onChange={e => setTaskFormData({...taskFormData, startDate: e.target.value})} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data de Fim</label>
-                      <input required type="date" value={taskFormData.endDate} onChange={e => setTaskFormData({...taskFormData, endDate: e.target.value})} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
+                      <input required type="date" value={taskFormData.endDate ? String(taskFormData.endDate).slice(0, 10) : ''} onChange={e => setTaskFormData({...taskFormData, endDate: e.target.value})} className="w-full border border-zinc-200 bg-zinc-50 rounded-none px-4 py-2 text-sm focus:outline-none focus:border-[#003366]" />
                     </div>
                     <div className="space-y-1.5 md:col-span-2">
                       <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Observações</label>

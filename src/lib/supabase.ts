@@ -197,6 +197,7 @@ class SafeRealtimeChannel {
   private maxRetries = 10;
   private isClosed = false;
   private realSubClient: any;
+  private reconnectTimeout: any = null;
 
   constructor(baseChannel: any, name: string, creatorClient: any) {
     this.baseChannel = baseChannel;
@@ -225,12 +226,18 @@ class SafeRealtimeChannel {
     
     try {
       this.baseChannel.subscribe((status: string, err?: any) => {
+        if (this.isClosed) return;
         console.log(`[SafeSupabase Realtime] Event status '${status}' on channel '${this.channelName}'`, err || '');
         
-        if (status === 'CHANNEL_ERROR' || status === 'CLOSED') {
+        // Reconnect ONLY on actual connection failure. CLOSED is a normal terminal state.
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           this.handleReconnection();
         } else if (status === 'SUBSCRIBED') {
           this.retryCount = 0; // reset
+          if (this.reconnectTimeout) {
+            clearTimeout(this.reconnectTimeout);
+            this.reconnectTimeout = null;
+          }
         }
 
         if (callback) {
@@ -250,6 +257,7 @@ class SafeRealtimeChannel {
 
   private handleReconnection() {
     if (this.isClosed) return;
+    if (this.reconnectTimeout) return; // Prevent duplicate reconnection timers
     if (this.retryCount >= this.maxRetries) {
       console.warn(`[SafeSupabase Realtime] Subscription '${this.channelName}' max reconnection attempts reached. Continuing offline fallback.`);
       return;
@@ -259,7 +267,8 @@ class SafeRealtimeChannel {
     this.retryCount++;
     console.log(`[SafeSupabase Realtime] Reconnecting channel '${this.channelName}' in ${delay.toFixed(0)}ms (Attempt ${this.retryCount}/${this.maxRetries})`);
 
-    setTimeout(() => {
+    this.reconnectTimeout = setTimeout(() => {
+      this.reconnectTimeout = null;
       if (this.isClosed) return;
       try {
         console.log(`[SafeSupabase Realtime] Doing resubscribe of '${this.channelName}'`);
@@ -282,6 +291,10 @@ class SafeRealtimeChannel {
 
   unsubscribe() {
     this.isClosed = true;
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
     try {
       this.baseChannel.unsubscribe();
     } catch (e) {

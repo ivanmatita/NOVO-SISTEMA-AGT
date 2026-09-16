@@ -313,7 +313,8 @@ export const POSConfigModule = () => {
               const displayName = u.name || (u as any).nome || u.username || u.email?.split('@')[0] || 'Utilizador';
               
               const matchedSeries = series.find(s => String(s.id) === String(conf?.serie_id));
-              const seriesLabel = matchedSeries ? ((matchedSeries as any).descricao || matchedSeries.name || (matchedSeries as any).serie || `Série ${matchedSeries.id}`) : null;
+              const rawSeries = matchedSeries ? ((matchedSeries as any).serie || (matchedSeries as any).descricao || matchedSeries.name || `Série ${matchedSeries.id}`) : null;
+              const seriesLabel = rawSeries ? `${rawSeries} — POS` : null;
               const matchedCaixa = caixas.find(c => String(c.id) === String(conf?.caixa_id));
               const caixaLabel = matchedCaixa ? ((matchedCaixa as any).nome_caixa || matchedCaixa.name || 'Caixa') : null;
               const printerLabel = conf?.printer_type || 'P80';
@@ -323,8 +324,13 @@ export const POSConfigModule = () => {
                   <td className="px-6 py-4">
                     <div className="font-black text-zinc-900">{displayName}</div>
                     {conf && (conf.workplace || seriesLabel) && (
-                      <div className="text-[10px] text-zinc-400 font-mono mt-0.5">
-                        {conf.workplace ? `Local: ${conf.workplace}` : ''} {seriesLabel ? `• ${seriesLabel}` : ''}
+                      <div className="text-[10px] text-zinc-500 font-mono mt-0.5 flex flex-wrap items-center gap-1.5">
+                        {conf.workplace && <span className="bg-zinc-100 px-1.5 py-0.5 border border-zinc-200">{conf.workplace}</span>}
+                        {seriesLabel && (
+                          <span className="bg-sky-50 text-[#003366] font-bold px-2 py-0.5 border border-sky-200">
+                            {seriesLabel}
+                          </span>
+                        )}
                       </div>
                     )}
                   </td>
@@ -375,163 +381,225 @@ export const POSConfigModule = () => {
       </div>
 
       {isModalOpen && selectedUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
-          <div className="bg-white max-w-2xl w-full shadow-2xl border-t-4 border-[#003366] rounded-none">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white max-w-4xl w-full shadow-2xl border-t-4 border-[#003366] rounded-none my-8">
             <form onSubmit={handleSave}>
-              <div className="p-6 border-b border-zinc-100 flex justify-between items-center bg-zinc-50">
+              <div className="p-6 border-b border-zinc-200 flex justify-between items-center bg-zinc-50">
                 <div>
-                  <h3 className="text-xl font-black text-[#003366] uppercase tracking-tighter">
-                    Configurar POS — {selectedUser.name || (selectedUser as any).nome || selectedUser.email}
-                  </h3>
-                  <p className="text-xs text-zinc-400 font-mono font-bold uppercase tracking-widest">{selectedUser.email}</p>
+                  <div className="flex items-center gap-2">
+                    <span className="bg-[#003366] text-white text-[10px] font-black uppercase tracking-widest px-2 py-0.5">Terminal POS</span>
+                    <h3 className="text-xl font-black text-[#003366] uppercase tracking-tight">
+                      Configurações Gerais do Terminal — {selectedUser.name || (selectedUser as any).nome || selectedUser.email}
+                    </h3>
+                  </div>
+                  <p className="text-xs text-zinc-500 font-mono font-bold uppercase tracking-widest mt-1">
+                    Operador: {selectedUser.email} • ID: {selectedUser.id}
+                  </p>
                 </div>
-                <button type="button" onClick={() => setIsModalOpen(false)} className="text-zinc-400 hover:text-red-500 transition-colors cursor-pointer">
+                <button type="button" onClick={() => setIsModalOpen(false)} className="text-zinc-400 hover:text-red-500 transition-colors cursor-pointer p-1">
                   <AlertTriangle size={24} />
                 </button>
               </div>
 
-              <div className="p-6 grid grid-cols-2 gap-6">
-                <div className="col-span-2 flex items-center gap-3 bg-emerald-50 p-4 border border-emerald-200">
-                  <input 
-                    type="checkbox" 
-                    id="can_access_pos" 
-                    checked={formData.can_access_pos}
-                    onChange={(e) => setFormData({...formData, can_access_pos: e.target.checked})}
-                    className="w-5 h-5 accent-[#003366] cursor-pointer"
-                  />
-                  <label htmlFor="can_access_pos" className="text-sm font-black text-emerald-900 uppercase cursor-pointer flex items-center gap-2">
-                    <ShieldCheck size={18} className="text-emerald-600" />
-                    Permitir Acesso à Área de Ponto de Venda (POS)
-                  </label>
+              <div className="p-8 space-y-8">
+                {/* BLOCO 1: DADOS DO TERMINAL E OPERADOR */}
+                <div className="border border-zinc-200 p-5 bg-white shadow-xs">
+                  <div className="flex items-center gap-2 pb-3 mb-4 border-b border-zinc-200">
+                    <ShieldCheck size={18} className="text-[#003366]" />
+                    <h4 className="text-xs font-black text-[#003366] uppercase tracking-wider">
+                      Bloco 1: Dados do Terminal e Permissão do Operador
+                    </h4>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div className="flex items-center gap-3 bg-emerald-50/80 p-4 border border-emerald-200 md:col-span-2">
+                      <input 
+                        type="checkbox" 
+                        id="can_access_pos" 
+                        checked={formData.can_access_pos}
+                        onChange={(e) => setFormData({...formData, can_access_pos: e.target.checked})}
+                        className="w-5 h-5 accent-[#003366] cursor-pointer"
+                      />
+                      <label htmlFor="can_access_pos" className="text-sm font-black text-emerald-900 uppercase cursor-pointer flex items-center gap-2">
+                        <ShieldCheck size={18} className="text-emerald-600" />
+                        Autorizar Acesso e Operação no Terminal de Ponto de Venda (POS)
+                      </label>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-zinc-500 uppercase tracking-wider flex items-center gap-1">
+                        <Store size={12} /> Local de Trabalho / Loja <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        required
+                        value={formData.workplace_id}
+                        onChange={e => setFormData({...formData, workplace_id: e.target.value})}
+                        className="w-full px-4 py-2.5 border border-zinc-300 focus:outline-none focus:border-[#003366] bg-zinc-50 text-sm font-bold"
+                      >
+                        <option value="">Selecione o local de trabalho...</option>
+                        {workplaces.map(w => {
+                          const label = w.title || w.name || (w as any).nome || (w as any).descricao || `Local ${w.id}`;
+                          return (
+                            <option key={w.id} value={w.id}>
+                              {label}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-zinc-500 uppercase tracking-wider block">
+                        Operador Associado
+                      </label>
+                      <input
+                        type="text"
+                        disabled
+                        value={`${selectedUser.name || (selectedUser as any).nome || 'Utilizador'} (${selectedUser.email})`}
+                        className="w-full px-4 py-2.5 border border-zinc-200 bg-zinc-100 text-zinc-600 text-sm font-bold cursor-not-allowed"
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                {/* Séries Fiscais de Faturação */}
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-wider flex items-center gap-1">
-                    Série de Faturação <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    required
-                    value={formData.series_id}
-                    onChange={e => setFormData({...formData, series_id: e.target.value})}
-                    className="w-full px-4 py-2.5 border border-zinc-200 focus:outline-none focus:border-[#003366] bg-zinc-50 text-sm font-bold"
-                  >
-                    <option value="">Selecione a série de faturação...</option>
-                    {series.map(s => {
-                      const label = (s as any).descricao || s.name || (s as any).serie || (s as any).code || `Série ${s.id}`;
-                      const code = (s as any).serie || (s as any).code || '';
-                      return (
-                        <option key={s.id} value={s.id}>
-                          {label} {code ? `(${code})` : ''}
-                        </option>
-                      );
-                    })}
-                  </select>
+                {/* BLOCO 2: CONFIGURAÇÃO FISCAL DO TERMINAL */}
+                <div className="border border-sky-200 p-5 bg-sky-50/30 shadow-xs">
+                  <div className="flex items-center justify-between pb-3 mb-4 border-b border-sky-200">
+                    <div className="flex items-center gap-2">
+                      <Database size={18} className="text-[#003366]" />
+                      <h4 className="text-xs font-black text-[#003366] uppercase tracking-wider">
+                        Bloco 2: Configuração Fiscal do Terminal (Série de Faturação)
+                      </h4>
+                    </div>
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 bg-[#003366] text-white">
+                      Identificação Obrigatória: — POS
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div className="space-y-1 md:col-span-2">
+                      <label className="text-[10px] font-black text-zinc-700 uppercase tracking-wider flex items-center justify-between">
+                        <span>Série de Faturação Atribuída ao Terminal <span className="text-red-500">*</span></span>
+                        <span className="text-xs text-sky-800 font-bold font-mono">Formato do Rótulo: [Série] — POS</span>
+                      </label>
+                      <select
+                        required
+                        value={formData.series_id}
+                        onChange={e => setFormData({...formData, series_id: e.target.value})}
+                        className="w-full px-4 py-2.5 border-2 border-sky-300 focus:outline-none focus:border-[#003366] bg-white text-sm font-bold text-zinc-900"
+                      >
+                        <option value="">Selecione a série fiscal configurada para este terminal POS...</option>
+                        {series.map(s => {
+                          const baseCode = (s as any).serie || (s as any).code || s.name || `Série ${s.id}`;
+                          const baseDesc = (s as any).descricao || s.name || '';
+                          const posFormattedLabel = `${baseCode} — POS ${baseDesc && baseDesc !== baseCode ? `(${baseDesc})` : ''}`;
+                          return (
+                            <option key={s.id} value={s.id}>
+                              {posFormattedLabel}
+                            </option>
+                          );
+                        })}
+                      </select>
+                      <p className="text-[11px] text-sky-800 font-semibold mt-1">
+                        Esta série será utilizada exclusivamente para emissão de faturas-recibo e documentos gerados neste terminal de venda rápida, isolando o fluxo fiscal de outras séries da empresa.
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Caixas das Finanças */}
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-wider flex items-center gap-1">
-                    <DollarSign size={12} /> Caixa (Finanças) <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    required
-                    value={formData.caixa_id}
-                    onChange={e => setFormData({...formData, caixa_id: e.target.value})}
-                    className="w-full px-4 py-2.5 border border-zinc-200 focus:outline-none focus:border-[#003366] bg-zinc-50 text-sm font-bold"
-                  >
-                    <option value="">Selecione o caixa das finanças...</option>
-                    {caixas.map(c => {
-                      const label = (c as any).nome_caixa || c.name || (c as any).nome || (c as any).account || `Caixa ${c.id}`;
-                      return (
-                        <option key={c.id} value={c.id}>
-                          {label}
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
+                {/* BLOCO 3: CONFIGURAÇÃO OPERACIONAL */}
+                <div className="border border-zinc-200 p-5 bg-white shadow-xs">
+                  <div className="flex items-center gap-2 pb-3 mb-4 border-b border-zinc-200">
+                    <Settings size={18} className="text-[#003366]" />
+                    <h4 className="text-xs font-black text-[#003366] uppercase tracking-wider">
+                      Bloco 3: Configuração Operacional (Caixa, Impressão e Inventário)
+                    </h4>
+                  </div>
 
-                {/* Tipo de Impressora */}
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-wider flex items-center gap-1">
-                    <Printer size={12} /> Tipo de Impressora <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    required
-                    value={formData.printer_type}
-                    onChange={e => setFormData({...formData, printer_type: e.target.value})}
-                    className="w-full px-4 py-2.5 border border-zinc-200 focus:outline-none focus:border-[#003366] bg-zinc-50 text-sm font-bold"
-                  >
-                    <option value="P80">P80 (Térmica 80mm / Talão)</option>
-                    <option value="P58">P58 / P28 (Térmica 58mm / 28mm)</option>
-                    <option value="A4">A4 (Jato de Tinta / Laser / PDF)</option>
-                  </select>
-                </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    {/* Caixas das Finanças */}
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-zinc-500 uppercase tracking-wider flex items-center gap-1">
+                        <DollarSign size={12} /> Caixa das Finanças / Movimento <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        required
+                        value={formData.caixa_id}
+                        onChange={e => setFormData({...formData, caixa_id: e.target.value})}
+                        className="w-full px-4 py-2.5 border border-zinc-300 focus:outline-none focus:border-[#003366] bg-zinc-50 text-sm font-bold"
+                      >
+                        <option value="">Selecione o caixa das finanças...</option>
+                        {caixas.map(c => {
+                          const label = (c as any).nome_caixa || c.name || (c as any).nome || (c as any).account || `Caixa ${c.id}`;
+                          return (
+                            <option key={c.id} value={c.id}>
+                              {label}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
 
-                {/* Local de Trabalho / Secção */}
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-wider flex items-center gap-1">
-                    <Store size={12} /> Local de Trabalho / Secção <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    required
-                    value={formData.workplace_id}
-                    onChange={e => setFormData({...formData, workplace_id: e.target.value})}
-                    className="w-full px-4 py-2.5 border border-zinc-200 focus:outline-none focus:border-[#003366] bg-zinc-50 text-sm font-bold"
-                  >
-                    <option value="">Selecione o local de trabalho...</option>
-                    {workplaces.map(w => {
-                      const label = w.title || w.name || (w as any).nome || (w as any).descricao || `Local ${w.id}`;
-                      return (
-                        <option key={w.id} value={w.id}>
-                          {label}
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
+                    {/* Tipo de Impressora */}
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-zinc-500 uppercase tracking-wider flex items-center gap-1">
+                        <Printer size={12} /> Formato de Impressão <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        required
+                        value={formData.printer_type}
+                        onChange={e => setFormData({...formData, printer_type: e.target.value})}
+                        className="w-full px-4 py-2.5 border border-zinc-300 focus:outline-none focus:border-[#003366] bg-zinc-50 text-sm font-bold"
+                      >
+                        <option value="P80">P80 — Térmica de 80mm (Talão Standard)</option>
+                        <option value="P58">P58 / P28 — Térmica de 58mm / 28mm (Talão Compacto)</option>
+                        <option value="A4">A4 — Jato de Tinta / Laser / Folha Completa</option>
+                      </select>
+                    </div>
 
-                {/* Armazém de Produtos */}
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-wider flex items-center gap-1">
-                    <Package size={12} /> Armazém (Filtro de Produtos) <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    required
-                    value={formData.warehouse_id}
-                    onChange={e => setFormData({...formData, warehouse_id: e.target.value})}
-                    className="w-full px-4 py-2.5 border border-zinc-200 focus:outline-none focus:border-[#003366] bg-zinc-50 text-sm font-bold"
-                  >
-                    <option value="">Selecione o armazém do inventário...</option>
-                    {warehouses.map(w => {
-                      const label = w.name || (w as any).nome || (w as any).descricao || `Armazém ${w.id}`;
-                      return (
-                        <option key={w.id} value={w.id}>
-                          {label}
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
+                    {/* Armazém de Produtos */}
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-zinc-500 uppercase tracking-wider flex items-center gap-1">
+                        <Package size={12} /> Armazém de Stock (Filtro de Produtos) <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        required
+                        value={formData.warehouse_id}
+                        onChange={e => setFormData({...formData, warehouse_id: e.target.value})}
+                        className="w-full px-4 py-2.5 border border-zinc-300 focus:outline-none focus:border-[#003366] bg-zinc-50 text-sm font-bold"
+                      >
+                        <option value="">Selecione o armazém do inventário...</option>
+                        {warehouses.map(w => {
+                          const label = w.name || (w as any).nome || (w as any).descricao || `Armazém ${w.id}`;
+                          return (
+                            <option key={w.id} value={w.id}>
+                              {label}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
 
-                {/* Saldo Inicial */}
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-wider flex items-center gap-1">
-                    Saldo Inicial (Fundo de Maneio AOA)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={formData.initial_balance}
-                    onChange={e => setFormData({...formData, initial_balance: Number(e.target.value)})}
-                    className="w-full px-4 py-2.5 border border-zinc-200 focus:outline-none focus:border-[#003366] bg-zinc-50 text-sm font-bold font-mono"
-                  />
+                    {/* Saldo Inicial */}
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-zinc-500 uppercase tracking-wider flex items-center gap-1">
+                        <DollarSign size={12} /> Saldo Inicial de Abertura (Fundo de Maneio AOA)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={formData.initial_balance}
+                        onChange={e => setFormData({...formData, initial_balance: Number(e.target.value)})}
+                        placeholder="0.00"
+                        className="w-full px-4 py-2.5 border border-zinc-300 focus:outline-none focus:border-[#003366] bg-zinc-50 text-sm font-bold font-mono"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div className="p-6 bg-zinc-50 border-t border-zinc-100 flex justify-end gap-3">
+              <div className="p-6 bg-zinc-50 border-t border-zinc-200 flex justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
@@ -545,7 +613,7 @@ export const POSConfigModule = () => {
                   className="bg-[#003366] hover:bg-[#002244] text-white px-8 py-2.5 text-xs font-black uppercase tracking-wider shadow-md transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   {saving ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
-                  <span>Sincronizar no Supabase</span>
+                  <span>Guardar e Sincronizar no Supabase</span>
                 </button>
               </div>
             </form>

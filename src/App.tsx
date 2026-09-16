@@ -25426,8 +25426,17 @@ const InvoiceList = ({
                          (doc.client_name || doc.cliente_nome || doc.client_id || '').toString().toLowerCase().includes(searchStr);
     
     // 2. Filtro de Exercício Fiscal (Ano)
-    const docYear = doc.ano || (doc.data_emissao ? new Date(doc.data_emissao).getFullYear() : (doc.date ? new Date(doc.date).getFullYear() : null));
-    const matchesYear = !fiscalYear || String(docYear) === String(fiscalYear);
+    const extractYear = (val: any): string | null => {
+      if (!val) return null;
+      if (typeof val === 'number') return String(val);
+      const s = String(val).trim();
+      const match = s.match(/^(\d{4})/);
+      if (match) return match[1];
+      const d = new Date(s);
+      return isNaN(d.getFullYear()) ? null : String(d.getFullYear());
+    };
+    const docYear = doc.ano ? String(doc.ano) : (extractYear(doc.data_emissao) || extractYear(doc.date) || extractYear((doc as any).created_at));
+    const matchesYear = !fiscalYear || !docYear || String(docYear) === String(fiscalYear);
 
     // 3. Filtro de Série
     const matchesSeries = filterSerieFiscal === 'all' || doc.serie === filterSerieFiscal;
@@ -25797,7 +25806,6 @@ const InvoiceList = ({
                   setSelectedClienteFiscal('all');
                   setMinValue('');
                   setMaxValue('');
-                  if (setFiscalYear) setFiscalYear('2026');
                   setSerieFilter('Todas');
                   setStatusFilter('Todos');
                   setTypeFilter('Todos');
@@ -32985,6 +32993,8 @@ export default function App() {
   const [editingType, setEditingType] = useState<string | null>(null);
   const syncLockRef = useRef(false);
   const isFetchingRef = useRef(false);
+  const pendingFetchRef = useRef(false);
+  const activeFetchDocYearRef = useRef<string>('');
 
   useEffect(() => {
     // Com o AuthContext sincronizado, apenas precisamos garantir que o App saiba quando pode começar
@@ -33498,21 +33508,25 @@ export default function App() {
       const companyId = explicitId || user?.empresa_id;
       if (!companyId) return;
 
-      const anoToFetch = explicitYear || fiscalYear;
+      const anoToFetch = String(explicitYear || fiscalYear || new Date().getFullYear());
       console.log('[App] Carregando documentos emitidos via API para ano:', anoToFetch);
       // SEGURANÇA: empresa_id não enviado — API determina tenant da sessão JWT
       const res = await fetchWithAuth(`/api/invoices?year=${anoToFetch}`);
       
       if (!res.ok) {
         console.error('Erro ao carregar documentos emitidos:', await res.text());
-        setIssuedDocuments([]);
-        setInvoices([]);
         return;
       }
       
       const data = await res.json();
+
+      // PROTEÇÃO DE CORRIDA: Se o utilizador já alternou para outro ano enquanto a rede respondia, descartar
+      if (activeFetchDocYearRef.current && String(activeFetchDocYearRef.current) !== String(anoToFetch)) {
+        console.log(`[App] Descartando resposta de ano obsoleto (${anoToFetch}) pois o ano ativo é (${activeFetchDocYearRef.current})`);
+        return;
+      }
       
-      console.log(`[App] Documentos carregados da API: ${data?.length || 0}`);
+      console.log(`[App] Documentos carregados da API para ${anoToFetch}: ${data?.length || 0}`);
       // Pass all documents through, do not filter here.
       const docs = data?.map((d: any) => ({
         ...d,
@@ -33535,7 +33549,6 @@ export default function App() {
         logo_url: d.logo_url || d.company_logo || d.logotipo || null,
       })) || [];
 
-      
       setIssuedDocuments(docs);
       
       // Sync with invoices state for components using the legacy prop
@@ -33857,11 +33870,11 @@ export default function App() {
     const handlers: Record<string, () => void> = {
       clientes: () => loadClientes(),
       locais_trabalho: () => loadLocaisTrabalho(),
-      documentos_emitidos: () => loadDocumentosEmitidos(),
+      documentos_emitidos: () => loadDocumentosEmitidos(companyId, fiscalYear),
       caixas: () => loadCaixas(),
       caixa_movimentacoes: () => loadCaixaMovements(),
       fornecedores: () => loadFornecedores(),
-      compras: () => loadCompras(),
+      compras: () => loadCompras(companyId, fiscalYear),
       colaboradores: () => loadEmployees(),
       alertas_tarefas: () => loadAlerts()
     };
@@ -33896,7 +33909,8 @@ export default function App() {
 
   const fetchData = async () => {
     if (isFetchingRef.current) {
-      console.log('[DEBUG-SYNC] fetchData já está em execução, ignorando...');
+      console.log('[DEBUG-SYNC] fetchData já está em execução, agendando execução pendente...');
+      pendingFetchRef.current = true;
       return;
     }
     isFetchingRef.current = true;
@@ -34157,6 +34171,10 @@ export default function App() {
       console.error('Critical error in fetchData:', err);
     } finally {
       isFetchingRef.current = false;
+      if (pendingFetchRef.current) {
+        pendingFetchRef.current = false;
+        fetchData();
+      }
     }
   };
 
@@ -34536,10 +34554,13 @@ export default function App() {
 
   useEffect(() => {
     if (authReady) {
-      // Limpeza imediata de estado de documentos transacionais para isolamento visual estrito
-      setPurchases([]);
-      setIssuedDocuments([]);
-      setInvoices([]);
+      activeFetchDocYearRef.current = String(fiscalYear);
+      const companyId = user?.empresa_id;
+      if (companyId) {
+        // Disparo imediato dos documentos e compras para o ano fiscal selecionado
+        doLoadDocumentosEmitidos(companyId, fiscalYear);
+        doLoadCompras(companyId, fiscalYear);
+      }
       fetchData();
     }
   }, [authReady, fiscalYear]);

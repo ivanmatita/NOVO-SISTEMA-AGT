@@ -541,8 +541,16 @@ const POSPage = ({
         const normalizedSales: any[] = [];
         const seenDocNums = new Set<string>();
 
+        const targetSerieId = userPosConfig?.serie_id || userPosConfig?.series_id || selectedSeries;
+
         if (Array.isArray(sl)) {
           for (const s of sl) {
+            // Isolamento estrito por série: se a venda tiver série gravada e for diferente da do terminal, ignorar
+            if (targetSerieId && (s.serie_id || s.series_id)) {
+              const saleSerie = String(s.serie_id || s.series_id);
+              if (saleSerie !== String(targetSerieId)) continue;
+            }
+
             const docNum = (s.invoice_number || s.numero_documento || s.reference || `POS-${s.id}`).trim();
             seenDocNums.add(docNum);
             const voidInfo = voidMap.get(docNum);
@@ -568,18 +576,22 @@ const POSPage = ({
               section: s.section || '',
               table: s.table || null,
               notes: s.notes || '',
+              serie_id: s.serie_id || s.series_id || null,
               is_anulado: isAnulado,
               motivo_anulacao: voidInfo?.motivo_anulacao || s.motivo_anulacao || ''
             });
           }
         }
 
-        // Merge electronic invoices ONLY if explicitly issued via POS
+        // Merge electronic invoices ONLY if explicitly issued via POS and matching configured series
         if (Array.isArray(allInv)) {
           for (const inv of allInv) {
             const isPosDoc = inv.is_pos === true || inv.origem === 'POS' || inv.source === 'pos';
             const docNum = (inv.invoice_number || inv.numero_documento || '').trim();
-            if (isPosDoc && docNum && !seenDocNums.has(docNum)) {
+            const invSerie = inv.series_id || inv.serie_id;
+            const matchesTerminalSeries = !targetSerieId || !invSerie || String(invSerie) === String(targetSerieId);
+            
+            if (isPosDoc && matchesTerminalSeries && docNum && !seenDocNums.has(docNum)) {
               seenDocNums.add(docNum);
               const isAnulado = inv.status === 'anulado' || inv.estado === 'anulado' || inv.estado_documento === 'anulado' || inv.is_void === true || Boolean(inv.reason_anulacao);
               normalizedSales.push({
@@ -603,6 +615,7 @@ const POSPage = ({
                 section: inv.section || 'Ponto de Venda',
                 table: inv.table || null,
                 notes: inv.notes || '',
+                serie_id: invSerie || null,
                 is_anulado: isAnulado,
                 motivo_anulacao: inv.reason_anulacao || inv.motivo_anulacao || 'Documento Anulado na Faturação Eletrónica'
               });
@@ -746,32 +759,71 @@ const POSPage = ({
       return;
     }
 
-    // 1. PIN direct match if operator has pin
-    if (selectedSwitchOperator.pin && inputPass === String(selectedSwitchOperator.pin).trim()) {
-      setActiveOperator(opName);
-      setShowOperatorPasswordModal(false);
-      setSwitchOperatorPassword('');
-      setShowSwitchPassword(false);
-      triggerToast(`Operador autenticado com sucesso: ${opName} (${opRole})`, 'success');
-      return;
-    }
-
-    // 2. Validate via POS auth API endpoint
     try {
       const empresaId = companyData?.id || user?.empresa_id || '1';
-      const result = await fetchJsonWithAuth('/api/pos-auth/validate', {
-        method: 'POST',
-        body: JSON.stringify({
-          identifier: selectedSwitchOperator.username || selectedSwitchOperator.email || selectedSwitchOperator.nome,
-          email: selectedSwitchOperator.email || '',
-          username: selectedSwitchOperator.username || '',
-          password: inputPass,
-          user_id: selectedSwitchOperator.id,
-          empresa_id: empresaId
-        })
-      });
 
-      if (result?.success) {
+      // 1. PIN direct match if operator has pin configurado
+      let isAuthenticated = false;
+      if (selectedSwitchOperator.pin && inputPass === String(selectedSwitchOperator.pin).trim()) {
+        isAuthenticated = true;
+      }
+
+      // 2. Validate via POS auth API endpoint se não autenticado por PIN
+      if (!isAuthenticated) {
+        const result = await fetchJsonWithAuth('/api/pos-auth/validate', {
+          method: 'POST',
+          body: JSON.stringify({
+            identifier: selectedSwitchOperator.username || selectedSwitchOperator.email || selectedSwitchOperator.nome,
+            email: selectedSwitchOperator.email || '',
+            username: selectedSwitchOperator.username || '',
+            password: inputPass,
+            user_id: selectedSwitchOperator.id,
+            empresa_id: empresaId
+          })
+        });
+
+        if (result?.success) {
+          isAuthenticated = true;
+        } else {
+          setSwitchOperatorError(result?.error || 'Palavra-passe incorreta do operador. Tente novamente.');
+          playBeep('error');
+          return;
+        }
+      }
+
+      if (isAuthenticated) {
+        // Verificar permissão e carregar configurações do POS deste operador
+        const configRes = await fetchJsonWithAuth(`/api/pos-user-configs?empresa_id=${empresaId}`).catch(() => []);
+        let userConf = Array.isArray(configRes) ? configRes.find((c: any) => String(c.user_id) === String(selectedSwitchOperator.id)) : null;
+
+        if (!userConf && selectedSwitchOperator.id) {
+          try {
+            const { data: supaC } = await supabase
+              .from('pos_user_configs')
+              .select('*')
+              .eq('user_id', String(selectedSwitchOperator.id))
+              .maybeSingle();
+            if (supaC) userConf = supaC;
+          } catch (e) {
+            console.warn("Direct Supabase lookup:", e);
+          }
+        }
+
+        const isUserAdmin = selectedSwitchOperator.role === 'admin' || selectedSwitchOperator.role === 'Administrador' || selectedSwitchOperator.is_admin === true || user?.role === 'super_admin';
+        const isExplicitlyBlocked = userConf && (userConf.can_access_pos === false || userConf.allow_pos === false);
+
+        if (isExplicitlyBlocked && !isUserAdmin) {
+          setSwitchOperatorError('Operador com acesso ao POS bloqueado. Verifique as permissões nas configurações.');
+          playBeep('error');
+          return;
+        }
+
+        if (userConf) {
+          setUserPosConfig(userConf);
+          if (userConf.series_id || userConf.serie_id) setSelectedSeries(String(userConf.series_id || userConf.serie_id));
+          if (userConf.caixa_id) setSelectedPOS(String(userConf.caixa_id));
+        }
+
         setActiveOperator(opName);
         setShowOperatorPasswordModal(false);
         setSwitchOperatorPassword('');
@@ -779,22 +831,11 @@ const POSPage = ({
         triggerToast(`Operador autenticado com sucesso: ${opName} (${opRole})`, 'success');
         return;
       }
-    } catch (err) {
-      console.warn('Verificação de API POS:', err);
+    } catch (err: any) {
+      console.error('Erro na validação de operador POS:', err);
+      setSwitchOperatorError(err.message || 'Erro ao validar credenciais do operador.');
+      playBeep('error');
     }
-
-    // 3. Fallback PINs or default credentials for dev / offline
-    if (inputPass === '1234' || inputPass === '0000' || inputPass === 'admin' || inputPass === '9999') {
-      setActiveOperator(opName);
-      setShowOperatorPasswordModal(false);
-      setSwitchOperatorPassword('');
-      setShowSwitchPassword(false);
-      triggerToast(`Operador autenticado com sucesso: ${opName} (${opRole})`, 'success');
-      return;
-    }
-
-    setSwitchOperatorError('Senha incorreta do operador. Tente novamente.');
-    playBeep('error');
   };
 
   const handleRegisterDespesa = async (e: React.FormEvent) => {
@@ -3035,15 +3076,19 @@ const POSPage = ({
 
                   <div>
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block mb-1">
-                      Série Fiscal
+                      Série Fiscal (Terminal POS)
                     </label>
                     <select
                       value={selectedSeries}
                       onChange={e => setSelectedSeries(e.target.value)}
                       className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-[#0284c7] cursor-pointer"
                     >
-                      {seriesList.map(s => <option key={s.id} value={s.id}>{s.serie || s.description}</option>)}
-                      {seriesList.length === 0 && <option value="1">Série Geral 2026</option>}
+                      {seriesList.map(s => {
+                        const raw = s.serie || (s as any).descricao || s.description || (s as any).name || `Série ${s.id}`;
+                        const label = raw.includes('— POS') ? raw : `${raw} — POS`;
+                        return <option key={s.id} value={s.id}>{label}</option>;
+                      })}
+                      {seriesList.length === 0 && <option value="1">Série Geral 2026 — POS</option>}
                     </select>
                   </div>
 

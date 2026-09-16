@@ -65,7 +65,7 @@ export default async function handler(req, res) {
         return res.status(200).json(safe.length > 0 ? safe : [{ id: 'cc-1', name: 'Centro de Custo Geral', code: 'CC-GERAL' }]);
       }
 
-      // 3. pos/sales or sales com filtros estritos de ano, data e identificação POS (Regras 11, 12, 13, 14)
+      // 3. pos/sales or sales com filtros estritos de ano, data, série e identificação POS
       if (pathname.startsWith('pos/sales') || pathname.startsWith('pos-sales')) {
         let url = `${config.supabaseUrl}/rest/v1/documentos_emitidos?empresa_id=eq.${empresaId}&select=*&order=created_at.desc&limit=200`;
         
@@ -80,6 +80,11 @@ export default async function handler(req, res) {
         const queryDate = urlObj.searchParams.get('date') || urlObj.searchParams.get('data');
         if (queryDate && /^\d{4}-\d{2}-\d{2}$/.test(queryDate.trim())) {
           url += `&data_emissao=eq.${queryDate.trim()}`;
+        }
+
+        const querySerie = urlObj.searchParams.get('serie') || urlObj.searchParams.get('series_reference');
+        if (querySerie && querySerie !== 'all') {
+          url += `&serie=eq.${encodeURIComponent(querySerie.trim())}`;
         }
 
         const response = await fetch(url, { headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader } });
@@ -121,8 +126,101 @@ export default async function handler(req, res) {
       }
     }
 
-    // GRAVAÇÃO REAL DE CONFIGURAÇÃO E PERMISSÕES DO POS (Regra 2, 6 e 8)
+    // GRAVAÇÃO REAL DE CONFIGURAÇÃO E PERMISSÕES DO POS & AUTENTICAÇÃO REAL DE OPERADOR
     if (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH') {
+      // Endpoint de autenticação real do operador POS: /api/pos-auth/validate
+      if (pathname.startsWith('pos-auth/validate') || pathname.startsWith('pos-auth')) {
+        const body = req.body || {};
+        const password = String(body.password || '').trim();
+        const targetUserId = body.user_id;
+        const identifier = (body.identifier || body.email || body.username || '').trim();
+
+        if (!password) {
+          return res.status(400).json({ success: false, error: 'Palavra-passe obrigatória.' });
+        }
+
+        // 1. Procurar perfil do utilizador
+        let perfil = null;
+        if (targetUserId) {
+          const pRes = await fetch(`${config.supabaseUrl}/rest/v1/perfis?id=eq.${targetUserId}&limit=1`, {
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+          });
+          const pList = await pRes.json();
+          if (Array.isArray(pList) && pList.length > 0) perfil = pList[0];
+        }
+
+        if (!perfil && identifier) {
+          const filterCol = identifier.includes('@') ? 'email' : 'username';
+          const pRes = await fetch(`${config.supabaseUrl}/rest/v1/perfis?${filterCol}=ilike.${encodeURIComponent(identifier)}&limit=1`, {
+            headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+          });
+          const pList = await pRes.json();
+          if (Array.isArray(pList) && pList.length > 0) perfil = pList[0];
+        }
+
+        if (!perfil) {
+          return res.status(404).json({ success: false, error: 'Utilizador não encontrado no sistema.' });
+        }
+
+        // 2. Validar que pertence à empresa autenticada
+        if (perfil.empresa_id && String(perfil.empresa_id) !== String(empresaId) && !auth.isSuperAdmin) {
+          return res.status(403).json({ success: false, error: 'O utilizador não pertence à empresa ativa.' });
+        }
+
+        // 3. Validar se o utilizador está ativo no banco
+        const isUserActive = perfil.is_active !== false && perfil.ativo !== false;
+        if (!isUserActive) {
+          return res.status(403).json({ success: false, error: 'Utilizador inativo ou bloqueado no sistema.' });
+        }
+
+        // 4. Validar permissão de POS em pos_user_configs
+        const isAdmin = perfil.is_admin === true || ['admin', 'super_admin', 'superadmin', 'admin_empresa', 'proprietario'].includes(String(perfil.role || '').toLowerCase());
+        const confRes = await fetch(`${config.supabaseUrl}/rest/v1/pos_user_configs?user_id=eq.${perfil.id}&limit=1`, {
+          headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+        });
+        const confList = await confRes.json();
+        const userConf = Array.isArray(confList) && confList.length > 0 ? confList[0] : null;
+
+        if (userConf && (userConf.allow_pos === false || userConf.can_access_pos === false) && !isAdmin) {
+          return res.status(403).json({ success: false, error: 'Este utilizador não possui permissão para aceder ao Ponto de Venda (POS).' });
+        }
+
+        // 5. Validar autenticação da palavra-passe com Supabase Auth
+        const emailToAuth = perfil.email;
+        if (!emailToAuth) {
+          return res.status(400).json({ success: false, error: 'Email do utilizador não registado para autenticação.' });
+        }
+
+        const loginRes = await fetch(`${config.supabaseUrl}/auth/v1/token?grant_type=password`, {
+          method: 'POST',
+          headers: {
+            'apikey': config.anonKey,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            email: emailToAuth,
+            password: password
+          })
+        });
+
+        const loginData = await loginRes.json();
+        if (!loginRes.ok || !loginData.access_token) {
+          return res.status(401).json({ success: false, error: 'Palavra-passe incorreta. Verifique os dados e tente novamente.' });
+        }
+
+        return res.status(200).json({
+          success: true,
+          user: {
+            id: perfil.id,
+            name: perfil.nome || perfil.name || perfil.username || emailToAuth.split('@')[0],
+            email: emailToAuth,
+            role: perfil.role,
+            is_admin: isAdmin
+          },
+          config: userConf || null
+        });
+      }
+
       if (pathname.startsWith('pos-user-configs')) {
         const body = req.body || {};
         const targetUserId = targetUserIdParam || body.user_id;

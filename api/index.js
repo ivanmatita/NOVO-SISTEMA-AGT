@@ -82,9 +82,10 @@ export default async function handler(req, res) {
     return invoicesHandler(req, res);
   }
 
-  // 7. POS, Caixas, Pontos de Venda e Centros de Custo
+  // 7. POS, Caixas, Pontos de Venda, Configurações e Autenticação de Operador
   if (
     pathname.startsWith('/api/pos') ||
+    pathname.startsWith('/api/pos-auth') ||
     pathname.startsWith('/api/pos-points') ||
     pathname.startsWith('/api/cost-centers') ||
     pathname.startsWith('/api/caixa-movements') ||

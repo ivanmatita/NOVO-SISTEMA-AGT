@@ -209,7 +209,45 @@ export default async function handler(req, res) {
 
       const year = activeExerciseYear;
 
-      const seriesRef = (body.series_reference || body.serie || 'A').toUpperCase();
+      let seriesRef = (body.series_reference || body.serie || '').trim().toUpperCase();
+
+      // Se for emissão via POS ou se tiver series_id/serie_id, obter e validar a série real do banco
+      const isPos = Boolean(body.is_pos || body.origem === 'POS' || body.source === 'pos');
+      if (isPos || body.series_id || body.serie_id) {
+        try {
+          // Se tiver series_id explícito
+          const sId = body.series_id || body.serie_id;
+          if (sId) {
+            const sRes = await fetch(`${config.supabaseUrl}/rest/v1/series_fiscais?id=eq.${sId}&empresa_id=eq.${companyId}&select=serie,codigo&limit=1`, {
+              headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+            });
+            const sData = await sRes.json();
+            if (Array.isArray(sData) && sData.length > 0 && (sData[0].serie || sData[0].codigo)) {
+              seriesRef = (sData[0].serie || sData[0].codigo).trim().toUpperCase();
+            }
+          } else if (auth.user?.id) {
+            // Consultar a série configurada para o operador em pos_user_configs
+            const uConfRes = await fetch(`${config.supabaseUrl}/rest/v1/pos_user_configs?user_id=eq.${auth.user.id}&empresa_id=eq.${companyId}&select=serie_id,series_id&limit=1`, {
+              headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+            });
+            const uConfList = await uConfRes.json();
+            const configuredSerieId = uConfList?.[0]?.serie_id || uConfList?.[0]?.series_id;
+            if (configuredSerieId) {
+              const sfRes = await fetch(`${config.supabaseUrl}/rest/v1/series_fiscais?id=eq.${configuredSerieId}&empresa_id=eq.${companyId}&select=serie,codigo&limit=1`, {
+                headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }
+              });
+              const sfData = await sfRes.json();
+              if (Array.isArray(sfData) && sfData.length > 0 && (sfData[0].serie || sfData[0].codigo)) {
+                seriesRef = (sfData[0].serie || sfData[0].codigo).trim().toUpperCase();
+              }
+            }
+          }
+        } catch (sErr) {
+          console.warn('[API-INVOICES] Aviso ao resolver série de POS:', sErr);
+        }
+      }
+
+      if (!seriesRef) seriesRef = 'A';
 
       // Gerar ou utilizar número de documento fornecido
       let invoiceNumber = body.invoice_number || body.numero_documento || '';

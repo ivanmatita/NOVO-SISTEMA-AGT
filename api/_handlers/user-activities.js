@@ -20,10 +20,9 @@ export default async function handler(req, res) {
   try {
     const config = getEnvConfig(req);
     const auth = await authenticateRequest(req);
-    if (!auth.authenticated) {
-      return res.status(401).json({ error: 'Não autenticado' });
-    }
 
+    // Heartbeat requests during logout may arrive unauthenticated (session already cleared).
+    // Return silently with 200 to avoid 401 console noise — the heartbeat data is not critical.
     const host = req.headers?.host || 'localhost';
     let pathname = '';
     try {
@@ -31,6 +30,14 @@ export default async function handler(req, res) {
       pathname = parsedUrl.pathname;
     } catch (e) {
       pathname = req.url || '';
+    }
+
+    if (!auth.authenticated && req.method === 'POST' && pathname.includes('heartbeat')) {
+      return res.status(200).json({ status: 'ignored', reason: 'unauthenticated_heartbeat' });
+    }
+
+    if (!auth.authenticated) {
+      return res.status(401).json({ error: 'Não autenticado' });
     }
 
     const targetEmpresaId = auth.empresa_id;

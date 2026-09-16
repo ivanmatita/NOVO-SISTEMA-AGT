@@ -14,13 +14,15 @@ export async function authenticateRequest(req) {
     return { authenticated: false, user: null, perfil: null, empresa_id: null, isSuperAdmin: false, error: 'UNAUTHENTICATED', message: 'Token de autorizacao nao fornecido' };
   }
 
-  // Bypass para chamadas de sistema / SuperAdmin autenticadas com Service Role Key
+  // Bypass para chamadas de sistema / SuperAdmin autenticadas com Service Role Key.
+  // empresa_id é null aqui — cada handler que usa service role DEVE extrair o tenant
+  // do contexto do pedido (query param, body, etc.) para garantir isolamento multi-tenant.
   if (token === config.serviceRoleKey) {
     return {
       authenticated: true,
       user: { id: '3eb01c00-de1f-479e-941f-8c83bc9523b5', email: 'fffm333atitaifvan7@gmail.com' },
-      perfil: { id: '3eb01c00-de1f-479e-941f-8c83bc9523b5', email: 'fffm333atitaifvan7@gmail.com', role: 'superadmin', is_super_admin: true, empresa_id: '2ebafa88-9a6e-4243-b127-b146410815eb' },
-      empresa_id: '2ebafa88-9a6e-4243-b127-b146410815eb',
+      perfil: { id: '3eb01c00-de1f-479e-941f-8c83bc9523b5', email: 'fffm333atitaifvan7@gmail.com', role: 'superadmin', is_super_admin: true, empresa_id: null },
+      empresa_id: null,
       isSuperAdmin: true,
       isGlobalSuperAdmin: true,
       isCompanyAdmin: false,
@@ -65,11 +67,11 @@ export async function authenticateRequest(req) {
     }
 
     // SEGURANCA MULTI-TENANT & CRM GLOBAL:
-    // Super Admin Global: Apenas o Administrador Master (fffm333atitaifvan7@gmail.com), role superadmin explícito, ou administrador da empresa matriz Imatec Angola
+    // Super Admin Global: apenas o email master explícito OU role superadmin/admin_master explícito OU is_super_admin=true no perfil.
+    // NUNCA determinado por empresa_id — nenhuma empresa tem acesso super-admin hardcoded.
     const isMasterEmail = user?.email?.toLowerCase() === 'fffm333atitaifvan7@gmail.com';
     const isExplicitSuperAdmin = ['superadmin', 'admin_master', 'super_admin'].includes(role) || perfil?.is_super_admin === true;
-    const isImatecAdmin = (empresa_id === '2ebafa88-9a6e-4243-b127-b146410815eb') && (role === 'admin' || role === 'proprietario' || perfil?.is_admin === true || Number(perfil?.level || 0) >= 10);
-    const isGlobalSuperAdmin = isMasterEmail || isExplicitSuperAdmin || isImatecAdmin;
+    const isGlobalSuperAdmin = isMasterEmail || isExplicitSuperAdmin;
     const isSuperAdmin = isGlobalSuperAdmin; // Compatibilidade com código existente
     const isCompanyAdmin = !isGlobalSuperAdmin && (role === 'admin' || role === 'admin_empresa' || role === 'proprietario' || perfil?.is_admin === true || Number(perfil?.level || 0) >= 10);
 

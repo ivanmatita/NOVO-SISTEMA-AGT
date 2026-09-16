@@ -26234,7 +26234,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
     if (isDocWithOrigin) {
       // 1. Try fetching from Supabase with broad type matching
       supabase.from('documentos_emitidos')
-        .select('id, numero_documento, invoice_number, total, cliente_nome, client_name, cliente_id, data_emissao, date, items, itens, detalhes, recibo_emitido, payment_status, estado_pagamento, status_pagamento, valor_pago, paid_amount, saldo_pendente, tipo_documento, document_type')
+        .select('id, numero_documento, invoice_number, total, cliente_nome, client_name, cliente_id, data_emissao, items, itens, detalhes, recibo_emitido, payment_status, estado_pagamento, status_pagamento, valor_pago, paid_amount, saldo_pendente, tipo_documento, document_type')
         .eq('empresa_id', companyId)
         .eq('ano', Number(invoiceExerciseYear))
         .order('created_at', { ascending: false })
@@ -35775,6 +35775,9 @@ const UserActivityTracker = () => {
     const reportHeartbeat = async (isLogout = false) => {
       if (!sessionIdRef.current || !user) return;
       try {
+        // Guard: verify active session token before sending — prevents 401 on logout cleanup
+        const { data: { session: activeSession } } = await supabase.auth.getSession();
+        if (!activeSession?.access_token) return;
         await fetchWithAuth('/api/user-activities/heartbeat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

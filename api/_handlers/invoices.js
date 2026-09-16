@@ -183,6 +183,9 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'empresa_id não identificado na emissão do documento' });
       }
 
+      // Tipo de documento — abreviação normalizada (FT, FR, FP, RC, NC, ND, GT, GR, OR, PC, CM…)
+      const docTypeAbbr = getDocTypeAbbr(body.type || body.document_type || body.tipo_documento || body.doc_type);
+
       const rawDate = body.date || body.data_emissao || Date.now();
       const docDate = new Date(rawDate);
       const docYear = isNaN(docDate.getTime()) ? new Date().getFullYear() : docDate.getFullYear();

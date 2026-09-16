@@ -28,9 +28,11 @@ export default async function handler(req, res) {
     const targetUserIdParam = pathParts[1] || null;
 
     // VERIFICAÇÃO DE AUTORIZAÇÃO DE ACESSO AO POS (Regra 3 e 5):
-    // Se não for super admin e tentar aceder a rotas de operação do POS, verificar se o utilizador está bloqueado
-    const isOperationRoute = subRoute === 'pos' || subRoute === 'pos-points';
-    if (isOperationRoute && !auth.isSuperAdmin && auth.user?.id) {
+    // Apenas rotas de operação real do POS (abertura de caixa, vendas) são bloqueadas se allow_pos=false.
+    // Rotas de listagem/configuração (pos-points, pos-user-configs, cost-centers) são sempre permitidas
+    // para utilizadores autenticados da empresa — não dependem de allow_pos.
+    const isOperationRoute = req.method !== 'GET' && (subRoute === 'pos' || subRoute === 'pos-open' || subRoute === 'pos-close');
+    if (isOperationRoute && !auth.isSuperAdmin && auth.isCompanyAdmin === false && auth.user?.id) {
       const checkUrl = `${config.supabaseUrl}/rest/v1/pos_user_configs?user_id=eq.${auth.user.id}&empresa_id=eq.${empresaId}&select=allow_pos&limit=1`;
       const checkRes = await fetch(checkUrl, {
         headers: { 'apikey': config.serviceRoleKey, 'Authorization': authHeader }

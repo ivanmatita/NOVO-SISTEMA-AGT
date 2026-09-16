@@ -183,22 +183,31 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'empresa_id não identificado na emissão do documento' });
       }
 
-      const docTypeRaw = body.document_type || body.tipo_documento || 'Fatura';
-      const docTypeAbbr = getDocTypeAbbr(docTypeRaw);
-      const docDate = new Date(body.date || body.data_emissao || Date.now());
-      const year = docDate.getFullYear();
-      const currentYear = new Date().getFullYear();
+      const rawDate = body.date || body.data_emissao || Date.now();
+      const docDate = new Date(rawDate);
+      const docYear = isNaN(docDate.getTime()) ? new Date().getFullYear() : docDate.getFullYear();
 
-      // BLINDAGEM DE EXERCÍCIO: Bloqueio estrito de emissão fora do exercício corrente ativo
-      // Consultar histórico de anos anteriores é permitido, mas emissão retroativa/futura é proibida
-      if (year < currentYear || year > currentYear) {
+      // Exercício activo determinado pela sessão/requisição:
+      // query ?year= ou ?ano=, header x-exercise-year, body.exercise_year, body.ano, ou ano corrente
+      const activeExerciseYearRaw = queryYear || 
+                                   req.headers?.['x-exercise-year'] || 
+                                   body.exercise_year || 
+                                   body.ano_exercicio || 
+                                   body.ano || 
+                                   new Date().getFullYear();
+      const activeExerciseYear = parseInt(activeExerciseYearRaw, 10) || new Date().getFullYear();
+
+      // VALIDAÇÃO BACKEND OBRIGATÓRIA: A data do documento DEVE pertencer ao exercício activo
+      if (docYear !== activeExerciseYear) {
         return res.status(400).json({
-          error: `Emissão bloqueada: Apenas é permitida a emissão de novos documentos no exercício corrente (${currentYear}). O ano indicado (${year}) pertence a um exercício fechado ou futuro.`,
-          code: 'EXERCISE_EMISSION_BLOCKED',
-          requested_year: year,
-          active_year: currentYear
+          error: `Emissão rejeitada: A data seleccionada para o documento (${body.date || body.data_emissao || docYear}) pertence ao ano ${docYear}, mas o exercício activo é ${activeExerciseYear}. A data do documento deve pertencer obrigatoriamente ao exercício activo.`,
+          code: 'EXERCISE_YEAR_MISMATCH',
+          requested_year: docYear,
+          active_year: activeExerciseYear
         });
       }
+
+      const year = activeExerciseYear;
 
       const seriesRef = (body.series_reference || body.serie || 'A').toUpperCase();
 
@@ -302,7 +311,7 @@ export default async function handler(req, res) {
       }
 
       const resultDoc = Array.isArray(inserted) ? inserted[0] : inserted;
-      return res.status(201).json(resultDoc);
+      return res.status(200).json(resultDoc);
     }
 
     // 3. PUT /api/invoices/:id (Atualizar documento)

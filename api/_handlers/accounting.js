@@ -67,7 +67,7 @@ export default async function handler(req, res) {
         // Se ainda não houver lançamentos manuais, gerar balancete sintético a partir de faturas e compras reais
         const [docsRes, comprasRes] = await Promise.all([
           supabase.from('documentos_emitidos').select('total, imposto').eq('empresa_id', queryEmpresaId).eq('ano', year),
-          supabase.from('compras').select('total, tax, iva').eq('empresa_id', queryEmpresaId).eq('ano', year)
+          supabase.from('compras').select('total, valor_iva, imposto').eq('empresa_id', queryEmpresaId).eq('ano', year)
         ]);
 
         const totalVendas = (docsRes.data || []).reduce((s, d) => s + Number(d.total || 0), 0);

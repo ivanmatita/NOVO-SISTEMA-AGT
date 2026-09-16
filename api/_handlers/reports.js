@@ -25,19 +25,26 @@ export default async function handler(req, res) {
       return res.status(200).json(getDefaultEmptyMonths());
     }
 
-    // Consulta real de vendas e compras para o ano de exercício solicitado
+    // Consulta real de vendas e compras para o ano de exercício solicitado com colunas comprovadamente existentes
     const [docsRes, comprasRes] = await Promise.all([
       supabase
         .from('documentos_emitidos')
-        .select('id, data_emissao, date, created_at, total, valor_total, contravalor, imposto, tax, is_certified, status, tipo_documento, document_type')
+        .select('id, data_emissao, created_at, total, valor_total, imposto, iva_total, is_certified, status, tipo_documento')
         .eq('empresa_id', queryEmpresaId)
         .eq('ano', year),
       supabase
         .from('compras')
-        .select('id, data_compra, data, data_emissao, created_at, total, valor_total, tax, iva, tipo, tipo_documento')
+        .select('id, data_compra, data, data_emissao, created_at, total, valor_total, valor_iva, imposto, tipo_documento')
         .eq('empresa_id', queryEmpresaId)
         .eq('ano', year)
     ]);
+
+    if (docsRes.error) {
+      console.error('[API-REPORTS] Erro na consulta de documentos_emitidos:', docsRes.error);
+    }
+    if (comprasRes.error) {
+      console.error('[API-REPORTS] Erro na consulta de compras:', comprasRes.error);
+    }
 
     const docs = Array.isArray(docsRes.data) ? docsRes.data : [];
     const compras = Array.isArray(comprasRes.data) ? comprasRes.data : [];
@@ -48,13 +55,13 @@ export default async function handler(req, res) {
 
       // Filtrar faturas de venda para o mês (excluir notas de crédito ou documentos anulados)
       const monthDocs = docs.filter(d => {
-        const dDate = new Date(d.data_emissao || d.date || d.created_at);
+        const dDate = new Date(d.data_emissao || d.created_at);
         if (isNaN(dDate.getTime())) return false;
         const m = dDate.getMonth() + 1;
         const y = dDate.getFullYear();
         if (m !== month || y !== year) return false;
 
-        const tipo = (d.tipo_documento || d.document_type || '').toUpperCase();
+        const tipo = (d.tipo_documento || '').toUpperCase();
         if (tipo.includes('CRÉDITO') || tipo.includes('CREDITO') || tipo === 'NC') return false;
         if (d.status === 'anulado' || d.status === 'ANULADO') return false;
         return true;
@@ -64,8 +71,8 @@ export default async function handler(req, res) {
       let factC = 0;
       let impRec = 0;
       monthDocs.forEach(d => {
-        const tot = Number(d.total || d.valor_total || d.contravalor || 0);
-        const imp = Number(d.imposto || d.tax || (tot * 0.14));
+        const tot = Number(d.total || d.valor_total || 0);
+        const imp = Number(d.imposto || d.iva_total || (tot * 0.14));
         factC += tot;
         impRec += imp;
       });
@@ -73,7 +80,7 @@ export default async function handler(req, res) {
 
       // Filtrar compras e despesas do mês
       const monthCompras = compras.filter(c => {
-        const cDate = new Date(c.data_compra || c.data || c.data_emissao || c.created_at);
+        const cDate = new Date(c.data_compra || c.data_emissao || c.data || c.created_at);
         if (isNaN(cDate.getTime())) return false;
         const m = cDate.getMonth() + 1;
         const y = cDate.getFullYear();
@@ -83,8 +90,8 @@ export default async function handler(req, res) {
       let totalCustosCompras = 0;
       let ivaSuportado = 0;
       monthCompras.forEach(c => {
-        const tot = Number(c.total || c.valor_total || 0);
-        const imp = Number(c.tax || c.iva || (tot * 0.14));
+        const tot = Number(c.valor_total || c.total || 0);
+        const imp = Number(c.valor_iva || c.imposto || (tot * 0.14));
         totalCustosCompras += tot;
         ivaSuportado += imp;
       });

@@ -12225,12 +12225,12 @@ const ProfitLossReport = ({ fiscalYear, empresa_id, companyData }: { fiscalYear:
         const [docsRes, comprasRes] = await Promise.all([
           supabase
             .from('documentos_emitidos')
-            .select('id, data_emissao, date, created_at, total, valor_total, contravalor, imposto, tax, is_certified, status, tipo_documento, document_type')
+            .select('id, data_emissao, created_at, total, valor_total, imposto, iva_total, is_certified, status, tipo_documento')
             .eq('empresa_id', targetEmpresaId)
             .eq('ano', yearToFetch),
           supabase
             .from('compras')
-            .select('id, data_compra, data, data_emissao, created_at, total, valor_total, tax, iva, tipo, tipo_documento')
+            .select('id, data_compra, data, data_emissao, created_at, total, valor_total, valor_iva, imposto, tipo_documento')
             .eq('empresa_id', targetEmpresaId)
             .eq('ano', yearToFetch)
         ]);
@@ -12241,31 +12241,31 @@ const ProfitLossReport = ({ fiscalYear, empresa_id, companyData }: { fiscalYear:
         const computedMonths = Array.from({ length: 12 }, (_, i) => {
           const monthNum = i + 1;
           const monthDocs = docs.filter(d => {
-            const dt = new Date(d.data_emissao || d.date || d.created_at);
+            const dt = new Date(d.data_emissao || d.created_at);
             if (isNaN(dt.getTime())) return false;
             if (dt.getFullYear() !== yearToFetch || (dt.getMonth() + 1) !== monthNum) return false;
-            const tp = (d.tipo_documento || d.document_type || '').toUpperCase();
+            const tp = (d.tipo_documento || '').toUpperCase();
             return !tp.includes('CRÉDITO') && !tp.includes('CREDITO') && tp !== 'NC' && d.status !== 'anulado';
           });
 
           let factC = 0, impRec = 0;
           monthDocs.forEach(d => {
-            const tot = Number(d.total || d.valor_total || d.contravalor || 0);
-            const imp = Number(d.imposto || d.tax || (tot * 0.14));
+            const tot = Number(d.total || d.valor_total || 0);
+            const imp = Number(d.imposto || d.iva_total || (tot * 0.14));
             factC += tot;
             impRec += imp;
           });
           const factS = Math.max(0, factC - impRec);
 
           const monthCompras = compras.filter(c => {
-            const dt = new Date(c.data_compra || c.data || c.data_emissao || c.created_at);
+            const dt = new Date(c.data_compra || c.data_emissao || c.data || c.created_at);
             return !isNaN(dt.getTime()) && dt.getFullYear() === yearToFetch && (dt.getMonth() + 1) === monthNum;
           });
 
           let totCompras = 0, ivaSup = 0;
           monthCompras.forEach(c => {
-            const tot = Number(c.total || c.valor_total || 0);
-            const imp = Number(c.tax || c.iva || (tot * 0.14));
+            const tot = Number(c.valor_total || c.total || 0);
+            const imp = Number(c.valor_iva || c.imposto || (tot * 0.14));
             totCompras += tot;
             ivaSup += imp;
           });
@@ -12347,6 +12347,8 @@ const ProfitLossReport = ({ fiscalYear, empresa_id, companyData }: { fiscalYear:
     return d ? (d[key] || 0) : 0;
   };
 
+  const hasDataForSelectedYear = totals.facturacaoSImposto > 0 || totals.totaisCustos > 0 || totals.facturacaoCImposto > 0;
+
   return (
     <div className="bg-white p-8 space-y-8 overflow-x-auto">
       <div className="flex justify-between items-start border-b border-zinc-200 pb-4">
@@ -12369,6 +12371,17 @@ const ProfitLossReport = ({ fiscalYear, empresa_id, companyData }: { fiscalYear:
           </div>
         </div>
       </div>
+
+      {/* Mensagem obrigatória caso o exercício selecionado não possua dados */}
+      {!hasDataForSelectedYear && (
+        <div className="p-4 bg-amber-50 border border-amber-200 rounded-none flex items-center gap-3 text-amber-800">
+          <AlertCircle size={20} className="text-amber-600 flex-shrink-0" />
+          <div>
+            <p className="font-bold text-xs">Não existem dados para o exercício seleccionado.</p>
+            <p className="text-[11px] text-amber-700">Não foram localizadas faturas emitidas ou compras registadas no exercício fiscal de {fiscalYear}.</p>
+          </div>
+        </div>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -12519,6 +12532,7 @@ const ProfitLossReport = ({ fiscalYear, empresa_id, companyData }: { fiscalYear:
 
 const RetencaoFonteModule = ({ issuedDocuments }: { issuedDocuments: IssuedDocument[] }) => {
   const { user } = useAuth();
+  const { exerciseYear } = useExercise();
   const [activeTab, setActiveTab] = useState<'receber' | 'pagar'>('receber');
   const [search, setSearch] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -12527,15 +12541,14 @@ const RetencaoFonteModule = ({ issuedDocuments }: { issuedDocuments: IssuedDocum
 
   useEffect(() => {
     if (!user?.empresa_id) return;
-    const currentFiscalYear = localStorage.getItem('fiscalYear') || String(new Date().getFullYear());
-    fetchWithAuth(`/api/purchases?empresa_id=${user.empresa_id}&ano=${currentFiscalYear}`)
+    fetchWithAuth(`/api/purchases?empresa_id=${user.empresa_id}&ano=${exerciseYear}`)
       .then(r => {
         if (!r.ok) throw new Error(`Server error: ${r.status}`);
         return r.json();
       })
       .then(setPurchases)
       .catch(err => console.error('Error fetching purchases:', err));
-  }, []);
+  }, [user?.empresa_id, exerciseYear]);
 
   const filterData = (data: any[], dateField: string, isPurchase: boolean) => {
     return data.filter(doc => {
@@ -13006,12 +13019,12 @@ const AnnualMovementModule = ({
       const [docsRes, comprasRes] = await Promise.all([
         supabase
           .from('documentos_emitidos')
-          .select('id, data_emissao, date, created_at, total, valor_total, contravalor, imposto, tax, tipo_documento, status')
+          .select('id, data_emissao, created_at, total, valor_total, imposto, iva_total, tipo_documento, status')
           .eq('empresa_id', targetEmpresaId)
           .eq('ano', yearNum),
         supabase
           .from('compras')
-          .select('id, data_compra, data, data_emissao, created_at, total, valor_total, tax, iva')
+          .select('id, data_compra, data, data_emissao, created_at, total, valor_total, valor_iva, imposto')
           .eq('empresa_id', targetEmpresaId)
           .eq('ano', yearNum)
       ]);
@@ -13022,7 +13035,7 @@ const AnnualMovementModule = ({
       const summary = Array.from({ length: 12 }, (_, i) => {
         const mNum = i + 1;
         const mDocs = docs.filter(d => {
-          const dt = new Date(d.data_emissao || d.date || d.created_at);
+          const dt = new Date(d.data_emissao || d.created_at);
           if (isNaN(dt.getTime())) return false;
           if (dt.getFullYear() !== yearNum || (dt.getMonth() + 1) !== mNum) return false;
           const tp = (d.tipo_documento || '').toUpperCase();
@@ -13030,13 +13043,13 @@ const AnnualMovementModule = ({
         });
 
         const mCompras = compras.filter(c => {
-          const dt = new Date(c.data_compra || c.data || c.data_emissao || c.created_at);
+          const dt = new Date(c.data_compra || c.data_emissao || c.data || c.created_at);
           return !isNaN(dt.getTime()) && dt.getFullYear() === yearNum && (dt.getMonth() + 1) === mNum;
         });
 
-        const totalVendas = mDocs.reduce((s, d) => s + Number(d.total || d.valor_total || d.contravalor || 0), 0);
-        const totalCompras = mCompras.reduce((s, c) => s + Number(c.total || c.valor_total || 0), 0);
-        const totalImpostos = mDocs.reduce((s, d) => s + Number(d.imposto || d.tax || 0), 0);
+        const totalVendas = mDocs.reduce((s, d) => s + Number(d.total || d.valor_total || 0), 0);
+        const totalCompras = mCompras.reduce((s, c) => s + Number(c.valor_total || c.total || 0), 0);
+        const totalImpostos = mDocs.reduce((s, d) => s + Number(d.imposto || d.iva_total || 0), 0);
 
         return {
           month: mNum,
@@ -20767,7 +20780,7 @@ const AccountingMapsModule = ({ onBack, companyData, fiscalYear }: { onBack: () 
         // Balancete sintético com faturas e compras do ano
         const [docsRes, comprasRes] = await Promise.all([
           supabase.from('documentos_emitidos').select('total, imposto').eq('empresa_id', user.empresa_id).eq('ano', yNum),
-          supabase.from('compras').select('total, tax, iva').eq('empresa_id', user.empresa_id).eq('ano', yNum)
+          supabase.from('compras').select('total, valor_iva, imposto').eq('empresa_id', user.empresa_id).eq('ano', yNum)
         ]);
         const totalV = (docsRes.data || []).reduce((s: number, d: any) => s + Number(d.total || 0), 0);
         const totalC = (comprasRes.data || []).reduce((s: number, c: any) => s + Number(c.total || 0), 0);
@@ -26387,7 +26400,10 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
 
     const res = await fetchWithAuth(url, {
       method,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-exercise-year': String(invoiceExerciseYear)
+      },
       body: JSON.stringify({ 
         cliente_id: clientId, 
         client_name: (client as any)?.name || (client as any)?.nome || '',
@@ -26417,6 +26433,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
         retencao_fonte_total: retencaoFonteTotal,
         empresa_id: currentEmpresaId,
         ano: Number(invoiceExerciseYear),
+        exercise_year: Number(invoiceExerciseYear),
         criado_por: user?.id
       })
     });

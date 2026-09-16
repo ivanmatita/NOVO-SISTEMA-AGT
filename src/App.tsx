@@ -2875,12 +2875,12 @@ const mapPermissionAreasForDB = (selectedIds: string[]): string[] => {
 };
 
 const hasModulePermission = (user: any, moduleId: string): boolean => {
-  // Super Administrador do Sistema (Imatec Angola / Master)
+  // Super Administrador do Sistema (Master Global)
   const isSuperAdminGlobal = 
     user?.email?.toLowerCase() === 'fffm333atitaifvan7@gmail.com' ||
-    user?.empresa_id === '2ebafa88-9a6e-4243-b127-b146410815eb' ||
     user?.role === 'superadmin' ||
-    user?.role === 'super_admin';
+    user?.role === 'super_admin' ||
+    user?.is_super_admin === true;
   if (isSuperAdminGlobal) return true;
 
   // Dashboard sempre acessível
@@ -3215,10 +3215,11 @@ const Sidebar = ({ activeTab, setActiveTab, companyData }: {
           {SIDEBAR_MENU_ITEMS.filter(item => {
             if (item.id === 'crm_empresas') {
               const currentNif = String(companyData?.nif || user?.empresa_nif || '').replace(/\D/g, '').trim();
-              const isSuper = currentNif === '5002123665' || 
-                              user?.email?.toLowerCase() === 'fffm333atitaifvan7@gmail.com' ||
-                              user?.empresa_id === '2ebafa88-9a6e-4243-b127-b146410815eb' ||
-                              user?.role === 'superadmin' || user?.role === 'super_admin';
+              const isMaster = user?.email?.toLowerCase() === 'fffm333atitaifvan7@gmail.com' ||
+                               user?.role === 'superadmin' || user?.role === 'super_admin' || (user as any)?.is_super_admin === true;
+              const isOwnerImatec = (currentNif === '5002123665' || user?.empresa_id === '2ebafa88-9a6e-4243-b127-b146410815eb') && 
+                                    (user?.is_admin === true || user?.role === 'admin' || user?.role === 'proprietario' || (user?.level !== undefined && Number(user.level) >= 10));
+              const isSuper = isMaster || isOwnerImatec;
               // Em staging: qualquer admin pode ver CRM Empresas para testes
               const isStagingAdmin = isStagingEnvironment() && (
                 user?.is_admin === true || user?.role === 'admin' ||
@@ -14749,9 +14750,21 @@ const UsersSettings = () => {
     const currentEmpresaId = user?.empresa_id || user?.company_id || (user?.company as any)?.id || userToToggle.empresa_id || '';
     if (!currentEmpresaId || togglingUserId === userToToggle.id) return;
     
-    // Proteção: não permitir desativar a própria conta em sessão
+    // Proteção 1: não permitir desativar a própria conta em sessão
     if (userToToggle.id === user?.id && userToToggle.is_active !== false) {
       showToast("Não é permitido bloquear a sua própria conta de administrador em sessão!", 'error');
+      return;
+    }
+
+    // Proteção 2: não permitir bloquear o Administrador Principal da empresa
+    const isPrincipalAdmin = (u: any) =>
+      u?.is_admin === true ||
+      u?.role === 'proprietario' ||
+      (u?.level !== undefined && Number(u.level) >= 10) ||
+      u?.email?.toLowerCase() === 'fffm333atitaifvan7@gmail.com';
+
+    if (isPrincipalAdmin(userToToggle) && userToToggle.is_active !== false) {
+      showToast("O Administrador Principal da empresa está protegido contra bloqueio acidental.", 'error');
       return;
     }
 
@@ -14811,6 +14824,7 @@ const UsersSettings = () => {
       try {
         const key = `agt_perm_updated_${permissionModalUser.id}`;
         localStorage.setItem(key, String(Date.now()));
+        window.dispatchEvent(new CustomEvent('agt_permissions_changed', { detail: { userId: permissionModalUser.id } }));
       } catch (_) {}
       
       // Se as permissões do utilizador atual foram alteradas, actualizar estado de autenticação imediatamente
@@ -32661,18 +32675,59 @@ export default function App() {
     }
   }, [activeTab]);
 
-  // Detectar mudanças de permissões feitas por admin para este utilizador (via localStorage)
+  // Detectar mudanças de permissões feitas por admin para este utilizador (Realtime, localStorage e Eventos)
   React.useEffect(() => {
     if (!user?.id) return;
     const permKey = `agt_perm_updated_${user.id}`;
+    
+    // 1. Escuta entre abas do mesmo navegador via localStorage
     const onStorageChange = async (e: StorageEvent) => {
       if (e.key === permKey && e.newValue) {
-        console.log('[App] Permissões actualizadas pelo administrador. A actualizar sessão...');
+        console.log('[App] Permissões actualizadas via localStorage. Sincronizando...');
         await refreshUser();
       }
     };
     window.addEventListener('storage', onStorageChange);
-    return () => window.removeEventListener('storage', onStorageChange);
+
+    // 2. Escuta no mesmo contexto de janela via CustomEvent
+    const onCustomPermChange = async (e: any) => {
+      if (!e.detail?.userId || e.detail.userId === user.id) {
+        console.log('[App] Permissões actualizadas via evento local. Sincronizando...');
+        await refreshUser();
+      }
+    };
+    window.addEventListener('agt_permissions_changed', onCustomPermChange);
+
+    // 3. Escuta em tempo real direto no banco de dados Supabase (Realtime na tabela perfis)
+    const channel = supabase
+      .channel(`realtime:perfil_perms:${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'perfis',
+          filter: `id=eq.${user.id}`
+        },
+        async (payload: any) => {
+          console.log('[App] Mudança de perfil detetada em tempo real no banco de dados:', payload);
+          await refreshUser();
+        }
+      )
+      .subscribe();
+
+    // 4. Verificação ao focar a aba
+    const onWindowFocus = async () => {
+      await refreshUser();
+    };
+    window.addEventListener('focus', onWindowFocus);
+
+    return () => {
+      window.removeEventListener('storage', onStorageChange);
+      window.removeEventListener('agt_permissions_changed', onCustomPermChange);
+      window.removeEventListener('focus', onWindowFocus);
+      supabase.removeChannel(channel);
+    };
   }, [user?.id, refreshUser]);
 
   // Escutar mudanças de hash (botão Voltar/Avançar do browser)
@@ -35613,32 +35668,127 @@ const ActivitiesManagementModule = () => {
 
   const loadActivitiesData = async () => {
     setLoading(true);
+    const targetEmpresaId = user?.empresa_id || user?.company_id || (user?.company as any)?.id || '';
     try {
-      // 1. Fetch History
-      const histRes = await fetchWithAuth('/api/user-activities/history');
-      if (histRes.ok) {
-        const histData = await histRes.json();
-        setHistory(histData || []);
+      let resolvedHistory: any[] | null = null;
+      let resolvedStats: any | null = null;
+
+      // 1. Fetch History via API
+      try {
+        const histRes = await fetchWithAuth('/api/user-activities/history');
+        if (histRes.ok) {
+          const histData = await histRes.json();
+          if (Array.isArray(histData)) {
+            resolvedHistory = histData;
+          }
+        }
+      } catch (apiHistErr) {
+        console.warn('[ACTIVITIES MODULE] API history call failed, checking fallback...', apiHistErr);
       }
 
-      // 2. Fetch Stats Summary
-      const statsRes = await fetchWithAuth('/api/user-activities/stats');
-      if (statsRes.ok) {
-        const statsData = await statsRes.json();
-        setStats(statsData || {
-          totalLogins: 0,
-          totalTempoSegundos: 0,
-          totalMovimentos: 0,
-          totalInsercoes: 0,
-          totalTarefas: 0,
-          topPerformers: []
-        });
+      // 2. Fetch Stats Summary via API
+      try {
+        const statsRes = await fetchWithAuth('/api/user-activities/stats');
+        if (statsRes.ok) {
+          const statsData = await statsRes.json();
+          if (statsData && typeof statsData === 'object' && Array.isArray(statsData.topPerformers)) {
+            resolvedStats = statsData;
+          }
+        }
+      } catch (apiStatsErr) {
+        console.warn('[ACTIVITIES MODULE] API stats call failed, checking fallback...', apiStatsErr);
       }
+
+      // 3. Resilient Fallback to direct Supabase query if API didn't return data
+      if (resolvedHistory === null && targetEmpresaId) {
+        try {
+          const { data: dbRows, error: dbErr } = await supabase
+            .from('user_activities_sessions')
+            .select('*')
+            .eq('empresa_id', targetEmpresaId)
+            .order('data_entrada', { ascending: false })
+            .limit(400);
+
+          if (!dbErr && Array.isArray(dbRows)) {
+            resolvedHistory = dbRows;
+          }
+        } catch (dbFallbackErr) {
+          console.warn('[ACTIVITIES MODULE] Direct Supabase fallback error:', dbFallbackErr);
+        }
+      }
+
+      const finalHistory = Array.isArray(resolvedHistory) ? resolvedHistory : [];
+      setHistory(finalHistory);
+
+      // If stats not resolved by API, compute directly from history
+      if (!resolvedStats) {
+        let totalTempoSegundos = 0;
+        let totalMovimentos = 0;
+        let totalInsercoes = 0;
+        let totalTarefas = 0;
+        const performMap: Record<string, any> = {};
+
+        finalHistory.forEach((s: any) => {
+          totalTempoSegundos += Number(s.tempo_ativo_segundos || s.duracao || 0);
+          totalMovimentos += Number(s.movimentos || 0);
+          totalInsercoes += Number(s.insercoes || 0);
+          totalTarefas += Number(s.tarefas_concluidas || 0);
+
+          const email = s.email || 'Utilizador Geral';
+          if (!performMap[email]) {
+            performMap[email] = {
+              email,
+              logins: 0,
+              tempo: 0,
+              movimentos: 0,
+              insercoes: 0,
+              tarefas: 0
+            };
+          }
+          performMap[email].logins += 1;
+          performMap[email].tempo += Number(s.tempo_ativo_segundos || s.duracao || 0);
+          performMap[email].movimentos += Number(s.movimentos || 0);
+          performMap[email].insercoes += Number(s.insercoes || 0);
+          performMap[email].tarefas += Number(s.tarefas_concluidas || 0);
+        });
+
+        const topPerformers = Object.values(performMap).map((p: any) => {
+          const activeMinutes = p.tempo / 60;
+          const score = Math.floor(
+            p.movimentos * 0.05 + p.insercoes * 1.5 + p.tarefas * 3 + activeMinutes * 0.2
+          );
+          return { ...p, score };
+        }).sort((a: any, b: any) => b.score - a.score);
+
+        resolvedStats = {
+          totalLogins: finalHistory.length,
+          totalTempoSegundos,
+          totalMovimentos,
+          totalInsercoes,
+          totalTarefas,
+          topPerformers
+        };
+      }
+
+      setStats(resolvedStats || {
+        totalLogins: 0,
+        totalTempoSegundos: 0,
+        totalMovimentos: 0,
+        totalInsercoes: 0,
+        totalTarefas: 0,
+        topPerformers: []
+      });
     } catch (e: any) {
       console.error('[ACTIVITIES MODULE] Error downloading analytics logs:', e);
-      if (e.message && e.message.includes('Failed to fetch')) {
-        console.warn('[ACTIVITIES MODULE] Network error or Server unreachable. Check if the backend is running and reachable.');
-      }
+      setHistory([]);
+      setStats({
+        totalLogins: 0,
+        totalTempoSegundos: 0,
+        totalMovimentos: 0,
+        totalInsercoes: 0,
+        totalTarefas: 0,
+        topPerformers: []
+      });
     } finally {
       setLoading(false);
     }
@@ -35662,10 +35812,10 @@ const ActivitiesManagementModule = () => {
     return text;
   };
 
-  const filteredHistory = history.filter(h => 
-    (h.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (h.status || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (h.ip || '').toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredHistory = (Array.isArray(history) ? history : []).filter(h => 
+    (h?.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (h?.status || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (h?.ip || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (

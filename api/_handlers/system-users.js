@@ -80,13 +80,27 @@ export default async function handler(req, res) {
         newStatus = !currentlyActive;
       }
 
-      // Proteção de segurança contra bloqueio do utilizador em sessão ou do Administrador Master
-      if ((String(userId) === String(auth.user?.id) || userProfile.email === 'fffm333atitaifvan7@gmail.com') && newStatus === false) {
+      // Proteção de segurança: bloquear conta própria, email master, ou Administrador Principal
+      const isMasterEmail = userProfile.email === 'fffm333atitaifvan7@gmail.com';
+      const isSelf = String(userId) === String(auth.user?.id);
+      const isPrincipalAdmin = userProfile.is_admin === true ||
+        ['proprietario', 'admin_empresa'].includes(userProfile.role) ||
+        Number(userProfile.level || 0) >= 10;
+
+      if ((isSelf || isMasterEmail) && newStatus === false) {
         return res.status(400).json({
           success: false,
           error: 'Não é permitido bloquear a sua própria conta em sessão ou a conta do Administrador Master.'
         });
       }
+
+      if (isPrincipalAdmin && newStatus === false) {
+        return res.status(400).json({
+          success: false,
+          error: 'Não é permitido bloquear o Administrador Principal da empresa.'
+        });
+      }
+
 
       // 1.4 Atualizar em perfis (ambos os campos: ativo e is_active)
       let updateRes = await fetch(

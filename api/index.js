@@ -22,6 +22,7 @@ import secureRhHandler from './_handlers/secure-rh.js';
 import systemUsersHandler from './_handlers/system-users.js';
 import reportsHandler from './_handlers/reports.js';
 import accountingHandler from './_handlers/accounting.js';
+import userActivitiesHandler from './_handlers/user-activities.js';
 
 export default async function handler(req, res) {
   setCORS(res);
@@ -127,7 +128,12 @@ export default async function handler(req, res) {
     return accountingHandler(req, res);
   }
 
-  // 15. Health check e métricas / estatísticas
+  // 15. Gestão de Atividades e Métricas de Sessão
+  if (pathname.startsWith('/api/user-activities') || pathname === '/api/user-activities') {
+    return userActivitiesHandler(req, res);
+  }
+
+  // 16. Health check e métricas / estatísticas
   if (pathname === '/api/health' || pathname.startsWith('/api/health') || pathname === '/api/stats') {
     return healthHandler(req, res);
   }

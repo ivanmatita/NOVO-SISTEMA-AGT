@@ -65,12 +65,13 @@ export async function authenticateRequest(req) {
     }
 
     // SEGURANCA MULTI-TENANT & CRM GLOBAL:
-    // Super Admin Global: Imatec Angola (NIF 5002123665 / ID 2ebafa88-9a6e-4243-b127-b146410815eb) ou role superadmin explícito
-    const isImatecGlobal = (empresa_id === '2ebafa88-9a6e-4243-b127-b146410815eb') || (user?.email?.toLowerCase() === 'fffm333atitaifvan7@gmail.com');
+    // Super Admin Global: Apenas o Administrador Master (fffm333atitaifvan7@gmail.com), role superadmin explícito, ou administrador da empresa matriz Imatec Angola
+    const isMasterEmail = user?.email?.toLowerCase() === 'fffm333atitaifvan7@gmail.com';
     const isExplicitSuperAdmin = ['superadmin', 'admin_master', 'super_admin'].includes(role) || perfil?.is_super_admin === true;
-    const isGlobalSuperAdmin = isExplicitSuperAdmin || isImatecGlobal;
+    const isImatecAdmin = (empresa_id === '2ebafa88-9a6e-4243-b127-b146410815eb') && (role === 'admin' || role === 'proprietario' || perfil?.is_admin === true || Number(perfil?.level || 0) >= 10);
+    const isGlobalSuperAdmin = isMasterEmail || isExplicitSuperAdmin || isImatecAdmin;
     const isSuperAdmin = isGlobalSuperAdmin; // Compatibilidade com código existente
-    const isCompanyAdmin = !isGlobalSuperAdmin && (role === 'admin' || role === 'admin_empresa' || perfil?.is_admin === true);
+    const isCompanyAdmin = !isGlobalSuperAdmin && (role === 'admin' || role === 'admin_empresa' || role === 'proprietario' || perfil?.is_admin === true || Number(perfil?.level || 0) >= 10);
 
     return { 
       authenticated: true, 

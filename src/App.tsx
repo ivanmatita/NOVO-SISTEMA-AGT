@@ -20,6 +20,7 @@ import { CartasModule } from './components/CartasModule';
 import { QRCodeCanvas } from 'qrcode.react';
 import { PurchasesReport } from './components/Reports/PurchasesReport';
 import { SalesReport } from './components/Reports/SalesReport';
+import { StockSalesReport } from './components/Reports/StockSalesReport';
 import { PriceTableModule } from './components/PriceTableModule';
 import { InventoryReport } from './components/Reports/InventoryReport';
 import { CashFlowReport } from './components/Reports/CashFlowReport';
@@ -31458,13 +31459,28 @@ const SupplierModule = ({ products, activeTaxes, workSites, fiscalSeries, caixas
 };
 
 
-const ProductList = ({ products, setProducts, onRefresh, stockMovements, warehouses, metrics }: { 
+const ProductList = ({ 
+  products, 
+  setProducts, 
+  onRefresh, 
+  stockMovements, 
+  warehouses, 
+  metrics,
+  companyData,
+  activeTaxes,
+  fiscalYear,
+  issuedDocuments
+}: { 
   products: Product[],
   setProducts: React.Dispatch<React.SetStateAction<Product[]>>,
   onRefresh: () => void,
   stockMovements: StockMovement[],
   warehouses: Warehouse[],
-  metrics: Metric[]
+  metrics: Metric[],
+  companyData?: any,
+  activeTaxes?: any[],
+  fiscalYear?: string | number,
+  issuedDocuments?: any[]
 }) => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('stock');
@@ -31947,26 +31963,30 @@ const ProductList = ({ products, setProducts, onRefresh, stockMovements, warehou
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
-              {stockMovements.map((m) => (
-                <tr key={m.id} className="hover:bg-zinc-50 transition-colors text-xs border-b border-zinc-50">
-                  <td className="px-6 py-4 text-zinc-400 font-medium">{new Date(m.created_at).toLocaleString()}</td>
-                  <td className="px-6 py-4 font-bold text-zinc-900">{m.product_name}</td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-none ${
-                      m.type === 'entry' ? 'bg-emerald-50 text-emerald-600' :
-                      m.type === 'exit' ? 'bg-red-50 text-red-600' :
-                      m.type === 'transfer' ? 'bg-blue-50 text-blue-600' :
-                      'bg-zinc-100 text-zinc-600'
-                    }`}>
-                      {m.type}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 font-black">{m.quantity}</td>
-                  <td className="px-6 py-4 text-zinc-400 font-bold">{m.previous_stock}</td>
-                  <td className="px-6 py-4 font-black text-[#003366]">{m.current_stock}</td>
-                  <td className="px-6 py-4 text-zinc-500 italic font-medium">{m.description || '---'}</td>
-                </tr>
-              ))}
+              {stockMovements.map((m) => {
+                const prod = products.find(p => String(p.id) === String(m.product_id));
+                const productName = m.product_name || prod?.name || prod?.nome || (m as any).descricao || 'Produto';
+                return (
+                  <tr key={m.id} className="hover:bg-zinc-50 transition-colors text-xs border-b border-zinc-50">
+                    <td className="px-6 py-4 text-zinc-400 font-medium">{new Date(m.created_at).toLocaleString()}</td>
+                    <td className="px-6 py-4 font-bold text-zinc-900">{productName}</td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-none ${
+                        m.type === 'entry' ? 'bg-emerald-50 text-emerald-600' :
+                        m.type === 'exit' ? 'bg-red-50 text-red-600' :
+                        m.type === 'transfer' ? 'bg-blue-50 text-blue-600' :
+                        'bg-zinc-100 text-zinc-600'
+                      }`}>
+                        {m.type}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 font-black">{m.quantity}</td>
+                    <td className="px-6 py-4 text-zinc-400 font-bold">{m.previous_stock}</td>
+                    <td className="px-6 py-4 font-black text-[#003366]">{m.current_stock}</td>
+                    <td className="px-6 py-4 text-zinc-500 italic font-medium">{m.description || '---'}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
           {stockMovements.length === 0 && (
@@ -31974,53 +31994,24 @@ const ProductList = ({ products, setProducts, onRefresh, stockMovements, warehou
           )}
         </div>
       ) : activeTab === 'reports' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-white border border-zinc-200 p-8 space-y-6">
-            <h3 className="text-lg font-bold text-[#003366] uppercase tracking-tight flex items-center gap-2">
-              <FileText size={20} /> Valorização de Stock (POPM / PIPO)
-            </h3>
-            <div className="space-y-4">
-              <div className="p-4 bg-zinc-50 border border-zinc-100">
-                <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Método POPM (Preço Médio Ponderado)</div>
-                <div className="text-xl font-black text-[#003366]">
-                  {calculatePOPM().toLocaleString('pt-AO', { style: 'currency', currency: 'AOA' })}
-                </div>
-              </div>
-              <div className="p-4 bg-zinc-50 border border-zinc-100">
-                <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">Método PIPO (First-In First-Out)</div>
-                <div className="text-xl font-black text-[#003366]">
-                  {calculatePIPO().toLocaleString('pt-AO', { style: 'currency', currency: 'AOA' })}
-                </div>
-                <p className="text-[9px] text-zinc-400 mt-2 italic">* Cálculo baseado no histórico de movimentos de entrada.</p>
-              </div>
-            </div>
-            <button className="w-full bg-[#003366] text-white font-bold py-3 text-xs uppercase tracking-widest hover:bg-[#002244] transition-all">
-              Gerar Relatório Detalhado
-            </button>
-          </div>
-
-          <div className="bg-white border border-zinc-200 p-8 space-y-6">
-            <h3 className="text-lg font-bold text-[#003366] uppercase tracking-tight flex items-center gap-2">
-              <History size={20} /> Relatórios de Movimento
-            </h3>
-            <div className="space-y-3">
-              <button className="w-full flex items-center justify-between p-4 bg-zinc-50 border border-zinc-100 hover:bg-zinc-100 transition-all group">
-                <span className="text-xs font-bold text-zinc-600 uppercase tracking-wider">Entradas do Mês</span>
-                <ChevronRight size={16} className="text-zinc-300 group-hover:text-[#003366]" />
-              </button>
-              <button className="w-full flex items-center justify-between p-4 bg-zinc-50 border border-zinc-100 hover:bg-zinc-100 transition-all group">
-                <span className="text-xs font-bold text-zinc-600 uppercase tracking-wider">Saídas do Mês</span>
-                <ChevronRight size={16} className="text-zinc-300 group-hover:text-[#003366]" />
-              </button>
-              <button className="w-full flex items-center justify-between p-4 bg-zinc-50 border border-zinc-100 hover:bg-zinc-100 transition-all group">
-                <span className="text-xs font-bold text-zinc-600 uppercase tracking-wider">Stock Abaixo do Mínimo</span>
-                <ChevronRight size={16} className="text-zinc-300 group-hover:text-[#003366]" />
-              </button>
-            </div>
-          </div>
-        </div>
+        <StockSalesReport 
+          issuedDocuments={issuedDocuments}
+          products={products}
+          stockMovements={stockMovements}
+          warehouses={warehouses}
+          user={user}
+          companyData={companyData}
+          fiscalYear={fiscalYear}
+          onRefresh={onRefresh}
+        />
       ) : activeTab === 'price_table' ? (
-        <PriceTableModule user={user} companyData={user} />
+        <PriceTableModule 
+          user={user} 
+          companyData={companyData} 
+          products={products}
+          activeTaxes={activeTaxes}
+          onProductUpdated={onRefresh}
+        />
       ) : (
         <div className="p-12 text-center text-zinc-400 text-sm font-medium bg-white border border-zinc-200">Módulo em desenvolvimento.</div>
       )}
@@ -33573,6 +33564,7 @@ export default function App() {
         ...sm,
         id: sm.id,
         product_id: sm.product_id,
+        product_name: sm.product_name || (sm as any).nome_produto || null,
         type: sm.type,
         quantity: Number(sm.quantity),
         unit_price: Number(sm.unit_price || 0),
@@ -34234,7 +34226,7 @@ export default function App() {
 
       // setCaixas(Array.isArray(cx) ? cx : []); // DO NOT OVERWRITE SUPABASE DATA
       // setCaixaMovements(Array.isArray(cm) ? cm : []); // DO NOT OVERWRITE SUPABASE DATA
-      setStockMovements(Array.isArray(sm) ? sm : []);
+      // setStockMovements(Array.isArray(sm) ? sm : []); // DO NOT OVERWRITE SUPABASE DATA (carregado via doLoadStockMovements)
       setWorkSiteMovements(Array.isArray(wsm) ? wsm : []);
       setWarehouses(Array.isArray(wh) ? wh : []);
       setSecurityOccurrences(Array.isArray(occ) ? occ : []);
@@ -35220,6 +35212,10 @@ export default function App() {
                                   stockMovements={stockMovements}
                                   warehouses={warehouses}
                                   metrics={metrics}
+                                  companyData={companyData}
+                                  activeTaxes={activeTaxes}
+                                  fiscalYear={fiscalYear}
+                                  issuedDocuments={issuedDocuments}
                                 />
                               );
                             case 'financial':

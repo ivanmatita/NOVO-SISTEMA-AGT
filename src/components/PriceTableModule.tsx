@@ -14,6 +14,9 @@ import { supabase } from '../lib/supabase';
 interface PriceTableModuleProps {
   user: any;
   companyData?: any;
+  products?: any[];
+  activeTaxes?: any[];
+  onProductUpdated?: () => void;
 }
 
 interface PriceRow {
@@ -41,12 +44,42 @@ interface PriceRow {
 
 const MOEDAS = ['AOA', 'USD', 'EUR', 'GBP'];
 
-export const PriceTableModule: React.FC<PriceTableModuleProps> = ({ user, companyData }) => {
-  const empresaId = companyData?.id || user?.empresa_id || user?.company_id;
+const DEFAULT_PGC_ACCOUNTS = [
+  { id: '11', conta: '11', descricao: 'Imobilizações Corpóreas' },
+  { id: '21', conta: '21', descricao: 'Compras' },
+  { id: '26', conta: '26', descricao: 'Mercadorias' },
+  { id: '31', conta: '31', descricao: 'Clientes' },
+  { id: '32', conta: '32', descricao: 'Fornecedores' },
+  { id: '34', conta: '34', descricao: 'Estado e Outros Entes Públicos (IVA)' },
+  { id: '43', conta: '43', descricao: 'Depósitos à Ordem' },
+  { id: '45', conta: '45', descricao: 'Caixa' },
+  { id: '61', conta: '61', descricao: 'Vendas - Mercadorias' },
+  { id: '62', conta: '62', descricao: 'Prestações de Serviços' },
+  { id: '63', conta: '63', descricao: 'Outros Proveitos Operacionais' },
+  { id: '71', conta: '71', descricao: 'Custo das Existências Vendidas' },
+  { id: '72', conta: '72', descricao: 'Custos com o Pessoal' },
+  { id: '75', conta: '75', descricao: 'Outros Custos e Perdas Operacionais' },
+];
+
+const DEFAULT_TAXES = [
+  { id: 'nor', nome: 'IVA - Taxa Normal (14%)', taxa: 14, codigo_imposto: 'NOR', tipo_imposto: 'IVA' },
+  { id: 'red', nome: 'IVA - Taxa Reduzida (7%)', taxa: 7, codigo_imposto: 'RED', tipo_imposto: 'IVA' },
+  { id: 'cat', nome: 'IVA - Taxa Cativa (5%)', taxa: 5, codigo_imposto: 'CAT', tipo_imposto: 'IVA' },
+  { id: 'ise', nome: 'IVA - Isento (0%)', taxa: 0, codigo_imposto: 'ISE', tipo_imposto: 'IVA' },
+];
+
+export const PriceTableModule: React.FC<PriceTableModuleProps> = ({ 
+  user, 
+  companyData,
+  products: passedProducts = [],
+  activeTaxes: passedTaxes = [],
+  onProductUpdated
+}) => {
+  const empresaId = user?.empresa_id || companyData?.empresa_id || (companyData?.id && companyData?.id !== user?.id ? companyData?.id : null) || user?.company_id;
   const [rows, setRows] = useState<PriceRow[]>([]);
-  const [produtos, setProdutos] = useState<any[]>([]);
-  const [impostos, setImpostos] = useState<any[]>([]);
-  const [pgcContas, setPgcContas] = useState<any[]>([]);
+  const [produtos, setProdutos] = useState<any[]>(passedProducts);
+  const [impostos, setImpostos] = useState<any[]>(passedTaxes.length > 0 ? passedTaxes : DEFAULT_TAXES);
+  const [pgcContas, setPgcContas] = useState<any[]>(DEFAULT_PGC_ACCOUNTS);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [showModal, setShowModal] = useState(false);
@@ -60,25 +93,49 @@ export const PriceTableModule: React.FC<PriceTableModuleProps> = ({ user, compan
   });
 
   const fetchAll = useCallback(async () => {
-    if (!empresaId) return;
+    if (!empresaId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const [tpRes, prodRes, impRes, pgcRes] = await Promise.all([
         supabase.from('tabela_precos').select('*').eq('empresa_id', empresaId).order('descricao'),
         supabase.from('produtos').select('id, name, nome, codigo, barcode, unit, unidade, price, preco, preco_venda, tipo, is_active, ativo, image_url').eq('empresa_id', empresaId).order('name'),
         supabase.from('impostos').select('id, nome, taxa, codigo_imposto, tipo_imposto, tipo, ativo, padrao').eq('empresa_id', empresaId),
-        supabase.from('pgc_plano_contas').select('id, conta, descricao, codigo, nivel').eq('empresa_id', empresaId).order('conta'),
+        supabase.from('pgc_plano_contas').select('id, conta, descricao, codigo, nivel').or(`empresa_id.eq.${empresaId},empresa_id.is.null`).order('conta'),
       ]);
       setRows(Array.isArray(tpRes.data) ? tpRes.data : []);
-      setProdutos(Array.isArray(prodRes.data) ? prodRes.data : []);
-      setImpostos(Array.isArray(impRes.data) ? impRes.data : []);
-      setPgcContas(Array.isArray(pgcRes.data) ? pgcRes.data : []);
+      
+      if (Array.isArray(prodRes.data) && prodRes.data.length > 0) {
+        setProdutos(prodRes.data);
+      } else if (passedProducts && passedProducts.length > 0) {
+        setProdutos(passedProducts);
+      }
+
+      if (Array.isArray(impRes.data) && impRes.data.length > 0) {
+        setImpostos(impRes.data);
+      } else if (passedTaxes && passedTaxes.length > 0) {
+        setImpostos(passedTaxes);
+      } else {
+        setImpostos(DEFAULT_TAXES);
+      }
+
+      if (Array.isArray(pgcRes.data) && pgcRes.data.length > 0) {
+        // Merge with DEFAULT_PGC_ACCOUNTS to ensure full chart coverage
+        const map = new Map<string, any>();
+        DEFAULT_PGC_ACCOUNTS.forEach(acc => map.set(String(acc.conta), acc));
+        pgcRes.data.forEach((acc: any) => map.set(String(acc.conta || acc.codigo || acc.id), acc));
+        setPgcContas(Array.from(map.values()));
+      } else {
+        setPgcContas(DEFAULT_PGC_ACCOUNTS);
+      }
     } catch (e) {
       console.error('[PriceTableModule] fetch error:', e);
     } finally {
       setLoading(false);
     }
-  }, [empresaId]);
+  }, [empresaId, passedProducts, passedTaxes]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -160,6 +217,42 @@ export const PriceTableModule: React.FC<PriceTableModuleProps> = ({ user, compan
           if (error) throw error;
         }
       }
+
+      // Atualizar o produto correspondente para refletir o novo preco nas outras paginas (POS, Stock, Catalogo)
+      const productUpdatePayload: any = {
+        price: Number(form.valor_unitario),
+        preco: Number(form.valor_unitario),
+        preco_venda: Number(form.valor_unitario),
+      };
+      if (form.unidade) {
+        productUpdatePayload.unit = form.unidade;
+        productUpdatePayload.unidade = form.unidade;
+      }
+      if (form.tipo) {
+        productUpdatePayload.tipo = form.tipo;
+      }
+      if (selectedImp?.codigo_imposto || form.tax_code) {
+        productUpdatePayload.codigo_imposto = selectedImp?.codigo_imposto || form.tax_code;
+      }
+      if (selectedImp?.taxa != null) {
+        productUpdatePayload.taxa_imposto = Number(selectedImp.taxa);
+        productUpdatePayload.iva_taxa = Number(selectedImp.taxa);
+      }
+
+      try {
+        if (empresaId) {
+          await supabase.from('produtos').update(productUpdatePayload).eq('id', form.produto_id).eq('empresa_id', empresaId);
+        } else {
+          await supabase.from('produtos').update(productUpdatePayload).eq('id', form.produto_id);
+        }
+      } catch (prodUpErr) {
+        console.warn('[PriceTableModule] Erro ao sincronizar produto:', prodUpErr);
+      }
+
+      if (onProductUpdated) {
+        try { onProductUpdated(); } catch (_) {}
+      }
+
       setMsg({ type: 'ok', text: 'Registo guardado com sucesso.' });
       await fetchAll();
       setTimeout(() => { setShowModal(false); setMsg(null); }, 1200);

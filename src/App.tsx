@@ -20,6 +20,7 @@ import { CartasModule } from './components/CartasModule';
 import { QRCodeCanvas } from 'qrcode.react';
 import { PurchasesReport } from './components/Reports/PurchasesReport';
 import { SalesReport } from './components/Reports/SalesReport';
+import { PriceTableModule } from './components/PriceTableModule';
 import { InventoryReport } from './components/Reports/InventoryReport';
 import { CashFlowReport } from './components/Reports/CashFlowReport';
 import { 
@@ -12222,25 +12223,41 @@ const ProfitLossReport = ({ fiscalYear, empresa_id, companyData }: { fiscalYear:
     // 2. Consulta direta e real ao Supabase com filtro estrito de ano e empresa
     try {
       if (targetEmpresaId) {
-        const [docsRes, comprasRes] = await Promise.all([
+        const [docsRes, comprasRes, hrRes, colabRes] = await Promise.all([
           supabase
             .from('documentos_emitidos')
-            .select('id, data_emissao, created_at, total, valor_total, imposto, iva_total, is_certified, status, tipo_documento')
+            .select('id, data_emissao, created_at, total, valor_total, imposto, iva_total, is_certified, status, tipo_documento, ano')
+            .eq('empresa_id', targetEmpresaId)
+            .gte('data_emissao', `${yearToFetch}-01-01T00:00:00`)
+            .lte('data_emissao', `${yearToFetch}-12-31T23:59:59`),
+          supabase
+            .from('compras')
+            .select('id, data_compra, data, data_emissao, created_at, total, valor_total, valor_iva, imposto, tipo_documento, ano')
+            .eq('empresa_id', targetEmpresaId)
+            .gte('data_compra', `${yearToFetch}-01-01`)
+            .lte('data_compra', `${yearToFetch}-12-31`),
+          supabase
+            .from('hr_processamentos')
+            .select('mes, ano, salario_bruto, salario_base, inss_entidade')
             .eq('empresa_id', targetEmpresaId)
             .eq('ano', yearToFetch),
           supabase
-            .from('compras')
-            .select('id, data_compra, data, data_emissao, created_at, total, valor_total, valor_iva, imposto, tipo_documento')
+            .from('colaboradores')
+            .select('id, salario, salary, salario_base, is_active, status, demitido')
             .eq('empresa_id', targetEmpresaId)
-            .eq('ano', yearToFetch)
         ]);
 
         const docs = Array.isArray(docsRes.data) ? docsRes.data : [];
         const compras = Array.isArray(comprasRes.data) ? comprasRes.data : [];
+        const hrData = Array.isArray(hrRes?.data) ? hrRes.data : [];
+        const colabs = Array.isArray(colabRes?.data) ? colabRes.data : [];
+
+        const activeColabs = colabs.filter((c: any) => c.is_active !== false && c.status !== 'demitido' && !c.demitido);
+        const monthlyColabSalaries = activeColabs.reduce((sum: number, c: any) => sum + Number(c.salario || c.salary || c.salario_base || 0), 0);
 
         const computedMonths = Array.from({ length: 12 }, (_, i) => {
           const monthNum = i + 1;
-          const monthDocs = docs.filter(d => {
+          const monthDocs = docs.filter((d: any) => {
             const dt = new Date(d.data_emissao || d.created_at);
             if (isNaN(dt.getTime())) return false;
             if (dt.getFullYear() !== yearToFetch || (dt.getMonth() + 1) !== monthNum) return false;
@@ -12249,7 +12266,7 @@ const ProfitLossReport = ({ fiscalYear, empresa_id, companyData }: { fiscalYear:
           });
 
           let factC = 0, impRec = 0;
-          monthDocs.forEach(d => {
+          monthDocs.forEach((d: any) => {
             const tot = Number(d.total || d.valor_total || 0);
             const imp = Number(d.imposto || d.iva_total || (tot * 0.14));
             factC += tot;
@@ -12257,13 +12274,13 @@ const ProfitLossReport = ({ fiscalYear, empresa_id, companyData }: { fiscalYear:
           });
           const factS = Math.max(0, factC - impRec);
 
-          const monthCompras = compras.filter(c => {
+          const monthCompras = compras.filter((c: any) => {
             const dt = new Date(c.data_compra || c.data_emissao || c.data || c.created_at);
             return !isNaN(dt.getTime()) && dt.getFullYear() === yearToFetch && (dt.getMonth() + 1) === monthNum;
           });
 
           let totCompras = 0, ivaSup = 0;
-          monthCompras.forEach(c => {
+          monthCompras.forEach((c: any) => {
             const tot = Number(c.valor_total || c.total || 0);
             const imp = Number(c.valor_iva || c.imposto || (tot * 0.14));
             totCompras += tot;
@@ -12271,9 +12288,19 @@ const ProfitLossReport = ({ fiscalYear, empresa_id, companyData }: { fiscalYear:
           });
           const fornS = Math.max(0, totCompras - ivaSup);
           const custosAc = totCompras * 0.85;
-          const sal = 0;
-          const inssVal = 0;
-          const totCustos = totCompras + sal + inssVal;
+
+          const hrMonth = hrData.filter((h: any) => Number(h.mes) === monthNum);
+          let sal = 0;
+          let inssVal = 0;
+          if (hrMonth.length > 0) {
+            sal = hrMonth.reduce((acc: number, h: any) => acc + Number(h.salario_bruto || h.salario_base || 0), 0);
+            inssVal = hrMonth.reduce((acc: number, h: any) => acc + Number(h.inss_entidade || ((h.salario_bruto || h.salario_base || 0) * 0.08)), 0);
+          } else if (monthlyColabSalaries > 0) {
+            sal = monthlyColabSalaries;
+            inssVal = monthlyColabSalaries * 0.08;
+          }
+
+          const totCustos = fornS + sal + inssVal;
           const marg = factS - fornS;
 
           return {
@@ -18684,10 +18711,12 @@ const ReportsModule = ({
   caixas?: any[],
   suppliers?: any[]
 }) => {
+  const { user } = useAuth();
+  const { exerciseYear } = useExercise();
   const [activeReport, setActiveReport] = useState<string | null>(null);
 
   if (activeReport === 'sales') {
-     return <SalesReport issuedDocuments={sales} warehouses={warehouses} onBack={() => setActiveReport(null)} />;
+     return <SalesReport issuedDocuments={sales} warehouses={warehouses} user={user} fiscalYear={exerciseYear} onBack={() => setActiveReport(null)} />;
   }
   
   if (activeReport === 'purchases') {
@@ -25612,7 +25641,7 @@ const InvoiceList = ({
           />
         )}
         {activeSubTab === 'sales_report' && (
-          <SalesReport issuedDocuments={issuedDocuments} />
+          <SalesReport issuedDocuments={issuedDocuments} user={user} companyData={companyData} fiscalYear={fiscalYear} />
         )}
         {activeSubTab === 'agt-list-invoices' && (
           <AgtElectronicInvoicesListModal
@@ -26408,6 +26437,50 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
           newItems[index].retencao_fonte = pt * 0.065;
         } else {
           newItems[index].retencao_fonte = 0;
+        }
+
+        const companyId = user?.empresa_id || user?.company_id;
+        if (companyId) {
+          supabase
+            .from('tabela_precos')
+            .select('valor_unitario, desconto_linha_percentual, tax_code, imposto_tipo, taxa_percentual')
+            .eq('empresa_id', companyId)
+            .eq('produto_id', String(prod.id))
+            .single()
+            .then(({ data: tp }) => {
+              if (tp) {
+                setItems(prev => {
+                  const updated = [...prev];
+                  if (!updated[index]) return prev;
+                  if (tp.valor_unitario != null && !isNaN(Number(tp.valor_unitario))) {
+                    updated[index].unit_price = Number(tp.valor_unitario);
+                  }
+                  if (tp.desconto_linha_percentual != null && !isNaN(Number(tp.desconto_linha_percentual))) {
+                    updated[index].desconto = Number(tp.desconto_linha_percentual);
+                  }
+                  if (tp.tax_code && Array.isArray(activeTaxes)) {
+                    const matchTax = activeTaxes.find((t: any) => t.codigo_imposto === tp.tax_code);
+                    if (matchTax) {
+                      updated[index].tax = `${matchTax.nome} (${matchTax.taxa}%)`;
+                      updated[index].tax_rate = Number(matchTax.taxa);
+                      updated[index].tax_id = matchTax.id;
+                    }
+                  }
+                  const q2 = updated[index].quantity || 1;
+                  const p2 = updated[index].unit_price || 0;
+                  const d2 = updated[index].desconto || 0;
+                  const rowTot = (q2 * p2) - d2;
+                  updated[index].total = rowTot;
+                  if (isService && rowTot > 20000) {
+                    updated[index].retencao_fonte = rowTot * 0.065;
+                  } else {
+                    updated[index].retencao_fonte = 0;
+                  }
+                  return updated;
+                });
+              }
+            })
+            .catch(console.error);
         }
       }
     }
@@ -31627,6 +31700,7 @@ const ProductList = ({ products, setProducts, onRefresh, stockMovements, warehou
     { id: 'movements', label: 'Movimentos', icon: History },
     { id: 'warehouse', label: 'Armazéns', icon: Home },
     { id: 'reports', label: 'Relatórios', icon: FileText },
+    { id: 'price_table', label: 'Tabela de Preços', icon: Tag },
   ];
 
   return (
@@ -31945,6 +32019,8 @@ const ProductList = ({ products, setProducts, onRefresh, stockMovements, warehou
             </div>
           </div>
         </div>
+      ) : activeTab === 'price_table' ? (
+        <PriceTableModule user={user} companyData={user} />
       ) : (
         <div className="p-12 text-center text-zinc-400 text-sm font-medium bg-white border border-zinc-200">Módulo em desenvolvimento.</div>
       )}

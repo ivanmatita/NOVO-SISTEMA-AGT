@@ -1,386 +1,462 @@
+/**
+ * SalesReport.tsx
+ * Relatorio de Vendas - layout classico conforme referencia visual relatorio de venda.PNG
+ * Toolbar com botoes redondos, painel filtros esquerdo, secoes: Mais Vendidos, Vendidos, Devolvidos, Movimentos
+ */
 
-import React, { useState, useMemo } from 'react';
-import { 
-  Search, Filter, FileText, Download, Printer, ArrowLeft, 
-  TrendingUp, TrendingDown, Package, Layers, Calendar, 
-  FileCheck, ShieldCheck, Warehouse, History, MoreHorizontal,
-  ChevronDown, RotateCcw, BarChart3, PieChart, FileSpreadsheet
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  FileText, Printer, Download, RefreshCw, Bell, AlignLeft,
+  Package, RotateCcw, FileSpreadsheet, Calendar, AlertCircle
 } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 import { IssuedDocument } from '../../types';
-import { exportToPDF, exportToExcel, handlePrint } from '../../lib/exportUtils';
 
 interface SalesReportProps {
-  issuedDocuments: IssuedDocument[];
+  issuedDocuments?: IssuedDocument[];
   onBack?: () => void;
   warehouses?: any[];
+  user?: any;
+  companyData?: any;
+  fiscalYear?: string | number;
+  series?: any[];
+  activeTaxes?: any[];
 }
 
-export const SalesReport = ({ issuedDocuments, onBack, warehouses = [] }: SalesReportProps) => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [dateFilter, setDateFilter] = useState({ start: '', end: '' });
-  const [selectedWarehouse, setSelectedWarehouse] = useState('all');
-  const [selectedDocType, setSelectedDocType] = useState('all');
-  const [selectedArticleType, setSelectedArticleType] = useState('all');
+export const SalesReport: React.FC<SalesReportProps> = ({
+  issuedDocuments: passedDocs = [],
+  onBack,
+  warehouses = [],
+  user,
+  companyData,
+  fiscalYear,
+  series = [],
+  activeTaxes = [],
+}) => {
+  const empresaId = companyData?.id || user?.empresa_id || user?.company_id;
+  const companyName = companyData?.name || companyData?.nome || user?.company_name || 'Empresa';
+  const userName = user?.name || user?.email || '';
 
-  const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(val);
+  const today = new Date();
+  const thisYear = fiscalYear ? String(fiscalYear) : String(today.getFullYear());
+
+  const [startDate, setStartDate] = useState(`${thisYear}-01-01`);
+  const [endDate, setEndDate] = useState(today.toISOString().slice(0, 10));
+  const [selectedDocType, setSelectedDocType] = useState('all');
+  const [selectedSerie, setSelectedSerie] = useState('all');
+  const [selectedWarehouse, setSelectedWarehouse] = useState('all');
+  const [selectedArtigo, setSelectedArtigo] = useState('');
+  const [selectedOperador, setSelectedOperador] = useState('all');
+  const [docs, setDocs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const fetchDocs = async () => {
+    setLoading(true);
+    try {
+      if (empresaId) {
+        const { data, error } = await supabase
+          .from('documentos_emitidos')
+          .select('id, invoice_number, numero_documento, data_emissao, created_at, total, valor_total, imposto, iva_total, status, tipo_documento, document_type, client_name, items, serie, warehouse_id, user_id, operador')
+          .eq('empresa_id', empresaId)
+          .gte('data_emissao', startDate + 'T00:00:00')
+          .lte('data_emissao', endDate + 'T23:59:59')
+          .order('data_emissao', { ascending: false });
+        if (!error && Array.isArray(data)) {
+          setDocs(data);
+        } else {
+          setDocs(passedDocs as any[]);
+        }
+      } else {
+        setDocs(passedDocs as any[]);
+      }
+    } catch (e) {
+      setDocs(passedDocs as any[]);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  useEffect(() => { fetchDocs(); }, [startDate, endDate, empresaId]);
 
   const filteredDocs = useMemo(() => {
-    return issuedDocuments.filter(doc => {
-      const matchesSearch = (doc.client_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           (doc.invoice_number || '').toLowerCase().includes(searchTerm.toLowerCase());
-      
-      const docDate = new Date(doc.date || doc.data_emissao || Date.now());
-      const matchesStart = !dateFilter.start || docDate >= new Date(dateFilter.start);
-      const matchesEnd = !dateFilter.end || docDate <= new Date(dateFilter.end);
-      
-      const matchesWarehouse = selectedWarehouse === 'all' || String((doc as any).warehouse_id) === String(selectedWarehouse);
-      const matchesDocType = selectedDocType === 'all' || doc.document_type === selectedDocType;
-      
-      // Artificial logic for article type if not present in doc
-      const docItems = (doc as any).items || [];
-      const matchesArticleType = selectedArticleType === 'all' || docItems.some((i: any) => i.article_type === selectedArticleType);
-
-      return matchesSearch && matchesStart && matchesEnd && matchesWarehouse && matchesDocType && matchesArticleType;
+    return docs.filter(d => {
+      if (selectedDocType !== 'all') {
+        const dt = (d.tipo_documento || d.document_type || '').toUpperCase();
+        if (dt !== selectedDocType.toUpperCase()) return false;
+      }
+      if (selectedSerie !== 'all' && d.serie !== selectedSerie) return false;
+      if (selectedWarehouse !== 'all' && String(d.warehouse_id) !== String(selectedWarehouse)) return false;
+      if (selectedArtigo) {
+        const items = Array.isArray(d.items) ? d.items : [];
+        const match = items.some((i: any) =>
+          (i.description||i.name||'').toLowerCase().includes(selectedArtigo.toLowerCase())
+        );
+        if (!match) return false;
+      }
+      if (selectedOperador !== 'all' && String(d.user_id || d.operador) !== String(selectedOperador)) return false;
+      return true;
     });
-  }, [issuedDocuments, searchTerm, dateFilter, selectedWarehouse, selectedDocType, selectedArticleType]);
+  }, [docs, selectedDocType, selectedSerie, selectedWarehouse, selectedArtigo, selectedOperador]);
 
-  const stats = useMemo(() => {
-    const active = filteredDocs.filter(d => d.status !== 'anulado' && d.document_type !== 'NC');
-    const returns = filteredDocs.filter(d => d.document_type === 'NC');
-    const cancelled = filteredDocs.filter(d => d.status === 'anulado');
+  // Only real sales docs (exclude NC / anulado)
+  const salesDocs = useMemo(() => filteredDocs.filter(d => {
+    const dt = (d.tipo_documento || d.document_type || '').toUpperCase();
+    return !dt.includes('CRÉDITO') && !dt.includes('CREDITO') && dt !== 'NC' && d.status !== 'anulado' && d.status !== 'ANULADO';
+  }), [filteredDocs]);
 
-    const totalSold = active.reduce((acc, doc) => acc + (doc.counter_value || doc.total || 0), 0);
-    const totalReturns = returns.reduce((acc, doc) => acc + (doc.total || 0), 0);
-    const totalCancelled = cancelled.reduce((acc, doc) => acc + (doc.total || 0), 0);
-    const totalVat = active.reduce((acc, doc) => acc + (doc.vat_amount || 0), 0);
-    
-    return {
-      totalSold,
-      totalReturns,
-      totalCancelled,
-      totalVat,
-      netRevenue: totalSold - totalReturns - totalVat,
-      count: active.length,
-      returnCount: returns.length
-    };
-  }, [filteredDocs]);
+  // NC docs = devolvidos
+  const ncDocs = useMemo(() => filteredDocs.filter(d => {
+    const dt = (d.tipo_documento || d.document_type || '').toUpperCase();
+    return dt.includes('CRÉDITO') || dt.includes('CREDITO') || dt === 'NC';
+  }), [filteredDocs]);
 
-  const productPerformance = useMemo(() => {
-    const productMap = new Map();
-    filteredDocs.forEach((doc: any) => {
-      if (doc.status === 'anulado') return;
-      const items = doc.items || [];
+  // Product aggregation
+  const productSales = useMemo(() => {
+    const map: Record<string, { name: string; qty: number; total: number }> = {};
+    salesDocs.forEach(d => {
+      const items = Array.isArray(d.items) ? d.items : [];
       items.forEach((item: any) => {
-        const current = productMap.get(item.product_name) || { qty: 0, total: 0 };
-        const isReturn = doc.document_type === 'NC';
-        productMap.set(item.product_name, {
-          qty: current.qty + (isReturn ? -item.quantity : item.quantity),
-          total: current.total + (isReturn ? -item.total : item.total)
-        });
+        const name = item.description || item.name || item.produto || 'Artigo';
+        if (!map[name]) map[name] = { name, qty: 0, total: 0 };
+        map[name].qty += Number(item.quantity || item.quantidade || 0);
+        map[name].total += Number(item.total || item.subtotal || (item.unit_price || 0) * (item.quantity || 0));
       });
     });
+    return Object.values(map).sort((a, b) => b.qty - a.qty);
+  }, [salesDocs]);
 
-    const sorted = Array.from(productMap.entries()).map(([name, data]) => ({ name, ...data }))
-      .sort((a, b) => b.qty - a.qty);
+  const topProducts = productSales.slice(0, 5);
+  const totalVendas = salesDocs.reduce((s, d) => s + Number(d.total || d.valor_total || 0), 0);
+  const totalDevolucoes = ncDocs.reduce((s, d) => s + Number(d.total || d.valor_total || 0), 0);
 
-    return {
-      bestSellers: sorted.slice(0, 5),
-      worstSellers: sorted.filter(p => p.qty > 0).slice(-5).reverse()
-    };
-  }, [filteredDocs]);
+  const fmt = (v: number) => v.toLocaleString('pt-AO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  const handleExcelExport = () => {
-    const data = filteredDocs.map(doc => ({
-      'Documento': doc.invoice_number || doc.numero_documento,
-      'Cliente': doc.client_name || 'Consumidor Final',
-      'Data': new Date(doc.date || doc.data_emissao || Date.now()).toLocaleDateString(),
-      'Moeda': (doc as any).moeda || (doc as any).currency || 'AOA',
-      'Subtotal': (doc.counter_value || doc.total || 0) / 1.14,
-      'IVA': doc.vat_amount || ((doc.counter_value || doc.total || 0) - (doc.counter_value || doc.total || 0) / 1.14),
-      'Total': doc.counter_value || doc.total || 0
-    }));
-    exportToExcel(data, `Vendas_${new Date().toISOString().split('T')[0]}.xlsx`, 'Vendas');
+  const formatDate = (d: any) => {
+    const dt = new Date(d.data_emissao || d.created_at || '');
+    return isNaN(dt.getTime()) ? '—' : dt.toLocaleDateString('pt-AO');
   };
 
+  const exportCSV = () => {
+    const header = ['Data','Ref Interna','Empresa','Documento','Descricao','Entrada','Saida','Unit','V.Unit','Sub.Total','Imposto'];
+    const rows = filteredDocs.map(d => {
+      const dt = (d.tipo_documento || d.document_type || '').toUpperCase();
+      const isNC = dt.includes('CREDITO') || dt === 'NC';
+      const total = Number(d.total || d.valor_total || 0);
+      const imp = Number(d.imposto || d.iva_total || 0);
+      return [
+        formatDate(d),
+        d.invoice_number || d.numero_documento || '',
+        companyName,
+        dt,
+        d.client_name || '',
+        isNC ? '' : total.toFixed(2),
+        isNC ? total.toFixed(2) : '',
+        '',
+        '',
+        (total - imp).toFixed(2),
+        imp.toFixed(2),
+      ];
+    });
+    const csv = [header, ...rows].map(r => r.join(';')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `relatorio_vendas_${startDate}_${endDate}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const toolbarBtn = (icon: React.ReactNode, label: string, onClick?: () => void, active = false) => (
+    <button
+      onClick={onClick}
+      title={label}
+      className="flex flex-col items-center gap-0.5 p-0 group"
+    >
+      <div className={`w-9 h-9 rounded-full flex items-center justify-center shadow-sm border transition-all ${
+        active
+          ? 'bg-[#003366] border-[#003366] text-white'
+          : 'bg-gradient-to-b from-white to-zinc-100 border-zinc-300 text-[#003366] hover:from-zinc-100 hover:to-zinc-200'
+      }`}>
+        {icon}
+      </div>
+      <span className="text-[8px] font-bold uppercase tracking-widest text-zinc-500 group-hover:text-[#003366] transition-colors">{label}</span>
+    </button>
+  );
+
+  const uniqueSeries = Array.from(new Set(docs.map(d => d.serie).filter(Boolean)));
+  const uniqueOperadores = Array.from(new Set(docs.map(d => d.user_id || d.operador).filter(Boolean)));
+  const docTypes = Array.from(new Set(docs.map(d => (d.tipo_documento || d.document_type || '').toUpperCase()).filter(Boolean)));
+
   return (
-    <div id="sales-report-content" className="space-y-8 animate-in fade-in duration-500 pb-20 print-area">
-      <div className="flex items-center justify-between no-print">
-        <div className="flex items-center gap-4">
-          {onBack && (
-            <button onClick={onBack} className="p-2 hover:bg-zinc-100 text-zinc-400 transition-colors">
-              <ArrowLeft size={20} />
-            </button>
-          )}
+    <div className="min-h-screen bg-zinc-100 print:bg-white">
+      {/* Toolbar */}
+      <div className="bg-white border-b border-zinc-200 shadow-sm print:hidden">
+        <div className="flex items-center gap-1 px-4 py-2 border-b border-zinc-100">
+          <span className="text-[10px] font-black uppercase tracking-widest text-[#003366] mr-3 flex items-center gap-1">
+            <FileText size={14}/> Relatorio de Vendas
+          </span>
+          <span className="text-[10px] text-zinc-400 font-semibold">{companyName}</span>
+          {userName && <span className="text-[10px] text-zinc-300 font-semibold ml-2">| {userName}</span>}
+        </div>
+        <div className="flex items-end gap-4 px-4 py-2">
+          {toolbarBtn(<AlignLeft size={15}/>, 'D', undefined, selectedDocType==='all')}
+          {toolbarBtn(<Package size={15}/>, 'S', undefined)}
+          {toolbarBtn(<Package size={15}/>, 'Armazem', undefined)}
+          {toolbarBtn(<Calendar size={15}/>, 'A', undefined)}
+          {toolbarBtn(<FileSpreadsheet size={15}/>, 'XLSX', exportCSV)}
+          <div className="flex items-center gap-1 ml-1">
+            <label className="text-[9px] font-black uppercase tracking-widest text-zinc-400">Periodo:</label>
+            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="border border-zinc-200 bg-zinc-50 px-2 py-1 text-[10px] focus:outline-none focus:border-[#003366]"/>
+            <span className="text-zinc-400 text-[10px]">a</span>
+            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="border border-zinc-200 bg-zinc-50 px-2 py-1 text-[10px] focus:outline-none focus:border-[#003366]"/>
+          </div>
+          {toolbarBtn(<Printer size={15}/>, 'Imprimir', () => window.print())}
+          {toolbarBtn(<Bell size={15}/>, 'Alerta', undefined)}
+          {toolbarBtn(<RefreshCw size={15}/>, 'Actualizar', fetchDocs)}
+          {onBack && toolbarBtn(<RotateCcw size={15}/>, 'Voltar', onBack)}
+        </div>
+      </div>
+
+      <div className="flex gap-0">
+        {/* Left filter panel */}
+        <div className="w-48 shrink-0 bg-white border-r border-zinc-200 min-h-[calc(100vh-100px)] print:hidden p-3 space-y-4">
           <div>
-            <h2 className="text-xl font-black text-[#003366] uppercase tracking-tighter">Relatório de Vendas Completo</h2>
-            <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mt-1">Análise multidimensionl de faturamento, impostos e devoluções</p>
+            <div className="text-[9px] font-black uppercase tracking-widest text-zinc-400 mb-1">Periodo</div>
+            <div className="flex flex-col gap-1">
+              <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-[10px] focus:outline-none focus:border-[#003366]"/>
+              <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-[10px] focus:outline-none focus:border-[#003366]"/>
+            </div>
           </div>
-        </div>
-        <div className="flex gap-2">
-          <button onClick={() => handlePrint('sales-report-content')} className="bg-white border border-zinc-200 text-[#003366] px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-zinc-50 shadow-sm">
-            <Printer size={14} /> Imprimir Relatório
+          <div>
+            <div className="text-[9px] font-black uppercase tracking-widest text-zinc-400 mb-1">Documentos</div>
+            <select value={selectedDocType} onChange={e => setSelectedDocType(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-[10px] focus:outline-none focus:border-[#003366]">
+              <option value="all">Todos</option>
+              {docTypes.map(dt => <option key={dt} value={dt}>{dt}</option>)}
+            </select>
+          </div>
+          <div>
+            <div className="text-[9px] font-black uppercase tracking-widest text-zinc-400 mb-1">Serie</div>
+            <select value={selectedSerie} onChange={e => setSelectedSerie(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-[10px] focus:outline-none focus:border-[#003366]">
+              <option value="all">Todas</option>
+              {uniqueSeries.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div>
+            <div className="text-[9px] font-black uppercase tracking-widest text-zinc-400 mb-1">Armazem</div>
+            <select value={selectedWarehouse} onChange={e => setSelectedWarehouse(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-[10px] focus:outline-none focus:border-[#003366]">
+              <option value="all">Todos</option>
+              {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <div className="text-[9px] font-black uppercase tracking-widest text-zinc-400 mb-1">Artigos</div>
+            <input value={selectedArtigo} onChange={e => setSelectedArtigo(e.target.value)} placeholder="Filtrar artigo..." className="w-full border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-[10px] focus:outline-none focus:border-[#003366]"/>
+          </div>
+          <div>
+            <div className="text-[9px] font-black uppercase tracking-widest text-zinc-400 mb-1">C.Custos</div>
+            <input disabled placeholder="—" className="w-full border border-zinc-100 bg-zinc-50 px-2 py-1.5 text-[10px] text-zinc-300"/>
+          </div>
+          <div>
+            <div className="text-[9px] font-black uppercase tracking-widest text-zinc-400 mb-1">Operador</div>
+            <select value={selectedOperador} onChange={e => setSelectedOperador(e.target.value)} className="w-full border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-[10px] focus:outline-none focus:border-[#003366]">
+              <option value="all">Todos</option>
+              {uniqueOperadores.map(o => <option key={o} value={o}>{String(o).slice(0,16)}</option>)}
+            </select>
+          </div>
+          <button onClick={fetchDocs} className="w-full bg-[#003366] hover:bg-[#002244] text-white py-2 text-[9px] font-black uppercase tracking-widest transition-all mt-2">
+            Pesquisar
           </button>
-          <button onClick={handleExcelExport} className="bg-emerald-600 text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-700 shadow-md">
-            <FileSpreadsheet size={14} /> Baixar Excel
-          </button>
-          <button onClick={() => exportToPDF('sales-report-content', `Relatorio_Vendas_${new Date().toISOString().split('T')[0]}.pdf`)} className="bg-[#003366] text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-black shadow-md">
-            <Download size={14} /> Exportar Completo
-          </button>
         </div>
-      </div>
 
-      {/* Main Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white border border-zinc-200 p-6 shadow-sm border-b-4 border-b-blue-600">
-          <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1">Vendas Brutas (FT/FR)</p>
-          <p className="text-2xl font-black text-[#003366]">{formatCurrency(stats.totalSold)}</p>
-          <p className="mt-2 text-[9px] font-bold text-zinc-400 uppercase">{stats.count} documentos emitidos</p>
-        </div>
-        <div className="bg-white border border-zinc-200 p-6 shadow-sm border-b-4 border-b-red-600">
-          <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1">Devoluções (NC)</p>
-          <p className="text-2xl font-black text-red-600">{formatCurrency(stats.totalReturns)}</p>
-          <p className="mt-2 text-[9px] font-bold text-zinc-400 uppercase">{stats.returnCount} notas de crédito</p>
-        </div>
-        <div className="bg-white border border-zinc-200 p-6 shadow-sm border-b-4 border-b-amber-500">
-          <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1">IVA Liquidado</p>
-          <p className="text-2xl font-black text-amber-600">{formatCurrency(stats.totalVat)}</p>
-          <p className="mt-2 text-[9px] font-bold text-zinc-400 uppercase">Imposto retido p/ estado</p>
-        </div>
-        <div className="bg-white border border-zinc-200 p-6 shadow-sm border-b-4 border-b-emerald-500">
-          <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mb-1">Receita Líquida Est.</p>
-          <p className="text-2xl font-black text-emerald-600">{formatCurrency(stats.netRevenue)}</p>
-          <p className="mt-2 text-[9px] font-bold text-zinc-400 uppercase">Faturamento - Devoluções - IVA</p>
-        </div>
-      </div>
-
-      {/* Advanced Filters */}
-      <div className="bg-white border border-zinc-200 p-6 no-print shadow-sm space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 items-end">
-          <div className="lg:col-span-2 space-y-2">
-            <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Pesquisa Global</label>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
-              <input 
-                type="text" 
-                placeholder="Nº Documento, Nome do Cliente..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-zinc-50 border border-zinc-200 pl-10 pr-4 py-2.5 text-xs font-bold focus:outline-none focus:border-[#003366]"
-              />
+        {/* Main content */}
+        <div className="flex-1 p-4 space-y-4">
+          {loading && (
+            <div className="flex items-center gap-2 text-xs text-zinc-400 italic p-4">
+              <RefreshCw size={13} className="animate-spin"/> A carregar dados...
             </div>
-          </div>
+          )}
 
-          <div className="space-y-2">
-            <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Armazém de Saída</label>
-            <div className="relative">
-              <Warehouse className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={14} />
-              <select 
-                value={selectedWarehouse}
-                onChange={(e) => setSelectedWarehouse(e.target.value)}
-                className="w-full bg-zinc-50 border border-zinc-200 pl-10 pr-4 py-2.5 text-xs font-bold focus:outline-none focus:border-[#003366] appearance-none"
-              >
-                <option value="all">TODOS ARMAZÉNS</option>
-                {warehouses.map((w: any) => (
-                  <option key={w.id} value={w.id}>{w.name}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Tipo de Documento</label>
-            <div className="relative">
-              <FileCheck className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={14} />
-              <select 
-                value={selectedDocType}
-                onChange={(e) => setSelectedDocType(e.target.value)}
-                className="w-full bg-zinc-50 border border-zinc-200 pl-10 pr-4 py-2.5 text-xs font-bold focus:outline-none focus:border-[#003366] appearance-none"
-              >
-                <option value="all">TODOS TIPOS</option>
-                <option value="FT">FACTURA (FT)</option>
-                <option value="FR">FACTURA RECIBO (FR)</option>
-                <option value="NC">NOTA DE CRÉDITO (NC)</option>
-                <option value="RE">RECIBO (RE)</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Tipo de Artigo</label>
-            <div className="relative">
-              <Layers className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={14} />
-              <select 
-                value={selectedArticleType}
-                onChange={(e) => setSelectedArticleType(e.target.value)}
-                className="w-full bg-zinc-50 border border-zinc-200 pl-10 pr-4 py-2.5 text-xs font-bold focus:outline-none focus:border-[#003366] appearance-none"
-              >
-                <option value="all">TODOS ARTIGOS</option>
-                <option value="product">PRODUTOS (STOCK)</option>
-                <option value="service">SERVIÇOS</option>
-                <option value="other">OUTROS</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-4 pt-4 border-t border-zinc-100">
-           <div className="flex items-center gap-2">
-             <Calendar size={14} className="text-zinc-400" />
-             <input 
-               type="date" 
-               value={dateFilter.start}
-               onChange={(e) => setDateFilter(prev => ({ ...prev, start: e.target.value }))}
-               className="bg-zinc-50 border border-zinc-200 px-3 py-2 text-[10px] font-bold"
-             />
-             <span className="text-zinc-300">até</span>
-             <input 
-               type="date" 
-               value={dateFilter.end}
-               onChange={(e) => setDateFilter(prev => ({ ...prev, end: e.target.value }))}
-               className="bg-zinc-50 border border-zinc-200 px-3 py-2 text-[10px] font-bold"
-             />
-           </div>
-           <button className="text-[10px] font-black text-[#003366] uppercase hover:underline">Limpar Filtros</button>
-        </div>
-      </div>
-
-      {/* Top Products analysis */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 no-print">
-        <div className="bg-white border border-zinc-200 p-6 shadow-sm bg-gradient-to-br from-white to-blue-50/30">
-          <h3 className="text-[10px] font-black text-[#003366] uppercase tracking-widest mb-6 flex items-center gap-2 border-b border-zinc-200 pb-2">
-            <TrendingUp size={16} className="text-emerald-500" /> Produtos Mais Vendidos (Top 5)
-          </h3>
-          <div className="space-y-4">
-            {productPerformance.bestSellers.map((p, i) => (
-              <div key={i} className="flex items-center gap-4">
-                <div className="w-8 h-8 rounded-full bg-blue-100 text-[#003366] flex items-center justify-center font-black text-xs shrink-0">{i+1}</div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-black uppercase text-[#003366] truncate">{p.name}</p>
-                  <div className="flex justify-between items-center mt-1">
-                    <p className="text-[9px] font-bold text-zinc-400 uppercase">{p.qty} Unidades Vendidas</p>
-                    <p className="text-[10px] font-black text-emerald-600">{formatCurrency(p.total)}</p>
-                  </div>
-                  <div className="w-full h-1 bg-zinc-100 mt-1.5 overflow-hidden">
-                    <div 
-                      className="h-full bg-blue-600" 
-                      style={{ width: `${(p.total / productPerformance.bestSellers[0].total) * 100}%` }}
-                    ></div>
-                  </div>
-                </div>
+          {/* Produtos Mais Vendidos */}
+          {topProducts.length > 0 && (
+            <section className="bg-white border border-zinc-200 shadow-sm">
+              <div className="bg-zinc-100 border-b border-zinc-200 px-4 py-2">
+                <span className="text-[10px] font-black uppercase tracking-widest text-[#003366]">Produtos Mais Vendidos</span>
               </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="bg-white border border-zinc-200 p-6 shadow-sm bg-gradient-to-br from-white to-red-50/30">
-          <h3 className="text-[10px] font-black text-[#003366] uppercase tracking-widest mb-6 flex items-center gap-2 border-b border-zinc-200 pb-2">
-            <TrendingDown size={16} className="text-red-500" /> Produtos Menos Vendidos (Top 5)
-          </h3>
-          <div className="space-y-4">
-            {productPerformance.worstSellers.map((p, i) => (
-              <div key={i} className="flex items-center gap-4">
-                <div className="w-8 h-8 rounded-full bg-red-50 text-red-600 flex items-center justify-center font-black text-xs shrink-0">{i+1}</div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-black uppercase text-zinc-700 truncate">{p.name}</p>
-                  <div className="flex justify-between items-center mt-1">
-                    <p className="text-[9px] font-bold text-zinc-400 uppercase">{p.qty} Unidades</p>
-                    <p className="text-[10px] font-black text-red-600">{formatCurrency(p.total)}</p>
-                  </div>
-                  <div className="w-full h-1 bg-zinc-100 mt-1.5 overflow-hidden">
-                    <div 
-                      className="h-full bg-red-400" 
-                      style={{ width: `${(p.total / (productPerformance.worstSellers[productPerformance.worstSellers.length-1]?.total || 1)) * 100}%` }}
-                    ></div>
-                  </div>
-                </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-zinc-50 text-[9px] font-black uppercase tracking-widest text-zinc-500 border-b border-zinc-100">
+                      <th className="px-4 py-2">#</th>
+                      <th className="px-4 py-2">Produto</th>
+                      <th className="px-4 py-2 text-right">Qtd Vendida</th>
+                      <th className="px-4 py-2 text-right">Total (AOA)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-50">
+                    {topProducts.map((p, i) => (
+                      <tr key={i} className="text-xs hover:bg-zinc-50">
+                        <td className="px-4 py-2 text-zinc-400 font-mono">{i+1}</td>
+                        <td className="px-4 py-2 font-semibold text-zinc-700">{p.name}</td>
+                        <td className="px-4 py-2 text-right font-mono">{p.qty.toLocaleString('pt-AO')}</td>
+                        <td className="px-4 py-2 text-right font-bold text-[#003366]">{fmt(p.total)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            ))}
-            {productPerformance.worstSellers.length === 0 && <p className="text-center py-10 text-zinc-300 font-bold uppercase text-[9px]">Dados insuficientes</p>}
-          </div>
+            </section>
+          )}
+
+          {/* Produtos Vendidos */}
+          <section className="bg-white border border-zinc-200 shadow-sm">
+            <div className="bg-zinc-100 border-b border-zinc-200 px-4 py-2 flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase tracking-widest text-[#003366]">Produtos Vendidos</span>
+              <span className="text-[10px] font-bold text-zinc-500">{salesDocs.length} doc(s)</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-zinc-50 text-[9px] font-black uppercase tracking-widest text-zinc-500 border-b border-zinc-100">
+                    <th className="px-3 py-2">Data</th>
+                    <th className="px-3 py-2">Referencia</th>
+                    <th className="px-3 py-2">Cliente</th>
+                    <th className="px-3 py-2">Tipo Doc</th>
+                    <th className="px-3 py-2 text-right">Imposto</th>
+                    <th className="px-3 py-2 text-right">Total (AOA)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-50">
+                  {salesDocs.length === 0 ? (
+                    <tr><td colSpan={6} className="px-4 py-6 text-center text-xs text-zinc-400 italic">Sem documentos no periodo seleccionado.</td></tr>
+                  ) : salesDocs.map(d => (
+                    <tr key={d.id} className="text-xs hover:bg-zinc-50">
+                      <td className="px-3 py-2 text-zinc-500">{formatDate(d)}</td>
+                      <td className="px-3 py-2 font-mono text-zinc-700">{d.invoice_number||d.numero_documento||'—'}</td>
+                      <td className="px-3 py-2 text-zinc-700">{d.client_name||'—'}</td>
+                      <td className="px-3 py-2 text-zinc-500">{(d.tipo_documento||d.document_type||'').toUpperCase()}</td>
+                      <td className="px-3 py-2 text-right font-mono text-zinc-500">{fmt(Number(d.imposto||d.iva_total||0))}</td>
+                      <td className="px-3 py-2 text-right font-bold text-[#003366]">{fmt(Number(d.total||d.valor_total||0))}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-zinc-50 font-bold text-xs border-t border-zinc-200">
+                    <td colSpan={5} className="px-3 py-2 text-right uppercase tracking-widest text-[9px] text-zinc-500">Total Vendas:</td>
+                    <td className="px-3 py-2 text-right text-[#003366]">{fmt(totalVendas)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </section>
+
+          {/* Produtos Devolvidos */}
+          {ncDocs.length > 0 && (
+            <section className="bg-white border border-zinc-200 shadow-sm">
+              <div className="bg-red-50 border-b border-red-100 px-4 py-2 flex items-center justify-between">
+                <span className="text-[10px] font-black uppercase tracking-widest text-red-700">Produtos Devolvidos (NC)</span>
+                <span className="text-[10px] font-bold text-red-500">{ncDocs.length} doc(s)</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-zinc-50 text-[9px] font-black uppercase tracking-widest text-zinc-500 border-b border-zinc-100">
+                      <th className="px-3 py-2">Data</th>
+                      <th className="px-3 py-2">Referencia</th>
+                      <th className="px-3 py-2">Cliente</th>
+                      <th className="px-3 py-2 text-right">Total (AOA)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-50">
+                    {ncDocs.map(d => (
+                      <tr key={d.id} className="text-xs hover:bg-red-50">
+                        <td className="px-3 py-2 text-zinc-500">{formatDate(d)}</td>
+                        <td className="px-3 py-2 font-mono text-zinc-700">{d.invoice_number||d.numero_documento||'—'}</td>
+                        <td className="px-3 py-2 text-zinc-700">{d.client_name||'—'}</td>
+                        <td className="px-3 py-2 text-right font-bold text-red-600">{fmt(Number(d.total||d.valor_total||0))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-red-50 font-bold text-xs border-t border-red-100">
+                      <td colSpan={3} className="px-3 py-2 text-right uppercase tracking-widest text-[9px] text-red-500">Total Devolucoes:</td>
+                      <td className="px-3 py-2 text-right text-red-600">{fmt(totalDevolucoes)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </section>
+          )}
+
+          {/* Movimentos */}
+          <section className="bg-white border border-zinc-200 shadow-sm">
+            <div className="bg-zinc-100 border-b border-zinc-200 px-4 py-2 flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase tracking-widest text-[#003366]">Movimentos</span>
+              <button onClick={exportCSV} className="flex items-center gap-1 text-[9px] font-bold text-emerald-600 hover:text-emerald-700 uppercase tracking-widest">
+                <Download size={12}/> Exportar CSV
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-[#003366] text-white text-[9px] font-black uppercase tracking-widest">
+                    <th className="px-3 py-2">Data</th>
+                    <th className="px-3 py-2">Ref Interna</th>
+                    <th className="px-3 py-2">Empresa</th>
+                    <th className="px-3 py-2">Documento</th>
+                    <th className="px-3 py-2">Descricao</th>
+                    <th className="px-3 py-2 text-right">Entrada</th>
+                    <th className="px-3 py-2 text-right">Saida</th>
+                    <th className="px-3 py-2">Unit</th>
+                    <th className="px-3 py-2 text-right">V.Unit</th>
+                    <th className="px-3 py-2 text-right">Sub.Total</th>
+                    <th className="px-3 py-2 text-right">Imposto</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {filteredDocs.length === 0 ? (
+                    <tr><td colSpan={11} className="px-4 py-6 text-center text-xs text-zinc-400 italic">Sem movimentos no periodo seleccionado.</td></tr>
+                  ) : filteredDocs.map(d => {
+                    const dt = (d.tipo_documento || d.document_type || '').toUpperCase();
+                    const isNC = dt.includes('CREDITO') || dt === 'NC';
+                    const total = Number(d.total || d.valor_total || 0);
+                    const imp = Number(d.imposto || d.iva_total || 0);
+                    const sub = total - imp;
+                    return (
+                      <tr key={d.id} className={`text-xs hover:bg-zinc-50 ${isNC?'text-red-700 bg-red-50/30':''}`}>
+                        <td className="px-3 py-2">{formatDate(d)}</td>
+                        <td className="px-3 py-2 font-mono">{d.invoice_number||d.numero_documento||'—'}</td>
+                        <td className="px-3 py-2 max-w-[100px] truncate" title={companyName}>{companyName}</td>
+                        <td className="px-3 py-2">{dt}</td>
+                        <td className="px-3 py-2 max-w-[120px] truncate" title={d.client_name||''}>{d.client_name||'—'}</td>
+                        <td className="px-3 py-2 text-right font-mono text-emerald-700">{!isNC?fmt(total):''}</td>
+                        <td className="px-3 py-2 text-right font-mono text-red-600">{isNC?fmt(total):''}</td>
+                        <td className="px-3 py-2 text-zinc-400">AOA</td>
+                        <td className="px-3 py-2 text-right font-mono">{fmt(sub > 0 ? sub : total)}</td>
+                        <td className="px-3 py-2 text-right font-mono">{fmt(sub)}</td>
+                        <td className="px-3 py-2 text-right font-mono text-zinc-500">{fmt(imp)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex justify-end px-4 py-3 border-t border-zinc-100 bg-zinc-50">
+              <button onClick={() => window.print()} className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-white bg-[#003366] hover:bg-[#002244] px-4 py-2 transition-all">
+                <Printer size={13}/> Imprimir Lista
+              </button>
+            </div>
+          </section>
         </div>
       </div>
 
-      {/* Movements Table */}
-      <div className="bg-white border border-zinc-200 shadow-xl">
-        <div className="p-6 border-b border-zinc-100 flex justify-between items-center bg-zinc-50/50">
-          <h3 className="text-xs font-black text-[#003366] uppercase tracking-widest flex items-center gap-2">
-             <History size={16} /> Histórico de Movimentação Completa
-          </h3>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[1100px]">
-             <thead>
-               <tr className="bg-[#003366] text-white text-[9px] uppercase tracking-widest font-black border-b border-zinc-200">
-                 <th className="px-6 py-4">Data/Hora</th>
-                 <th className="px-6 py-4">Documento</th>
-                 <th className="px-6 py-4">Cliente / Terminal</th>
-                 <th className="px-6 py-4">Armazém</th>
-                 <th className="px-6 py-4 text-right">Incidência</th>
-                 <th className="px-6 py-4 text-right">IVA</th>
-                 <th className="px-6 py-4 text-center">Estado</th>
-                 <th className="px-6 py-4 text-right font-black">Total / Diferença</th>
-                 <th className="px-6 py-4 text-center no-print">Ações</th>
-               </tr>
-             </thead>
-             <tbody className="divide-y divide-zinc-50 text-[11px] font-medium">
-               {filteredDocs.map((doc: any, idx) => (
-                 <tr key={idx} className={`hover:bg-zinc-50 transition-all ${doc.document_type === 'NC' ? 'bg-red-50/30' : ''}`}>
-                   <td className="px-6 py-4">
-                     <div className="text-[#003366] font-bold">{new Date(doc.date || doc.data_emissao).toLocaleDateString()}</div>
-                     <div className="text-[8px] text-zinc-400">{new Date(doc.date || doc.data_emissao).toLocaleTimeString()}</div>
-                   </td>
-                   <td className="px-6 py-4">
-                     <span className={`px-1.5 py-0.5 text-[8px] font-black border uppercase mb-1 inline-block ${
-                       doc.document_type === 'NC' ? 'bg-red-600 text-white border-red-700' : 
-                       doc.document_type === 'RE' ? 'bg-emerald-600 text-white border-emerald-700' :
-                       'bg-blue-600 text-white border-blue-700'
-                     }`}>
-                       {doc.document_type || 'VENDA'}
-                     </span>
-                     <div className="font-black text-[#003366] uppercase">{doc.invoice_number || doc.numero_documento}</div>
-                   </td>
-                   <td className="px-6 py-4">
-                      <div className="text-zinc-900 font-extrabold uppercase line-clamp-1">{doc.client_name || 'Consumidor Final'}</div>
-                      <div className="text-[9px] text-zinc-400 font-bold uppercase tracking-tighter">Terminal: {doc.pos_terminal || 'POS_01'}</div>
-                   </td>
-                   <td className="px-6 py-4">
-                     <div className="font-bold text-zinc-500 uppercase">{doc.warehouse_name || 'ARMAZÉM PRINCIPAL'}</div>
-                   </td>
-                   <td className="px-6 py-4 text-right font-bold text-zinc-600">{formatCurrency((doc.counter_value || doc.total || 0) - (doc.vat_amount || 0))}</td>
-                   <td className="px-6 py-4 text-right font-bold text-amber-600">{formatCurrency(doc.vat_amount || 0)}</td>
-                   <td className="px-6 py-4 text-center">
-                     <div className={`px-2 py-0.5 text-[8px] font-black uppercase rounded-full inline-block ${
-                        doc.status === 'anulado' ? 'bg-red-100 text-red-700' :
-                        doc.document_type === 'NC' ? 'bg-orange-100 text-orange-700' :
-                        'bg-emerald-100 text-emerald-700'
-                     }`}>
-                        {doc.status || 'FINALIZADO'}
-                     </div>
-                   </td>
-                   <td className="px-6 py-4 text-right">
-                      <div className={`font-black text-[12px] ${doc.document_type === 'NC' ? 'text-red-600' : 'text-[#003366]'}`}>
-                        {doc.document_type === 'NC' ? '-' : ''}{formatCurrency(doc.counter_value || doc.total || 0)}
-                      </div>
-                   </td>
-                   <td className="px-6 py-4 text-center no-print outline-none border-none">
-                      <button className="p-1 hover:bg-zinc-100 text-zinc-400 transition-colors"><MoreHorizontal size={14} /></button>
-                   </td>
-                 </tr>
-               ))}
-               {filteredDocs.length === 0 && (
-                 <tr>
-                   <td colSpan={9} className="px-6 py-24 text-center">
-                     <BarChart3 size={40} className="mx-auto text-zinc-100 mb-4" />
-                     <p className="text-zinc-300 font-black uppercase text-xs tracking-widest italic">Nenhum dado analítico encontrado para esta segmentação.</p>
-                   </td>
-                 </tr>
-               )}
-             </tbody>
-          </table>
-        </div>
-      </div>
+      {/* Print styles */}
+      <style>{`
+        @media print {
+          .print\\:hidden { display: none !important; }
+          .print\\:bg-white { background: white !important; }
+          body { font-size: 10px; }
+        }
+      `}</style>
     </div>
   );
 };
+
+export default SalesReport;

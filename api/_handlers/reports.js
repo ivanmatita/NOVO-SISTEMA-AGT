@@ -25,18 +25,29 @@ export default async function handler(req, res) {
       return res.status(200).json(getDefaultEmptyMonths());
     }
 
-    // Consulta real de vendas e compras para o ano de exercício solicitado com colunas comprovadamente existentes
-    const [docsRes, comprasRes] = await Promise.all([
+    // Consulta real de vendas, compras e salários para o ano de exercício solicitado
+    const [docsRes, comprasRes, hrRes, colabRes] = await Promise.all([
       supabase
         .from('documentos_emitidos')
-        .select('id, data_emissao, created_at, total, valor_total, imposto, iva_total, is_certified, status, tipo_documento')
+        .select('id, data_emissao, created_at, total, valor_total, imposto, iva_total, is_certified, status, tipo_documento, ano')
+        .eq('empresa_id', queryEmpresaId)
+        .gte('data_emissao', `${year}-01-01T00:00:00`)
+        .lte('data_emissao', `${year}-12-31T23:59:59`),
+      supabase
+        .from('compras')
+        .select('id, data_compra, data, data_emissao, created_at, total, valor_total, valor_iva, imposto, tipo_documento, ano')
+        .eq('empresa_id', queryEmpresaId)
+        .gte('data_compra', `${year}-01-01`)
+        .lte('data_compra', `${year}-12-31`),
+      supabase
+        .from('hr_processamentos')
+        .select('mes, ano, salario_bruto, salario_base, inss_entidade, inss_colaborador, is_processed')
         .eq('empresa_id', queryEmpresaId)
         .eq('ano', year),
       supabase
-        .from('compras')
-        .select('id, data_compra, data, data_emissao, created_at, total, valor_total, valor_iva, imposto, tipo_documento')
+        .from('colaboradores')
+        .select('id, salario, salary, salario_base, is_active, status, demitido')
         .eq('empresa_id', queryEmpresaId)
-        .eq('ano', year)
     ]);
 
     if (docsRes.error) {
@@ -48,6 +59,11 @@ export default async function handler(req, res) {
 
     const docs = Array.isArray(docsRes.data) ? docsRes.data : [];
     const compras = Array.isArray(comprasRes.data) ? comprasRes.data : [];
+    const hrData = Array.isArray(hrRes?.data) ? hrRes.data : [];
+    const colabs = Array.isArray(colabRes?.data) ? colabRes.data : [];
+
+    const activeColabs = colabs.filter(c => c.is_active !== false && c.status !== 'demitido' && !c.demitido);
+    const monthlyBaseSalaries = activeColabs.reduce((sum, c) => sum + Number(c.salario || c.salary || c.salario_base || 0), 0);
 
     // Mapear meses 1 a 12
     const monthsData = Array.from({ length: 12 }, (_, i) => {
@@ -98,9 +114,20 @@ export default async function handler(req, res) {
 
       const fornecedoresSImposto = Math.max(0, totalCustosCompras - ivaSuportado);
       const custosAceites = totalCustosCompras * 0.85;
-      const salarios = 0;
-      const inss = salarios * 0.08;
-      const totaisCustos = totalCustosCompras + salarios + inss;
+
+      // Salários e INSS do mês
+      const hrMonth = hrData.filter(h => Number(h.mes) === month);
+      let salarios = 0;
+      let inss = 0;
+      if (hrMonth.length > 0) {
+        salarios = hrMonth.reduce((acc, h) => acc + Number(h.salario_bruto || h.salario_base || 0), 0);
+        inss = hrMonth.reduce((acc, h) => acc + Number(h.inss_entidade || ((h.salario_bruto || h.salario_base || 0) * 0.08)), 0);
+      } else if (monthlyBaseSalaries > 0) {
+        salarios = monthlyBaseSalaries;
+        inss = monthlyBaseSalaries * 0.08;
+      }
+
+      const totaisCustos = fornecedoresSImposto + salarios + inss;
       const margem = factS - fornecedoresSImposto;
 
       return {

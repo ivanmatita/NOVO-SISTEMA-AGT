@@ -111,7 +111,7 @@ export default function RestaurantModule() {
           <div className="bg-white border border-zinc-200 p-6 shadow-sm">
             <h3 className="font-bold text-zinc-800 uppercase text-sm mb-6">Tendência de Faturação (Últimos 7 dias)</h3>
             <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height={220} minWidth={100} debounce={50}>
                 <AreaChart data={faturacaoSemana}>
                   <defs>
                     <linearGradient id="colorValor" x1="0" y1="0" x2="0" y2="1">

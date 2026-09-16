@@ -253,8 +253,8 @@ const BusinessOverview: React.FC<{
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="bg-white border border-zinc-100 p-8 shadow-sm">
               <h3 className="text-sm font-black text-zinc-800 uppercase tracking-widest mb-6">Estrutura de Balanço</h3>
-              <div className="h-64 w-full min-w-[100px] min-h-[220px]">
-                <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={200}>
+              <div className="h-64 w-full min-w-[100px]">
+                <ResponsiveContainer width="100%" height={240} minWidth={100} debounce={50}>
                   <PieChart>
                     <Pie data={chartData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
                       {chartData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}

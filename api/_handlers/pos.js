@@ -304,7 +304,7 @@ export default async function handler(req, res) {
           const perfilList = await perfilRes.json();
           if (Array.isArray(perfilList) && perfilList.length > 0) {
             const perfil = perfilList[0];
-            let currentAreas: string[] = [];
+            let currentAreas = [];
             if (Array.isArray(perfil.permission_areas)) {
               currentAreas = [...perfil.permission_areas];
             } else if (Array.isArray(perfil.permissoes)) {

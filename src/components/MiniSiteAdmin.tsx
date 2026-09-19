@@ -4,10 +4,10 @@ import {
   Layers, ShoppingBag, MessageSquare, Calendar, Users, PhoneCall,
   Megaphone, Tag, CreditCard, Link2, Search as SearchIcon, Share2,
   Settings, BarChart3, CheckCircle2, AlertCircle, Save, ExternalLink,
-  Copy, RefreshCw, Plus, Edit, Trash2, Check, X, ArrowLeft, Eye,
+  Copy, RefreshCw, Plus, Edit, Trash2, Check, X, ArrowLeft, Eye, EyeOff,
   ShieldCheck, HelpCircle, FileText, Image as ImageIcon, Sparkles,
   Phone, Mail, MapPin, Clock, DollarSign, Filter, Download, Printer,
-  Send, MessageCircle
+  Send, MessageCircle, Lock, Key
 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import toast from 'react-hot-toast';
@@ -17,13 +17,57 @@ interface MiniSiteAdminProps {
   company: any;
   user?: any;
   onBack?: () => void;
+  onEmitirFatura?: (pedido: any) => void;
 }
 
-export const MiniSiteAdmin: React.FC<MiniSiteAdminProps> = ({ company, user, onBack }) => {
+export const MiniSiteAdmin: React.FC<MiniSiteAdminProps> = ({ company, user, onBack, onEmitirFatura }) => {
   const empresaId = company?.id || company?.empresa_id || user?.empresa_id || user?.company_id;
   const [activeTab, setActiveTab] = useState<string>('visao_geral');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  // Gate de Palavra-Passe do Administrador Obrigatória
+  const [isUnlocked, setIsUnlocked] = useState<boolean>(() => {
+    try {
+      return sessionStorage.getItem(`minisite_unlocked_${empresaId}`) === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [passwordInput, setPasswordInput] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  const handleUnlockMiniSite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!passwordInput.trim()) {
+      setAuthError('Por favor introduza a palavra-passe do administrador.');
+      return;
+    }
+    setAuthLoading(true);
+    setAuthError(null);
+    try {
+      const adminEmail = user?.email || (await supabase.auth.getUser()).data?.user?.email;
+      if (!adminEmail) {
+        throw new Error('E-mail do utilizador administrador não identificado.');
+      }
+      const { error } = await supabase.auth.signInWithPassword({
+        email: adminEmail,
+        password: passwordInput
+      });
+      if (error) {
+        throw new Error('Palavra-passe incorreta. Acesso reservado ao administrador da empresa.');
+      }
+      sessionStorage.setItem(`minisite_unlocked_${empresaId}`, 'true');
+      setIsUnlocked(true);
+      toast.success('Acesso ao Mini Site Oficial desbloqueado!');
+    } catch (err: any) {
+      setAuthError(err.message || 'Erro ao validar palavra-passe.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
 
   // Configuration State
   const [config, setConfig] = useState<any>({
@@ -800,6 +844,46 @@ ${publicUrl}`
     printWindow.document.close();
   };
 
+  // Alternar Serviço Ativo no Mini Site
+  const handleToggleServico = async (servicoId: string, currentAtivo: boolean) => {
+    const newAtivo = !currentAtivo;
+    try {
+      const { error } = await supabase
+        .from('mini_site_servicos')
+        .update({ ativo: newAtivo })
+        .eq('id', servicoId);
+      if (error) throw error;
+      setServicos(prev => prev.map(s => s.id === servicoId ? { ...s, ativo: newAtivo } : s));
+      toast.success(newAtivo ? 'Serviço ativado no Mini Site!' : 'Serviço desativado do Mini Site!');
+    } catch (err: any) {
+      toast.error('Erro ao atualizar serviço: ' + err.message);
+    }
+  };
+
+  // Botão Dedicado de Publicar / Pausar Mini Site
+  const handleTogglePublish = async (newPubState: boolean) => {
+    setSaving(true);
+    try {
+      const cleanSlug = (config.slug || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9-]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+
+      const { error } = await supabase
+        .from('mini_site_configuracoes')
+        .update({ publicado: newPubState, slug: cleanSlug, updated_at: new Date().toISOString() })
+        .eq('empresa_id', empresaId);
+
+      if (error) throw error;
+      setConfig((prev: any) => ({ ...prev, publicado: newPubState, slug: cleanSlug }));
+      toast.success(newPubState ? '🟢 Mini Site Oficial publicado com sucesso! Agora está visível aos clientes.' : '🟡 Mini Site pausado. Visitantes verão aviso de manutenção.');
+    } catch (err: any) {
+      toast.error(`Erro ao atualizar publicação: ${err.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // Save Configuration
   const handleSaveConfig = async () => {
     if (!config.slug || !config.slug.trim()) {
@@ -824,7 +908,7 @@ ${publicUrl}`
         .upsert(payload, { onConflict: 'empresa_id' });
 
       if (error) throw error;
-      toast.success('Configurações do Mini Site guardadas com sucesso!');
+      toast.success('Configurações guardadas com sucesso! (O estado de publicação foi mantido)');
       setConfig((prev: any) => ({ ...prev, slug: cleanSlug }));
     } catch (err: any) {
       console.error('[MiniSiteAdmin] Erro ao salvar:', err);
@@ -1172,6 +1256,99 @@ ${publicUrl}`
     );
   }
 
+  if (!isUnlocked) {
+    return (
+      <div className="min-h-[75vh] flex items-center justify-center p-4">
+        <div className="bg-white border border-zinc-200 shadow-xl max-w-md w-full p-8 space-y-6 text-center rounded-none relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-2 bg-[#003366]"></div>
+          
+          <div className="w-16 h-16 bg-blue-50 text-[#003366] rounded-full flex items-center justify-center mx-auto shadow-inner border border-blue-100">
+            <Lock size={32} />
+          </div>
+
+          <div className="space-y-2">
+            <span className="px-2.5 py-0.5 bg-blue-50 text-[#003366] text-[10px] font-black uppercase tracking-widest border border-blue-200">
+              Segurança do Administrador
+            </span>
+            <h2 className="text-xl font-black text-[#003366] uppercase tracking-tight">
+              Acesso ao Mini Site Oficial
+            </h2>
+            <p className="text-xs text-zinc-500 leading-relaxed">
+              Área restrita de gestão da presença digital da empresa. Introduza a palavra-passe do administrador para continuar.
+            </p>
+          </div>
+
+          <div className="p-3 bg-zinc-50 border border-zinc-200 text-left text-xs space-y-1">
+            <p className="text-[10px] font-bold uppercase text-zinc-400">Utilizador Administrador</p>
+            <p className="font-bold text-zinc-800">{user?.nome || user?.name || user?.username || 'Administrador'}</p>
+            <p className="font-mono text-zinc-500 text-[11px]">{user?.email || 'administrador@empresa'}</p>
+          </div>
+
+          {authError && (
+            <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-center gap-2 text-left">
+              <AlertCircle size={16} className="shrink-0" />
+              <span>{authError}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleUnlockMiniSite} className="space-y-4">
+            <div className="space-y-1 text-left">
+              <label className="text-xs font-bold text-zinc-700 block">
+                Palavra-Passe do Administrador <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={passwordInput}
+                  onChange={e => setPasswordInput(e.target.value)}
+                  placeholder="Introduza a sua palavra-passe..."
+                  required
+                  autoFocus
+                  className="w-full p-2.5 pr-10 border border-zinc-300 rounded text-sm outline-none focus:border-[#003366]"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 cursor-pointer"
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2 pt-2">
+              <button
+                type="submit"
+                disabled={authLoading}
+                className="w-full py-3 bg-[#003366] hover:bg-[#002244] text-white text-xs font-black uppercase tracking-wider rounded shadow-md flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-50"
+              >
+                {authLoading ? (
+                  <>
+                    <RefreshCw size={14} className="animate-spin" /> A Validar Credenciais...
+                  </>
+                ) : (
+                  <>
+                    <Key size={14} /> Desbloquear e Entrar no Mini Site
+                  </>
+                )}
+              </button>
+
+              {onBack && (
+                <button
+                  type="button"
+                  onClick={onBack}
+                  className="w-full py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 text-xs font-bold uppercase tracking-wider rounded cursor-pointer transition-all"
+                >
+                  Voltar ao Painel Principal
+                </button>
+              )}
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       {/* TOP HEADER */}
@@ -1240,8 +1417,39 @@ ${publicUrl}`
             onClick={handleSaveConfig}
             disabled={saving}
             className="px-4 py-2 bg-[#F27D26] hover:bg-[#D96B1F] text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer rounded shadow-xs"
+            title="Apenas guarda as informações e configurações sem publicar"
           >
             <Save size={13} /> {saving ? 'A Guardar...' : 'Guardar Alterações'}
+          </button>
+          {config.publicado ? (
+            <button
+              onClick={() => handleTogglePublish(false)}
+              disabled={saving}
+              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer rounded shadow-xs"
+              title="Mini Site está atualmente Publicado. Clique para Pausar."
+            >
+              <CheckCircle2 size={13} /> Publicado (Pausar)
+            </button>
+          ) : (
+            <button
+              onClick={() => handleTogglePublish(true)}
+              disabled={saving}
+              className="px-3.5 py-2 bg-[#003366] hover:bg-[#002244] text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer rounded shadow-xs"
+              title="Clique para Publicar o Mini Site Oficial para todos os clientes"
+            >
+              <Globe size={13} /> Publicar Mini Site Agora
+            </button>
+          )}
+          <button
+            onClick={() => {
+              sessionStorage.removeItem(`minisite_unlocked_${empresaId}`);
+              setIsUnlocked(false);
+              toast.success('Sessão do Mini Site bloqueada.');
+            }}
+            className="p-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 rounded cursor-pointer transition-colors"
+            title="Bloquear Acesso à Gestão do Mini Site"
+          >
+            <Lock size={14} />
           </button>
         </div>
       </div>
@@ -1251,6 +1459,15 @@ ${publicUrl}`
         <div className="flex items-center gap-2 overflow-hidden">
           <Globe size={16} className="text-[#F27D26] shrink-0" />
           <span className="font-bold text-zinc-600 shrink-0">Link Público:</span>
+          {config.publicado ? (
+            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-black text-[9px] uppercase rounded">
+              🟢 Publicado & Acessível
+            </span>
+          ) : (
+            <span className="px-2 py-0.5 bg-amber-100 text-amber-800 font-black text-[9px] uppercase rounded">
+              🟡 Rascunho (Não Publicado)
+            </span>
+          )}
           <a
             href={publicUrl}
             target="_blank"
@@ -1705,10 +1922,12 @@ ${publicUrl}`
               <thead>
                 <tr className="bg-zinc-50 border-b border-zinc-200 text-[10px] font-black uppercase text-zinc-500">
                   <th className="p-3">Produto</th>
-                  <th className="p-3">Código</th>
+                  <th className="p-3">Ref. / Código</th>
+                  <th className="p-3">Taxa Imposto</th>
                   <th className="p-3">Preço Base</th>
                   <th className="p-3">Preço Promocional</th>
-                  <th className="p-3 text-center">Visível no Site</th>
+                  <th className="p-3">Desconto (%)</th>
+                  <th className="p-3 text-center">Visível no Mini Site</th>
                   <th className="p-3 text-center">Destaque Homepage</th>
                 </tr>
               </thead>
@@ -1717,22 +1936,32 @@ ${publicUrl}`
                   .filter(p => {
                     const term = searchTerm.toLowerCase();
                     const name = (p.nome || p.name || '').toLowerCase();
-                    const cod = (p.codigo || p.barcode || '').toLowerCase();
+                    const cod = (p.codigo || p.barcode || p.referente || '').toLowerCase();
                     return name.includes(term) || cod.includes(term);
                   })
                   .map(p => {
                     const msp = miniProdutos[p.id] || {};
-                    const isVisible = msp.visivel !== false;
+                    const isVisible = msp.visivel === true;
                     const isFeatured = !!msp.destaque;
                     const basePrice = Number(p.preco || p.preco_venda || p.price || 0);
+                    const promoPrice = msp.preco_promocional != null && Number(msp.preco_promocional) > 0 ? Number(msp.preco_promocional) : null;
+                    const hasDiscount = promoPrice != null && basePrice > promoPrice;
+                    const discountPct = hasDiscount ? Math.round(((basePrice - promoPrice) / basePrice) * 100) : 0;
+                    const taxLabel = p.taxa_imposto != null ? `${p.taxa_imposto}%` : (p.tax_rate != null ? `${p.tax_rate}%` : '14%');
+                    const refCode = p.codigo || p.barcode || p.referente || '—';
 
                     return (
-                      <tr key={p.id} className="hover:bg-zinc-50">
+                      <tr key={p.id} className="hover:bg-zinc-50 transition-colors">
                         <td className="p-3">
                           <p className="font-bold text-zinc-900">{p.nome || p.name}</p>
                           <p className="text-[10px] text-zinc-400 font-mono">{p.categoria || 'Sem categoria'}</p>
                         </td>
-                        <td className="p-3 font-mono text-zinc-500">{p.codigo || p.barcode || '---'}</td>
+                        <td className="p-3 font-mono text-zinc-600 font-bold">{refCode}</td>
+                        <td className="p-3 font-mono text-zinc-600">
+                          <span className="px-1.5 py-0.5 bg-blue-50 text-[#003366] text-[10px] font-bold rounded">
+                            {taxLabel} {p.tax_code ? `(${p.tax_code})` : ''}
+                          </span>
+                        </td>
                         <td className="p-3 font-mono font-bold text-zinc-700">
                           {basePrice.toLocaleString('pt-AO', { minimumFractionDigits: 2 })} Kz
                         </td>
@@ -1745,18 +1974,30 @@ ${publicUrl}`
                             className="w-28 p-1.5 border border-zinc-300 rounded text-xs font-mono"
                           />
                         </td>
+                        <td className="p-3 font-mono">
+                          {hasDiscount ? (
+                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-black rounded">
+                              -{discountPct}%
+                            </span>
+                          ) : (
+                            <span className="text-zinc-400 text-[10px]">0%</span>
+                          )}
+                        </td>
                         <td className="p-3 text-center">
                           <button
+                            type="button"
                             onClick={() => handleToggleProduct(p.id, 'visivel', isVisible)}
-                            className={`px-3 py-1 text-[10px] font-bold uppercase rounded cursor-pointer ${
-                              isVisible ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-200 text-zinc-600'
+                            className={`px-3 py-1.5 text-[10px] font-black uppercase rounded cursor-pointer transition-all shadow-xs ${
+                              isVisible ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-zinc-200 text-zinc-700 hover:bg-zinc-300'
                             }`}
+                            title="Clique para ativar ou desativar este produto do Mini Site"
                           >
-                            {isVisible ? 'Sim' : 'Oculto'}
+                            {isVisible ? '🟢 Ativo no Site' : '⚪ Desativado (Oculto)'}
                           </button>
                         </td>
                         <td className="p-3 text-center">
                           <button
+                            type="button"
                             onClick={() => handleToggleProduct(p.id, 'destaque', isFeatured)}
                             className={`px-3 py-1 text-[10px] font-bold uppercase rounded cursor-pointer ${
                               isFeatured ? 'bg-amber-100 text-amber-800' : 'bg-zinc-100 text-zinc-500'
@@ -1770,7 +2011,7 @@ ${publicUrl}`
                   })}
                 {produtos.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="p-12 text-center text-zinc-400 italic">
+                    <td colSpan={8} className="p-12 text-center text-zinc-400 italic">
                       Nenhum produto cadastrado no stock para esta empresa.
                     </td>
                   </tr>
@@ -1824,18 +2065,25 @@ ${publicUrl}`
                     </span>
                   </div>
                   <p className="text-xs text-zinc-500 mt-1 line-clamp-2">{s.descricao || 'Sem descrição.'}</p>
-                  <div className="flex items-center gap-2 mt-3 text-[10px] text-zinc-400 font-mono">
-                    <Clock size={12} /> {s.duracao_minutos} minutos
+                  <div className="flex flex-wrap items-center gap-2 mt-3 text-[10px] text-zinc-500 font-mono">
+                    <span className="flex items-center gap-1"><Clock size={12} /> {s.duracao_minutos} min</span>
                     {s.categoria && <span>• {s.categoria}</span>}
+                    <span className="px-1.5 py-0.5 bg-blue-50 text-[#003366] font-bold rounded">IVA 14%</span>
+                    <span className="text-zinc-400">Ref: #SRV-{s.id.slice(0, 6)}</span>
                   </div>
                 </div>
 
                 <div className="flex justify-between items-center pt-3 border-t border-zinc-200">
-                  <span className={`px-2 py-0.5 text-[9px] font-bold uppercase rounded ${
-                    s.ativo ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-200 text-zinc-600'
-                  }`}>
-                    {s.ativo ? 'Ativo' : 'Inativo'}
-                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleServico(s.id, s.ativo !== false)}
+                    className={`px-2.5 py-1 text-[10px] font-black uppercase rounded cursor-pointer transition-all ${
+                      s.ativo !== false ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-zinc-200 text-zinc-700 hover:bg-zinc-300'
+                    }`}
+                    title="Ativar ou ocultar do Mini Site público"
+                  >
+                    {s.ativo !== false ? '🟢 Visível no Site' : '⚪ Desativado (Oculto)'}
+                  </button>
                   <div className="flex gap-2">
                     <button
                       onClick={() => {
@@ -2053,6 +2301,15 @@ ${publicUrl}`
                             >
                               Detalhes
                             </button>
+                            {onEmitirFatura && (
+                              <button
+                                onClick={() => onEmitirFatura(p)}
+                                className="px-2.5 py-1 bg-[#003366] text-white hover:bg-[#002244] text-[10px] font-bold uppercase rounded cursor-pointer transition-colors flex items-center gap-1"
+                                title="Emitir Fatura Electrónica para este pedido"
+                              >
+                                <FileText size={11} /> Fatura
+                              </button>
+                            )}
                             <button
                               onClick={() => {
                                 const msg = `Olá ${p.cliente_nome}! Estamos a entrar em contacto referente ao seu pedido ${p.numero_pedido} no valor de ${Number(p.total).toLocaleString('pt-AO')} Kz.`;
@@ -3828,7 +4085,18 @@ ${publicUrl}`
             </div>
 
             <div className="flex flex-wrap justify-between items-center gap-2 pt-3 border-t border-zinc-100">
-              <div className="flex items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-1.5">
+                {onEmitirFatura && (
+                  <button
+                    onClick={() => {
+                      onEmitirFatura(selectedPedido);
+                    }}
+                    className="px-3.5 py-1.5 bg-[#003366] hover:bg-[#002244] text-white font-bold uppercase rounded text-[10px] flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
+                    title="Emitir Documento Solicitado / Emitir Fatura Electrónica no Sistema"
+                  >
+                    <FileText size={12} /> Emitir Fatura Electrónica
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     const msg = `Olá ${selectedPedido.cliente_nome}! Estamos a contactar referente ao seu pedido ${selectedPedido.numero_pedido} no valor de ${Number(selectedPedido.total).toLocaleString('pt-AO')} Kz.`;

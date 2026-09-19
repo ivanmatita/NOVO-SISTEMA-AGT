@@ -135,16 +135,16 @@ export const MiniSitePublic: React.FC<MiniSitePublicProps> = ({ slug: propSlug }
           mspMap[item.produto_id] = item;
         });
 
-        // Filter visible products
+        // Filter visible products strictly by visivel === true
         const allProds = (prodRes.data || []).map((p: any) => {
           const msp = mspMap[p.id];
           return {
             ...p,
-            visivel_site: msp ? msp.visivel : true,
+            visivel_site: msp ? msp.visivel === true : false,
             destaque_site: msp ? msp.destaque : false,
-            preco_promo: msp?.preco_promocional != null ? Number(msp.preco_promocional) : null
+            preco_promo: msp?.preco_promocional != null && Number(msp.preco_promocional) > 0 ? Number(msp.preco_promocional) : null
           };
-        }).filter(p => p.visivel_site !== false);
+        }).filter(p => p.visivel_site === true);
 
         setProdutos(allProds);
 
@@ -283,10 +283,20 @@ export const MiniSitePublic: React.FC<MiniSitePublicProps> = ({ slug: propSlug }
         cliente_endereco: checkoutForm.endereco || null,
         itens: cartItems.map(it => ({
           id: it.id,
+          produto_id: it.id,
           nome: it.nome || it.name,
-          codigo: it.codigo || it.barcode,
+          descricao: it.nome || it.name,
+          codigo: it.codigo || it.barcode || it.referente || '',
+          referencia: it.codigo || it.barcode || it.referente || '',
           qtd: it.qtd,
-          preco: it.preco_final
+          quantidade: it.qtd,
+          preco: it.preco_final,
+          preco_unitario: it.preco_final,
+          taxa_imposto: it.taxa_imposto != null ? it.taxa_imposto : (it.tax_rate != null ? it.tax_rate : 14),
+          tax_code: it.tax_code || 'NOR',
+          desconto: it.preco_promo != null && Number(it.preco || it.preco_venda || it.price || 0) > it.preco_promo ? (Number(it.preco || it.preco_venda || it.price || 0) - it.preco_promo) * it.qtd : 0,
+          subtotal: it.preco_final * it.qtd,
+          tipo: it.tipo || 'produto'
         })),
         subtotal: cartSubtotal,
         desconto: discountAmount,
@@ -442,15 +452,17 @@ export const MiniSitePublic: React.FC<MiniSitePublicProps> = ({ slug: propSlug }
     );
   }
 
-  if (!config) {
+  if (!config || !config.publicado || config.ativo === false) {
     return (
       <div className="min-h-screen bg-zinc-50 flex flex-col items-center justify-center p-6 text-center space-y-4">
-        <div className="w-16 h-16 bg-orange-100 text-[#F27D26] rounded-full flex items-center justify-center">
+        <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center">
           <Globe size={32} />
         </div>
-        <h1 className="text-2xl font-black text-zinc-900 uppercase tracking-tight">Mini Site Não Encontrado</h1>
-        <p className="text-xs text-zinc-500 max-w-sm">
-          O endereço solicitado não corresponde a nenhuma empresa com Mini Site publicado no sistema.
+        <h1 className="text-2xl font-black text-zinc-900 uppercase tracking-tight">
+          Mini Site Não Publicado / Em Manutenção
+        </h1>
+        <p className="text-xs text-zinc-500 max-w-md leading-relaxed">
+          {config?.nome_publico || 'Esta empresa'} ainda não publicou o seu Mini Site Oficial ou encontra-se em atualização pelo administrador. Por favor tente mais tarde.
         </p>
         <a href="/" className="px-6 py-2.5 bg-[#003366] text-white text-xs font-bold uppercase rounded hover:bg-[#002244]">
           Voltar à Página Principal
@@ -708,26 +720,39 @@ export const MiniSitePublic: React.FC<MiniSitePublicProps> = ({ slug: propSlug }
                 {/* Info & Price */}
                 <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
                   <div>
-                    <span className="text-[10px] font-mono text-zinc-400 uppercase">
-                      {p.categoria || 'Geral'} {p.codigo ? `• ${p.codigo}` : ''}
-                    </span>
+                    <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400 uppercase">
+                      <span>{p.categoria || 'Geral'}</span>
+                      {(p.codigo || p.barcode || p.referente) && (
+                        <span className="bg-zinc-100 text-zinc-600 px-1 py-0.5 rounded font-bold">
+                          Ref: {p.codigo || p.barcode || p.referente}
+                        </span>
+                      )}
+                    </div>
                     <h4
                       onClick={() => setSelectedProductModal(p)}
-                      className="font-black text-zinc-900 text-sm mt-0.5 line-clamp-2 hover:text-[#F27D26] cursor-pointer"
+                      className="font-black text-zinc-900 text-sm mt-1 line-clamp-2 hover:text-[#F27D26] cursor-pointer"
                     >
                       {p.nome || p.name}
                     </h4>
                   </div>
 
-                  <div className="pt-3 border-t border-zinc-100 flex items-baseline justify-between">
+                  <div className="pt-3 border-t border-zinc-100 flex items-end justify-between">
                     <div>
                       {hasPromo && (
-                        <p className="text-[11px] text-zinc-400 line-through font-mono">
-                          {originalPrice.toLocaleString('pt-AO', { minimumFractionDigits: 2 })} Kz
-                        </p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-[11px] text-zinc-400 line-through font-mono">
+                            {originalPrice.toLocaleString('pt-AO', { minimumFractionDigits: 2 })} Kz
+                          </p>
+                          <span className="px-1.5 py-0.2 text-[9px] font-black bg-rose-100 text-rose-700 rounded">
+                            -{Math.round(((originalPrice - displayPrice) / originalPrice) * 100)}%
+                          </span>
+                        </div>
                       )}
                       <p className="text-base font-black font-mono text-[#003366]">
                         {displayPrice.toLocaleString('pt-AO', { minimumFractionDigits: 2 })} Kz
+                      </p>
+                      <p className="text-[9px] text-zinc-400 font-medium">
+                        IVA ({p.taxa_imposto != null ? `${p.taxa_imposto}%` : (p.tax_rate != null ? `${p.tax_rate}%` : '14%')}) incluído
                       </p>
                     </div>
 

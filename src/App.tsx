@@ -26336,7 +26336,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
   const [showCalculator, setShowCalculator] = useState(false);
   const [calcData, setCalcData] = useState({ iva: 0, total: 0 });
   const [serviceDate, setServiceDate] = useState(initialData?.service_date ? new Date(initialData.service_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
-  const [serviceLocation, setServiceLocation] = useState(initialData?.service_location || '');
+  const [serviceLocation, setServiceLocation] = useState(initialData?.service_location || (initialData as any)?.customer_address || (initialData as any)?.morada || '');
   const [items, setItems] = useState<Partial<InvoiceItem>[]>(initialData?.items || []);
   const [cashBox, setCashBox] = useState(initialData?.cash_box || '');
   const [paymentMethod, setPaymentMethod] = useState(initialData?.payment_method || '');
@@ -26353,7 +26353,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
   const [isAgtItemModalOpen, setIsAgtItemModalOpen] = useState(false);
   const [editingAgtItemIndex, setEditingAgtItemIndex] = useState<number | null>(null);
   const [editingAgtItemData, setEditingAgtItemData] = useState<AgtItemData | null>(null);
-  const [clientNifSearch, setClientNifSearch] = useState('');
+  const [clientNifSearch, setClientNifSearch] = useState(initialData?.cliente_nif || (initialData as any)?.customer_tax_id || (initialData as any)?.nif || '');
 
    // Helper to match series type with currently selected documentType
   const filteredSeries = fiscalSeries.filter(s => {
@@ -34750,6 +34750,111 @@ export default function App() {
     }
   };
 
+  // Handler para converter Pedido do Mini Site em Fatura Electrónica
+  const handleEmitirFaturaFromPedido = (pedido: any) => {
+    if (!pedido) return;
+    
+    // 1. Localizar cliente correspondente ou Consumidor Final
+    const pedidoNome = (pedido.cliente_nome || '').trim().toLowerCase();
+    const pedidoTel = (pedido.cliente_telefone || '').replace(/\D/g, '');
+    const pedidoEmail = (pedido.cliente_email || '').trim().toLowerCase();
+
+    const matchedClient = (clients || []).find((c: any) => {
+      const cNome = (c.name || c.nome || '').trim().toLowerCase();
+      const cTel = (c.phone || c.telefone || '').replace(/\D/g, '');
+      const cEmail = (c.email || '').trim().toLowerCase();
+      if (pedidoEmail && cEmail && pedidoEmail === cEmail) return true;
+      if (pedidoTel && cTel && (pedidoTel === cTel || cTel.endsWith(pedidoTel) || pedidoTel.endsWith(cTel))) return true;
+      if (pedidoNome && cNome && pedidoNome === cNome) return true;
+      return false;
+    }) || (clients || []).find((c: any) => (c.name || c.nome || '').toLowerCase().includes('consumidor final'));
+
+    // 2. Mapear itens do pedido para a tabela "Bens e Serviços" da Fatura
+    const rawItems = Array.isArray(pedido.itens) ? pedido.itens : (Array.isArray(pedido.items) ? pedido.items : []);
+    const mappedItems: any[] = rawItems.map((it: any) => {
+      const q = Number(it.quantidade || it.quantity || it.qtd || 1);
+      const p = Number(it.preco_unitario || it.preco || it.unit_price || 0);
+      const d = Number(it.desconto || 0);
+      const taxRate = Number(it.taxa_imposto ?? it.tax_rate ?? 14);
+      const taxMatch = (activeTaxes || []).find((t: any) => Number(t.taxa) === taxRate) || (activeTaxes && activeTaxes[0]);
+      const rowTotal = Math.max(0, (q * p) - d);
+
+      return {
+        product_id: it.produto_id || it.id || null,
+        description: it.nome || it.descricao || it.description || it.name || 'Produto / Serviço do Mini Site',
+        referencia: it.codigo || it.barcode || it.referente || it.referencia || '',
+        quantity: q,
+        unit_price: p,
+        desconto: d,
+        tax_rate: taxRate,
+        tax: taxMatch ? `${taxMatch.nome} (${taxMatch.taxa}%)` : (taxRate > 0 ? `IVA (${taxRate}%)` : 'IVA - 0%'),
+        tax_id: taxMatch ? taxMatch.id : null,
+        tax_type: taxMatch?.tipo || 'IVA',
+        total: rowTotal,
+        tipo_artigo: it.tipo || 'produto',
+        tipologia: 'Mercadoria',
+        unidade_medida: it.unidade || 'QUANTIDADE (Qtd)',
+        comprimento: 0,
+        largura: 0,
+        altura: 0,
+        retencao_fonte: 0
+      };
+    });
+
+    if (mappedItems.length === 0 && Number(pedido.total || 0) > 0) {
+      const tot = Number(pedido.total || 0);
+      const defTax = (activeTaxes && activeTaxes[0]) || { id: null, nome: 'IVA Geral', taxa: 14, tipo: 'IVA' };
+      mappedItems.push({
+        product_id: null,
+        description: `Pedido ${pedido.numero_pedido || ''} do Mini Site Oficial`,
+        referencia: pedido.numero_pedido || '',
+        quantity: 1,
+        unit_price: tot,
+        desconto: 0,
+        tax_rate: Number(defTax.taxa || 14),
+        tax: `${defTax.nome} (${defTax.taxa}%)`,
+        tax_id: defTax.id,
+        tax_type: defTax.tipo,
+        total: tot,
+        tipo_artigo: 'produto',
+        tipologia: 'Mercadoria',
+        unidade_medida: 'QUANTIDADE (Qtd)',
+        comprimento: 0,
+        largura: 0,
+        altura: 0,
+        retencao_fonte: 0
+      });
+    }
+
+    const invoiceDraft: any = {
+      id: undefined,
+      cliente_id: matchedClient ? matchedClient.id : undefined,
+      client_id: matchedClient ? matchedClient.id : undefined,
+      cliente_nome: matchedClient ? (matchedClient.name || matchedClient.nome) : (pedido.cliente_nome || 'Consumidor Final'),
+      client_name: matchedClient ? (matchedClient.name || matchedClient.nome) : (pedido.cliente_nome || 'Consumidor Final'),
+      cliente_nif: matchedClient?.nif || matchedClient?.contribuinte || '999999999',
+      customer_tax_id: matchedClient?.nif || matchedClient?.contribuinte || '999999999',
+      customer_phone: pedido.cliente_telefone || matchedClient?.telefone || '',
+      customer_email: pedido.cliente_email || matchedClient?.email || '',
+      customer_address: pedido.cliente_endereco || pedido.endereco_entrega || matchedClient?.morada || '',
+      service_location: pedido.cliente_endereco || pedido.endereco_entrega || 'Luanda, Angola',
+      service_date: new Date().toISOString().split('T')[0],
+      date: new Date().toISOString().split('T')[0],
+      data_emissao: new Date().toISOString().split('T')[0],
+      document_type: 'Fatura',
+      tipo_documento: 'FT',
+      payment_method: pedido.metodo_pagamento || 'Pronto Pagamento',
+      global_discount: 0,
+      items: mappedItems,
+      detalhes: { items: mappedItems },
+      notes: `Documento emitido a partir do Pedido ${pedido.numero_pedido || pedido.id} do Mini Site Oficial. Observações: ${pedido.observacoes || 'N/A'}`
+    };
+
+    setSelectedDocument(invoiceDraft);
+    setFixedDocumentType('Fatura');
+    setIsCreatingInvoice(true);
+  };
+
   const throttledFetchData = throttle(fetchData, 2000);
 
   useEffect(() => {
@@ -35137,7 +35242,7 @@ export default function App() {
 
                           switch (activeTab) {
                             case 'mini_site':
-                              return <MiniSiteAdmin company={companyData} user={user} onBack={() => setActiveTab('dashboard')} />;
+                              return <MiniSiteAdmin company={companyData} user={user} onBack={() => setActiveTab('dashboard')} onEmitirFatura={handleEmitirFaturaFromPedido} />;
                             case 'empresa':
                               return <EmpresaModule onUpdate={fetchData} />;
                             case 'pos':

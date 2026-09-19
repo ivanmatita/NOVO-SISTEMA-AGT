@@ -6,7 +6,8 @@ import {
   Settings, BarChart3, CheckCircle2, AlertCircle, Save, ExternalLink,
   Copy, RefreshCw, Plus, Edit, Trash2, Check, X, ArrowLeft, Eye,
   ShieldCheck, HelpCircle, FileText, Image as ImageIcon, Sparkles,
-  Phone, Mail, MapPin, Clock, DollarSign, Filter
+  Phone, Mail, MapPin, Clock, DollarSign, Filter, Download, Printer,
+  Send, MessageCircle
 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import toast from 'react-hot-toast';
@@ -19,7 +20,7 @@ interface MiniSiteAdminProps {
 }
 
 export const MiniSiteAdmin: React.FC<MiniSiteAdminProps> = ({ company, user, onBack }) => {
-  const empresaId = company?.id || user?.empresa_id || user?.company_id;
+  const empresaId = company?.id || company?.empresa_id || user?.empresa_id || user?.company_id;
   const [activeTab, setActiveTab] = useState<string>('visao_geral');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -102,6 +103,55 @@ export const MiniSiteAdmin: React.FC<MiniSiteAdminProps> = ({ company, user, onB
   // Search & Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('todos');
+  const [pedidosSearch, setPedidosSearch] = useState('');
+  const [pedidoStatusFilter, setPedidoStatusFilter] = useState('todos');
+  const [solicitacoesSearch, setSolicitacoesSearch] = useState('');
+  const [solicitacaoStatusFilter, setSolicitacaoStatusFilter] = useState('todas');
+  const [solicitacaoTipoFilter, setSolicitacaoTipoFilter] = useState('todos');
+  const [agendamentosSearch, setAgendamentosSearch] = useState('');
+  const [agendamentoStatusFilter, setAgendamentoStatusFilter] = useState('todos');
+  const [clientesSearch, setClientesSearch] = useState('');
+  const [selectedCliente, setSelectedCliente] = useState<any | null>(null);
+
+  // Manual Creation Modals
+  const [showNewPedidoModal, setShowNewPedidoModal] = useState(false);
+  const [newPedidoForm, setNewPedidoForm] = useState<any>({
+    cliente_nome: '',
+    cliente_telefone: '',
+    cliente_email: '',
+    cliente_endereco: '',
+    metodo_pagamento: 'multicaixa',
+    status: 'pendente',
+    observacoes: '',
+    selectedProducts: []
+  });
+
+  const [showNewSolicitacaoModal, setShowNewSolicitacaoModal] = useState(false);
+  const [newSolicitacaoForm, setNewSolicitacaoForm] = useState({
+    tipo: 'orcamento',
+    nome: '',
+    telefone: '',
+    email: '',
+    assunto: '',
+    mensagem: '',
+    status: 'nova'
+  });
+
+  const [showNewAgendamentoModal, setShowNewAgendamentoModal] = useState(false);
+  const [newAgendamentoForm, setNewAgendamentoForm] = useState({
+    servico_id: '',
+    servico_nome: '',
+    cliente_nome: '',
+    cliente_telefone: '',
+    cliente_email: '',
+    data_agendamento: '',
+    hora_agendamento: '09:00',
+    status: 'pendente',
+    notas: ''
+  });
+
+  const [solicitacaoRespostaInput, setSolicitacaoRespostaInput] = useState('');
+  const [pedidoObservacoesInput, setPedidoObservacoesInput] = useState('');
 
   // Load all data
   const loadAll = useCallback(async () => {
@@ -231,6 +281,524 @@ export const MiniSiteAdmin: React.FC<MiniSiteAdminProps> = ({ company, user, onB
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  // Real-time Supabase subscription for live updates
+  useEffect(() => {
+    if (!empresaId) return;
+
+    const channel = supabase
+      .channel(`minisite-realtime-${empresaId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'mini_site_pedidos', filter: `empresa_id=eq.${empresaId}` },
+        payload => {
+          setPedidos(prev => [payload.new, ...prev.filter(p => p.id !== payload.new.id)]);
+          toast.success(`🎉 Novo pedido recebido: ${payload.new.numero_pedido || 'Pedido'}!`, { duration: 6000 });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'mini_site_pedidos', filter: `empresa_id=eq.${empresaId}` },
+        payload => {
+          setPedidos(prev => prev.map(p => p.id === payload.new.id ? payload.new : p));
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'mini_site_pedidos', filter: `empresa_id=eq.${empresaId}` },
+        payload => {
+          setPedidos(prev => prev.filter(p => p.id !== payload.old.id));
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'mini_site_solicitacoes', filter: `empresa_id=eq.${empresaId}` },
+        payload => {
+          setSolicitacoes(prev => [payload.new, ...prev.filter(s => s.id !== payload.new.id)]);
+          toast.success(`📩 Nova solicitação de: ${payload.new.nome || 'Cliente'}!`, { duration: 6000 });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'mini_site_solicitacoes', filter: `empresa_id=eq.${empresaId}` },
+        payload => {
+          setSolicitacoes(prev => prev.map(s => s.id === payload.new.id ? payload.new : s));
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'mini_site_solicitacoes', filter: `empresa_id=eq.${empresaId}` },
+        payload => {
+          setSolicitacoes(prev => prev.filter(s => s.id !== payload.old.id));
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'mini_site_agendamentos', filter: `empresa_id=eq.${empresaId}` },
+        payload => {
+          setAgendamentos(prev => [payload.new, ...prev.filter(a => a.id !== payload.new.id)]);
+          toast.success(`📅 Novo agendamento solicitado por: ${payload.new.cliente_nome || 'Cliente'}!`, { duration: 6000 });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'mini_site_agendamentos', filter: `empresa_id=eq.${empresaId}` },
+        payload => {
+          setAgendamentos(prev => prev.map(a => a.id === payload.new.id ? payload.new : a));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [empresaId]);
+
+  // QR Code Download
+  const downloadQRCode = () => {
+    const canvas = document.getElementById('mini-site-qr-canvas') as HTMLCanvasElement;
+    if (!canvas) {
+      toast.error('QR Code não encontrado.');
+      return;
+    }
+    const pngUrl = canvas.toDataURL('image/png');
+    const downloadLink = document.createElement('a');
+    downloadLink.href = pngUrl;
+    downloadLink.download = `qrcode-${config.slug || 'minisite'}.png`;
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    document.body.removeChild(downloadLink);
+    toast.success('QR Code descarregado com sucesso!');
+  };
+
+  // Print Flyer A4
+  const printFlyer = () => {
+    const canvas = document.getElementById('mini-site-qr-canvas') as HTMLCanvasElement;
+    const qrImage = canvas ? canvas.toDataURL('image/png') : '';
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      toast.error('Por favor permita popups para imprimir o cartaz.');
+      return;
+    }
+    const companyName = config.nome_publico || company?.nome_empresa || company?.nome || 'Mini Site Oficial';
+    const companyDesc = config.descricao_curta || 'Consulte os nossos produtos, serviços e novidades online.';
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>Cartaz de Divulgação - ${companyName}</title>
+          <style>
+            @page { size: A4 portrait; margin: 20mm; }
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+              text-align: center;
+              padding: 40px 20px;
+              color: #1e293b;
+              margin: 0;
+              background: #fff;
+            }
+            .flyer {
+              border: 4px solid #003366;
+              padding: 48px 32px;
+              border-radius: 24px;
+              max-width: 550px;
+              margin: 0 auto;
+              box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+            }
+            .tagline {
+              background: #F27D26;
+              color: #fff;
+              display: inline-block;
+              padding: 6px 18px;
+              border-radius: 20px;
+              font-size: 13px;
+              font-weight: 900;
+              text-transform: uppercase;
+              letter-spacing: 1px;
+              margin-bottom: 20px;
+            }
+            h1 { color: #003366; margin: 0 0 12px 0; font-size: 32px; font-weight: 900; line-height: 1.2; text-transform: uppercase; }
+            p.desc { color: #64748b; font-size: 16px; margin: 0 0 32px 0; line-height: 1.5; }
+            .qr-wrapper {
+              background: #f8fafc;
+              border: 2px dashed #cbd5e1;
+              display: inline-block;
+              padding: 24px;
+              border-radius: 20px;
+              margin-bottom: 24px;
+            }
+            .action-text {
+              font-size: 18px;
+              font-weight: 800;
+              color: #003366;
+              margin-bottom: 8px;
+              text-transform: uppercase;
+            }
+            .url {
+              font-family: 'Courier New', Courier, monospace;
+              font-size: 15px;
+              color: #F27D26;
+              font-weight: bold;
+              word-break: break-all;
+              margin: 0 0 24px 0;
+            }
+            .features {
+              display: flex;
+              justify-content: center;
+              gap: 20px;
+              margin-top: 24px;
+              padding-top: 20px;
+              border-top: 1px solid #e2e8f0;
+              font-size: 13px;
+              color: #475569;
+              font-weight: 600;
+            }
+            .footer {
+              font-size: 11px;
+              color: #94a3b8;
+              margin-top: 30px;
+              text-transform: uppercase;
+              letter-spacing: 1px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="flyer">
+            <div class="tagline">Mini Site Oficial</div>
+            <h1>${companyName}</h1>
+            <p class="desc">${companyDesc}</p>
+            <div class="action-text">📱 Aponte a Câmera do Telemóvel</div>
+            <div class="qr-wrapper">
+              <img src="${qrImage}" width="260" height="260" alt="QR Code" />
+            </div>
+            <div class="url">${publicUrl}</div>
+            <div class="features">
+              <span>🛍️ Catálogo Online</span>
+              <span>📦 Pedidos Rápidos</span>
+              <span>📅 Agendamentos</span>
+            </div>
+            <div class="footer">
+              Mini Site Oficial • Sistema de Gestão Comercial AGT
+            </div>
+          </div>
+          <script>
+            window.onload = function() { window.print(); }
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
+  const shareOnWhatsApp = () => {
+    const companyName = config.nome_publico || company?.nome_empresa || company?.nome || 'Nossa Empresa';
+    const text = encodeURIComponent(
+      `Olá! Conheça o Mini Site Oficial de *${companyName}*! Acesse produtos, catálogo, serviços e realize pedidos online com facilidade:
+
+${publicUrl}`
+    );
+    window.open(`https://wa.me/?text=${text}`, '_blank');
+  };
+
+  // Delete Pedido
+  const handleDeletePedido = async (id: string) => {
+    if (!window.confirm('Tem a certeza que deseja eliminar permanentemente este pedido da base de dados?')) return;
+    try {
+      const { error } = await supabase.from('mini_site_pedidos').delete().eq('id', id);
+      if (error) throw error;
+      toast.success('Pedido eliminado com sucesso!');
+      setPedidos(prev => prev.filter(p => p.id !== id));
+      if (selectedPedido?.id === id) setSelectedPedido(null);
+    } catch (err: any) {
+      toast.error('Erro ao eliminar pedido');
+    }
+  };
+
+  // Delete Solicitacao
+  const handleDeleteSolicitacao = async (id: string) => {
+    if (!window.confirm('Tem a certeza que deseja eliminar esta solicitação de contacto?')) return;
+    try {
+      const { error } = await supabase.from('mini_site_solicitacoes').delete().eq('id', id);
+      if (error) throw error;
+      toast.success('Solicitação eliminada!');
+      setSolicitacoes(prev => prev.filter(s => s.id !== id));
+      if (selectedSolicitacao?.id === id) setSelectedSolicitacao(null);
+    } catch (err: any) {
+      toast.error('Erro ao eliminar solicitação');
+    }
+  };
+
+  // Delete Agendamento
+  const handleDeleteAgendamento = async (id: string) => {
+    if (!window.confirm('Tem a certeza que deseja eliminar este agendamento?')) return;
+    try {
+      const { error } = await supabase.from('mini_site_agendamentos').delete().eq('id', id);
+      if (error) throw error;
+      toast.success('Agendamento eliminado!');
+      setAgendamentos(prev => prev.filter(a => a.id !== id));
+    } catch (err: any) {
+      toast.error('Erro ao eliminar agendamento');
+    }
+  };
+
+  // Create Manual Pedido
+  const handleCreateManualPedido = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPedidoForm.cliente_nome || !newPedidoForm.cliente_telefone) {
+      toast.error('Preencha pelo menos o nome e telefone do cliente.');
+      return;
+    }
+    try {
+      const orderNum = `PED-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+      const subtotal = (newPedidoForm.selectedProducts || []).reduce((acc: number, p: any) => acc + (Number(p.preco || 0) * Number(p.qtd || 1)), 0);
+      const total = subtotal;
+
+      const payload = {
+        empresa_id: empresaId,
+        numero_pedido: orderNum,
+        cliente_nome: newPedidoForm.cliente_nome,
+        cliente_telefone: newPedidoForm.cliente_telefone,
+        cliente_email: newPedidoForm.cliente_email || null,
+        cliente_endereco: newPedidoForm.cliente_endereco || null,
+        itens: newPedidoForm.selectedProducts || [],
+        subtotal: subtotal,
+        desconto: 0,
+        total: total,
+        metodo_pagamento: newPedidoForm.metodo_pagamento || 'multicaixa',
+        status: newPedidoForm.status || 'pendente',
+        observacoes: newPedidoForm.observacoes || null
+      };
+
+      const { data, error } = await supabase
+        .from('mini_site_pedidos')
+        .insert(payload)
+        .select()
+        .single();
+
+      if (error) throw error;
+      toast.success(`Pedido ${orderNum} criado com sucesso!`);
+      setPedidos(prev => [data, ...prev]);
+      setShowNewPedidoModal(false);
+      setNewPedidoForm({
+        cliente_nome: '',
+        cliente_telefone: '',
+        cliente_email: '',
+        cliente_endereco: '',
+        metodo_pagamento: 'multicaixa',
+        status: 'pendente',
+        observacoes: '',
+        selectedProducts: []
+      });
+    } catch (err: any) {
+      console.error(err);
+      toast.error('Erro ao criar pedido manual');
+    }
+  };
+
+  // Create Manual Solicitacao
+  const handleCreateManualSolicitacao = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSolicitacaoForm.nome || !newSolicitacaoForm.telefone || !newSolicitacaoForm.mensagem) {
+      toast.error('Preencha nome, telefone e mensagem da solicitação.');
+      return;
+    }
+    try {
+      const payload = {
+        empresa_id: empresaId,
+        tipo: newSolicitacaoForm.tipo,
+        nome: newSolicitacaoForm.nome,
+        telefone: newSolicitacaoForm.telefone,
+        email: newSolicitacaoForm.email || null,
+        assunto: newSolicitacaoForm.assunto || null,
+        mensagem: newSolicitacaoForm.mensagem,
+        status: newSolicitacaoForm.status || 'nova'
+      };
+
+      const { data, error } = await supabase
+        .from('mini_site_solicitacoes')
+        .insert(payload)
+        .select()
+        .single();
+
+      if (error) throw error;
+      toast.success('Solicitação registada com sucesso!');
+      setSolicitacoes(prev => [data, ...prev]);
+      setShowNewSolicitacaoModal(false);
+      setNewSolicitacaoForm({
+        tipo: 'orcamento',
+        nome: '',
+        telefone: '',
+        email: '',
+        assunto: '',
+        mensagem: '',
+        status: 'nova'
+      });
+    } catch (err: any) {
+      console.error(err);
+      toast.error('Erro ao registar solicitação');
+    }
+  };
+
+  // Create Manual Agendamento
+  const handleCreateManualAgendamento = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAgendamentoForm.servico_nome || !newAgendamentoForm.cliente_nome || !newAgendamentoForm.cliente_telefone || !newAgendamentoForm.data_agendamento) {
+      toast.error('Preencha os campos obrigatórios do agendamento.');
+      return;
+    }
+    try {
+      const payload = {
+        empresa_id: empresaId,
+        servico_id: newAgendamentoForm.servico_id || null,
+        servico_nome: newAgendamentoForm.servico_nome,
+        cliente_nome: newAgendamentoForm.cliente_nome,
+        cliente_telefone: newAgendamentoForm.cliente_telefone,
+        cliente_email: newAgendamentoForm.cliente_email || null,
+        data_agendamento: newAgendamentoForm.data_agendamento,
+        hora_agendamento: newAgendamentoForm.hora_agendamento || '09:00',
+        status: newAgendamentoForm.status || 'pendente',
+        notas: newAgendamentoForm.notas || null
+      };
+
+      const { data, error } = await supabase
+        .from('mini_site_agendamentos')
+        .insert(payload)
+        .select()
+        .single();
+
+      if (error) throw error;
+      toast.success('Agendamento registado com sucesso!');
+      setAgendamentos(prev => [data, ...prev]);
+      setShowNewAgendamentoModal(false);
+      setNewAgendamentoForm({
+        servico_id: '',
+        servico_nome: '',
+        cliente_nome: '',
+        cliente_telefone: '',
+        cliente_email: '',
+        data_agendamento: '',
+        hora_agendamento: '09:00',
+        status: 'pendente',
+        notas: ''
+      });
+    } catch (err: any) {
+      console.error(err);
+      toast.error('Erro ao registar agendamento');
+    }
+  };
+
+  // Save Solicitacao Internal Response
+  const handleSaveSolicitacaoResposta = async (solId: string, resposta: string, status: string) => {
+    try {
+      const { error } = await supabase
+        .from('mini_site_solicitacoes')
+        .update({ resposta_interna: resposta, status: status })
+        .eq('id', solId);
+      if (error) throw error;
+      toast.success('Resposta e notas internas gravadas com sucesso!');
+      setSolicitacoes(prev => prev.map(s => s.id === solId ? { ...s, resposta_interna: resposta, status: status } : s));
+      if (selectedSolicitacao?.id === solId) {
+        setSelectedSolicitacao((prev: any) => ({ ...prev, resposta_interna: resposta, status: status }));
+      }
+    } catch (err) {
+      toast.error('Erro ao guardar resposta');
+    }
+  };
+
+  // Save Pedido Notes
+  const handleSavePedidoObservacoes = async (pedidoId: string, observacoes: string) => {
+    try {
+      const { error } = await supabase
+        .from('mini_site_pedidos')
+        .update({ observacoes: observacoes, updated_at: new Date().toISOString() })
+        .eq('id', pedidoId);
+      if (error) throw error;
+      toast.success('Notas do pedido guardadas na base de dados!');
+      setPedidos(prev => prev.map(p => p.id === pedidoId ? { ...p, observacoes: observacoes } : p));
+      if (selectedPedido?.id === pedidoId) {
+        setSelectedPedido((prev: any) => ({ ...prev, observacoes: observacoes }));
+      }
+    } catch (err) {
+      toast.error('Erro ao guardar notas');
+    }
+  };
+
+  // WhatsApp Contact Helper
+  const openWhatsAppClient = (phone: string, text: string) => {
+    const cleanPhone = phone.replace(/[^0-9]/g, '');
+    const finalPhone = cleanPhone.startsWith('244') ? cleanPhone : `244${cleanPhone}`;
+    window.open(`https://wa.me/${finalPhone}?text=${encodeURIComponent(text)}`, '_blank');
+  };
+
+  // Print Order Receipt
+  const printOrderReceipt = (order: any) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      toast.error('Por favor permita popups para imprimir o recibo.');
+      return;
+    }
+    const companyName = config.nome_publico || company?.nome_empresa || company?.nome || 'Empresa';
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>Ficha de Pedido - ${order.numero_pedido}</title>
+          <style>
+            body { font-family: monospace; padding: 20px; color: #000; font-size: 12px; }
+            .receipt { max-width: 400px; margin: 0 auto; border: 1px dashed #000; padding: 15px; }
+            .header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 10px; margin-bottom: 10px; }
+            .title { font-size: 16px; font-weight: bold; }
+            .line { display: flex; justify-content: space-between; margin-bottom: 4px; }
+            .items { border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 10px 0; margin: 10px 0; }
+            .total { font-size: 14px; font-weight: bold; }
+            .footer { text-align: center; font-size: 10px; margin-top: 15px; color: #555; }
+          </style>
+        </head>
+        <body>
+          <div class="receipt">
+            <div class="header">
+              <div class="title">${companyName}</div>
+              <div>Mini Site Oficial • Comprovativo de Pedido</div>
+              <div>Nº: ${order.numero_pedido}</div>
+              <div>Data: ${new Date(order.created_at).toLocaleString('pt-AO')}</div>
+            </div>
+            <div>
+              <div><strong>Cliente:</strong> ${order.cliente_nome}</div>
+              <div><strong>Telefone:</strong> ${order.cliente_telefone}</div>
+              ${order.cliente_email ? `<div><strong>Email:</strong> ${order.cliente_email}</div>` : ''}
+              ${order.cliente_endereco ? `<div><strong>Morada:</strong> ${order.cliente_endereco}</div>` : ''}
+              <div><strong>Status:</strong> ${order.status.toUpperCase()}</div>
+              <div><strong>Pagamento:</strong> ${order.metodo_pagamento || '---'}</div>
+            </div>
+            <div class="items">
+              <div style="font-weight:bold; margin-bottom: 5px;">ITENS:</div>
+              ${(Array.isArray(order.itens) ? order.itens : []).map((it: any) => `
+                <div class="line">
+                  <span>${it.qtd}x ${it.nome || it.name}</span>
+                  <span>${(Number(it.qtd) * Number(it.preco)).toLocaleString('pt-AO')} Kz</span>
+                </div>
+              `).join('')}
+            </div>
+            <div class="line total">
+              <span>TOTAL:</span>
+              <span>${Number(order.total).toLocaleString('pt-AO', { minimumFractionDigits: 2 })} Kz</span>
+            </div>
+            ${order.observacoes ? `<div style="margin-top: 10px;"><strong>Obs:</strong> ${order.observacoes}</div>` : ''}
+            <div class="footer">
+              Obrigado pela preferência!<br>
+              Mini Site Oficial • Sistema AGT
+            </div>
+          </div>
+          <script>
+            window.onload = function() { window.print(); }
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
 
   // Save Configuration
   const handleSaveConfig = async () => {
@@ -644,6 +1212,16 @@ export const MiniSiteAdmin: React.FC<MiniSiteAdminProps> = ({ company, user, onB
 
         <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
           <button
+            onClick={() => {
+              loadAll();
+              toast.success('Dados sincronizados com o banco de dados!');
+            }}
+            className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer rounded shadow-xs"
+            title="Atualizar dados do Mini Site"
+          >
+            <RefreshCw size={13} /> Atualizar
+          </button>
+          <button
             onClick={copyPublicLink}
             className="px-3 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer rounded"
             title="Copiar Link do Site"
@@ -772,21 +1350,51 @@ export const MiniSiteAdmin: React.FC<MiniSiteAdminProps> = ({ company, user, onB
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Quick Status & QR Code */}
             <div className="bg-white border border-zinc-200 p-6 rounded shadow-xs space-y-4">
-              <h3 className="text-xs font-black text-[#003366] uppercase tracking-wider border-b border-zinc-100 pb-3">
-                QR Code Oficial & Divulgação
-              </h3>
+              <div className="flex justify-between items-center border-b border-zinc-100 pb-3">
+                <h3 className="text-xs font-black text-[#003366] uppercase tracking-wider">
+                  QR Code Oficial & Divulgação
+                </h3>
+                <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[9px] font-black uppercase rounded">
+                  Ativo & Conectado
+                </span>
+              </div>
               <div className="flex flex-col items-center justify-center p-4 bg-zinc-50 rounded border border-zinc-200">
-                <QRCodeCanvas value={publicUrl} size={180} />
+                <QRCodeCanvas id="mini-site-qr-canvas" value={publicUrl} size={180} />
                 <p className="text-[11px] font-mono font-bold text-zinc-600 mt-3 text-center break-all">
                   {publicUrl}
                 </p>
               </div>
-              <button
-                onClick={copyPublicLink}
-                className="w-full py-2 bg-[#003366] hover:bg-[#002244] text-white text-xs font-bold uppercase rounded flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <Copy size={14} /> Copiar Link para Partilhar
-              </button>
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <button
+                  onClick={downloadQRCode}
+                  className="py-2 px-3 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-[11px] font-bold uppercase rounded flex items-center justify-center gap-1.5 cursor-pointer border border-zinc-200"
+                  title="Baixar imagem PNG do QR Code"
+                >
+                  <Download size={13} /> Baixar PNG
+                </button>
+                <button
+                  onClick={printFlyer}
+                  className="py-2 px-3 bg-blue-50 hover:bg-blue-100 text-[#003366] text-[11px] font-bold uppercase rounded flex items-center justify-center gap-1.5 cursor-pointer border border-blue-200"
+                  title="Imprimir cartaz oficial para balcão/loja"
+                >
+                  <Printer size={13} /> Imprimir A4
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={shareOnWhatsApp}
+                  className="py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold uppercase rounded flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                  title="Partilhar link no WhatsApp"
+                >
+                  <MessageCircle size={13} /> WhatsApp
+                </button>
+                <button
+                  onClick={copyPublicLink}
+                  className="py-2 px-3 bg-[#003366] hover:bg-[#002244] text-white text-[11px] font-bold uppercase rounded flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <Copy size={13} /> Copiar Link
+                </button>
+              </div>
             </div>
 
             {/* Recent Orders Overview */}
@@ -1285,277 +1893,724 @@ export const MiniSiteAdmin: React.FC<MiniSiteAdminProps> = ({ company, user, onB
       {/* ========================================================================= */}
       {/* SUB-ABA 7: GESTÃO DE PEDIDOS */}
       {/* ========================================================================= */}
-      {activeTab === 'pedidos' && (
-        <div className="bg-white border border-zinc-200 p-6 rounded shadow-xs space-y-6">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-zinc-100 pb-4">
-            <div>
-              <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider">
-                Pedidos Recebidos ({pedidos.length})
-              </h3>
-              <p className="text-xs text-zinc-500">Pedidos gerados pelos clientes através do carrinho do Mini Site.</p>
-            </div>
-            <div className="flex gap-2">
-              {['todos', 'pendente', 'confirmado', 'em_preparacao', 'pronto', 'entregue', 'cancelado'].map(st => (
-                <button
-                  key={st}
-                  onClick={() => setStatusFilter(st)}
-                  className={`px-3 py-1.5 text-[10px] font-black uppercase rounded cursor-pointer ${
-                    statusFilter === st ? 'bg-[#F27D26] text-white' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
-                  }`}
-                >
-                  {st.replace('_', ' ')}
-                </button>
-              ))}
-            </div>
-          </div>
+      {activeTab === 'pedidos' && (() => {
+        const filteredPedidos = pedidos.filter(p => {
+          const matchesStatus = pedidoStatusFilter === 'todos' || p.status === pedidoStatusFilter;
+          const term = pedidosSearch.toLowerCase().trim();
+          if (!term) return matchesStatus;
+          const num = (p.numero_pedido || '').toLowerCase();
+          const nome = (p.cliente_nome || '').toLowerCase();
+          const tel = (p.cliente_telefone || '').toLowerCase();
+          const end = (p.cliente_endereco || '').toLowerCase();
+          return matchesStatus && (num.includes(term) || nome.includes(term) || tel.includes(term) || end.includes(term));
+        });
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-zinc-50 border-b border-zinc-200 text-[10px] font-black uppercase text-zinc-500">
-                  <th className="p-3">Nº Pedido</th>
-                  <th className="p-3">Data</th>
-                  <th className="p-3">Cliente</th>
-                  <th className="p-3">Total</th>
-                  <th className="p-3">Pagamento</th>
-                  <th className="p-3">Status</th>
-                  <th className="p-3 text-center">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
-                {pedidos
-                  .filter(p => statusFilter === 'todos' || p.status === statusFilter)
-                  .map(p => (
-                    <tr key={p.id} className="hover:bg-zinc-50">
-                      <td className="p-3 font-mono font-bold text-zinc-900">{p.numero_pedido}</td>
-                      <td className="p-3 font-mono text-zinc-500">
-                        {new Date(p.created_at).toLocaleString('pt-AO')}
-                      </td>
-                      <td className="p-3">
-                        <p className="font-bold text-zinc-900">{p.cliente_nome}</p>
-                        <p className="text-[10px] text-zinc-400 font-mono">{p.cliente_telefone}</p>
-                      </td>
-                      <td className="p-3 font-mono font-black text-[#003366]">
-                        {Number(p.total).toLocaleString('pt-AO', { minimumFractionDigits: 2 })} Kz
-                      </td>
-                      <td className="p-3 text-zinc-700 capitalize">{p.metodo_pagamento || '---'}</td>
-                      <td className="p-3">
-                        <select
-                          value={p.status}
-                          onChange={e => handleUpdatePedidoStatus(p.id, e.target.value)}
-                          className="p-1 border border-zinc-300 rounded text-xs font-bold bg-white"
-                        >
-                          <option value="pendente">Pendente</option>
-                          <option value="confirmado">Confirmado</option>
-                          <option value="em_preparacao">Em Preparação</option>
-                          <option value="pronto">Pronto</option>
-                          <option value="entregue">Entregue</option>
-                          <option value="cancelado">Cancelado</option>
-                        </select>
-                      </td>
-                      <td className="p-3 text-center">
-                        <button
-                          onClick={() => setSelectedPedido(p)}
-                          className="px-3 py-1 bg-blue-50 text-[#003366] hover:bg-blue-100 text-[10px] font-bold uppercase rounded cursor-pointer"
-                        >
-                          Detalhes
-                        </button>
+        return (
+          <div className="bg-white border border-zinc-200 p-6 rounded shadow-xs space-y-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-zinc-100 pb-4">
+              <div>
+                <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider flex items-center gap-2">
+                  <ShoppingBag size={18} className="text-[#F27D26]" />
+                  Gestão de Pedidos Recebidos ({pedidos.length})
+                </h3>
+                <p className="text-xs text-zinc-500">
+                  Consulte, processe, imprima e atualize os pedidos realizados no Mini Site ou registe pedidos manuais.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 w-full md:w-auto">
+                <button
+                  onClick={() => {
+                    loadAll();
+                    toast.success('Pedidos sincronizados com o banco de dados!');
+                  }}
+                  className="px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-bold uppercase rounded flex items-center gap-1.5 cursor-pointer border border-zinc-200"
+                  title="Atualizar lista de pedidos"
+                >
+                  <RefreshCw size={13} /> Atualizar
+                </button>
+                <button
+                  onClick={() => setShowNewPedidoModal(true)}
+                  className="px-3 py-1.5 bg-[#F27D26] hover:bg-[#D96B1F] text-white text-xs font-black uppercase rounded flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <Plus size={14} /> Novo Pedido Manual
+                </button>
+              </div>
+            </div>
+
+            {/* SEARCH AND STATUS FILTERS */}
+            <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3">
+              <div className="relative flex-1 max-w-md">
+                <SearchIcon size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+                <input
+                  type="text"
+                  placeholder="Pesquisar por cliente, telefone, morada ou nº do pedido..."
+                  value={pedidosSearch}
+                  onChange={e => setPedidosSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 border border-zinc-300 rounded text-xs outline-none focus:border-[#F27D26]"
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { id: 'todos', label: 'Todos', count: pedidos.length },
+                  { id: 'pendente', label: 'Pendente', count: pedidos.filter(p => p.status === 'pendente').length },
+                  { id: 'confirmado', label: 'Confirmado', count: pedidos.filter(p => p.status === 'confirmado').length },
+                  { id: 'em_preparacao', label: 'Em Preparação', count: pedidos.filter(p => p.status === 'em_preparacao').length },
+                  { id: 'pronto', label: 'Pronto', count: pedidos.filter(p => p.status === 'pronto').length },
+                  { id: 'entregue', label: 'Entregue', count: pedidos.filter(p => p.status === 'entregue').length },
+                  { id: 'cancelado', label: 'Cancelado', count: pedidos.filter(p => p.status === 'cancelado').length }
+                ].map(st => (
+                  <button
+                    key={st.id}
+                    onClick={() => setPedidoStatusFilter(st.id)}
+                    className={`px-2.5 py-1 text-[10px] font-black uppercase rounded cursor-pointer flex items-center gap-1.5 transition-all ${
+                      pedidoStatusFilter === st.id
+                        ? 'bg-[#F27D26] text-white shadow-xs'
+                        : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                    }`}
+                  >
+                    <span>{st.label}</span>
+                    <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold ${
+                      pedidoStatusFilter === st.id ? 'bg-white/20 text-white' : 'bg-zinc-200 text-zinc-700'
+                    }`}>
+                      {st.count}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="overflow-x-auto border border-zinc-200 rounded">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-zinc-50 border-b border-zinc-200 text-[10px] font-black uppercase text-zinc-500">
+                    <th className="p-3">Nº Pedido</th>
+                    <th className="p-3">Data / Hora</th>
+                    <th className="p-3">Cliente & Contacto</th>
+                    <th className="p-3">Itens</th>
+                    <th className="p-3">Total (Kz)</th>
+                    <th className="p-3">Pagamento</th>
+                    <th className="p-3">Status</th>
+                    <th className="p-3 text-center">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {filteredPedidos.map(p => {
+                    const itemCount = Array.isArray(p.itens) ? p.itens.reduce((sum: number, it: any) => sum + Number(it.qtd || 1), 0) : 0;
+                    return (
+                      <tr key={p.id} className="hover:bg-orange-50/20 transition-colors">
+                        <td className="p-3 font-mono font-bold text-zinc-900">{p.numero_pedido}</td>
+                        <td className="p-3 font-mono text-zinc-500">
+                          {new Date(p.created_at).toLocaleString('pt-AO')}
+                        </td>
+                        <td className="p-3">
+                          <p className="font-bold text-zinc-900">{p.cliente_nome}</p>
+                          <p className="text-[10px] text-zinc-500 font-mono flex items-center gap-1 mt-0.5">
+                            <Phone size={10} className="text-zinc-400" /> {p.cliente_telefone}
+                          </p>
+                          {p.cliente_endereco && (
+                            <p className="text-[10px] text-zinc-400 truncate max-w-xs mt-0.5" title={p.cliente_endereco}>
+                              📍 {p.cliente_endereco}
+                            </p>
+                          )}
+                        </td>
+                        <td className="p-3">
+                          <span className="px-2 py-0.5 bg-zinc-100 text-zinc-700 rounded text-[10px] font-bold">
+                            {itemCount} {itemCount === 1 ? 'item' : 'itens'}
+                          </span>
+                        </td>
+                        <td className="p-3 font-mono font-black text-[#003366]">
+                          {Number(p.total).toLocaleString('pt-AO', { minimumFractionDigits: 2 })} Kz
+                        </td>
+                        <td className="p-3 text-zinc-700 capitalize">
+                          <span className="px-2 py-0.5 bg-blue-50 text-[#003366] rounded font-bold text-[10px]">
+                            {p.metodo_pagamento || '---'}
+                          </span>
+                        </td>
+                        <td className="p-3">
+                          <select
+                            value={p.status}
+                            onChange={e => handleUpdatePedidoStatus(p.id, e.target.value)}
+                            className="p-1 border border-zinc-300 rounded text-xs font-bold bg-white cursor-pointer"
+                          >
+                            <option value="pendente">Pendente</option>
+                            <option value="confirmado">Confirmado</option>
+                            <option value="em_preparacao">Em Preparação</option>
+                            <option value="pronto">Pronto</option>
+                            <option value="entregue">Entregue</option>
+                            <option value="cancelado">Cancelado</option>
+                          </select>
+                        </td>
+                        <td className="p-3">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={() => {
+                                setSelectedPedido(p);
+                                setPedidoObservacoesInput(p.observacoes || '');
+                              }}
+                              className="px-2.5 py-1 bg-blue-50 text-[#003366] hover:bg-blue-100 text-[10px] font-bold uppercase rounded cursor-pointer transition-colors"
+                              title="Ver Detalhes do Pedido"
+                            >
+                              Detalhes
+                            </button>
+                            <button
+                              onClick={() => {
+                                const msg = `Olá ${p.cliente_nome}! Estamos a entrar em contacto referente ao seu pedido ${p.numero_pedido} no valor de ${Number(p.total).toLocaleString('pt-AO')} Kz.`;
+                                openWhatsAppClient(p.cliente_telefone, msg);
+                              }}
+                              className="p-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded cursor-pointer"
+                              title="Contactar via WhatsApp"
+                            >
+                              <MessageCircle size={14} />
+                            </button>
+                            <button
+                              onClick={() => printOrderReceipt(p)}
+                              className="p-1 bg-zinc-100 text-zinc-700 hover:bg-zinc-200 rounded cursor-pointer"
+                              title="Imprimir Pedido"
+                            >
+                              <Printer size={14} />
+                            </button>
+                            <button
+                              onClick={() => handleDeletePedido(p.id)}
+                              className="p-1 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded cursor-pointer"
+                              title="Eliminar Pedido"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {filteredPedidos.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="p-12 text-center text-zinc-400 italic">
+                        {pedidos.length === 0
+                          ? 'Nenhum pedido registado no Mini Site até ao momento. Novos pedidos de clientes chegarão aqui automaticamente.'
+                          : 'Nenhum pedido encontrado com os filtros e termo de pesquisa selecionados.'}
                       </td>
                     </tr>
-                  ))}
-                {pedidos.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="p-12 text-center text-zinc-400 italic">
-                      Nenhum pedido recebido.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ========================================================================= */}
       {/* SUB-ABA 8: SOLICITAÇÕES & COTAÇÕES */}
       {/* ========================================================================= */}
-      {activeTab === 'solicitacoes' && (
-        <div className="bg-white border border-zinc-200 p-6 rounded shadow-xs space-y-6">
-          <div className="border-b border-zinc-100 pb-3">
-            <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider">
-              Solicitações de Contacto & Orçamentos ({solicitacoes.length})
-            </h3>
-            <p className="text-xs text-zinc-500">Mensagens e pedidos de orçamento enviados através do formulário do Mini Site.</p>
-          </div>
+      {activeTab === 'solicitacoes' && (() => {
+        const filteredSolicitacoes = solicitacoes.filter(s => {
+          const matchesStatus = solicitacaoStatusFilter === 'todas' || s.status === solicitacaoStatusFilter;
+          const matchesTipo = solicitacaoTipoFilter === 'todos' || s.tipo === solicitacaoTipoFilter;
+          const term = solicitacoesSearch.toLowerCase().trim();
+          if (!term) return matchesStatus && matchesTipo;
+          const nome = (s.nome || '').toLowerCase();
+          const tel = (s.telefone || '').toLowerCase();
+          const email = (s.email || '').toLowerCase();
+          const assunto = (s.assunto || '').toLowerCase();
+          const msg = (s.mensagem || '').toLowerCase();
+          return matchesStatus && matchesTipo && (nome.includes(term) || tel.includes(term) || email.includes(term) || assunto.includes(term) || msg.includes(term));
+        });
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-zinc-50 border-b border-zinc-200 text-[10px] font-black uppercase text-zinc-500">
-                  <th className="p-3">Data</th>
-                  <th className="p-3">Tipo</th>
-                  <th className="p-3">Remetente</th>
-                  <th className="p-3">Assunto / Mensagem</th>
-                  <th className="p-3">Status</th>
-                  <th className="p-3 text-center">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
-                {solicitacoes.map(s => (
-                  <tr key={s.id} className="hover:bg-zinc-50">
-                    <td className="p-3 font-mono text-zinc-500">
-                      {new Date(s.created_at).toLocaleDateString('pt-AO')}
-                    </td>
-                    <td className="p-3 uppercase font-bold text-xs text-[#F27D26]">{s.tipo}</td>
-                    <td className="p-3">
-                      <p className="font-bold text-zinc-900">{s.nome}</p>
-                      <p className="text-[10px] text-zinc-400 font-mono">{s.telefone} • {s.email}</p>
-                    </td>
-                    <td className="p-3 max-w-xs truncate">
-                      <p className="font-bold text-zinc-800">{s.assunto || 'Sem assunto'}</p>
-                      <p className="text-[10px] text-zinc-500 truncate">{s.mensagem}</p>
-                    </td>
-                    <td className="p-3">
-                      <select
-                        value={s.status}
-                        onChange={e => handleUpdateSolicitacaoStatus(s.id, e.target.value)}
-                        className="p-1 border border-zinc-300 rounded text-xs bg-white"
-                      >
-                        <option value="nova">Nova</option>
-                        <option value="em_analise">Em Análise</option>
-                        <option value="respondida">Respondida</option>
-                        <option value="encerrada">Encerrada</option>
-                      </select>
-                    </td>
-                    <td className="p-3 text-center">
-                      <button
-                        onClick={() => setSelectedSolicitacao(s)}
-                        className="px-3 py-1 bg-zinc-100 text-zinc-700 hover:bg-zinc-200 text-[10px] font-bold uppercase rounded cursor-pointer"
-                      >
-                        Ver Mensagem
-                      </button>
-                    </td>
-                  </tr>
+        return (
+          <div className="bg-white border border-zinc-200 p-6 rounded shadow-xs space-y-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-zinc-100 pb-4">
+              <div>
+                <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider flex items-center gap-2">
+                  <MessageSquare size={18} className="text-emerald-500" />
+                  Solicitações de Contacto & Orçamentos ({solicitacoes.length})
+                </h3>
+                <p className="text-xs text-zinc-500">
+                  Mensagens, dúvidas, parcerias e pedidos de orçamento enviados através do formulário do Mini Site.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 w-full md:w-auto">
+                <button
+                  onClick={() => {
+                    loadAll();
+                    toast.success('Solicitações sincronizadas com o banco de dados!');
+                  }}
+                  className="px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-bold uppercase rounded flex items-center gap-1.5 cursor-pointer border border-zinc-200"
+                  title="Atualizar lista de solicitações"
+                >
+                  <RefreshCw size={13} /> Atualizar
+                </button>
+                <button
+                  onClick={() => setShowNewSolicitacaoModal(true)}
+                  className="px-3 py-1.5 bg-[#F27D26] hover:bg-[#D96B1F] text-white text-xs font-black uppercase rounded flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <Plus size={14} /> Nova Solicitação Manual
+                </button>
+              </div>
+            </div>
+
+            {/* SEARCH AND FILTERS */}
+            <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3">
+              <div className="relative flex-1 max-w-md">
+                <SearchIcon size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+                <input
+                  type="text"
+                  placeholder="Pesquisar por remetente, assunto, telefone ou mensagem..."
+                  value={solicitacoesSearch}
+                  onChange={e => setSolicitacoesSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 border border-zinc-300 rounded text-xs outline-none focus:border-[#F27D26]"
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-1.5">
+                {['todos', 'orcamento', 'contacto', 'suporte', 'parceria'].map(tp => (
+                  <button
+                    key={tp}
+                    onClick={() => setSolicitacaoTipoFilter(tp)}
+                    className={`px-2.5 py-1 text-[10px] font-black uppercase rounded cursor-pointer transition-all ${
+                      solicitacaoTipoFilter === tp
+                        ? 'bg-[#003366] text-white'
+                        : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                    }`}
+                  >
+                    {tp}
+                  </button>
                 ))}
-                {solicitacoes.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="p-12 text-center text-zinc-400 italic">
-                      Nenhuma mensagem ou solicitação registada.
-                    </td>
+              </div>
+
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { id: 'todas', label: 'Todas', count: solicitacoes.length },
+                  { id: 'nova', label: 'Novas', count: solicitacoes.filter(s => s.status === 'nova').length },
+                  { id: 'em_analise', label: 'Em Análise', count: solicitacoes.filter(s => s.status === 'em_analise').length },
+                  { id: 'respondida', label: 'Respondidas', count: solicitacoes.filter(s => s.status === 'respondida').length },
+                  { id: 'encerrada', label: 'Encerradas', count: solicitacoes.filter(s => s.status === 'encerrada').length }
+                ].map(st => (
+                  <button
+                    key={st.id}
+                    onClick={() => setSolicitacaoStatusFilter(st.id)}
+                    className={`px-2.5 py-1 text-[10px] font-black uppercase rounded cursor-pointer flex items-center gap-1.5 transition-all ${
+                      solicitacaoStatusFilter === st.id
+                        ? 'bg-[#F27D26] text-white shadow-xs'
+                        : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                    }`}
+                  >
+                    <span>{st.label}</span>
+                    <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold ${
+                      solicitacaoStatusFilter === st.id ? 'bg-white/20 text-white' : 'bg-zinc-200 text-zinc-700'
+                    }`}>
+                      {st.count}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="overflow-x-auto border border-zinc-200 rounded">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-zinc-50 border-b border-zinc-200 text-[10px] font-black uppercase text-zinc-500">
+                    <th className="p-3">Data</th>
+                    <th className="p-3">Tipo</th>
+                    <th className="p-3">Remetente</th>
+                    <th className="p-3">Assunto & Mensagem</th>
+                    <th className="p-3">Resposta Interna</th>
+                    <th className="p-3">Status</th>
+                    <th className="p-3 text-center">Ações</th>
                   </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {filteredSolicitacoes.map(s => (
+                    <tr key={s.id} className="hover:bg-emerald-50/20 transition-colors">
+                      <td className="p-3 font-mono text-zinc-500">
+                        {new Date(s.created_at).toLocaleDateString('pt-AO')}
+                      </td>
+                      <td className="p-3">
+                        <span className="px-2 py-0.5 bg-orange-100 text-[#F27D26] font-bold uppercase rounded text-[10px]">
+                          {s.tipo}
+                        </span>
+                      </td>
+                      <td className="p-3">
+                        <p className="font-bold text-zinc-900">{s.nome}</p>
+                        <p className="text-[10px] text-zinc-500 font-mono mt-0.5">{s.telefone}</p>
+                        {s.email && <p className="text-[10px] text-zinc-400 font-mono">{s.email}</p>}
+                      </td>
+                      <td className="p-3 max-w-xs">
+                        <p className="font-bold text-zinc-800 truncate">{s.assunto || 'Sem assunto'}</p>
+                        <p className="text-[10px] text-zinc-500 line-clamp-2 mt-0.5">{s.mensagem}</p>
+                      </td>
+                      <td className="p-3">
+                        {s.resposta_interna ? (
+                          <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded text-[10px] font-bold flex items-center gap-1 w-fit">
+                            <CheckCircle2 size={11} /> Registada
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-zinc-400 italic">Pendente</span>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        <select
+                          value={s.status}
+                          onChange={e => handleUpdateSolicitacaoStatus(s.id, e.target.value)}
+                          className="p-1 border border-zinc-300 rounded text-xs bg-white cursor-pointer font-bold"
+                        >
+                          <option value="nova">Nova</option>
+                          <option value="em_analise">Em Análise</option>
+                          <option value="respondida">Respondida</option>
+                          <option value="encerrada">Encerrada</option>
+                        </select>
+                      </td>
+                      <td className="p-3">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => {
+                              setSelectedSolicitacao(s);
+                              setSolicitacaoRespostaInput(s.resposta_interna || '');
+                            }}
+                            className="px-2.5 py-1 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-[10px] font-bold uppercase rounded cursor-pointer transition-colors"
+                            title="Ver Mensagem e Responder"
+                          >
+                            Ver / Responder
+                          </button>
+                          <button
+                            onClick={() => {
+                              const msg = `Olá ${s.nome}! Recebemos a sua solicitação (${s.assunto || s.tipo}) através do nosso Mini Site Oficial e estamos a entrar em contacto.`;
+                              openWhatsAppClient(s.telefone, msg);
+                            }}
+                            className="p-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded cursor-pointer"
+                            title="Responder no WhatsApp"
+                          >
+                            <MessageCircle size={14} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteSolicitacao(s.id)}
+                            className="p-1 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded cursor-pointer"
+                            title="Eliminar Solicitação"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredSolicitacoes.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="p-12 text-center text-zinc-400 italic">
+                        {solicitacoes.length === 0
+                          ? 'Nenhuma mensagem ou solicitação registada no momento.'
+                          : 'Nenhuma solicitação encontrada com os filtros selecionados.'}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ========================================================================= */}
       {/* SUB-ABA 9: AGENDAMENTOS ONLINE */}
       {/* ========================================================================= */}
-      {activeTab === 'agendamentos' && (
-        <div className="bg-white border border-zinc-200 p-6 rounded shadow-xs space-y-6">
-          <div className="border-b border-zinc-100 pb-3">
-            <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider">
-              Marcações e Agendamentos Online ({agendamentos.length})
-            </h3>
-            <p className="text-xs text-zinc-500">Horários marcados pelos clientes para atendimento ou prestação de serviços.</p>
-          </div>
+      {activeTab === 'agendamentos' && (() => {
+        const filteredAgendamentos = agendamentos.filter(a => {
+          const matchesStatus = agendamentoStatusFilter === 'todos' || a.status === agendamentoStatusFilter;
+          const term = agendamentosSearch.toLowerCase().trim();
+          if (!term) return matchesStatus;
+          const cliente = (a.cliente_nome || '').toLowerCase();
+          const servico = (a.servico_nome || '').toLowerCase();
+          const tel = (a.cliente_telefone || '').toLowerCase();
+          return matchesStatus && (cliente.includes(term) || servico.includes(term) || tel.includes(term));
+        });
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-zinc-50 border-b border-zinc-200 text-[10px] font-black uppercase text-zinc-500">
-                  <th className="p-3">Data Marcada</th>
-                  <th className="p-3">Hora</th>
-                  <th className="p-3">Serviço</th>
-                  <th className="p-3">Cliente</th>
-                  <th className="p-3">Telefone</th>
-                  <th className="p-3">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
-                {agendamentos.map(a => (
-                  <tr key={a.id} className="hover:bg-zinc-50">
-                    <td className="p-3 font-mono font-bold text-zinc-900">{a.data_agendamento}</td>
-                    <td className="p-3 font-mono font-bold text-[#F27D26]">{a.hora_agendamento}</td>
-                    <td className="p-3 font-bold text-zinc-800">{a.servico_nome}</td>
-                    <td className="p-3 font-bold text-zinc-900">{a.cliente_nome}</td>
-                    <td className="p-3 font-mono text-zinc-600">{a.cliente_telefone}</td>
-                    <td className="p-3">
-                      <select
-                        value={a.status}
-                        onChange={e => handleUpdateAgendamentoStatus(a.id, e.target.value)}
-                        className="p-1 border border-zinc-300 rounded text-xs bg-white"
-                      >
-                        <option value="pendente">Pendente</option>
-                        <option value="confirmado">Confirmado</option>
-                        <option value="concluido">Concluído</option>
-                        <option value="cancelado">Cancelado</option>
-                      </select>
-                    </td>
-                  </tr>
+        return (
+          <div className="bg-white border border-zinc-200 p-6 rounded shadow-xs space-y-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-zinc-100 pb-4">
+              <div>
+                <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider flex items-center gap-2">
+                  <Calendar size={18} className="text-purple-500" />
+                  Marcações e Agendamentos Online ({agendamentos.length})
+                </h3>
+                <p className="text-xs text-zinc-500">Horários marcados pelos clientes para atendimento ou prestação de serviços.</p>
+              </div>
+              <div className="flex items-center gap-2 w-full md:w-auto">
+                <button
+                  onClick={() => {
+                    loadAll();
+                    toast.success('Agendamentos sincronizados com o banco de dados!');
+                  }}
+                  className="px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-bold uppercase rounded flex items-center gap-1.5 cursor-pointer border border-zinc-200"
+                  title="Atualizar agendamentos"
+                >
+                  <RefreshCw size={13} /> Atualizar
+                </button>
+                <button
+                  onClick={() => setShowNewAgendamentoModal(true)}
+                  className="px-3 py-1.5 bg-[#F27D26] hover:bg-[#D96B1F] text-white text-xs font-black uppercase rounded flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <Plus size={14} /> Novo Agendamento
+                </button>
+              </div>
+            </div>
+
+            {/* SEARCH AND FILTERS */}
+            <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3">
+              <div className="relative flex-1 max-w-md">
+                <SearchIcon size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+                <input
+                  type="text"
+                  placeholder="Pesquisar por cliente, serviço ou telefone..."
+                  value={agendamentosSearch}
+                  onChange={e => setAgendamentosSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 border border-zinc-300 rounded text-xs outline-none focus:border-[#F27D26]"
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-1.5">
+                {['todos', 'pendente', 'confirmado', 'concluido', 'cancelado'].map(st => (
+                  <button
+                    key={st}
+                    onClick={() => setAgendamentoStatusFilter(st)}
+                    className={`px-2.5 py-1 text-[10px] font-black uppercase rounded cursor-pointer transition-all ${
+                      agendamentoStatusFilter === st
+                        ? 'bg-purple-700 text-white'
+                        : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                    }`}
+                  >
+                    {st}
+                  </button>
                 ))}
-                {agendamentos.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="p-12 text-center text-zinc-400 italic">
-                      Nenhum agendamento registado no momento.
-                    </td>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto border border-zinc-200 rounded">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-zinc-50 border-b border-zinc-200 text-[10px] font-black uppercase text-zinc-500">
+                    <th className="p-3">Data Marcada</th>
+                    <th className="p-3">Hora</th>
+                    <th className="p-3">Serviço</th>
+                    <th className="p-3">Cliente</th>
+                    <th className="p-3">Telefone</th>
+                    <th className="p-3">Status</th>
+                    <th className="p-3 text-center">Ações</th>
                   </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {filteredAgendamentos.map(a => (
+                    <tr key={a.id} className="hover:bg-zinc-50">
+                      <td className="p-3 font-mono font-bold text-zinc-900">{a.data_agendamento}</td>
+                      <td className="p-3 font-mono font-bold text-[#F27D26]">{a.hora_agendamento}</td>
+                      <td className="p-3 font-bold text-zinc-800">{a.servico_nome}</td>
+                      <td className="p-3 font-bold text-zinc-900">{a.cliente_nome}</td>
+                      <td className="p-3 font-mono text-zinc-600">{a.cliente_telefone}</td>
+                      <td className="p-3">
+                        <select
+                          value={a.status}
+                          onChange={e => handleUpdateAgendamentoStatus(a.id, e.target.value)}
+                          className="p-1 border border-zinc-300 rounded text-xs bg-white cursor-pointer font-bold"
+                        >
+                          <option value="pendente">Pendente</option>
+                          <option value="confirmado">Confirmado</option>
+                          <option value="concluido">Concluído</option>
+                          <option value="cancelado">Cancelado</option>
+                        </select>
+                      </td>
+                      <td className="p-3 text-center">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => {
+                              const msg = `Olá ${a.cliente_nome}! Estamos a confirmar o seu agendamento para o serviço ${a.servico_nome} no dia ${a.data_agendamento} às ${a.hora_agendamento}.`;
+                              openWhatsAppClient(a.cliente_telefone, msg);
+                            }}
+                            className="p-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded cursor-pointer"
+                            title="Contactar via WhatsApp"
+                          >
+                            <MessageCircle size={14} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteAgendamento(a.id)}
+                            className="p-1 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded cursor-pointer"
+                            title="Eliminar Agendamento"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredAgendamentos.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="p-12 text-center text-zinc-400 italic">
+                        {agendamentos.length === 0
+                          ? 'Nenhum agendamento registado no momento.'
+                          : 'Nenhum agendamento encontrado com os filtros selecionados.'}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ========================================================================= */}
       {/* SUB-ABA 10: CLIENTES MINI SITE */}
       {/* ========================================================================= */}
-      {activeTab === 'clientes' && (
-        <div className="bg-white border border-zinc-200 p-6 rounded shadow-xs space-y-6">
-          <div className="border-b border-zinc-100 pb-3">
-            <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider">
-              Clientes do Mini Site
-            </h3>
-            <p className="text-xs text-zinc-500">Lista consolidada de pessoas que interagiram através de pedidos e agendamentos.</p>
-          </div>
+      {activeTab === 'clientes' && (() => {
+        // Consolidate clients across pedidos, solicitacoes, and agendamentos
+        const clientMap: Record<string, any> = {};
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {Array.from(new Set(pedidos.map(p => p.cliente_telefone).concat(agendamentos.map(a => a.cliente_telefone))))
-              .filter(Boolean)
-              .map((phone, idx) => {
-                const clientOrders = pedidos.filter(p => p.cliente_telefone === phone);
-                const clientAgs = agendamentos.filter(a => a.cliente_telefone === phone);
-                const name = clientOrders[0]?.cliente_nome || clientAgs[0]?.cliente_nome || 'Cliente';
-                const totalSpent = clientOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
+        pedidos.forEach(p => {
+          if (!p.cliente_telefone) return;
+          const phone = p.cliente_telefone.trim();
+          if (!clientMap[phone]) {
+            clientMap[phone] = {
+              nome: p.cliente_nome,
+              telefone: phone,
+              email: p.cliente_email || '',
+              endereco: p.cliente_endereco || '',
+              pedidos: [],
+              solicitacoes: [],
+              agendamentos: [],
+              totalSpent: 0
+            };
+          }
+          clientMap[phone].pedidos.push(p);
+          clientMap[phone].totalSpent += Number(p.total || 0);
+        });
 
-                return (
-                  <div key={idx} className="p-4 bg-zinc-50 border border-zinc-200 rounded space-y-2">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h4 className="font-bold text-zinc-900 text-sm">{name}</h4>
-                        <p className="text-xs font-mono text-zinc-500">{phone}</p>
-                      </div>
-                      <span className="p-1.5 bg-blue-100 text-[#003366] rounded-full">
-                        <Users size={14} />
-                      </span>
+        solicitacoes.forEach(s => {
+          if (!s.telefone) return;
+          const phone = s.telefone.trim();
+          if (!clientMap[phone]) {
+            clientMap[phone] = {
+              nome: s.nome,
+              telefone: phone,
+              email: s.email || '',
+              endereco: '',
+              pedidos: [],
+              solicitacoes: [],
+              agendamentos: [],
+              totalSpent: 0
+            };
+          }
+          clientMap[phone].solicitacoes.push(s);
+          if (!clientMap[phone].nome && s.nome) clientMap[phone].nome = s.nome;
+          if (!clientMap[phone].email && s.email) clientMap[phone].email = s.email;
+        });
+
+        agendamentos.forEach(a => {
+          if (!a.cliente_telefone) return;
+          const phone = a.cliente_telefone.trim();
+          if (!clientMap[phone]) {
+            clientMap[phone] = {
+              nome: a.cliente_nome,
+              telefone: phone,
+              email: a.cliente_email || '',
+              endereco: '',
+              pedidos: [],
+              solicitacoes: [],
+              agendamentos: [],
+              totalSpent: 0
+            };
+          }
+          clientMap[phone].agendamentos.push(a);
+        });
+
+        const allClients = Object.values(clientMap);
+        const filteredClients = allClients.filter(c => {
+          const term = clientesSearch.toLowerCase().trim();
+          if (!term) return true;
+          return (c.nome || '').toLowerCase().includes(term) || (c.telefone || '').includes(term) || (c.email || '').toLowerCase().includes(term);
+        });
+
+        return (
+          <div className="bg-white border border-zinc-200 p-6 rounded shadow-xs space-y-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-zinc-100 pb-3">
+              <div>
+                <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider flex items-center gap-2">
+                  <Users size={18} className="text-[#003366]" />
+                  Clientes do Mini Site ({allClients.length})
+                </h3>
+                <p className="text-xs text-zinc-500">
+                  Lista consolidada de pessoas que interagiram através de pedidos, orçamentos e agendamentos com histórico completo.
+                </p>
+              </div>
+              <div className="w-full md:w-64">
+                <input
+                  type="text"
+                  placeholder="Pesquisar cliente por nome ou telefone..."
+                  value={clientesSearch}
+                  onChange={e => setClientesSearch(e.target.value)}
+                  className="w-full p-2 border border-zinc-300 rounded text-xs outline-none focus:border-[#F27D26]"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredClients.map((client, idx) => (
+                <div key={idx} className="p-4 bg-zinc-50 border border-zinc-200 rounded space-y-3 hover:shadow-sm transition-shadow">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h4 className="font-bold text-zinc-900 text-sm">{client.nome || 'Cliente'}</h4>
+                      <p className="text-xs font-mono text-zinc-500">{client.telefone}</p>
+                      {client.email && <p className="text-[11px] text-zinc-400 truncate max-w-xs">{client.email}</p>}
                     </div>
-                    <div className="pt-2 border-t border-zinc-200 flex justify-between items-center text-xs">
-                      <span className="text-zinc-500">{clientOrders.length} pedidos</span>
-                      <span className="font-mono font-black text-[#003366]">
-                        {totalSpent.toLocaleString('pt-AO', { minimumFractionDigits: 2 })} Kz
-                      </span>
+                    <span className="p-2 bg-blue-100 text-[#003366] rounded-full">
+                      <Users size={16} />
+                    </span>
+                  </div>
+
+                  <div className="pt-2 border-t border-zinc-200 grid grid-cols-3 gap-2 text-center text-xs">
+                    <div className="bg-white p-2 rounded border border-zinc-100">
+                      <span className="text-[10px] text-zinc-400 block font-bold">Pedidos</span>
+                      <strong className="text-zinc-800 font-mono">{client.pedidos.length}</strong>
+                    </div>
+                    <div className="bg-white p-2 rounded border border-zinc-100">
+                      <span className="text-[10px] text-zinc-400 block font-bold">Contacto</span>
+                      <strong className="text-zinc-800 font-mono">{client.solicitacoes.length}</strong>
+                    </div>
+                    <div className="bg-white p-2 rounded border border-zinc-100">
+                      <span className="text-[10px] text-zinc-400 block font-bold">Agendados</span>
+                      <strong className="text-zinc-800 font-mono">{client.agendamentos.length}</strong>
                     </div>
                   </div>
-                );
-              })}
+
+                  <div className="flex justify-between items-center text-xs pt-1">
+                    <span className="text-zinc-500">Total Faturado:</span>
+                    <span className="font-mono font-black text-[#003366]">
+                      {client.totalSpent.toLocaleString('pt-AO', { minimumFractionDigits: 2 })} Kz
+                    </span>
+                  </div>
+
+                  <div className="pt-2 flex items-center gap-2">
+                    <button
+                      onClick={() => openWhatsAppClient(client.telefone, `Olá ${client.nome}! Estamos a entrar em contacto a partir de ${config.nome_publico || 'nossa empresa'}.`)}
+                      className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black uppercase rounded flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <MessageCircle size={13} /> WhatsApp
+                    </button>
+                    <button
+                      onClick={() => setSelectedCliente(client)}
+                      className="px-3 py-1.5 bg-zinc-200 hover:bg-zinc-300 text-zinc-700 text-[10px] font-black uppercase rounded cursor-pointer"
+                    >
+                      Histórico
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {filteredClients.length === 0 && (
+                <div className="col-span-full p-12 text-center text-zinc-400 italic">
+                  Nenhum cliente registado ainda.
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ========================================================================= */}
-      {/* SUB-ABA 11: ATENDIMENTO & CONTACTOS */}
+{/* SUB-ABA 11: ATENDIMENTO & CONTACTOS */}
       {/* ========================================================================= */}
       {activeTab === 'atendimento' && (
         <div className="bg-white border border-zinc-200 p-6 rounded shadow-xs space-y-6">
@@ -2658,61 +3713,90 @@ export const MiniSiteAdmin: React.FC<MiniSiteAdminProps> = ({ company, user, onB
       {/* ========================================================================= */}
       {selectedPedido && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded max-w-lg w-full p-6 space-y-4 shadow-xl">
+          <div className="bg-white rounded max-w-lg w-full p-6 space-y-4 shadow-xl max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center border-b border-zinc-100 pb-3">
               <div>
-                <h3 className="font-black text-[#003366] uppercase text-sm">
-                  Pedido {selectedPedido.numero_pedido}
-                </h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-black text-[#003366] uppercase text-sm">
+                    Pedido {selectedPedido.numero_pedido}
+                  </h3>
+                  <span className={`px-2 py-0.5 text-[9px] font-bold uppercase rounded ${
+                    selectedPedido.status === 'pendente' ? 'bg-amber-100 text-amber-800' :
+                    selectedPedido.status === 'confirmado' ? 'bg-blue-100 text-blue-800' :
+                    selectedPedido.status === 'entregue' ? 'bg-emerald-100 text-emerald-800' :
+                    'bg-zinc-100 text-zinc-700'
+                  }`}>
+                    {selectedPedido.status}
+                  </span>
+                </div>
                 <span className="text-[10px] text-zinc-400 font-mono">
                   {new Date(selectedPedido.created_at).toLocaleString('pt-AO')}
                 </span>
               </div>
-              <button onClick={() => setSelectedPedido(null)} className="text-zinc-400 hover:text-zinc-600">
+              <button onClick={() => setSelectedPedido(null)} className="text-zinc-400 hover:text-zinc-600 cursor-pointer">
                 <X size={18} />
               </button>
             </div>
 
             <div className="space-y-3 text-xs">
-              <div className="p-3 bg-zinc-50 rounded border border-zinc-200">
-                <p className="font-bold text-zinc-900">{selectedPedido.cliente_nome}</p>
-                <p className="text-zinc-600 font-mono">Tel: {selectedPedido.cliente_telefone}</p>
-                {selectedPedido.cliente_email && <p className="text-zinc-600">Email: {selectedPedido.cliente_email}</p>}
+              <div className="p-3 bg-zinc-50 rounded border border-zinc-200 space-y-1">
+                <p className="font-bold text-zinc-900 text-sm">{selectedPedido.cliente_nome}</p>
+                <p className="text-zinc-600 font-mono flex items-center gap-1">
+                  <Phone size={11} className="text-zinc-400" /> Tel: {selectedPedido.cliente_telefone}
+                </p>
+                {selectedPedido.cliente_email && (
+                  <p className="text-zinc-600 font-mono flex items-center gap-1">
+                    <Mail size={11} className="text-zinc-400" /> {selectedPedido.cliente_email}
+                  </p>
+                )}
                 {selectedPedido.cliente_endereco && (
-                  <p className="text-zinc-600 mt-1">Morada: {selectedPedido.cliente_endereco}</p>
+                  <p className="text-zinc-600 flex items-center gap-1">
+                    <MapPin size={11} className="text-zinc-400 shrink-0" /> Morada: {selectedPedido.cliente_endereco}
+                  </p>
                 )}
               </div>
 
               <div>
-                <h4 className="font-bold text-zinc-700 mb-2">Itens do Pedido:</h4>
+                <h4 className="font-bold text-zinc-700 mb-2 uppercase text-[10px] tracking-wider">Itens do Pedido:</h4>
                 <div className="divide-y divide-zinc-100 border border-zinc-200 rounded max-h-48 overflow-y-auto">
                   {(Array.isArray(selectedPedido.itens) ? selectedPedido.itens : []).map((it: any, i: number) => (
-                    <div key={i} className="p-2 flex justify-between items-center text-xs">
+                    <div key={i} className="p-2.5 flex justify-between items-center text-xs">
                       <div>
                         <p className="font-bold text-zinc-900">{it.nome || it.name}</p>
-                        <p className="text-[10px] text-zinc-500 font-mono">{it.qtd} x {Number(it.preco).toLocaleString('pt-AO')} Kz</p>
+                        <p className="text-[10px] text-zinc-500 font-mono">
+                          {it.qtd}x • {Number(it.preco).toLocaleString('pt-AO')} Kz cada
+                        </p>
                       </div>
                       <span className="font-mono font-bold text-zinc-800">
                         {(Number(it.qtd) * Number(it.preco)).toLocaleString('pt-AO')} Kz
                       </span>
                     </div>
                   ))}
+                  {(!selectedPedido.itens || selectedPedido.itens.length === 0) && (
+                    <p className="p-4 text-center text-zinc-400 italic text-xs">Nenhum item discriminado.</p>
+                  )}
                 </div>
               </div>
 
-              <div className="pt-2 border-t border-zinc-100 flex justify-between items-center">
-                <span className="font-bold text-zinc-600">Total do Pedido:</span>
-                <span className="text-lg font-mono font-black text-[#003366]">
-                  {Number(selectedPedido.total).toLocaleString('pt-AO', { minimumFractionDigits: 2 })} Kz
-                </span>
+              <div className="pt-2 border-t border-zinc-100 flex justify-between items-center bg-zinc-50 p-2.5 rounded border border-zinc-200">
+                <div>
+                  <span className="font-bold text-zinc-600 block text-[10px] uppercase">Forma de Pagamento:</span>
+                  <span className="font-bold text-zinc-800 uppercase">{selectedPedido.metodo_pagamento || '---'}</span>
+                </div>
+                <div className="text-right">
+                  <span className="font-bold text-zinc-600 block text-[10px] uppercase">Valor Total:</span>
+                  <span className="text-base font-mono font-black text-[#003366]">
+                    {Number(selectedPedido.total).toLocaleString('pt-AO', { minimumFractionDigits: 2 })} Kz
+                  </span>
+                </div>
               </div>
 
-              <div className="flex items-center gap-2 pt-2">
-                <span className="font-bold text-zinc-600">Status:</span>
+              <div className="space-y-1">
+                <label className="font-bold text-zinc-700 block">Atualizar Status do Pedido:</label>
                 <select
                   value={selectedPedido.status}
                   onChange={e => handleUpdatePedidoStatus(selectedPedido.id, e.target.value)}
-                  className="flex-1 p-2 border border-zinc-300 rounded font-bold"
+                  className="w-full p-2 border border-zinc-300 rounded font-bold bg-white text-xs cursor-pointer"
                 >
                   <option value="pendente">Pendente</option>
                   <option value="confirmado">Confirmado</option>
@@ -2722,12 +3806,54 @@ export const MiniSiteAdmin: React.FC<MiniSiteAdminProps> = ({ company, user, onB
                   <option value="cancelado">Cancelado</option>
                 </select>
               </div>
+
+              <div className="space-y-1">
+                <div className="flex justify-between items-center">
+                  <label className="font-bold text-zinc-700 block">Observações / Notas Internas:</label>
+                  <button
+                    onClick={() => handleSavePedidoObservacoes(selectedPedido.id, pedidoObservacoesInput)}
+                    className="text-[10px] font-black text-[#F27D26] uppercase hover:underline cursor-pointer"
+                  >
+                    Guardar Notas
+                  </button>
+                </div>
+                <textarea
+                  rows={2}
+                  value={pedidoObservacoesInput}
+                  onChange={e => setPedidoObservacoesInput(e.target.value)}
+                  placeholder="Notas internas sobre a entrega, pagamento ou cliente..."
+                  className="w-full p-2 border border-zinc-300 rounded text-xs outline-none"
+                />
+              </div>
             </div>
 
-            <div className="flex justify-end pt-3 border-t border-zinc-100">
+            <div className="flex flex-wrap justify-between items-center gap-2 pt-3 border-t border-zinc-100">
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => {
+                    const msg = `Olá ${selectedPedido.cliente_nome}! Estamos a contactar referente ao seu pedido ${selectedPedido.numero_pedido} no valor de ${Number(selectedPedido.total).toLocaleString('pt-AO')} Kz.`;
+                    openWhatsAppClient(selectedPedido.cliente_telefone, msg);
+                  }}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold uppercase rounded text-[10px] flex items-center gap-1 cursor-pointer"
+                >
+                  <MessageCircle size={12} /> WhatsApp
+                </button>
+                <button
+                  onClick={() => printOrderReceipt(selectedPedido)}
+                  className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#003366] font-bold uppercase rounded text-[10px] flex items-center gap-1 cursor-pointer border border-blue-200"
+                >
+                  <Printer size={12} /> Imprimir
+                </button>
+                <button
+                  onClick={() => handleDeletePedido(selectedPedido.id)}
+                  className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold uppercase rounded text-[10px] flex items-center gap-1 cursor-pointer"
+                >
+                  <Trash2 size={12} /> Eliminar
+                </button>
+              </div>
               <button
                 onClick={() => setSelectedPedido(null)}
-                className="px-5 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold uppercase rounded text-xs"
+                className="px-4 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold uppercase rounded text-xs cursor-pointer"
               >
                 Fechar
               </button>
@@ -2737,40 +3863,56 @@ export const MiniSiteAdmin: React.FC<MiniSiteAdminProps> = ({ company, user, onB
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL DETALHES DA SOLICITAÇÃO */}
+      {/* MODAL DETALHES DA SOLICITAÇÃO & RESPOSTA */}
       {/* ========================================================================= */}
       {selectedSolicitacao && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded max-w-md w-full p-6 space-y-4 shadow-xl">
+          <div className="bg-white rounded max-w-md w-full p-6 space-y-4 shadow-xl max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center border-b border-zinc-100 pb-3">
-              <h3 className="font-black text-[#003366] uppercase text-xs">
-                Solicitação: {selectedSolicitacao.assunto || selectedSolicitacao.tipo}
-              </h3>
-              <button onClick={() => setSelectedSolicitacao(null)} className="text-zinc-400 hover:text-zinc-600">
+              <div>
+                <h3 className="font-black text-[#003366] uppercase text-xs">
+                  Solicitação: {selectedSolicitacao.assunto || selectedSolicitacao.tipo}
+                </h3>
+                <span className="text-[10px] text-zinc-400 font-mono">
+                  {new Date(selectedSolicitacao.created_at).toLocaleString('pt-AO')}
+                </span>
+              </div>
+              <button onClick={() => setSelectedSolicitacao(null)} className="text-zinc-400 hover:text-zinc-600 cursor-pointer">
                 <X size={18} />
               </button>
             </div>
 
             <div className="space-y-3 text-xs">
-              <div className="p-3 bg-zinc-50 rounded border border-zinc-200">
-                <p className="font-bold text-zinc-900">{selectedSolicitacao.nome}</p>
-                <p className="text-zinc-600 font-mono">Telefone: {selectedSolicitacao.telefone}</p>
-                {selectedSolicitacao.email && <p className="text-zinc-600">Email: {selectedSolicitacao.email}</p>}
+              <div className="p-3 bg-zinc-50 rounded border border-zinc-200 space-y-1">
+                <div className="flex justify-between items-center">
+                  <p className="font-bold text-zinc-900 text-sm">{selectedSolicitacao.nome}</p>
+                  <span className="px-2 py-0.5 bg-orange-100 text-[#F27D26] rounded text-[9px] font-bold uppercase">
+                    {selectedSolicitacao.tipo}
+                  </span>
+                </div>
+                <p className="text-zinc-600 font-mono flex items-center gap-1">
+                  <Phone size={11} className="text-zinc-400" /> Tel: {selectedSolicitacao.telefone}
+                </p>
+                {selectedSolicitacao.email && (
+                  <p className="text-zinc-600 font-mono flex items-center gap-1">
+                    <Mail size={11} className="text-zinc-400" /> {selectedSolicitacao.email}
+                  </p>
+                )}
               </div>
 
               <div>
-                <h4 className="font-bold text-zinc-700 mb-1">Mensagem enviada:</h4>
-                <div className="p-3 bg-zinc-50 border border-zinc-200 rounded text-zinc-800 leading-relaxed whitespace-pre-wrap">
+                <h4 className="font-bold text-zinc-700 mb-1 uppercase text-[10px] tracking-wider">Mensagem do Cliente:</h4>
+                <div className="p-3 bg-zinc-50 border border-zinc-200 rounded text-zinc-800 leading-relaxed whitespace-pre-wrap max-h-36 overflow-y-auto">
                   {selectedSolicitacao.mensagem}
                 </div>
               </div>
 
               <div>
-                <label className="font-bold text-zinc-700 block mb-1">Status:</label>
+                <label className="font-bold text-zinc-700 block mb-1">Status da Solicitação:</label>
                 <select
                   value={selectedSolicitacao.status}
                   onChange={e => handleUpdateSolicitacaoStatus(selectedSolicitacao.id, e.target.value)}
-                  className="w-full p-2 border border-zinc-300 rounded"
+                  className="w-full p-2 border border-zinc-300 rounded font-bold bg-white text-xs cursor-pointer"
                 >
                   <option value="nova">Nova</option>
                   <option value="em_analise">Em Análise</option>
@@ -2778,12 +3920,611 @@ export const MiniSiteAdmin: React.FC<MiniSiteAdminProps> = ({ company, user, onB
                   <option value="encerrada">Encerrada</option>
                 </select>
               </div>
+
+              <div className="space-y-1">
+                <div className="flex justify-between items-center">
+                  <label className="font-bold text-zinc-700 block">Resposta da Empresa / Notas Internas:</label>
+                  <button
+                    onClick={() => handleSaveSolicitacaoResposta(selectedSolicitacao.id, solicitacaoRespostaInput, selectedSolicitacao.status)}
+                    className="text-[10px] font-black text-[#F27D26] uppercase hover:underline cursor-pointer"
+                  >
+                    Guardar no Banco
+                  </button>
+                </div>
+                <textarea
+                  rows={3}
+                  value={solicitacaoRespostaInput}
+                  onChange={e => setSolicitacaoRespostaInput(e.target.value)}
+                  placeholder="Escreva a resposta dada ao cliente ou anotações internas da equipa..."
+                  className="w-full p-2 border border-zinc-300 rounded text-xs outline-none"
+                />
+              </div>
             </div>
 
-            <div className="flex justify-end pt-3 border-t border-zinc-100">
+            <div className="flex flex-wrap justify-between items-center gap-2 pt-3 border-t border-zinc-100">
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => {
+                    const msg = `Olá ${selectedSolicitacao.nome}! Recebemos a sua mensagem referente a "${selectedSolicitacao.assunto || selectedSolicitacao.tipo}" através do nosso Mini Site Oficial e estamos a responder.`;
+                    openWhatsAppClient(selectedSolicitacao.telefone, msg);
+                  }}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold uppercase rounded text-[10px] flex items-center gap-1 cursor-pointer"
+                >
+                  <MessageCircle size={12} /> WhatsApp
+                </button>
+                {selectedSolicitacao.email && (
+                  <a
+                    href={`mailto:${selectedSolicitacao.email}?subject=${encodeURIComponent('Resposta à sua solicitação - ' + (config.nome_publico || 'Mini Site'))}`}
+                    className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#003366] font-bold uppercase rounded text-[10px] flex items-center gap-1 cursor-pointer border border-blue-200"
+                  >
+                    <Mail size={12} /> Email
+                  </a>
+                )}
+                <button
+                  onClick={() => handleDeleteSolicitacao(selectedSolicitacao.id)}
+                  className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold uppercase rounded text-[10px] flex items-center gap-1 cursor-pointer"
+                >
+                  <Trash2 size={12} /> Eliminar
+                </button>
+              </div>
               <button
                 onClick={() => setSelectedSolicitacao(null)}
-                className="px-5 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold uppercase rounded text-xs"
+                className="px-4 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold uppercase rounded text-xs cursor-pointer"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL NOVO PEDIDO MANUAL */}
+      {/* ========================================================================= */}
+      {showNewPedidoModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded max-w-lg w-full p-6 space-y-4 shadow-xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-zinc-100 pb-3">
+              <h3 className="font-black text-[#003366] uppercase text-sm flex items-center gap-2">
+                <Plus size={16} className="text-[#F27D26]" /> Registar Novo Pedido no Mini Site
+              </h3>
+              <button onClick={() => setShowNewPedidoModal(false)} className="text-zinc-400 hover:text-zinc-600 cursor-pointer">
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateManualPedido} className="space-y-4 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-zinc-700 block mb-1">Nome do Cliente *</label>
+                  <input
+                    type="text"
+                    required
+                    value={newPedidoForm.cliente_nome}
+                    onChange={e => setNewPedidoForm({ ...newPedidoForm, cliente_nome: e.target.value })}
+                    placeholder="Nome completo"
+                    className="w-full p-2 border border-zinc-300 rounded"
+                  />
+                </div>
+                <div>
+                  <label className="font-bold text-zinc-700 block mb-1">Telefone *</label>
+                  <input
+                    type="text"
+                    required
+                    value={newPedidoForm.cliente_telefone}
+                    onChange={e => setNewPedidoForm({ ...newPedidoForm, cliente_telefone: e.target.value })}
+                    placeholder="923 000 000"
+                    className="w-full p-2 border border-zinc-300 rounded"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-zinc-700 block mb-1">Email</label>
+                  <input
+                    type="email"
+                    value={newPedidoForm.cliente_email}
+                    onChange={e => setNewPedidoForm({ ...newPedidoForm, cliente_email: e.target.value })}
+                    placeholder="cliente@email.com"
+                    className="w-full p-2 border border-zinc-300 rounded"
+                  />
+                </div>
+                <div>
+                  <label className="font-bold text-zinc-700 block mb-1">Morada de Entrega</label>
+                  <input
+                    type="text"
+                    value={newPedidoForm.cliente_endereco}
+                    onChange={e => setNewPedidoForm({ ...newPedidoForm, cliente_endereco: e.target.value })}
+                    placeholder="Bairro, Rua, Casa nº"
+                    className="w-full p-2 border border-zinc-300 rounded"
+                  />
+                </div>
+              </div>
+
+              {/* PRODUCT SELECTOR */}
+              <div>
+                <label className="font-bold text-zinc-700 block mb-1">Adicionar Produtos do Stock:</label>
+                <div className="flex gap-2">
+                  <select
+                    id="new-pedido-prod-select"
+                    className="flex-1 p-2 border border-zinc-300 rounded bg-white text-xs"
+                    defaultValue=""
+                  >
+                    <option value="" disabled>Selecione um produto...</option>
+                    {produtos.map(pr => (
+                      <option key={pr.id} value={pr.id}>
+                        {pr.nome || pr.name} - {Number(pr.preco || pr.preco_venda || pr.price || 0).toLocaleString('pt-AO')} Kz
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const sel = document.getElementById('new-pedido-prod-select') as HTMLSelectElement;
+                      if (!sel || !sel.value) return;
+                      const prod = produtos.find(p => p.id === sel.value);
+                      if (!prod) return;
+                      const exists = (newPedidoForm.selectedProducts || []).find((p: any) => p.id === prod.id);
+                      if (exists) {
+                        setNewPedidoForm({
+                          ...newPedidoForm,
+                          selectedProducts: newPedidoForm.selectedProducts.map((p: any) => p.id === prod.id ? { ...p, qtd: p.qtd + 1 } : p)
+                        });
+                      } else {
+                        setNewPedidoForm({
+                          ...newPedidoForm,
+                          selectedProducts: [
+                            ...(newPedidoForm.selectedProducts || []),
+                            {
+                              id: prod.id,
+                              nome: prod.nome || prod.name,
+                              preco: Number(prod.preco || prod.preco_venda || prod.price || 0),
+                              qtd: 1
+                            }
+                          ]
+                        });
+                      }
+                    }}
+                    className="px-3 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 font-bold uppercase rounded"
+                  >
+                    + Adicionar
+                  </button>
+                </div>
+
+                {/* Selected Products List */}
+                <div className="mt-2 border border-zinc-200 rounded divide-y divide-zinc-100 max-h-32 overflow-y-auto">
+                  {(newPedidoForm.selectedProducts || []).map((sp: any, idx: number) => (
+                    <div key={idx} className="p-2 flex justify-between items-center text-xs">
+                      <div>
+                        <span className="font-bold text-zinc-900">{sp.nome}</span>
+                        <span className="text-zinc-500 font-mono ml-2">({sp.preco.toLocaleString('pt-AO')} Kz)</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="1"
+                          value={sp.qtd}
+                          onChange={e => {
+                            const val = Math.max(1, Number(e.target.value));
+                            setNewPedidoForm({
+                              ...newPedidoForm,
+                              selectedProducts: newPedidoForm.selectedProducts.map((p: any) => p.id === sp.id ? { ...p, qtd: val } : p)
+                            });
+                          }}
+                          className="w-14 p-1 border border-zinc-300 rounded text-center font-mono"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewPedidoForm({
+                              ...newPedidoForm,
+                              selectedProducts: newPedidoForm.selectedProducts.filter((p: any) => p.id !== sp.id)
+                            });
+                          }}
+                          className="text-rose-500 hover:text-rose-700"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {(!newPedidoForm.selectedProducts || newPedidoForm.selectedProducts.length === 0) && (
+                    <p className="p-3 text-center text-zinc-400 italic text-[11px]">Nenhum produto adicionado ainda.</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-zinc-700 block mb-1">Método de Pagamento</label>
+                  <select
+                    value={newPedidoForm.metodo_pagamento}
+                    onChange={e => setNewPedidoForm({ ...newPedidoForm, metodo_pagamento: e.target.value })}
+                    className="w-full p-2 border border-zinc-300 rounded bg-white text-xs"
+                  >
+                    <option value="multicaixa">Multicaixa Express</option>
+                    <option value="transferencia">Transferência Bancária</option>
+                    <option value="dinheiro">Dinheiro na Entrega</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="font-bold text-zinc-700 block mb-1">Status Inicial</label>
+                  <select
+                    value={newPedidoForm.status}
+                    onChange={e => setNewPedidoForm({ ...newPedidoForm, status: e.target.value })}
+                    className="w-full p-2 border border-zinc-300 rounded bg-white text-xs font-bold"
+                  >
+                    <option value="pendente">Pendente</option>
+                    <option value="confirmado">Confirmado</option>
+                    <option value="em_preparacao">Em Preparação</option>
+                    <option value="pronto">Pronto</option>
+                    <option value="entregue">Entregue</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="font-bold text-zinc-700 block mb-1">Observações / Notas</label>
+                <textarea
+                  rows={2}
+                  value={newPedidoForm.observacoes}
+                  onChange={e => setNewPedidoForm({ ...newPedidoForm, observacoes: e.target.value })}
+                  placeholder="Informações adicionais..."
+                  className="w-full p-2 border border-zinc-300 rounded text-xs"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-zinc-100">
+                <button
+                  type="button"
+                  onClick={() => setShowNewPedidoModal(false)}
+                  className="px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold uppercase rounded text-xs cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-[#F27D26] hover:bg-[#D96B1F] text-white font-black uppercase rounded text-xs cursor-pointer shadow-xs"
+                >
+                  Registar Pedido no Banco
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL NOVA SOLICITAÇÃO MANUAL */}
+      {/* ========================================================================= */}
+      {showNewSolicitacaoModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded max-w-md w-full p-6 space-y-4 shadow-xl">
+            <div className="flex justify-between items-center border-b border-zinc-100 pb-3">
+              <h3 className="font-black text-[#003366] uppercase text-sm flex items-center gap-2">
+                <Plus size={16} className="text-[#F27D26]" /> Registar Solicitação de Contacto / Cotação
+              </h3>
+              <button onClick={() => setShowNewSolicitacaoModal(false)} className="text-zinc-400 hover:text-zinc-600 cursor-pointer">
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateManualSolicitacao} className="space-y-3 text-xs">
+              <div>
+                <label className="font-bold text-zinc-700 block mb-1">Tipo de Solicitação *</label>
+                <select
+                  value={newSolicitacaoForm.tipo}
+                  onChange={e => setNewSolicitacaoForm({ ...newSolicitacaoForm, tipo: e.target.value })}
+                  className="w-full p-2 border border-zinc-300 rounded bg-white text-xs font-bold"
+                >
+                  <option value="orcamento">Pedido de Orçamento / Cotação</option>
+                  <option value="contacto">Contacto Geral</option>
+                  <option value="suporte">Suporte ao Cliente</option>
+                  <option value="parceria">Proposta de Parceria</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-zinc-700 block mb-1">Nome do Contacto *</label>
+                  <input
+                    type="text"
+                    required
+                    value={newSolicitacaoForm.nome}
+                    onChange={e => setNewSolicitacaoForm({ ...newSolicitacaoForm, nome: e.target.value })}
+                    placeholder="Nome do cliente"
+                    className="w-full p-2 border border-zinc-300 rounded"
+                  />
+                </div>
+                <div>
+                  <label className="font-bold text-zinc-700 block mb-1">Telefone *</label>
+                  <input
+                    type="text"
+                    required
+                    value={newSolicitacaoForm.telefone}
+                    onChange={e => setNewSolicitacaoForm({ ...newSolicitacaoForm, telefone: e.target.value })}
+                    placeholder="923 000 000"
+                    className="w-full p-2 border border-zinc-300 rounded"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="font-bold text-zinc-700 block mb-1">Email</label>
+                <input
+                  type="email"
+                  value={newSolicitacaoForm.email}
+                  onChange={e => setNewSolicitacaoForm({ ...newSolicitacaoForm, email: e.target.value })}
+                  placeholder="cliente@email.com"
+                  className="w-full p-2 border border-zinc-300 rounded"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-zinc-700 block mb-1">Assunto</label>
+                <input
+                  type="text"
+                  value={newSolicitacaoForm.assunto}
+                  onChange={e => setNewSolicitacaoForm({ ...newSolicitacaoForm, assunto: e.target.value })}
+                  placeholder="Ex: Cotação para 10 unidades de..."
+                  className="w-full p-2 border border-zinc-300 rounded"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-zinc-700 block mb-1">Mensagem / Detalhes *</label>
+                <textarea
+                  rows={3}
+                  required
+                  value={newSolicitacaoForm.mensagem}
+                  onChange={e => setNewSolicitacaoForm({ ...newSolicitacaoForm, mensagem: e.target.value })}
+                  placeholder="Descreva a solicitação ou orçamento pedido..."
+                  className="w-full p-2 border border-zinc-300 rounded"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-zinc-100">
+                <button
+                  type="button"
+                  onClick={() => setShowNewSolicitacaoModal(false)}
+                  className="px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold uppercase rounded text-xs cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-[#F27D26] hover:bg-[#D96B1F] text-white font-black uppercase rounded text-xs cursor-pointer shadow-xs"
+                >
+                  Registar no Banco
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL NOVO AGENDAMENTO MANUAL */}
+      {/* ========================================================================= */}
+      {showNewAgendamentoModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded max-w-md w-full p-6 space-y-4 shadow-xl">
+            <div className="flex justify-between items-center border-b border-zinc-100 pb-3">
+              <h3 className="font-black text-[#003366] uppercase text-sm flex items-center gap-2">
+                <Plus size={16} className="text-purple-600" /> Registar Novo Agendamento
+              </h3>
+              <button onClick={() => setShowNewAgendamentoModal(false)} className="text-zinc-400 hover:text-zinc-600 cursor-pointer">
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateManualAgendamento} className="space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-zinc-700 block mb-1">Nome do Cliente *</label>
+                  <input
+                    type="text"
+                    required
+                    value={newAgendamentoForm.cliente_nome}
+                    onChange={e => setNewAgendamentoForm({ ...newAgendamentoForm, cliente_nome: e.target.value })}
+                    placeholder="Nome completo"
+                    className="w-full p-2 border border-zinc-300 rounded"
+                  />
+                </div>
+                <div>
+                  <label className="font-bold text-zinc-700 block mb-1">Telefone *</label>
+                  <input
+                    type="text"
+                    required
+                    value={newAgendamentoForm.cliente_telefone}
+                    onChange={e => setNewAgendamentoForm({ ...newAgendamentoForm, cliente_telefone: e.target.value })}
+                    placeholder="923 000 000"
+                    className="w-full p-2 border border-zinc-300 rounded"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="font-bold text-zinc-700 block mb-1">Serviço Pretendido *</label>
+                <div className="flex gap-2">
+                  <select
+                    value={newAgendamentoForm.servico_nome}
+                    onChange={e => {
+                      const srv = servicos.find(s => s.nome === e.target.value);
+                      setNewAgendamentoForm({
+                        ...newAgendamentoForm,
+                        servico_nome: e.target.value,
+                        servico_id: srv?.id || ''
+                      });
+                    }}
+                    className="flex-1 p-2 border border-zinc-300 rounded bg-white text-xs font-bold"
+                  >
+                    <option value="">Selecione um serviço cadastrado...</option>
+                    {servicos.map(s => (
+                      <option key={s.id} value={s.nome}>{s.nome}</option>
+                    ))}
+                  </select>
+                </div>
+                <input
+                  type="text"
+                  placeholder="Ou digite o nome do serviço..."
+                  value={newAgendamentoForm.servico_nome}
+                  onChange={e => setNewAgendamentoForm({ ...newAgendamentoForm, servico_nome: e.target.value })}
+                  className="w-full p-2 border border-zinc-300 rounded mt-1.5"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-zinc-700 block mb-1">Data *</label>
+                  <input
+                    type="date"
+                    required
+                    value={newAgendamentoForm.data_agendamento}
+                    onChange={e => setNewAgendamentoForm({ ...newAgendamentoForm, data_agendamento: e.target.value })}
+                    className="w-full p-2 border border-zinc-300 rounded"
+                  />
+                </div>
+                <div>
+                  <label className="font-bold text-zinc-700 block mb-1">Hora *</label>
+                  <input
+                    type="time"
+                    required
+                    value={newAgendamentoForm.hora_agendamento}
+                    onChange={e => setNewAgendamentoForm({ ...newAgendamentoForm, hora_agendamento: e.target.value })}
+                    className="w-full p-2 border border-zinc-300 rounded"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="font-bold text-zinc-700 block mb-1">Notas / Observações</label>
+                <textarea
+                  rows={2}
+                  value={newAgendamentoForm.notas}
+                  onChange={e => setNewAgendamentoForm({ ...newAgendamentoForm, notas: e.target.value })}
+                  placeholder="Instruções para o atendimento..."
+                  className="w-full p-2 border border-zinc-300 rounded"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-zinc-100">
+                <button
+                  type="button"
+                  onClick={() => setShowNewAgendamentoModal(false)}
+                  className="px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold uppercase rounded text-xs cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-purple-700 hover:bg-purple-800 text-white font-black uppercase rounded text-xs cursor-pointer shadow-xs"
+                >
+                  Gravar Agendamento
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL HISTÓRICO COMPLETO DO CLIENTE */}
+      {/* ========================================================================= */}
+      {selectedCliente && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded max-w-lg w-full p-6 space-y-4 shadow-xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-zinc-100 pb-3">
+              <div>
+                <h3 className="font-black text-[#003366] uppercase text-sm flex items-center gap-2">
+                  <Users size={16} className="text-[#003366]" /> Histórico de: {selectedCliente.nome}
+                </h3>
+                <p className="text-xs font-mono text-zinc-500">{selectedCliente.telefone}</p>
+              </div>
+              <button onClick={() => setSelectedCliente(null)} className="text-zinc-400 hover:text-zinc-600 cursor-pointer">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              {/* Pedidos do Cliente */}
+              <div>
+                <h4 className="font-bold text-zinc-800 uppercase text-[11px] mb-2 flex items-center gap-1.5">
+                  <ShoppingBag size={14} className="text-[#F27D26]" /> Pedidos Realizados ({selectedCliente.pedidos.length})
+                </h4>
+                <div className="divide-y divide-zinc-100 border border-zinc-200 rounded max-h-36 overflow-y-auto">
+                  {selectedCliente.pedidos.map((p: any) => (
+                    <div key={p.id} className="p-2 flex justify-between items-center text-xs">
+                      <div>
+                        <span className="font-mono font-bold text-zinc-900">{p.numero_pedido}</span>
+                        <span className="text-[10px] text-zinc-400 ml-2">{new Date(p.created_at).toLocaleDateString('pt-AO')}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-[#003366]">{Number(p.total).toLocaleString('pt-AO')} Kz</span>
+                        <span className="px-1.5 py-0.2 bg-zinc-100 rounded text-[9px] font-bold">{p.status}</span>
+                      </div>
+                    </div>
+                  ))}
+                  {selectedCliente.pedidos.length === 0 && (
+                    <p className="p-3 text-center text-zinc-400 italic text-[11px]">Nenhum pedido deste cliente.</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Solicitações do Cliente */}
+              <div>
+                <h4 className="font-bold text-zinc-800 uppercase text-[11px] mb-2 flex items-center gap-1.5">
+                  <MessageSquare size={14} className="text-emerald-600" /> Mensagens & Orçamentos ({selectedCliente.solicitacoes.length})
+                </h4>
+                <div className="divide-y divide-zinc-100 border border-zinc-200 rounded max-h-36 overflow-y-auto">
+                  {selectedCliente.solicitacoes.map((s: any) => (
+                    <div key={s.id} className="p-2 text-xs space-y-0.5">
+                      <div className="flex justify-between items-center">
+                        <span className="font-bold text-zinc-800">{s.assunto || s.tipo}</span>
+                        <span className="text-[10px] text-zinc-400">{new Date(s.created_at).toLocaleDateString('pt-AO')}</span>
+                      </div>
+                      <p className="text-[10px] text-zinc-500 line-clamp-1">{s.mensagem}</p>
+                    </div>
+                  ))}
+                  {selectedCliente.solicitacoes.length === 0 && (
+                    <p className="p-3 text-center text-zinc-400 italic text-[11px]">Nenhuma solicitação deste cliente.</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Agendamentos do Cliente */}
+              <div>
+                <h4 className="font-bold text-zinc-800 uppercase text-[11px] mb-2 flex items-center gap-1.5">
+                  <Calendar size={14} className="text-purple-600" /> Agendamentos ({selectedCliente.agendamentos.length})
+                </h4>
+                <div className="divide-y divide-zinc-100 border border-zinc-200 rounded max-h-36 overflow-y-auto">
+                  {selectedCliente.agendamentos.map((a: any) => (
+                    <div key={a.id} className="p-2 flex justify-between items-center text-xs">
+                      <div>
+                        <span className="font-bold text-zinc-800">{a.servico_nome}</span>
+                        <span className="text-[10px] text-zinc-400 ml-2">{a.data_agendamento} às {a.hora_agendamento}</span>
+                      </div>
+                      <span className="px-1.5 py-0.2 bg-zinc-100 rounded text-[9px] font-bold">{a.status}</span>
+                    </div>
+                  ))}
+                  {selectedCliente.agendamentos.length === 0 && (
+                    <p className="p-3 text-center text-zinc-400 italic text-[11px]">Nenhum agendamento deste cliente.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center pt-3 border-t border-zinc-100">
+              <button
+                onClick={() => openWhatsAppClient(selectedCliente.telefone, `Olá ${selectedCliente.nome}! Estamos a entrar em contacto referente ao seu histórico connosco no Mini Site Oficial.`)}
+                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold uppercase rounded text-xs flex items-center gap-1.5 cursor-pointer"
+              >
+                <MessageCircle size={13} /> Conversar no WhatsApp
+              </button>
+              <button
+                onClick={() => setSelectedCliente(null)}
+                className="px-4 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold uppercase rounded text-xs cursor-pointer"
               >
                 Fechar
               </button>

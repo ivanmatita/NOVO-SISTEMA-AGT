@@ -734,3 +734,419 @@ export interface PurchaseItem {
   referencia?: string;
   desconto_linha?: number;
 }
+
+// ==========================================
+// STAND AUTOMÓVEL INTERFACES
+// ==========================================
+
+export interface StandVeiculo {
+  id: string;
+  empresa_id: string;
+  marca: string;
+  modelo: string;
+  versao?: string;
+  ano?: number;
+  cor?: string;
+  tipo_combustivel?: string;
+  tipo_viatura?: string;
+  numero_chassis?: string;
+  numero_motor?: string;
+  capacidade_lugares?: number;
+  quilometragem: number;
+  estado_stand: string; // 'Em importação' | 'Na alfândega' | 'Em trânsito' | 'No stand' | 'Disponível' | 'Vendido' | 'Alugado' | 'Em manutenção' | 'Reservado' | 'Sucata'
+  tipo_uso: string; // 'Venda' | 'Renda' | 'Empresa' | 'Misto'
+  pais_origem?: string;
+  fornecedor_id?: string;
+  data_compra?: string;
+  processo_importacao_id?: string;
+  custo_compra: number;
+  custo_total_importacao: number;
+  preco_venda: number;
+  preco_renda_diaria: number;
+  preco_renda_semanal: number;
+  preco_renda_mensal: number;
+  margem_lucro?: number;
+  data_matricula?: string;
+  matricula?: string;
+  data_inspecao?: string;
+  data_seguro_validade?: string;
+  numero_apolice?: string;
+  seguradora?: string;
+  valor_seguro_anual?: number;
+  documento_venda_id?: string;
+  cliente_comprador_id?: string;
+  data_venda?: string;
+  localizacao?: string;
+  observacoes?: string;
+  imagens: string[];
+  documentos: Array<{ nome: string; url: string; tipo?: string }>;
+  frota_veiculo_id?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface StandProcessoImportacao {
+  id: string;
+  empresa_id: string;
+  referencia?: string;
+  fornecedor_id?: string;
+  pais_origem?: string;
+  status: string; // 'Em negociação' | 'Encomendado' | 'Pago ao fornecedor' | 'Em transporte' | 'Na alfândega' | 'Desalfandegado' | 'Entregue no stand' | 'Concluído'
+  data_encomenda?: string;
+  data_pagamento_fornecedor?: string;
+  data_embarque?: string;
+  data_chegada_porto?: string;
+  data_entrada_alfandega?: string;
+  data_saida_alfandega?: string;
+  data_chegada_stand?: string;
+  custo_compra: number;
+  custo_frete: number;
+  custo_seguro_transporte: number;
+  custo_alfandega: number;
+  custo_ivm: number;
+  custo_inspecao: number;
+  custo_matricula: number;
+  outros_custos: number;
+  custo_total: number;
+  numero_bill_lading?: string;
+  numero_declaracao_importacao?: string;
+  numero_dua?: string;
+  porto_entrada?: string;
+  agente_aduaneiro?: string;
+  observacoes?: string;
+  documentos: Array<{ nome: string; url: string }>;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface StandCustoVeiculo {
+  id: string;
+  empresa_id: string;
+  veiculo_id: string;
+  processo_id?: string;
+  tipo_custo: string;
+  descricao?: string;
+  valor: number;
+  data_custo: string;
+  fornecedor_id?: string;
+  caixa_id?: string;
+  documento_ref?: string;
+  observacoes?: string;
+  created_at?: string;
+}
+
+export interface StandOficinaOrdem {
+  id: string;
+  empresa_id: string;
+  numero_ordem?: string;
+  veiculo_stand_id?: string;
+  veiculo_cliente_marca?: string;
+  veiculo_cliente_modelo?: string;
+  veiculo_cliente_matricula?: string;
+  veiculo_cliente_chassis?: string;
+  veiculo_cliente_ano?: number;
+  cliente_id?: string;
+  solicitante?: string;
+  contacto_solicitante?: string;
+  tipo_servico?: string;
+  descricao_trabalho?: string;
+  diagnostico?: string;
+  tecnico_responsavel?: string;
+  data_entrada: string;
+  data_prevista_conclusao?: string;
+  data_conclusao?: string;
+  custo_pecas: number;
+  custo_mao_obra: number;
+  custo_total: number;
+  status: string; // 'Aberta' | 'Em diagnóstico' | 'Em execução' | 'Aguarda peças' | 'Concluída' | 'Entregue' | 'Cancelada'
+  faturado: boolean;
+  documento_fatura_id?: string;
+  observacoes?: string;
+  fotos: string[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface StandOficinaItem {
+  id: string;
+  empresa_id: string;
+  ordem_id: string;
+  tipo: 'Peça' | 'Serviço' | 'Mão de obra';
+  produto_id?: string;
+  descricao: string;
+  quantidade: number;
+  preco_unitario: number;
+  desconto: number;
+  subtotal: number;
+  created_at?: string;
+}
+
+export interface StandRentACarReserva {
+  id: string;
+  empresa_id: string;
+  numero_reserva?: string;
+  veiculo_id: string;
+  cliente_id?: string;
+  nome_condutor?: string;
+  nif_condutor?: string;
+  contacto_condutor?: string;
+  numero_carta_conducao?: string;
+  validade_carta_conducao?: string;
+  data_inicio: string;
+  hora_inicio?: string;
+  data_fim: string;
+  hora_fim?: string;
+  total_dias: number;
+  preco_diario: number;
+  desconto: number;
+  valor_caucao: number;
+  valor_total: number;
+  status: string; // 'Reservado' | 'Confirmado' | 'Em curso' | 'Concluído' | 'Cancelado'
+  km_entrega?: number;
+  km_devolucao?: number;
+  combustivel_entrega?: string;
+  combustivel_devolucao?: string;
+  observacoes_entrega?: string;
+  observacoes_devolucao?: string;
+  extras: any[];
+  danos_entrega: any[];
+  danos_devolucao: any[];
+  faturado: boolean;
+  documento_fatura_id?: string;
+  data_confirmacao?: string;
+  data_entrega_real?: string;
+  data_devolucao_real?: string;
+  observacoes?: string;
+  fotos_entrega: string[];
+  fotos_devolucao: string[];
+  created_at?: string;
+}
+
+export interface StandSeguro {
+  id: string;
+  empresa_id: string;
+  veiculo_id: string;
+  seguradora?: string;
+  numero_apolice?: string;
+  tipo_cobertura?: string;
+  data_inicio?: string;
+  data_fim?: string;
+  valor_premio?: number;
+  valor_franquia?: number;
+  status: string; // 'Ativo' | 'Expirado' | 'Cancelado' | 'Renovando'
+  renovacao_automatica: boolean;
+  documentos: Array<{ nome: string; url: string }>;
+  observacoes?: string;
+  created_at?: string;
+}
+
+export interface StandOcorrencia {
+  id: string;
+  empresa_id: string;
+  veiculo_id: string;
+  tipo: string; // 'Acidente' | 'Sinistro' | 'Infração' | 'Avaria' | 'Roubo' | 'Outro'
+  descricao?: string;
+  data_ocorrencia: string;
+  local_ocorrencia?: string;
+  valor_dano: number;
+  valor_reparacao: number;
+  valor_seguro_coberto: number;
+  culpa?: string;
+  nome_terceiro?: string;
+  contacto_terceiro?: string;
+  numero_participacao?: string;
+  entidade_participacao?: string;
+  status: string; // 'Registada' | 'Em análise' | 'Em resolução' | 'Resolvida' | 'Fechada'
+  observacoes?: string;
+  fotos: string[];
+  documentos: Array<{ nome: string; url: string }>;
+  created_at?: string;
+}
+
+export interface StandManutencao {
+  id: string;
+  empresa_id: string;
+  veiculo_id: string;
+  tipo?: string;
+  descricao?: string;
+  data_manutencao: string;
+  quilometragem_entrada?: number;
+  quilometragem_saida?: number;
+  proxima_manutencao_km?: number;
+  proxima_manutencao_data?: string;
+  custo_total: number;
+  custo_pecas: number;
+  custo_mao_obra: number;
+  ordem_id?: string;
+  status: string;
+  observacoes?: string;
+  created_at?: string;
+}
+
+// ==========================================
+// GESTÃO DE FARMÁCIA INTERFACES
+// ==========================================
+
+export interface FarmaciaMedicamento {
+  id: string;
+  empresa_id: string;
+  produto_id: string;
+  principio_ativo?: string;
+  nome_generico?: string;
+  dosagem?: string;
+  forma_farmaceutica?: string;
+  via_administracao?: string;
+  apresentacao?: string;
+  embalagem?: string;
+  laboratorio_fabricante?: string;
+  pais_origem?: string;
+  requer_receita: boolean;
+  medicamento_controlado: boolean;
+  tipo_receita?: string;
+  temperatura_conservacao?: string;
+  descricao_terapeutica?: string;
+  contraindicacoes?: string;
+  posologia_geral?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface FarmaciaLote {
+  id: string;
+  empresa_id: string;
+  produto_id: string;
+  numero_lote: string;
+  fabricante?: string;
+  fornecedor_id?: string;
+  data_fabricacao?: string;
+  data_validade: string;
+  quantidade_inicial: number;
+  quantidade_atual: number;
+  custo_unitario: number;
+  preco_venda: number;
+  localizacao_prateleira?: string;
+  estado: string; // 'Disponível' | 'Próximo da validade' | 'Expirado' | 'Bloqueado' | 'Devolvido' | 'Esgotado'
+  motivo_bloqueio?: string;
+  observacoes?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface FarmaciaReceita {
+  id: string;
+  empresa_id: string;
+  numero_receita: string;
+  data_emissao: string;
+  data_validade?: string;
+  cliente_id?: string;
+  paciente_nome: string;
+  paciente_identificacao?: string;
+  paciente_contacto?: string;
+  prescritor_nome?: string;
+  prescritor_ordem_medicos?: string;
+  prescritor_especialidade?: string;
+  instituicao_saude?: string;
+  estado: string; // 'Recebida' | 'Em análise' | 'Dispensada' | 'Parcialmente dispensada' | 'Cancelada' | 'Pendente'
+  documento_url?: string;
+  observacoes?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface FarmaciaDispensacao {
+  id: string;
+  empresa_id: string;
+  receita_id?: string;
+  cliente_id?: string;
+  produto_id: string;
+  lote_id?: string;
+  quantidade: number;
+  preco_unitario: number;
+  valor_total: number;
+  documento_venda_id?: string;
+  data_dispensa?: string;
+  dispensado_por?: string;
+  posologia_instrucoes?: string;
+  observacoes?: string;
+  created_at?: string;
+}
+
+export interface FarmaciaDevolucao {
+  id: string;
+  empresa_id: string;
+  tipo: string; // 'cliente' | 'fornecedor' | 'danificado' | 'expirado' | 'erro_dispensacao'
+  produto_id: string;
+  lote_id?: string;
+  quantidade: number;
+  motivo: string;
+  cliente_id?: string;
+  fornecedor_id?: string;
+  documento_ref?: string;
+  recolocar_stock: boolean;
+  estado: string;
+  data_devolucao: string;
+  responsavel?: string;
+  observacoes?: string;
+  created_at?: string;
+}
+
+export interface FarmaciaTransferencia {
+  id: string;
+  empresa_id: string;
+  produto_id: string;
+  lote_id?: string;
+  quantidade: number;
+  armazem_origem_id?: string;
+  armazem_destino_id?: string;
+  estado: string; // 'Solicitada' | 'Aprovada' | 'Enviada' | 'Recebida' | 'Cancelada'
+  motivo?: string;
+  solicitante?: string;
+  aprovador?: string;
+  data_solicitacao?: string;
+  data_conclusao?: string;
+  created_at?: string;
+}
+
+export interface FarmaciaInventario {
+  id: string;
+  empresa_id: string;
+  numero_inventario: string;
+  tipo: string; // 'Geral' | 'Armazém' | 'Categoria' | 'Lote'
+  armazem_id?: string;
+  data_inventario: string;
+  estado: string; // 'Em Aberto' | 'Concluído' | 'Cancelado'
+  responsavel?: string;
+  observacoes?: string;
+  created_at?: string;
+}
+
+export interface FarmaciaInventarioItem {
+  id: string;
+  empresa_id: string;
+  inventario_id: string;
+  produto_id: string;
+  lote_id?: string;
+  stock_sistema: number;
+  stock_contado: number;
+  diferenca: number;
+  motivo_diferenca?: string;
+  custo_unitario: number;
+  ajustado: boolean;
+  created_at?: string;
+}
+
+export interface FarmaciaConfiguracao {
+  id?: string;
+  empresa_id: string;
+  fefo_ativo: boolean;
+  bloquear_expirados: boolean;
+  dias_alerta_validade: number;
+  stock_minimo_padrao: number;
+  exigir_receita_controlados: boolean;
+  permitir_dispensa_parcial: boolean;
+  responsavel_tecnico?: string;
+  numero_carteira_farmaceutico?: string;
+  updated_at?: string;
+}
+
+

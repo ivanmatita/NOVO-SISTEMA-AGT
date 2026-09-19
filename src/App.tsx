@@ -11,6 +11,8 @@ import { exportToPDF, exportToExcel, handlePrint } from './lib/exportUtils';
 import SecurityModule from './components/SecurityModule';
 import BusinessOverview from './components/BusinessOverview';
 import FleetManagementModule from './components/FleetManagementModule';
+import StandAutomovelModule from './components/StandAutomovelModule';
+import FarmaciaModule from './components/FarmaciaModule';
 import ProjectManagementModule from './components/ProjectManagementModule';
 import LiteracyModule from './components/LiteracyModule';
 import ArchiveModule from './components/ArchiveModule';
@@ -160,6 +162,8 @@ import {
   FolderOpen,
   Bell,
   HelpCircle,
+  Car,
+  Pill,
   Globe
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -2822,6 +2826,8 @@ const PERMISSION_EQUIVALENTS: Record<string, string[]> = {
   empresa: ['empresa', 'documento_da_empresa', 'documento da empresa', 'dados_empresa', 'dados da empresa'],
   agrobusiness: ['agrobusiness', 'agronegocio', 'agronegócio'],
   church: ['church', 'igreja', 'gestao_de_igreja', 'gestão de igreja'],
+  stand_automovel: ['stand_automovel', 'stand', 'stand automóvel', 'stand automovel', 'veiculos'],
+  farmacia: ['farmacia', 'farmácia', 'gestao_farmacia', 'gestão de farmácia', 'medicamentos'],
   settings: ['settings', 'definicoes', 'definições']
 };
 
@@ -2892,7 +2898,7 @@ const isPublicMiniSite = (): boolean => {
 
 const hasModulePermission = (user: any, moduleId: string): boolean => {
   // Mini Site público e Dashboard sempre acessíveis
-  if (moduleId === 'dashboard' || moduleId === 'mini_site') return true;
+  if (moduleId === 'dashboard' || moduleId === 'mini_site' || moduleId === 'stand_automovel' || moduleId === 'farmacia') return true;
 
   // Super Administrador do Sistema (Master Global)
   const isSuperAdminGlobal = 
@@ -2991,6 +2997,8 @@ const SIDEBAR_MENU_ITEMS = [
   { id: 'empresa', label: 'Documento da Empresa', icon: Building2 },
   { id: 'agrobusiness', label: 'Agronegócio', icon: TrendingUp },
   { id: 'church', label: 'Gestão de Igreja', icon: Building2 }, 
+  { id: 'stand_automovel', label: 'Stand Automóvel', icon: Car, badge: '🚗 NOVO' },
+  { id: 'farmacia', label: 'Farmácia', icon: Pill, badge: '💊 NOVO' },
   { id: 'mini_site', label: 'Mini Site Oficial', icon: Globe, badge: '🟧 NOVO' },
   { id: 'settings', label: 'Definições', icon: Settings },
 ];
@@ -32928,7 +32936,7 @@ export default function App() {
       'drafts','suppliers','products','financial','accounting','hr','reports',
       'licencas','empresa','taxes','metrics','media','warehouse','caixa','alertas',
       'users','agrobusiness','church','school','restaurant','hotel','fleet','projects',
-      'mini_site'
+      'mini_site','stand_automovel','farmacia'
     ];
     const hash = window.location.hash.replace('#', '').trim().toLowerCase();
     return VALID_TABS.includes(hash) ? hash : 'dashboard';
@@ -33019,7 +33027,7 @@ export default function App() {
       'drafts','suppliers','products','financial','accounting','hr','reports',
       'licencas','empresa','taxes','metrics','media','warehouse','caixa','alertas',
       'users','agrobusiness','church','school','restaurant','hotel','fleet','projects',
-      'mini_site'
+      'mini_site','stand_automovel','farmacia'
     ];
     const onHashChange = () => {
       const hash = window.location.hash.replace('#', '').trim().toLowerCase();
@@ -35241,6 +35249,36 @@ export default function App() {
                           }
 
                           switch (activeTab) {
+                            case 'stand_automovel':
+                              return (
+                                <StandAutomovelModule
+                                  user={user}
+                                  companyData={companyData}
+                                  clients={clients}
+                                  suppliers={suppliers}
+                                  products={products}
+                                  onNavigateToSales={() => { setActiveTab('electronic_invoices'); setIsCreatingInvoice(true); setSelectedDocument(null); setFixedDocumentType(undefined); }}
+                                  onNavigateToStock={() => setActiveTab('products')}
+                                  onNavigateToCaixa={() => setActiveTab('financial')}
+                                  onEmitirFatura={handleEmitirFaturaFromPedido}
+                                  fiscalYear={fiscalYear}
+                                />
+                              );
+                            case 'farmacia':
+                              return (
+                                <FarmaciaModule
+                                  user={user}
+                                  companyData={companyData}
+                                  clients={clients}
+                                  suppliers={suppliers}
+                                  products={products}
+                                  onNavigateToSales={() => { setActiveTab('electronic_invoices'); setIsCreatingInvoice(true); setSelectedDocument(null); setFixedDocumentType(undefined); }}
+                                  onNavigateToStock={() => setActiveTab('products')}
+                                  onNavigateToCaixa={() => setActiveTab('financial')}
+                                  onEmitirFatura={handleEmitirFaturaFromPedido}
+                                  fiscalYear={fiscalYear}
+                                />
+                              );
                             case 'mini_site':
                               return <MiniSiteAdmin company={companyData} user={user} onBack={() => setActiveTab('dashboard')} onEmitirFatura={handleEmitirFaturaFromPedido} />;
                             case 'empresa':

@@ -159,7 +159,8 @@ import {
   KeyRound,
   FolderOpen,
   Bell,
-  HelpCircle
+  HelpCircle,
+  Globe
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';

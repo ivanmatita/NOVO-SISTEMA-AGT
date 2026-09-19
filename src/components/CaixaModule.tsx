@@ -405,37 +405,54 @@ export const CaixaModule = () => {
                 <tbody className="divide-y divide-zinc-100">
                   {(movements || [])
                     .filter(m => {
-                      const matchesCaixa = !selectedCaixaId || m.caixaId === selectedCaixaId || m.targetCaixaId === selectedCaixaId;
-                      // Handle "Kwanza" vs "AOA" normalization
-                      const movementCurrency = m.moeda === 'Kwanza' ? 'AOA' : m.moeda;
-                      const matchesCurrency = !activeCurrency || movementCurrency === activeCurrency;
+                      const mCaixaId = String(m.caixaId || (m as any).caixa_id || '').toLowerCase();
+                      const mTargetCaixaId = String(m.targetCaixaId || (m as any).target_caixa_id || '').toLowerCase();
+                      const selCaixaId = selectedCaixaId ? String(selectedCaixaId).toLowerCase() : null;
+
+                      const matchesCaixa = !selCaixaId || mCaixaId === selCaixaId || mTargetCaixaId === selCaixaId;
+                      
+                      // When a specific caixa is selected, ALWAYS display all its real movements
+                      if (selCaixaId) return matchesCaixa;
+
+                      // Otherwise, normalize and match currency if filtered
+                      const movementCurrency = (m.moeda === 'Kwanza' || !m.moeda) ? 'AOA' : m.moeda;
+                      const matchesCurrency = !activeCurrency || activeCurrency === 'ALL' || movementCurrency === activeCurrency;
                       return matchesCaixa && matchesCurrency;
                     })
                     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                    .map(m => (
-                      <tr key={m.id} className="hover:bg-zinc-50 transition-colors">
-                        <td className="px-6 py-4 text-[10px] font-bold text-zinc-500">{new Date(m.date).toLocaleString()}</td>
-                        <td className="px-6 py-4 text-[10px] font-black text-[#003366] uppercase">
-                          {(caixas || []).find(c => c.id === m.caixaId)?.name}
-                          {m.targetCaixaId && ` → ${(caixas || []).find(c => c.id === m.targetCaixaId)?.name}`}
-                        </td>
-                        <td className="px-6 py-4 text-[10px] text-zinc-600 italic">{m.description}</td>
-                        <td className="px-6 py-4">
-                          <span className={`px-2 py-1 text-[8px] font-black uppercase tracking-tighter ${
-                            m.type === 'entrada' ? 'bg-emerald-100 text-emerald-700' : 
-                            m.type === 'saida' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                    .map(m => {
+                      const mCaixaId = String(m.caixaId || (m as any).caixa_id || '').toLowerCase();
+                      const mTargetCaixaId = String(m.targetCaixaId || (m as any).target_caixa_id || '').toLowerCase();
+                      const caixaObj = (caixas || []).find(c => String(c.id).toLowerCase() === mCaixaId);
+                      const targetCaixaObj = mTargetCaixaId ? (caixas || []).find(c => String(c.id).toLowerCase() === mTargetCaixaId) : null;
+                      const displayCurrency = (m.moeda === 'Kwanza' || !m.moeda) ? 'AOA' : m.moeda;
+                      const mAmount = Number(m.amount ?? (m as any).valor ?? 0);
+
+                      return (
+                        <tr key={m.id} className="hover:bg-zinc-50 transition-colors">
+                          <td className="px-6 py-4 text-[10px] font-bold text-zinc-500">{new Date(m.date).toLocaleString()}</td>
+                          <td className="px-6 py-4 text-[10px] font-black text-[#003366] uppercase">
+                            {caixaObj?.name || 'Caixa'}
+                            {targetCaixaObj && ` → ${targetCaixaObj.name}`}
+                          </td>
+                          <td className="px-6 py-4 text-[10px] text-zinc-600 italic">{m.description || (m as any).descricao || 'Movimento'}</td>
+                          <td className="px-6 py-4">
+                            <span className={`px-2 py-1 text-[8px] font-black uppercase tracking-tighter ${
+                              m.type === 'entrada' ? 'bg-emerald-100 text-emerald-700' : 
+                              m.type === 'saida' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                            }`}>
+                              {m.type}
+                            </span>
+                          </td>
+                          <td className={`px-6 py-4 text-[10px] font-black text-right ${
+                            m.type === 'entrada' ? 'text-emerald-600' : 
+                            m.type === 'saida' ? 'text-red-600' : 'text-blue-600'
                           }`}>
-                            {m.type}
-                          </span>
-                        </td>
-                        <td className={`px-6 py-4 text-[10px] font-black text-right ${
-                          m.type === 'entrada' ? 'text-emerald-600' : 
-                          m.type === 'saida' ? 'text-red-600' : 'text-blue-600'
-                        }`}>
-                          {m.type === 'saida' ? '-' : '+'}{m.amount.toLocaleString('pt-PT', { style: 'currency', currency: (m.moeda === 'Kwanza' || !m.moeda) ? 'AOA' : m.moeda })}
-                        </td>
-                      </tr>
-                    ))}
+                            {m.type === 'saida' ? '-' : '+'}{mAmount.toLocaleString('pt-PT', { style: 'currency', currency: displayCurrency })}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   {movements.length === 0 && (
                     <tr>
                       <td colSpan={5} className="px-6 py-10 text-center text-zinc-400 font-bold uppercase tracking-widest text-[10px]">Sem movimentos registados</td>

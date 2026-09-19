@@ -208,6 +208,8 @@ import LicencasModule from './components/LicencasModule';
 import { EmpresaModule } from './components/EmpresaModule';
 import { POSConfigModule } from './components/POSConfigModule';
 import { CRMModule } from './components/CRMModule';
+import { MiniSiteAdmin } from './components/MiniSiteAdmin';
+import { MiniSitePublic } from './components/MiniSitePublic';
 import { AgtValidationModal } from './components/AgtValidationModal';
 import { AgtElectronicInvoiceModal } from './components/AgtElectronicInvoiceModal';
 import { AgtElectronicInvoicesListModal } from './components/AgtElectronicInvoicesListModal';
@@ -2879,7 +2881,18 @@ const mapPermissionAreasForDB = (selectedIds: string[]): string[] => {
   return Array.from(result);
 };
 
+const isPublicMiniSite = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  const search = window.location.search || '';
+  const hash = window.location.hash || '';
+  const path = window.location.pathname || '';
+  return search.includes('site=') || hash.startsWith('#/site/') || hash.startsWith('#site/') || path.startsWith('/site/');
+};
+
 const hasModulePermission = (user: any, moduleId: string): boolean => {
+  // Mini Site público e Dashboard sempre acessíveis
+  if (moduleId === 'dashboard' || moduleId === 'mini_site') return true;
+
   // Super Administrador do Sistema (Master Global)
   const isSuperAdminGlobal = 
     user?.email?.toLowerCase() === 'fffm333atitaifvan7@gmail.com' ||
@@ -2887,9 +2900,6 @@ const hasModulePermission = (user: any, moduleId: string): boolean => {
     user?.role === 'super_admin' ||
     user?.is_super_admin === true;
   if (isSuperAdminGlobal) return true;
-
-  // Dashboard sempre acessível
-  if (moduleId === 'dashboard') return true;
 
   // crm_empresas: em staging, qualquer admin pode aceder; em produção, apenas super-admin (tratado na sidebar)
   if (moduleId === 'crm_empresas') {
@@ -2980,6 +2990,7 @@ const SIDEBAR_MENU_ITEMS = [
   { id: 'empresa', label: 'Documento da Empresa', icon: Building2 },
   { id: 'agrobusiness', label: 'Agronegócio', icon: TrendingUp },
   { id: 'church', label: 'Gestão de Igreja', icon: Building2 }, 
+  { id: 'mini_site', label: 'Mini Site Oficial', icon: Globe, badge: '🟧 NOVO' },
   { id: 'settings', label: 'Definições', icon: Settings },
 ];
 
@@ -26653,30 +26664,25 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
 
       if (savedDoc && isFRorRC && cashBox && addMovement) {
         try {
-          const selectedCaixa = caixas.find(c => String(c.id) === String(cashBox) || c.name === cashBox);
-          if (selectedCaixa) {
-            const docRefNum = savedDoc.numero_documento || savedDoc.invoice_number || `DOC-${savedDoc.id}`;
-            const movementDesc = `${documentType} nº ${docRefNum}`;
-            
-            // Verificação anti-duplicação / idempotência
-            const { data: existingMov } = await supabase
-              .from('caixa_movimentacoes')
-              .select('id')
-              .eq('empresa_id', currentEmpresaId)
-              .eq('caixa_id', selectedCaixa.id)
-              .ilike('descricao', `%${docRefNum}%`)
-              .limit(1);
+          const selectedCaixa = (caixas || []).find(c => String(c.id) === String(cashBox) || c.name === cashBox);
+          const targetCaixaId = selectedCaixa ? selectedCaixa.id : cashBox;
+          const docRefNum = savedDoc.numero_documento || savedDoc.invoice_number || `DOC-${savedDoc.id}`;
+          const movementDesc = `${documentType} nº ${docRefNum}`;
 
-            if (!existingMov || existingMov.length === 0) {
-              await addMovement({
-                caixaId: selectedCaixa.id,
-                type: 'entrada',
-                amount: finalTotal,
-                description: movementDesc,
-                date: new Date().toISOString()
-              });
-            }
-          }
+          await addMovement({
+            caixa_id: targetCaixaId,
+            caixaId: targetCaixaId,
+            tipo: 'entrada',
+            type: 'entrada',
+            valor: finalTotal,
+            amount: finalTotal,
+            descricao: movementDesc,
+            description: movementDesc,
+            referencia: docRefNum,
+            documento_id: savedDoc.id,
+            moeda: currency || 'AOA',
+            date: new Date().toISOString()
+          });
         } catch (movErr) {
           console.error("Erro ao registrar no caixa:", movErr);
         }
@@ -27501,8 +27507,29 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
       };
       const { data, error } = await supabase.from('compras').insert([purchaseData]).select().single();
       if (error) throw error;
-      if (addMovement && (documentType === 'Fatura Recibo de Compra' || documentType === 'Pagamento') && cashBox) {
-        await addMovement({ tipo: 'saida', valor: finalTotal, descricao: `${documentType} - ${supplierName}`, caixa_id: cashBox, referencia: invoiceNumber });
+      const isCashPurchase = ['Fatura Recibo de Compra', 'Pagamento', 'Recibo', 'Fatura Recibo'].some(
+        t => t.toLowerCase() === (documentType || '').trim().toLowerCase()
+      );
+
+      if (addMovement && isCashPurchase && cashBox) {
+        try {
+          await addMovement({
+            caixa_id: cashBox,
+            caixaId: cashBox,
+            tipo: 'saida',
+            type: 'saida',
+            valor: finalTotal,
+            amount: finalTotal,
+            descricao: `${documentType} - ${supplierName || 'Fornecedor'}`,
+            description: `${documentType} - ${supplierName || 'Fornecedor'}`,
+            referencia: invoiceNumber || null,
+            documento_id: data?.id || null,
+            moeda: 'AOA',
+            date: new Date().toISOString()
+          });
+        } catch (movErr) {
+          console.error('[CreatePurchase] Erro ao registrar saída no caixa:', movErr);
+        }
       }
       onSuccess(data);
     } catch (err: any) { alert('Erro ao registar compra: ' + (err.message || err)); }
@@ -30498,12 +30525,19 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
                 console.log('[INSERT compras recibo SUCCESS] Registered new Recibo:', receiptNum);
 
                 // Registrar o movimento de Caixa automática (saída)
-                if (addMovement) {
+                if (addMovement && finalCaixaId) {
                   await addMovement({
+                    caixa_id: finalCaixaId,
                     caixaId: finalCaixaId,
+                    tipo: 'saida',
                     type: 'saida',
+                    valor: rAmount,
                     amount: rAmount,
-                    description: `Pagamento de Fatura Compra ${showReceiptModal.purchase_number} - Recibo ${receiptNum}`,
+                    descricao: `Pagamento de Fatura Compra ${showReceiptModal.purchase_number || ''} - Recibo ${receiptNum}`,
+                    description: `Pagamento de Fatura Compra ${showReceiptModal.purchase_number || ''} - Recibo ${receiptNum}`,
+                    referencia: receiptNum,
+                    documento_id: insertedRecibo?.id || null,
+                    moeda: showReceiptModal.moeda || 'AOA',
                     date: new Date(rDate).toISOString()
                   });
                 }
@@ -32892,7 +32926,8 @@ export default function App() {
       'electronic_invoices','security','specialized','archive','cartas','invoices',
       'drafts','suppliers','products','financial','accounting','hr','reports',
       'licencas','empresa','taxes','metrics','media','warehouse','caixa','alertas',
-      'users','agrobusiness','church','school','restaurant','hotel','fleet','projects'
+      'users','agrobusiness','church','school','restaurant','hotel','fleet','projects',
+      'mini_site'
     ];
     const hash = window.location.hash.replace('#', '').trim().toLowerCase();
     return VALID_TABS.includes(hash) ? hash : 'dashboard';
@@ -32982,7 +33017,8 @@ export default function App() {
       'electronic_invoices','security','specialized','archive','cartas','invoices',
       'drafts','suppliers','products','financial','accounting','hr','reports',
       'licencas','empresa','taxes','metrics','media','warehouse','caixa','alertas',
-      'users','agrobusiness','church','school','restaurant','hotel','fleet','projects'
+      'users','agrobusiness','church','school','restaurant','hotel','fleet','projects',
+      'mini_site'
     ];
     const onHashChange = () => {
       const hash = window.location.hash.replace('#', '').trim().toLowerCase();
@@ -33769,7 +33805,7 @@ export default function App() {
 
   const doAddCaixaMovement = async (movement: Partial<CaixaMovement>) => {
     try {
-      if (!user?.empresa_id) throw new Error('Não autenticado');
+      const companyIdVal = user?.empresa_id || user?.company_id || (user?.company as any)?.id;
 
       // Normalize: accept both PT (caixa_id/tipo/valor/descricao) and EN (caixaId/type/amount/description)
       const cId: string = (movement as any).caixa_id || movement.caixaId || '';
@@ -33785,13 +33821,33 @@ export default function App() {
         return;
       }
 
+      // Resolve companyId from caixa if missing in user object
+      let finalEmpresaId = companyIdVal;
+      const { data: caixaRow } = await supabase
+        .from('caixas')
+        .select('id, empresa_id, current_balance, saldo_actual')
+        .eq('id', cId)
+        .maybeSingle();
+
+      if (caixaRow && caixaRow.empresa_id) {
+        finalEmpresaId = caixaRow.empresa_id;
+      }
+
+      if (!finalEmpresaId) {
+        throw new Error('Empresa não identificada para o movimento de caixa');
+      }
+
       // Idempotência: verificar se já existe movimento com mesmo documento_id OU (caixa+referencia+tipo)
       if (docId || refMov) {
         let idempQ = supabase
           .from('caixa_movimentacoes')
           .select('id')
-          .eq('empresa_id', user.empresa_id)
           .eq('caixa_id', cId);
+
+        if (finalEmpresaId) {
+          idempQ = idempQ.eq('empresa_id', finalEmpresaId);
+        }
+
         if (docId) {
           idempQ = idempQ.eq('documento_id', docId);
         } else {
@@ -33802,6 +33858,7 @@ export default function App() {
           console.log('[doAddCaixaMovement] Movimento já existe (idempotência) — ignorado', existing[0].id);
           await doLoadCaixas();
           await doLoadCaixaMovements();
+          window.dispatchEvent(new CustomEvent('refresh_caixas'));
           return;
         }
       }
@@ -33809,7 +33866,7 @@ export default function App() {
       const { error: movError } = await supabase
         .from('caixa_movimentacoes')
         .insert({
-          empresa_id: user.empresa_id,
+          empresa_id: finalEmpresaId,
           caixa_id: cId,
           target_caixa_id: movement.targetCaixaId || null,
           tipo: tipoMov,
@@ -33824,8 +33881,8 @@ export default function App() {
           date: movement.date || now.toISOString(),
           data: movement.date ? new Date(movement.date).toISOString().split('T')[0] : now.toISOString().split('T')[0],
           ano: new Date(movement.date || now).getFullYear(),
-          utilizador_id: user.id || null,
-          created_by: user.id || null
+          utilizador_id: user?.id || null,
+          created_by: user?.id || null
         });
 
       if (movError) {
@@ -33834,14 +33891,8 @@ export default function App() {
       }
 
       // Update primary caixa balance — both current_balance and saldo_actual
-      const { data: caixa } = await supabase
-        .from('caixas')
-        .select('current_balance, saldo_actual')
-        .eq('id', cId)
-        .single();
-
-      if (caixa) {
-        const base = Number(caixa.current_balance ?? caixa.saldo_actual ?? 0);
+      if (caixaRow) {
+        const base = Number(caixaRow.current_balance ?? caixaRow.saldo_actual ?? 0);
         let newBalance = base;
         if (tipoMov === 'entrada') newBalance += valorMov;
         if (tipoMov === 'saida' || tipoMov === 'transferencia') newBalance -= valorMov;
@@ -33849,12 +33900,13 @@ export default function App() {
         await supabase
           .from('caixas')
           .update({ current_balance: newBalance, saldo_actual: newBalance })
-          .eq('id', cId)
-          .eq('empresa_id', user.empresa_id);
+          .eq('id', cId);
       }
 
       await doLoadCaixas();
       await doLoadCaixaMovements();
+      window.dispatchEvent(new CustomEvent('refresh_caixas'));
+      window.dispatchEvent(new CustomEvent('caixa_movement_added'));
     } catch (e) {
       console.error('Error adding movement:', e);
       throw e;
@@ -34709,6 +34761,11 @@ export default function App() {
     }
   }, [authReady, fiscalYear]);
 
+  // Se a rota for um Mini Site público (?site=slug ou #/site/slug), renderiza sem exigir login administrativo
+  if (isPublicMiniSite()) {
+    return <MiniSitePublic />;
+  }
+
   return (
     <ProtectedRoute>
       <div className="min-h-screen bg-[#f4f7f9] text-zinc-800 font-sans selection:bg-[#003366]/10 flex" style={{ overflowX: 'clip' }}>
@@ -35078,6 +35135,8 @@ export default function App() {
                           }
 
                           switch (activeTab) {
+                            case 'mini_site':
+                              return <MiniSiteAdmin company={companyData} user={user} onBack={() => setActiveTab('dashboard')} />;
                             case 'empresa':
                               return <EmpresaModule onUpdate={fetchData} />;
                             case 'pos':

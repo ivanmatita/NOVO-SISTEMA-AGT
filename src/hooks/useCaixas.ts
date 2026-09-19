@@ -39,7 +39,7 @@ export const useCaixas = () => {
         id: item.id,
         name: item.nome_caixa,
         initialBalance: Number(item.saldo_inicial !== undefined && item.saldo_inicial !== null ? item.saldo_inicial : item.valor_inicial) || 0,
-        currentBalance: Number(item.saldo_actual !== undefined && item.saldo_actual !== null ? item.saldo_actual : item.current_balance) || 0,
+        currentBalance: Number(item.current_balance !== undefined && item.current_balance !== null ? item.current_balance : (item.saldo_actual ?? 0)) || 0,
         responsible: item.responsavel_caixa || item.responsavel || '',
         user: item.utilizador_id || '',
         obs: item.observacao || '',
@@ -171,16 +171,25 @@ export const useCaixas = () => {
   }, [fetchCaixas]);
 
   useEffect(() => {
-    if (!empresaId) return;
+    const handleGlobalRefresh = () => {
+      fetchCaixas();
+    };
 
-    const onUpdate = () => fetchCaixas();
+    window.addEventListener('refresh_caixas', handleGlobalRefresh);
+    window.addEventListener('caixa_movement_added', handleGlobalRefresh);
 
-    realtimeManager.subscribe('caixas', empresaId, onUpdate);
-    realtimeManager.subscribe('caixa_movimentacoes', empresaId, onUpdate);
+    if (empresaId) {
+      realtimeManager.subscribe('caixas', empresaId, handleGlobalRefresh);
+      realtimeManager.subscribe('caixa_movimentacoes', empresaId, handleGlobalRefresh);
+    }
 
     return () => {
-      realtimeManager.unsubscribe('caixas', empresaId, onUpdate);
-      realtimeManager.unsubscribe('caixa_movimentacoes', empresaId, onUpdate);
+      window.removeEventListener('refresh_caixas', handleGlobalRefresh);
+      window.removeEventListener('caixa_movement_added', handleGlobalRefresh);
+      if (empresaId) {
+        realtimeManager.unsubscribe('caixas', empresaId, handleGlobalRefresh);
+        realtimeManager.unsubscribe('caixa_movimentacoes', empresaId, handleGlobalRefresh);
+      }
     };
   }, [empresaId, fetchCaixas]);
 

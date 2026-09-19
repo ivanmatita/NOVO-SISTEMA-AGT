@@ -5113,6 +5113,113 @@ app.use((req, res, next) => {
           }
         }
 
+        // Automatic Cash Movement strictly for Fatura Recibo (FR), Recibo (RC), and immediate payment documents
+        const isImmediatePayment = ['FR', 'RC', 'FS'].includes(docTypeAbbr) || 
+          ['fatura recibo', 'recibo', 'fr', 'rc'].includes((docType || '').trim().toLowerCase()) ||
+          req.body.payment_condition === 'Pronto Pagamento';
+
+        const rawCashBox = req.body.cash_box || req.body.caixa || req.body.caixa_id;
+
+        if (isImmediatePayment && rawCashBox && totalValue > 0) {
+          try {
+            let targetCaixaId: string | null = null;
+            const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(rawCashBox));
+
+            if (isUUID) {
+              // Check if it's a direct caixa ID
+              const { data: directCaixa } = await supabaseAdmin
+                .from('caixas')
+                .select('id')
+                .eq('id', rawCashBox)
+                .maybeSingle();
+
+              if (directCaixa) {
+                targetCaixaId = directCaixa.id;
+              } else {
+                // Check if it's a pos_user_configs ID
+                const { data: posConf } = await supabaseAdmin
+                  .from('pos_user_configs')
+                  .select('caixa_id')
+                  .eq('id', rawCashBox)
+                  .maybeSingle();
+                if (posConf && posConf.caixa_id) {
+                  targetCaixaId = posConf.caixa_id;
+                }
+              }
+            }
+
+            // Fallback: search by name or first available caixa for this company
+            if (!targetCaixaId) {
+              const { data: dbCaixas } = await supabaseAdmin
+                .from('caixas')
+                .select('id, nome_caixa')
+                .eq('empresa_id', companyId)
+                .eq('is_deleted', false);
+              
+              const matched = dbCaixas?.find(c => String(c.id) === String(rawCashBox) || c.nome_caixa === rawCashBox);
+              if (matched) {
+                targetCaixaId = matched.id;
+              } else if (dbCaixas && dbCaixas.length > 0) {
+                targetCaixaId = dbCaixas[0].id;
+              }
+            }
+
+            if (targetCaixaId) {
+              const docRef = newDoc.numero_documento || newDoc.invoice_number || `DOC-${newDoc.id}`;
+              const descMov = `${docTypeAbbr} nº ${docRef}`;
+
+              // Check idempotency
+              const { data: existingMov } = await supabaseAdmin
+                .from('caixa_movimentacoes')
+                .select('id')
+                .eq('empresa_id', companyId)
+                .eq('caixa_id', targetCaixaId)
+                .eq('tipo', 'entrada')
+                .ilike('descricao', `%${docRef}%`)
+                .limit(1);
+
+              if (!existingMov || existingMov.length === 0) {
+                const { data: caixaRow } = await supabaseAdmin
+                  .from('caixas')
+                  .select('current_balance, saldo_actual')
+                  .eq('id', targetCaixaId)
+                  .single();
+
+                const currentBase = Number(caixaRow?.current_balance ?? caixaRow?.saldo_actual ?? 0);
+                const updatedBalance = currentBase + totalValue;
+
+                await supabaseAdmin
+                  .from('caixas')
+                  .update({ current_balance: updatedBalance, saldo_actual: updatedBalance })
+                  .eq('id', targetCaixaId);
+
+                await supabaseAdmin
+                  .from('caixa_movimentacoes')
+                  .insert([{
+                    empresa_id: companyId,
+                    caixa_id: targetCaixaId,
+                    tipo: 'entrada',
+                    type: 'entrada',
+                    valor: totalValue,
+                    amount: totalValue,
+                    moeda: req.body.currency || newDoc.moeda || 'AOA',
+                    descricao: descMov,
+                    description: descMov,
+                    referencia: docRef,
+                    documento_id: newDoc.id,
+                    date: newDoc.data_emissao || new Date().toISOString(),
+                    data: (newDoc.data_emissao ? new Date(newDoc.data_emissao) : new Date()).toISOString().split('T')[0],
+                    ano: Number(year),
+                    created_by: authUser?.userId || null,
+                    utilizador_id: authUser?.userId || null
+                  }]);
+              }
+            }
+          } catch (cErr) {
+            console.error('[SERVER /api/invoices] Erro ao registrar entrada no caixa:', cErr);
+          }
+        }
+
         saveData(); // Save in-memory counters to disk if needed
         await generateDocumentAccountingEntries(newDoc, companyId).catch(e => console.error('Erro ao gerar lançamentos de documento:', e));
         return res.status(201).json(newDoc);
@@ -7159,24 +7266,75 @@ app.use((req, res, next) => {
       company_id: newPurchase.company_id || '1'
     });
 
-    // If it's a cash transaction, record in Caixa
-    if (isPayment && newPurchase.cash_box) {
-      const caixaId = Number(newPurchase.cash_box);
-      const caixa = caixas.find(c => c.id === caixaId);
-      if (caixa) {
-        const movement = {
-          id: generateId(),
-          caixa_id: caixaId,
-          type: 'saida',
-          amount: amount,
-          description: `Pagamento Compra: ${newPurchase.purchase_number} (${newPurchase.supplier_name})`,
-          date: new Date().toISOString(),
-          user_id: '1',
-          company_id: newPurchase.company_id || '1'
-        };
-        caixaMovements.push(movement);
-        caixa.balance = (caixa.balance || 0) - amount;
-      }
+    // If it's a cash transaction, record in Caixa (both memory and Supabase)
+    if (isPayment && (newPurchase.cash_box || newPurchase.caixa || newPurchase.caixa_id)) {
+      const rawCaixa = String(newPurchase.cash_box || newPurchase.caixa || newPurchase.caixa_id);
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawCaixa);
+      const companyIdVal = newPurchase.company_id || newPurchase.empresa_id || '1';
+
+      (async () => {
+        try {
+          let targetCaixaId: string | null = null;
+          if (isUUID) {
+            targetCaixaId = rawCaixa;
+          } else if (supabaseAdmin) {
+            const { data: dbCaixas } = await supabaseAdmin.from('caixas').select('id, nome_caixa').eq('empresa_id', companyIdVal);
+            const found = dbCaixas?.find(c => String(c.id) === rawCaixa || c.nome_caixa === rawCaixa);
+            if (found) targetCaixaId = found.id;
+          }
+
+          if (targetCaixaId && supabaseAdmin) {
+            // Check idempotency
+            const { data: existingMov } = await supabaseAdmin
+              .from('caixa_movimentacoes')
+              .select('id')
+              .eq('empresa_id', companyIdVal)
+              .eq('caixa_id', targetCaixaId)
+              .eq('tipo', 'saida')
+              .ilike('descricao', `%${newPurchase.purchase_number}%`)
+              .limit(1);
+
+            if (!existingMov || existingMov.length === 0) {
+              const { data: caixaRow } = await supabaseAdmin
+                .from('caixas')
+                .select('current_balance, saldo_actual')
+                .eq('id', targetCaixaId)
+                .single();
+
+              const currentBase = Number(caixaRow?.current_balance ?? caixaRow?.saldo_actual ?? 0);
+              const updatedBalance = currentBase - amount;
+
+              await supabaseAdmin
+                .from('caixas')
+                .update({ current_balance: updatedBalance, saldo_actual: updatedBalance })
+                .eq('id', targetCaixaId);
+
+              await supabaseAdmin
+                .from('caixa_movimentacoes')
+                .insert([{
+                  empresa_id: companyIdVal,
+                  caixa_id: targetCaixaId,
+                  tipo: 'saida',
+                  type: 'saida',
+                  valor: amount,
+                  amount: amount,
+                  moeda: newPurchase.moeda || newPurchase.currency || 'AOA',
+                  descricao: `Compra: ${newPurchase.purchase_number} - ${newPurchase.supplier_name || 'Fornecedor'}`,
+                  description: `Compra: ${newPurchase.purchase_number} - ${newPurchase.supplier_name || 'Fornecedor'}`,
+                  referencia: newPurchase.purchase_number,
+                  documento_id: null,
+                  date: newPurchase.date || new Date().toISOString(),
+                  data: (newPurchase.date ? new Date(newPurchase.date) : new Date()).toISOString().split('T')[0],
+                  ano: new Date(newPurchase.date || Date.now()).getFullYear(),
+                  created_by: authUser?.userId || null,
+                  utilizador_id: authUser?.userId || null
+                }]);
+            }
+          }
+        } catch (cErr) {
+          console.error('[SERVER /api/purchases] Erro ao registrar saída no caixa:', cErr);
+        }
+      })();
     }
     
     // Update Work Site Movements if applicable 

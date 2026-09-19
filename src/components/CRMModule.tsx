@@ -17,6 +17,7 @@ import {
 } from 'recharts';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
+import { MiniSiteAdmin } from './MiniSiteAdmin';
 
 interface Company {
   id: string;
@@ -825,6 +826,16 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                         <button 
                           onClick={() => {
                             setSelectedCompany(company);
+                            setCompanySubTab('minisite');
+                          }}
+                          className="px-3 py-1.5 bg-[#F27D26] hover:bg-[#D96B1F] text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-xs cursor-pointer rounded-xs"
+                          title="Gerir Mini Site Oficial da Empresa"
+                        >
+                          🟧 MINI SITE
+                        </button>
+                        <button 
+                          onClick={() => {
+                            setSelectedCompany(company);
                             setCompanySubTab('info');
                           }}
                           className="px-3 py-1.5 bg-[#003366] hover:bg-[#002244] text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-xs cursor-pointer"
@@ -1368,6 +1379,7 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
             { id: 'email', label: '7. Enviar Email', icon: Mail },
             { id: 'auditoria', label: '8. Auditoria da Empresa', icon: Activity },
             { id: 'solicitacoes', label: '9. Histórico Solicitações', icon: History },
+            { id: 'minisite', label: '10. 🟧 Mini Site Oficial', icon: Globe },
           ].map(sub => (
             <button
               key={sub.id}
@@ -2332,6 +2344,15 @@ export const CRMModule = ({ fetchJson, formatCurrency, formatDate, setActiveTab:
                 </tbody>
               </table>
             </div>
+          </div>
+        )}
+
+        {companySubTab === 'minisite' && (
+          <div className="animate-in fade-in duration-300">
+            <MiniSiteAdmin 
+              company={selectedCompany} 
+              onBack={() => setCompanySubTab('info')} 
+            />
           </div>
         )}
       </div>

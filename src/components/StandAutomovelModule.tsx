@@ -2490,7 +2490,7 @@ export const StandAutomovelModule: React.FC<StandModuleProps> = ({
         </div>
       )}
 
-      {targetEndRelatorios}
+      {/* ─── ABA 10: RELATÓRIOS & RENTABILIDADE ─────────────────────────────── */}
       {activeTab === 'relatorios' && (
         <div className="space-y-6">
           <div className="bg-white border border-zinc-200 p-6 shadow-sm">

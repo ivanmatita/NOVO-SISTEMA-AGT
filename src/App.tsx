@@ -31580,6 +31580,15 @@ const ProductList = ({
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [stockFilter, setStockFilter] = useState<'all' | 'positive' | 'negative' | 'low'>('all');
   const [warehouseFilter, setWarehouseFilter] = useState<string>('all');
+  const [tipoActividade, setTipoActividade] = useState<string>('');
+
+  useEffect(() => {
+    if (editingProduct) {
+      setTipoActividade((editingProduct as any).tipologia || (editingProduct as any).tipo_actividade || 'comercio');
+    } else {
+      setTipoActividade('');
+    }
+  }, [editingProduct, showForm]);
 
   const calculatePOPM = () => {
     return products.reduce((total, p) => {
@@ -32422,6 +32431,8 @@ const ProductList = ({
                   data_registo: data.data_registo || new Date().toISOString().split('T')[0],
                   warehouse_id: data.warehouse_id ? Number(data.warehouse_id) : null,
                   empresa_id: currentCompanyId,
+                  tipologia: tipoActividade || (data.tipologia as string) || 'comercio',
+                  tipo_actividade: tipoActividade || (data.tipologia as string) || 'comercio',
                   // NOTE: company_id does NOT exist in the produtos table — omitted intentionally
                   image_url,
                   imagem_url: image_url,
@@ -32480,102 +32491,385 @@ const ProductList = ({
                 alert('Erro ao salvar produto: ' + (error.message || 'Verifique os dados e tente novamente.'));
               }
             }} className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              <div className="md:col-span-3 border-2 border-dashed border-zinc-200 p-6 flex flex-col items-center justify-center bg-zinc-50 hover:bg-zinc-100 transition-colors relative group">
-                <input 
-                  type="file" 
-                  name="image_file" 
-                  accept="image/*" 
-                  className="absolute inset-0 opacity-0 cursor-pointer"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      const reader = new FileReader();
-                      reader.onload = (ev) => {
-                        const preview = document.getElementById('product-prev') as HTMLImageElement;
-                        if (preview) preview.src = ev.target?.result as string;
-                      };
-                      reader.readAsDataURL(file);
-                    }
-                  }}
-                />
-                <div className="text-center space-y-2 pointer-events-none">
-                  {editingProduct?.image_url ? (
-                    <img id="product-prev" src={editingProduct.image_url} alt="Preview" className="w-24 h-24 object-cover mx-auto shadow-md border-2 border-white" />
-                  ) : (
-                    <div id="product-prev-box" className="w-24 h-24 bg-zinc-200 flex items-center justify-center mx-auto">
-                      <img id="product-prev" className="w-full h-full object-cover hidden" />
-                      <Camera size={32} className="text-zinc-400" />
-                    </div>
+              {/* 1. SELETOR OBRIGATÓRIO DE TIPO DE ACTIVIDADE */}
+              <div className="md:col-span-3 bg-slate-50 border-2 border-slate-200 p-6 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
+                  <div>
+                    <span className="text-xs font-black uppercase text-[#003366] tracking-wider flex items-center gap-2">
+                      <Tag size={18} /> Selecione o Tipo de Actividade do Negócio *
+                    </span>
+                    <p className="text-[11px] text-zinc-500 mt-0.5">
+                      Primeiro selecione o ramo de actividade. Os campos específicos correspondentes serão exibidos abaixo.
+                    </p>
+                  </div>
+                  {tipoActividade && (
+                    <span className="self-start sm:self-auto text-[10px] font-black uppercase px-3 py-1 bg-[#003366] text-white rounded-none tracking-widest">
+                      Actividade Ativa: {
+                        tipoActividade === 'farmacia' ? 'Farmácia' :
+                        tipoActividade === 'stand_automovel' ? 'Stand Automóvel' :
+                        tipoActividade === 'hotelaria' ? 'Hotelaria' :
+                        tipoActividade === 'restaurante' ? 'Restaurante / Bar' :
+                        tipoActividade === 'loja' ? 'Loja / Retalho' : 'Comércio Geral'
+                      }
+                    </span>
                   )}
-                  <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Clique ou arraste para carregar imagem</p>
                 </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+                  {[
+                    { id: 'farmacia', label: 'Farmácia', icon: Pill, desc: 'Medicamentos & Lotes', badge: 'Saúde', border: 'hover:border-emerald-500', active: 'border-emerald-600 bg-emerald-50/80 text-emerald-900 ring-2 ring-emerald-500' },
+                    { id: 'stand_automovel', label: 'Stand Automóvel', icon: Car, desc: 'Peças & Viaturas', badge: 'Automóvel', border: 'hover:border-amber-500', active: 'border-amber-600 bg-amber-50/80 text-amber-900 ring-2 ring-amber-500' },
+                    { id: 'hotelaria', label: 'Hotelaria', icon: Bed, desc: 'Alojamento & Diárias', badge: 'Hotel', border: 'hover:border-indigo-500', active: 'border-indigo-600 bg-indigo-50/80 text-indigo-900 ring-2 ring-indigo-500' },
+                    { id: 'restaurante', label: 'Restaurante / Bar', icon: Utensils, desc: 'Pratos & Bebidas', badge: 'Restaurante', border: 'hover:border-rose-500', active: 'border-rose-600 bg-rose-50/80 text-rose-900 ring-2 ring-rose-500' },
+                    { id: 'loja', label: 'Loja', icon: ShoppingBag, desc: 'Vestuário & Calçado', badge: 'Retalho', border: 'hover:border-purple-500', active: 'border-purple-600 bg-purple-50/80 text-purple-900 ring-2 ring-purple-500' },
+                    { id: 'comercio', label: 'Comércio Geral', icon: Store, desc: 'Catálogo Geral', badge: 'Comércio', border: 'hover:border-blue-500', active: 'border-[#003366] bg-blue-50/80 text-[#003366] ring-2 ring-[#003366]' }
+                  ].map((item) => {
+                    const isSelected = tipoActividade === item.id;
+                    const IconComp = item.icon;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setTipoActividade(item.id)}
+                        className={'p-3.5 text-left border transition-all cursor-pointer flex flex-col justify-between rounded-none ' + (
+                          isSelected
+                            ? item.active + ' shadow-sm font-bold'
+                            : 'border-zinc-300 bg-white ' + item.border + ' text-zinc-700 hover:shadow-xs'
+                        )}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <IconComp size={22} className={isSelected ? 'text-current' : 'text-zinc-500'} />
+                          <span className={'text-[9px] font-black uppercase px-1.5 py-0.5 ' + (isSelected ? 'bg-black/10 text-current' : 'bg-zinc-100 text-zinc-500')}>
+                            {item.badge}
+                          </span>
+                        </div>
+                        <div>
+                          <div className="font-black text-xs uppercase leading-tight">{item.label}</div>
+                          <div className="text-[10px] text-zinc-500 mt-1 line-clamp-1">{item.desc}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <input type="hidden" name="tipologia" value={tipoActividade} />
               </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Nome do Produto</label>
-                <input name="name" required defaultValue={editingProduct?.name} className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Referência / SKU</label>
-                <input name="referente" defaultValue={editingProduct?.referente} className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Preço de Venda (Kz)</label>
-                <input name="price" type="number" step="0.01" required defaultValue={editingProduct?.price} className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Preço de Custo (Kz)</label>
-                <input name="cost_price" type="number" step="0.01" defaultValue={editingProduct?.cost_price} className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Stock Inicial</label>
-                <input name="stock_quantity" type="number" defaultValue={editingProduct?.stock_quantity} className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Stock Mínimo</label>
-                <input name="min_stock" type="number" defaultValue={editingProduct?.min_stock} className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Categoria</label>
-                <input name="category" defaultValue={editingProduct?.category} className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Unidade</label>
-                <select name="unit" defaultValue={editingProduct?.unit || 'un'} className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold">
-                  <option value="">Selecione a unidade</option>
-                  {metrics.length > 0 ? (
-                    metrics.map(m => (
-                      <option key={m.id} value={m.sigla}>{m.descricao} ({m.sigla})</option>
-                    ))
-                  ) : (
-                    <>
-                      <option value="un">Unidade (un)</option>
-                      <option value="kg">Quilograma (kg)</option>
-                      <option value="lt">Litro (lt)</option>
-                      <option value="mt">Metro (mt)</option>
-                    </>
-                  )}
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Barcode</label>
-                <input name="barcode" defaultValue={editingProduct?.barcode} className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Data de Registo</label>
-                <input name="data_registo" type="date" defaultValue={editingProduct?.data_registo ? new Date(editingProduct.data_registo).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]} className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Armazém</label>
-                <select name="warehouse_id" defaultValue={editingProduct?.warehouse_id} className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold">
-                  <option value="">Selecione o armazém</option>
-                  {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-                </select>
-              </div>
-              <div className="md:col-span-3 flex justify-end pt-4">
-                <button type="submit" className="bg-[#003366] text-white px-8 py-3 text-sm font-bold hover:bg-[#002244] transition-all">
-                  {editingProduct ? 'Guardar Alterações' : 'Registar Produto'}
-                </button>
-              </div>
+
+              {/* MENSAGEM OU CAMPOS CONDICIONAIS */}
+              {!tipoActividade ? (
+                <div className="md:col-span-3 border-2 border-dashed border-zinc-300 p-12 text-center bg-zinc-50 space-y-3">
+                  <div className="w-12 h-12 rounded-full bg-zinc-200 flex items-center justify-center mx-auto text-zinc-500">
+                    <Tag size={24} />
+                  </div>
+                  <h4 className="font-black text-zinc-700 text-sm uppercase tracking-wide">
+                    Selecione o Tipo de Actividade para preencher o formulário
+                  </h4>
+                  <p className="text-xs text-zinc-500 max-w-lg mx-auto leading-relaxed">
+                    Clique numa das opções de actividade acima (Farmácia, Stand Automóvel, Hotelaria, Restaurante / Bar, Loja ou Comércio Geral) para desbloquear os campos específicos deste produto.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* IMAGEM DO PRODUTO */}
+                  <div className="md:col-span-3 border-2 border-dashed border-zinc-200 p-6 flex flex-col items-center justify-center bg-zinc-50 hover:bg-zinc-100 transition-colors relative group">
+                    <input 
+                      type="file" 
+                      name="image_file" 
+                      accept="image/*" 
+                      className="absolute inset-0 opacity-0 cursor-pointer"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onload = (ev) => {
+                            const preview = document.getElementById('product-prev') as HTMLImageElement;
+                            if (preview) preview.src = ev.target?.result as string;
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                    <div className="text-center space-y-2 pointer-events-none">
+                      {editingProduct?.image_url ? (
+                        <img id="product-prev" src={editingProduct.image_url} alt="Preview" className="w-24 h-24 object-cover mx-auto shadow-md border-2 border-white" />
+                      ) : (
+                        <div id="product-prev-box" className="w-24 h-24 bg-zinc-200 flex items-center justify-center mx-auto">
+                          <img id="product-prev" className="w-full h-full object-cover hidden" />
+                          <Camera size={32} className="text-zinc-400" />
+                        </div>
+                      )}
+                      <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Clique ou arraste para carregar imagem do artigo</p>
+                    </div>
+                  </div>
+
+                  {/* CAMPOS ESPECÍFICOS POR TIPO DE ACTIVIDADE */}
+                  {/* 1. NOME */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                      {tipoActividade === 'farmacia' ? 'Nome do Medicamento / Fármaco *' :
+                       tipoActividade === 'stand_automovel' ? 'Nome da Peça / Viatura *' :
+                       tipoActividade === 'hotelaria' ? 'Designação do Quarto / Serviço *' :
+                       tipoActividade === 'restaurante' ? 'Nome do Prato / Bebida / Item *' :
+                       tipoActividade === 'loja' ? 'Nome do Artigo / Vestuário *' :
+                       'Nome do Produto *'}
+                    </label>
+                    <input 
+                      name="name" 
+                      required 
+                      defaultValue={editingProduct?.name} 
+                      placeholder={
+                        tipoActividade === 'farmacia' ? 'Ex: Paracetamol 500mg, Amoxicilina...' :
+                        tipoActividade === 'stand_automovel' ? 'Ex: Pastilha de Travão Dianteira, Pneu 205/55R16...' :
+                        tipoActividade === 'hotelaria' ? 'Ex: Quarto Duplo Standard, Suíte Presidencial...' :
+                        tipoActividade === 'restaurante' ? 'Ex: Bife na Chapa, Cerveja Cuca, Vinho Tinto...' :
+                        tipoActividade === 'loja' ? 'Ex: Calça Jeans Slim, Camisa Social Branca...' :
+                        'Ex: Arroz Agulha 1kg, Óleo Alimentar...'
+                      }
+                      className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" 
+                    />
+                  </div>
+
+                  {/* 2. REFERÊNCIA / SUB-CAMPO ESPECÍFICO */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                      {tipoActividade === 'farmacia' ? 'Princípio Ativo / Dosagem / Lote' :
+                       tipoActividade === 'stand_automovel' ? 'Código OEM / Referência Auto' :
+                       tipoActividade === 'hotelaria' ? 'Nº do Quarto / Código da Unidade' :
+                       tipoActividade === 'restaurante' ? 'Código do Menu / Ficha Técnica' :
+                       tipoActividade === 'loja' ? 'Referência / Tamanho / Cor' :
+                       'Referência / SKU'}
+                    </label>
+                    <input 
+                      name="referente" 
+                      defaultValue={editingProduct?.referente} 
+                      placeholder={
+                        tipoActividade === 'farmacia' ? 'Ex: Paracetamol 500mg - 20 comprimidos' :
+                        tipoActividade === 'stand_automovel' ? 'Ex: OEM-90915-10001, Ref: PA-402' :
+                        tipoActividade === 'hotelaria' ? 'Ex: Q-102, SUITE-VIP-01' :
+                        tipoActividade === 'restaurante' ? 'Ex: MENU-012, PRAT-05' :
+                        tipoActividade === 'loja' ? 'Ex: MOD-402 - Tam 42 - Azul' :
+                        'Ex: REF-00123'
+                      }
+                      className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" 
+                    />
+                  </div>
+
+                  {/* 3. PREÇO DE VENDA */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                      {tipoActividade === 'hotelaria' ? 'Preço da Diária / Noite (Kz) *' : 'Preço de Venda (Kz) *'}
+                    </label>
+                    <input 
+                      name="price" 
+                      type="number" 
+                      step="0.01" 
+                      required 
+                      defaultValue={editingProduct?.price} 
+                      className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold" 
+                    />
+                  </div>
+
+                  {/* 4. PREÇO DE CUSTO */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                      {tipoActividade === 'hotelaria' ? 'Custo Operacional por Estadia (Kz)' :
+                       tipoActividade === 'restaurante' ? 'Custo da Ficha Técnica (Kz)' :
+                       'Preço de Custo (Kz)'}
+                    </label>
+                    <input 
+                      name="cost_price" 
+                      type="number" 
+                      step="0.01" 
+                      defaultValue={editingProduct?.cost_price} 
+                      className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold" 
+                    />
+                  </div>
+
+                  {/* 5. STOCK QUANTIDADE */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                      {tipoActividade === 'hotelaria' ? 'Capacidade / Lotação de Quartos' :
+                       tipoActividade === 'restaurante' ? 'Stock / Doses Disponíveis' :
+                       tipoActividade === 'farmacia' ? 'Stock Inicial (Caixas / Frascos)' :
+                       'Stock Inicial'}
+                    </label>
+                    <input 
+                      name="stock_quantity" 
+                      type="number" 
+                      defaultValue={editingProduct?.stock_quantity ?? 0} 
+                      className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold" 
+                    />
+                  </div>
+
+                  {/* 6. STOCK MÍNIMO */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                      {tipoActividade === 'hotelaria' ? 'Lotação Mínima de Reserva' :
+                       tipoActividade === 'restaurante' ? 'Stock Mínimo de Alerta' :
+                       'Stock Mínimo'}
+                    </label>
+                    <input 
+                      name="min_stock" 
+                      type="number" 
+                      defaultValue={editingProduct?.min_stock ?? 0} 
+                      className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold" 
+                    />
+                  </div>
+
+                  {/* 7. CATEGORIA */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                      {tipoActividade === 'farmacia' ? 'Categoria Farmacêutica' :
+                       tipoActividade === 'stand_automovel' ? 'Categoria Auto / Peças' :
+                       tipoActividade === 'hotelaria' ? 'Tipologia de Acomodação' :
+                       tipoActividade === 'restaurante' ? 'Secção do Menu' :
+                       tipoActividade === 'loja' ? 'Categoria de Moda / Retalho' :
+                       'Categoria'}
+                    </label>
+                    <input 
+                      name="category" 
+                      defaultValue={editingProduct?.category} 
+                      placeholder={
+                        tipoActividade === 'farmacia' ? 'Ex: Analgésicos, Antibióticos, Xaropes' :
+                        tipoActividade === 'stand_automovel' ? 'Ex: Motor, Travões, Suspensão, Pneus' :
+                        tipoActividade === 'hotelaria' ? 'Ex: Quarto Standard, Suíte Executiva' :
+                        tipoActividade === 'restaurante' ? 'Ex: Entradas, Pratos Principais, Bebidas' :
+                        tipoActividade === 'loja' ? 'Ex: Vestuário Homem, Calçado, Acessórios' :
+                        'Ex: Geral, Bebidas, Limpeza'
+                      }
+                      className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" 
+                    />
+                  </div>
+
+                  {/* 8. UNIDADE */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                      {tipoActividade === 'farmacia' ? 'Forma Farmacêutica / Unidade' :
+                       tipoActividade === 'hotelaria' ? 'Unidade de Cobrança' :
+                       tipoActividade === 'restaurante' ? 'Unidade de Medida / Dose' :
+                       'Unidade'}
+                    </label>
+                    <select 
+                      name="unit" 
+                      defaultValue={editingProduct?.unit || (
+                        tipoActividade === 'farmacia' ? 'cx' :
+                        tipoActividade === 'hotelaria' ? 'dia' :
+                        tipoActividade === 'restaurante' ? 'dose' :
+                        'un'
+                      )} 
+                      className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold"
+                    >
+                      <option value="">Selecione a unidade</option>
+                      {tipoActividade === 'farmacia' ? (
+                        <>
+                          <option value="cx">Caixa (cx)</option>
+                          <option value="comp">Comprimido (comp)</option>
+                          <option value="frasco">Frasco (frasco)</option>
+                          <option value="amp">Ampola (amp)</option>
+                          <option value="bisnaga">Bisnaga / Pomada (bisnaga)</option>
+                          <option value="un">Unidade (un)</option>
+                        </>
+                      ) : tipoActividade === 'hotelaria' ? (
+                        <>
+                          <option value="dia">Diária (dia)</option>
+                          <option value="noite">Noite (noite)</option>
+                          <option value="hr">Hora (hr)</option>
+                          <option value="un">Unidade / Serviço (un)</option>
+                        </>
+                      ) : tipoActividade === 'restaurante' ? (
+                        <>
+                          <option value="dose">Dose (dose)</option>
+                          <option value="prato">Prato (prato)</option>
+                          <option value="gf">Garrafa (gf)</option>
+                          <option value="lata">Lata (lata)</option>
+                          <option value="copo">Copo (copo)</option>
+                          <option value="un">Unidade (un)</option>
+                          <option value="kg">Quilograma (kg)</option>
+                        </>
+                      ) : tipoActividade === 'stand_automovel' ? (
+                        <>
+                          <option value="un">Unidade (un)</option>
+                          <option value="par">Par (par)</option>
+                          <option value="kit">Kit / Jogo (kit)</option>
+                          <option value="conj">Conjunto (conj)</option>
+                        </>
+                      ) : tipoActividade === 'loja' ? (
+                        <>
+                          <option value="un">Unidade (un)</option>
+                          <option value="par">Par (par)</option>
+                          <option value="pc">Peça (pc)</option>
+                          <option value="conj">Conjunto (conj)</option>
+                        </>
+                      ) : metrics.length > 0 ? (
+                        metrics.map(m => (
+                          <option key={m.id} value={m.sigla}>{m.descricao} ({m.sigla})</option>
+                        ))
+                      ) : (
+                        <>
+                          <option value="un">Unidade (un)</option>
+                          <option value="kg">Quilograma (kg)</option>
+                          <option value="lt">Litro (lt)</option>
+                          <option value="mt">Metro (mt)</option>
+                        </>
+                      )}
+                    </select>
+                  </div>
+
+                  {/* 9. BARCODE */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                      {tipoActividade === 'hotelaria' ? 'Código de Identificação / Chave' : 'Código de Barras / Barcode'}
+                    </label>
+                    <input 
+                      name="barcode" 
+                      defaultValue={editingProduct?.barcode} 
+                      placeholder="Ex: 5601234567890"
+                      className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" 
+                    />
+                  </div>
+
+                  {/* 10. DATA DE REGISTO */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                      {tipoActividade === 'farmacia' ? 'Data de Registo / Validade' : 'Data de Registo'}
+                    </label>
+                    <input 
+                      name="data_registo" 
+                      type="date" 
+                      defaultValue={editingProduct?.data_registo ? new Date(editingProduct.data_registo).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]} 
+                      className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" 
+                    />
+                  </div>
+
+                  {/* 11. ARMAZÉM */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                      {tipoActividade === 'farmacia' ? 'Armazém Farmacêutico *' :
+                       tipoActividade === 'stand_automovel' ? 'Armazém / Stand *' :
+                       tipoActividade === 'hotelaria' ? 'Unidade Hoteleira / Armazém *' :
+                       tipoActividade === 'restaurante' ? 'Cozinha / Bar / Armazém *' :
+                       tipoActividade === 'loja' ? 'Armazém da Loja *' :
+                       'Armazém *'}
+                    </label>
+                    <select 
+                      name="warehouse_id" 
+                      required
+                      defaultValue={editingProduct?.warehouse_id} 
+                      className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold"
+                    >
+                      <option value="">Selecione o armazém</option>
+                      {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                    </select>
+                  </div>
+
+                  {/* 12. SUBMIT BUTTON */}
+                  <div className="md:col-span-3 flex justify-end pt-4 border-t border-zinc-100">
+                    <button type="submit" className="bg-[#003366] text-white px-8 py-3 text-sm font-bold hover:bg-[#002244] transition-all flex items-center gap-2 cursor-pointer shadow-md">
+                      <Save size={18} />
+                      <span>{editingProduct ? 'Guardar Alterações' : 'Registar Produto no Stock'}</span>
+                    </button>
+                  </div>
+                </>
+              )}
             </form>
           </div>
         </div>

@@ -10,7 +10,7 @@ import {
   Coffee, Shirt, RefreshCw, History, PieChart, ChevronDown, RotateCw, Percent, Sparkles,
   Brain, Bot, Lightbulb, TrendingDown, DollarSign, FileSpreadsheet, Eye, EyeOff, ShieldCheck,
   FileCheck, Landmark, Receipt, Truck, Filter, Calendar, UserPlus, LogIn, Settings, KeyRound,
-  Pill, Car, Bed
+  Pill, Car, Bed, Warehouse as WarehouseIcon
 } from 'lucide-react';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -465,7 +465,7 @@ const POSPage = ({
   const [newTableCapacity, setNewTableCapacity] = useState(4);
 
   // POS Authentication Gate & System Users Integration
-  const [isUnlocked, setIsUnlocked] = useState(true);
+  const [isUnlocked, setIsUnlocked] = useState(false);
   const [posAuthPhase, setPosAuthPhase] = useState<'users' | 'password'>('users');
   const [userPosConfig, setUserPosConfig] = useState<any>(null);
   const [selectedAuthUser, setSelectedAuthUser] = useState<any>(null);
@@ -509,6 +509,23 @@ const POSPage = ({
   const [devolucaoDocSearch, setDevolucaoDocSearch] = useState('');
 
   const [showConfigModal, setShowConfigModal] = useState(false);
+  // DB-backed POS Config Modal Data
+  const [configWarehouses, setConfigWarehouses] = useState<any[]>([]);
+  const [configCaixas, setConfigCaixas] = useState<any[]>([]);
+  const [configSeries, setConfigSeries] = useState<any[]>([]);
+  const [configWorkplaces, setConfigWorkplaces] = useState<any[]>([]);
+  const [configLoading, setConfigLoading] = useState(false);
+  const [configFormData, setConfigFormData] = useState<any>({
+    armazem_id: '',
+    tipo_actividade: '',
+    printer_type: 'P80',
+    caixa_id: '',
+    workplace_id: '',
+    terminal_name: 'POS-01',
+    operator_user_id: '',
+    initial_balance: 0,
+    series_id: ''
+  });
   const [posConfig, setPosConfig] = useState(() => {
     const saved = localStorage.getItem('pos_config');
     return saved ? JSON.parse(saved) : {
@@ -782,6 +799,53 @@ const POSPage = ({
   useEffect(() => {
     setCashSessions(sessions || []);
   }, [sessions]);
+
+  // Carregar dados de infraestrutura e DB para Modal de Configuração Geral do POS
+  useEffect(() => {
+    if (!showConfigModal) return;
+    const empresaId = companyData?.id || user?.empresa_id || user?.company_id;
+    if (!empresaId) return;
+
+    setConfigLoading(true);
+    Promise.all([
+      supabase.from('armazens').select('*').eq('empresa_id', empresaId).then(r => r.data || []).catch(() => []),
+      supabase.from('caixas').select('*').eq('empresa_id', empresaId).then(r => (r.data || []).filter((c: any) => !c.is_deleted)).catch(() => []),
+      supabase.from('series_fiscais').select('*').eq('empresa_id', empresaId).then(r => r.data || []).catch(() => []),
+      supabase.from('locais_trabalho').select('*').eq('empresa_id', empresaId).then(r => r.data || []).catch(() => [])
+    ]).then(([wh, cx, sr, lc]) => {
+      setConfigWarehouses(wh || []);
+      setConfigCaixas(cx || []);
+      setConfigSeries(sr || []);
+      setConfigWorkplaces(lc || []);
+
+      // Pré-preencher campos com base na configuração ativa existente
+      const currentWh = userPosConfig?.armazem_id || userPosConfig?.warehouse_id || posConfig?.armazem_id || posConfig?.warehouse_id || '';
+      const currentAct = userPosConfig?.configuracoes?.tipo_actividade || posConfig?.tipo_actividade || (businessSection === 'Farmácia' ? 'farmacia' : businessSection === 'Stand Automóvel' ? 'stand_automovel' : businessSection === 'Hotelaria' ? 'hotelaria' : businessSection === 'Restaurante / Bar' ? 'restaurante' : businessSection === 'Lojas' ? 'loja' : 'comercio');
+      const currentPrinter = userPosConfig?.printer_type || posConfig?.paperFormat || 'P80';
+      const currentCaixa = userPosConfig?.caixa_id || posConfig?.caixa_id || selectedPOS || '';
+      const currentWorkplace = userPosConfig?.workplace_id || posConfig?.workplace_id || '';
+      const currentTerminal = userPosConfig?.configuracoes?.terminal_name || posConfig?.terminalName || 'POS-01';
+      const currentOpUser = userPosConfig?.user_id || posConfig?.operator_user_id || selectedAuthUser?.id || user?.id || '';
+      const currentBal = userPosConfig?.initial_balance ?? posConfig?.initial_balance ?? 0;
+      const currentSer = userPosConfig?.series_id || userPosConfig?.serie_id || posConfig?.series_id || selectedSeries || '';
+
+      setConfigFormData({
+        armazem_id: String(currentWh || ''),
+        tipo_actividade: currentAct || '',
+        printer_type: currentPrinter || 'P80',
+        caixa_id: String(currentCaixa || ''),
+        workplace_id: String(currentWorkplace || ''),
+        terminal_name: currentTerminal || 'POS-01',
+        operator_user_id: String(currentOpUser || ''),
+        initial_balance: Number(currentBal || 0),
+        series_id: String(currentSer || '')
+      });
+    }).catch(err => {
+      console.warn('Aviso ao carregar dados de configuração do POS:', err);
+    }).finally(() => {
+      setConfigLoading(false);
+    });
+  }, [showConfigModal, companyData?.id, user?.empresa_id, user?.company_id, userPosConfig, posConfig, businessSection, selectedPOS, selectedSeries, selectedAuthUser?.id, user?.id]);
 
   const triggerToast = (text: string, type: 'success' | 'info' | 'error' = 'success') => {
     setToastMessage({ text, type });
@@ -1542,14 +1606,28 @@ const POSPage = ({
         p.category?.toLowerCase().includes('roupa') || 
         p.category?.toLowerCase().includes('moda') ||
         p.category?.toLowerCase().includes('calcado') ||
-        p.category?.toLowerCase().includes('mercearia')
+        p.category?.toLowerCase().includes('mercearia') ||
+        (p as any).tipologia === 'loja'
+      );
+    }
+    if (businessSection === 'Comércio' || businessSection === 'Comércio Geral') {
+      return allMerged.filter(p => 
+        (p as any).tipologia === 'comercio' || 
+        !(p as any).tipologia || 
+        (p as any).tipologia === 'geral' ||
+        (!['farmacia', 'stand_automovel', 'hotelaria', 'restaurante', 'loja'].includes((p as any).tipologia))
       );
     }
     return allMerged;
   }, [products, pharmacyItems, standItems, businessSection]);
 
-  const filteredByWarehouse = userPosConfig && userPosConfig.warehouse_id 
-    ? sectionFilteredProducts.filter(p => (p as any).armazem_id == userPosConfig.warehouse_id)
+  const configuredWarehouseId = userPosConfig?.armazem_id || userPosConfig?.warehouse_id || posConfig?.armazem_id || posConfig?.warehouse_id;
+
+  const filteredByWarehouse = configuredWarehouseId && String(configuredWarehouseId) !== 'all' && String(configuredWarehouseId) !== ''
+    ? sectionFilteredProducts.filter(p => {
+        const pWh = (p as any).warehouse_id ?? (p as any).armazem_id;
+        return String(pWh) === String(configuredWarehouseId);
+      })
     : sectionFilteredProducts;
 
   const activeFilteredProducts = filteredByWarehouse
@@ -3635,95 +3713,366 @@ const POSPage = ({
         </div>
       )}
 
-      {/* MODAL CONFIGURAÇÃO DO POS COM TODOS CAMPOS E FUNCIONALIDADES */}
+      {/* MODAL CONFIGURAÇÃO DO POS COM TODOS CAMPOS E FUNCIONALIDADES CONECTADOS À BASE DE DADOS */}
       {showConfigModal && (
-        <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 w-full max-w-lg shadow-2xl rounded-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white border border-slate-200 w-full max-w-2xl shadow-2xl rounded-2xl overflow-hidden animate-in zoom-in-95 duration-200 my-8">
             <div className="px-6 py-4 bg-sky-50 border-b border-sky-100 flex justify-between items-center">
-              <span className="font-black text-[#0284c7] text-xs uppercase flex items-center gap-2">
-                <Pencil size={18} /> Configurações Gerais do Terminal POS
-              </span>
-              <button onClick={() => setShowConfigModal(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
-            </div>
-            <div className="p-6 space-y-4 text-xs">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-sky-600 text-white rounded-lg">
+                  <Pencil size={18} />
+                </div>
                 <div>
-                  <label className="block font-bold text-slate-700 uppercase mb-1">Nome do Terminal POS</label>
+                  <h4 className="font-black text-[#0284c7] text-sm uppercase tracking-wide">
+                    Configurações Gerais do Terminal POS
+                  </h4>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    Configure o armazém, tipo de actividade, caixa, série e parâmetros operacionais
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setShowConfigModal(false)} className="text-slate-400 hover:text-slate-600 p-1">
+                <X size={20} />
+              </button>
+            </div>
+
+            {configLoading ? (
+              <div className="p-12 text-center space-y-3">
+                <div className="w-8 h-8 border-3 border-sky-600 border-t-transparent rounded-full animate-spin mx-auto" />
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">A carregar parâmetros da empresa...</p>
+              </div>
+            ) : (
+              <form 
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  try {
+                    const empId = companyData?.id || user?.empresa_id || user?.company_id;
+                    const targetUserId = configFormData.operator_user_id || selectedAuthUser?.id || user?.id;
+
+                    const payloadToSave: any = {
+                      user_id: targetUserId,
+                      empresa_id: empId,
+                      armazem_id: configFormData.armazem_id ? Number(configFormData.armazem_id) : null,
+                      warehouse_id: configFormData.armazem_id ? String(configFormData.armazem_id) : null,
+                      printer_type: configFormData.printer_type || 'P80',
+                      caixa_id: configFormData.caixa_id || null,
+                      workplace_id: configFormData.workplace_id || null,
+                      initial_balance: Number(configFormData.initial_balance || 0),
+                      series_id: configFormData.series_id || null,
+                      serie_id: configFormData.series_id && !isNaN(Number(configFormData.series_id)) ? Number(configFormData.series_id) : null,
+                      allow_pos: true,
+                      is_active: true,
+                      configuracoes: {
+                        tipo_actividade: configFormData.tipo_actividade,
+                        terminal_name: configFormData.terminal_name,
+                        headerMessage: posConfig.headerMessage,
+                        footerMessage: posConfig.footerMessage,
+                        soundBeep: posConfig.soundBeep,
+                        requireClient: posConfig.requireClient
+                      }
+                    };
+
+                    // Persistir no Supabase pos_user_configs
+                    if (targetUserId && empId) {
+                      try {
+                        const { data: savedConfig, error } = await supabase
+                          .from('pos_user_configs')
+                          .upsert(payloadToSave, { onConflict: 'user_id,empresa_id' })
+                          .select()
+                          .single();
+
+                        if (!error && savedConfig) {
+                          setUserPosConfig(savedConfig);
+                        } else {
+                          setUserPosConfig((prev: any) => ({ ...(prev || {}), ...payloadToSave }));
+                        }
+                      } catch (dbErr) {
+                        console.warn('Aviso ao sincronizar pos_user_configs:', dbErr);
+                        setUserPosConfig((prev: any) => ({ ...(prev || {}), ...payloadToSave }));
+                      }
+                    } else {
+                      setUserPosConfig((prev: any) => ({ ...(prev || {}), ...payloadToSave }));
+                    }
+
+                    // Atualizar posConfig no localStorage
+                    const updatedPosConfig = {
+                      ...posConfig,
+                      terminalName: configFormData.terminal_name,
+                      paperFormat: configFormData.printer_type,
+                      armazem_id: configFormData.armazem_id,
+                      warehouse_id: configFormData.armazem_id,
+                      tipo_actividade: configFormData.tipo_actividade,
+                      caixa_id: configFormData.caixa_id,
+                      workplace_id: configFormData.workplace_id,
+                      series_id: configFormData.series_id,
+                      initial_balance: configFormData.initial_balance,
+                      operator_user_id: configFormData.operator_user_id
+                    };
+                    setPosConfig(updatedPosConfig);
+                    localStorage.setItem('pos_config', JSON.stringify(updatedPosConfig));
+
+                    // Ativar a actividade selecionada no ecrã de vendas
+                    const actMap: Record<string, string> = {
+                      'farmacia': 'Farmácia',
+                      'stand_automovel': 'Stand Automóvel',
+                      'hotelaria': 'Hotelaria',
+                      'restaurante': 'Restaurante / Bar',
+                      'loja': 'Lojas',
+                      'comercio': 'Comércio'
+                    };
+                    if (configFormData.tipo_actividade && actMap[configFormData.tipo_actividade]) {
+                      setBusinessSection(actMap[configFormData.tipo_actividade]);
+                    }
+
+                    if (configFormData.series_id) {
+                      setSelectedSeries(String(configFormData.series_id));
+                    }
+                    if (configFormData.caixa_id) {
+                      setSelectedPOS(String(configFormData.caixa_id));
+                    }
+
+                    setShowConfigModal(false);
+                    triggerToast('Configurações do Terminal POS guardadas e sincronizadas!', 'success');
+                  } catch (saveErr: any) {
+                    console.error('Erro ao guardar configurações do POS:', saveErr);
+                    triggerToast('Configurações locais salvas!', 'info');
+                    setShowConfigModal(false);
+                  }
+                }}
+                className="p-6 space-y-5 text-xs"
+              >
+                {/* 1. SELECÇÃO DE ARMAZÉM E TIPO DE ACTIVIDADE */}
+                <div className="bg-sky-50/50 p-4 rounded-xl border border-sky-100 space-y-4">
+                  <div className="flex items-center gap-2 text-sky-800 font-bold uppercase tracking-wider text-[11px]">
+                    <WarehouseIcon size={16} />
+                    <span>Armazém do POS & Ramo de Actividade</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block font-bold text-slate-700 uppercase mb-1">
+                        Armazém Selecionado *
+                      </label>
+                      <select
+                        required
+                        value={configFormData.armazem_id}
+                        onChange={e => setConfigFormData({ ...configFormData, armazem_id: e.target.value })}
+                        className="w-full bg-white border border-sky-200 rounded-lg p-2.5 font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                      >
+                        <option value="">Selecione o armazém do terminal</option>
+                        {configWarehouses.map((w: any) => (
+                          <option key={w.id} value={String(w.id)}>
+                            {w.nome || w.name || ('Armazém #' + w.id)}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        Apenas os produtos deste armazém aparecerão no terminal POS.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-slate-700 uppercase mb-1">
+                        Tipo de Actividade Predefinida
+                      </label>
+                      <select
+                        value={configFormData.tipo_actividade}
+                        onChange={e => setConfigFormData({ ...configFormData, tipo_actividade: e.target.value })}
+                        className="w-full bg-white border border-sky-200 rounded-lg p-2.5 font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                      >
+                        <option value="">Todas / Selecção Livre</option>
+                        <option value="comercio">Comércio Geral (Catálogo Padrão)</option>
+                        <option value="farmacia">Farmácia (Medicamentos & Lotes)</option>
+                        <option value="stand_automovel">Stand Automóvel (Viaturas & Peças)</option>
+                        <option value="hotelaria">Hotelaria (Alojamento & Diárias)</option>
+                        <option value="restaurante">Restaurante / Bar (Mesas & Refeições)</option>
+                        <option value="loja">Lojas (Vestuário & Calçado)</option>
+                      </select>
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        Abre automaticamente a secção de actividade escolhida.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. DADOS DO TERMINAL E IMPRESSÃO */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block font-bold text-slate-700 uppercase mb-1">Nome do Terminal POS</label>
+                    <input
+                      type="text"
+                      required
+                      value={configFormData.terminal_name}
+                      onChange={e => setConfigFormData({ ...configFormData, terminal_name: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 font-bold text-slate-800 focus:outline-none focus:border-sky-500"
+                      placeholder="Ex: POS-01, Caixa Central..."
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 uppercase mb-1">Formato de Impressão</label>
+                    <select
+                      value={configFormData.printer_type}
+                      onChange={e => setConfigFormData({ ...configFormData, printer_type: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 font-bold text-slate-800 focus:outline-none focus:border-sky-500"
+                    >
+                      <option value="P80">Térmica P80 (80mm / Talão)</option>
+                      <option value="A4">A4 Standard</option>
+                      <option value="A5">A5 Compacto</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* 3. CAIXA, SÉRIE FISCAL E LOCAL DE TRABALHO */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block font-bold text-slate-700 uppercase mb-1">Caixa Vinculado</label>
+                    <select
+                      value={configFormData.caixa_id}
+                      onChange={e => setConfigFormData({ ...configFormData, caixa_id: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 font-bold text-slate-800"
+                    >
+                      <option value="">Selecione o Caixa</option>
+                      {(configCaixas.length > 0 ? configCaixas : caixas).map((c: any) => (
+                        <option key={c.id} value={String(c.id)}>
+                          {c.nome || c.descricao || ('Caixa #' + c.id)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 uppercase mb-1">Série Fiscal</label>
+                    <select
+                      value={configFormData.series_id}
+                      onChange={e => setConfigFormData({ ...configFormData, series_id: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 font-bold text-slate-800"
+                    >
+                      <option value="">Selecione a Série Fiscal</option>
+                      {(configSeries.length > 0 ? configSeries : fiscalSeries).map((s: any) => (
+                        <option key={s.id} value={String(s.id)}>
+                          {s.serie || s.code || s.nome || ('Série #' + s.id)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 uppercase mb-1">Local de Trabalho</label>
+                    <select
+                      value={configFormData.workplace_id}
+                      onChange={e => setConfigFormData({ ...configFormData, workplace_id: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 font-bold text-slate-800"
+                    >
+                      <option value="">Selecione o Local</option>
+                      {configWorkplaces.map((w: any) => (
+                        <option key={w.id} value={String(w.id)}>
+                          {w.nome || w.designacao || w.name || ('Local #' + w.id)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* 4. OPERADOR PADRÃO E SALDO INICIAL */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block font-bold text-slate-700 uppercase mb-1">Operador / Utilizador Padrão</label>
+                    <select
+                      value={configFormData.operator_user_id}
+                      onChange={e => setConfigFormData({ ...configFormData, operator_user_id: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 font-bold text-slate-800"
+                    >
+                      <option value="">Utilizador Atual do Login</option>
+                      {systemUsersList.map((u: any) => (
+                        <option key={u.id} value={String(u.id)}>
+                          {u.nome || u.name || u.email} ({u.role || 'Operador'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 uppercase mb-1">Fundo de Maneio / Saldo Inicial (Kz)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={configFormData.initial_balance}
+                      onChange={e => setConfigFormData({ ...configFormData, initial_balance: Number(e.target.value) })}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 font-bold text-slate-800"
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+
+                {/* 5. PREFERÊNCIAS DE SISTEMA (BEEP, CLIENTE, MENSAGENS) */}
+                <div className="grid grid-cols-2 gap-4 pt-1">
+                  <div>
+                    <label className="block font-bold text-slate-700 uppercase mb-1">Efeitos Sonoros (Beep)</label>
+                    <select
+                      value={posConfig.soundBeep ? 'sim' : 'nao'}
+                      onChange={e => setPosConfig({ ...posConfig, soundBeep: e.target.value === 'sim' })}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-bold text-slate-800"
+                    >
+                      <option value="sim">Ativado</option>
+                      <option value="nao">Desativado</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 uppercase mb-1">Exigir Cliente no Checkout</label>
+                    <select
+                      value={posConfig.requireClient ? 'sim' : 'nao'}
+                      onChange={e => setPosConfig({ ...posConfig, requireClient: e.target.value === 'sim' })}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-bold text-slate-800"
+                    >
+                      <option value="nao">Não (Permite Consumidor Final)</option>
+                      <option value="sim">Sim (Obrigatório)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">Mensagem de Cabeçalho do Talão P80</label>
                   <input
                     type="text"
-                    value={posConfig.terminalName}
-                    onChange={e => setPosConfig({ ...posConfig, terminalName: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-bold text-slate-800"
+                    value={posConfig.headerMessage}
+                    onChange={e => setPosConfig({ ...posConfig, headerMessage: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-800"
                   />
                 </div>
+
                 <div>
-                  <label className="block font-bold text-slate-700 uppercase mb-1">Formato de Impressão</label>
-                  <select
-                    value={posConfig.paperFormat}
-                    onChange={e => setPosConfig({ ...posConfig, paperFormat: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-bold text-slate-800"
-                  >
-                    <option value="P80">Térmica P80 (80mm / Talão)</option>
-                    <option value="A4">A4 Standard</option>
-                    <option value="A5">A5 Compacto</option>
-                  </select>
+                  <label className="block font-bold text-slate-700 uppercase mb-1">Mensagem de Rodapé do Talão P80</label>
+                  <input
+                    type="text"
+                    value={posConfig.footerMessage}
+                    onChange={e => setPosConfig({ ...posConfig, footerMessage: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-800"
+                  />
                 </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block font-bold text-slate-700 uppercase mb-1">Efeitos Sonoros (Beep)</label>
-                  <select
-                    value={posConfig.soundBeep ? 'sim' : 'nao'}
-                    onChange={e => setPosConfig({ ...posConfig, soundBeep: e.target.value === 'sim' })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-bold text-slate-800"
+                <div className="pt-3 flex justify-end gap-2 border-t border-slate-100">
+                  <button 
+                    type="button" 
+                    onClick={() => setShowConfigModal(false)} 
+                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-lg cursor-pointer"
                   >
-                    <option value="sim">Ativado</option>
-                    <option value="nao">Desativado</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 uppercase mb-1">Exigir Cliente no Checkout</label>
-                  <select
-                    value={posConfig.requireClient ? 'sim' : 'nao'}
-                    onChange={e => setPosConfig({ ...posConfig, requireClient: e.target.value === 'sim' })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-bold text-slate-800"
+                    Cancelar
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="px-6 py-2.5 bg-[#0284c7] hover:bg-sky-700 text-white font-bold uppercase rounded-lg cursor-pointer shadow-md transition-all flex items-center gap-2"
                   >
-                    <option value="nao">Não (Permite Consumidor Final)</option>
-                    <option value="sim">Sim (Obrigatório)</option>
-                  </select>
+                    <Save size={16} />
+                    <span>Guardar Configurações</span>
+                  </button>
                 </div>
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 uppercase mb-1">Mensagem de Cabeçalho do Talão P80</label>
-                <input
-                  type="text"
-                  value={posConfig.headerMessage}
-                  onChange={e => setPosConfig({ ...posConfig, headerMessage: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-800"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 uppercase mb-1">Mensagem de Rodapé do Talão P80</label>
-                <input
-                  type="text"
-                  value={posConfig.footerMessage}
-                  onChange={e => setPosConfig({ ...posConfig, footerMessage: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-800"
-                />
-              </div>
-
-              <div className="pt-2 flex justify-end gap-2">
-                <button onClick={() => setShowConfigModal(false)} className="px-4 py-2 bg-slate-100 text-slate-600 font-bold rounded-lg cursor-pointer">Cancelar</button>
-                <button onClick={() => { setShowConfigModal(false); triggerToast('Configurações do POS guardadas com sucesso!', 'success'); }} className="px-5 py-2 bg-[#0284c7] hover:bg-sky-700 text-white font-bold uppercase rounded-lg cursor-pointer">Guardar Alterações</button>
-              </div>
-            </div>
+              </form>
+            )}
           </div>
         </div>
-      )}
-
+      )}
+
       {/* MODAL GESTÃO E ADICIONAR MESAS */}
       {showTableModal && (
         <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">

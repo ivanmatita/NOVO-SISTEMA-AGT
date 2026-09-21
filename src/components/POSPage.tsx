@@ -9,7 +9,8 @@ import {
   ArrowLeft, Users, Clock, ShoppingCart, User, Banknote, CircleCheck, Key, Layers, Pencil,
   Coffee, Shirt, RefreshCw, History, PieChart, ChevronDown, RotateCw, Percent, Sparkles,
   Brain, Bot, Lightbulb, TrendingDown, DollarSign, FileSpreadsheet, Eye, EyeOff, ShieldCheck,
-  FileCheck, Landmark, Receipt, Truck, Filter, Calendar, UserPlus, LogIn, Settings, KeyRound
+  FileCheck, Landmark, Receipt, Truck, Filter, Calendar, UserPlus, LogIn, Settings, KeyRound,
+  Pill, Car, Bed
 } from 'lucide-react';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -353,13 +354,23 @@ const POSPage = ({
     // Carregar medicamentos da farmacia
     const loadPharmacy = async () => {
       try {
-        const { data: meds } = await supabase
-          .from('farmacia_medicamentos')
-          .select('id, produto_id, principio_ativo, nome_generico, dosagem, preco_venda, imagem_url, farmacia_lotes(quantidade_atual, numero_lote, data_validade)')
-          .eq('empresa_id', empresaId);
+        const [medsRes, lotesRes] = await Promise.all([
+          supabase
+            .from('farmacia_medicamentos')
+            .select('id, produto_id, principio_ativo, nome_generico, dosagem, preco_venda, imagem_url')
+            .eq('empresa_id', empresaId),
+          supabase
+            .from('farmacia_lotes')
+            .select('id, produto_id, quantidade_atual, numero_lote, data_validade')
+            .eq('empresa_id', empresaId)
+        ]);
+
+        const meds = medsRes.data || [];
+        const lotes = lotesRes.data || [];
+
         if (Array.isArray(meds) && meds.length > 0) {
           const formatted = meds.map(m => {
-            const lotesArr = (m as any).farmacia_lotes || [];
+            const lotesArr = lotes.filter((l: any) => l.produto_id === m.produto_id || l.produto_id === m.id);
             const totalStock = lotesArr.reduce((acc: number, l: any) => acc + (Number(l.quantidade_atual) || 0), 0);
             const loteMaisProximo = lotesArr[0]?.numero_lote || 'Geral';
             return {

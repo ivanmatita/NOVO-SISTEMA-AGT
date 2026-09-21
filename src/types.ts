@@ -1149,4 +1149,27 @@ export interface FarmaciaConfiguracao {
   updated_at?: string;
 }
 
+export interface StandPeca {
+  id: string;
+  empresa_id: string;
+  codigo_oem?: string;
+  nome: string;
+  categoria?: string;
+  marca_compativel?: string;
+  modelo_compativel?: string;
+  ano_compativel?: string;
+  stock_atual: number;
+  stock_minimo: number;
+  preco_custo: number;
+  preco_venda: number;
+  localizacao?: string;
+  fornecedor_id?: string;
+  fornecedor_nome?: string;
+  imagem_url?: string;
+  documento_url?: string;
+  observacoes?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 

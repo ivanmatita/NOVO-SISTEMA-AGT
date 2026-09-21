@@ -22,6 +22,7 @@ import {
   StandSeguro,
   StandOcorrencia,
   StandManutencao,
+  StandPeca,
   Client,
   Supplier,
   Product
@@ -187,7 +188,7 @@ export const StandAutomovelModule: React.FC<StandModuleProps> = ({
 
   // Tabs internas do módulo Stand
   const [activeTab, setActiveTab] = useState<
-    'dashboard' | 'veiculos' | 'importacao' | 'custos' | 'oficina' | 'rentacar' | 'seguros' | 'ocorrencias' | 'manutencao' | 'relatorios'
+    'dashboard' | 'veiculos' | 'importacao' | 'custos' | 'oficina' | 'rentacar' | 'seguros' | 'ocorrencias' | 'manutencao' | 'pecas' | 'transito' | 'ivm' | 'fayol' | 'relatorios'
   >('dashboard');
 
   // Estados de dados do Stand
@@ -200,6 +201,27 @@ export const StandAutomovelModule: React.FC<StandModuleProps> = ({
   const [seguros, setSeguros] = useState<StandSeguro[]>([]);
   const [ocorrencias, setOcorrencias] = useState<StandOcorrencia[]>([]);
   const [manutencoes, setManutencoes] = useState<StandManutencao[]>([]);
+  const [pecas, setPecas] = useState<StandPeca[]>([]);
+
+  // Estados de Upload para Viaturas e Importações
+  const [uploadedVehiclePhotos, setUploadedVehiclePhotos] = useState<string[]>([]);
+  const [uploadedVehicleDocs, setUploadedVehicleDocs] = useState<Array<{ nome: string; url: string; tipo: string }>>([]);
+  const [uploadedImportDocs, setUploadedImportDocs] = useState<Array<{ nome: string; url: string; tipo: string }>>([]);
+
+  // Modal de Peça
+  const [modalPeca, setModalPeca] = useState<boolean>(false);
+  const [editingPeca, setEditingPeca] = useState<StandPeca | null>(null);
+
+  // Modal de Pré-visualização Oficial de Relatórios
+  const [previewReportType, setPreviewReportType] = useState<'geral' | 'veiculos' | 'importacao' | 'oficina' | 'rentacar' | 'pecas' | 'ivm' | null>(null);
+
+  // Estado do Simulador / Calculador de IVM
+  const [ivmSelectedVeiculoId, setIvmSelectedVeiculoId] = useState<string>('');
+  const [ivmCilindrada, setIvmCilindrada] = useState<number>(2000);
+  const [ivmCombustivel, setIvmCombustivel] = useState<string>('Gasolina');
+  const [ivmAnoFabrico, setIvmAnoFabrico] = useState<number>(new Date().getFullYear());
+  const [ivmValorComercial, setIvmValorComercial] = useState<number>(15000000);
+  const [ivmSaving, setIvmSaving] = useState<boolean>(false);
 
   // Estados de carregamento e pesquisa
   const [loading, setLoading] = useState(true);
@@ -378,6 +400,149 @@ export const StandAutomovelModule: React.FC<StandModuleProps> = ({
     };
   }, [veiculos]);
 
+  // ─── UPLOAD DE FICHEIROS COM FILEREADER (DATA URL) ────────────────────────
+  const handleVehiclePhotoAdd = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === 'string') {
+        setUploadedVehiclePhotos(prev => [...prev, reader.result as string]);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleVehicleDocAdd = (e: React.ChangeEvent<HTMLInputElement>, tipo: string) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === 'string') {
+        setUploadedVehicleDocs(prev => [...prev, { nome: file.name, url: reader.result as string, tipo }]);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleImportDocAdd = (e: React.ChangeEvent<HTMLInputElement>, tipo: string) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === 'string') {
+        setUploadedImportDocs(prev => [...prev, { nome: file.name, url: reader.result as string, tipo }]);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // ─── AÇÕES DE CRUD: PEÇAS E SOBRESSALENTES ──────────────────────────────────
+  const handleSavePeca = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!effectiveUserId) return;
+    setSubmitting(true);
+    try {
+      const fd = new FormData(e.currentTarget);
+      const payload: any = {
+        empresa_id: effectiveUserId,
+        codigo_oem: fd.get('codigo_oem') as string,
+        nome: fd.get('nome') as string,
+        categoria: fd.get('categoria') as string,
+        marca_compativel: fd.get('marca_compativel') as string,
+        modelo_compativel: fd.get('modelo_compativel') as string,
+        ano_compativel: fd.get('ano_compativel') as string,
+        stock_atual: Number(fd.get('stock_atual') || 0),
+        stock_minimo: Number(fd.get('stock_minimo') || 0),
+        preco_custo: Number(fd.get('preco_custo') || 0),
+        preco_venda: Number(fd.get('preco_venda') || 0),
+        localizacao: fd.get('localizacao') as string,
+        fornecedor_nome: fd.get('fornecedor_nome') as string,
+        observacoes: fd.get('observacoes') as string
+      };
+
+      if (editingPeca) {
+        const { error } = await supabase.from('stand_pecas').update(payload).eq('id', editingPeca.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('stand_pecas').insert([payload]);
+        if (error) throw error;
+      }
+
+      await fetchStandData();
+      setModalPeca(false);
+      setEditingPeca(null);
+    } catch (err: any) {
+      alert(`Erro ao guardar peça: ${err.message || err}`);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDeletePeca = async (id: string) => {
+    if (!window.confirm('Tem a certeza que deseja eliminar esta peça do catálogo?')) return;
+    try {
+      const { error } = await supabase.from('stand_pecas').delete().eq('id', id);
+      if (error) throw error;
+      await fetchStandData();
+    } catch (err: any) {
+      alert(`Erro ao eliminar peça: ${err.message || err}`);
+    }
+  };
+
+  // ─── CÁLCULO DE IVM ANGOLANO ───────────────────────────────────────────────
+  const calcularIVM = (cilindrada: number, combustivel: string, ano: number, valorComercial: number) => {
+    if (combustivel === '100% Elétrico') {
+      return { taxaBase: 0, taxaFinal: 0, valorImposto: 0, isento: true };
+    }
+
+    let taxaBase = 0.02; // 2% padrão
+    if (cilindrada <= 1500) taxaBase = 0.01;
+    else if (cilindrada <= 2500) taxaBase = 0.02;
+    else if (cilindrada <= 3500) taxaBase = 0.03;
+    else taxaBase = 0.05;
+
+    // Redução por idade do veículo
+    const idade = Math.max(0, new Date().getFullYear() - ano);
+    let fatorIdade = 1.0;
+    if (idade > 10) fatorIdade = 0.6; // Redução de 40%
+    else if (idade > 5) fatorIdade = 0.8; // Redução de 20%
+
+    const taxaFinal = taxaBase * fatorIdade;
+    const valorImposto = valorComercial * taxaFinal;
+
+    return { taxaBase, taxaFinal, valorImposto, isento: false };
+  };
+
+  const ivmCalcResult = calcularIVM(ivmCilindrada, ivmCombustivel, ivmAnoFabrico, ivmValorComercial);
+
+  const handleGravarIVM = async () => {
+    if (!ivmSelectedVeiculoId) {
+      alert('Selecione uma viatura para gravar o imposto calculado.');
+      return;
+    }
+    setIvmSaving(true);
+    try {
+      const { error } = await supabase
+        .from('stand_veiculos')
+        .update({
+          cilindrada_cc: ivmCilindrada,
+          valor_ivm_calculado: ivmCalcResult.valorImposto,
+          ivm_pago: true,
+          data_pagamento_ivm: new Date().toISOString().split('T')[0],
+          referencia_pagamento_ivm: `IVM-${new Date().getFullYear()}-${ivmSelectedVeiculoId.slice(0, 6).toUpperCase()}`
+        })
+        .eq('id', ivmSelectedVeiculoId);
+      if (error) throw error;
+      await fetchStandData();
+      alert('Liquidação de IVM gravada na ficha da viatura com sucesso!');
+    } catch (err: any) {
+      alert(`Erro ao gravar IVM: ${err.message || err}`);
+    } finally {
+      setIvmSaving(false);
+    }
+  };
+
   // ─── FILTRAGEM DE VEÍCULOS ─────────────────────────────────────────────────
   const filteredVeiculos = useMemo(() => {
     return veiculos.filter(v => {
@@ -464,7 +629,7 @@ export const StandAutomovelModule: React.FC<StandModuleProps> = ({
         localizacao,
         observacoes,
         imagens,
-        updated_at: new Date().toISOString()
+        /* updated_at */
       };
 
       if (editingVeiculo) {
@@ -561,7 +726,7 @@ export const StandAutomovelModule: React.FC<StandModuleProps> = ({
         outros_custos,
         custo_total,
         observacoes,
-        updated_at: new Date().toISOString()
+        /* updated_at */
       };
 
       if (editingProcesso) {
@@ -690,7 +855,7 @@ export const StandAutomovelModule: React.FC<StandModuleProps> = ({
         custo_total,
         status,
         observacoes,
-        updated_at: new Date().toISOString()
+        /* updated_at */
       };
 
       if (editingOficina) {
@@ -775,7 +940,7 @@ export const StandAutomovelModule: React.FC<StandModuleProps> = ({
         km_entrega,
         combustivel_entrega,
         observacoes,
-        updated_at: new Date().toISOString()
+        /* updated_at */
       };
 
       if (editingReserva) {
@@ -969,6 +1134,13 @@ export const StandAutomovelModule: React.FC<StandModuleProps> = ({
             Atualizar
           </button>
           <button
+            onClick={() => setPreviewReportType('geral')}
+            className="px-3 py-2 bg-amber-600 text-white text-xs font-bold uppercase hover:bg-amber-700 flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+          >
+            <Eye size={14} />
+            Pré-visualizar Relatórios
+          </button>
+          <button
             onClick={handleExportPDFRelatorio}
             className="px-3 py-2 border border-zinc-200 bg-white text-zinc-700 text-xs font-bold uppercase hover:bg-zinc-50 flex items-center gap-1.5 transition-all shadow-sm"
           >
@@ -999,8 +1171,11 @@ export const StandAutomovelModule: React.FC<StandModuleProps> = ({
           { id: 'rentacar', label: `Rent-a-Car (${reservas.length})`, icon: Key },
           { id: 'seguros', label: `Seguros (${seguros.length})`, icon: Shield },
           { id: 'ocorrencias', label: `Ocorrências (${ocorrencias.length})`, icon: AlertTriangle },
-          { id: 'manutencao', label: `Manutenções (${manutencoes.length})`, icon: FileText },
-          { id: 'relatorios', label: 'Relatórios de Rentabilidade', icon: TrendingUp }
+          { id: 'pecas', label: `Peças & Acessórios (${pecas.length})`, icon: Package },
+          { id: 'transito', label: 'Viação & Trânsito', icon: MapPin },
+          { id: 'ivm', label: 'Cálculo do IVM', icon: DollarSign },
+          { id: 'fayol', label: 'Governança Fayol', icon: ClipboardList },
+          { id: 'relatorios', label: 'Relatórios & Auditoria', icon: TrendingUp }
         ].map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -1878,7 +2053,444 @@ export const StandAutomovelModule: React.FC<StandModuleProps> = ({
         </div>
       )}
 
-      {/* ─── ABA 10: RELATÓRIOS & RENTABILIDADE ─────────────────────────────── */}
+      {/* ─── ABA: GESTÃO DE PEÇAS & SOBRESSALENTES ─────────────────────────── */}
+      {activeTab === 'pecas' && (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 border border-zinc-200 shadow-sm">
+            <div className="flex items-center gap-2 flex-1 max-w-md">
+              <Search size={16} className="text-zinc-400" />
+              <input
+                type="text"
+                placeholder="Pesquisar por Código OEM, Nome ou Marca Compatível..."
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="w-full text-xs border border-zinc-200 p-2 bg-zinc-50 focus:outline-none focus:border-[#003366]"
+              />
+            </div>
+            <button
+              onClick={() => {
+                setEditingPeca(null);
+                setModalPeca(true);
+              }}
+              className="px-4 py-2 bg-[#003366] text-white text-xs font-black uppercase tracking-wider hover:bg-[#002244] flex items-center gap-1.5 shadow transition-all cursor-pointer"
+            >
+              <Plus size={15} /> Registar Nova Peça
+            </button>
+          </div>
+
+          {/* Cards de KPIs de Peças */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="p-4 bg-white border border-zinc-200 shadow-sm">
+              <span className="text-[10px] font-black uppercase text-zinc-500">Total de Peças Cadastradas</span>
+              <p className="text-xl font-black text-zinc-900 mt-1">{pecas.length}</p>
+            </div>
+            <div className="p-4 bg-white border border-zinc-200 shadow-sm">
+              <span className="text-[10px] font-black uppercase text-zinc-500">Stock Total (Unidades)</span>
+              <p className="text-xl font-black text-[#003366] mt-1">{pecas.reduce((sum, p) => sum + (Number(p.stock_atual) || 0), 0)}</p>
+            </div>
+            <div className="p-4 bg-amber-50 border border-amber-200 shadow-sm">
+              <span className="text-[10px] font-black uppercase text-amber-800">Alertas de Stock Mínimo</span>
+              <p className="text-xl font-black text-amber-950 mt-1">
+                {pecas.filter(p => (Number(p.stock_atual) || 0) <= (Number(p.stock_minimo) || 0)).length}
+              </p>
+            </div>
+            <div className="p-4 bg-emerald-50 border border-emerald-200 shadow-sm">
+              <span className="text-[10px] font-black uppercase text-emerald-800">Valor em Stock (Custo)</span>
+              <p className="text-xl font-black text-emerald-950 mt-1">
+                {fmt(pecas.reduce((sum, p) => sum + (Number(p.stock_atual || 0) * Number(p.preco_custo || 0)), 0))}
+              </p>
+            </div>
+          </div>
+
+          {/* Tabela de Peças */}
+          <div className="bg-white border border-zinc-200 shadow-sm overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-[#003366] text-white text-[10px] uppercase font-bold">
+                <tr>
+                  <th className="p-3">Código OEM</th>
+                  <th className="p-3">Descrição da Peça</th>
+                  <th className="p-3">Categoria</th>
+                  <th className="p-3">Compatibilidade</th>
+                  <th className="p-3 text-right">Stock</th>
+                  <th className="p-3 text-right">P. Custo</th>
+                  <th className="p-3 text-right">P. Venda</th>
+                  <th className="p-3 text-center">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {pecas.filter(p => !searchTerm || p.nome.toLowerCase().includes(searchTerm.toLowerCase()) || (p.codigo_oem || '').toLowerCase().includes(searchTerm.toLowerCase())).map(p => {
+                  const stock = Number(p.stock_atual || 0);
+                  const min = Number(p.stock_minimo || 0);
+                  const isCritico = stock <= min;
+                  return (
+                    <tr key={p.id} className="hover:bg-zinc-50 transition-colors">
+                      <td className="p-3 font-mono font-bold text-zinc-900">{p.codigo_oem || '---'}</td>
+                      <td className="p-3">
+                        <strong className="text-zinc-900 block">{p.nome}</strong>
+                        <span className="text-[10px] text-zinc-400">Loc: {p.localizacao || 'Armazém Geral'}</span>
+                      </td>
+                      <td className="p-3 text-zinc-600">{p.categoria || 'Geral'}</td>
+                      <td className="p-3 text-zinc-600">{p.marca_compativel || 'Universal'} {p.modelo_compativel || ''}</td>
+                      <td className="p-3 text-right">
+                        <span className={`font-mono font-bold px-2 py-0.5 rounded ${isCritico ? 'bg-red-100 text-red-800' : 'bg-zinc-100 text-zinc-800'}`}>
+                          {stock} un
+                        </span>
+                      </td>
+                      <td className="p-3 text-right font-mono text-zinc-600">{fmt(p.preco_custo)}</td>
+                      <td className="p-3 text-right font-mono font-bold text-[#003366]">{fmt(p.preco_venda)}</td>
+                      <td className="p-3 text-center">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => {
+                              setEditingPeca(p);
+                              setModalPeca(true);
+                            }}
+                            className="p-1 text-zinc-400 hover:text-[#003366] cursor-pointer"
+                            title="Editar"
+                          >
+                            <Edit2 size={13} />
+                          </button>
+                          <button
+                            onClick={() => handleDeletePeca(p.id)}
+                            className="p-1 text-zinc-400 hover:text-red-600 cursor-pointer"
+                            title="Eliminar"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {pecas.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="p-8 text-center text-zinc-400">Nenhuma peça registada no sistema.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ─── ABA: VIAÇÃO & TRÂNSITO (DNVT, MATRÍCULAS, IPO) ──────────────────── */}
+      {activeTab === 'transito' && (
+        <div className="space-y-6">
+          <div className="bg-white border border-zinc-200 p-6 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider">
+                Registo Oficial de Viação, DNVT & Inspeção Periódica Obrigatória (IPO)
+              </h3>
+              <p className="text-xs text-zinc-500 mt-0.5">
+                Acompanhamento de matrículas, livretes, títulos de registo de propriedade e controlo de validade de inspeções
+              </p>
+            </div>
+            <button
+              onClick={() => setPreviewReportType('ivm')}
+              className="px-3.5 py-2 bg-zinc-800 text-white text-xs font-bold uppercase hover:bg-black flex items-center gap-1.5 shadow"
+            >
+              <Eye size={14} /> Pré-visualizar Mapa de Trânsito
+            </button>
+          </div>
+
+          {/* Tabela de Trânsito */}
+          <div className="bg-white border border-zinc-200 shadow-sm overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-[#003366] text-white text-[10px] uppercase font-bold">
+                <tr>
+                  <th className="p-3">Viatura</th>
+                  <th className="p-3">Matrícula</th>
+                  <th className="p-3">Nº do Livrete</th>
+                  <th className="p-3">Nº Título Propriedade</th>
+                  <th className="p-3 text-center">Última IPO</th>
+                  <th className="p-3 text-center">Validade IPO</th>
+                  <th className="p-3 text-center">Estado de Trânsito</th>
+                  <th className="p-3 text-center">Posto DNVT</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {veiculos.map(v => {
+                  const now = new Date();
+                  const isIpoCritica = v.data_inspecao && (new Date(v.data_inspecao).getTime() - now.getTime()) / (1000 * 60 * 60 * 24) <= 30;
+                  return (
+                    <tr key={v.id} className="hover:bg-zinc-50">
+                      <td className="p-3">
+                        <strong className="text-zinc-900 block">{v.marca} {v.modelo} ({v.ano})</strong>
+                        <span className="text-[10px] text-zinc-400">Chassis: {v.numero_chassis || 'N/D'}</span>
+                      </td>
+                      <td className="p-3 font-mono font-black text-[#003366]">{v.matricula || 'Sem Matrícula'}</td>
+                      <td className="p-3 font-mono text-zinc-600">{v.numero_livrete || 'Em Emissão'}</td>
+                      <td className="p-3 font-mono text-zinc-600">{v.numero_titulo_propriedade || 'Em Emissão'}</td>
+                      <td className="p-3 text-center text-zinc-600">{v.data_inspecao || '---'}</td>
+                      <td className="p-3 text-center">
+                        <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded ${
+                          isIpoCritica ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-emerald-100 text-emerald-900'
+                        }`}>
+                          {v.data_inspecao || 'Pendente'}
+                        </span>
+                      </td>
+                      <td className="p-3 text-center">
+                        <span className="px-2 py-0.5 text-[10px] font-bold uppercase bg-blue-100 text-blue-900">
+                          {v.situacao_transito || 'Regular'}
+                        </span>
+                      </td>
+                      <td className="p-3 text-center text-zinc-500">{v.posto_dnvt || 'Luanda - DNVT'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ─── ABA: CÁLCULO DO IMPOSTO SOBRE VEÍCULO MOTORIZADO (IVM) ───────────── */}
+      {activeTab === 'ivm' && (
+        <div className="space-y-6">
+          <div className="bg-white border border-zinc-200 p-6 shadow-sm">
+            <div className="pb-4 border-b border-zinc-100">
+              <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider">
+                Simulador & Liquidação de IVM (Código do Imposto sobre Veículos Motorizados)
+              </h3>
+              <p className="text-xs text-zinc-500 mt-0.5">
+                Cálculo oficial baseado na cilindrada do motor (cc), tipo de combustível, ano de fabrico e valor patrimonial tributável
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-6">
+              {/* Painel de Parâmetros */}
+              <div className="lg:col-span-1 p-5 bg-zinc-50 border border-zinc-200 space-y-4">
+                <h4 className="text-xs font-black uppercase text-zinc-700 tracking-wider">Parâmetros da Viatura</h4>
+
+                <div>
+                  <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">Selecionar da Frota (Opcional)</label>
+                  <select
+                    value={ivmSelectedVeiculoId}
+                    onChange={e => {
+                      const selId = e.target.value;
+                      setIvmSelectedVeiculoId(selId);
+                      const selV = veiculos.find(v => v.id === selId);
+                      if (selV) {
+                        setIvmCilindrada(Number(selV.cilindrada_cc) || 2000);
+                        setIvmCombustivel(selV.tipo_combustivel || 'Gasolina');
+                        setIvmAnoFabrico(Number(selV.ano) || new Date().getFullYear());
+                        setIvmValorComercial(Number(selV.preco_venda || selV.custo_compra) || 10000000);
+                      }
+                    }}
+                    className="w-full text-xs p-2 border border-zinc-300 bg-white font-medium focus:outline-none focus:border-[#003366]"
+                  >
+                    <option value="">-- Simulação Livre --</option>
+                    {veiculos.map(v => (
+                      <option key={v.id} value={v.id}>
+                        {v.marca} {v.modelo} ({v.matricula || v.numero_chassis || 'Sem ref'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">Cilindrada do Motor (cc)</label>
+                  <input
+                    type="number"
+                    value={ivmCilindrada}
+                    onChange={e => setIvmCilindrada(Number(e.target.value))}
+                    className="w-full text-xs p-2 border border-zinc-300 bg-white font-mono"
+                  />
+                  <span className="text-[10px] text-zinc-400">Escalões: &lt;1500cc (1%), 1501-2500cc (2%), 2501-3500cc (3%), &gt;3500cc (5%)</span>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">Tipo de Combustível</label>
+                  <select
+                    value={ivmCombustivel}
+                    onChange={e => setIvmCombustivel(e.target.value)}
+                    className="w-full text-xs p-2 border border-zinc-300 bg-white"
+                  >
+                    <option value="Gasolina">Gasolina</option>
+                    <option value="Gasóleo">Gasóleo / Diesel</option>
+                    <option value="Híbrido">Híbrido</option>
+                    <option value="100% Elétrico">100% Elétrico (Isenção Total)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">Ano de Fabrico</label>
+                  <input
+                    type="number"
+                    value={ivmAnoFabrico}
+                    onChange={e => setIvmAnoFabrico(Number(e.target.value))}
+                    className="w-full text-xs p-2 border border-zinc-300 bg-white font-mono"
+                  />
+                  <span className="text-[10px] text-zinc-400">Redução de 20% (&gt;5 anos) ou 40% (&gt;10 anos)</span>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-black uppercase text-zinc-500 mb-1">Valor Tributável / Comercial (AOA)</label>
+                  <input
+                    type="number"
+                    value={ivmValorComercial}
+                    onChange={e => setIvmValorComercial(Number(e.target.value))}
+                    className="w-full text-xs p-2 border border-zinc-300 bg-white font-mono font-bold"
+                  />
+                </div>
+              </div>
+
+              {/* Painel de Resultados do Cálculo */}
+              <div className="lg:col-span-2 space-y-4 flex flex-col justify-between">
+                <div className="p-6 bg-emerald-50 border border-emerald-200 space-y-4">
+                  <div className="flex items-center justify-between border-b border-emerald-200 pb-3">
+                    <span className="text-xs font-black uppercase text-emerald-900">Resultado do Cálculo Fiscal</span>
+                    <span className="px-2.5 py-0.5 bg-emerald-200 text-emerald-900 text-[10px] font-bold uppercase rounded">
+                      Conforme Código IVM Angola
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    <div>
+                      <span className="text-[10px] text-emerald-700 uppercase font-bold block">Taxa Base de Escalão</span>
+                      <strong className="text-lg text-emerald-950 font-mono">{(ivmCalcResult.taxaBase * 100).toFixed(1)}%</strong>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-emerald-700 uppercase font-bold block">Taxa Efetiva com Redução</span>
+                      <strong className="text-lg text-emerald-950 font-mono">{(ivmCalcResult.taxaFinal * 100).toFixed(2)}%</strong>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-emerald-700 uppercase font-bold block">Estado Tributário</span>
+                      <strong className="text-lg text-emerald-950">{ivmCalcResult.isento ? 'Isento' : 'Tributável'}</strong>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 border-t border-emerald-200 flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-black uppercase text-emerald-800">Total do IVM Liquidado:</span>
+                      <p className="text-2xl font-black text-emerald-950 font-mono">{fmt(ivmCalcResult.valorImposto)}</p>
+                    </div>
+                    {ivmSelectedVeiculoId && (
+                      <button
+                        onClick={handleGravarIVM}
+                        disabled={ivmSaving}
+                        className="px-4 py-2.5 bg-[#003366] text-white text-xs font-black uppercase tracking-wider hover:bg-[#002244] shadow cursor-pointer transition-all"
+                      >
+                        {ivmSaving ? 'A Gravar...' : 'Registar Liquidação na Viatura'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Tabela de Viaturas com IVM */}
+                <div className="bg-white border border-zinc-200 overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-[#003366] text-white text-[10px] uppercase">
+                      <tr>
+                        <th className="p-2.5">Viatura</th>
+                        <th className="p-2.5">Matrícula</th>
+                        <th className="p-2.5 text-right">Cilindrada</th>
+                        <th className="p-2.5 text-right">IVM Calculado</th>
+                        <th className="p-2.5 text-center">Situação</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100">
+                      {veiculos.map(v => (
+                        <tr key={v.id} className="hover:bg-zinc-50">
+                          <td className="p-2.5 font-bold text-zinc-900">{v.marca} {v.modelo}</td>
+                          <td className="p-2.5 font-mono text-zinc-600">{v.matricula || '---'}</td>
+                          <td className="p-2.5 text-right font-mono">{v.cilindrada_cc ? `${v.cilindrada_cc} cc` : '---'}</td>
+                          <td className="p-2.5 text-right font-mono font-bold text-emerald-900">{v.valor_ivm_calculado ? fmt(v.valor_ivm_calculado) : 'Pendente'}</td>
+                          <td className="p-2.5 text-center">
+                            <span className={`px-2 py-0.5 text-[9px] font-bold uppercase rounded ${v.ivm_pago ? 'bg-emerald-100 text-emerald-900' : 'bg-amber-100 text-amber-900'}`}>
+                              {v.ivm_pago ? 'Liquidado' : 'Pendente'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── ABA: GOVERNANÇA & ADMINISTRAÇÃO FAYOL ───────────────────────────── */}
+      {activeTab === 'fayol' && (
+        <div className="space-y-6">
+          <div className="bg-white border border-zinc-200 p-6 shadow-sm">
+            <div className="pb-4 border-b border-zinc-100">
+              <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider">
+                Princípios de Henri Fayol Aplicados à Gestão do Stand Automóvel & Frotas
+              </h3>
+              <p className="text-xs text-zinc-500 mt-0.5">
+                Previsão, Organização, Comando, Coordenação e Controlo Estratégico de Recursos Materiais e Humanos
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 pt-6">
+              {/* 1. Prever */}
+              <div className="p-4 bg-zinc-50 border border-zinc-200 space-y-3">
+                <div className="w-8 h-8 rounded-full bg-[#003366] text-white flex items-center justify-center text-xs font-black">1</div>
+                <h4 className="text-xs font-black uppercase text-[#003366]">Prever (Planeamento)</h4>
+                <p className="text-[11px] text-zinc-600 leading-relaxed">
+                  Estudo de procura de mercado, planeamento de rotas de importação (Dubai, Europa, Ásia) e projeção de metas mensais de faturação.
+                </p>
+                <div className="p-2 bg-white border border-zinc-200 text-[10px] font-bold text-zinc-700">
+                  Meta Atual: 15 Vendas / Mês
+                </div>
+              </div>
+
+              {/* 2. Organizar */}
+              <div className="p-4 bg-zinc-50 border border-zinc-200 space-y-3">
+                <div className="w-8 h-8 rounded-full bg-[#003366] text-white flex items-center justify-center text-xs font-black">2</div>
+                <h4 className="text-xs font-black uppercase text-[#003366]">Organizar (Estrutura)</h4>
+                <p className="text-[11px] text-zinc-600 leading-relaxed">
+                  Disposição das viaturas no showroom, gestão das boxes de mecânica na oficina e separação de peças por categorias OEM.
+                </p>
+                <div className="p-2 bg-white border border-zinc-200 text-[10px] font-bold text-zinc-700">
+                  Espaço: 40 Viaturas no Parque
+                </div>
+              </div>
+
+              {/* 3. Comandar */}
+              <div className="p-4 bg-zinc-50 border border-zinc-200 space-y-3">
+                <div className="w-8 h-8 rounded-full bg-[#003366] text-white flex items-center justify-center text-xs font-black">3</div>
+                <h4 className="text-xs font-black uppercase text-[#003366]">Comandar (Direção)</h4>
+                <p className="text-[11px] text-zinc-600 leading-relaxed">
+                  Atribuição de Ordens de Trabalho aos chefes de mecânica, autorizações formais de test-drive e contratos de aluguer com condutor.
+                </p>
+                <div className="p-2 bg-white border border-zinc-200 text-[10px] font-bold text-zinc-700">
+                  Ordens em Execução: {oficinaOrdens.filter(o => o.status === 'Em Execução').length}
+                </div>
+              </div>
+
+              {/* 4. Coordenar */}
+              <div className="p-4 bg-zinc-50 border border-zinc-200 space-y-3">
+                <div className="w-8 h-8 rounded-full bg-[#003366] text-white flex items-center justify-center text-xs font-black">4</div>
+                <h4 className="text-xs font-black uppercase text-[#003366]">Coordenar (Sinergia)</h4>
+                <p className="text-[11px] text-zinc-600 leading-relaxed">
+                  Harmonização do desalfandegamento no porto com a equipa de limpeza/revisão e o lançamento imediato no catálogo comercial e POS.
+                </p>
+                <div className="p-2 bg-white border border-zinc-200 text-[10px] font-bold text-zinc-700">
+                  Processos Marítimos: {processos.length}
+                </div>
+              </div>
+
+              {/* 5. Controlar */}
+              <div className="p-4 bg-zinc-50 border border-zinc-200 space-y-3">
+                <div className="w-8 h-8 rounded-full bg-[#003366] text-white flex items-center justify-center text-xs font-black">5</div>
+                <h4 className="text-xs font-black uppercase text-[#003366]">Controlar (Auditoria)</h4>
+                <p className="text-[11px] text-zinc-600 leading-relaxed">
+                  Vistorias rigorosas de quilometragem e combustível, auditoria de seguros vencidos, validação de IVM e reconciliação financeira.
+                </p>
+                <div className="p-2 bg-white border border-zinc-200 text-[10px] font-bold text-zinc-700">
+                  Apólices Monitorizadas: {seguros.length}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {targetEndRelatorios}
       {activeTab === 'relatorios' && (
         <div className="space-y-6">
           <div className="bg-white border border-zinc-200 p-6 shadow-sm">
@@ -2299,7 +2911,7 @@ export const StandAutomovelModule: React.FC<StandModuleProps> = ({
               <option value="">Selecione o Cliente...</option>
               {clients.map(c => (
                 <option key={c.id} value={c.id}>
-                  {c.name} ({c.tax_id || 'S/NIF'})
+                  {c.name} ({(c as any).tax_id || c.nif || 'S/NIF'})
                 </option>
               ))}
             </Sel>
@@ -2458,6 +3070,206 @@ export const StandAutomovelModule: React.FC<StandModuleProps> = ({
             <Tex rows={2} name="observacoes" defaultValue={editingReserva?.observacoes || ''} placeholder="Notas de vistoria, danos prévios registados..." />
           </Field>
         </ModalBase>
+      )}
+      {/* ─── MODAL: REGISTAR / EDITAR PEÇA ───────────────────────────────── */}
+      {modalPeca && (
+        <ModalBase
+          title={editingPeca ? 'Editar Peça / Acessório' : 'Registar Nova Peça no Catálogo'}
+          icon={Package}
+          onClose={() => {
+            setModalPeca(false);
+            setEditingPeca(null);
+          }}
+          onSubmit={handleSavePeca}
+          submitting={submitting}
+          maxWidth="max-w-3xl"
+        >
+          <Field label="Código OEM / Part Number *" half>
+            <Inp name="codigo_oem" defaultValue={editingPeca?.codigo_oem || ''} required placeholder="Ex: 04465-35290" />
+          </Field>
+          <Field label="Descrição da Peça *" half>
+            <Inp name="nome" defaultValue={editingPeca?.nome || ''} required placeholder="Ex: Pastilhas de Travão Dianteiras" />
+          </Field>
+          <Field label="Categoria da Peça" half>
+            <Sel name="categoria" defaultValue={editingPeca?.categoria || 'Travões'}>
+              <option value="Travões">Travões & Discos</option>
+              <option value="Motor">Componentes do Motor</option>
+              <option value="Suspensão">Suspensão & Direção</option>
+              <option value="Elétrica">Elétrica & Iluminação</option>
+              <option value="Filtros">Filtros & Óleos</option>
+              <option value="Carroçaria">Carroçaria & Vidros</option>
+              <option value="Transmissão">Transmissão & Embraiagem</option>
+              <option value="Geral">Geral & Acessórios</option>
+            </Sel>
+          </Field>
+          <Field label="Marca Compatível" half>
+            <Inp name="marca_compativel" defaultValue={editingPeca?.marca_compativel || ''} placeholder="Ex: Toyota, Land Rover, Nissan" />
+          </Field>
+          <Field label="Modelos Compatíveis" half>
+            <Inp name="modelo_compativel" defaultValue={editingPeca?.modelo_compativel || ''} placeholder="Ex: Prado, Hilux, Fortuner" />
+          </Field>
+          <Field label="Anos de Compatibilidade" half>
+            <Inp name="ano_compativel" defaultValue={editingPeca?.ano_compativel || ''} placeholder="Ex: 2015-2024" />
+          </Field>
+          <Field label="Stock Atual (Unidades) *" half>
+            <Inp type="number" name="stock_atual" defaultValue={editingPeca?.stock_atual || 0} required />
+          </Field>
+          <Field label="Stock Mínimo de Alerta *" half>
+            <Inp type="number" name="stock_minimo" defaultValue={editingPeca?.stock_minimo || 2} required />
+          </Field>
+          <Field label="Preço de Custo (AOA)" half>
+            <Inp type="number" name="preco_custo" defaultValue={editingPeca?.preco_custo || 0} />
+          </Field>
+          <Field label="Preço de Venda Praticado (AOA) *" half>
+            <Inp type="number" name="preco_venda" defaultValue={editingPeca?.preco_venda || 0} required />
+          </Field>
+          <Field label="Localização no Armazém / Prateleira" half>
+            <Inp name="localizacao" defaultValue={editingPeca?.localizacao || ''} placeholder="Ex: Corredor B - Prateleira 4" />
+          </Field>
+          <Field label="Fornecedor Principal" half>
+            <Inp name="fornecedor_nome" defaultValue={editingPeca?.fornecedor_nome || ''} placeholder="Ex: AutoPeças Luanda Lda" />
+          </Field>
+          <Field label="Observações Técnicas">
+            <Tex rows={2} name="observacoes" defaultValue={editingPeca?.observacoes || ''} placeholder="Garantia, lote do fabricante, especificações..." />
+          </Field>
+        </ModalBase>
+      )}
+
+      {/* ─── MODAL DE PRÉ-VISUALIZAÇÃO DE RELATÓRIO DO STAND ANTES DE IMPRIMIR ── */}
+      {previewReportType && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white border border-zinc-300 w-full max-w-5xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Header da Barra de Ferramentas de Impressão */}
+            <div className="bg-[#003366] text-white px-6 py-3.5 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <Printer size={18} />
+                <span className="text-xs font-black uppercase tracking-wider">
+                  Pré-visualização Oficial para Impressão & Auditoria do Stand
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => window.print()}
+                  className="px-3.5 py-1.5 bg-white text-[#003366] text-xs font-black uppercase hover:bg-zinc-100 flex items-center gap-1.5 shadow-sm cursor-pointer"
+                >
+                  <Printer size={14} /> Imprimir Agora
+                </button>
+                <button
+                  onClick={handleExportPDFRelatorio}
+                  className="px-3.5 py-1.5 bg-emerald-700 text-white text-xs font-black uppercase hover:bg-emerald-800 flex items-center gap-1.5 shadow-sm cursor-pointer"
+                >
+                  <Download size={14} /> Baixar PDF
+                </button>
+                <button
+                  onClick={() => setPreviewReportType(null)}
+                  className="px-3 py-1.5 bg-black/20 hover:bg-black/40 text-white text-xs font-bold uppercase rounded cursor-pointer ml-2"
+                >
+                  Fechar ✕
+                </button>
+              </div>
+            </div>
+
+            {/* Conteúdo em Formato de Folha de Impressão (Papel A4) */}
+            <div className="p-8 overflow-y-auto flex-1 bg-white space-y-6 text-zinc-900 font-sans print:p-0">
+              {/* Timbrado da Empresa */}
+              <div className="border-b-2 border-[#003366] pb-4 flex justify-between items-start">
+                <div>
+                  <h1 className="text-xl font-black text-[#003366] tracking-tight uppercase">
+                    {companyData?.name || 'STAND AUTOMÓVEL OFICIAL'}
+                  </h1>
+                  <p className="text-xs text-zinc-600 mt-0.5">
+                    NIF: {companyData?.nif || '999999999'} • {companyData?.address || 'Angola'}
+                  </p>
+                  <p className="text-[11px] text-zinc-500">
+                    Tel: {companyData?.phone || '+244 923 000 000'} • Email: {companyData?.email || 'stand@agt.co.ao'}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span className="inline-block px-3 py-1 bg-blue-100 text-blue-900 text-xs font-black uppercase border border-blue-300">
+                    MAPA DE INVENTÁRIO & RENTABILIDADE DE VIATURAS
+                  </span>
+                  <p className="text-[11px] text-zinc-500 mt-1 font-mono">
+                    Emitido a: {new Date().toLocaleDateString('pt-AO')} às {new Date().toLocaleTimeString('pt-AO')}
+                  </p>
+                  <p className="text-[10px] text-zinc-400">Exercício Fiscal: {fiscalYear || 'Actual'}</p>
+                </div>
+              </div>
+
+              {/* Quadro Resumo */}
+              <div className="grid grid-cols-4 gap-3">
+                <div className="p-3 border border-zinc-200 bg-zinc-50">
+                  <div className="text-[10px] font-bold text-zinc-500 uppercase">Viaturas em Parque</div>
+                  <div className="text-base font-black text-zinc-900">{veiculos.length}</div>
+                </div>
+                <div className="p-3 border border-zinc-200 bg-zinc-50">
+                  <div className="text-[10px] font-bold text-zinc-500 uppercase">Custo Total Acumulado</div>
+                  <div className="text-base font-black text-zinc-900">
+                    {fmt(veiculos.reduce((acc, v) => acc + Number(v.custo_total_importacao || v.custo_compra || 0), 0))}
+                  </div>
+                </div>
+                <div className="p-3 border border-zinc-200 bg-zinc-50">
+                  <div className="text-[10px] font-bold text-zinc-500 uppercase">Valor Total de Venda</div>
+                  <div className="text-base font-black text-zinc-900">
+                    {fmt(veiculos.reduce((acc, v) => acc + Number(v.preco_venda || 0), 0))}
+                  </div>
+                </div>
+                <div className="p-3 border border-emerald-300 bg-emerald-50">
+                  <div className="text-[10px] font-bold text-emerald-800 uppercase">Lucro Projetado</div>
+                  <div className="text-base font-black text-emerald-950">
+                    {fmt(veiculos.reduce((acc, v) => acc + (Number(v.preco_venda || 0) - Number(v.custo_total_importacao || v.custo_compra || 0)), 0))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Tabela de Viaturas */}
+              <table className="w-full text-left text-xs border border-zinc-200">
+                <thead className="bg-[#003366] text-white text-[10px] uppercase">
+                  <tr>
+                    <th className="p-2">Viatura</th>
+                    <th className="p-2">Matrícula</th>
+                    <th className="p-2">Estado</th>
+                    <th className="p-2 text-right">Custo Total</th>
+                    <th className="p-2 text-right">Preço Venda</th>
+                    <th className="p-2 text-right">Lucro Estimado</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-200">
+                  {veiculos.map(v => {
+                    const cTot = Number(v.custo_total_importacao || v.custo_compra || 0);
+                    const pVenda = Number(v.preco_venda || 0);
+                    const l = pVenda - cTot;
+                    return (
+                      <tr key={v.id}>
+                        <td className="p-2 font-bold">{v.marca} {v.modelo} ({v.ano})</td>
+                        <td className="p-2 font-mono font-bold text-zinc-700">{v.matricula || 'Sem Matrícula'}</td>
+                        <td className="p-2">{v.estado_stand}</td>
+                        <td className="p-2 text-right font-mono">{fmt(cTot)}</td>
+                        <td className="p-2 text-right font-mono font-bold">{fmt(pVenda)}</td>
+                        <td className={`p-2 text-right font-mono font-black ${l >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                          {fmt(l)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+
+              {/* Assinaturas */}
+              <div className="pt-8 border-t border-zinc-200 grid grid-cols-2 gap-8 text-center text-xs">
+                <div>
+                  <div className="border-b border-zinc-400 w-3/4 mx-auto mb-2"></div>
+                  <strong className="block text-zinc-800">Responsável pelo Parque / Stand</strong>
+                  <span className="text-[10px] text-zinc-500">{user?.name || user?.email || 'Gerente de Vendas'}</span>
+                </div>
+                <div>
+                  <div className="border-b border-zinc-400 w-3/4 mx-auto mb-2"></div>
+                  <strong className="block text-zinc-800">Direção Geral / Administração</strong>
+                  <span className="text-[10px] text-zinc-500">Conformidade & Auditoria</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

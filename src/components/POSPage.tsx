@@ -302,8 +302,142 @@ const POSPage = ({
   const [toastMessage, setToastMessage] = useState<{ text: string, type: 'success' | 'info' | 'error' } | null>(null);
 
   // Business Sector / Section & Table Management
-  const [sectionsList, setSectionsList] = useState<string[]>(['Comércio', 'Restaurante', 'Lojas', 'Hotelaria', 'Bar', 'Outros']);
-  const [businessSection, setBusinessSection] = useState<string>('Comércio');
+  const getInitialSection = (): string => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash || '';
+      if (hash.includes('activity=farmacia') || hash.includes('farmacia')) return 'Farmácia';
+      if (hash.includes('activity=stand') || hash.includes('stand')) return 'Stand Automóvel';
+      if (hash.includes('activity=hotelaria') || hash.includes('hotelaria')) return 'Hotelaria';
+      if (hash.includes('activity=restaurante') || hash.includes('restaurante')) return 'Restaurante / Bar';
+      if (hash.includes('activity=lojas') || hash.includes('lojas')) return 'Lojas';
+      const saved = localStorage.getItem('pos_active_section');
+      if (saved) return saved;
+    }
+    return 'Comércio';
+  };
+
+  const [sectionsList, setSectionsList] = useState<string[]>([
+    'Farmácia', 'Stand Automóvel', 'Lojas', 'Hotelaria', 'Restaurante / Bar', 'Comércio'
+  ]);
+  const [businessSection, setBusinessSectionState] = useState<string>(getInitialSection);
+
+  const setBusinessSection = (sec: string) => {
+    setBusinessSectionState(sec);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('pos_active_section', sec);
+    }
+  };
+
+  // Escutar mudancas de hash para alternar actividade do POS
+  useEffect(() => {
+    const handleHashCheck = () => {
+      const hash = window.location.hash || '';
+      if (hash.includes('farmacia')) setBusinessSection('Farmácia');
+      else if (hash.includes('stand')) setBusinessSection('Stand Automóvel');
+      else if (hash.includes('hotelaria')) setBusinessSection('Hotelaria');
+      else if (hash.includes('restaurante')) setBusinessSection('Restaurante / Bar');
+      else if (hash.includes('lojas')) setBusinessSection('Lojas');
+    };
+    window.addEventListener('hashchange', handleHashCheck);
+    return () => window.removeEventListener('hashchange', handleHashCheck);
+  }, []);
+
+  // Dados específicos carregados sob demanda para Farmácia e Stand
+  const [pharmacyItems, setPharmacyItems] = useState<any[]>([]);
+  const [standItems, setStandItems] = useState<any[]>([]);
+
+  useEffect(() => {
+    const empresaId = companyData?.id || user?.empresa_id || user?.company_id;
+    if (!empresaId) return;
+
+    // Carregar medicamentos da farmacia
+    const loadPharmacy = async () => {
+      try {
+        const { data: meds } = await supabase
+          .from('farmacia_medicamentos')
+          .select('id, produto_id, principio_ativo, nome_generico, dosagem, preco_venda, imagem_url, farmacia_lotes(quantidade_atual, numero_lote, data_validade)')
+          .eq('empresa_id', empresaId);
+        if (Array.isArray(meds) && meds.length > 0) {
+          const formatted = meds.map(m => {
+            const lotesArr = (m as any).farmacia_lotes || [];
+            const totalStock = lotesArr.reduce((acc: number, l: any) => acc + (Number(l.quantidade_atual) || 0), 0);
+            const loteMaisProximo = lotesArr[0]?.numero_lote || 'Geral';
+            return {
+              id: m.produto_id || m.id,
+              name: `💊 ${m.nome_generico || m.principio_ativo || 'Medicamento'} ${m.dosagem ? `(${m.dosagem})` : ''}`,
+              price: Number(m.preco_venda || 0),
+              preco: Number(m.preco_venda || 0),
+              stock_quantity: totalStock > 0 ? totalStock : 10,
+              stock: totalStock > 0 ? totalStock : 10,
+              category: 'Farmácia',
+              tipologia: 'farmacia',
+              barcode: m.id.substring(0, 8),
+              image_url: m.imagem_url,
+              tax_percentage: 14,
+              description: `Lote: ${loteMaisProximo} | DCI: ${m.principio_ativo || ''}`
+            };
+          });
+          setPharmacyItems(formatted);
+        }
+      } catch (e) {
+        console.warn('Erro ao carregar medicamentos no POS:', e);
+      }
+    };
+
+    // Carregar viaturas e pecas do stand
+    const loadStand = async () => {
+      try {
+        const [veicRes, pecasRes] = await Promise.all([
+          supabase.from('stand_veiculos').select('id, marca, modelo, ano, matricula, numero_chassis, preco_venda, imagens').eq('empresa_id', empresaId).eq('estado_stand', 'Disponivel'),
+          supabase.from('stand_pecas').select('id, codigo_oem, nome, categoria, marca_compativel, preco_venda, stock_atual, imagem_url').eq('empresa_id', empresaId)
+        ]);
+
+        const standFormatted: any[] = [];
+        if (Array.isArray(veicRes.data)) {
+          veicRes.data.forEach(v => {
+            standFormatted.push({
+              id: v.id,
+              name: `🚗 ${v.marca} ${v.modelo} ${v.ano || ''} [${v.matricula || v.numero_chassis || 'S/M'}]`,
+              price: Number(v.preco_venda || 0),
+              preco: Number(v.preco_venda || 0),
+              stock_quantity: 1,
+              stock: 1,
+              category: 'Stand Automóvel',
+              tipologia: 'stand_automovel',
+              barcode: v.matricula || v.numero_chassis || '',
+              image_url: Array.isArray(v.imagens) && v.imagens[0] ? v.imagens[0] : undefined,
+              tax_percentage: 14,
+              description: `Matrícula: ${v.matricula || 'N/A'} | Chassis: ${v.numero_chassis || 'N/A'}`
+            });
+          });
+        }
+        if (Array.isArray(pecasRes.data)) {
+          pecasRes.data.forEach(p => {
+            standFormatted.push({
+              id: p.id,
+              name: `🔧 ${p.nome} ${p.codigo_oem ? `[OEM: ${p.codigo_oem}]` : ''}`,
+              price: Number(p.preco_venda || 0),
+              preco: Number(p.preco_venda || 0),
+              stock_quantity: Number(p.stock_atual || 0),
+              stock: Number(p.stock_atual || 0),
+              category: 'Peças & Acessórios',
+              tipologia: 'stand_automovel',
+              barcode: p.codigo_oem || '',
+              image_url: p.imagem_url,
+              tax_percentage: 14,
+              description: `Compatível com ${p.marca_compativel || 'Diversos'}`
+            });
+          });
+        }
+        setStandItems(standFormatted);
+      } catch (e) {
+        console.warn('Erro ao carregar stand no POS:', e);
+      }
+    };
+
+    loadPharmacy();
+    loadStand();
+  }, [companyData?.id, user?.empresa_id, user?.company_id]);
   const [showAddSectionModal, setShowAddSectionModal] = useState(false);
   const [newSectionInput, setNewSectionInput] = useState('');
 
@@ -1349,9 +1483,63 @@ const POSPage = ({
     }
   };
 
+  const sectionFilteredProducts = React.useMemo(() => {
+    const allMerged = Array.from(new Map([...(products || []), ...(pharmacyItems || []), ...(standItems || [])].map(item => [item.id, item])).values());
+
+    if (businessSection === 'Farmácia') {
+      return allMerged.filter(p => 
+        p.category?.toLowerCase().includes('farm') || 
+        p.category?.toLowerCase().includes('medic') || 
+        p.category?.toLowerCase().includes('saúde') ||
+        (p as any).tipologia === 'farmacia' ||
+        (p.name && p.name.includes('💊'))
+      );
+    }
+    if (businessSection === 'Stand Automóvel') {
+      return allMerged.filter(p => 
+        p.category?.toLowerCase().includes('stand') || 
+        p.category?.toLowerCase().includes('veic') || 
+        p.category?.toLowerCase().includes('auto') || 
+        p.category?.toLowerCase().includes('peça') ||
+        (p as any).tipologia === 'stand_automovel' ||
+        (p.name && (p.name.includes('🚗') || p.name.includes('🔧')))
+      );
+    }
+    if (businessSection === 'Hotelaria') {
+      return allMerged.filter(p => 
+        p.category?.toLowerCase().includes('hotel') || 
+        p.category?.toLowerCase().includes('quart') || 
+        p.category?.toLowerCase().includes('hosped') ||
+        p.category?.toLowerCase().includes('diária') ||
+        (p as any).tipologia === 'hotelaria'
+      );
+    }
+    if (businessSection === 'Restaurante / Bar' || businessSection === 'Restaurante' || businessSection === 'Bar') {
+      return allMerged.filter(p => 
+        p.category?.toLowerCase().includes('rest') || 
+        p.category?.toLowerCase().includes('bar') || 
+        p.category?.toLowerCase().includes('prato') ||
+        p.category?.toLowerCase().includes('bebida') ||
+        p.category?.toLowerCase().includes('comida') ||
+        p.category?.toLowerCase().includes('refei') ||
+        (p as any).tipologia === 'restaurante'
+      );
+    }
+    if (businessSection === 'Lojas') {
+      return allMerged.filter(p => 
+        p.category?.toLowerCase().includes('loja') || 
+        p.category?.toLowerCase().includes('roupa') || 
+        p.category?.toLowerCase().includes('moda') ||
+        p.category?.toLowerCase().includes('calcado') ||
+        p.category?.toLowerCase().includes('mercearia')
+      );
+    }
+    return allMerged;
+  }, [products, pharmacyItems, standItems, businessSection]);
+
   const filteredByWarehouse = userPosConfig && userPosConfig.warehouse_id 
-    ? products.filter(p => (p as any).armazem_id == userPosConfig.warehouse_id)
-    : products;
+    ? sectionFilteredProducts.filter(p => (p as any).armazem_id == userPosConfig.warehouse_id)
+    : sectionFilteredProducts;
 
   const activeFilteredProducts = filteredByWarehouse
     .filter(p => selectedCategory === 'Todos os Produtos' || p.category === selectedCategory || (p as any).tipologia === selectedCategory)
@@ -2032,6 +2220,44 @@ const POSPage = ({
 
           {/* LEFT: Product Discovery */}
           <div className="flex-1 flex flex-col overflow-hidden">
+
+            {/* Barra de Selecção Rápida de Actividade / Ramo do POS */}
+            <div className="px-4 pt-2.5 pb-1 flex items-center gap-2 overflow-x-auto custom-scrollbar shrink-0 bg-slate-50 border-b border-slate-200">
+              <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider mr-1 shrink-0">Actividade:</span>
+              {[
+                { id: 'Farmácia', label: 'Farmácia', icon: Pill, badge: 'Saúde & Lotes', activeCls: 'bg-emerald-600 text-white border-emerald-700' },
+                { id: 'Stand Automóvel', label: 'Stand Automóvel', icon: Car, badge: 'Viaturas & Peças', activeCls: 'bg-amber-600 text-white border-amber-700' },
+                { id: 'Lojas', label: 'Lojas', icon: ShoppingBag, badge: 'Retalho', activeCls: 'bg-purple-600 text-white border-purple-700' },
+                { id: 'Hotelaria', label: 'Hotelaria', icon: Bed, badge: 'Alojamento', activeCls: 'bg-indigo-600 text-white border-indigo-700' },
+                { id: 'Restaurante / Bar', label: 'Restaurante / Bar', icon: Utensils, badge: 'Mesas & Bar', activeCls: 'bg-rose-600 text-white border-rose-700' },
+                { id: 'Comércio', label: 'Comércio Geral', icon: Store, badge: 'Catálogo Geral', activeCls: 'bg-[#003366] text-white border-[#002244]' }
+              ].map(item => {
+                const isCur = businessSection === item.id;
+                const Icon = item.icon;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      setBusinessSection(item.id);
+                      setSelectedCategory('Todos os Produtos');
+                      playBeep('click');
+                      triggerToast(`Actividade alterada para: ${item.label}`, 'info');
+                    }}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border shrink-0 cursor-pointer ${
+                      isCur
+                        ? `${item.activeCls} shadow-sm`
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100 hover:text-slate-900'
+                    }`}
+                  >
+                    <Icon size={14} />
+                    <span>{item.label}</span>
+                    <span className={`text-[9px] px-1.5 py-0.2 rounded ${isCur ? 'bg-black/20 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                      {item.badge}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
 
             {/* Search Bar */}
             <div className="px-4 pt-3 pb-2 flex items-center gap-3">

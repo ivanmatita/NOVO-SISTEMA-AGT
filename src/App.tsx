@@ -163,8 +163,7 @@ import {
   Bell,
   HelpCircle,
   Car,
-  Pill,
-  Globe
+  Pill
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
@@ -35276,6 +35275,10 @@ export default function App() {
                                   onNavigateToStock={() => setActiveTab('products')}
                                   onNavigateToCaixa={() => setActiveTab('financial')}
                                   onEmitirFatura={handleEmitirFaturaFromPedido}
+                                  onNavigateToPOS={(activity) => {
+                                    window.location.hash = 'pos?activity=' + (activity || 'farmacia');
+                                    setActiveTab('pos');
+                                  }}
                                   fiscalYear={fiscalYear}
                                 />
                               );

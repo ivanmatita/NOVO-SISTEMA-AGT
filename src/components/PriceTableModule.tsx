@@ -376,7 +376,7 @@ export const PriceTableModule: React.FC<PriceTableModuleProps> = ({
                   </td>
                   <td className="px-3 py-2 text-zinc-400 font-mono">{row.indice_inicial!=null?row.indice_inicial:'N/D'}</td>
                   <td className="px-3 py-2 text-right font-mono text-zinc-500">{fmt(row.indice_inicial)}</td>
-                  <td className="px-3 py-2 text-center"><BarChart2 size={13} className="text-zinc-300 mx-auto" title={'Cambio: '+fmt(row.cambio_atual)}/></td>
+                  <td className="px-3 py-2 text-center"><span title={'Cambio: '+fmt(row.cambio_atual)} className="inline-block"><BarChart2 size={13} className="text-zinc-300 mx-auto" /></span></td>
                 </tr>
               ))}
             </tbody>

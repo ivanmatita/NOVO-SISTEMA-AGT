@@ -607,8 +607,8 @@ const PrintA4: React.FC<PrintA4Props> = ({
                         const lineNetAOA = Math.max(0, (q * p) - desc);
                         const lineNetForeign = lineNetAOA / effectiveExRate;
                         const unitPriceForeign = p / effectiveExRate;
-                        const codeSerial = item.serial_number || item.codigo || (item as any).product_code || item.reference || '—';
-                        const unity = item.unidade || (item as any).unit || 'UN';
+                        const codeSerial = (item as any).serial_number || (item as any).codigo || (item as any).product_code || (item as any).reference || (item as any).referencia || '—';
+                        const unity = (item as any).unidade || (item as any).unit || 'UN';
 
                         return (
                           <tr key={idx} className={`border-b border-zinc-200 hover:bg-zinc-50/50 ${idx % 2 === 0 ? 'bg-white' : 'bg-zinc-50/30'}`}>

@@ -46,14 +46,14 @@ const Field = ({ label, children, half }: { label: string; children: React.React
 const Inp = ({ ...p }: React.InputHTMLAttributes<HTMLInputElement>) => (
   <input
     {...p}
-    className="w-full border border-zinc-300 bg-zinc-50 p-2 text-xs font-medium focus:outline-none focus:border-[#003366] focus:ring-1 focus:ring-[#003366]/20 transition-all"
+    className="w-full border border-zinc-300 bg-zinc-50 p-2 text-xs font-medium focus:outline-none focus:border-[#059669] focus:ring-1 focus:ring-[#059669]/20 transition-all"
   />
 );
 
 const Sel = ({ children, ...p }: React.SelectHTMLAttributes<HTMLSelectElement> & { children: React.ReactNode }) => (
   <select
     {...p}
-    className="w-full border border-zinc-300 bg-zinc-50 p-2 text-xs font-medium focus:outline-none focus:border-[#003366] transition-all"
+    className="w-full border border-zinc-300 bg-zinc-50 p-2 text-xs font-medium focus:outline-none focus:border-[#059669] transition-all"
   >
     {children}
   </select>
@@ -62,7 +62,7 @@ const Sel = ({ children, ...p }: React.SelectHTMLAttributes<HTMLSelectElement> &
 const Tex = ({ ...p }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => (
   <textarea
     {...p}
-    className="w-full border border-zinc-300 bg-zinc-50 p-2 text-xs font-medium focus:outline-none focus:border-[#003366] resize-none transition-all"
+    className="w-full border border-zinc-300 bg-zinc-50 p-2 text-xs font-medium focus:outline-none focus:border-[#059669] resize-none transition-all"
   />
 );
 
@@ -102,7 +102,7 @@ const ModalBase = ({ title, icon: Icon, onClose, children, onSubmit, submitting,
       exit={{ opacity: 0, scale: 0.96, y: 15 }}
       className={`bg-white w-full ${maxWidth} shadow-2xl border border-zinc-200 my-6`}
     >
-      <div className="flex justify-between items-center px-6 py-4 border-b border-zinc-100 bg-[#003366]">
+      <div className="flex justify-between items-center px-6 py-4 border-b border-zinc-100 bg-[#059669]">
         <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
           {Icon && <Icon size={16} />} {title}
         </h3>
@@ -119,7 +119,7 @@ const ModalBase = ({ title, icon: Icon, onClose, children, onSubmit, submitting,
           <button
             type="submit"
             disabled={submitting}
-            className="bg-[#003366] text-white px-6 py-2 text-xs font-black uppercase tracking-wider shadow hover:bg-[#002244] transition-all disabled:opacity-50 flex items-center gap-2"
+            className="bg-[#059669] text-white px-6 py-2 text-xs font-black uppercase tracking-wider shadow hover:bg-[#047857] transition-all disabled:opacity-50 flex items-center gap-2"
           >
             {submitting ? <RefreshCw size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
             {submitting ? 'A processar...' : 'Confirmar & Guardar'}
@@ -135,7 +135,7 @@ const KPI = ({ label, value, sub, icon: Icon, color, bg, onClick }: any) => (
   <div
     onClick={onClick}
     className={`bg-white border border-zinc-200 p-4 flex items-center justify-between shadow-sm transition-all ${
-      onClick ? 'cursor-pointer hover:border-[#003366] hover:shadow-md' : ''
+      onClick ? 'cursor-pointer hover:border-[#059669] hover:shadow-md' : ''
     }`}
   >
     <div>
@@ -151,6 +151,7 @@ const KPI = ({ label, value, sub, icon: Icon, color, bg, onClick }: any) => (
 
 // ─── PROPS DO MÓDULO FARMÁCIA ───────────────────────────────────────────────
 interface FarmaciaModuleProps {
+  onNavigateToPOS?: (activity?: string) => void;
   user?: any;
   companyData?: any;
   clients?: Client[];
@@ -174,6 +175,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
   onNavigateToStock,
   onNavigateToCaixa,
   onEmitirFatura,
+  onNavigateToPOS,
   fiscalYear
 }) => {
   const { user: authUser } = useAuth();
@@ -193,6 +195,52 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
   const [transferencias, setTransferencias] = useState<FarmaciaTransferencia[]>([]);
   const [inventarios, setInventarios] = useState<FarmaciaInventario[]>([]);
   const [configuracao, setConfiguracao] = useState<FarmaciaConfiguracao | null>(null);
+
+  // Estados de Facturação & Vendas Automáticas da Farmácia
+  const [faturacaoInfo, setFaturacaoInfo] = useState<{
+    totalFaturado: number;
+    totalIVA: number;
+    totalDescontos: number;
+    totalLiquido: number;
+    qtdVendas: number;
+    ticketMedio: number;
+    porPagamento: Record<string, number>;
+    vendasRecentes: any[];
+  }>({
+    totalFaturado: 0,
+    totalIVA: 0,
+    totalDescontos: 0,
+    totalLiquido: 0,
+    qtdVendas: 0,
+    ticketMedio: 0,
+    porPagamento: {},
+    vendasRecentes: []
+  });
+
+  // Modal de Pré-visualização de Relatório Antes de Imprimir
+  const [previewReportType, setPreviewReportType] = useState<'faturacao' | 'stock' | 'validades' | 'receitas' | null>(null);
+
+  // Estados de Upload de Imagem e Documentos para Medicamento
+  const [uploadedImageUrl, setUploadedImageUrl] = useState<string>('');
+  const [uploadedDocUrl, setUploadedDocUrl] = useState<string>('');
+  const [uploadedDocName, setUploadedDocName] = useState<string>('');
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, isImage: boolean) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === 'string') {
+        if (isImage) {
+          setUploadedImageUrl(reader.result);
+        } else {
+          setUploadedDocUrl(reader.result);
+          setUploadedDocName(file.name);
+        }
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Estados de controlo
   const [loading, setLoading] = useState(true);
@@ -315,10 +363,52 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
         ...p,
         extra,
         lotes: pLotes,
-        stockCalculado: stockLotes > 0 ? stockLotes : Number(p.stock_quantity || p.stock || p.stock_atual || 0)
+        stockCalculado: stockLotes > 0 ? stockLotes : Number(p.stock_quantity || (p as any).stock || (p as any).stock_atual || 0)
       };
     });
   }, [products, medicamentosInfo, lotes]);
+
+  // ─── CÁLCULO DETALHADO DE VALORIZAÇÃO DE STOCK & MARGEM ────────────────────
+  const stockFinancialStats = useMemo(() => {
+    let custoTotal = 0;
+    let vendaTotal = 0;
+    let unidadesTotais = 0;
+    let lotesValidosQtd = 0;
+    let lotesAlertaQtd = 0;
+    let lotesExpiradosQtd = 0;
+    const now = new Date();
+
+    lotes.forEach(l => {
+      const qtd = Number(l.quantidade_atual || 0);
+      const custo = Number(l.custo_unitario || 0);
+      const venda = Number(l.preco_venda || 0);
+      unidadesTotais += qtd;
+      custoTotal += qtd * custo;
+      vendaTotal += qtd * venda;
+
+      if (l.data_validade) {
+        const exp = new Date(l.data_validade);
+        const diffDays = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        if (diffDays < 0) lotesExpiradosQtd += qtd;
+        else if (diffDays <= 60) lotesAlertaQtd += qtd;
+        else lotesValidosQtd += qtd;
+      }
+    });
+
+    const margemBruta = vendaTotal - custoTotal;
+    const margemPercentual = custoTotal > 0 ? (margemBruta / custoTotal) * 100 : 0;
+
+    return {
+      custoTotal,
+      vendaTotal,
+      unidadesTotais,
+      margemBruta,
+      margemPercentual,
+      lotesValidosQtd,
+      lotesAlertaQtd,
+      lotesExpiradosQtd
+    };
+  }, [lotes]);
 
   // ─── INDICADORES & ALERTAS ────────────────────────────────────────────────
   const stats = useMemo(() => {
@@ -350,7 +440,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
     });
 
     const produtosStockBaixo = farmaciaProdutos.filter(p => {
-      const min = Number(p.min_stock || p.stock_minimo || 5);
+      const min = Number(p.min_stock || (p as any).stock_minimo || 5);
       return p.stockCalculado <= min;
     });
 
@@ -805,11 +895,11 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
       {/* ─── CABEÇALHO DO MÓDULO ───────────────────────────────────────────── */}
       <header className="bg-white border border-zinc-200 p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4 shadow-sm">
         <div className="flex items-center gap-3">
-          <span className="p-2.5 bg-[#003366] text-white">
+          <span className="p-2.5 bg-[#059669] text-white">
             <Pill size={26} />
           </span>
           <div>
-            <h2 className="text-xl font-black text-[#003366] tracking-tight uppercase">GESTÃO DE FARMÁCIA</h2>
+            <h2 className="text-xl font-black text-[#059669] tracking-tight uppercase">GESTÃO DE FARMÁCIA</h2>
             <p className="text-xs text-zinc-500">
               Medicamentos, Produtos de Saúde, Controlo de Lotes e Validades (FEFO), Receitas Médicas e Dispensa
             </p>
@@ -834,10 +924,28 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
           </button>
           <button
             onClick={() => {
+              if (onNavigateToPOS) onNavigateToPOS('farmacia');
+              else if (onNavigateToSales) {
+                window.location.hash = 'pos?activity=farmacia';
+                onNavigateToSales();
+              } else {
+                window.location.hash = 'pos?activity=farmacia';
+              }
+            }}
+            className="px-4 py-2 bg-emerald-700 text-white text-xs font-black uppercase tracking-wider hover:bg-emerald-800 flex items-center gap-1.5 shadow transition-all cursor-pointer"
+          >
+            <ShoppingCart size={15} />
+            Ponto de Venda (POS)
+          </button>
+          <button
+            onClick={() => {
               setEditingMedicamento(null);
+              setUploadedImageUrl('');
+              setUploadedDocUrl('');
+              setUploadedDocName('');
               setModalMedicamento(true);
             }}
-            className="px-4 py-2 bg-[#003366] text-white text-xs font-black uppercase tracking-wider hover:bg-[#002244] flex items-center gap-1.5 shadow transition-all"
+            className="px-4 py-2 bg-[#059669] text-white text-xs font-black uppercase tracking-wider hover:bg-[#047857] flex items-center gap-1.5 shadow transition-all"
           >
             <Plus size={15} />
             Novo Medicamento
@@ -858,6 +966,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
           { id: 'inventario', label: `Inventário Físico (${inventarios.length})`, icon: ClipboardList },
           { id: 'alertas', label: 'Central de Alertas', icon: AlertTriangle },
           { id: 'relatorios', label: 'Relatórios Farmacêuticos', icon: TrendingUp },
+          { id: 'pos_redirect', label: 'Terminal POS Farmácia', icon: ShoppingCart },
           { id: 'configuracoes', label: 'Configurações', icon: Settings }
         ].map(tab => {
           const Icon = tab.icon;
@@ -865,10 +974,22 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
           return (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
+              onClick={() => {
+                if (tab.id === 'pos_redirect') {
+                  if (onNavigateToPOS) onNavigateToPOS('farmacia');
+                  else if (onNavigateToSales) {
+                    window.location.hash = 'pos?activity=farmacia';
+                    onNavigateToSales();
+                  } else {
+                    window.location.hash = 'pos?activity=farmacia';
+                  }
+                  return;
+                }
+                setActiveTab(tab.id as any);
+              }}
               className={`flex items-center gap-2 px-5 py-3.5 text-xs font-bold uppercase tracking-wider whitespace-nowrap transition-all border-b-2 ${
                 isActive
-                  ? 'border-[#003366] text-[#003366] bg-zinc-50'
+                  ? 'border-[#059669] text-[#059669] bg-zinc-50'
                   : 'border-transparent text-zinc-500 hover:text-zinc-800 hover:bg-zinc-50/60'
               }`}
             >
@@ -952,7 +1073,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
               </h3>
               <button
                 onClick={() => setActiveTab('lotes')}
-                className="text-xs font-bold text-[#003366] hover:underline flex items-center gap-1"
+                className="text-xs font-bold text-[#059669] hover:underline flex items-center gap-1"
               >
                 Ver Todos <ArrowRight size={13} />
               </button>
@@ -989,7 +1110,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
                               setActiveTab('dispensa');
                               if (prod) handleAddProdutoToDispensa(prod);
                             }}
-                            className="px-2.5 py-1 bg-[#003366] text-white text-[10px] font-bold uppercase hover:bg-[#002244] transition-all"
+                            className="px-2.5 py-1 bg-[#059669] text-white text-[10px] font-bold uppercase hover:bg-[#047857] transition-all"
                           >
                             Dispensar
                           </button>
@@ -1023,14 +1144,14 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
                   placeholder="Pesquisar por nome comercial, princípio ativo, código ou fabricante..."
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 border border-zinc-300 text-xs focus:outline-none focus:border-[#003366]"
+                  className="w-full pl-9 pr-4 py-2 border border-zinc-300 text-xs focus:outline-none focus:border-[#059669]"
                 />
               </div>
 
               <select
                 value={filterCategoria}
                 onChange={e => setFilterCategoria(e.target.value)}
-                className="border border-zinc-300 py-2 px-3 text-xs font-bold text-zinc-700 focus:outline-none focus:border-[#003366]"
+                className="border border-zinc-300 py-2 px-3 text-xs font-bold text-zinc-700 focus:outline-none focus:border-[#059669]"
               >
                 <option value="TODAS">Todas as Categorias</option>
                 <option value="Medicamentos">Medicamentos</option>
@@ -1047,7 +1168,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
                 setEditingMedicamento(null);
                 setModalMedicamento(true);
               }}
-              className="px-4 py-2 bg-[#003366] text-white text-xs font-black uppercase tracking-wider hover:bg-[#002244] flex items-center gap-1.5 shadow whitespace-nowrap"
+              className="px-4 py-2 bg-[#059669] text-white text-xs font-black uppercase tracking-wider hover:bg-[#047857] flex items-center gap-1.5 shadow whitespace-nowrap"
             >
               <Plus size={15} /> Registar Medicamento
             </button>
@@ -1056,7 +1177,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
           <div className="bg-white border border-zinc-200 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-[#003366] text-white font-bold uppercase text-[10px]">
+                <thead className="bg-[#059669] text-white font-bold uppercase text-[10px]">
                   <tr>
                     <th className="p-3">Código / Nome</th>
                     <th className="p-3">Princípio Ativo (DCI)</th>
@@ -1072,16 +1193,16 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
                   {farmaciaProdutos
                     .filter(p => {
                       const matchSearch =
-                        `${p.name} ${p.codigo || ''} ${p.extra?.principio_ativo || ''} ${p.extra?.laboratorio_fabricante || ''}`
+                        `${p.name} ${(p as any).codigo || ''} ${p.extra?.principio_ativo || ''} ${p.extra?.laboratorio_fabricante || ''}`
                           .toLowerCase()
                           .includes(searchTerm.toLowerCase());
-                      const matchCat = filterCategoria === 'TODAS' || p.category === filterCategoria || p.categoria === filterCategoria;
+                      const matchCat = filterCategoria === 'TODAS' || p.category === filterCategoria || (p as any).categoria === filterCategoria;
                       return matchSearch && matchCat;
                     })
                     .map(p => (
                       <tr key={p.id} className="hover:bg-zinc-50/80 transition-colors">
                         <td className="p-3">
-                          <span className="font-mono text-[10px] text-zinc-500 block">{p.codigo || p.code || 'S/C'}</span>
+                          <span className="font-mono text-[10px] text-zinc-500 block">{(p as any).codigo || (p as any).code || 'S/C'}</span>
                           <span className="font-bold text-zinc-900">{p.name}</span>
                         </td>
                         <td className="p-3 font-medium text-zinc-700">{p.extra?.principio_ativo || '---'}</td>
@@ -1095,7 +1216,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
                             {fmtNum(p.stockCalculado)} un
                           </span>
                         </td>
-                        <td className="p-3 font-bold text-emerald-800">{fmt(Number(p.price || p.preco_venda || 0))}</td>
+                        <td className="p-3 font-bold text-emerald-800">{fmt(Number(p.price || (p as any).preco_venda || 0))}</td>
                         <td className="p-3">
                           {p.extra?.requer_receita ? (
                             <span className="px-2 py-0.5 bg-rose-100 text-rose-800 text-[9px] font-black uppercase">Receita Obrigatória</span>
@@ -1107,12 +1228,12 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
                           <div className="flex items-center justify-end gap-1.5">
                             <button
                               onClick={() => {
-                                setTargetProdutoIdLote(p.id);
+                                setTargetProdutoIdLote(String(p.id));
                                 setEditingLote(null);
                                 setModalLote(true);
                               }}
                               title="Adicionar Novo Lote"
-                              className="px-2 py-1 bg-zinc-100 hover:bg-[#003366] hover:text-white text-zinc-700 text-[10px] font-bold uppercase transition-all"
+                              className="px-2 py-1 bg-zinc-100 hover:bg-[#059669] hover:text-white text-zinc-700 text-[10px] font-bold uppercase transition-all"
                             >
                               + Lote
                             </button>
@@ -1142,7 +1263,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
         <div className="space-y-6">
           <div className="flex items-center justify-between bg-white border border-zinc-200 p-4 shadow-sm">
             <div>
-              <h3 className="text-xs font-black text-[#003366] uppercase tracking-wider">Gestão Individual de Lotes e Validades</h3>
+              <h3 className="text-xs font-black text-[#059669] uppercase tracking-wider">Gestão Individual de Lotes e Validades</h3>
               <p className="text-xs text-zinc-500">
                 Acompanhamento rigoroso de validade e aplicação estrita do princípio FEFO (First Expire, First Out)
               </p>
@@ -1153,7 +1274,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
                 setTargetProdutoIdLote('');
                 setModalLote(true);
               }}
-              className="px-4 py-2 bg-[#003366] text-white text-xs font-black uppercase tracking-wider hover:bg-[#002244] flex items-center gap-1.5 shadow"
+              className="px-4 py-2 bg-[#059669] text-white text-xs font-black uppercase tracking-wider hover:bg-[#047857] flex items-center gap-1.5 shadow"
             >
               <Plus size={15} /> Novo Lote
             </button>
@@ -1162,7 +1283,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
           <div className="bg-white border border-zinc-200 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-[#003366] text-white font-bold uppercase text-[10px]">
+                <thead className="bg-[#059669] text-white font-bold uppercase text-[10px]">
                   <tr>
                     <th className="p-3">Nº Lote</th>
                     <th className="p-3">Medicamento / Produto</th>
@@ -1228,7 +1349,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
           {/* Coluna Esquerda: Catálogo Rápido de Medicamentos */}
           <div className="lg:col-span-2 bg-white border border-zinc-200 p-5 shadow-sm space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
-              <h3 className="text-xs font-black text-[#003366] uppercase tracking-wider flex items-center gap-2">
+              <h3 className="text-xs font-black text-[#059669] uppercase tracking-wider flex items-center gap-2">
                 <HeartPulse size={16} /> Seleção Rápida de Medicamentos (Saída Automática FEFO)
               </h3>
             </div>
@@ -1240,7 +1361,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
                 placeholder="Pesquisar medicamento por nome ou código de barras..."
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 border border-zinc-300 text-xs focus:outline-none focus:border-[#003366]"
+                className="w-full pl-9 pr-4 py-2 border border-zinc-300 text-xs focus:outline-none focus:border-[#059669]"
               />
             </div>
 
@@ -1253,10 +1374,10 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
                     <div
                       key={p.id}
                       onClick={() => handleAddProdutoToDispensa(p)}
-                      className="border border-zinc-200 p-3 hover:border-[#003366] hover:bg-zinc-50 cursor-pointer transition-all flex flex-col justify-between"
+                      className="border border-zinc-200 p-3 hover:border-[#059669] hover:bg-zinc-50 cursor-pointer transition-all flex flex-col justify-between"
                     >
                       <div>
-                        <span className="text-[10px] text-zinc-400 font-mono">{p.codigo || 'S/C'}</span>
+                        <span className="text-[10px] text-zinc-400 font-mono">{(p as any).codigo || 'S/C'}</span>
                         <h4 className="font-bold text-zinc-900 text-xs">{p.name}</h4>
                         <p className="text-[10px] text-zinc-500">
                           {p.extra?.dosagem || ''} {p.extra?.forma_farmaceutica || ''}
@@ -1264,7 +1385,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
                       </div>
 
                       <div className="mt-3 pt-2 border-t border-zinc-100 flex items-center justify-between">
-                        <span className="text-xs font-black text-emerald-800">{fmt(Number(p.price || p.preco_venda || 0))}</span>
+                        <span className="text-xs font-black text-emerald-800">{fmt(Number(p.price || (p as any).preco_venda || 0))}</span>
                         {fefoLote ? (
                           <span className="text-[9px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 font-bold">
                             Lote {fefoLote.numero_lote} (Val: {fefoLote.data_validade})
@@ -1291,12 +1412,12 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
                 <select
                   value={dispensaClienteId}
                   onChange={e => setDispensaClienteId(e.target.value)}
-                  className="w-full border border-zinc-300 p-2 text-xs font-medium focus:outline-none focus:border-[#003366]"
+                  className="w-full border border-zinc-300 p-2 text-xs font-medium focus:outline-none focus:border-[#059669]"
                 >
                   <option value="">Consumidor Final (Balcão)</option>
                   {clients.map(c => (
                     <option key={c.id} value={c.id}>
-                      {c.name} ({c.tax_id || 'S/NIF'})
+                      {c.name} ({(c as any).tax_id || c.nif || 'S/NIF'})
                     </option>
                   ))}
                 </select>
@@ -1307,7 +1428,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
                 <select
                   value={dispensaReceitaId}
                   onChange={e => setDispensaReceitaId(e.target.value)}
-                  className="w-full border border-zinc-300 p-2 text-xs font-medium focus:outline-none focus:border-[#003366]"
+                  className="w-full border border-zinc-300 p-2 text-xs font-medium focus:outline-none focus:border-[#059669]"
                 >
                   <option value="">Sem Receita Médica</option>
                   {receitas
@@ -1378,7 +1499,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
         <div className="space-y-6">
           <div className="flex items-center justify-between bg-white border border-zinc-200 p-4 shadow-sm">
             <div>
-              <h3 className="text-xs font-black text-[#003366] uppercase tracking-wider">Arquivo de Receitas e Prescrições Médicas</h3>
+              <h3 className="text-xs font-black text-[#059669] uppercase tracking-wider">Arquivo de Receitas e Prescrições Médicas</h3>
               <p className="text-xs text-zinc-500">
                 Registo de prescritores, pacientes e retenção de receitas para fármacos controlados
               </p>
@@ -1388,7 +1509,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
                 setEditingReceita(null);
                 setModalReceita(true);
               }}
-              className="px-4 py-2 bg-[#003366] text-white text-xs font-black uppercase tracking-wider hover:bg-[#002244] flex items-center gap-1.5 shadow"
+              className="px-4 py-2 bg-[#059669] text-white text-xs font-black uppercase tracking-wider hover:bg-[#047857] flex items-center gap-1.5 shadow"
             >
               <Plus size={15} /> Registar Receita
             </button>
@@ -1397,7 +1518,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
           <div className="bg-white border border-zinc-200 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-[#003366] text-white font-bold uppercase text-[10px]">
+                <thead className="bg-[#059669] text-white font-bold uppercase text-[10px]">
                   <tr>
                     <th className="p-3">Nº Receita</th>
                     <th className="p-3">Data Emissão</th>
@@ -1451,7 +1572,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
         <div className="space-y-6">
           <div className="flex items-center justify-between bg-white border border-zinc-200 p-4 shadow-sm">
             <div>
-              <h3 className="text-xs font-black text-[#003366] uppercase tracking-wider">Receção de Mercadorias & Entrada por Lote</h3>
+              <h3 className="text-xs font-black text-[#059669] uppercase tracking-wider">Receção de Mercadorias & Entrada por Lote</h3>
               <p className="text-xs text-zinc-500">
                 Registo de lotes e datas de validade conferidas na entrega do fornecedor farmacêutico
               </p>
@@ -1461,7 +1582,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
                 setEditingLote(null);
                 setModalLote(true);
               }}
-              className="px-4 py-2 bg-[#003366] text-white text-xs font-black uppercase tracking-wider hover:bg-[#002244] flex items-center gap-1.5 shadow"
+              className="px-4 py-2 bg-[#059669] text-white text-xs font-black uppercase tracking-wider hover:bg-[#047857] flex items-center gap-1.5 shadow"
             >
               <Plus size={15} /> Registar Entrada de Lote
             </button>
@@ -1482,7 +1603,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
         <div className="space-y-6">
           <div className="flex items-center justify-between bg-white border border-zinc-200 p-4 shadow-sm">
             <div>
-              <h3 className="text-xs font-black text-[#003366] uppercase tracking-wider">Registo de Devoluções Farmacêuticas</h3>
+              <h3 className="text-xs font-black text-[#059669] uppercase tracking-wider">Registo de Devoluções Farmacêuticas</h3>
               <p className="text-xs text-zinc-500">
                 Devoluções de clientes, produtos danificados, produtos expirados e devoluções a fornecedores
               </p>
@@ -1492,7 +1613,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
           <div className="bg-white border border-zinc-200 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-[#003366] text-white font-bold uppercase text-[10px]">
+                <thead className="bg-[#059669] text-white font-bold uppercase text-[10px]">
                   <tr>
                     <th className="p-3">Data</th>
                     <th className="p-3">Tipo</th>
@@ -1537,7 +1658,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
         <div className="space-y-6">
           <div className="flex items-center justify-between bg-white border border-zinc-200 p-4 shadow-sm">
             <div>
-              <h3 className="text-xs font-black text-[#003366] uppercase tracking-wider">Inventário Físico & Contagem de Lotes</h3>
+              <h3 className="text-xs font-black text-[#059669] uppercase tracking-wider">Inventário Físico & Contagem de Lotes</h3>
               <p className="text-xs text-zinc-500">
                 Auditoria de stock físico vs stock do sistema com justificação obrigatória de desvios
               </p>
@@ -1547,7 +1668,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
           <div className="bg-white border border-zinc-200 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-[#003366] text-white font-bold uppercase text-[10px]">
+                <thead className="bg-[#059669] text-white font-bold uppercase text-[10px]">
                   <tr>
                     <th className="p-3">Nº Inventário</th>
                     <th className="p-3">Data</th>
@@ -1586,7 +1707,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
       {activeTab === 'alertas' && (
         <div className="space-y-6">
           <div className="bg-white border border-zinc-200 p-6 shadow-sm space-y-4">
-            <h3 className="text-xs font-black text-[#003366] uppercase tracking-wider pb-3 border-b border-zinc-100">
+            <h3 className="text-xs font-black text-[#059669] uppercase tracking-wider pb-3 border-b border-zinc-100">
               Central de Alertas Farmacêuticos
             </h3>
 
@@ -1631,20 +1752,441 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
         </div>
       )}
 
-      {/* ─── TAB 10: RELATÓRIOS ────────────────────────────────────────────── */}
+      {/* ─── TAB 10: RELATÓRIOS FARMACÊUTICOS COMPLETOS COM FACTURAÇÃO AUTOMÁTICA & PRÉ-VISUALIZAÇÃO ─── */}
       {activeTab === 'relatorios' && (
         <div className="space-y-6">
-          <div className="bg-white border border-zinc-200 p-6 shadow-sm space-y-4">
-            <h3 className="text-xs font-black text-[#003366] uppercase tracking-wider pb-3 border-b border-zinc-100">
-              Relatórios e Mapas Farmacêuticos
-            </h3>
-            <div className="flex flex-wrap gap-3">
+          {/* BARRA DE PRÉ-VISUALIZAÇÃO & EXPORTAÇÃO */}
+          <div className="bg-white border border-emerald-200 p-6 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-black text-[#059669] uppercase tracking-wider">
+                Relatórios Farmacêuticos Oficiais & Auditoria Fiscal
+              </h3>
+              <p className="text-xs text-zinc-500 mt-0.5">
+                Facturação automática calculada, valorização de stock a preço de custo e venda, margens brutas e validades (FEFO)
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setPreviewReportType('faturacao')}
+                className="px-3.5 py-2 bg-[#059669] text-white text-xs font-black uppercase tracking-wider hover:bg-[#047857] flex items-center gap-1.5 shadow cursor-pointer transition-all"
+              >
+                <Eye size={14} /> Pré-visualizar Facturação
+              </button>
+              <button
+                onClick={() => setPreviewReportType('stock')}
+                className="px-3.5 py-2 bg-emerald-800 text-white text-xs font-black uppercase tracking-wider hover:bg-emerald-900 flex items-center gap-1.5 shadow cursor-pointer transition-all"
+              >
+                <Eye size={14} /> Pré-visualizar Stock & Margens
+              </button>
+              <button
+                onClick={() => setPreviewReportType('validades')}
+                className="px-3.5 py-2 bg-zinc-800 text-white text-xs font-black uppercase tracking-wider hover:bg-black flex items-center gap-1.5 shadow cursor-pointer transition-all"
+              >
+                <Eye size={14} /> Pré-visualizar Validades
+              </button>
               <button
                 onClick={() => handleExportPDF('validades')}
-                className="px-4 py-2 bg-[#003366] text-white text-xs font-black uppercase tracking-wider hover:bg-[#002244] flex items-center gap-2 shadow"
+                className="px-3 py-2 border border-zinc-300 bg-white text-zinc-800 text-xs font-bold uppercase hover:bg-zinc-50 flex items-center gap-1.5 shadow-xs"
               >
-                <Download size={15} /> Exportar Mapa de Validades (PDF)
+                <Download size={14} /> Baixar PDF
               </button>
+            </div>
+          </div>
+
+          {/* 1. SEÇÃO DE FACTURAÇÃO AUTOMÁTICA */}
+          <div className="bg-white border border-zinc-200 p-6 shadow-sm space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
+              <div className="flex items-center gap-2">
+                <DollarSign size={18} className="text-[#059669]" />
+                <h4 className="text-xs font-black text-[#059669] uppercase tracking-wider">
+                  Facturação Automática da Farmácia (Documentos Emitidos)
+                </h4>
+              </div>
+              <span className="text-[10px] font-bold uppercase px-2 py-0.5 bg-emerald-100 text-emerald-800">
+                {faturacaoInfo.qtdVendas} Operações Registadas
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="p-4 bg-emerald-50/60 border border-emerald-200">
+                <span className="text-[10px] font-black uppercase text-emerald-700">Total Faturado Global</span>
+                <p className="text-xl font-black text-emerald-950 mt-1">{fmt(faturacaoInfo.totalFaturado)}</p>
+                <span className="text-[10px] text-emerald-600">Valor bruto processado</span>
+              </div>
+              <div className="p-4 bg-zinc-50 border border-zinc-200">
+                <span className="text-[10px] font-black uppercase text-zinc-500">Imposto IVA Liquidado</span>
+                <p className="text-xl font-black text-zinc-800 mt-1">{fmt(faturacaoInfo.totalIVA)}</p>
+                <span className="text-[10px] text-zinc-500">Arrecadação fiscal</span>
+              </div>
+              <div className="p-4 bg-zinc-50 border border-zinc-200">
+                <span className="text-[10px] font-black uppercase text-zinc-500">Descontos Concedidos</span>
+                <p className="text-xl font-black text-zinc-800 mt-1">{fmt(faturacaoInfo.totalDescontos)}</p>
+                <span className="text-[10px] text-zinc-500">Campanhas e convénios</span>
+              </div>
+              <div className="p-4 bg-emerald-100/70 border border-emerald-300">
+                <span className="text-[10px] font-black uppercase text-emerald-800">Ticket Médio por Venda</span>
+                <p className="text-xl font-black text-emerald-900 mt-1">{fmt(faturacaoInfo.ticketMedio)}</p>
+                <span className="text-[10px] text-emerald-700">Média de compra / utente</span>
+              </div>
+            </div>
+
+            {/* Tabela de Vendas Recentes da Farmácia */}
+            {faturacaoInfo.vendasRecentes.length > 0 && (
+              <div className="pt-2">
+                <h5 className="text-[11px] font-bold uppercase text-zinc-600 mb-2">Vendas e Faturas Mais Recentes:</h5>
+                <div className="overflow-x-auto border border-zinc-200">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-[#059669] text-white text-[10px] uppercase">
+                      <tr>
+                        <th className="p-2.5">Documento</th>
+                        <th className="p-2.5">Data / Hora</th>
+                        <th className="p-2.5">Cliente / Utente</th>
+                        <th className="p-2.5">Forma de Pagamento</th>
+                        <th className="p-2.5 text-right">Líquido</th>
+                        <th className="p-2.5 text-right">IVA</th>
+                        <th className="p-2.5 text-right">Total Geral</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100 bg-white">
+                      {faturacaoInfo.vendasRecentes.map((d: any) => (
+                        <tr key={d.id} className="hover:bg-emerald-50/40">
+                          <td className="p-2.5 font-mono font-bold text-emerald-900">{d.numero_documento || d.tipo_documento}</td>
+                          <td className="p-2.5 text-zinc-500">{d.data_emissao ? new Date(d.data_emissao).toLocaleDateString('pt-AO') : '---'}</td>
+                          <td className="p-2.5 font-medium text-zinc-800">{d.cliente_nome || 'Consumidor Final'}</td>
+                          <td className="p-2.5 font-semibold text-zinc-600">{d.forma_pagamento || 'Numerário'}</td>
+                          <td className="p-2.5 text-right font-mono text-zinc-700">{fmt(d.total_liquido)}</td>
+                          <td className="p-2.5 text-right font-mono text-zinc-500">{fmt(d.total_iva)}</td>
+                          <td className="p-2.5 text-right font-mono font-bold text-emerald-900">{fmt(d.total_geral)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 2. SEÇÃO DE RELATÓRIO DE PRODUTOS & VALORIZAÇÃO DE STOCK */}
+          <div className="bg-white border border-zinc-200 p-6 shadow-sm space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
+              <div className="flex items-center gap-2">
+                <Package size={18} className="text-[#059669]" />
+                <h4 className="text-xs font-black text-[#059669] uppercase tracking-wider">
+                  Relatório de Produtos Inseridos & Valorização de Stock Farmacêutico
+                </h4>
+              </div>
+              <span className="text-[10px] font-bold uppercase px-2 py-0.5 bg-zinc-100 text-zinc-700">
+                {farmaciaProdutos.length} Artigos Cadastrados
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="p-4 bg-zinc-50 border border-zinc-200">
+                <span className="text-[10px] font-black uppercase text-zinc-500">Unidades Físicas em Stock</span>
+                <p className="text-xl font-black text-zinc-900 mt-1">{fmtNum(stockFinancialStats.unidadesTotais)}</p>
+                <span className="text-[10px] text-zinc-500">Soma de todos os lotes ativos</span>
+              </div>
+              <div className="p-4 bg-amber-50 border border-amber-200">
+                <span className="text-[10px] font-black uppercase text-amber-800">Custo Total de Aquisição</span>
+                <p className="text-xl font-black text-amber-950 mt-1">{fmt(stockFinancialStats.custoTotal)}</p>
+                <span className="text-[10px] text-amber-700">Investimento imobilizado</span>
+              </div>
+              <div className="p-4 bg-emerald-50 border border-emerald-200">
+                <span className="text-[10px] font-black uppercase text-emerald-800">Valor Potencial de Venda</span>
+                <p className="text-xl font-black text-emerald-950 mt-1">{fmt(stockFinancialStats.vendaTotal)}</p>
+                <span className="text-[10px] text-emerald-700">Receita bruta projetada</span>
+              </div>
+              <div className="p-4 bg-emerald-100 border border-emerald-300">
+                <span className="text-[10px] font-black uppercase text-emerald-900">Margem Bruta Teórica</span>
+                <p className="text-xl font-black text-emerald-900 mt-1">{fmt(stockFinancialStats.margemBruta)}</p>
+                <span className="text-[10px] font-bold text-emerald-800">
+                  Markup Médio: +{stockFinancialStats.margemPercentual.toFixed(1)}%
+                </span>
+              </div>
+            </div>
+
+            {/* Tabela dos Principais Medicamentos em Stock */}
+            <div className="pt-2">
+              <h5 className="text-[11px] font-bold uppercase text-zinc-600 mb-2">Quadro Analítico de Medicamentos & Margens:</h5>
+              <div className="overflow-x-auto border border-zinc-200 max-h-96">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-[#059669] text-white text-[10px] uppercase sticky top-0">
+                    <tr>
+                      <th className="p-2.5">Medicamento / DCI</th>
+                      <th className="p-2.5 text-center">Forma / Dosagem</th>
+                      <th className="p-2.5 text-center">Lotes Activos</th>
+                      <th className="p-2.5 text-right">Stock</th>
+                      <th className="p-2.5 text-right">P. Custo Médio</th>
+                      <th className="p-2.5 text-right">P. Venda</th>
+                      <th className="p-2.5 text-right">Valor Stock (Venda)</th>
+                      <th className="p-2.5 text-right">Margem Est.</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100 bg-white">
+                    {farmaciaProdutos.slice(0, 30).map(p => {
+                      const stockQtd = p.stockCalculado || 0;
+                      const custoUn = Number((p as any).preco_custo || (p as any).cost_price || p.lotes?.[0]?.custo_unitario || 0);
+                      const vendaUn = Number(p.price || p.lotes?.[0]?.preco_venda || 0);
+                      const valorVenda = stockQtd * vendaUn;
+                      const margem = vendaUn - custoUn;
+                      return (
+                        <tr key={p.id} className="hover:bg-emerald-50/30">
+                          <td className="p-2.5">
+                            <strong className="text-zinc-900 block">{p.name}</strong>
+                            <span className="text-[10px] text-zinc-400">{p.extra?.principio_ativo || 'DCI Não Especificada'}</span>
+                          </td>
+                          <td className="p-2.5 text-center text-zinc-600">{p.extra?.dosagem || '---'} • {p.extra?.forma_farmaceutica || '---'}</td>
+                          <td className="p-2.5 text-center font-bold text-zinc-700">{p.lotes?.length || 0}</td>
+                          <td className="p-2.5 text-right font-mono font-bold text-zinc-900">{fmtNum(stockQtd)}</td>
+                          <td className="p-2.5 text-right font-mono text-zinc-600">{fmt(custoUn)}</td>
+                          <td className="p-2.5 text-right font-mono font-bold text-emerald-900">{fmt(vendaUn)}</td>
+                          <td className="p-2.5 text-right font-mono font-bold text-zinc-900">{fmt(valorVenda)}</td>
+                          <td className="p-2.5 text-right font-mono font-bold text-emerald-700">
+                            {custoUn > 0 ? `+${((margem / custoUn) * 100).toFixed(0)}%` : '---'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL DE PRÉ-VISUALIZAÇÃO DE RELATÓRIO ANTES DE IMPRIMIR ─────────────────── */}
+      {previewReportType && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white border border-zinc-300 w-full max-w-5xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Header da Barra de Ferramentas de Impressão */}
+            <div className="bg-[#059669] text-white px-6 py-3.5 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <Printer size={18} />
+                <span className="text-xs font-black uppercase tracking-wider">
+                  Pré-visualização Oficial para Impressão & Auditoria Farmacêutica
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => window.print()}
+                  className="px-3.5 py-1.5 bg-white text-[#059669] text-xs font-black uppercase hover:bg-emerald-50 flex items-center gap-1.5 shadow-sm cursor-pointer"
+                >
+                  <Printer size={14} /> Imprimir Agora
+                </button>
+                <button
+                  onClick={() => handleExportPDF('validades')}
+                  className="px-3.5 py-1.5 bg-emerald-800 text-white text-xs font-black uppercase hover:bg-emerald-900 flex items-center gap-1.5 shadow-sm cursor-pointer"
+                >
+                  <Download size={14} /> Baixar PDF
+                </button>
+                <button
+                  onClick={() => setPreviewReportType(null)}
+                  className="px-3 py-1.5 bg-black/20 hover:bg-black/40 text-white text-xs font-bold uppercase rounded cursor-pointer ml-2"
+                >
+                  Fechar ✕
+                </button>
+              </div>
+            </div>
+
+            {/* Conteúdo em Formato de Folha de Impressão (Papel A4) */}
+            <div className="p-8 overflow-y-auto flex-1 bg-white space-y-6 text-zinc-900 font-sans print:p-0">
+              {/* Timbrado da Empresa */}
+              <div className="border-b-2 border-[#059669] pb-4 flex justify-between items-start">
+                <div>
+                  <h1 className="text-xl font-black text-[#059669] tracking-tight uppercase">
+                    {companyData?.name || 'SISTEMA INTEGRADO DE FARMÁCIA'}
+                  </h1>
+                  <p className="text-xs text-zinc-600 mt-0.5">
+                    NIF: {companyData?.nif || '999999999'} • {companyData?.address || 'Angola'}
+                  </p>
+                  <p className="text-[11px] text-zinc-500">
+                    Tel: {companyData?.phone || '+244 923 000 000'} • Email: {companyData?.email || 'farmacia@agt.co.ao'}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span className="inline-block px-3 py-1 bg-emerald-100 text-emerald-900 text-xs font-black uppercase border border-emerald-300">
+                    {previewReportType === 'faturacao' && 'RELATÓRIO DE FACTURAÇÃO'}
+                    {previewReportType === 'stock' && 'MAPA DE STOCK & VALORIZAÇÃO'}
+                    {previewReportType === 'validades' && 'MAPA DE VALIDADES & FEFO'}
+                  </span>
+                  <p className="text-[11px] text-zinc-500 mt-1 font-mono">
+                    Emitido a: {new Date().toLocaleDateString('pt-AO')} às {new Date().toLocaleTimeString('pt-AO')}
+                  </p>
+                  <p className="text-[10px] text-zinc-400">Exercício Fiscal: {fiscalYear || 'Actual'}</p>
+                </div>
+              </div>
+
+              {/* Corpo do Relatório: Facturação */}
+              {previewReportType === 'faturacao' && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-4 gap-3">
+                    <div className="p-3 border border-zinc-200 bg-zinc-50">
+                      <div className="text-[10px] font-bold text-zinc-500 uppercase">Facturação Bruta</div>
+                      <div className="text-base font-black text-zinc-900">{fmt(faturacaoInfo.totalFaturado)}</div>
+                    </div>
+                    <div className="p-3 border border-zinc-200 bg-zinc-50">
+                      <div className="text-[10px] font-bold text-zinc-500 uppercase">Total IVA</div>
+                      <div className="text-base font-black text-zinc-900">{fmt(faturacaoInfo.totalIVA)}</div>
+                    </div>
+                    <div className="p-3 border border-zinc-200 bg-zinc-50">
+                      <div className="text-[10px] font-bold text-zinc-500 uppercase">Total Descontos</div>
+                      <div className="text-base font-black text-zinc-900">{fmt(faturacaoInfo.totalDescontos)}</div>
+                    </div>
+                    <div className="p-3 border border-emerald-300 bg-emerald-50">
+                      <div className="text-[10px] font-bold text-emerald-800 uppercase">Facturação Líquida</div>
+                      <div className="text-base font-black text-emerald-950">{fmt(faturacaoInfo.totalLiquido)}</div>
+                    </div>
+                  </div>
+
+                  <table className="w-full text-left text-xs border border-zinc-200">
+                    <thead className="bg-[#059669] text-white text-[10px] uppercase">
+                      <tr>
+                        <th className="p-2">Documento</th>
+                        <th className="p-2">Data</th>
+                        <th className="p-2">Utente / Cliente</th>
+                        <th className="p-2">Pagamento</th>
+                        <th className="p-2 text-right">Líquido</th>
+                        <th className="p-2 text-right">IVA</th>
+                        <th className="p-2 text-right">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-200">
+                      {faturacaoInfo.vendasRecentes.map((d: any) => (
+                        <tr key={d.id}>
+                          <td className="p-2 font-mono font-bold">{d.numero_documento}</td>
+                          <td className="p-2">{d.data_emissao ? new Date(d.data_emissao).toLocaleDateString('pt-AO') : '---'}</td>
+                          <td className="p-2">{d.cliente_nome || 'Consumidor Final'}</td>
+                          <td className="p-2">{d.forma_pagamento || 'Numerário'}</td>
+                          <td className="p-2 text-right font-mono">{fmt(d.total_liquido)}</td>
+                          <td className="p-2 text-right font-mono">{fmt(d.total_iva)}</td>
+                          <td className="p-2 text-right font-mono font-bold">{fmt(d.total_geral)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="bg-zinc-100 font-bold">
+                      <tr>
+                        <td colSpan={4} className="p-2 text-right uppercase text-[10px]">Totais Globais:</td>
+                        <td className="p-2 text-right font-mono">{fmt(faturacaoInfo.totalLiquido)}</td>
+                        <td className="p-2 text-right font-mono">{fmt(faturacaoInfo.totalIVA)}</td>
+                        <td className="p-2 text-right font-mono font-black text-[#059669]">{fmt(faturacaoInfo.totalFaturado)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+
+              {/* Corpo do Relatório: Stock & Margens */}
+              {previewReportType === 'stock' && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-4 gap-3">
+                    <div className="p-3 border border-zinc-200 bg-zinc-50">
+                      <div className="text-[10px] font-bold text-zinc-500 uppercase">Qtd Unidades</div>
+                      <div className="text-base font-black text-zinc-900">{fmtNum(stockFinancialStats.unidadesTotais)}</div>
+                    </div>
+                    <div className="p-3 border border-zinc-200 bg-zinc-50">
+                      <div className="text-[10px] font-bold text-zinc-500 uppercase">Custo Total de Stock</div>
+                      <div className="text-base font-black text-zinc-900">{fmt(stockFinancialStats.custoTotal)}</div>
+                    </div>
+                    <div className="p-3 border border-zinc-200 bg-zinc-50">
+                      <div className="text-[10px] font-bold text-zinc-500 uppercase">Venda Total Prevista</div>
+                      <div className="text-base font-black text-zinc-900">{fmt(stockFinancialStats.vendaTotal)}</div>
+                    </div>
+                    <div className="p-3 border border-emerald-300 bg-emerald-50">
+                      <div className="text-[10px] font-bold text-emerald-800 uppercase">Margem Bruta Prevista</div>
+                      <div className="text-base font-black text-emerald-950">{fmt(stockFinancialStats.margemBruta)}</div>
+                    </div>
+                  </div>
+
+                  <table className="w-full text-left text-xs border border-zinc-200">
+                    <thead className="bg-[#059669] text-white text-[10px] uppercase">
+                      <tr>
+                        <th className="p-2">Medicamento</th>
+                        <th className="p-2">Princípio Ativo</th>
+                        <th className="p-2 text-right">Stock</th>
+                        <th className="p-2 text-right">P. Custo</th>
+                        <th className="p-2 text-right">P. Venda</th>
+                        <th className="p-2 text-right">Subtotal Custo</th>
+                        <th className="p-2 text-right">Subtotal Venda</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-200">
+                      {farmaciaProdutos.map(p => {
+                        const qtd = p.stockCalculado || 0;
+                        const custo = Number((p as any).preco_custo || p.lotes?.[0]?.custo_unitario || 0);
+                        const venda = Number(p.price || p.lotes?.[0]?.preco_venda || 0);
+                        return (
+                          <tr key={p.id}>
+                            <td className="p-2 font-bold">{p.name}</td>
+                            <td className="p-2 text-zinc-600">{p.extra?.principio_ativo || '---'}</td>
+                            <td className="p-2 text-right font-mono">{fmtNum(qtd)}</td>
+                            <td className="p-2 text-right font-mono">{fmt(custo)}</td>
+                            <td className="p-2 text-right font-mono">{fmt(venda)}</td>
+                            <td className="p-2 text-right font-mono">{fmt(qtd * custo)}</td>
+                            <td className="p-2 text-right font-mono font-bold">{fmt(qtd * venda)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot className="bg-zinc-100 font-bold">
+                      <tr>
+                        <td colSpan={5} className="p-2 text-right uppercase text-[10px]">Totais do Inventário:</td>
+                        <td className="p-2 text-right font-mono">{fmt(stockFinancialStats.custoTotal)}</td>
+                        <td className="p-2 text-right font-mono font-black text-[#059669]">{fmt(stockFinancialStats.vendaTotal)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+
+              {/* Corpo do Relatório: Validades */}
+              {previewReportType === 'validades' && (
+                <div className="space-y-4">
+                  <table className="w-full text-left text-xs border border-zinc-200">
+                    <thead className="bg-[#059669] text-white text-[10px] uppercase">
+                      <tr>
+                        <th className="p-2">Nº Lote</th>
+                        <th className="p-2">Medicamento</th>
+                        <th className="p-2">Data Fabrico</th>
+                        <th className="p-2">Data Validade</th>
+                        <th className="p-2 text-right">Qtd Stock</th>
+                        <th className="p-2">Estado</th>
+                        <th className="p-2 text-right">P. Venda</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-200">
+                      {lotes.map(l => {
+                        const prod = products.find(p => p.id === l.produto_id);
+                        return (
+                          <tr key={l.id}>
+                            <td className="p-2 font-mono font-bold text-zinc-900">{l.numero_lote}</td>
+                            <td className="p-2 font-semibold">{prod?.name || '---'}</td>
+                            <td className="p-2 text-zinc-500">{l.data_fabricacao || '---'}</td>
+                            <td className="p-2 font-bold">{l.data_validade}</td>
+                            <td className="p-2 text-right font-mono font-bold">{fmtNum(l.quantidade_atual)}</td>
+                            <td className="p-2"><StatusBadge status={l.estado} /></td>
+                            <td className="p-2 text-right font-mono">{fmt(l.preco_venda)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Assinaturas Oficiais de Conformidade */}
+              <div className="pt-8 border-t border-zinc-200 grid grid-cols-2 gap-8 text-center text-xs">
+                <div>
+                  <div className="border-b border-zinc-400 w-3/4 mx-auto mb-2"></div>
+                  <strong className="block text-zinc-800">Responsável pelo Registo</strong>
+                  <span className="text-[10px] text-zinc-500">{user?.name || user?.email || 'Operador Autorizado'}</span>
+                </div>
+                <div>
+                  <div className="border-b border-zinc-400 w-3/4 mx-auto mb-2"></div>
+                  <strong className="block text-zinc-800">Diretor Técnico / Farmacêutico</strong>
+                  <span className="text-[10px] text-zinc-500">Cédula Profissional / Carimbo</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1653,7 +2195,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
       {/* ─── TAB 11: CONFIGURAÇÕES ─────────────────────────────────────────── */}
       {activeTab === 'configuracoes' && (
         <div className="bg-white border border-zinc-200 p-6 shadow-sm max-w-2xl space-y-4">
-          <h3 className="text-xs font-black text-[#003366] uppercase tracking-wider pb-3 border-b border-zinc-100">
+          <h3 className="text-xs font-black text-[#059669] uppercase tracking-wider pb-3 border-b border-zinc-100">
             Definições Operacionais da Farmácia
           </h3>
           <div className="space-y-3 text-xs text-zinc-700">
@@ -1808,7 +2350,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
               <option value="">Selecione o medicamento...</option>
               {products.map(p => (
                 <option key={p.id} value={p.id}>
-                  {p.name} ({p.codigo || 'S/C'})
+                  {p.name} ({(p as any).codigo || 'S/C'})
                 </option>
               ))}
             </Sel>

@@ -11,6 +11,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { supabase } from '../lib/supabase';
+import IVMModule from './accounting/IVMModule';
 import { useAuth } from '../contexts/AuthContext';
 import {
   StandVeiculo,
@@ -2247,6 +2248,12 @@ export const StandAutomovelModule: React.FC<StandModuleProps> = ({
       {/* ─── ABA: CÁLCULO DO IMPOSTO SOBRE VEÍCULO MOTORIZADO (IVM) ───────────── */}
       {activeTab === 'ivm' && (
         <div className="space-y-6">
+          {/* MÓDULO OFICIAL COMPLETO DE IVM (LEI N.º 24/20 AGT) */}
+          <IVMModule 
+            companyData={companyData}
+            user={user}
+            fiscalYear={fiscalYear}
+          />
           <div className="bg-white border border-zinc-200 p-6 shadow-sm">
             <div className="pb-4 border-b border-zinc-100">
               <h3 className="text-sm font-black text-[#003366] uppercase tracking-wider">

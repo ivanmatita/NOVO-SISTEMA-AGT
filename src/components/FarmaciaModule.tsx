@@ -12,6 +12,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { supabase } from '../lib/supabase';
+import PharmacyServicesCards from './pharmacy/PharmacyServicesCards';
 import { useAuth } from '../contexts/AuthContext';
 import {
   FarmaciaMedicamento,
@@ -185,6 +186,48 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
   const [activeTab, setActiveTab] = useState<
     'dashboard' | 'medicamentos' | 'lotes' | 'dispensa' | 'receitas' | 'compras' | 'devolucoes' | 'transferencias' | 'inventario' | 'alertas' | 'relatorios' | 'configuracoes'
   >('dashboard');
+
+  const handleSelectPharmacyService = (serviceKey: string) => {
+    switch (serviceKey) {
+      case 'dispensacao':
+        setActiveTab('dispensa');
+        break;
+      case 'pos_farmacia':
+        if (onNavigateToPOS) onNavigateToPOS('farmacia');
+        else setActiveTab('dispensa');
+        break;
+      case 'triagem_rapida':
+        setActiveTab('dispensa');
+        break;
+      case 'consulta_stock_precos':
+        setActiveTab('medicamentos');
+        break;
+      case 'lotes_validades':
+        setActiveTab('lotes');
+        break;
+      case 'termolabeis':
+      case 'psicotropicos':
+      case 'recolhas_alertas':
+        setActiveTab('alertas');
+        break;
+      case 'receitas_medicas':
+      case 'genericos_dci':
+      case 'preparacao_magistrais':
+      case 'interacoes_medicamentosas':
+        setActiveTab('receitas');
+        break;
+      case 'relatorio_armed':
+      case 'farmacovigilancia':
+      case 'auditoria_boas_praticas':
+        setActiveTab('relatorios');
+        break;
+      case 'inventario_farmacia':
+        setActiveTab('inventario');
+        break;
+      default:
+        setActiveTab('medicamentos');
+    }
+  };
 
   // Estados dos dados da Farmácia
   const [medicamentosInfo, setMedicamentosInfo] = useState<FarmaciaMedicamento[]>([]);
@@ -1003,6 +1046,9 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
       {/* ─── TAB 1: DASHBOARD GERAL ────────────────────────────────────────── */}
       {activeTab === 'dashboard' && (
         <div className="space-y-6">
+          {/* SECÇÃO OFICIAL DE SERVIÇOS FARMACÊUTICOS (MODELO DE CARTÕES COM ÍCONES) */}
+          <PharmacyServicesCards onSelectService={handleSelectPharmacyService} />
+
           {/* Faixa de Alerta Crítico */}
           {(stats.lotesExpirados > 0 || stats.lotesEmAlerta30 > 0) && (
             <div className="p-4 bg-red-50 border-l-4 border-red-500 flex items-center justify-between shadow-sm">

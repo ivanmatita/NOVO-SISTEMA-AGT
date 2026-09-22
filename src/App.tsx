@@ -13,6 +13,12 @@ import BusinessOverview from './components/BusinessOverview';
 import FleetManagementModule from './components/FleetManagementModule';
 import StandAutomovelModule from './components/StandAutomovelModule';
 import FarmaciaModule from './components/FarmaciaModule';
+import IVMModule from './components/accounting/IVMModule';
+import IPModule from './components/accounting/IPModule';
+import TaxCalculationsDetailedReport from './components/accounting/TaxCalculationsDetailedReport';
+import CashFlowStatementModule from './components/accounting/CashFlowStatementModule';
+import PharmacyServicesCards from './components/pharmacy/PharmacyServicesCards';
+
 import ProjectManagementModule from './components/ProjectManagementModule';
 import LiteracyModule from './components/LiteracyModule';
 import ArchiveModule from './components/ArchiveModule';
@@ -24426,6 +24432,10 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
   const vatToPay = vatLiquidated - vatDeductible;
 
   const sections = [
+    { id: 'ivm', label: 'IVM - Veículos Motorizados', icon: <Car size={24} />, description: 'Imposto sobre Veículos Motorizados (Lei n.º 24/20). Cadastro, cálculo e DUC.' },
+    { id: 'ip', label: 'IP - Imposto Predial', icon: <Building2 size={24} />, description: 'Imposto Predial Urbano e Rústico (Lei n.º 20/20). Inscrição, liquidação, transmissão e contratos.' },
+    { id: 'calculos-impostos-detalhado', label: 'Cálculos de Imposto (IVA)', icon: <Receipt size={24} />, description: 'Relatório detalhado de IVA liquidado por documento com exportação XLS.' },
+    { id: 'fluxo-caixa', label: 'Fluxo de Caixa (Método Directo)', icon: <TrendingUp size={24} />, description: 'Demonstração de Fluxos de Caixa pelo Método Directo (PGC Angola) com comparativo anual.' },
     { id: 'tax-payments', label: 'Pagamento de Impostos', icon: <Receipt size={24} />, description: 'Registo e consulta dos comprovativos e guias de pagamento de impostos.' },
     { id: 'contas-pag-impostos', label: 'Contas Pag Impostos', icon: <Receipt size={24} />, description: 'Gestão das contas de pagamento de impostos associadas ao Plano Geral de Contas.' },
     { id: 'delete-movements', label: 'Apagar Movimentos', icon: <Trash2 size={24} />, description: 'Apagar movimentos contabilísticos em lote por diário e período, com exportação PDF/Excel.' },
@@ -24454,6 +24464,14 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
 
   const renderContent = () => {
     switch (activeSubTab) {
+      case 'ivm':
+        return <IVMModule companyData={companyData} user={user} fiscalYear={fiscalYear} onBack={() => setActiveSubTab(null)} />;
+      case 'ip':
+        return <IPModule companyData={companyData} user={user} fiscalYear={fiscalYear} onBack={() => setActiveSubTab(null)} />;
+      case 'calculos-impostos-detalhado':
+        return <TaxCalculationsDetailedReport companyData={companyData} user={user} fiscalYear={fiscalYear} invoices={invoices} issuedDocuments={issuedDocuments} onBack={() => setActiveSubTab(null)} />;
+      case 'fluxo-caixa':
+        return <CashFlowStatementModule companyData={companyData} user={user} fiscalYear={fiscalYear} invoices={invoices} issuedDocuments={issuedDocuments} onBack={() => setActiveSubTab(null)} />;
       case 'mapa-amortizacao':
         return <MapaAmortizacaoModule user={user} companyData={companyData} fiscalYear={fiscalYear} onBack={() => setActiveSubTab(null)} />;
       case 'demonstracao-resultados':
@@ -24519,6 +24537,32 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
 
   return (
     <div className="space-y-8 p-6">
+
+      {/* CABEÇALHO OBRIGATÓRIO DA EMPRESA COM LOGÓTIPO */}
+      <div className="bg-white border border-zinc-200 p-4 shadow-sm flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          {companyData?.logo ? (
+            <img 
+              src={companyData.logo} 
+              alt="Logo" 
+              className="w-14 h-14 object-contain rounded border border-zinc-200 bg-zinc-50 p-1" 
+            />
+          ) : (
+            <div className="w-14 h-14 bg-[#003366] text-white flex items-center justify-center font-bold text-xl rounded shadow-sm">
+              <Building2 size={28} />
+            </div>
+          )}
+          <div>
+            <h2 className="text-xl font-black text-zinc-900 tracking-tight">
+              {companyData?.name || 'EMPRESA CERTIFICADA AGT'}
+            </h2>
+            <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider mt-0.5">
+              NIF: {companyData?.nif || '5000732028'} • Contabilidade Geral & Fiscalidade Angola
+            </p>
+          </div>
+        </div>
+      </div>
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-black text-[#003366] uppercase tracking-tighter">Contabilidade</h1>

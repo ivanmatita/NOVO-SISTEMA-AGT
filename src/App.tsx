@@ -18,6 +18,11 @@ import IPModule from './components/accounting/IPModule';
 import TaxCalculationsDetailedReport from './components/accounting/TaxCalculationsDetailedReport';
 import CashFlowStatementModule from './components/accounting/CashFlowStatementModule';
 import PharmacyServicesCards from './components/pharmacy/PharmacyServicesCards';
+import MigrarMovimentosModule from './components/accounting/MigrarMovimentosModule';
+import ApuramentoResultadosModule from './components/accounting/ApuramentoResultadosModule';
+import CalculosImpostoModule from './components/accounting/CalculosImpostoModule';
+import GestaoFinanceiraModule from './components/GestaoFinanceiraModule';
+
 
 import ProjectManagementModule from './components/ProjectManagementModule';
 import LiteracyModule from './components/LiteracyModule';
@@ -2994,6 +2999,7 @@ const SIDEBAR_MENU_ITEMS = [
   { id: 'drafts', label: 'Rascunhos (Drafts)', icon: FileSignature },
   { id: 'suppliers', label: 'Compras', icon: ShoppingBag, hasChevron: true },
   { id: 'products', label: 'Stocks & Inventário', icon: Package, hasChevron: true },
+    { id: 'gestao_financeira', label: 'Gestão Financeira', icon: Coins, badge: '📊 NOVO' },
   { id: 'financial', label: 'Finanças', icon: CreditCard, hasChevron: true },
   { id: 'accounting', label: 'Contabilidade', icon: Calculator, hasChevron: true },
   { id: 'hr', label: 'Recursos Humanos', icon: Users, hasChevron: true },
@@ -16492,7 +16498,6 @@ const SecretaryModule = ({ appSelectedEmployee }: { appSelectedEmployee: Employe
             method: 'POST',
             body: JSON.stringify({
               ...payload,
-              criado_por: user.id,
               updated_by: user.id
             })
           });
@@ -24432,6 +24437,9 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
   const vatToPay = vatLiquidated - vatDeductible;
 
   const sections = [
+    { id: 'migrar-movimento', label: 'Migrar Movimento', icon: <ArrowRightLeft size={24} />, description: 'Migração e reclassificação de movimentos diários para contas do PGC (Clientes, Compras, etc).' },
+    { id: 'apuramento-resultados', label: 'Apuramento de Resultados', icon: <Calculator size={24} />, description: 'Apuramento oficial dos resultados (Operacional, Financeiro, Filiais, Extraordinário, Líquido) com gestão de lançamentos.' },
+    { id: 'calculos-imposto-module', label: 'Cálculos de Imposto (IVA/IRT/IS)', icon: <Calculator size={24} />, description: 'Apuramento fiscal detalhado: IVA, IRT e IS por período, com registo de lançamentos e relatório de contas PGC.' },
     { id: 'ivm', label: 'IVM - Veículos Motorizados', icon: <Car size={24} />, description: 'Imposto sobre Veículos Motorizados (Lei n.º 24/20). Cadastro, cálculo e DUC.' },
     { id: 'ip', label: 'IP - Imposto Predial', icon: <Building2 size={24} />, description: 'Imposto Predial Urbano e Rústico (Lei n.º 20/20). Inscrição, liquidação, transmissão e contratos.' },
     { id: 'calculos-impostos-detalhado', label: 'Cálculos de Imposto (IVA)', icon: <Receipt size={24} />, description: 'Relatório detalhado de IVA liquidado por documento com exportação XLS.' },
@@ -24464,6 +24472,12 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
 
   const renderContent = () => {
     switch (activeSubTab) {
+      case 'migrar-movimento':
+        return <MigrarMovimentosModule companyData={companyData} user={user} fiscalYear={fiscalYear} onBack={() => setActiveSubTab(null)} />;
+      case 'apuramento-resultados':
+        return <ApuramentoResultadosModule companyData={companyData} user={user} fiscalYear={fiscalYear} invoices={invoices} issuedDocuments={issuedDocuments} onBack={() => setActiveSubTab(null)} />;
+      case 'calculos-imposto-module':
+        return <CalculosImpostoModule user={user} companyData={companyData} />;
       case 'ivm':
         return <IVMModule companyData={companyData} user={user} fiscalYear={fiscalYear} onBack={() => setActiveSubTab(null)} />;
       case 'ip':
@@ -31694,8 +31708,7 @@ const ProductList = ({
         description,
         created_by: user.id,
         created_by_nome: user.nome || user.username || 'Operador',
-        created_by_username: user.username,
-        criado_por: user.id
+        created_by_username: user.username
       });
       if (movError) throw movError;
 
@@ -31711,9 +31724,188 @@ const ProductList = ({
     }
   };
 
+
+  const generateStockTransferPDF = (transferData: {
+    product: Product;
+    fromWarehouseName: string;
+    toWarehouseName: string;
+    quantity: number;
+    observations?: string;
+  }) => {
+    try {
+      const doc = new jsPDF('p', 'mm', 'a4');
+      const docId = 'GT-' + new Date().getFullYear() + '/' + Date.now().toString().slice(-5);
+      const nowStr = new Date().toLocaleString('pt-PT');
+      const empNome = companyData?.nome || companyData?.name || 'EMPRESA';
+      const empNif = companyData?.nif || '---';
+      const empEnd = companyData?.endereco || companyData?.address || 'Angola';
+      const empTel = companyData?.telefone || companyData?.phone || '---';
+
+      // Header Banner
+      doc.setFillColor(0, 51, 102); // #003366
+      doc.rect(0, 0, 210, 28, 'F');
+
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(15);
+      doc.setFont('helvetica', 'bold');
+      doc.text(empNome.toUpperCase().slice(0, 35), 14, 12);
+
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.text('NIF: ' + empNif + ' | Tel: ' + empTel + ' | ' + empEnd.slice(0, 45), 14, 18);
+      doc.text('DOCUMENTO DE CONTROLO INTERNO - CIRCULAÇÃO E TRANSFERÊNCIA DE STOCK', 14, 23);
+
+      doc.setFontSize(13);
+      doc.setFont('helvetica', 'bold');
+      doc.text('GUIA DE TRANSFERÊNCIA', 196, 13, { align: 'right' });
+      doc.setFontSize(8.5);
+      doc.text('Nº: ' + docId, 196, 19, { align: 'right' });
+      doc.setFontSize(7);
+      doc.text('Emitido em: ' + nowStr, 196, 24, { align: 'right' });
+
+      // Info Box (Origem e Destino)
+      doc.setDrawColor(220, 226, 235);
+      doc.setFillColor(248, 250, 252);
+      doc.rect(14, 34, 182, 30, 'FD');
+
+      doc.setTextColor(0, 51, 102);
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.text('DADOS DA TRANSFERÊNCIA ENTRE ARMAZÉNS', 18, 41);
+
+      doc.setTextColor(70, 80, 95);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.text('Armazém de Origem:', 18, 48);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(180, 40, 40);
+      doc.text(String(transferData.fromWarehouseName), 56, 48);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(70, 80, 95);
+      doc.text('Armazém de Destino:', 18, 55);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(20, 130, 60);
+      doc.text(String(transferData.toWarehouseName), 56, 55);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(70, 80, 95);
+      doc.text('Operador / Emissor:', 115, 48);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(20, 30, 40);
+      doc.text(String(user?.nome || user?.username || 'Operador'), 148, 48);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(70, 80, 95);
+      doc.text('Data do Movimento:', 115, 55);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(20, 30, 40);
+      doc.text(nowStr, 148, 55);
+
+      // Table Header
+      let y = 72;
+      doc.setFillColor(0, 51, 102);
+      doc.rect(14, y, 182, 8, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      doc.text('ARTIGO / CÓDIGO', 18, y + 5.5);
+      doc.text('DESIGNAÇÃO DO ARTIGO', 52, y + 5.5);
+      doc.text('UNID.', 115, y + 5.5);
+      doc.text('QTD TRANSF.', 135, y + 5.5);
+      doc.text('PREÇO UNIT. (KZ)', 160, y + 5.5);
+      doc.text('TOTAL (KZ)', 192, y + 5.5, { align: 'right' });
+
+      // Table Row
+      y += 8;
+      doc.setFillColor(255, 255, 255);
+      doc.rect(14, y, 182, 10, 'FD');
+      doc.setTextColor(30, 41, 59);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+
+      const artCode = transferData.product.barcode || transferData.product.referente || String(transferData.product.id).slice(0, 8);
+      const artName = transferData.product.name || 'Artigo';
+      const artUnit = transferData.product.unit || 'un';
+      const unitPrice = transferData.product.price || transferData.product.cost_price || 0;
+      const totalVal = transferData.quantity * unitPrice;
+
+      doc.text(artCode.substring(0, 16), 18, y + 6.5);
+      doc.setFont('helvetica', 'bold');
+      doc.text(artName.substring(0, 36), 52, y + 6.5);
+      doc.setFont('helvetica', 'normal');
+      doc.text(artUnit, 115, y + 6.5);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(0, 51, 102);
+      doc.text(String(transferData.quantity), 135, y + 6.5);
+      doc.setTextColor(30, 41, 59);
+      doc.setFont('helvetica', 'normal');
+      doc.text(unitPrice.toLocaleString('pt-AO', { minimumFractionDigits: 2 }), 160, y + 6.5);
+      doc.setFont('helvetica', 'bold');
+      doc.text(totalVal.toLocaleString('pt-AO', { minimumFractionDigits: 2 }), 192, y + 6.5, { align: 'right' });
+
+      // Summary Box
+      y += 16;
+      doc.setDrawColor(220, 226, 235);
+      doc.setFillColor(248, 250, 252);
+      doc.rect(114, y, 82, 22, 'FD');
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(70, 80, 95);
+      doc.text('Total Artigos Transferidos:', 118, y + 7);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(0, 51, 102);
+      doc.text(transferData.quantity + ' ' + artUnit, 192, y + 7, { align: 'right' });
+
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(70, 80, 95);
+      doc.text('Valor Total da Transferência:', 118, y + 15);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(0, 51, 102);
+      doc.text(totalVal.toLocaleString('pt-AO', { minimumFractionDigits: 2 }) + ' Kz', 192, y + 15, { align: 'right' });
+
+      // Signatures
+      y = 230;
+      doc.setDrawColor(180, 190, 205);
+      doc.line(14, y, 70, y);
+      doc.line(78, y, 134, y);
+      doc.line(142, y, 196, y);
+
+      doc.setFontSize(7.5);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(70, 80, 95);
+      doc.text('Entregue por (Armazém Origem)', 42, y + 5, { align: 'center' });
+      doc.text('Transportado por (Motorista)', 106, y + 5, { align: 'center' });
+      doc.text('Recebido por (Armazém Destino)', 169, y + 5, { align: 'center' });
+
+      doc.setFontSize(6.5);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(140, 150, 165);
+      doc.text('Data: ___/___/______ Assinatura', 42, y + 10, { align: 'center' });
+      doc.text('Viatura: _______________ Assinatura', 106, y + 10, { align: 'center' });
+      doc.text('Data: ___/___/______ Carimbo', 169, y + 10, { align: 'center' });
+
+      // Footer
+      doc.setFontSize(6.5);
+      doc.setTextColor(160, 160, 160);
+      doc.text('Software de Gestão AGT - Guia de Transferência ' + docId + ' gerada informaticamente', 105, 285, { align: 'center' });
+
+      doc.save('Guia_Transferencia_' + (transferData.product.name || 'Artigo').replace(/[^a-zA-Z0-9]/g, '_') + '_' + Date.now() + '.pdf');
+    } catch (e) {
+      console.error('Erro ao gerar Guia de Transferência:', e);
+    }
+  };
+
   const handleTransfer = async (productId: string | number, fromWh: number, toWh: number, quantity: number) => {
     try {
       if (!user?.empresa_id) return;
+      if (!quantity || quantity <= 0) {
+        alert('Por favor introduza uma quantidade válida superior a 0.');
+        return;
+      }
+      const fromName = warehouses.find(w => w.id === fromWh)?.name || ('Armazém #' + fromWh);
+      const toName = warehouses.find(w => w.id === toWh)?.name || ('Armazém #' + toWh);
+
       const { error: movError } = await supabase.from('movimentacoes_stock').insert({
         empresa_id: user.empresa_id,
         product_id: productId,
@@ -31721,16 +31913,29 @@ const ProductList = ({
         quantity,
         warehouse_id: fromWh,
         to_warehouse_id: toWh,
-        description: `Transferência do armazém ${fromWh} para ${toWh}`,
+        description: 'Transferência do ' + fromName + ' para ' + toName,
         created_by: user.id,
         created_by_nome: user.nome || user.username || 'Operador',
-        created_by_username: user.username,
-        criado_por: user.id
+        created_by_username: user.username
       });
       if (movError) throw movError;
+
+      // Actualizar também o armazém do produto para refletir o novo destino
+      await supabase.from('produtos').update({ warehouse_id: toWh }).eq('id', productId);
+
+      // Gerar automaticamente o relatório leve e completo da guia de transferência
+      if (selectedProduct) {
+        generateStockTransferPDF({
+          product: selectedProduct,
+          fromWarehouseName: fromName,
+          toWarehouseName: toName,
+          quantity
+        });
+      }
+
       onRefresh();
       setShowTransferModal(false);
-      alert('Transferência de stock registada com sucesso!');
+      alert('Transferência de stock concluída com sucesso! A Guia de Transferência foi gerada e transferida.');
     } catch (err: any) {
       console.error('Erro na transferência de stock:', err);
       alert('Erro ao realizar transferência: ' + (err.message || 'Erro desconhecido'));
@@ -32329,29 +32534,61 @@ const ProductList = ({
         </div>
       )}
       {showTransferModal && selectedProduct && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md p-8 rounded-none shadow-2xl space-y-6">
-            <h3 className="text-xl font-bold text-[#003366] uppercase tracking-tight">Transferência de Stock: {selectedProduct.name}</h3>
-            <div className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Armazém de Origem</label>
-                <select id="trans-from" className="w-full border border-zinc-200 p-2.5 text-sm focus:outline-none focus:border-[#003366] bg-zinc-50 font-bold">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-3">
+          <div className="bg-white w-full max-w-lg p-5 rounded-none shadow-2xl space-y-4 border-t-4 border-[#003366]">
+            <div className="flex justify-between items-start border-b border-zinc-100 pb-3">
+              <div>
+                <h3 className="text-base font-black text-[#003366] uppercase tracking-tight flex items-center gap-2">
+                  <ArrowRightLeft size={18} /> Transferência de Stock
+                </h3>
+                <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mt-0.5">
+                  Artigo: <span className="text-slate-900 font-black">{selectedProduct.name}</span> (Stock: {selectedProduct.stock_quantity} {selectedProduct.unit})
+                </p>
+              </div>
+              <button onClick={() => setShowTransferModal(false)} className="text-zinc-400 hover:text-zinc-700 p-1">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div className="space-y-1 bg-slate-50 p-2.5 border border-slate-200">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">Armazém de Origem</label>
+                  <span className="text-[8px] font-black uppercase px-1.5 py-0.5 bg-red-100 text-red-700 rounded-xs">Saída / Origem</span>
+                </div>
+                <select id="trans-from" className="w-full border border-slate-300 p-2 text-xs focus:outline-none focus:border-[#003366] bg-white font-bold">
                   {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
                 </select>
               </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Armazém de Destino</label>
-                <select id="trans-to" className="w-full border border-zinc-200 p-2.5 text-sm focus:outline-none focus:border-[#003366] bg-zinc-50 font-bold">
+
+              <div className="space-y-1 bg-slate-50 p-2.5 border border-slate-200">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">Armazém de Destino</label>
+                  <span className="text-[8px] font-black uppercase px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded-xs">Entrada / Destino</span>
+                </div>
+                <select id="trans-to" className="w-full border border-slate-300 p-2 text-xs focus:outline-none focus:border-[#003366] bg-white font-bold">
                   {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
                 </select>
               </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Quantidade</label>
-                <input id="trans-qty" type="number" className="w-full border border-zinc-200 p-2.5 text-sm focus:outline-none focus:border-[#003366] bg-zinc-50 font-bold" placeholder="0" />
+
+              <div className="space-y-1 bg-slate-50 p-2.5 border border-slate-200">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">Quantidade a Transferir</label>
+                  <span className="text-[8px] font-black uppercase px-1.5 py-0.5 bg-blue-100 text-[#003366] rounded-xs">Qtd Unidades</span>
+                </div>
+                <input id="trans-qty" type="number" min="1" max={selectedProduct.stock_quantity > 0 ? selectedProduct.stock_quantity : undefined} className="w-full border border-slate-300 p-2 text-xs focus:outline-none focus:border-[#003366] bg-white font-bold" placeholder="Introduza a quantidade..." />
+              </div>
+
+              <div className="p-2.5 bg-amber-50 border border-amber-200 flex items-center gap-2">
+                <CheckCircle size={15} className="text-amber-600 flex-shrink-0" />
+                <p className="text-[10px] text-amber-800 font-medium">
+                  A confirmação desta operação gera e descarrega automaticamente a <strong>Guia Oficial de Transferência de Stock (PDF)</strong> com assinaturas e detalhes fiscais.
+                </p>
               </div>
             </div>
-            <div className="flex justify-end gap-3 pt-4">
-              <button onClick={() => setShowTransferModal(false)} className="px-6 py-2 text-zinc-500 font-bold text-xs uppercase tracking-widest">Cancelar</button>
+
+            <div className="flex justify-end items-center gap-2 pt-2 border-t border-zinc-100">
+              <button onClick={() => setShowTransferModal(false)} className="px-4 py-2 text-zinc-500 font-bold text-xs uppercase tracking-widest hover:bg-zinc-100">Cancelar</button>
               <button 
                 onClick={() => {
                   const from = Number((document.getElementById('trans-from') as HTMLSelectElement).value);
@@ -32359,37 +32596,62 @@ const ProductList = ({
                   const qty = Number((document.getElementById('trans-qty') as HTMLInputElement).value);
                   handleTransfer(selectedProduct.id, from, to, qty);
                 }}
-                className="bg-[#003366] text-white px-8 py-2 font-bold text-xs uppercase tracking-widest hover:bg-[#002244] shadow-lg"
+                className="bg-[#003366] text-white px-5 py-2 font-bold text-xs uppercase tracking-widest hover:bg-[#002244] shadow-md flex items-center gap-1.5 cursor-pointer"
               >
-                Confirmar Transferência
+                <ArrowRightLeft size={14} />
+                <span>Transferir & Emitir Guia</span>
               </button>
             </div>
           </div>
         </div>
       )}
+
       {showAdjustmentModal && selectedProduct && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md p-8 rounded-none shadow-2xl space-y-6">
-            <h3 className="text-xl font-bold text-[#003366] uppercase tracking-tight">Ajuste de Stock: {selectedProduct.name}</h3>
-            <div className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Tipo de Ajuste</label>
-                <select id="adj-type" className="w-full border border-zinc-200 p-2.5 text-sm focus:outline-none focus:border-[#003366] bg-zinc-50 font-bold">
-                  <option value="adjustment_plus">Entrada (Acerto Positivo)</option>
-                  <option value="adjustment_minus">Saída (Acerto Negativo)</option>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-3">
+          <div className="bg-white w-full max-w-lg p-5 rounded-none shadow-2xl space-y-4 border-t-4 border-[#003366]">
+            <div className="flex justify-between items-start border-b border-zinc-100 pb-3">
+              <div>
+                <h3 className="text-base font-black text-[#003366] uppercase tracking-tight">Ajuste de Stock: {selectedProduct.name}</h3>
+                <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mt-0.5">
+                  Stock Atual: <span className="text-slate-900 font-black">{selectedProduct.stock_quantity} {selectedProduct.unit}</span>
+                </p>
+              </div>
+              <button onClick={() => setShowAdjustmentModal(false)} className="text-zinc-400 hover:text-zinc-700 p-1">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div className="space-y-1 bg-slate-50 p-2.5 border border-slate-200">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">Tipo de Ajuste</label>
+                  <span className="text-[8px] font-black uppercase px-1.5 py-0.5 bg-blue-100 text-[#003366] rounded-xs">Natureza Movimento</span>
+                </div>
+                <select id="adj-type" className="w-full border border-slate-300 p-2 text-xs focus:outline-none focus:border-[#003366] bg-white font-bold">
+                  <option value="adjustment_plus">Entrada (Acerto Positivo / Sobra de Inventário)</option>
+                  <option value="adjustment_minus">Saída (Acerto Negativo / Quebra ou Perda)</option>
                 </select>
               </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Quantidade</label>
-                <input id="adj-qty" type="number" className="w-full border border-zinc-200 p-2.5 text-sm focus:outline-none focus:border-[#003366] bg-zinc-50 font-bold" placeholder="0" />
+
+              <div className="space-y-1 bg-slate-50 p-2.5 border border-slate-200">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">Quantidade</label>
+                  <span className="text-[8px] font-black uppercase px-1.5 py-0.5 bg-blue-100 text-[#003366] rounded-xs">Qtd Ajustada</span>
+                </div>
+                <input id="adj-qty" type="number" min="1" className="w-full border border-slate-300 p-2 text-xs focus:outline-none focus:border-[#003366] bg-white font-bold" placeholder="0" />
               </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Motivo / Descrição</label>
-                <textarea id="adj-desc" className="w-full border border-zinc-200 p-2.5 text-sm focus:outline-none focus:border-[#003366] bg-zinc-50 font-medium" rows={3} placeholder="Ex: Quebra de stock, erro de inventário..."></textarea>
+
+              <div className="space-y-1 bg-slate-50 p-2.5 border border-slate-200">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">Motivo / Descrição Justificativa</label>
+                  <span className="text-[8px] font-black uppercase px-1.5 py-0.5 bg-zinc-200 text-zinc-700 rounded-xs">Auditoria Fiscal</span>
+                </div>
+                <textarea id="adj-desc" className="w-full border border-slate-300 p-2 text-xs focus:outline-none focus:border-[#003366] bg-white font-medium" rows={2} placeholder="Ex: Quebra acidental no armazém, erro de contagem no inventário..."></textarea>
               </div>
             </div>
-            <div className="flex justify-end gap-3 pt-4">
-              <button onClick={() => setShowAdjustmentModal(false)} className="px-6 py-2 text-zinc-500 font-bold text-xs uppercase tracking-widest">Cancelar</button>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-zinc-100">
+              <button onClick={() => setShowAdjustmentModal(false)} className="px-4 py-2 text-zinc-500 font-bold text-xs uppercase tracking-widest hover:bg-zinc-100">Cancelar</button>
               <button 
                 onClick={() => {
                   const type = (document.getElementById('adj-type') as HTMLSelectElement).value;
@@ -32397,7 +32659,7 @@ const ProductList = ({
                   const desc = (document.getElementById('adj-desc') as HTMLTextAreaElement).value;
                   handleAdjustment(selectedProduct.id, type, qty, desc);
                 }}
-                className="bg-[#003366] text-white px-8 py-2 font-bold text-xs uppercase tracking-widest hover:bg-[#002244] shadow-lg"
+                className="bg-[#003366] text-white px-5 py-2 font-bold text-xs uppercase tracking-widest hover:bg-[#002244] shadow-md cursor-pointer"
               >
                 Confirmar Ajuste
               </button>
@@ -32407,13 +32669,13 @@ const ProductList = ({
       )}
 
       {showForm && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white w-full max-w-4xl p-10 rounded-none shadow-2xl my-8">
-            <div className="flex justify-between items-center mb-8 border-b border-zinc-100 pb-4">
-              <h3 className="text-2xl font-bold text-[#003366] uppercase tracking-tight flex items-center gap-3">
-                <Package size={24} /> {editingProduct ? 'Editar Produto' : 'Registar Novo Produto'}
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-3">
+          <div className="bg-white w-full max-w-5xl rounded-none shadow-2xl flex flex-col max-h-[95vh]">
+            <div className="flex justify-between items-center px-5 py-3 border-b border-zinc-200 bg-[#003366] text-white flex-shrink-0">
+              <h3 className="text-sm font-black text-white uppercase tracking-tight flex items-center gap-2">
+                <Package size={16} /> {editingProduct ? 'Editar Produto' : 'Registar Novo Produto'}
               </h3>
-              <button onClick={() => { setShowForm(false); setEditingProduct(null); }} className="text-zinc-400 hover:text-zinc-600"><X size={24} /></button>
+              <button onClick={() => { setShowForm(false); setEditingProduct(null); }} className="text-white/70 hover:text-white"><X size={20} /></button>
             </div>
             <form 
               key={editingProduct?.id || 'new'}
@@ -32476,7 +32738,7 @@ const ProductList = ({
                   warehouse_id: data.warehouse_id ? Number(data.warehouse_id) : null,
                   empresa_id: currentCompanyId,
                   tipologia: tipoActividade || (data.tipologia as string) || 'comercio',
-                  tipo_actividade: tipoActividade || (data.tipologia as string) || 'comercio',
+                  // tipo_actividade removido - tabela produtos usa apenas tipologia
                   // NOTE: company_id does NOT exist in the produtos table — omitted intentionally
                   image_url,
                   imagem_url: image_url,
@@ -32534,10 +32796,11 @@ const ProductList = ({
                 console.error('Erro ao salvar produto:', error);
                 alert('Erro ao salvar produto: ' + (error.message || 'Verifique os dados e tente novamente.'));
               }
-            }} className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            }} className="flex-1 overflow-y-auto">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-5">
               {/* 1. SELETOR OBRIGATÓRIO DE TIPO DE ACTIVIDADE */}
-              <div className="md:col-span-3 bg-slate-50 border-2 border-slate-200 p-6 space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
+              <div className="md:col-span-3 bg-slate-50 border-2 border-slate-200 p-3 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-2">
                   <div>
                     <span className="text-xs font-black uppercase text-[#003366] tracking-wider flex items-center gap-2">
                       <Tag size={18} /> Selecione o Tipo de Actividade do Negócio *
@@ -32559,7 +32822,7 @@ const ProductList = ({
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
                   {[
                     { id: 'farmacia', label: 'Farmácia', icon: Pill, desc: 'Medicamentos & Lotes', badge: 'Saúde', border: 'hover:border-emerald-500', active: 'border-emerald-600 bg-emerald-50/80 text-emerald-900 ring-2 ring-emerald-500' },
                     { id: 'stand_automovel', label: 'Stand Automóvel', icon: Car, desc: 'Peças & Viaturas', badge: 'Automóvel', border: 'hover:border-amber-500', active: 'border-amber-600 bg-amber-50/80 text-amber-900 ring-2 ring-amber-500' },
@@ -32575,7 +32838,7 @@ const ProductList = ({
                         key={item.id}
                         type="button"
                         onClick={() => setTipoActividade(item.id)}
-                        className={'p-3.5 text-left border transition-all cursor-pointer flex flex-col justify-between rounded-none ' + (
+                        className={'p-2 text-left border transition-all cursor-pointer flex flex-col justify-between rounded-none ' + (
                           isSelected
                             ? item.active + ' shadow-sm font-bold'
                             : 'border-zinc-300 bg-white ' + item.border + ' text-zinc-700 hover:shadow-xs'
@@ -32600,7 +32863,7 @@ const ProductList = ({
 
               {/* MENSAGEM OU CAMPOS CONDICIONAIS */}
               {!tipoActividade ? (
-                <div className="md:col-span-3 border-2 border-dashed border-zinc-300 p-12 text-center bg-zinc-50 space-y-3">
+                <div className="md:col-span-3 border-2 border-dashed border-zinc-300 p-6 text-center bg-zinc-50 space-y-2">
                   <div className="w-12 h-12 rounded-full bg-zinc-200 flex items-center justify-center mx-auto text-zinc-500">
                     <Tag size={24} />
                   </div>
@@ -32614,7 +32877,7 @@ const ProductList = ({
               ) : (
                 <>
                   {/* IMAGEM DO PRODUTO */}
-                  <div className="md:col-span-3 border-2 border-dashed border-zinc-200 p-6 flex flex-col items-center justify-center bg-zinc-50 hover:bg-zinc-100 transition-colors relative group">
+                  <div className="md:col-span-1 border-2 border-dashed border-zinc-200 p-3 flex flex-col items-center justify-center bg-zinc-50 hover:bg-zinc-100 transition-colors relative group min-h-[100px]">
                     <input 
                       type="file" 
                       name="image_file" 
@@ -32634,14 +32897,14 @@ const ProductList = ({
                     />
                     <div className="text-center space-y-2 pointer-events-none">
                       {editingProduct?.image_url ? (
-                        <img id="product-prev" src={editingProduct.image_url} alt="Preview" className="w-24 h-24 object-cover mx-auto shadow-md border-2 border-white" />
+                        <img id="product-prev" src={editingProduct.image_url} alt="Preview" className="w-16 h-16 object-cover mx-auto shadow-md border-2 border-white" />
                       ) : (
-                        <div id="product-prev-box" className="w-24 h-24 bg-zinc-200 flex items-center justify-center mx-auto">
+                        <div id="product-prev-box" className="w-16 h-16 bg-zinc-200 flex items-center justify-center mx-auto">
                           <img id="product-prev" className="w-full h-full object-cover hidden" />
-                          <Camera size={32} className="text-zinc-400" />
+                          <Camera size={20} className="text-zinc-400" />
                         </div>
                       )}
-                      <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Clique ou arraste para carregar imagem do artigo</p>
+                      <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mt-1 text-center">Imagem</p>
                     </div>
                   </div>
 
@@ -32668,7 +32931,7 @@ const ProductList = ({
                         tipoActividade === 'loja' ? 'Ex: Calça Jeans Slim, Camisa Social Branca...' :
                         'Ex: Arroz Agulha 1kg, Óleo Alimentar...'
                       }
-                      className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" 
+                      className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366] font-medium" 
                     />
                   </div>
 
@@ -32693,7 +32956,7 @@ const ProductList = ({
                         tipoActividade === 'loja' ? 'Ex: MOD-402 - Tam 42 - Azul' :
                         'Ex: REF-00123'
                       }
-                      className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" 
+                      className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366] font-medium" 
                     />
                   </div>
 
@@ -32708,7 +32971,7 @@ const ProductList = ({
                       step="0.01" 
                       required 
                       defaultValue={editingProduct?.price} 
-                      className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold" 
+                      className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366] font-bold" 
                     />
                   </div>
 
@@ -32724,7 +32987,7 @@ const ProductList = ({
                       type="number" 
                       step="0.01" 
                       defaultValue={editingProduct?.cost_price} 
-                      className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold" 
+                      className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366] font-bold" 
                     />
                   </div>
 
@@ -32740,7 +33003,7 @@ const ProductList = ({
                       name="stock_quantity" 
                       type="number" 
                       defaultValue={editingProduct?.stock_quantity ?? 0} 
-                      className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold" 
+                      className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366] font-bold" 
                     />
                   </div>
 
@@ -32755,7 +33018,7 @@ const ProductList = ({
                       name="min_stock" 
                       type="number" 
                       defaultValue={editingProduct?.min_stock ?? 0} 
-                      className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold" 
+                      className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366] font-bold" 
                     />
                   </div>
 
@@ -32780,7 +33043,7 @@ const ProductList = ({
                         tipoActividade === 'loja' ? 'Ex: Vestuário Homem, Calçado, Acessórios' :
                         'Ex: Geral, Bebidas, Limpeza'
                       }
-                      className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" 
+                      className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366] font-medium" 
                     />
                   </div>
 
@@ -32800,7 +33063,7 @@ const ProductList = ({
                         tipoActividade === 'restaurante' ? 'dose' :
                         'un'
                       )} 
-                      className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold"
+                      className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366] font-bold"
                     >
                       <option value="">Selecione a unidade</option>
                       {tipoActividade === 'farmacia' ? (
@@ -32867,7 +33130,7 @@ const ProductList = ({
                       name="barcode" 
                       defaultValue={editingProduct?.barcode} 
                       placeholder="Ex: 5601234567890"
-                      className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" 
+                      className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366] font-medium" 
                     />
                   </div>
 
@@ -32880,7 +33143,7 @@ const ProductList = ({
                       name="data_registo" 
                       type="date" 
                       defaultValue={editingProduct?.data_registo ? new Date(editingProduct.data_registo).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]} 
-                      className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-medium" 
+                      className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366] font-medium" 
                     />
                   </div>
 
@@ -32898,7 +33161,7 @@ const ProductList = ({
                       name="warehouse_id" 
                       required
                       defaultValue={editingProduct?.warehouse_id} 
-                      className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold"
+                      className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366] font-bold"
                     >
                       <option value="">Selecione o armazém</option>
                       {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
@@ -32906,14 +33169,15 @@ const ProductList = ({
                   </div>
 
                   {/* 12. SUBMIT BUTTON */}
-                  <div className="md:col-span-3 flex justify-end pt-4 border-t border-zinc-100">
-                    <button type="submit" className="bg-[#003366] text-white px-8 py-3 text-sm font-bold hover:bg-[#002244] transition-all flex items-center gap-2 cursor-pointer shadow-md">
-                      <Save size={18} />
+                  <div className="md:col-span-3 flex justify-end pt-3 border-t border-zinc-100">
+                    <button type="submit" className="bg-[#003366] text-white px-6 py-2 text-xs font-bold hover:bg-[#002244] transition-all flex items-center gap-2 cursor-pointer shadow-md">
+                      <Save size={14} />
                       <span>{editingProduct ? 'Guardar Alterações' : 'Registar Produto no Stock'}</span>
                     </button>
                   </div>
                 </>
               )}
+              </div>
             </form>
           </div>
         </div>
@@ -33001,7 +33265,7 @@ const ReceiptModal = ({ document: doc, caixas, onClose, onSuccess }: {
               step="0.01" 
               value={amount} 
               onChange={(e) => setAmount(Number(e.target.value))} 
-              className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold"
+              className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366] font-bold"
               required 
             />
             {amount > 0 && (
@@ -33017,7 +33281,7 @@ const ReceiptModal = ({ document: doc, caixas, onClose, onSuccess }: {
               value={paymentMethod} 
               onChange={(e) => setPaymentMethod(e.target.value)}
               required
-              className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold"
+              className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366] font-bold"
             >
               <option value="">Selecione...</option>
               <option>Dinheiro</option>
@@ -33032,7 +33296,7 @@ const ReceiptModal = ({ document: doc, caixas, onClose, onSuccess }: {
               value={cashBox} 
               onChange={(e) => setCashBox(e.target.value)}
               required
-              className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold"
+              className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366] font-bold"
             >
               <option value="">Selecione...</option>
               {caixas.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -33044,7 +33308,7 @@ const ReceiptModal = ({ document: doc, caixas, onClose, onSuccess }: {
               type="date" 
               value={date} 
               onChange={(e) => setDate(e.target.value)} 
-              className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold"
+              className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366] font-bold"
               required 
             />
           </div>
@@ -33149,7 +33413,7 @@ const ConvertDocumentModal = ({ document, onClose, onSuccess }: {
             <select 
               value={targetType} 
               onChange={(e) => setTargetType(e.target.value)}
-              className="w-full bg-zinc-50 border border-zinc-200 p-3 text-sm focus:outline-none focus:border-[#003366] font-bold"
+              className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366] font-bold"
             >
               <option>Fatura</option>
               <option>Fatura Recibo</option>
@@ -35830,6 +36094,17 @@ export default function App() {
                                   activeTaxes={activeTaxes}
                                   fiscalYear={fiscalYear}
                                   issuedDocuments={issuedDocuments}
+                                />
+                              );
+                            case 'gestao_financeira':
+                              return (
+                                <GestaoFinanceiraModule
+                                  companyData={companyData}
+                                  user={user}
+                                  fiscalYear={fiscalYear}
+                                  products={products}
+                                  clients={clients}
+                                  onNavigateToTab={(t: string) => setActiveTab(t)}
                                 />
                               );
                             case 'financial':

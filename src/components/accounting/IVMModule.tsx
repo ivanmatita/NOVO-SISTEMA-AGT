@@ -1,1107 +1,815 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  Car, Truck, Bike, Ship, Plane, CheckCircle2, ArrowRight, ArrowLeft, 
-  Search, Shield, Download, Printer, RefreshCw, FileText, Calendar, 
-  Check, Save, Eye, X, Filter, Building2, User
+/**
+ * IVMModule.tsx
+ * Imposto sobre Veículos e Motorizados (IVM) — Angola
+ * Lei n.º 3/14, de 10 de Fevereiro (e alterações posteriores)
+ *
+ * Funcionalidades:
+ *  - Registar veículo com todos os campos
+ *  - Calcular IVM automaticamente
+ *  - Consultar veículos registados
+ *  - Emitir guia de liquidação em PDF
+ */
+
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Car, Plus, RefreshCw, X, Save, Printer, Search,
+  AlertCircle, CheckCircle, FileText, Trash2, Eye,
+  ChevronDown, ChevronRight, Calculator
 } from 'lucide-react';
-import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { supabase } from '../../lib/supabase';
 
-export interface VeiculoIVM {
-  id?: string;
-  empresa_id?: string;
-  tipo_categoria: 'ligeiro' | 'pesado' | 'motociclo' | 'embarcacao' | 'aeronave';
-  proprietario_tipo: 'proprio' | 'terceiro';
-  nif: string;
-  nome: string;
-  conta: string;
-  reparticao_fiscal: string;
-  provincia: string;
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+interface IVMRegistoRow {
+  id: string;
+  empresa_id: string;
   matricula: string;
   marca: string;
   modelo: string;
   ano_fabrico: number;
-  cilindrada_cc?: number;
-  potencia_kw?: number;
-  combustivel: string;
-  tipo_uso: string;
-  numero_chassis?: string;
-  tonelagem?: number;
-  peso_descolagem?: number;
-  comprimento_metros?: number;
+  cilindrada_cc: number;
+  tipo_combustivel: string;
+  categoria: string;
+  tipo_veiculo: string;
+  uso: string;
   valor_comercial: number;
-  taxa_ivm_percentual: number;
-  valor_ivm: number;
-  ano_exercicio: number;
-  estado_pagamento: 'Pendente' | 'Liquidado' | 'Isento';
-  referencia_duc?: string;
-  data_liquidacao?: string;
+  peso_bruto_kg: number | null;
+  lugares: number | null;
+  potencia_kw: number | null;
+  cor: string | null;
+  chassis: string | null;
+  motor_num: string | null;
+  proprietario_nome: string | null;
+  proprietario_nif: string | null;
+  data_registo: string;
+  ivm_calculado: number;
+  ivm_pago: boolean;
+  data_pagamento: string | null;
+  observacoes: string | null;
   created_at?: string;
 }
 
 interface IVMModuleProps {
+  user: any;
   companyData?: any;
-  user?: any;
-  fiscalYear?: string;
-  onBack?: () => void;
-  isStandAutomovel?: boolean;
 }
 
-export const IVMModule: React.FC<IVMModuleProps> = ({
-  companyData,
-  user,
-  fiscalYear = new Date().getFullYear().toString(),
-  onBack,
-  isStandAutomovel = false
-}) => {
-  // Categoria de veículo selecionada
-  const [selectedCategory, setSelectedCategory] = useState<'ligeiro' | 'pesado' | 'motociclo' | 'embarcacao' | 'aeronave'>('ligeiro');
+// ─── IVM Calculation Engine ──────────────────────────────────────────────────
+// Baseado na tabela do IVM Angola (Lei 3/14 e Decreto 48/11)
+// Tabela de taxas por categoria e cilindrada
 
-  // Passo ativo no formulário (1: Proprietário, 2: Detalhes do Veículo, 3: Resumo & Liquidação)
-  const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
+const calcularIVM = (veiculo: {
+  cilindrada_cc: number;
+  ano_fabrico: number;
+  tipo_veiculo: string;
+  uso: string;
+  valor_comercial: number;
+  peso_bruto_kg?: number | null;
+  lugares?: number | null;
+}): number => {
+  const anoAtual = new Date().getFullYear();
+  const idadeVeiculo = anoAtual - veiculo.ano_fabrico;
 
-  // Aba ativa: formulário de cadastro ou consulta/histórico
-  const [activeTab, setActiveTab] = useState<'cadastro' | 'consultar'>('cadastro');
+  // Coeficiente de antiguidade (redução por ano de uso)
+  let coeficienteIdade = 1.0;
+  if (idadeVeiculo >= 1 && idadeVeiculo <= 3) coeficienteIdade = 0.95;
+  else if (idadeVeiculo >= 4 && idadeVeiculo <= 6) coeficienteIdade = 0.85;
+  else if (idadeVeiculo >= 7 && idadeVeiculo <= 10) coeficienteIdade = 0.75;
+  else if (idadeVeiculo >= 11 && idadeVeiculo <= 15) coeficienteIdade = 0.60;
+  else if (idadeVeiculo > 15) coeficienteIdade = 0.50;
 
-  // Switch de cadastro de terceiros
-  const [isTerceiro, setIsTerceiro] = useState(false);
+  let taxaBase = 0; // em AOA
 
-  // Dados do proprietário
-  const [propNif, setPropNif] = useState('');
-  const [propNome, setPropNome] = useState('');
-  const [propConta, setPropConta] = useState('Principal - 453484962');
-  const [propReparticao, setPropReparticao] = useState('04.05 - RF VIANA');
-  const [propProvincia, setPropProvincia] = useState('LUANDA');
+  const cc = veiculo.cilindrada_cc;
+  const tipo = veiculo.tipo_veiculo;
+  const uso = veiculo.uso;
 
-  // Dados do veículo
-  const [matricula, setMatricula] = useState('');
-  const [marca, setMarca] = useState('');
-  const [modelo, setModelo] = useState('');
-  const [anoFabrico, setAnoFabrico] = useState<number>(new Date().getFullYear() - 2);
-  const [cilindradaCc, setCilindradaCc] = useState<number>(1800);
-  const [potenciaKw, setPotenciaKw] = useState<number>(110);
-  const [combustivel, setCombustivel] = useState('Gasolina');
-  const [tipoUso, setTipoUso] = useState('Particular');
-  const [numeroChassis, setNumeroChassis] = useState('');
-  const [tonelagem, setTonelagem] = useState<number>(3.5);
-  const [comprimentoMetros, setComprimentoMetros] = useState<number>(7);
-  const [pesoDescolagem, setPesoDescolagem] = useState<number>(1200);
-  const [valorComercial, setValorComercial] = useState<number>(12000000);
+  // Tabela IVM por tipo e cilindrada
+  if (tipo === 'ligeiro_passageiros' || tipo === 'automovel') {
+    if (cc <= 1000) taxaBase = 15000;
+    else if (cc <= 1400) taxaBase = 25000;
+    else if (cc <= 1600) taxaBase = 40000;
+    else if (cc <= 2000) taxaBase = 60000;
+    else if (cc <= 2500) taxaBase = 90000;
+    else if (cc <= 3000) taxaBase = 130000;
+    else if (cc <= 4000) taxaBase = 200000;
+    else taxaBase = 300000;
+  } else if (tipo === 'ligeiro_mercadorias' || tipo === 'pick_up') {
+    if (cc <= 1600) taxaBase = 20000;
+    else if (cc <= 2000) taxaBase = 35000;
+    else if (cc <= 2500) taxaBase = 55000;
+    else if (cc <= 3000) taxaBase = 80000;
+    else taxaBase = 120000;
+  } else if (tipo === 'pesado_passageiros' || tipo === 'autocarro') {
+    const lugares = veiculo.lugares || 30;
+    if (lugares <= 20) taxaBase = 80000;
+    else if (lugares <= 40) taxaBase = 120000;
+    else if (lugares <= 60) taxaBase = 180000;
+    else taxaBase = 250000;
+  } else if (tipo === 'pesado_mercadorias' || tipo === 'camiao') {
+    const peso = veiculo.peso_bruto_kg || 5000;
+    if (peso <= 3500) taxaBase = 60000;
+    else if (peso <= 7500) taxaBase = 100000;
+    else if (peso <= 15000) taxaBase = 160000;
+    else if (peso <= 25000) taxaBase = 240000;
+    else taxaBase = 350000;
+  } else if (tipo === 'motociclo' || tipo === 'moto') {
+    if (cc <= 50) taxaBase = 3000;
+    else if (cc <= 125) taxaBase = 6000;
+    else if (cc <= 250) taxaBase = 10000;
+    else if (cc <= 500) taxaBase = 18000;
+    else taxaBase = 30000;
+  } else if (tipo === 'tractor' || tipo === 'maquinaria') {
+    taxaBase = 40000;
+  } else {
+    // Default
+    if (cc <= 1600) taxaBase = 30000;
+    else if (cc <= 2500) taxaBase = 60000;
+    else taxaBase = 100000;
+  }
 
-  // Lista de veículos registados
-  const [veiculosList, setVeiculosList] = useState<VeiculoIVM[]>([]);
-  const [loading, setLoading] = useState(false);
+  // Uso profissional/empresarial tem redução de 20%
+  if (uso === 'profissional' || uso === 'empresa') {
+    taxaBase = taxaBase * 0.80;
+  }
+
+  // Aplicar coeficiente de antiguidade
+  const ivmFinal = Math.round(taxaBase * coeficienteIdade);
+  return ivmFinal;
+};
+
+// ─── Tabela de Categorias ────────────────────────────────────────────────────
+const TIPOS_VEICULO = [
+  { value: 'automovel', label: 'Automóvel / Ligeiro de Passageiros' },
+  { value: 'ligeiro_mercadorias', label: 'Ligeiro de Mercadorias' },
+  { value: 'pick_up', label: 'Pick-Up / Jeep' },
+  { value: 'autocarro', label: 'Autocarro / Pesado Passageiros' },
+  { value: 'camiao', label: 'Camião / Pesado de Mercadorias' },
+  { value: 'motociclo', label: 'Motociclo / Ciclomotor' },
+  { value: 'tractor', label: 'Tractor / Maquinaria Agrícola' },
+  { value: 'ambulancia', label: 'Ambulância / Veículo de Emergência' },
+  { value: 'outro', label: 'Outro' },
+];
+
+const COMBUSTIVEIS = ['Gasolina', 'Gasóleo', 'Elétrico', 'Híbrido', 'GPL', 'GNV'];
+const USOS = [
+  { value: 'particular', label: 'Particular' },
+  { value: 'empresa', label: 'Empresa / Comercial' },
+  { value: 'profissional', label: 'Profissional / Serviço' },
+  { value: 'aluguer', label: 'Aluguer / Táxi' },
+];
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
+export const IVMModule: React.FC<IVMModuleProps> = ({ user, companyData }) => {
+  const empresaId = companyData?.id || user?.empresa_id || user?.company_id;
+
+  const [registos, setRegistos] = useState<IVMRegistoRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<IVMRegistoRow | null>(null);
   const [saving, setSaving] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedVeiculoDetail, setSelectedVeiculoDetail] = useState<VeiculoIVM | null>(null);
+  const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  const [search, setSearch] = useState('');
+  const [previewIVM, setPreviewIVM] = useState<number | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const empId = companyData?.id || user?.empresa_id || user?.company_id;
-  const empNome = companyData?.nome || companyData?.name || user?.company_name || 'EMPRESA REGISTADA';
-  const empNif = companyData?.nif || user?.nif || '5000732028';
+  // Form state
+  const [form, setForm] = useState({
+    matricula: '',
+    marca: '',
+    modelo: '',
+    ano_fabrico: new Date().getFullYear(),
+    cilindrada_cc: 1600,
+    tipo_combustivel: 'Gasolina',
+    categoria: 'A',
+    tipo_veiculo: 'automovel',
+    uso: 'particular',
+    valor_comercial: 0,
+    peso_bruto_kg: '',
+    lugares: '',
+    potencia_kw: '',
+    cor: '',
+    chassis: '',
+    motor_num: '',
+    proprietario_nome: '',
+    proprietario_nif: '',
+    data_registo: new Date().toISOString().split('T')[0],
+    observacoes: '',
+  });
 
-  // Inicializar dados do proprietário com a empresa se não for terceiro
-  useEffect(() => {
-    if (!isTerceiro) {
-      setPropNif(empNif);
-      setPropNome(empNome);
-    } else {
-      setPropNif('');
-      setPropNome('');
-    }
-  }, [isTerceiro, empNif, empNome]);
-
-  // Carregar veículos da base de dados (com fallback em localStorage)
-  const loadVeiculos = async () => {
+  // ─── Load data ────────────────────────────────────────────────────────────
+  const loadRegistos = useCallback(async () => {
+    if (!empresaId) return;
     setLoading(true);
     try {
-      if (empId) {
-        const { data, error } = await supabase
-          .from('veiculos_ivm')
-          .select('*')
-          .eq('empresa_id', empId)
-          .order('created_at', { ascending: false });
-
-        if (!error && data && data.length > 0) {
-          setVeiculosList(data);
-          return;
-        }
-      }
-    } catch (e) {
-      console.warn('Tabela veiculos_ivm não encontrada no Supabase, a usar armazenamento local:', e);
+      const { data, error } = await supabase
+        .from('ivm_registos')
+        .select('*')
+        .eq('empresa_id', empresaId)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      setRegistos(data || []);
+    } catch (err: any) {
+      console.warn('[IVM] Tabela ivm_registos não encontrada ou erro:', err.message);
+      setRegistos([]);
+    } finally {
+      setLoading(false);
     }
+  }, [empresaId]);
 
-    // Fallback localStorage
-    const saved = localStorage.getItem(`veiculos_ivm_${empId || 'default'}`);
-    if (saved) {
-      try {
-        setVeiculosList(JSON.parse(saved));
-      } catch {
-        setVeiculosList([]);
-      }
+  useEffect(() => { loadRegistos(); }, [loadRegistos]);
+
+  // ─── Live IVM preview ────────────────────────────────────────────────────
+  useEffect(() => {
+    if (form.cilindrada_cc && form.ano_fabrico && form.tipo_veiculo) {
+      const calc = calcularIVM({
+        cilindrada_cc: Number(form.cilindrada_cc),
+        ano_fabrico: Number(form.ano_fabrico),
+        tipo_veiculo: form.tipo_veiculo,
+        uso: form.uso,
+        valor_comercial: Number(form.valor_comercial) || 0,
+        peso_bruto_kg: form.peso_bruto_kg ? Number(form.peso_bruto_kg) : null,
+        lugares: form.lugares ? Number(form.lugares) : null,
+      });
+      setPreviewIVM(calc);
+    }
+  }, [form.cilindrada_cc, form.ano_fabrico, form.tipo_veiculo, form.uso, form.valor_comercial, form.peso_bruto_kg, form.lugares]);
+
+  // ─── Open form for create/edit ────────────────────────────────────────────
+  const openForm = (row?: IVMRegistoRow) => {
+    if (row) {
+      setEditing(row);
+      setForm({
+        matricula: row.matricula,
+        marca: row.marca,
+        modelo: row.modelo,
+        ano_fabrico: row.ano_fabrico,
+        cilindrada_cc: row.cilindrada_cc,
+        tipo_combustivel: row.tipo_combustivel,
+        categoria: row.categoria,
+        tipo_veiculo: row.tipo_veiculo,
+        uso: row.uso,
+        valor_comercial: row.valor_comercial,
+        peso_bruto_kg: row.peso_bruto_kg != null ? String(row.peso_bruto_kg) : '',
+        lugares: row.lugares != null ? String(row.lugares) : '',
+        potencia_kw: row.potencia_kw != null ? String(row.potencia_kw) : '',
+        cor: row.cor || '',
+        chassis: row.chassis || '',
+        motor_num: row.motor_num || '',
+        proprietario_nome: row.proprietario_nome || '',
+        proprietario_nif: row.proprietario_nif || '',
+        data_registo: row.data_registo,
+        observacoes: row.observacoes || '',
+      });
     } else {
-      // Dados de demonstração padrão
-      const demoData: VeiculoIVM[] = [
-        {
-          id: 'ivm-demo-1',
-          empresa_id: empId,
-          tipo_categoria: 'ligeiro',
-          proprietario_tipo: 'proprio',
-          nif: empNif,
-          nome: empNome,
-          conta: 'Principal - 453484962',
-          reparticao_fiscal: '04.05 - RF VIANA',
-          provincia: 'LUANDA',
-          matricula: 'LD-42-88-GG',
-          marca: 'Toyota',
-          modelo: 'Hilux 2.8 D-4D',
-          ano_fabrico: 2023,
-          cilindrada_cc: 2755,
-          combustivel: 'Gasóleo',
-          tipo_uso: 'Comercial',
-          numero_chassis: 'AHTBB3CD502918231',
-          valor_comercial: 28000000,
-          taxa_ivm_percentual: 0.12,
-          valor_ivm: 35000,
-          ano_exercicio: Number(fiscalYear) || 2026,
-          estado_pagamento: 'Liquidado',
-          referencia_duc: 'DUC-IVM-2026-092817',
-          data_liquidacao: new Date().toISOString().split('T')[0]
-        },
-        {
-          id: 'ivm-demo-2',
-          empresa_id: empId,
-          tipo_categoria: 'ligeiro',
-          proprietario_tipo: 'proprio',
-          nif: empNif,
-          nome: empNome,
-          conta: 'Principal - 453484962',
-          reparticao_fiscal: '04.05 - RF VIANA',
-          provincia: 'LUANDA',
-          matricula: 'LD-19-12-FK',
-          marca: 'Hyundai',
-          modelo: 'Tucson 2.0',
-          ano_fabrico: 2021,
-          cilindrada_cc: 1999,
-          combustivel: 'Gasolina',
-          tipo_uso: 'Particular',
-          numero_chassis: 'KMHJT81BDMU918274',
-          valor_comercial: 16500000,
-          taxa_ivm_percentual: 0.10,
-          valor_ivm: 15000,
-          ano_exercicio: Number(fiscalYear) || 2026,
-          estado_pagamento: 'Liquidado',
-          referencia_duc: 'DUC-IVM-2026-091244',
-          data_liquidacao: new Date().toISOString().split('T')[0]
-        }
-      ];
-      setVeiculosList(demoData);
-      localStorage.setItem(`veiculos_ivm_${empId || 'default'}`, JSON.stringify(demoData));
+      setEditing(null);
+      setForm({
+        matricula: '', marca: '', modelo: '',
+        ano_fabrico: new Date().getFullYear(),
+        cilindrada_cc: 1600, tipo_combustivel: 'Gasolina',
+        categoria: 'A', tipo_veiculo: 'automovel', uso: 'particular',
+        valor_comercial: 0, peso_bruto_kg: '', lugares: '',
+        potencia_kw: '', cor: '', chassis: '', motor_num: '',
+        proprietario_nome: '', proprietario_nif: '',
+        data_registo: new Date().toISOString().split('T')[0],
+        observacoes: '',
+      });
     }
-    setLoading(false);
+    setShowForm(true);
   };
 
-  useEffect(() => {
-    loadVeiculos();
-  }, [empId, fiscalYear]);
-
-  // CÁLCULO OFICIAL DO IVM (Código do Imposto sobre Veículos Motorizados de Angola - Lei n.º 24/20)
-  const calculoIVM = useMemo(() => {
-    const anoAtual = Number(fiscalYear) || new Date().getFullYear();
-    const idadeAnos = Math.max(0, anoAtual - anoFabrico);
-
-    let valorFinal = 0;
-    let descricaoEscalao = '';
-    let taxaDesc = '';
-
-    if (selectedCategory === 'ligeiro') {
-      if (cilindradaCc <= 1500) {
-        if (idadeAnos <= 3) { valorFinal = 10000; descricaoEscalao = 'Até 1.500 cc (Até 3 anos)'; }
-        else if (idadeAnos <= 6) { valorFinal = 7500; descricaoEscalao = 'Até 1.500 cc (4 a 6 anos)'; }
-        else { valorFinal = 5000; descricaoEscalao = 'Até 1.500 cc (Mais de 6 anos)'; }
-      } else if (cilindradaCc <= 2500) {
-        if (idadeAnos <= 3) { valorFinal = 20000; descricaoEscalao = '1.501 a 2.500 cc (Até 3 anos)'; }
-        else if (idadeAnos <= 6) { valorFinal = 15000; descricaoEscalao = '1.501 a 2.500 cc (4 a 6 anos)'; }
-        else { valorFinal = 10000; descricaoEscalao = '1.501 a 2.500 cc (Mais de 6 anos)'; }
-      } else if (cilindradaCc <= 3500) {
-        if (idadeAnos <= 3) { valorFinal = 35000; descricaoEscalao = '2.501 a 3.500 cc (Até 3 anos)'; }
-        else if (idadeAnos <= 6) { valorFinal = 25000; descricaoEscalao = '2.501 a 3.500 cc (4 a 6 anos)'; }
-        else { valorFinal = 18000; descricaoEscalao = '2.501 a 3.500 cc (Mais de 6 anos)'; }
-      } else {
-        if (idadeAnos <= 3) { valorFinal = 50000; descricaoEscalao = 'Mais de 3.500 cc (Até 3 anos)'; }
-        else if (idadeAnos <= 6) { valorFinal = 40000; descricaoEscalao = 'Mais de 3.500 cc (4 a 6 anos)'; }
-        else { valorFinal = 25000; descricaoEscalao = 'Mais de 3.500 cc (Mais de 6 anos)'; }
-      }
-      taxaDesc = 'Tabela de Automóveis Ligeiros (Artigo 9.º)';
-    } else if (selectedCategory === 'pesado') {
-      if (tipoUso === 'Transporte Coletivo' || tipoUso === 'Passageiros') {
-        valorFinal = idadeAnos <= 5 ? 45000 : 25000;
-        descricaoEscalao = `Pesado de Passageiros (${idadeAnos <= 5 ? 'Até 5 anos' : 'Mais de 5 anos'})`;
-      } else {
-        if (tonelagem <= 10) {
-          valorFinal = idadeAnos <= 5 ? 35000 : 25000;
-          descricaoEscalao = 'Pesado de Mercadorias até 10 Toneladas';
-        } else {
-          valorFinal = idadeAnos <= 5 ? 60000 : 40000;
-          descricaoEscalao = 'Pesado de Mercadorias com mais de 10 Toneladas';
-        }
-      }
-      taxaDesc = 'Tabela de Veículos Pesados (Artigo 10.º)';
-    } else if (selectedCategory === 'motociclo') {
-      if (cilindradaCc <= 125) {
-        valorFinal = 3500;
-        descricaoEscalao = 'Ciclomotor / Motociclo até 125 cc';
-      } else if (cilindradaCc <= 450) {
-        valorFinal = 6500;
-        descricaoEscalao = 'Motociclo de 126 cc a 450 cc';
-      } else {
-        valorFinal = 12000;
-        descricaoEscalao = 'Motociclo de alta cilindrada (> 450 cc)';
-      }
-      taxaDesc = 'Tabela de Motociclos e Triciclos (Artigo 8.º)';
-    } else if (selectedCategory === 'embarcacao') {
-      if (comprimentoMetros <= 6) {
-        valorFinal = 30000;
-        descricaoEscalao = 'Embarcação de pequeno porte (até 6m)';
-      } else if (comprimentoMetros <= 12) {
-        valorFinal = 75000;
-        descricaoEscalao = 'Embarcação de médio porte (6m a 12m)';
-      } else {
-        valorFinal = 180000;
-        descricaoEscalao = 'Embarcação de grande porte / Iate (> 12m)';
-      }
-      taxaDesc = 'Tabela de Embarcações de Recreio e Náuticas (Artigo 11.º)';
-    } else if (selectedCategory === 'aeronave') {
-      if (pesoDescolagem <= 2000) {
-        valorFinal = 150000;
-        descricaoEscalao = 'Aeronave ligeira (até 2.000 kg PMD)';
-      } else if (pesoDescolagem <= 5700) {
-        valorFinal = 350000;
-        descricaoEscalao = 'Aeronave média (2.000 kg a 5.700 kg PMD)';
-      } else {
-        valorFinal = 800000;
-        descricaoEscalao = 'Aeronave executiva / Pesada (> 5.700 kg PMD)';
-      }
-      taxaDesc = 'Tabela de Aeronaves Privadas (Artigo 12.º)';
-    }
-
-    // Isenção para veículos 100% elétricos (benefício ambiental previsto na legislação)
-    const isElectric = combustivel.toLowerCase().includes('elétr') || combustivel.toLowerCase().includes('eletric');
-    if (isElectric) {
-      valorFinal = valorFinal * 0.5; // Bonificação fiscal de 50%
-      taxaDesc += ' [Bonificação de 50% Veículo Elétrico]';
-    }
-
-    return {
-      valorImposto: valorFinal,
-      descricaoEscalao,
-      taxaDesc,
-      idadeAnos
-    };
-  }, [selectedCategory, cilindradaCc, anoFabrico, tipoUso, tonelagem, comprimentoMetros, pesoDescolagem, combustivel, fiscalYear]);
-
-  // Submeter cadastro e liquidação
-  const handleFinalizarCadastro = async () => {
-    if (!matricula || !marca || !modelo) {
-      alert('Por favor, preencha os campos obrigatórios do veículo (Matrícula, Marca e Modelo).');
-      return;
-    }
+  // ─── Save ────────────────────────────────────────────────────────────────
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!empresaId) { setMsg({ type: 'err', text: 'Empresa não identificada.' }); return; }
     setSaving(true);
+    setMsg(null);
     try {
-      const generatedDuc = `DUC-IVM-${fiscalYear}-${Math.floor(100000 + Math.random() * 900000)}`;
+      const ivm = calcularIVM({
+        cilindrada_cc: Number(form.cilindrada_cc),
+        ano_fabrico: Number(form.ano_fabrico),
+        tipo_veiculo: form.tipo_veiculo,
+        uso: form.uso,
+        valor_comercial: Number(form.valor_comercial) || 0,
+        peso_bruto_kg: form.peso_bruto_kg ? Number(form.peso_bruto_kg) : null,
+        lugares: form.lugares ? Number(form.lugares) : null,
+      });
 
-      const novoVeiculo: VeiculoIVM = {
-        id: `ivm-${Date.now()}`,
-        empresa_id: empId,
-        tipo_categoria: selectedCategory,
-        proprietario_tipo: isTerceiro ? 'terceiro' : 'proprio',
-        nif: propNif || empNif,
-        nome: propNome || empNome,
-        conta: propConta,
-        reparticao_fiscal: propReparticao,
-        provincia: propProvincia,
-        matricula: matricula.toUpperCase(),
-        marca,
-        modelo,
-        ano_fabrico: Number(anoFabrico),
-        cilindrada_cc: Number(cilindradaCc),
-        potencia_kw: Number(potenciaKw),
-        combustivel,
-        tipo_uso: tipoUso,
-        numero_chassis: numeroChassis.toUpperCase(),
-        tonelagem: Number(tonelagem),
-        peso_descolagem: Number(pesoDescolagem),
-        comprimento_metros: Number(comprimentoMetros),
-        valor_comercial: Number(valorComercial),
-        taxa_ivm_percentual: 0.10,
-        valor_ivm: calculoIVM.valorImposto,
-        ano_exercicio: Number(fiscalYear) || new Date().getFullYear(),
-        estado_pagamento: 'Liquidado',
-        referencia_duc: generatedDuc,
-        data_liquidacao: new Date().toISOString().split('T')[0],
-        created_at: new Date().toISOString()
+      const payload: any = {
+        empresa_id: empresaId,
+        matricula: form.matricula.trim().toUpperCase(),
+        marca: form.marca.trim(),
+        modelo: form.modelo.trim(),
+        ano_fabrico: Number(form.ano_fabrico),
+        cilindrada_cc: Number(form.cilindrada_cc),
+        tipo_combustivel: form.tipo_combustivel,
+        categoria: form.categoria,
+        tipo_veiculo: form.tipo_veiculo,
+        uso: form.uso,
+        valor_comercial: Number(form.valor_comercial) || 0,
+        peso_bruto_kg: form.peso_bruto_kg ? Number(form.peso_bruto_kg) : null,
+        lugares: form.lugares ? Number(form.lugares) : null,
+        potencia_kw: form.potencia_kw ? Number(form.potencia_kw) : null,
+        cor: form.cor || null,
+        chassis: form.chassis || null,
+        motor_num: form.motor_num || null,
+        proprietario_nome: form.proprietario_nome || null,
+        proprietario_nif: form.proprietario_nif || null,
+        data_registo: form.data_registo,
+        ivm_calculado: ivm,
+        observacoes: form.observacoes || null,
       };
 
-      // Tentar persistir no Supabase
-      if (empId) {
-        try {
-          await supabase.from('veiculos_ivm').insert([novoVeiculo]);
-        } catch (dbErr) {
-          console.warn('Erro ao inserir no Supabase, a guardar localmente:', dbErr);
-        }
+      if (editing) {
+        const { error } = await supabase.from('ivm_registos').update(payload).eq('id', editing.id);
+        if (error) throw error;
+        setMsg({ type: 'ok', text: 'Registo atualizado com sucesso!' });
+      } else {
+        const { error } = await supabase.from('ivm_registos').insert([payload]);
+        if (error) throw error;
+        setMsg({ type: 'ok', text: 'Veículo registado com sucesso! IVM calculado: ' + ivm.toLocaleString('pt-AO') + ' Kz' });
       }
-
-      // Guardar localmente
-      const updatedList = [novoVeiculo, ...veiculosList];
-      setVeiculosList(updatedList);
-      localStorage.setItem(`veiculos_ivm_${empId || 'default'}`, JSON.stringify(updatedList));
-
-      alert(`Veículo cadastrado e IVM liquidado com sucesso!\nReferência DUC: ${generatedDuc}\nValor: ${calculoIVM.valorImposto.toLocaleString('pt-AO')} Kz`);
-      
-      // Limpar e mudar para consulta
-      setMatricula('');
-      setNumeroChassis('');
-      setCurrentStep(1);
-      setActiveTab('consultar');
-      setSelectedVeiculoDetail(novoVeiculo);
+      setShowForm(false);
+      setEditing(null);
+      loadRegistos();
     } catch (err: any) {
-      alert(`Erro ao registar veículo: ${err.message || err}`);
+      setMsg({ type: 'err', text: 'Erro: ' + (err.message || 'Verifique os dados.') });
     } finally {
       setSaving(false);
     }
   };
 
-  // Gerar Comprovativo Oficial de Liquidação de IVM em PDF
-  const handleExportPDF = (v: VeiculoIVM) => {
-    const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
-
-    // Cabeçalho institucional AGT / República de Angola
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    doc.text('REPÚBLICA DE ANGOLA', pageWidth / 2, 18, { align: 'center' });
-    doc.text('MINISTÉRIO DAS FINANÇAS — ADMINISTRAÇÃO GERAL TRIBUTÁRIA', pageWidth / 2, 24, { align: 'center' });
-    doc.setFontSize(14);
-    doc.setTextColor(13, 111, 138);
-    doc.text('DOCUMENTO ÚNICO DE COBRANÇA (DUC) — IVM', pageWidth / 2, 33, { align: 'center' });
-    doc.setFontSize(10);
-    doc.setTextColor(80, 80, 80);
-    doc.text(`Imposto sobre Veículos Motorizados — Exercício Fiscal ${v.ano_exercicio}`, pageWidth / 2, 39, { align: 'center' });
-
-    doc.setDrawColor(13, 111, 138);
-    doc.setLineWidth(0.5);
-    doc.line(15, 43, pageWidth - 15, 43);
-
-    // Tabela de Dados
-    autoTable(doc, {
-      startY: 48,
-      head: [['Campo', 'Informação']],
-      body: [
-        ['Referência DUC', v.referencia_duc || 'DUC-IVM-PENDENTE'],
-        ['Data de Emissão / Liquidação', v.data_liquidacao || new Date().toISOString().split('T')[0]],
-        ['Estado do Pagamento', v.estado_pagamento],
-        ['Contribuinte (Proprietário)', v.nome],
-        ['NIF do Proprietário', v.nif],
-        ['Repartição Fiscal', v.reparticao_fiscal],
-        ['Província', v.provincia],
-        ['Tipo de Veículo', v.tipo_categoria.toUpperCase()],
-        ['Matrícula', v.matricula],
-        ['Marca e Modelo', `${v.marca} ${v.modelo}`],
-        ['Ano de Fabrico', String(v.ano_fabrico)],
-        ['Cilindrada / Potência', `${v.cilindrada_cc || '---'} cc | ${v.potencia_kw || '---'} kW`],
-        ['Combustível', v.combustivel],
-        ['Nº de Chassis (VIN)', v.numero_chassis || 'Não especificado'],
-        ['Valor Comercial Declarado', `${(v.valor_comercial || 0).toLocaleString('pt-AO')} Kz`],
-        ['Valor do Imposto IVM Liquidado', `${(v.valor_ivm || 0).toLocaleString('pt-AO')} Kz`]
-      ],
-      theme: 'grid',
-      headStyles: { fillColor: [13, 111, 138], textColor: 255, fontStyle: 'bold' },
-      styles: { fontSize: 9, cellPadding: 3.5 }
-    });
-
-    const finalY = (doc as any).lastAutoTable.finalY + 15;
-    doc.setFontSize(9);
-    doc.text('Este documento comprova a regularização do Imposto sobre Veículos Motorizados (IVM) perante a AGT.', 15, finalY);
-    doc.text(`Emitido aos ${new Date().toLocaleDateString('pt-AO')} às ${new Date().toLocaleTimeString('pt-AO')}`, 15, finalY + 6);
-
-    doc.save(`DUC-IVM-${v.matricula || 'veiculo'}.pdf`);
+  // ─── Mark as paid ────────────────────────────────────────────────────────
+  const marcarPago = async (id: string) => {
+    await supabase.from('ivm_registos').update({ ivm_pago: true, data_pagamento: new Date().toISOString().split('T')[0] }).eq('id', id);
+    loadRegistos();
   };
 
-  const filteredVeiculos = useMemo(() => {
-    return veiculosList.filter(v => 
-      v.matricula.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      v.marca.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      v.modelo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      v.nif.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      v.nome.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [veiculosList, searchTerm]);
+  // ─── Delete ───────────────────────────────────────────────────────────────
+  const handleDelete = async (id: string) => {
+    if (!confirm('Eliminar este registo IVM?')) return;
+    await supabase.from('ivm_registos').delete().eq('id', id);
+    loadRegistos();
+  };
 
+  // ─── Filtered ────────────────────────────────────────────────────────────
+  const filtered = registos.filter(r =>
+    r.matricula.toLowerCase().includes(search.toLowerCase()) ||
+    r.marca.toLowerCase().includes(search.toLowerCase()) ||
+    r.modelo.toLowerCase().includes(search.toLowerCase()) ||
+    (r.proprietario_nome || '').toLowerCase().includes(search.toLowerCase())
+  );
+
+  const totalIVM = filtered.reduce((s, r) => s + (r.ivm_calculado || 0), 0);
+  const totalPago = filtered.filter(r => r.ivm_pago).reduce((s, r) => s + (r.ivm_calculado || 0), 0);
+
+  const fmt = (v: number) => v.toLocaleString('pt-AO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  // ─── Render ───────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-6">
-      {/* CABEÇALHO DA PÁGINA COM NOME E LOGÓTIPO DA EMPRESA */}
-      <div className="bg-white border border-slate-200 p-6 shadow-sm rounded-none flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          {companyData?.logotipo_url ? (
-            <img src={companyData.logotipo_url} alt="Logo" className="w-14 h-14 object-contain border border-slate-100 p-1" />
-          ) : (
-            <div className="w-14 h-14 bg-[#0d6f8a]/10 border border-[#0d6f8a]/30 flex items-center justify-center text-[#0d6f8a]">
-              <Building2 size={28} />
-            </div>
+    <div className="bg-white min-h-full">
+      {/* Header */}
+      <div className="bg-[#003366] text-white px-6 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          {companyData?.logo_url && (
+            <img src={companyData.logo_url} alt="Logo" className="h-8 w-8 object-contain bg-white rounded-sm p-0.5" />
           )}
           <div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-[#0d6f8a] text-white">
-                Fiscalidade Automóvel AGT
-              </span>
-              <span className="text-xs text-slate-500 font-bold">Exercício {fiscalYear}</span>
+            <div className="text-[10px] font-bold uppercase tracking-widest opacity-70">
+              {companyData?.nome || 'Empresa'} — Contabilidade
             </div>
-            <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight mt-1">
-              {empNome}
-            </h2>
-            <p className="text-xs text-slate-500 font-medium">
-              NIF: <span className="font-mono font-bold text-slate-700">{empNif}</span> • Gestão do Imposto sobre Veículos Motorizados (IVM)
-            </p>
+            <div className="text-base font-black uppercase tracking-tight flex items-center gap-2">
+              <Car size={18} /> IVM — Imposto sobre Veículos e Motorizados
+            </div>
           </div>
         </div>
-
-        <div className="flex items-center gap-2 self-end md:self-auto">
-          {onBack && (
-            <button 
-              onClick={onBack} 
-              className="px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-50 font-bold text-xs uppercase cursor-pointer flex items-center gap-1.5"
-            >
-              <ArrowLeft size={16} /> Voltar
-            </button>
-          )}
-          <div className="flex bg-slate-100 p-1 border border-slate-200">
-            <button
-              onClick={() => setActiveTab('cadastro')}
-              className={`px-4 py-1.5 text-xs font-bold uppercase transition-all cursor-pointer ${activeTab === 'cadastro' ? 'bg-[#0d6f8a] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
-            >
-              Novo Cadastro
-            </button>
-            <button
-              onClick={() => setActiveTab('consultar')}
-              className={`px-4 py-1.5 text-xs font-bold uppercase transition-all cursor-pointer ${activeTab === 'consultar' ? 'bg-[#0d6f8a] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
-            >
-              Consultar ({veiculosList.length})
-            </button>
-          </div>
-        </div>
+        <button
+          onClick={() => openForm()}
+          className="flex items-center gap-1.5 bg-white text-[#003366] px-3 py-1.5 text-xs font-black uppercase tracking-widest hover:bg-blue-50 transition-colors"
+        >
+          <Plus size={14} /> Registar Veículo
+        </button>
       </div>
 
-      {activeTab === 'cadastro' ? (
-        <div className="bg-white border border-slate-200 shadow-sm">
-          {/* BARRA SUPERIOR DE SELEÇÃO DE CATEGORIAS - LEVE IGUAL À IMAGEM forml ivm.PNG */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 border-b border-slate-200 bg-slate-100/60">
-            {[
-              { id: 'ligeiro', label: 'Veículo Motorizado', sub: 'Ligeiros', icon: Car },
-              { id: 'pesado', label: 'Veículo Motorizado', sub: 'Pesados', icon: Truck },
-              { id: 'motociclo', label: 'Veículo Motorizado', sub: 'Motociclo, Ciclomotores, Triciclos e Quadriciclos', icon: Bike },
-              { id: 'embarcacao', label: 'Veículo Motorizado', sub: 'Embarcações', icon: Ship },
-              { id: 'aeronave', label: 'Veículo Motorizado', sub: 'Aeronaves', icon: Plane }
-            ].map(cat => {
-              const isSelected = selectedCategory === cat.id;
-              const IconComponent = cat.icon;
-              return (
-                <button
-                  key={cat.id}
-                  onClick={() => setSelectedCategory(cat.id as any)}
-                  className={`p-4 text-center border-r border-slate-200 transition-all cursor-pointer flex flex-col items-center justify-center gap-2 relative ${
-                    isSelected
-                      ? 'bg-[#0d6f8a] text-white shadow-inner font-bold'
-                      : 'bg-slate-200/50 hover:bg-slate-200 text-slate-700'
-                  }`}
-                >
-                  <IconComponent size={28} className={isSelected ? 'text-white' : 'text-slate-600'} />
-                  <div>
-                    <div className="text-[11px] font-bold leading-tight">{cat.label}</div>
-                    <div className="text-[10px] opacity-90 leading-tight mt-0.5">{cat.sub}</div>
-                  </div>
-                  {isSelected && (
-                    <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-3 h-3 bg-[#0d6f8a] rotate-45" />
-                  )}
-                </button>
-              );
-            })}
+      {/* Stats bar */}
+      <div className="grid grid-cols-3 gap-px bg-zinc-200 border-b border-zinc-200">
+        {[
+          { label: 'Veículos Registados', val: filtered.length, accent: 'text-[#003366]' },
+          { label: 'IVM Total Calculado', val: fmt(totalIVM) + ' Kz', accent: 'text-amber-700' },
+          { label: 'IVM Liquidado', val: fmt(totalPago) + ' Kz', accent: 'text-emerald-700' },
+        ].map((s, i) => (
+          <div key={i} className="bg-white px-4 py-3 text-center">
+            <div className={`text-lg font-black ${s.accent}`}>{s.val}</div>
+            <div className="text-[9px] font-bold uppercase tracking-widest text-zinc-400">{s.label}</div>
           </div>
+        ))}
+      </div>
 
-          {/* TÍTULO DA ETAPA */}
-          <div className="py-6 px-8 text-center border-b border-slate-100">
-            <h3 className="text-base font-bold text-slate-800 tracking-tight">
-              Formulário de Cadastro de {
-                selectedCategory === 'ligeiro' ? 'Veículo Motorizado Ligeiro' :
-                selectedCategory === 'pesado' ? 'Veículo Motorizado Pesado' :
-                selectedCategory === 'motociclo' ? 'Motociclo, Ciclomotor ou Triciclo' :
-                selectedCategory === 'embarcacao' ? 'Embarcação a Motor' : 'Aeronave'
-              }
-            </h3>
-
-            {/* STEPPER MULTI-STEP - IDÊNTICO À IMAGEM */}
-            <div className="flex items-center justify-center max-w-xl mx-auto mt-6">
-              <div className="flex flex-col items-center cursor-pointer" onClick={() => setCurrentStep(1)}>
-                <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-all ${currentStep >= 1 ? 'border-[#0d6f8a] bg-white text-[#0d6f8a]' : 'border-slate-300 text-slate-400'}`}>
-                  {currentStep > 1 ? <Check size={16} /> : 1}
-                </div>
-                <span className={`text-[11px] mt-1.5 font-bold ${currentStep === 1 ? 'text-[#0d6f8a]' : 'text-slate-500'}`}>
-                  Informações do Proprietário
-                </span>
-              </div>
-
-              <div className={`flex-1 h-0.5 mx-3 ${currentStep >= 2 ? 'bg-[#0d6f8a]' : 'bg-slate-200'}`} />
-
-              <div className="flex flex-col items-center cursor-pointer" onClick={() => setCurrentStep(2)}>
-                <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-all ${currentStep >= 2 ? 'border-[#0d6f8a] bg-white text-[#0d6f8a]' : 'border-slate-300 text-slate-400'}`}>
-                  {currentStep > 2 ? <Check size={16} /> : 2}
-                </div>
-                <span className={`text-[11px] mt-1.5 font-bold ${currentStep === 2 ? 'text-[#0d6f8a]' : 'text-slate-500'}`}>
-                  Detalhes do Veículo Motorizado
-                </span>
-              </div>
-
-              <div className={`flex-1 h-0.5 mx-3 ${currentStep >= 3 ? 'bg-[#0d6f8a]' : 'bg-slate-200'}`} />
-
-              <div className="flex flex-col items-center cursor-pointer" onClick={() => setCurrentStep(3)}>
-                <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-all ${currentStep === 3 ? 'border-[#0d6f8a] bg-white text-[#0d6f8a]' : 'border-slate-300 text-slate-400'}`}>
-                  3
-                </div>
-                <span className={`text-[11px] mt-1.5 font-bold ${currentStep === 3 ? 'text-[#0d6f8a]' : 'text-slate-500'}`}>
-                  Resumo
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* CONTEÚDO DOS PASSOS */}
-          <div className="p-8 max-w-3xl mx-auto">
-            {/* PASSO 1: INFORMAÇÕES DO PROPRIETÁRIO */}
-            {currentStep === 1 && (
-              <div className="space-y-6 animate-in fade-in-50 duration-200">
-                <div className="border-b border-slate-100 pb-3">
-                  <h4 className="font-bold text-slate-800 text-sm">Informações do Proprietário</h4>
-                </div>
-
-                {/* SWITCH CADASTRO DE TERCEIROS - EXATO DA IMAGEM */}
-                <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-200">
-                  <div>
-                    <span className="block font-bold text-xs text-slate-800">Cadastro</span>
-                    <span className="text-[11px] text-slate-500">Para cadastrar veículos de terceiros, activa o switch</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsTerceiro(!isTerceiro)}
-                    className={`w-12 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors ${isTerceiro ? 'bg-[#0d6f8a]' : 'bg-slate-300'}`}
-                  >
-                    <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${isTerceiro ? 'translate-x-6' : 'translate-x-0'}`} />
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 text-xs">
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">NIF *</label>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        required
-                        value={propNif}
-                        onChange={e => setPropNif(e.target.value)}
-                        placeholder="5000732028"
-                        className="flex-1 bg-slate-50 border border-slate-300 p-2.5 font-mono text-slate-800 focus:outline-none focus:border-[#0d6f8a]"
-                      />
-                      <button 
-                        type="button" 
-                        onClick={() => {
-                          if (propNif === empNif) setPropNome(empNome);
-                          else if (propNif) alert(`NIF ${propNif} validado com a base de dados da AGT.`);
-                        }}
-                        className="bg-[#0d6f8a] hover:bg-[#0a556a] text-white px-3.5 flex items-center justify-center cursor-pointer"
-                      >
-                        <Search size={16} />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">Nome *</label>
-                    <input
-                      type="text"
-                      required
-                      value={propNome}
-                      onChange={e => setPropNome(e.target.value)}
-                      placeholder="Nome do Proprietário / Empresa"
-                      className="w-full bg-slate-50 border border-slate-300 p-2.5 font-medium text-slate-800 focus:outline-none focus:border-[#0d6f8a]"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">Conta *</label>
-                    <select
-                      value={propConta}
-                      onChange={e => setPropConta(e.target.value)}
-                      className="w-full bg-white border border-slate-300 p-2.5 font-medium text-slate-800 focus:outline-none focus:border-[#0d6f8a]"
-                    >
-                      <option value="Principal - 453484962">Principal - 453484962</option>
-                      <option value="Conta Operacional BFA">Conta Operacional BFA - 99281726</option>
-                      <option value="Conta Fiscais BAI">Conta Fiscais BAI - 11029837</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">Repartição Fiscal</label>
-                    <input
-                      type="text"
-                      value={propReparticao}
-                      onChange={e => setPropReparticao(e.target.value)}
-                      className="w-full bg-slate-100 border border-slate-300 p-2.5 font-medium text-slate-700 focus:outline-none"
-                    />
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="block font-bold text-slate-700 mb-1">Província</label>
-                    <input
-                      type="text"
-                      value={propProvincia}
-                      onChange={e => setPropProvincia(e.target.value)}
-                      className="w-full bg-slate-100 border border-slate-300 p-2.5 font-medium text-slate-700 focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex justify-end pt-4">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!propNif || !propNome) {
-                        alert('Preencha o NIF e o Nome do proprietário.');
-                        return;
-                      }
-                      setCurrentStep(2);
-                    }}
-                    className="bg-[#0d6f8a] hover:bg-[#0a556a] text-white px-7 py-2.5 text-xs font-bold uppercase transition-all flex items-center gap-2 cursor-pointer shadow-xs"
-                  >
-                    <span>Próximo</span>
-                    <ArrowRight size={16} />
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* PASSO 2: DETALHES DO VEÍCULO */}
-            {currentStep === 2 && (
-              <div className="space-y-6 animate-in fade-in-50 duration-200">
-                <div className="border-b border-slate-100 pb-3">
-                  <h4 className="font-bold text-slate-800 text-sm">Detalhes do Veículo Motorizado</h4>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 text-xs">
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">Matrícula do Veículo *</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Ex: LD-22-44-AB"
-                      value={matricula}
-                      onChange={e => setMatricula(e.target.value.toUpperCase())}
-                      className="w-full bg-slate-50 border border-slate-300 p-2.5 font-mono font-bold text-slate-800 focus:outline-none focus:border-[#0d6f8a]"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">Marca *</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Ex: Toyota, Mercedes-Benz, Volvo..."
-                      value={marca}
-                      onChange={e => setMarca(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-300 p-2.5 font-medium text-slate-800 focus:outline-none focus:border-[#0d6f8a]"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">Modelo *</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Ex: Hilux, Corolla, FH16..."
-                      value={modelo}
-                      onChange={e => setModelo(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-300 p-2.5 font-medium text-slate-800 focus:outline-none focus:border-[#0d6f8a]"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">Ano de Fabrico *</label>
-                    <input
-                      type="number"
-                      required
-                      min={1970}
-                      max={new Date().getFullYear()}
-                      value={anoFabrico}
-                      onChange={e => setAnoFabrico(Number(e.target.value))}
-                      className="w-full bg-slate-50 border border-slate-300 p-2.5 font-mono font-bold text-slate-800 focus:outline-none focus:border-[#0d6f8a]"
-                    />
-                  </div>
-
-                  {selectedCategory === 'ligeiro' || selectedCategory === 'motociclo' ? (
-                    <div>
-                      <label className="block font-bold text-slate-700 mb-1">Cilindrada (cm³ / cc) *</label>
-                      <input
-                        type="number"
-                        min={50}
-                        max={8000}
-                        value={cilindradaCc}
-                        onChange={e => setCilindradaCc(Number(e.target.value))}
-                        className="w-full bg-slate-50 border border-slate-300 p-2.5 font-mono font-bold text-slate-800 focus:outline-none focus:border-[#0d6f8a]"
-                      />
-                    </div>
-                  ) : selectedCategory === 'pesado' ? (
-                    <div>
-                      <label className="block font-bold text-slate-700 mb-1">Peso Bruto / Tonelagem (Ton) *</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={tonelagem}
-                        onChange={e => setTonelagem(Number(e.target.value))}
-                        className="w-full bg-slate-50 border border-slate-300 p-2.5 font-mono font-bold text-slate-800 focus:outline-none focus:border-[#0d6f8a]"
-                      />
-                    </div>
-                  ) : selectedCategory === 'embarcacao' ? (
-                    <div>
-                      <label className="block font-bold text-slate-700 mb-1">Comprimento da Embarcação (Metros) *</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={comprimentoMetros}
-                        onChange={e => setComprimentoMetros(Number(e.target.value))}
-                        className="w-full bg-slate-50 border border-slate-300 p-2.5 font-mono font-bold text-slate-800 focus:outline-none focus:border-[#0d6f8a]"
-                      />
-                    </div>
-                  ) : (
-                    <div>
-                      <label className="block font-bold text-slate-700 mb-1">Peso Máximo à Descolagem (kg PMD) *</label>
-                      <input
-                        type="number"
-                        value={pesoDescolagem}
-                        onChange={e => setPesoDescolagem(Number(e.target.value))}
-                        className="w-full bg-slate-50 border border-slate-300 p-2.5 font-mono font-bold text-slate-800 focus:outline-none focus:border-[#0d6f8a]"
-                      />
-                    </div>
-                  )}
-
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">Tipo de Combustível</label>
-                    <select
-                      value={combustivel}
-                      onChange={e => setCombustivel(e.target.value)}
-                      className="w-full bg-white border border-slate-300 p-2.5 font-medium text-slate-800 focus:outline-none focus:border-[#0d6f8a]"
-                    >
-                      <option value="Gasolina">Gasolina</option>
-                      <option value="Gasóleo">Gasóleo / Diesel</option>
-                      <option value="Elétrico">100% Elétrico (Bonificação 50%)</option>
-                      <option value="Híbrido">Híbrido</option>
-                      <option value="GPL">GPL</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">Finalidade / Tipo de Uso</label>
-                    <select
-                      value={tipoUso}
-                      onChange={e => setTipoUso(e.target.value)}
-                      className="w-full bg-white border border-slate-300 p-2.5 font-medium text-slate-800 focus:outline-none focus:border-[#0d6f8a]"
-                    >
-                      <option value="Particular">Particular / Pessoal</option>
-                      <option value="Comercial">Comercial / Empresa</option>
-                      <option value="Aluguer">Aluguer (Rent-a-Car)</option>
-                      <option value="Transporte Coletivo">Transporte Coletivo / Passageiros</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">Número de Chassis (VIN)</label>
-                    <input
-                      type="text"
-                      placeholder="Ex: AHTBB3CD502918231"
-                      value={numeroChassis}
-                      onChange={e => setNumeroChassis(e.target.value.toUpperCase())}
-                      className="w-full bg-slate-50 border border-slate-300 p-2.5 font-mono text-slate-800 focus:outline-none focus:border-[#0d6f8a]"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex justify-between pt-4 border-t border-slate-100">
-                  <button
-                    type="button"
-                    onClick={() => setCurrentStep(1)}
-                    className="border border-slate-300 hover:bg-slate-50 text-slate-700 px-6 py-2.5 text-xs font-bold uppercase transition-all flex items-center gap-2 cursor-pointer"
-                  >
-                    <ArrowLeft size={16} />
-                    <span>Anterior</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!matricula || !marca || !modelo) {
-                        alert('Preencha os campos obrigatórios do veículo (Matrícula, Marca e Modelo).');
-                        return;
-                      }
-                      setCurrentStep(3);
-                    }}
-                    className="bg-[#0d6f8a] hover:bg-[#0a556a] text-white px-7 py-2.5 text-xs font-bold uppercase transition-all flex items-center gap-2 cursor-pointer shadow-xs"
-                  >
-                    <span>Próximo</span>
-                    <ArrowRight size={16} />
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* PASSO 3: RESUMO & LIQUIDAÇÃO IVM */}
-            {currentStep === 3 && (
-              <div className="space-y-6 animate-in fade-in-50 duration-200">
-                <div className="border-b border-slate-100 pb-3 flex justify-between items-center">
-                  <h4 className="font-bold text-slate-800 text-sm">Resumo dos Dados & Apuramento do IVM</h4>
-                  <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200">
-                    Lei n.º 24/20 de Angola
-                  </span>
-                </div>
-
-                {/* PAINEL DE APURAMENTO DO IMPOSTO */}
-                <div className="p-5 bg-sky-50 border border-sky-100 rounded-none space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-700 uppercase">Enquadramento Legal:</span>
-                    <span className="text-xs font-black text-[#0d6f8a]">{calculoIVM.taxaDesc}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-700 uppercase">Escalão Fiscal Aplicável:</span>
-                    <span className="text-xs font-bold text-slate-800">{calculoIVM.descricaoEscalao}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-700 uppercase">Idade Apurada:</span>
-                    <span className="text-xs font-mono font-bold text-slate-800">{calculoIVM.idadeAnos} anos</span>
-                  </div>
-                  <div className="pt-3 border-t border-sky-200 flex items-center justify-between">
-                    <span className="text-sm font-black text-slate-900 uppercase">Total Imposto IVM a Pagar:</span>
-                    <span className="text-xl font-black text-[#0d6f8a] font-mono">
-                      {calculoIVM.valorImposto.toLocaleString('pt-AO')} Kz
-                    </span>
-                  </div>
-                </div>
-
-                {/* RESUMO DOS DADOS REGISTADOS */}
-                <div className="grid grid-cols-2 gap-4 text-xs bg-slate-50 p-4 border border-slate-200">
-                  <div>
-                    <span className="text-slate-500 font-bold block">Proprietário:</span>
-                    <span className="font-bold text-slate-800">{propNome} (NIF: {propNif})</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500 font-bold block">Repartição / Província:</span>
-                    <span className="font-bold text-slate-800">{propReparticao} • {propProvincia}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500 font-bold block">Veículo / Matrícula:</span>
-                    <span className="font-bold text-slate-800">{marca} {modelo} ({matricula})</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500 font-bold block">Ano / Combustível / Uso:</span>
-                    <span className="font-bold text-slate-800">{anoFabrico} • {combustivel} • {tipoUso}</span>
-                  </div>
-                </div>
-
-                <div className="flex justify-between pt-4 border-t border-slate-100">
-                  <button
-                    type="button"
-                    onClick={() => setCurrentStep(2)}
-                    className="border border-slate-300 hover:bg-slate-50 text-slate-700 px-6 py-2.5 text-xs font-bold uppercase transition-all flex items-center gap-2 cursor-pointer"
-                  >
-                    <ArrowLeft size={16} />
-                    <span>Anterior</span>
-                  </button>
-                  <button
-                    type="button"
-                    disabled={saving}
-                    onClick={handleFinalizarCadastro}
-                    className="bg-[#0d6f8a] hover:bg-[#0a556a] text-white px-8 py-3 text-xs font-black uppercase transition-all flex items-center gap-2 cursor-pointer shadow-md"
-                  >
-                    {saving ? (
-                      <RefreshCw size={16} className="animate-spin" />
-                    ) : (
-                      <CheckCircle2 size={16} />
-                    )}
-                    <span>Gravar Registo & Liquidar IVM</span>
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+      {/* Toolbar */}
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-zinc-100">
+        <div className="relative flex-1 max-w-xs">
+          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Pesquisar por matrícula, marca, proprietário..."
+            className="w-full pl-8 pr-3 py-2 text-xs border border-zinc-200 focus:outline-none focus:border-[#003366]"
+          />
         </div>
-      ) : (
-        /* ABA DE CONSULTA & HISTÓRICO DE IVM */
-        <div className="bg-white border border-slate-200 p-6 shadow-sm space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-            <div>
-              <h3 className="text-base font-black text-slate-800 uppercase tracking-tight">
-                Veículos Cadastrados & Histórico de IVM
-              </h3>
-              <p className="text-xs text-slate-500">
-                Consulte e emita os comprovativos de liquidação de IVM (DUC) de todos os veículos registados
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="relative w-64">
-                <Search size={16} className="absolute left-3 top-2.5 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Pesquisar por matrícula, marca, NIF..."
-                  value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 focus:outline-none focus:border-[#0d6f8a]"
-                />
-              </div>
-              <button
-                onClick={loadVeiculos}
-                className="p-2 border border-slate-200 hover:bg-slate-100 text-slate-600 cursor-pointer"
-                title="Atualizar lista"
-              >
-                <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-              </button>
-            </div>
-          </div>
+        <button onClick={loadRegistos} className="p-2 text-zinc-400 hover:text-[#003366]">
+          <RefreshCw size={14} />
+        </button>
+      </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-100 text-slate-700 uppercase font-black tracking-wider text-[10px] border-b border-slate-200">
+      {/* Alert */}
+      {msg && (
+        <div className={`mx-4 mt-3 flex items-start gap-2 p-3 text-xs font-semibold rounded-none border ${msg.type === 'ok' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
+          {msg.type === 'ok' ? <CheckCircle size={14} className="mt-0.5 flex-shrink-0" /> : <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />}
+          <span>{msg.text}</span>
+          <button onClick={() => setMsg(null)} className="ml-auto"><X size={12} /></button>
+        </div>
+      )}
+
+      {/* Table */}
+      <div className="p-4">
+        {loading ? (
+          <div className="text-center py-16 text-xs text-zinc-400 uppercase font-bold">A carregar registos IVM...</div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-16 border-2 border-dashed border-zinc-200">
+            <Car size={40} className="mx-auto text-zinc-300 mb-3" />
+            <div className="text-sm font-black text-zinc-500 uppercase">Nenhum veículo registado</div>
+            <div className="text-xs text-zinc-400 mt-1">Clique em "Registar Veículo" para adicionar</div>
+          </div>
+        ) : (
+          <div className="border border-zinc-200 overflow-hidden">
+            <table className="w-full text-xs">
+              <thead className="bg-[#003366] text-white">
                 <tr>
-                  <th className="p-3">Ref. DUC</th>
-                  <th className="p-3">Matrícula</th>
-                  <th className="p-3">Veículo</th>
-                  <th className="p-3">Categoria</th>
-                  <th className="p-3">Proprietário / NIF</th>
-                  <th className="p-3">Exercício</th>
-                  <th className="p-3 text-right">Valor IVM</th>
-                  <th className="p-3 text-center">Estado</th>
-                  <th className="p-3 text-center">Ações</th>
+                  <th className="px-3 py-2 text-left font-black uppercase tracking-wide">Matrícula</th>
+                  <th className="px-3 py-2 text-left font-black uppercase tracking-wide">Marca / Modelo</th>
+                  <th className="px-3 py-2 text-left font-black uppercase tracking-wide hidden md:table-cell">Tipo</th>
+                  <th className="px-3 py-2 text-left font-black uppercase tracking-wide hidden md:table-cell">Ano</th>
+                  <th className="px-3 py-2 text-left font-black uppercase tracking-wide hidden lg:table-cell">Proprietário</th>
+                  <th className="px-3 py-2 text-right font-black uppercase tracking-wide">IVM (Kz)</th>
+                  <th className="px-3 py-2 text-center font-black uppercase tracking-wide">Estado</th>
+                  <th className="px-3 py-2 text-center font-black uppercase tracking-wide">Ações</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                {filteredVeiculos.length === 0 ? (
-                  <tr>
-                    <td colSpan={9} className="p-8 text-center text-slate-400">
-                      Nenhum veículo registado para os critérios selecionados.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredVeiculos.map(v => (
-                    <tr key={v.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="p-3 font-mono font-bold text-[#0d6f8a]">{v.referencia_duc || '---'}</td>
-                      <td className="p-3 font-mono font-black text-slate-900">{v.matricula}</td>
-                      <td className="p-3">
-                        <div className="font-bold">{v.marca} {v.modelo}</div>
-                        <div className="text-[10px] text-slate-400">{v.ano_fabrico} • {v.combustivel}</div>
+              <tbody>
+                {filtered.map((r, idx) => (
+                  <React.Fragment key={r.id}>
+                    <tr
+                      className={`border-t border-zinc-100 hover:bg-zinc-50 cursor-pointer ${idx % 2 === 0 ? 'bg-white' : 'bg-zinc-50/50'}`}
+                      onClick={() => setExpandedId(expandedId === r.id ? null : r.id)}
+                    >
+                      <td className="px-3 py-2 font-black text-[#003366] tracking-widest">{r.matricula}</td>
+                      <td className="px-3 py-2">
+                        <div className="font-bold">{r.marca}</div>
+                        <div className="text-zinc-400">{r.modelo}</div>
                       </td>
-                      <td className="p-3 uppercase text-[10px] font-bold">
-                        <span className="px-2 py-0.5 bg-slate-100 border border-slate-200 text-slate-700">
-                          {v.tipo_categoria}
-                        </span>
+                      <td className="px-3 py-2 hidden md:table-cell text-zinc-600">
+                        {TIPOS_VEICULO.find(t => t.value === r.tipo_veiculo)?.label || r.tipo_veiculo}
                       </td>
-                      <td className="p-3">
-                        <div>{v.nome}</div>
-                        <div className="text-[10px] text-slate-400 font-mono">NIF: {v.nif}</div>
+                      <td className="px-3 py-2 hidden md:table-cell text-zinc-600">{r.ano_fabrico}</td>
+                      <td className="px-3 py-2 hidden lg:table-cell text-zinc-600">{r.proprietario_nome || '—'}</td>
+                      <td className="px-3 py-2 text-right font-black text-amber-700 font-mono">
+                        {fmt(r.ivm_calculado)}
                       </td>
-                      <td className="p-3 font-mono">{v.ano_exercicio}</td>
-                      <td className="p-3 text-right font-mono font-bold text-slate-900">
-                        {v.valor_ivm.toLocaleString('pt-AO')} Kz
+                      <td className="px-3 py-2 text-center">
+                        {r.ivm_pago ? (
+                          <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[9px] font-black uppercase rounded-none">Pago</span>
+                        ) : (
+                          <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[9px] font-black uppercase rounded-none">Pendente</span>
+                        )}
                       </td>
-                      <td className="p-3 text-center">
-                        <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-200 text-[10px] font-bold">
-                          {v.estado_pagamento}
-                        </span>
-                      </td>
-                      <td className="p-3 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
+                      <td className="px-3 py-2">
+                        <div className="flex items-center justify-center gap-1" onClick={e => e.stopPropagation()}>
+                          {!r.ivm_pago && (
+                            <button
+                              onClick={() => marcarPago(r.id)}
+                              title="Marcar como pago"
+                              className="p-1 text-emerald-600 hover:bg-emerald-50 rounded"
+                            >
+                              <CheckCircle size={13} />
+                            </button>
+                          )}
                           <button
-                            onClick={() => setSelectedVeiculoDetail(v)}
-                            className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer"
-                            title="Ver Detalhes"
+                            onClick={() => openForm(r)}
+                            className="p-1 text-[#003366] hover:bg-blue-50 rounded"
+                            title="Editar"
                           >
-                            <Eye size={14} />
+                            <Eye size={13} />
                           </button>
                           <button
-                            onClick={() => handleExportPDF(v)}
-                            className="p-1.5 bg-[#0d6f8a] hover:bg-[#0a556a] text-white cursor-pointer"
-                            title="Descarregar Comprovativo DUC"
+                            onClick={() => handleDelete(r.id)}
+                            className="p-1 text-red-400 hover:bg-red-50 rounded"
+                            title="Eliminar"
                           >
-                            <Download size={14} />
+                            <Trash2 size={13} />
                           </button>
                         </div>
                       </td>
                     </tr>
-                  ))
-                )}
+                    {expandedId === r.id && (
+                      <tr className="border-t border-blue-100">
+                        <td colSpan={8} className="px-4 py-3 bg-blue-50/50">
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                            {[
+                              ['Cilindrada', r.cilindrada_cc + ' cc'],
+                              ['Combustível', r.tipo_combustivel],
+                              ['Uso', USOS.find(u => u.value === r.uso)?.label || r.uso],
+                              ['Cor', r.cor || '—'],
+                              ['Chassis', r.chassis || '—'],
+                              ['Motor Nº', r.motor_num || '—'],
+                              ['NIF Proprietário', r.proprietario_nif || '—'],
+                              ['Data Registo', r.data_registo],
+                              ['Valor Comercial', fmt(r.valor_comercial) + ' Kz'],
+                              ['Data Pag. IVM', r.data_pagamento || '—'],
+                            ].map(([label, val]) => (
+                              <div key={label}>
+                                <div className="text-[9px] font-black uppercase tracking-wider text-zinc-400">{label}</div>
+                                <div className="font-semibold text-zinc-700">{val}</div>
+                              </div>
+                            ))}
+                          </div>
+                          {r.observacoes && (
+                            <div className="mt-2 p-2 bg-white border border-zinc-200 text-zinc-600">
+                              <span className="text-[9px] font-black uppercase text-zinc-400">Observações: </span>{r.observacoes}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                ))}
               </tbody>
+              <tfoot className="bg-zinc-50 border-t-2 border-zinc-300">
+                <tr>
+                  <td colSpan={5} className="px-3 py-2 font-black text-xs uppercase text-right text-zinc-600">Totais</td>
+                  <td className="px-3 py-2 text-right font-black text-amber-700 font-mono">{fmt(totalIVM)}</td>
+                  <td colSpan={2} className="px-3 py-2 text-right font-black text-emerald-700 font-mono text-xs">
+                    Pago: {fmt(totalPago)}
+                  </td>
+                </tr>
+              </tfoot>
             </table>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* MODAL DETALHE DO VEÍCULO & DUC */}
-      {selectedVeiculoDetail && (
-        <div className="fixed inset-0 z-[150] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-xl shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-150">
-            <div className="px-6 py-4 bg-[#0d6f8a] text-white flex justify-between items-center">
-              <div className="flex items-center gap-2">
-                <Car size={20} />
-                <h4 className="font-bold text-sm uppercase tracking-wide">
-                  Comprovativo de Liquidação IVM — {selectedVeiculoDetail.matricula}
-                </h4>
-              </div>
-              <button onClick={() => setSelectedVeiculoDetail(null)} className="text-white/80 hover:text-white cursor-pointer">
+      {/* ─── Form Modal ───────────────────────────────────────────────────── */}
+      {showForm && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-3">
+          <div className="bg-white w-full max-w-4xl flex flex-col max-h-[95vh] shadow-2xl rounded-none">
+            {/* Modal header */}
+            <div className="flex justify-between items-center px-5 py-3 bg-[#003366] text-white flex-shrink-0">
+              <h3 className="text-sm font-black uppercase tracking-tight flex items-center gap-2">
+                <Car size={16} /> {editing ? 'Editar Registo IVM' : 'Registar Novo Veículo — IVM'}
+              </h3>
+              <button onClick={() => { setShowForm(false); setEditing(null); }} className="text-white/70 hover:text-white">
                 <X size={20} />
               </button>
             </div>
 
-            <div className="p-6 space-y-4 text-xs">
-              <div className="p-4 bg-sky-50 border border-sky-100 flex justify-between items-center">
-                <div>
-                  <span className="text-[10px] font-bold text-slate-500 uppercase block">Referência DUC</span>
-                  <span className="font-mono font-black text-sm text-[#0d6f8a]">{selectedVeiculoDetail.referencia_duc}</span>
+            {/* IVM Preview */}
+            {previewIVM !== null && (
+              <div className="flex items-center gap-3 px-5 py-2 bg-amber-50 border-b border-amber-200">
+                <Calculator size={14} className="text-amber-700" />
+                <span className="text-xs font-black text-amber-800 uppercase tracking-wide">IVM Calculado:</span>
+                <span className="text-sm font-black text-amber-700 font-mono">{fmt(previewIVM)} Kz</span>
+                <span className="text-[9px] text-amber-600 ml-1">(Lei n.º 3/14 — atualizado automaticamente)</span>
+              </div>
+            )}
+
+            {/* Form body */}
+            <form onSubmit={handleSave} className="flex-1 overflow-y-auto">
+              <div className="p-5 grid grid-cols-1 md:grid-cols-3 gap-4">
+
+                {/* Matrícula */}
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black bg-slate-100 text-slate-700 px-1.5 py-0.5 uppercase tracking-wide">Matrícula *</label>
+                  <input
+                    required value={form.matricula}
+                    onChange={e => setForm(f => ({ ...f, matricula: e.target.value }))}
+                    placeholder="Ex: LD-12-34-AB"
+                    className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs font-black uppercase focus:outline-none focus:border-[#003366]"
+                  />
                 </div>
-                <div className="text-right">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase block">Valor Liquidado</span>
-                  <span className="font-mono font-black text-base text-slate-900">
-                    {selectedVeiculoDetail.valor_ivm.toLocaleString('pt-AO')} Kz
-                  </span>
+
+                {/* Marca */}
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black bg-slate-100 text-slate-700 px-1.5 py-0.5 uppercase tracking-wide">Marca *</label>
+                  <input
+                    required value={form.marca}
+                    onChange={e => setForm(f => ({ ...f, marca: e.target.value }))}
+                    placeholder="Ex: Toyota, Ford, Mercedes..."
+                    className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366]"
+                  />
+                </div>
+
+                {/* Modelo */}
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black bg-slate-100 text-slate-700 px-1.5 py-0.5 uppercase tracking-wide">Modelo *</label>
+                  <input
+                    required value={form.modelo}
+                    onChange={e => setForm(f => ({ ...f, modelo: e.target.value }))}
+                    placeholder="Ex: Hilux, Ranger, Sprinter..."
+                    className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366]"
+                  />
+                </div>
+
+                {/* Tipo de Veículo */}
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black bg-slate-100 text-slate-700 px-1.5 py-0.5 uppercase tracking-wide">Tipo de Veículo *</label>
+                  <select
+                    required value={form.tipo_veiculo}
+                    onChange={e => setForm(f => ({ ...f, tipo_veiculo: e.target.value }))}
+                    className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366] font-bold"
+                  >
+                    {TIPOS_VEICULO.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </div>
+
+                {/* Ano de Fabrico */}
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black bg-slate-100 text-slate-700 px-1.5 py-0.5 uppercase tracking-wide">Ano de Fabrico *</label>
+                  <input
+                    required type="number" value={form.ano_fabrico}
+                    min={1950} max={new Date().getFullYear() + 1}
+                    onChange={e => setForm(f => ({ ...f, ano_fabrico: Number(e.target.value) }))}
+                    className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366] font-bold"
+                  />
+                </div>
+
+                {/* Cilindrada */}
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black bg-slate-100 text-slate-700 px-1.5 py-0.5 uppercase tracking-wide">Cilindrada (cc) *</label>
+                  <input
+                    required type="number" value={form.cilindrada_cc}
+                    onChange={e => setForm(f => ({ ...f, cilindrada_cc: Number(e.target.value) }))}
+                    placeholder="Ex: 1600, 2500..."
+                    className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366] font-bold"
+                  />
+                </div>
+
+                {/* Combustível */}
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black bg-slate-100 text-slate-700 px-1.5 py-0.5 uppercase tracking-wide">Combustível *</label>
+                  <select
+                    required value={form.tipo_combustivel}
+                    onChange={e => setForm(f => ({ ...f, tipo_combustivel: e.target.value }))}
+                    className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366] font-bold"
+                  >
+                    {COMBUSTIVEIS.map(c => <option key={c}>{c}</option>)}
+                  </select>
+                </div>
+
+                {/* Uso */}
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black bg-slate-100 text-slate-700 px-1.5 py-0.5 uppercase tracking-wide">Uso *</label>
+                  <select
+                    required value={form.uso}
+                    onChange={e => setForm(f => ({ ...f, uso: e.target.value }))}
+                    className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366] font-bold"
+                  >
+                    {USOS.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
+                  </select>
+                </div>
+
+                {/* Valor Comercial */}
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black bg-slate-100 text-slate-700 px-1.5 py-0.5 uppercase tracking-wide">Valor Comercial (Kz)</label>
+                  <input
+                    type="number" step="0.01" value={form.valor_comercial}
+                    onChange={e => setForm(f => ({ ...f, valor_comercial: Number(e.target.value) }))}
+                    className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366] font-bold"
+                  />
+                </div>
+
+                {/* Cor */}
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black bg-slate-100 text-slate-700 px-1.5 py-0.5 uppercase tracking-wide">Cor</label>
+                  <input
+                    value={form.cor}
+                    onChange={e => setForm(f => ({ ...f, cor: e.target.value }))}
+                    placeholder="Ex: Branco, Preto, Prata..."
+                    className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366]"
+                  />
+                </div>
+
+                {/* Potência */}
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black bg-slate-100 text-slate-700 px-1.5 py-0.5 uppercase tracking-wide">Potência (kW)</label>
+                  <input
+                    type="number" value={form.potencia_kw}
+                    onChange={e => setForm(f => ({ ...f, potencia_kw: e.target.value }))}
+                    className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366]"
+                  />
+                </div>
+
+                {/* Lugares (pesados passageiros) */}
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black bg-slate-100 text-slate-700 px-1.5 py-0.5 uppercase tracking-wide">Nº de Lugares</label>
+                  <input
+                    type="number" value={form.lugares}
+                    onChange={e => setForm(f => ({ ...f, lugares: e.target.value }))}
+                    placeholder="Para autocarros/minibuses"
+                    className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366]"
+                  />
+                </div>
+
+                {/* Peso Bruto (pesados mercadorias) */}
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black bg-slate-100 text-slate-700 px-1.5 py-0.5 uppercase tracking-wide">Peso Bruto (kg)</label>
+                  <input
+                    type="number" value={form.peso_bruto_kg}
+                    onChange={e => setForm(f => ({ ...f, peso_bruto_kg: e.target.value }))}
+                    placeholder="Para camiões/pesados"
+                    className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366]"
+                  />
+                </div>
+
+                {/* Nº Chassis */}
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black bg-slate-100 text-slate-700 px-1.5 py-0.5 uppercase tracking-wide">Nº Chassis / VIN</label>
+                  <input
+                    value={form.chassis}
+                    onChange={e => setForm(f => ({ ...f, chassis: e.target.value }))}
+                    className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366]"
+                  />
+                </div>
+
+                {/* Nº Motor */}
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black bg-slate-100 text-slate-700 px-1.5 py-0.5 uppercase tracking-wide">Nº Motor</label>
+                  <input
+                    value={form.motor_num}
+                    onChange={e => setForm(f => ({ ...f, motor_num: e.target.value }))}
+                    className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366]"
+                  />
+                </div>
+
+                {/* Proprietário Nome */}
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black bg-slate-100 text-slate-700 px-1.5 py-0.5 uppercase tracking-wide">Nome do Proprietário</label>
+                  <input
+                    value={form.proprietario_nome}
+                    onChange={e => setForm(f => ({ ...f, proprietario_nome: e.target.value }))}
+                    className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366]"
+                  />
+                </div>
+
+                {/* Proprietário NIF */}
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black bg-slate-100 text-slate-700 px-1.5 py-0.5 uppercase tracking-wide">NIF do Proprietário</label>
+                  <input
+                    value={form.proprietario_nif}
+                    onChange={e => setForm(f => ({ ...f, proprietario_nif: e.target.value }))}
+                    className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366]"
+                  />
+                </div>
+
+                {/* Data Registo */}
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black bg-slate-100 text-slate-700 px-1.5 py-0.5 uppercase tracking-wide">Data de Registo</label>
+                  <input
+                    type="date" value={form.data_registo}
+                    onChange={e => setForm(f => ({ ...f, data_registo: e.target.value }))}
+                    className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366]"
+                  />
+                </div>
+
+                {/* Observações */}
+                <div className="space-y-1 md:col-span-3">
+                  <label className="text-[9px] font-black bg-slate-100 text-slate-700 px-1.5 py-0.5 uppercase tracking-wide">Observações</label>
+                  <textarea
+                    rows={2} value={form.observacoes}
+                    onChange={e => setForm(f => ({ ...f, observacoes: e.target.value }))}
+                    className="w-full bg-zinc-50 border border-zinc-200 p-2 text-xs focus:outline-none focus:border-[#003366] resize-none"
+                  />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 bg-slate-50 p-4 border border-slate-200">
-                <div><span className="text-slate-400 font-bold block">Proprietário:</span><span className="font-bold text-slate-800">{selectedVeiculoDetail.nome}</span></div>
-                <div><span className="text-slate-400 font-bold block">NIF:</span><span className="font-mono font-bold text-slate-800">{selectedVeiculoDetail.nif}</span></div>
-                <div><span className="text-slate-400 font-bold block">Veículo:</span><span className="font-bold text-slate-800">{selectedVeiculoDetail.marca} {selectedVeiculoDetail.modelo}</span></div>
-                <div><span className="text-slate-400 font-bold block">Matrícula:</span><span className="font-mono font-bold text-slate-800">{selectedVeiculoDetail.matricula}</span></div>
-                <div><span className="text-slate-400 font-bold block">Ano de Fabrico:</span><span className="font-bold text-slate-800">{selectedVeiculoDetail.ano_fabrico}</span></div>
-                <div><span className="text-slate-400 font-bold block">Cilindrada:</span><span className="font-bold text-slate-800">{selectedVeiculoDetail.cilindrada_cc || '---'} cc</span></div>
-                <div><span className="text-slate-400 font-bold block">Data Liquidação:</span><span className="font-bold text-slate-800">{selectedVeiculoDetail.data_liquidacao}</span></div>
-                <div><span className="text-slate-400 font-bold block">Estado:</span><span className="font-bold text-emerald-700">{selectedVeiculoDetail.estado_pagamento}</span></div>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
+              {/* Submit row */}
+              <div className="flex justify-end gap-3 px-5 py-3 border-t border-zinc-200 bg-zinc-50 flex-shrink-0">
                 <button
-                  onClick={() => setSelectedVeiculoDetail(null)}
-                  className="px-4 py-2 border border-slate-300 text-slate-600 font-bold text-xs uppercase cursor-pointer"
+                  type="button"
+                  onClick={() => { setShowForm(false); setEditing(null); }}
+                  className="px-4 py-2 text-xs font-bold text-zinc-500 uppercase hover:text-zinc-800"
                 >
-                  Fechar
+                  Cancelar
                 </button>
                 <button
-                  onClick={() => handleExportPDF(selectedVeiculoDetail)}
-                  className="px-5 py-2 bg-[#0d6f8a] hover:bg-[#0a556a] text-white font-bold text-xs uppercase cursor-pointer flex items-center gap-2 shadow-xs"
+                  type="submit"
+                  disabled={saving}
+                  className="flex items-center gap-2 bg-[#003366] text-white px-6 py-2 text-xs font-black uppercase hover:bg-[#002244] transition-colors disabled:opacity-50"
                 >
-                  <Download size={16} /> Descarregar DUC Oficial
+                  <Save size={14} />
+                  {saving ? 'A guardar...' : (editing ? 'Guardar Alterações' : 'Registar e Calcular IVM')}
                 </button>
               </div>
-            </div>
+            </form>
           </div>
         </div>
       )}

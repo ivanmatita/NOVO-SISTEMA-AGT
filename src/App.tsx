@@ -22,6 +22,7 @@ import MigrarMovimentosModule from './components/accounting/MigrarMovimentosModu
 import ApuramentoResultadosModule from './components/accounting/ApuramentoResultadosModule';
 import CalculosImpostoModule from './components/accounting/CalculosImpostoModule';
 import GestaoFinanceiraModule from './components/GestaoFinanceiraModule';
+import { PurchaseDocumentScannerModal } from './components/purchases/PurchaseDocumentScannerModal';
 
 
 import ProjectManagementModule from './components/ProjectManagementModule';
@@ -27425,7 +27426,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
   );
 };
 
-const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTaxes, onBack, onSuccess, caixas, initialData = null, fixedDocumentType, addMovement }: {
+const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTaxes, onBack, onSuccess, caixas, initialData = null, fixedDocumentType, addMovement, companyData, fiscalYear }: {
   suppliers: Supplier[],
   products: Product[],
   workSites: WorkSite[],
@@ -27436,10 +27437,13 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
   caixas: Caixa[],
   initialData?: Purchase | null,
   fixedDocumentType?: string,
-  addMovement?: (m: any) => Promise<void>
+  addMovement?: (m: any) => Promise<void>,
+  companyData?: any,
+  fiscalYear?: string | number
 }) => {
   const { user } = useAuth();
   const [showSupplierModal, setShowSupplierModal] = useState(false);
+  const [isScannerModalOpen, setIsScannerModalOpen] = useState(false);
   const isCertified = false;
   const initAny = initialData as any;
   const [supplierId, setSupplierId] = useState<number | string | ''>(initAny?.supplier_id || initAny?.fornecedor_id || '');
@@ -27634,6 +27638,91 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
           onClose={() => { setIsAgtItemModalOpen(false); setEditingAgtItemIndex(null); setEditingAgtItemData(null); }}
           onSave={handleSaveAgtItem} />
       )}
+
+      {/* MODAL SCANNER / OCR / QR CODE */}
+      {isScannerModalOpen && (
+        <PurchaseDocumentScannerModal
+          isOpen={isScannerModalOpen}
+          onClose={() => setIsScannerModalOpen(false)}
+          onSuccess={(savedData) => {
+            setIsScannerModalOpen(false);
+            onSuccess(savedData);
+          }}
+          onTransferToManualForm={(scanned) => {
+            if (scanned.supplier_id) setSupplierId(scanned.supplier_id);
+            if (scanned.supplier_name) setSupplierName(scanned.supplier_name);
+            if (scanned.supplier_nif) {
+              setNif(scanned.supplier_nif);
+              setSupplierNifSearch(scanned.supplier_nif);
+            }
+            if (scanned.document_type) setDocumentType(scanned.document_type);
+            if (scanned.invoice_number) setInvoiceNumber(scanned.invoice_number);
+            if (scanned.date) setDate(scanned.date);
+            if (scanned.due_date) setDueDate(scanned.due_date);
+            if (scanned.items && scanned.items.length > 0) setItems(scanned.items);
+            if (scanned.global_discount) setGlobalDiscount(String(scanned.global_discount));
+            if (scanned.caixa) setCashBox(scanned.caixa);
+            if (scanned.payment_method) setPaymentMethod(scanned.payment_method);
+          }}
+          user={user}
+          companyData={companyData}
+          suppliers={suppliers}
+          products={products}
+          activeTaxes={activeTaxes}
+          caixas={caixas}
+          addMovement={addMovement}
+          fiscalYear={fiscalYear}
+        />
+      )}
+
+      {/* 2. ÁREA NO FORMULÁRIO DE COMPRAS: REGISTAR DOCUMENTO POR SCANNER / IMAGEM / QR CODE */}
+      <div className="bg-gradient-to-r from-[#003366] to-[#0f2a4a] text-white p-3 shadow-sm border border-[#002244] mb-2">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-white/10 text-white">
+              <Camera size={18} />
+            </div>
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-wider text-white">
+                Registar documento por Scanner / Imagem / QR Code
+              </h3>
+              <p className="text-[11px] text-blue-200">
+                Preenchimento automático inteligente com OCR, câmara e código QR
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={() => setIsScannerModalOpen(true)}
+              className="bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 text-[11px] font-bold flex items-center gap-1.5 transition-colors border border-white/20"
+            >
+              📷 Digitalizar documento
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsScannerModalOpen(true)}
+              className="bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 text-[11px] font-bold flex items-center gap-1.5 transition-colors border border-white/20"
+            >
+              📄 Carregar documento
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsScannerModalOpen(true)}
+              className="bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 text-[11px] font-bold flex items-center gap-1.5 transition-colors border border-white/20"
+            >
+              🖼️ Carregar imagem
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsScannerModalOpen(true)}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 text-[11px] font-bold flex items-center gap-1.5 transition-colors shadow-sm"
+            >
+              ▣ Ler código QR
+            </button>
+          </div>
+        </div>
+      </div>
 
       <form onSubmit={handleSubmit} className="space-y-2">
         {/* Section 1: Document info */}
@@ -28268,6 +28357,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
   const [editingSupplier, setEditingSupplier] = useState<any>(null);
   const [showReceiptModal, setShowReceiptModal] = useState<any | null>(null);
   const [showA4PrintModal, setShowA4PrintModal] = useState<any | null>(null);
+  const [isMainScannerOpen, setIsMainScannerOpen] = useState(false);
 
   const [attachments, setAttachments] = useState<any[]>([]);
   const [loadingAttachments, setLoadingAttachments] = useState(false);
@@ -28853,6 +28943,8 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
         initialData={createData}
         fixedDocumentType={createType}
         addMovement={addMovement}
+        companyData={companyData}
+        fiscalYear={fiscalYear}
       />
     );
   }
@@ -29050,7 +29142,15 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
             <p className="text-zinc-400 text-sm font-bold uppercase tracking-widest mt-1">Controlo de entrada de mercadorias e fornecedores</p>
           </div>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
+          <button 
+            type="button"
+            onClick={() => setIsMainScannerOpen(true)}
+            className="bg-emerald-700 hover:bg-emerald-800 text-white font-black px-6 py-4 rounded-none flex items-center gap-2.5 transition-all shadow-lg text-sm uppercase tracking-wider border border-emerald-600"
+          >
+            <Camera size={20} />
+            Digitalizar / Scanner / QR
+          </button>
           <button 
             onClick={() => handleStartCreate(null, undefined)}
             className="bg-[#003366] hover:bg-[#002244] text-white font-black px-8 py-4 rounded-none flex items-center gap-3 transition-all shadow-lg text-base uppercase tracking-widest"
@@ -29938,6 +30038,30 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
         );
       })()}
 
+
+      {isMainScannerOpen && (
+        <PurchaseDocumentScannerModal
+          isOpen={isMainScannerOpen}
+          onClose={() => setIsMainScannerOpen(false)}
+          onSuccess={() => {
+            setIsMainScannerOpen(false);
+            fetchPurchases();
+            window.dispatchEvent(new CustomEvent('refresh_purchases'));
+          }}
+          onTransferToManualForm={(scanned) => {
+            setIsMainScannerOpen(false);
+            handleStartCreate(scanned as any);
+          }}
+          user={user}
+          companyData={companyData}
+          suppliers={suppliers}
+          products={products}
+          activeTaxes={activeTaxes}
+          caixas={caixas}
+          addMovement={addMovement}
+          fiscalYear={fiscalYear}
+        />
+      )}
 
       {showFileModal && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">

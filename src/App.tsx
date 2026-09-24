@@ -174,7 +174,8 @@ import {
   Bell,
   HelpCircle,
   Car,
-  Pill
+  Pill,
+  Coins
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';

@@ -149,7 +149,7 @@ export const GestaoFinanceiraModule: React.FC<GestaoFinanceiraProps> = ({
     credito: 0
   });
 
-  const companyName = companyData?.name || 'YGSUNAC INDUSTRIA - PRESTAÇÃO DE SERVIÇO E COMERCIO GERAL, LDA';
+  const companyName = companyData?.name || companyData?.nome_empresa || '—';
   const dataListagem = new Date().toLocaleDateString('pt-AO');
 
   // Formatar valores monetários com precisão do PDF

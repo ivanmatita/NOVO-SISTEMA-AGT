@@ -255,7 +255,7 @@ export const TaxCalculationsDetailedReport: React.FC<TaxCalculationsDetailedRepo
     window.print();
   };
 
-  const companyName = companyData?.name || 'YGSUNAC INDUSTRIA - PRESTAÇÃO DE SERVIÇO E COMERCIO GERAL, LDA';
+  const companyName = companyData?.name || companyData?.nome_empresa || '—';
 
   return (
     <div className="bg-white min-h-screen text-slate-900 print:p-0 print:m-0 font-sans">

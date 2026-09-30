@@ -311,8 +311,8 @@ export const CashFlowStatementModule: React.FC<CashFlowStatementModuleProps> = (
 
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
-    doc.text(`EMPRESA: ${companyData?.name || 'YGSUNAC INDUSTRIA - PRESTAÇÃO DE SERVIÇO E COMERCIO GERAL, LDA'}`, 14, 25);
-    doc.text(`NIF: ${companyData?.nif || '5000732028'}`, 14, 31);
+    doc.text(`EMPRESA: ${companyData?.name || companyData?.nome_empresa || '—'}`, 14, 25);
+    doc.text(`NIF: ${companyData?.nif || '—'}`, 14, 31);
     doc.text('Valores em AKZ', 14, 37);
 
     const bodyData = [
@@ -401,10 +401,10 @@ export const CashFlowStatementModule: React.FC<CashFlowStatementModuleProps> = (
           )}
           <div>
             <h1 className="text-xl md:text-2xl font-bold text-slate-900 tracking-tight">
-              {companyData?.name || 'YGSUNAC INDUSTRIA - PRESTAÇÃO DE SERVIÇO E COMERCIO GERAL, LDA'}
+              {companyData?.name || companyData?.nome_empresa || '—'}
             </h1>
             <p className="text-sm text-slate-500 font-medium">
-              NIF: <span className="font-semibold text-slate-700">{companyData?.nif || '5000732028'}</span> | Demonstração de Fluxo de Caixa (Método Directo)
+              NIF: <span className="font-semibold text-slate-700">{companyData?.nif || '—'}</span> | Demonstração de Fluxo de Caixa (Método Directo)
             </p>
           </div>
         </div>
@@ -466,8 +466,8 @@ export const CashFlowStatementModule: React.FC<CashFlowStatementModuleProps> = (
           DEMONSTRAÇÃO DE FLUXO DE CAIXA (método directo)
         </div>
         <div className="flex flex-wrap gap-x-8 gap-y-1 text-slate-600">
-          <span><strong>EMPRESA:</strong> {companyData?.name || 'YGSUNAC INDUSTRIA - PRESTAÇÃO DE SERVIÇO E COMERCIO GERAL, LDA'}</span>
-          <span><strong>NIF:</strong> {companyData?.nif || '5000732028'}</span>
+          <span><strong>EMPRESA:</strong> {companyData?.name || companyData?.nome_empresa || '—'}</span>
+          <span><strong>NIF:</strong> {companyData?.nif || '—'}</span>
           <span><strong>Valores em:</strong> AKZ</span>
         </div>
       </div>

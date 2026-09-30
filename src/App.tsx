@@ -24443,7 +24443,7 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
     { id: 'apuramento-resultados', label: 'Apuramento de Resultados', icon: <Calculator size={24} />, description: 'Apuramento oficial dos resultados (Operacional, Financeiro, Filiais, Extraordinário, Líquido) com gestão de lançamentos.' },
     { id: 'calculos-imposto-module', label: 'Cálculos de Imposto (IVA/IRT/IS)', icon: <Calculator size={24} />, description: 'Apuramento fiscal detalhado: IVA, IRT e IS por período, com registo de lançamentos e relatório de contas PGC.' },
     { id: 'ivm', label: 'IVM - Veículos Motorizados', icon: <Car size={24} />, description: 'Imposto sobre Veículos Motorizados (Lei n.º 24/20). Cadastro, cálculo e DUC.' },
-    { id: 'ip', label: 'IP - Imposto Predial', icon: <Building2 size={24} />, description: 'Imposto Predial Urbano e Rústico (Lei n.º 20/20). Inscrição, liquidação, transmissão e contratos.' },
+    { id: 'ip', label: 'IP - Imposto Predial', icon: <Home size={24} className="text-[#006b82]" />, description: 'Imposto Predial Urbano e Rústico (Lei n.º 20/20). Inscrição na matriz predial, avaliação, liquidação e DUC.' },
     { id: 'calculos-impostos-detalhado', label: 'Cálculos de Imposto (IVA)', icon: <Receipt size={24} />, description: 'Relatório detalhado de IVA liquidado por documento com exportação XLS.' },
     { id: 'fluxo-caixa', label: 'Fluxo de Caixa (Método Directo)', icon: <TrendingUp size={24} />, description: 'Demonstração de Fluxos de Caixa pelo Método Directo (PGC Angola) com comparativo anual.' },
     { id: 'tax-payments', label: 'Pagamento de Impostos', icon: <Receipt size={24} />, description: 'Registo e consulta dos comprovativos e guias de pagamento de impostos.' },
@@ -24537,7 +24537,7 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
       case 'imposto-industrial-retencao-anual':
         return <ImpostoIndustrialRetencaoAnual purchases={purchases} suppliers={suppliers} companyData={companyData} fiscalYear={fiscalYear} onBack={() => setActiveSubTab(null)} />;
       case 'saft':
-        return <SaftExportForm companyData={companyData} invoices={invoices} clients={clients} />;
+        return <SaftExportForm companyData={companyData} user={user} invoices={invoices} purchases={purchases} clients={clients} products={products} defaultYear={String(fiscalYear || new Date().getFullYear())} onBack={() => setActiveSubTab(null)} />;
       default:
         return null;
     }
@@ -24573,7 +24573,7 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
               {companyData?.name || 'EMPRESA CERTIFICADA AGT'}
             </h2>
             <p className="text-xs text-zinc-500 font-bold uppercase tracking-wider mt-0.5">
-              NIF: {companyData?.nif || '5000732028'} • Contabilidade Geral & Fiscalidade Angola
+              NIF: {companyData?.nif || '—'} • Contabilidade Geral & Fiscalidade Angola
             </p>
           </div>
         </div>

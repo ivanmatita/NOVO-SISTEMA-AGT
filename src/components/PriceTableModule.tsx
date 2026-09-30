@@ -1,13 +1,13 @@
 /**
  * PriceTableModule.tsx
- * Tabela de Precos - layout classico conforme referencia visual tabela de preco.PNG
- * Super-headers: Informacao do Serviço | Imposto na Venda | Valor de Venda Base | Cambio
+ * Catálogo de Preços para Serviços da Empresa
+ * Exclusivamente dedicado a Serviços (Prestações de Serviços) — sem produtos físicos.
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Tag, Eye, EyeOff, Camera, FileSpreadsheet, Printer, Plus,
-  RefreshCw, X, Save, AlertCircle, CheckCircle, BarChart2
+  Tag, Eye, EyeOff, FileSpreadsheet, Printer, Plus,
+  RefreshCw, X, Save, AlertCircle, CheckCircle, Briefcase, PlusCircle, Search
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -45,20 +45,12 @@ interface PriceRow {
 const MOEDAS = ['AOA', 'USD', 'EUR', 'GBP'];
 
 const DEFAULT_PGC_ACCOUNTS = [
-  { id: '11', conta: '11', descricao: 'Imobilizações Corpóreas' },
-  { id: '21', conta: '21', descricao: 'Compras' },
-  { id: '26', conta: '26', descricao: 'Mercadorias' },
-  { id: '31', conta: '31', descricao: 'Clientes' },
-  { id: '32', conta: '32', descricao: 'Fornecedores' },
-  { id: '34', conta: '34', descricao: 'Estado e Outros Entes Públicos (IVA)' },
-  { id: '43', conta: '43', descricao: 'Depósitos à Ordem' },
-  { id: '45', conta: '45', descricao: 'Caixa' },
-  { id: '61', conta: '61', descricao: 'Vendas - Mercadorias' },
   { id: '62', conta: '62', descricao: 'Prestações de Serviços' },
+  { id: '62.1', conta: '62.1', descricao: 'Serviços Principais' },
+  { id: '62.2', conta: '62.2', descricao: 'Trabalhos Técnicos e Consultoria' },
+  { id: '62.3', conta: '62.3', descricao: 'Assistência Técnica e Manutenção' },
+  { id: '62.9', conta: '62.9', descricao: 'Outras Prestações de Serviços' },
   { id: '63', conta: '63', descricao: 'Outros Proveitos Operacionais' },
-  { id: '71', conta: '71', descricao: 'Custo das Existências Vendidas' },
-  { id: '72', conta: '72', descricao: 'Custos com o Pessoal' },
-  { id: '75', conta: '75', descricao: 'Outros Custos e Perdas Operacionais' },
 ];
 
 const DEFAULT_TAXES = [
@@ -77,19 +69,35 @@ export const PriceTableModule: React.FC<PriceTableModuleProps> = ({
 }) => {
   const empresaId = user?.empresa_id || companyData?.empresa_id || (companyData?.id && companyData?.id !== user?.id ? companyData?.id : null) || user?.company_id;
   const [rows, setRows] = useState<PriceRow[]>([]);
-  const [produtos, setProdutos] = useState<any[]>(passedProducts);
+  const [servicos, setServicos] = useState<any[]>([]);
   const [impostos, setImpostos] = useState<any[]>(passedTaxes.length > 0 ? passedTaxes : DEFAULT_TAXES);
   const [pgcContas, setPgcContas] = useState<any[]>(DEFAULT_PGC_ACCOUNTS);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editingRow, setEditingRow] = useState<PriceRow | null>(null);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+
+  // Form mode: selecting existing service or typing new service
+  const [isNewServiceMode, setIsNewServiceMode] = useState(false);
+
   const [form, setForm] = useState({
-    produto_id: '', serial_number: '', valor_unitario: '', unidade: '', tipo: 'servico',
-    desconto_linha_percentual: '', tax_code: '', imposto_id: '', rubrica_id: '',
-    moeda: 'AOA', indice_inicial: '', status: true,
+    produto_id: '',
+    novo_nome_servico: '',
+    codigo_servico: '',
+    serial_number: '',
+    valor_unitario: '',
+    unidade: 'UN',
+    tipo: 'servico',
+    desconto_linha_percentual: '',
+    tax_code: 'NOR',
+    imposto_id: '',
+    rubrica_id: '62',
+    moeda: 'AOA',
+    indice_inicial: '1',
+    status: true,
   });
 
   const fetchAll = useCallback(async () => {
@@ -100,18 +108,36 @@ export const PriceTableModule: React.FC<PriceTableModuleProps> = ({
     setLoading(true);
     try {
       const [tpRes, prodRes, impRes, pgcRes] = await Promise.all([
-        supabase.from('tabela_precos').select('*').eq('empresa_id', empresaId).order('descricao'),
-        supabase.from('produtos').select('id, name, nome, codigo, barcode, unit, unidade, price, preco, preco_venda, tipo, is_active, ativo, image_url').eq('empresa_id', empresaId).order('name'),
-        supabase.from('impostos').select('id, nome, taxa, codigo_imposto, tipo_imposto, tipo, ativo, padrao').eq('empresa_id', empresaId),
-        supabase.from('pgc_plano_contas').select('id, conta, descricao, codigo, nivel').or(`empresa_id.eq.${empresaId},empresa_id.is.null`).order('conta'),
+        supabase
+          .from('tabela_precos')
+          .select('*')
+          .eq('empresa_id', empresaId)
+          .or("tipo.eq.servico,tipo.eq.service,tipo.eq.serviço,tipo.is.null")
+          .order('descricao'),
+        supabase
+          .from('produtos')
+          .select('id, name, nome, codigo, barcode, unit, unidade, price, preco, preco_venda, tipo, is_active, ativo')
+          .eq('empresa_id', empresaId)
+          .in('tipo', ['servico', 'service', 'serviço'])
+          .order('name'),
+        supabase
+          .from('impostos')
+          .select('id, nome, taxa, codigo_imposto, tipo_imposto, tipo, ativo, padrao')
+          .eq('empresa_id', empresaId),
+        supabase
+          .from('pgc_plano_contas')
+          .select('id, conta, descricao, codigo, nivel')
+          .or(`empresa_id.eq.${empresaId},empresa_id.is.null`)
+          .order('conta'),
       ]);
-      setRows(Array.isArray(tpRes.data) ? tpRes.data : []);
+
+      // Filtrar estritamente apenas serviços
+      const rawRows = Array.isArray(tpRes.data) ? tpRes.data : [];
+      const serviceRows = rawRows.filter(r => !r.tipo || r.tipo === 'servico' || r.tipo === 'service' || r.tipo === 'serviço');
+      setRows(serviceRows);
       
-      if (Array.isArray(prodRes.data) && prodRes.data.length > 0) {
-        setProdutos(prodRes.data);
-      } else if (passedProducts && passedProducts.length > 0) {
-        setProdutos(passedProducts);
-      }
+      const loadedServices = Array.isArray(prodRes.data) ? prodRes.data : [];
+      setServicos(loadedServices);
 
       if (Array.isArray(impRes.data) && impRes.data.length > 0) {
         setImpostos(impRes.data);
@@ -122,7 +148,6 @@ export const PriceTableModule: React.FC<PriceTableModuleProps> = ({
       }
 
       if (Array.isArray(pgcRes.data) && pgcRes.data.length > 0) {
-        // Merge with DEFAULT_PGC_ACCOUNTS to ensure full chart coverage
         const map = new Map<string, any>();
         DEFAULT_PGC_ACCOUNTS.forEach(acc => map.set(String(acc.conta), acc));
         pgcRes.data.forEach((acc: any) => map.set(String(acc.conta || acc.codigo || acc.id), acc));
@@ -135,33 +160,55 @@ export const PriceTableModule: React.FC<PriceTableModuleProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [empresaId, passedProducts, passedTaxes]);
+  }, [empresaId, passedTaxes]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  const resetForm = () => setForm({
-    produto_id: '', serial_number: '', valor_unitario: '', unidade: '', tipo: 'servico',
-    desconto_linha_percentual: '', tax_code: '', imposto_id: '', rubrica_id: '',
-    moeda: 'AOA', indice_inicial: '', status: true,
-  });
+  const resetForm = () => {
+    setIsNewServiceMode(servicos.length === 0);
+    setForm({
+      produto_id: servicos.length > 0 ? String(servicos[0].id) : '',
+      novo_nome_servico: '',
+      codigo_servico: '',
+      serial_number: '',
+      valor_unitario: '',
+      unidade: 'UN',
+      tipo: 'servico',
+      desconto_linha_percentual: '',
+      tax_code: 'NOR',
+      imposto_id: impostos.find(i => i.taxa === 14 || i.codigo_imposto === 'NOR')?.id || '',
+      rubrica_id: '62',
+      moeda: 'AOA',
+      indice_inicial: '1',
+      status: true,
+    });
+  };
 
-  const openNew = () => { setEditingRow(null); resetForm(); setMsg(null); setShowModal(true); };
+  const openNew = () => { 
+    setEditingRow(null); 
+    resetForm(); 
+    setMsg(null); 
+    setShowModal(true); 
+  };
 
   const openEdit = (row: PriceRow) => {
     setEditingRow(row);
+    setIsNewServiceMode(false);
     const imp = impostos.find(i => i.codigo_imposto === row.tax_code);
     setForm({
       produto_id: row.produto_id || '',
+      novo_nome_servico: row.descricao || '',
+      codigo_servico: row.cod || '',
       serial_number: row.serial_number || '',
       valor_unitario: row.valor_unitario != null ? String(row.valor_unitario) : '',
-      unidade: row.unidade || '',
-      tipo: row.tipo || 'produto',
+      unidade: row.unidade || 'UN',
+      tipo: 'servico',
       desconto_linha_percentual: row.desconto_linha_percentual != null ? String(row.desconto_linha_percentual) : '',
-      tax_code: row.tax_code || '',
+      tax_code: row.tax_code || 'NOR',
       imposto_id: imp?.id || '',
-      rubrica_id: row.rubrica_id || '',
+      rubrica_id: row.rubrica_id || '62',
       moeda: row.moeda || 'AOA',
-      indice_inicial: row.indice_inicial != null ? String(row.indice_inicial) : '',
+      indice_inicial: row.indice_inicial != null ? String(row.indice_inicial) : '1',
       status: row.status !== false,
     });
     setMsg(null);
@@ -175,40 +222,103 @@ export const PriceTableModule: React.FC<PriceTableModuleProps> = ({
   };
 
   const handleSave = async () => {
-    if (!form.produto_id) { setMsg({ type: 'err', text: 'Seleccione um serviço.' }); return; }
-    if (!form.valor_unitario || isNaN(Number(form.valor_unitario))) { setMsg({ type: 'err', text: 'Valor unitario invalido.' }); return; }
-    setSaving(true); setMsg(null);
-    const selectedImp = impostos.find(i => i.id === form.imposto_id);
-    const selectedProd = produtos.find(p => String(p.id) === String(form.produto_id));
-    const selectedPgc = pgcContas.find(p => p.id === form.rubrica_id);
-    const payload: any = {
-      empresa_id: empresaId,
-      produto_id: form.produto_id,
-      descricao: selectedProd?.name || selectedProd?.nome || selectedProd?.descricao || '',
-      cod: selectedProd?.codigo || selectedProd?.barcode || null,
-      serial_number: form.serial_number || null,
-      tipo: form.tipo || 'produto',
-      tipo_obs: null,
-      imposto_tipo: selectedImp?.tipo_imposto || selectedImp?.tipo || null,
-      taxa_percentual: selectedImp ? Number(selectedImp.taxa) : null,
-      tax_code: selectedImp?.codigo_imposto || form.tax_code || null,
-      tax_description: selectedImp?.nome || null,
-      desconto_linha_percentual: form.desconto_linha_percentual ? Number(form.desconto_linha_percentual) : 0,
-      valor_unitario: Number(form.valor_unitario),
-      unidade: form.unidade || selectedProd?.unit || selectedProd?.unidade || null,
-      rubrica_id: form.rubrica_id || null,
-      rubrica: selectedPgc ? (selectedPgc.conta + ' - ' + selectedPgc.descricao) : null,
-      moeda: form.moeda || 'AOA',
-      indice_inicial: form.indice_inicial ? Number(form.indice_inicial) : null,
-      cambio_atual: form.indice_inicial ? Number(form.indice_inicial) : null,
-      status: form.status,
-    };
+    let serviceId = form.produto_id;
+    let serviceName = '';
+    let serviceCode = form.codigo_servico;
+
+    if (isNewServiceMode) {
+      if (!form.novo_nome_servico.trim()) {
+        setMsg({ type: 'err', text: 'Por favor, introduza a designação do serviço.' });
+        return;
+      }
+      serviceName = form.novo_nome_servico.trim();
+    } else {
+      if (!form.produto_id) { 
+        setMsg({ type: 'err', text: 'Seleccione um serviço da lista.' }); 
+        return; 
+      }
+      const existing = servicos.find(s => String(s.id) === String(form.produto_id));
+      serviceName = existing?.name || existing?.nome || 'Serviço';
+      serviceCode = existing?.codigo || existing?.barcode || form.codigo_servico;
+    }
+
+    if (!form.valor_unitario || isNaN(Number(form.valor_unitario)) || Number(form.valor_unitario) < 0) {
+      setMsg({ type: 'err', text: 'Introduza um valor unitário de venda válido.' }); 
+      return; 
+    }
+
+    setSaving(true); 
+    setMsg(null);
+
     try {
+      const selectedImp = impostos.find(i => i.id === form.imposto_id);
+      const selectedPgc = pgcContas.find(p => p.id === form.rubrica_id || p.conta === form.rubrica_id);
+      const unitVal = Number(form.valor_unitario);
+      const taxRate = selectedImp ? Number(selectedImp.taxa) : 14;
+      const taxCode = selectedImp?.codigo_imposto || form.tax_code || 'NOR';
+
+      // 1. Se for novo serviço, regista primeiro na tabela produtos como serviço
+      if (isNewServiceMode && !editingRow) {
+        const newProductPayload = {
+          empresa_id: empresaId,
+          name: serviceName,
+          nome: serviceName,
+          codigo: serviceCode || `SRV-${Date.now().toString().slice(-4)}`,
+          tipo: 'servico',
+          unit: form.unidade || 'UN',
+          unidade: form.unidade || 'UN',
+          price: unitVal,
+          preco: unitVal,
+          preco_venda: unitVal,
+          is_active: form.status,
+          ativo: form.status,
+          codigo_imposto: taxCode,
+          taxa_imposto: taxRate,
+          stock_quantity: 0
+        };
+
+        const { data: newProd, error: prodErr } = await supabase
+          .from('produtos')
+          .insert([newProductPayload])
+          .select()
+          .single();
+
+        if (prodErr) throw new Error('Erro ao criar registo do serviço: ' + prodErr.message);
+        if (newProd) {
+          serviceId = String(newProd.id);
+          serviceCode = newProd.codigo || serviceCode;
+        }
+      }
+
+      // 2. Prepara o payload para a tabela_precos estritamente como serviço
+      const payload: any = {
+        empresa_id: empresaId,
+        produto_id: serviceId,
+        descricao: serviceName,
+        cod: serviceCode || null,
+        serial_number: form.serial_number || null,
+        tipo: 'servico',
+        tipo_obs: 'Serviço Registado',
+        imposto_tipo: selectedImp?.tipo_imposto || 'IVA',
+        taxa_percentual: taxRate,
+        tax_code: taxCode,
+        tax_description: selectedImp?.nome || `IVA ${taxRate}%`,
+        desconto_linha_percentual: form.desconto_linha_percentual ? Number(form.desconto_linha_percentual) : 0,
+        valor_unitario: unitVal,
+        unidade: form.unidade || 'UN',
+        rubrica_id: form.rubrica_id || '62',
+        rubrica: selectedPgc ? `${selectedPgc.conta} - ${selectedPgc.descricao}` : '62 - Prestações de Serviços',
+        moeda: form.moeda || 'AOA',
+        indice_inicial: form.indice_inicial ? Number(form.indice_inicial) : 1,
+        cambio_atual: form.indice_inicial ? Number(form.indice_inicial) : 1,
+        status: form.status,
+      };
+
       if (editingRow) {
         const { error } = await supabase.from('tabela_precos').update(payload).eq('id', editingRow.id);
         if (error) throw error;
       } else {
-        const existing = rows.find(r => String(r.produto_id) === String(form.produto_id));
+        const existing = rows.find(r => String(r.produto_id) === String(serviceId));
         if (existing) {
           const { error } = await supabase.from('tabela_precos').update(payload).eq('id', existing.id);
           if (error) throw error;
@@ -218,165 +328,250 @@ export const PriceTableModule: React.FC<PriceTableModuleProps> = ({
         }
       }
 
-      // Atualizar o produto correspondente para refletir o novo preco nas outras paginas (POS, Stock, Catalogo)
-      const productUpdatePayload: any = {
-        price: Number(form.valor_unitario),
-        preco: Number(form.valor_unitario),
-        preco_venda: Number(form.valor_unitario),
-      };
-      if (form.unidade) {
-        productUpdatePayload.unit = form.unidade;
-        productUpdatePayload.unidade = form.unidade;
-      }
-      if (form.tipo) {
-        productUpdatePayload.tipo = form.tipo;
-      }
-      if (selectedImp?.codigo_imposto || form.tax_code) {
-        productUpdatePayload.codigo_imposto = selectedImp?.codigo_imposto || form.tax_code;
-      }
-      if (selectedImp?.taxa != null) {
-        productUpdatePayload.taxa_imposto = Number(selectedImp.taxa);
-        productUpdatePayload.iva_taxa = Number(selectedImp.taxa);
-      }
-
-      try {
-        if (empresaId) {
-          await supabase.from('produtos').update(productUpdatePayload).eq('id', form.produto_id).eq('empresa_id', empresaId);
-        } else {
-          await supabase.from('produtos').update(productUpdatePayload).eq('id', form.produto_id);
-        }
-      } catch (prodUpErr) {
-        console.warn('[PriceTableModule] Erro ao sincronizar produto:', prodUpErr);
+      // 3. Sincroniza preço no registo de serviço em produtos
+      if (serviceId) {
+        const productUpdatePayload: any = {
+          price: unitVal,
+          preco: unitVal,
+          preco_venda: unitVal,
+          unit: form.unidade || 'UN',
+          unidade: form.unidade || 'UN',
+          tipo: 'servico',
+          codigo_imposto: taxCode,
+          taxa_imposto: taxRate,
+        };
+        await supabase
+          .from('produtos')
+          .update(productUpdatePayload)
+          .eq('id', serviceId)
+          .eq('empresa_id', empresaId);
       }
 
       if (onProductUpdated) {
         try { onProductUpdated(); } catch (_) {}
       }
 
-      setMsg({ type: 'ok', text: 'Registo guardado com sucesso.' });
+      setMsg({ type: 'ok', text: 'Preço de serviço gravado com sucesso!' });
       await fetchAll();
-      setTimeout(() => { setShowModal(false); setMsg(null); }, 1200);
+      setTimeout(() => { setShowModal(false); setMsg(null); }, 1000);
     } catch (e: any) {
-      setMsg({ type: 'err', text: e.message || 'Erro ao guardar.' });
+      setMsg({ type: 'err', text: e.message || 'Erro ao gravar preço do serviço.' });
     } finally {
       setSaving(false);
     }
   };
 
   const filteredRows = rows.filter(r => {
-    if (statusFilter === 'active') return r.status !== false;
-    if (statusFilter === 'inactive') return r.status === false;
+    // Apenas serviços
+    const isService = !r.tipo || r.tipo === 'servico' || r.tipo === 'service' || r.tipo === 'serviço';
+    if (!isService) return false;
+
+    if (statusFilter === 'active' && r.status === false) return false;
+    if (statusFilter === 'inactive' && r.status !== false) return false;
+
+    if (searchTerm) {
+      const q = searchTerm.toLowerCase();
+      const matchDesc = r.descricao?.toLowerCase().includes(q);
+      const matchCod = r.cod?.toLowerCase().includes(q);
+      const matchRub = r.rubrica?.toLowerCase().includes(q);
+      if (!matchDesc && !matchCod && !matchRub) return false;
+    }
     return true;
   });
 
   const exportExcel = () => {
-    const header = ['Cod','Status','Descricao','Tipo','Taxa %','Tax Code','Tax Desc','Desc %','Valor Unit','Unidade','Rubrica','Cambio'];
-    const data = filteredRows.map(r => [r.cod||'',r.status?'Activo':'Inactivo',r.descricao,r.tipo||'',r.taxa_percentual||0,r.tax_code||'',r.tax_description||'',r.desconto_linha_percentual||0,r.valor_unitario||0,r.unidade||'',r.rubrica||'',r.cambio_atual||1]);
-    const csv = [header,...data].map(row => row.join('\t')).join('\n');
-    const blob = new Blob([csv],{type:'text/tab-separated-values'});
+    const header = ['Cod', 'Status', 'Descrição do Serviço', 'Tipo', 'Taxa %', 'Tax Code', 'Valor Unitário (AOA)', 'Unidade', 'Rúbrica PGC', 'Moeda'];
+    const data = filteredRows.map(r => [
+      r.cod || '',
+      r.status !== false ? 'Activo' : 'Inactivo',
+      r.descricao,
+      'Serviço',
+      r.taxa_percentual || 14,
+      r.tax_code || 'NOR',
+      r.valor_unitario || 0,
+      r.unidade || 'UN',
+      r.rubrica || '62 - Prestações de Serviços',
+      r.moeda || 'AOA'
+    ]);
+    const csv = [header, ...data].map(row => row.join('\t')).join('\n');
+    const blob = new Blob([csv], { type: 'text/tab-separated-values' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href=url; a.download='tabela_precos.xls'; a.click();
+    const a = document.createElement('a'); a.href = url; a.download = 'catalogo_precos_servicos.xls'; a.click();
     URL.revokeObjectURL(url);
   };
 
-  const fmt = (v: number|null|undefined) => v!=null ? v.toLocaleString('pt-AO',{minimumFractionDigits:2,maximumFractionDigits:2}) : 'N/D';
+  const fmt = (v: number | null | undefined) => v != null ? v.toLocaleString('pt-AO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0,00';
 
   return (
-    <div className="space-y-0">
-      {/* Toolbar */}
-      <div className="flex items-center justify-between bg-white border border-zinc-200 px-5 py-3 shadow-sm">
-        <div className="flex items-center gap-3">
-          <Tag size={18} className="text-[#003366]" />
-          <span className="text-[11px] font-black uppercase tracking-widest text-[#003366]">Catálogo de Preços de Serviços</span>
-          <span className="text-[10px] text-zinc-400 font-medium">({filteredRows.length} registos)</span>
+    <div className="space-y-4">
+      {/* Top Banner Informativo */}
+      <div className="bg-white border border-zinc-200 px-5 py-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2 text-[#003366]">
+            <Briefcase size={20} className="text-[#003366]" />
+            <h1 className="text-base font-black uppercase tracking-tight">Catálogo de Preços de Serviços</h1>
+            <span className="bg-blue-100 text-[#003366] text-[10px] font-black px-2 py-0.5 rounded uppercase">
+              Apenas Prestações de Serviços
+            </span>
+          </div>
+          <p className="text-xs text-zinc-500 mt-1">
+            Gestão oficial das tabelas de preços, enquadramento de IVA e rubricas PGC para <strong>serviços</strong> da empresa.
+          </p>
         </div>
+
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-0 border border-zinc-200 bg-zinc-50">
-            {(['all','active','inactive'] as const).map(f => (
-              <button key={f} onClick={() => setStatusFilter(f)}
-                className={`px-3 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all ${statusFilter===f?'bg-[#003366] text-white':'text-zinc-500 hover:bg-zinc-100'}`}>
-                {f==='all'?'Todos':f==='active'?'Activos':'Inactivos'}
+          <button 
+            onClick={openNew} 
+            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 text-xs font-black uppercase tracking-wider shadow-sm transition-all rounded"
+          >
+            <Plus size={16} /> Novo Preço de Serviço
+          </button>
+        </div>
+      </div>
+
+      {/* Toolbar & Filters */}
+      <div className="flex flex-wrap items-center justify-between bg-white border border-zinc-200 px-4 py-3 gap-3 shadow-sm">
+        <div className="flex items-center gap-2 flex-1 max-w-md">
+          <div className="relative w-full">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+            <input
+              type="text"
+              placeholder="Pesquisar serviço por designação, código ou rúbrica..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-3 py-1.5 text-xs border border-zinc-200 bg-zinc-50 rounded focus:outline-none focus:border-[#003366]"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* Status filter */}
+          <div className="flex items-center border border-zinc-200 rounded overflow-hidden">
+            {(['all', 'active', 'inactive'] as const).map(f => (
+              <button 
+                key={f} 
+                onClick={() => setStatusFilter(f)}
+                className={`px-3 py-1 text-[10px] font-black uppercase tracking-wider transition-all ${
+                  statusFilter === f ? 'bg-[#003366] text-white' : 'bg-zinc-50 text-zinc-600 hover:bg-zinc-100'
+                }`}
+              >
+                {f === 'all' ? 'Todos' : f === 'active' ? 'Activos' : 'Inactivos'}
               </button>
             ))}
           </div>
-          <button onClick={exportExcel} className="p-2 border border-zinc-200 bg-zinc-50 hover:bg-emerald-50 hover:border-emerald-300 transition-all" title="Exportar Excel">
-            <FileSpreadsheet size={15} className="text-emerald-600" />
+
+          <button onClick={exportExcel} className="p-2 border border-zinc-200 bg-zinc-50 hover:bg-emerald-50 text-emerald-700 rounded transition-all" title="Exportar Excel">
+            <FileSpreadsheet size={15} />
           </button>
-          <button onClick={() => window.print()} className="p-2 border border-zinc-200 bg-zinc-50 hover:bg-zinc-100 transition-all" title="Imprimir">
-            <Printer size={15} className="text-zinc-500" />
+          <button onClick={() => window.print()} className="p-2 border border-zinc-200 bg-zinc-50 hover:bg-zinc-100 text-zinc-600 rounded transition-all" title="Imprimir">
+            <Printer size={15} />
           </button>
-          <button onClick={fetchAll} className="p-2 border border-zinc-200 bg-zinc-50 hover:bg-zinc-100 transition-all" title="Actualizar">
-            <RefreshCw size={15} className="text-zinc-500" />
-          </button>
-          <button onClick={openNew} className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest transition-all shadow-sm">
-            <Plus size={14} /> Novo
+          <button onClick={fetchAll} className="p-2 border border-zinc-200 bg-zinc-50 hover:bg-zinc-100 text-zinc-600 rounded transition-all" title="Actualizar">
+            <RefreshCw size={15} />
           </button>
         </div>
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto bg-white border border-t-0 border-zinc-200 shadow-sm">
+      <div className="overflow-x-auto bg-white border border-zinc-200 shadow-sm rounded">
         {loading ? (
-          <div className="p-12 text-center text-zinc-400 text-xs italic">A carregar tabela de precos...</div>
+          <div className="p-12 text-center text-zinc-400 text-xs italic">A carregar catálogo de serviços...</div>
         ) : filteredRows.length === 0 ? (
-          <div className="p-12 text-center text-zinc-400 text-xs italic">Sem serviços registados. Clique em Novo para adicionar um serviço.</div>
+          <div className="p-12 text-center space-y-3">
+            <Briefcase size={36} className="mx-auto text-zinc-300" />
+            <p className="text-zinc-500 text-xs font-medium">Nenhum serviço registado na tabela de preços.</p>
+            <button 
+              onClick={openNew} 
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#003366] text-white text-xs font-bold rounded"
+            >
+              <Plus size={14} /> Adicionar Primeiro Serviço
+            </button>
+          </div>
         ) : (
-          <table className="w-full border-collapse text-left" style={{minWidth:1400}}>
+          <table className="w-full border-collapse text-left text-xs">
             <thead>
               <tr className="bg-[#002244] text-white text-[9px] font-black uppercase tracking-widest">
-                <th colSpan={5} className="px-3 py-2 border-r border-[#003366] text-center">Informacao do Serviço</th>
-                <th colSpan={4} className="px-3 py-2 border-r border-[#003366] text-center">Imposto na Venda</th>
-                <th colSpan={4} className="px-3 py-2 border-r border-[#003366] text-center">Valor de Venda Base</th>
-                <th colSpan={3} className="px-3 py-2 text-center">Cambio</th>
+                <th colSpan={4} className="px-3 py-2 border-r border-[#003366] text-center">Identificação do Serviço</th>
+                <th colSpan={3} className="px-3 py-2 border-r border-[#003366] text-center">Enquadramento Fiscal</th>
+                <th colSpan={3} className="px-3 py-2 border-r border-[#003366] text-center">Preço Base de Venda</th>
+                <th colSpan={2} className="px-3 py-2 text-center">Contabilidade PGC</th>
               </tr>
               <tr className="bg-[#003366] text-white text-[9px] font-black uppercase tracking-widest border-b border-zinc-700">
-                <th className="px-3 py-2">Cod</th>
-                <th className="px-3 py-2 text-center">Status</th>
-                <th className="px-3 py-2 text-center">Foto</th>
-                <th className="px-3 py-2">Serial Number</th>
-                <th className="px-3 py-2 border-r border-[#002244]">Descricao</th>
-                <th className="px-3 py-2">Tipo Obs</th>
+                <th className="px-3 py-2">Código</th>
+                <th className="px-3 py-2 text-center">Estado</th>
+                <th className="px-3 py-2 border-r border-[#002244]">Designação do Serviço</th>
                 <th className="px-3 py-2">Tipo</th>
-                <th className="px-3 py-2">Taxa %</th>
-                <th className="px-3 py-2 border-r border-[#002244]">Tax Code / Desc</th>
-                <th className="px-3 py-2">Desc Linha %</th>
-                <th className="px-3 py-2 text-right">Valor Unit (AOA)</th>
-                <th className="px-3 py-2">Metrica</th>
-                <th className="px-3 py-2 border-r border-[#002244]">Rubrica / ID</th>
-                <th className="px-3 py-2">Index</th>
-                <th className="px-3 py-2 text-right">Inicial</th>
-                <th className="px-3 py-2 text-center">Actual</th>
+                <th className="px-3 py-2 text-right">Taxa IVA</th>
+                <th className="px-3 py-2">Código Fiscal</th>
+                <th className="px-3 py-2 border-r border-[#002244]">Regime / Descrição</th>
+                <th className="px-3 py-2 text-right">Preço Unitário (AOA)</th>
+                <th className="px-3 py-2 text-center">Unidade</th>
+                <th className="px-3 py-2 border-r border-[#002244] text-right">Desc. %</th>
+                <th className="px-3 py-2">Rúbrica Contabilística</th>
+                <th className="px-3 py-2 text-center">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
               {filteredRows.map((row, idx) => (
-                <tr key={row.id} className={`text-[10px] hover:bg-blue-50 transition-colors cursor-pointer ${idx%2===0?'bg-white':'bg-zinc-50/40'}`} onDoubleClick={() => openEdit(row)}>
-                  <td className="px-3 py-2 font-mono text-zinc-500">{row.cod||'N/D'}</td>
+                <tr 
+                  key={row.id} 
+                  className={`text-[11px] hover:bg-blue-50/60 transition-colors cursor-pointer ${idx % 2 === 0 ? 'bg-white' : 'bg-zinc-50/40'}`} 
+                  onDoubleClick={() => openEdit(row)}
+                >
+                  <td className="px-3 py-2 font-mono text-zinc-500 font-bold">{row.cod || '—'}</td>
                   <td className="px-3 py-2 text-center">
-                    <button onClick={e=>{e.stopPropagation();handleToggleStatus(row);}} title={row.status!==false?'Activo':'Inactivo'}>
-                      {row.status!==false ? <Eye size={14} className="text-emerald-600"/> : <EyeOff size={14} className="text-zinc-400"/>}
+                    <button 
+                      onClick={e => { e.stopPropagation(); handleToggleStatus(row); }} 
+                      title={row.status !== false ? 'Activo' : 'Inactivo'}
+                    >
+                      {row.status !== false ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                          <Eye size={11} /> Activo
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-zinc-500 bg-zinc-100 px-2 py-0.5 rounded border border-zinc-200">
+                          <EyeOff size={11} /> Inactivo
+                        </span>
+                      )}
                     </button>
                   </td>
-                  <td className="px-3 py-2 text-center"><Camera size={13} className="text-zinc-300 mx-auto"/></td>
-                  <td className="px-3 py-2 font-mono text-zinc-500">{row.serial_number||'N/D'}</td>
-                  <td className="px-3 py-2 font-semibold text-zinc-800 border-r border-zinc-100 max-w-[160px] truncate" title={row.descricao}>{row.descricao}</td>
-                  <td className="px-3 py-2 text-zinc-500">{row.tipo_obs||'N/D'}</td>
-                  <td className="px-3 py-2 text-zinc-600">{row.tipo||'N/D'}</td>
-                  <td className="px-3 py-2 text-right font-mono">{row.taxa_percentual!=null?row.taxa_percentual+'%':'N/D'}</td>
-                  <td className="px-3 py-2 text-zinc-500 border-r border-zinc-100">
-                    <span className="font-mono text-[9px] bg-zinc-100 px-1 py-0.5">{row.tax_code||'N/D'}</span>{' '}
-                    <span className="text-zinc-400">{row.tax_description||''}</span>
+                  <td className="px-3 py-2 font-bold text-zinc-900 border-r border-zinc-100 max-w-[240px] truncate" title={row.descricao}>
+                    {row.descricao}
                   </td>
-                  <td className="px-3 py-2 text-right font-mono">{row.desconto_linha_percentual!=null?row.desconto_linha_percentual+'%':'0%'}</td>
-                  <td className="px-3 py-2 text-right font-bold text-[#003366]">{fmt(row.valor_unitario)}</td>
-                  <td className="px-3 py-2 text-zinc-500">{row.unidade||'N/D'}</td>
-                  <td className="px-3 py-2 text-zinc-500 border-r border-zinc-100 max-w-[130px] truncate" title={row.rubrica||''}>
-                    {row.rubrica||'N/D'}
-                    {row.rubrica_id&&<span className="ml-1 text-[9px] font-mono text-zinc-300">#{String(row.rubrica_id).slice(0,6)}</span>}
+                  <td className="px-3 py-2">
+                    <span className="bg-blue-50 text-[#003366] text-[10px] font-bold px-1.5 py-0.5 rounded">
+                      Serviço
+                    </span>
                   </td>
-                  <td className="px-3 py-2 text-zinc-400 font-mono">{row.indice_inicial!=null?row.indice_inicial:'N/D'}</td>
-                  <td className="px-3 py-2 text-right font-mono text-zinc-500">{fmt(row.indice_inicial)}</td>
-                  <td className="px-3 py-2 text-center"><span title={'Cambio: '+fmt(row.cambio_atual)} className="inline-block"><BarChart2 size={13} className="text-zinc-300 mx-auto" /></span></td>
+                  <td className="px-3 py-2 text-right font-mono font-bold text-zinc-700">
+                    {row.taxa_percentual != null ? `${row.taxa_percentual}%` : '14%'}
+                  </td>
+                  <td className="px-3 py-2 font-mono text-zinc-600">
+                    <span className="bg-zinc-100 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                      {row.tax_code || 'NOR'}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-zinc-500 border-r border-zinc-100 text-[10px] truncate max-w-[140px]">
+                    {row.tax_description || 'Taxa Normal'}
+                  </td>
+                  <td className="px-3 py-2 text-right font-bold text-[#003366] font-mono text-xs">
+                    {fmt(row.valor_unitario)}
+                  </td>
+                  <td className="px-3 py-2 text-center text-zinc-500 font-semibold">{row.unidade || 'UN'}</td>
+                  <td className="px-3 py-2 text-right font-mono text-zinc-500 border-r border-zinc-100">
+                    {row.desconto_linha_percentual ? `${row.desconto_linha_percentual}%` : '0%'}
+                  </td>
+                  <td className="px-3 py-2 text-zinc-700 text-[10px] font-medium max-w-[200px] truncate" title={row.rubrica || ''}>
+                    {row.rubrica || '62 - Prestações de Serviços'}
+                  </td>
+                  <td className="px-3 py-2 text-center">
+                    <button 
+                      onClick={() => openEdit(row)} 
+                      className="px-2 py-1 text-[10px] font-bold text-[#003366] hover:bg-blue-100 rounded transition-colors"
+                    >
+                      Editar
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -384,103 +579,256 @@ export const PriceTableModule: React.FC<PriceTableModuleProps> = ({
         )}
       </div>
 
-      {/* Modal */}
+      {/* Modal de Registo / Edição de Preço de Serviço */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white shadow-2xl border border-zinc-200 w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-200 bg-[#003366]">
-              <div className="flex items-center gap-2 text-white">
-                <Tag size={16}/>
-                <span className="text-[11px] font-black uppercase tracking-widest">{editingRow?'Editar Serviço':'Novo Serviço'}</span>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
+          <div className="bg-white shadow-2xl border border-zinc-200 w-full max-w-lg rounded-lg overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 bg-[#003366] text-white">
+              <div className="flex items-center gap-2">
+                <Briefcase size={18} />
+                <span className="text-xs font-black uppercase tracking-wider">
+                  {editingRow ? 'Editar Preço de Serviço' : 'Novo Registo de Preço de Serviço'}
+                </span>
               </div>
-              <button onClick={() => setShowModal(false)} className="text-white/70 hover:text-white"><X size={18}/></button>
+              <button onClick={() => setShowModal(false)} className="text-white/70 hover:text-white">
+                <X size={18} />
+              </button>
             </div>
-            <div className="p-5 space-y-4">
+
+            <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+              {/* Seleccionar modo de serviço (Existente vs Novo) apenas se estiver criando */}
+              {!editingRow && (
+                <div className="flex items-center gap-2 p-1 bg-zinc-100 rounded border border-zinc-200">
+                  <button
+                    type="button"
+                    onClick={() => setIsNewServiceMode(false)}
+                    disabled={servicos.length === 0}
+                    className={`flex-1 py-1.5 text-xs font-bold rounded transition-all ${
+                      !isNewServiceMode ? 'bg-white shadow-xs text-[#003366]' : 'text-zinc-500 hover:text-zinc-800'
+                    } ${servicos.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    Seleccionar Serviço Existente ({servicos.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsNewServiceMode(true)}
+                    className={`flex-1 py-1.5 text-xs font-bold rounded transition-all ${
+                      isNewServiceMode ? 'bg-[#003366] text-white shadow-xs' : 'text-zinc-500 hover:text-zinc-800'
+                    }`}
+                  >
+                    + Criar Novo Serviço
+                  </button>
+                </div>
+              )}
+
+              {/* Se for modo novo serviço ou edição com novo nome */}
+              {isNewServiceMode ? (
+                <div className="space-y-3 p-3 bg-blue-50/50 border border-blue-200 rounded">
+                  <div>
+                    <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-600 mb-1">
+                      Designação Oficial do Serviço <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ex: Consultoria Fiscal, Assistência Técnica, Transporte..."
+                      value={form.novo_nome_servico}
+                      onChange={e => setForm(f => ({ ...f, novo_nome_servico: e.target.value }))}
+                      className="w-full border border-zinc-300 bg-white px-3 py-2 text-xs rounded focus:outline-none focus:border-[#003366] font-semibold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-600 mb-1">
+                      Código / Referência Interna do Serviço
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ex: SRV-001"
+                      value={form.codigo_servico}
+                      onChange={e => setForm(f => ({ ...f, codigo_servico: e.target.value }))}
+                      className="w-full border border-zinc-300 bg-white px-3 py-2 text-xs rounded focus:outline-none focus:border-[#003366] font-mono"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-600 mb-1">
+                    Serviço Registado da Empresa <span className="text-red-500">*</span>
+                  </label>
+                  {servicos.length === 0 ? (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
+                      Nenhum serviço cadastrado ainda. Clique na aba acima <strong>"+ Criar Novo Serviço"</strong> para adicionar o primeiro serviço da empresa.
+                    </div>
+                  ) : (
+                    <select
+                      value={form.produto_id}
+                      onChange={e => {
+                        const pid = e.target.value;
+                        const srv = servicos.find(s => String(s.id) === pid);
+                        setForm(f => ({
+                          ...f,
+                          produto_id: pid,
+                          valor_unitario: srv ? String(srv.price || srv.preco || srv.preco_venda || '') : f.valor_unitario,
+                          unidade: srv ? (srv.unit || srv.unidade || 'UN') : f.unidade
+                        }));
+                      }}
+                      className="w-full border border-zinc-300 bg-zinc-50 px-3 py-2 text-xs rounded focus:outline-none focus:border-[#003366] font-medium"
+                    >
+                      <option value="">Seleccione um serviço...</option>
+                      {servicos.map(s => (
+                        <option key={s.id} value={s.id}>
+                          {s.name || s.nome} {s.codigo ? `(${s.codigo})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
+
+              {/* Preço Unitário & Unidade */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-600 mb-1">
+                    Preço de Venda Base (AOA) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={form.valor_unitario}
+                    onChange={e => setForm(f => ({ ...f, valor_unitario: e.target.value }))}
+                    className="w-full border border-zinc-300 bg-white px-3 py-2 text-xs font-mono font-bold text-[#003366] rounded focus:outline-none focus:border-[#003366]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-600 mb-1">
+                    Unidade de Medida
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="UN, HORA, DIA, MES, PROJETO..."
+                    value={form.unidade}
+                    onChange={e => setForm(f => ({ ...f, unidade: e.target.value }))}
+                    className="w-full border border-zinc-300 bg-white px-3 py-2 text-xs rounded focus:outline-none focus:border-[#003366] uppercase font-semibold"
+                  />
+                </div>
+              </div>
+
+              {/* Imposto / IVA */}
               <div>
-                <label className="block text-[9px] font-black uppercase tracking-widest text-zinc-500 mb-1">Descrição do Serviço <span className="text-red-500">*</span></label>
-                <select value={form.produto_id} onChange={e => {
-                  const pid = e.target.value;
-                  const prod = produtos.find(p => String(p.id) === pid);
-                  setForm(f => ({...f, produto_id: pid, valor_unitario: prod?String(prod.price||prod.preco||prod.preco_venda||''):f.valor_unitario, unidade: prod?(prod.unit||prod.unidade||f.unidade):f.unidade, tipo: prod?(prod.tipo||f.tipo):f.tipo}));
-                }} className="w-full border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs focus:outline-none focus:border-[#003366]">
-                  <option value="">Seleccionar serviço</option>
-                  {produtos.filter(p => !p.tipo || p.tipo === 'servico' || p.tipo === 'service').map(p => <option key={p.id} value={p.id}>{p.name||p.nome}{p.codigo?' ('+p.codigo+')':''}</option>)}
+                <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-600 mb-1">
+                  Enquadramento Fiscal do IVA
+                </label>
+                <select
+                  value={form.imposto_id}
+                  onChange={e => {
+                    const imp = impostos.find(i => i.id === e.target.value);
+                    setForm(f => ({ ...f, imposto_id: e.target.value, tax_code: imp?.codigo_imposto || 'NOR' }));
+                  }}
+                  className="w-full border border-zinc-300 bg-zinc-50 px-3 py-2 text-xs rounded focus:outline-none focus:border-[#003366]"
+                >
+                  {impostos.map(i => (
+                    <option key={i.id} value={i.id}>
+                      {i.nome} ({i.taxa}%) — {i.codigo_imposto || 'IVA'}
+                    </option>
+                  ))}
                 </select>
               </div>
+
+              {/* Rúbrica PGC */}
               <div>
-                <label className="block text-[9px] font-black uppercase tracking-widest text-zinc-500 mb-1">Serial Number</label>
-                <input value={form.serial_number} onChange={e => setForm(f => ({...f,serial_number:e.target.value}))} placeholder="ex: SN-001" className="w-full border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs focus:outline-none focus:border-[#003366]"/>
+                <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-600 mb-1">
+                  Rúbrica Contabilística (PGC Angola)
+                </label>
+                <select
+                  value={form.rubrica_id}
+                  onChange={e => setForm(f => ({ ...f, rubrica_id: e.target.value }))}
+                  className="w-full border border-zinc-300 bg-zinc-50 px-3 py-2 text-xs rounded focus:outline-none focus:border-[#003366]"
+                >
+                  {pgcContas.map(c => (
+                    <option key={c.id || c.conta} value={c.id || c.conta}>
+                      {c.conta} — {c.descricao}
+                    </option>
+                  ))}
+                </select>
               </div>
+
+              {/* Moeda & Desconto */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[9px] font-black uppercase tracking-widest text-zinc-500 mb-1">Valor Unitario Venda <span className="text-red-500">*</span></label>
-                  <input type="number" min="0" step="0.01" value={form.valor_unitario} onChange={e => setForm(f => ({...f,valor_unitario:e.target.value}))} placeholder="0.00" className="w-full border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs focus:outline-none focus:border-[#003366]"/>
-                </div>
-                <div>
-                  <label className="block text-[9px] font-black uppercase tracking-widest text-zinc-500 mb-1">Unidade</label>
-                  <input value={form.unidade} onChange={e => setForm(f => ({...f,unidade:e.target.value}))} placeholder="UN, KG, M..." className="w-full border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs focus:outline-none focus:border-[#003366]"/>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[9px] font-black uppercase tracking-widest text-zinc-500 mb-1">Tipo de Artigo</label>
-                  <select value={form.tipo} onChange={e => setForm(f => ({...f,tipo:e.target.value}))} className="w-full border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs focus:outline-none focus:border-[#003366]">
-                    <option value="servico">Serviço</option>
-                    <option value="outro">Outro</option>
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-600 mb-1">
+                    Moeda de Venda
+                  </label>
+                  <select
+                    value={form.moeda}
+                    onChange={e => setForm(f => ({ ...f, moeda: e.target.value }))}
+                    className="w-full border border-zinc-300 bg-zinc-50 px-3 py-2 text-xs rounded focus:outline-none focus:border-[#003366]"
+                  >
+                    {MOEDAS.map(m => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[9px] font-black uppercase tracking-widest text-zinc-500 mb-1">Desconto Linha %</label>
-                  <input type="number" min="0" max="100" step="0.01" value={form.desconto_linha_percentual} onChange={e => setForm(f => ({...f,desconto_linha_percentual:e.target.value}))} placeholder="0" className="w-full border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs focus:outline-none focus:border-[#003366]"/>
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-600 mb-1">
+                    Desconto de Linha Padrão (%)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    placeholder="0"
+                    value={form.desconto_linha_percentual}
+                    onChange={e => setForm(f => ({ ...f, desconto_linha_percentual: e.target.value }))}
+                    className="w-full border border-zinc-300 bg-white px-3 py-2 text-xs rounded focus:outline-none focus:border-[#003366]"
+                  />
                 </div>
               </div>
-              <div>
-                <label className="block text-[9px] font-black uppercase tracking-widest text-zinc-500 mb-1">Tipo de Imposto</label>
-                <select value={form.imposto_id} onChange={e => {
-                  const imp = impostos.find(i => i.id === e.target.value);
-                  setForm(f => ({...f,imposto_id:e.target.value,tax_code:imp?.codigo_imposto||''}));
-                }} className="w-full border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs focus:outline-none focus:border-[#003366]">
-                  <option value="">Sem imposto</option>
-                  {impostos.map(i => <option key={i.id} value={i.id}>{i.nome} ({i.taxa}%)</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-[9px] font-black uppercase tracking-widest text-zinc-500 mb-1">Seleccionar Rubrica</label>
-                <select value={form.rubrica_id} onChange={e => setForm(f => ({...f,rubrica_id:e.target.value}))} className="w-full border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs focus:outline-none focus:border-[#003366]">
-                  <option value="">Sem rubrica</option>
-                  {pgcContas.slice(0,300).map(c => <option key={c.id} value={c.id}>{c.conta} {c.descricao}</option>)}
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[9px] font-black uppercase tracking-widest text-zinc-500 mb-1">Moeda</label>
-                  <select value={form.moeda} onChange={e => setForm(f => ({...f,moeda:e.target.value}))} className="w-full border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs focus:outline-none focus:border-[#003366]">
-                    {MOEDAS.map(m => <option key={m} value={m}>{m}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-[9px] font-black uppercase tracking-widest text-zinc-500 mb-1">Indice / Cambio</label>
-                  <input type="number" min="0" step="0.01" value={form.indice_inicial} onChange={e => setForm(f => ({...f,indice_inicial:e.target.value}))} placeholder="1.00" className="w-full border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs focus:outline-none focus:border-[#003366]"/>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <label className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Status:</label>
-                <button type="button" onClick={() => setForm(f => ({...f,status:!f.status}))} className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold border transition-all ${form.status?'bg-emerald-50 border-emerald-300 text-emerald-700':'bg-zinc-100 border-zinc-300 text-zinc-500'}`}>
-                  {form.status?<Eye size={12}/>:<EyeOff size={12}/>}
-                  {form.status?'Activo':'Inactivo'}
+
+              {/* Status */}
+              <div className="flex items-center gap-3 pt-1">
+                <label className="text-[10px] font-black uppercase tracking-wider text-zinc-600">Estado:</label>
+                <button
+                  type="button"
+                  onClick={() => setForm(f => ({ ...f, status: !f.status }))}
+                  className={`flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded border transition-all ${
+                    form.status ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-zinc-100 border-zinc-300 text-zinc-500'
+                  }`}
+                >
+                  {form.status ? <Eye size={12} /> : <EyeOff size={12} />}
+                  {form.status ? 'Serviço Activo' : 'Serviço Inactivo'}
                 </button>
               </div>
+
+              {/* Mensagens de feedback */}
               {msg && (
-                <div className={`flex items-center gap-2 p-3 text-xs font-semibold border ${msg.type==='ok'?'bg-emerald-50 border-emerald-200 text-emerald-700':'bg-red-50 border-red-200 text-red-700'}`}>
-                  {msg.type==='ok'?<CheckCircle size={14}/>:<AlertCircle size={14}/>}
+                <div className={`p-3 rounded text-xs font-semibold flex items-center gap-2 border ${
+                  msg.type === 'ok' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'
+                }`}>
+                  {msg.type === 'ok' ? <CheckCircle size={15} /> : <AlertCircle size={15} />}
                   {msg.text}
                 </div>
               )}
-              <div className="flex gap-3 pt-2">
-                <button onClick={handleSave} disabled={saving} className="flex-1 flex items-center justify-center gap-2 bg-[#003366] hover:bg-[#002244] text-white py-3 text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-60">
-                  <Save size={14}/>{saving?'A guardar...':'Registar'}
+
+              {/* Botões do Rodapé do Modal */}
+              <div className="flex gap-2 pt-3 border-t border-zinc-200">
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="flex-1 flex items-center justify-center gap-2 bg-[#003366] hover:bg-[#002244] text-white py-2.5 text-xs font-black uppercase tracking-wider rounded transition-all disabled:opacity-60"
+                >
+                  <Save size={15} /> {saving ? 'A gravar...' : 'Registar Preço do Serviço'}
                 </button>
-                <button onClick={() => setShowModal(false)} className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest border border-zinc-200 text-zinc-500 hover:bg-zinc-50 transition-all">Cancelar</button>
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="px-4 py-2.5 text-xs font-semibold text-zinc-600 hover:bg-zinc-100 rounded border border-zinc-200"
+                >
+                  Cancelar
+                </button>
               </div>
             </div>
           </div>

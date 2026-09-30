@@ -1,10 +1,17 @@
-import React, { useState, useMemo } from 'react';
+/**
+ * SaftExportForm.tsx
+ * Ficheiro SAF-T (Standard Audit File for Tax) — Angola (AO_1.01_01 / AGT)
+ * Interface simplificada, leve e com busca direta e dinâmica à base de dados Supabase por ano e período.
+ */
+
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Invoice, Purchase, Client, Product } from '../types';
 import {
   Download, FileCode, CheckCircle2, AlertCircle,
   FileText, ShoppingCart, Users, Package, Calendar,
-  ChevronLeft, ChevronDown
+  ChevronLeft, RefreshCw, Eye, EyeOff, Search
 } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -17,6 +24,7 @@ interface Props {
   clients?: Client[];
   products?: Product[];
   companyData?: any;
+  user?: any;
   onBack?: () => void;
   defaultYear?: string;
   defaultMonth?: string;
@@ -50,8 +58,8 @@ const fmtAmt = (v: number) => n2(v);
 
 const invoiceTypeCode = (doc: Invoice): string => {
   const tp = (doc.document_type || doc.tipo_documento || 'FT').trim().toUpperCase();
-  if (tp.includes('NOTA DE CRÉDITO') || tp === 'NC') return 'NC';
-  if (tp.includes('NOTA DE DÉBITO') || tp === 'ND') return 'ND';
+  if (tp.includes('NOTA DE CRÉDITO') || tp.includes('NOTA DE CREDITO') || tp === 'NC') return 'NC';
+  if (tp.includes('NOTA DE DÉBITO') || tp.includes('NOTA DE DEBITO') || tp === 'ND') return 'ND';
   if (tp.includes('FATURA RECIBO') || tp.includes('FACTURA RECIBO') || tp === 'FR') return 'FR';
   if (tp === 'RECIBO' || tp === 'RC') return 'RC';
   if (tp.includes('CONSULTA') || tp === 'CC') return 'CC';
@@ -73,7 +81,7 @@ const invoiceStatus = (doc: Invoice): string => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// XML builder — SAF-T F (Faturas)
+// XML builder — SAF-T AO 1.01_01
 // ─────────────────────────────────────────────────────────────────────────────
 const buildSaftXml = (
   invoices: Invoice[],
@@ -93,7 +101,7 @@ const buildSaftXml = (
   const co = companyData || {};
   const companyName = esc(co.name || co.nome_empresa || 'Empresa');
   const nif = esc(co.nif || '000000000');
-  const address = esc(co.address || co.morada || 'NA');
+  const address = esc(co.address || co.morada || 'Luanda, Angola');
   const city = esc(co.city || co.provincia || 'Luanda');
   const province = esc(co.provincia || 'Luanda');
   const phone = esc(co.contact || co.telefone || '');
@@ -108,17 +116,17 @@ const buildSaftXml = (
   };
 
   const filteredInvoices = invoices.filter(i => filterByPeriod(i.date || i.data_emissao || ''));
-  const filteredPurchases = purchases.filter(p => filterByPeriod(p.date || p.data_emissao || ''));
+  const filteredPurchases = purchases.filter(p => filterByPeriod(p.date || p.data_emissao || (p as any).data_compra || ''));
 
   // Customers / Suppliers
   const customerMap = new Map<string, any>();
 
   if (saftType === 'F') {
     customerMap.set('0', {
-      id: '0', accountId: '0', nif: '999999999',
-      name: 'Consumidor Final', address: 'Desconhecido',
-      city: 'Desconhecido', postalCode: 'Desconhecido',
-      province: 'Desconhecido', country: 'Desconhecido',
+      id: '0', accountId: '31.01.02.01.0000', nif: '999999999',
+      name: 'Consumidor Final', address: 'Luanda',
+      city: 'Luanda', postalCode: '0000-000',
+      province: 'Luanda', country: 'AO',
     });
     filteredInvoices.forEach(inv => {
       const cid = String(inv.client_id || '0');
@@ -128,8 +136,8 @@ const buildSaftXml = (
           id: cid,
           accountId: `31.01.02.01.${cid.padStart(4, '0')}`,
           nif: esc(inv.client_nif || c?.contribuinte || c?.nif || '999999999'),
-          name: esc(inv.client_name || c?.name || 'Desconhecido'),
-          address: esc(c?.morada || c?.endereco || 'NA'),
+          name: esc(inv.client_name || c?.name || 'Consumidor Final'),
+          address: esc(c?.morada || c?.endereco || 'Luanda'),
           city: esc(c?.localidade || c?.provincia || 'Luanda'),
           postalCode: esc(c?.codigo_postal || '0000-000'),
           province: esc(c?.provincia || 'Luanda'),
@@ -138,7 +146,6 @@ const buildSaftXml = (
       }
     });
   } else {
-    // For Compras (SAF-T A), populate customerMap with suppliers to satisfy CustomerID references in WorkingDocuments!
     filteredPurchases.forEach(p => {
       const sid = String(p.supplier_id || '0');
       if (!customerMap.has(sid)) {
@@ -146,8 +153,8 @@ const buildSaftXml = (
           id: sid,
           accountId: `22.01.01.01.${sid.padStart(4, '0')}`,
           nif: esc((p as any).supplier_nif || (p as any).nif || '999999999'),
-          name: esc(p.supplier_name || 'Fornecedor Desconhecido'),
-          address: esc((p as any).supplier_address || 'NA'),
+          name: esc(p.supplier_name || 'Fornecedor Registado'),
+          address: esc((p as any).supplier_address || 'Luanda'),
           city: esc((p as any).supplier_city || 'Luanda'),
           postalCode: esc((p as any).supplier_postal_code || '0000-000'),
           province: esc((p as any).supplier_province || 'Luanda'),
@@ -159,18 +166,18 @@ const buildSaftXml = (
 
   // Products
   const productMap = new Map<string, any>();
-  productMap.set('0', { code: '0', group: 'NA', description: 'Sem Produtos', numberCode: '0', type: 'S' });
+  productMap.set('0', { code: '0', group: 'Geral', description: 'Serviço / Produto Geral', numberCode: '0', type: 'S' });
 
   if (saftType === 'F') {
     filteredInvoices.forEach(inv => {
       (inv.items || []).forEach((item: any) => {
-        const pid = String(item.product_id || '0');
+        const pid = String(item.product_id || item.id || '0');
         if (!productMap.has(pid)) {
           const p = products.find(pr => String(pr.id) === pid);
           productMap.set(pid, {
-            code: pid, group: esc(p?.category || 'NA'),
-            description: esc(item.description || p?.name || 'Produto'),
-            numberCode: pid, type: 'P',
+            code: pid, group: esc(p?.category || 'Geral'),
+            description: esc(item.description || p?.name || 'Serviço/Produto'),
+            numberCode: pid, type: p?.tipo === 'servico' ? 'S' : 'P',
           });
         }
       });
@@ -178,11 +185,11 @@ const buildSaftXml = (
   } else {
     filteredPurchases.forEach(p => {
       (p.items || []).forEach((item: any) => {
-        const pid = String(item.product_id || item.product_code || '0');
+        const pid = String(item.product_id || item.product_code || item.id || '0');
         if (!productMap.has(pid)) {
           productMap.set(pid, {
-            code: pid, group: 'NA',
-            description: esc(item.description || 'Produto/Serviço'),
+            code: pid, group: 'Geral',
+            description: esc(item.description || 'Aquisição/Serviço'),
             numberCode: pid, type: 'P',
           });
         }
@@ -193,6 +200,7 @@ const buildSaftXml = (
   // Tax rates
   const taxRates = new Set<number>();
   taxRates.add(14);
+  taxRates.add(0);
   if (saftType === 'F') {
     filteredInvoices.forEach(inv => {
       (inv.items || []).forEach((item: any) => taxRates.add(Number(item.tax_rate ?? 14)));
@@ -220,7 +228,7 @@ const buildSaftXml = (
   // Header
   lines.push(`<Header xmlns="urn:OECD:StandardAuditFile-Tax:AO_1.01_01" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">`);
   lines.push(`  <AuditFileVersion>1.01_01</AuditFileVersion>`);
-  lines.push(`  <CompanyID>${esc(co.matricula || co.alvara || 'NA')}</CompanyID>`);
+  lines.push(`  <CompanyID>${esc(co.matricula || co.alvara || nif)}</CompanyID>`);
   lines.push(`  <TaxRegistrationNumber>${nif}</TaxRegistrationNumber>`);
   lines.push(`  <TaxAccountingBasis>${saftType}</TaxAccountingBasis>`);
   lines.push(`  <CompanyName>${companyName}</CompanyName>`);
@@ -229,7 +237,7 @@ const buildSaftXml = (
   lines.push(`    <StreetName>NA</StreetName>`);
   lines.push(`    <AddressDetail>${address}</AddressDetail>`);
   lines.push(`    <City>${city}</City>`);
-  lines.push(`    <PostalCode>${esc(co.codigo_postal || '0000000')}</PostalCode>`);
+  lines.push(`    <PostalCode>${esc(co.codigo_postal || '0000-000')}</PostalCode>`);
   lines.push(`    <Province>${province}</Province>`);
   lines.push(`    <Country>AO</Country>`);
   lines.push(`  </CompanyAddress>`);
@@ -241,8 +249,8 @@ const buildSaftXml = (
   lines.push(`  <TaxEntity>${city}</TaxEntity>`);
   lines.push(`  <ProductCompanyTaxID>${nif}</ProductCompanyTaxID>`);
   lines.push(`  <SoftwareValidationNumber>25/AGT/2019</SoftwareValidationNumber>`);
-  lines.push(`  <ProductID>AGT-Sistema/${companyName}</ProductID>`);
-  lines.push(`  <ProductVersion>1</ProductVersion>`);
+  lines.push(`  <ProductID>IMATEC-ERP/${companyName}</ProductID>`);
+  lines.push(`  <ProductVersion>2.0</ProductVersion>`);
   if (phone) lines.push(`  <Telephone>${phone}</Telephone>`);
   if (email) lines.push(`  <Email>${email}</Email>`);
   lines.push(`</Header>`);
@@ -250,14 +258,12 @@ const buildSaftXml = (
   // MasterFiles
   lines.push(`<MasterFiles>`);
   
-  // Customers are generated for both types (for SAF-T A, suppliers are declared as Customers because WorkingDocuments reference CustomerID)
   customerMap.forEach(c => {
     lines.push(`  <Customer>`);
     lines.push(`    <CustomerID>${esc(c.id)}</CustomerID>`);
     lines.push(`    <AccountID>${esc(c.accountId)}</AccountID>`);
     lines.push(`    <CustomerTaxID>${esc(c.nif)}</CustomerTaxID>`);
     lines.push(`    <CompanyName>${esc(c.name)}</CompanyName>`);
-    lines.push(`    <Contact/>`);
     lines.push(`    <BillingAddress>`);
     lines.push(`      <AddressDetail>${esc(c.address)}</AddressDetail>`);
     lines.push(`      <City>${esc(c.city)}</City>`);
@@ -265,20 +271,10 @@ const buildSaftXml = (
     lines.push(`      <Province>${esc(c.province)}</Province>`);
     lines.push(`      <Country>${esc(c.country)}</Country>`);
     lines.push(`    </BillingAddress>`);
-    lines.push(`    <ShipToAddress>`);
-    lines.push(`      <BuildingNumber>NA</BuildingNumber>`);
-    lines.push(`      <StreetName>NA</StreetName>`);
-    lines.push(`      <AddressDetail>${esc(c.address)}</AddressDetail>`);
-    lines.push(`      <City>${esc(c.city)}</City>`);
-    lines.push(`      <PostalCode>${esc(c.postalCode)}</PostalCode>`);
-    lines.push(`      <Province>${esc(c.province)}</Province>`);
-    lines.push(`      <Country>${esc(c.country)}</Country>`);
-    lines.push(`    </ShipToAddress>`);
     lines.push(`    <SelfBillingIndicator>0</SelfBillingIndicator>`);
     lines.push(`  </Customer>`);
   });
 
-  // For SAF-T A, also generate Supplier records for completeness
   if (saftType === 'A') {
     customerMap.forEach(s => {
       if (s.id === '0') return;
@@ -287,7 +283,6 @@ const buildSaftXml = (
       lines.push(`    <AccountID>${esc(s.accountId)}</AccountID>`);
       lines.push(`    <SupplierTaxID>${esc(s.nif)}</SupplierTaxID>`);
       lines.push(`    <CompanyName>${esc(s.name)}</CompanyName>`);
-      lines.push(`    <Contact/>`);
       lines.push(`    <BillingAddress>`);
       lines.push(`      <AddressDetail>${esc(s.address)}</AddressDetail>`);
       lines.push(`      <City>${esc(s.city)}</City>`);
@@ -300,7 +295,6 @@ const buildSaftXml = (
     });
   }
 
-  // Products
   productMap.forEach(p => {
     lines.push(`  <Product>`);
     lines.push(`    <ProductType>${esc(p.type)}</ProductType>`);
@@ -310,9 +304,10 @@ const buildSaftXml = (
     lines.push(`    <ProductNumberCode>${esc(p.numberCode)}</ProductNumberCode>`);
     lines.push(`  </Product>`);
   });
+
   lines.push(`  <TaxTable>`);
   taxRates.forEach(rate => {
-    const code = rate === 0 ? 'ISE' : rate === 5 ? 'RED' : 'NOR';
+    const code = rate === 0 ? 'ISE' : rate === 5 ? 'RED' : rate === 7 ? 'RED' : 'NOR';
     const desc = rate === 0 ? 'Isento' : `IVA ${rate}%`;
     lines.push(`    <TaxTableEntry>`);
     lines.push(`      <TaxType>IVA</TaxType>`);
@@ -329,7 +324,6 @@ const buildSaftXml = (
   lines.push(`<SourceDocuments>`);
 
   if (saftType === 'F') {
-    // SalesInvoices only
     const salesInvoices = filteredInvoices.filter(i => {
       const tp = invoiceTypeCode(i);
       return tp === 'FT' || tp === 'FR' || tp === 'RC' || tp === 'NC' || tp === 'ND';
@@ -343,11 +337,11 @@ const buildSaftXml = (
       const invDate = (inv.date || inv.data_emissao || '').substring(0, 10);
       const entryDate = fmtDateTime(inv.created_at || inv.date || '');
       const cid = String(inv.client_id || '0');
-      const c = customerMap.get(cid) || customerMap.get('0')!;
       const invType = invoiceTypeCode(inv);
       const status = invoiceStatus(inv);
       const hash = esc(inv.hash || inv.hash_documento || inv.hash_fiscal || '');
       const docNum = esc(inv.invoice_number || inv.numero_documento || `DOC-${inv.id}`);
+      
       let netTotal = 0;
       let taxPayable = 0;
       if (items.length > 0) {
@@ -364,6 +358,7 @@ const buildSaftXml = (
         taxPayable = gross - netTotal;
       }
       const grossTotal = netTotal + taxPayable;
+
       lines.push(`    <Invoice>`);
       lines.push(`      <InvoiceNo>${docNum}</InvoiceNo>`);
       lines.push(`      <DocumentStatus>`);
@@ -386,46 +381,24 @@ const buildSaftXml = (
       lines.push(`      <SourceID>${esc(inv.created_by || '1')}</SourceID>`);
       lines.push(`      <SystemEntryDate>${entryDate}</SystemEntryDate>`);
       lines.push(`      <CustomerID>${esc(cid)}</CustomerID>`);
-      lines.push(`      <ShipTo>`);
-      lines.push(`        <DeliveryDate>${invDate}</DeliveryDate>`);
-      lines.push(`        <Address>`);
-      lines.push(`          <AddressDetail>${esc(c.address)}</AddressDetail>`);
-      lines.push(`          <City>${esc(c.city)}</City>`);
-      lines.push(`          <PostalCode>${esc(c.postalCode)}</PostalCode>`);
-      lines.push(`          <Country>${esc(c.country)}</Country>`);
-      lines.push(`        </Address>`);
-      lines.push(`      </ShipTo>`);
-      lines.push(`      <ShipFrom>`);
-      lines.push(`        <DeliveryDate>${invDate}</DeliveryDate>`);
-      lines.push(`        <Address>`);
-      lines.push(`          <AddressDetail>${address}</AddressDetail>`);
-      lines.push(`          <City>${city}</City>`);
-      lines.push(`          <PostalCode>${esc(co.codigo_postal || '0000-000')}</PostalCode>`);
-      lines.push(`          <Country>AO</Country>`);
-      lines.push(`        </Address>`);
-      lines.push(`      </ShipFrom>`);
       lines.push(`      <MovementStartTime>${entryDate}</MovementStartTime>`);
+      
       if (items.length > 0) {
         items.forEach((item, idx) => {
-          const pid = String(item.product_id || '0');
+          const pid = String(item.product_id || item.id || '0');
           const rate = Number(item.tax_rate ?? 14);
-          const taxCode = rate === 0 ? 'ISE' : rate === 5 ? 'RED' : 'NOR';
+          const taxCode = rate === 0 ? 'ISE' : rate === 5 ? 'RED' : rate === 7 ? 'RED' : 'NOR';
           const qty = Number(item.quantity || 1);
-          const unitPrice = Number(item.unit_price || 0);
+          const unitPrice = Number(item.unit_price || (item.total ? item.total / qty : 0));
           const lineTotal = Number(item.total || qty * unitPrice);
           const isCredit = invType !== 'NC';
+
           lines.push(`      <Line>`);
           lines.push(`        <LineNumber>${idx + 1}</LineNumber>`);
-          if (inv.numero_documento_origem) {
-            lines.push(`        <OrderReferences>`);
-            lines.push(`          <OriginatingON>${esc(inv.numero_documento_origem)}</OriginatingON>`);
-            lines.push(`          <OrderDate>${invDate}</OrderDate>`);
-            lines.push(`        </OrderReferences>`);
-          }
           lines.push(`        <ProductCode>${esc(pid)}</ProductCode>`);
           lines.push(`        <ProductDescription>${esc(item.description || 'Produto/Serviço')}</ProductDescription>`);
           lines.push(`        <Quantity>${n8(qty)}</Quantity>`);
-          lines.push(`        <UnitOfMeasure>${esc(item.unit || item.unidade || 'Un')}</UnitOfMeasure>`);
+          lines.push(`        <UnitOfMeasure>${esc(item.unit || item.unidade || 'UN')}</UnitOfMeasure>`);
           lines.push(`        <UnitPrice>${n8(unitPrice)}</UnitPrice>`);
           lines.push(`        <TaxPointDate>${invDate}</TaxPointDate>`);
           lines.push(`        <Description>${esc(item.description || 'Produto/Serviço')}</Description>`);
@@ -451,7 +424,7 @@ const buildSaftXml = (
         lines.push(`        <ProductCode>0</ProductCode>`);
         lines.push(`        <ProductDescription>Serviço/Produto</ProductDescription>`);
         lines.push(`        <Quantity>1.00000000</Quantity>`);
-        lines.push(`        <UnitOfMeasure>Un</UnitOfMeasure>`);
+        lines.push(`        <UnitOfMeasure>UN</UnitOfMeasure>`);
         lines.push(`        <UnitPrice>${n8(lineTotal / 1.14)}</UnitPrice>`);
         lines.push(`        <TaxPointDate>${invDate}</TaxPointDate>`);
         lines.push(`        <Description>Serviço/Produto</Description>`);
@@ -474,16 +447,11 @@ const buildSaftXml = (
       lines.push(`        <NetTotal>${n8(netTotal)}</NetTotal>`);
       lines.push(`        <GrossTotal>${fmtAmt(grossTotal)}</GrossTotal>`);
       lines.push(`      </DocumentTotals>`);
-      lines.push(`      <WithholdingTax>`);
-      lines.push(`        <WithholdingTaxType>II</WithholdingTaxType>`);
-      lines.push(`        <WithholdingTaxDescription>Lei 19/14 - Art.º67 N.º1</WithholdingTaxDescription>`);
-      lines.push(`        <WithholdingTaxAmount>${n8(Number(inv.retencao_fonte_total || 0))}</WithholdingTaxAmount>`);
-      lines.push(`      </WithholdingTax>`);
       lines.push(`    </Invoice>`);
     });
     lines.push(`  </SalesInvoices>`);
   } else {
-    // WorkingDocuments only (SAF-T A)
+    // WorkingDocuments (SAF-T A)
     const workDocs = filteredPurchases;
     lines.push(`  <WorkingDocuments>`);
     lines.push(`    <NumberOfEntries>${workDocs.length}</NumberOfEntries>`);
@@ -491,7 +459,7 @@ const buildSaftXml = (
     lines.push(`    <TotalCredit>${n2(totalPurchasesCredit)}</TotalCredit>`);
     workDocs.forEach((p) => {
       const items: any[] = Array.isArray(p.items) ? p.items : [];
-      const pDate = (p.date || p.data_emissao || '').substring(0, 10);
+      const pDate = (p.date || p.data_emissao || (p as any).data_compra || '').substring(0, 10);
       const entryDate = fmtDateTime((p as any).created_at || p.date || '');
       const docNum = esc(p.purchase_number || p.invoice_number || p.numero_documento || `PUR-${p.id}`);
       const wType = workTypeCode(p);
@@ -528,22 +496,21 @@ const buildSaftXml = (
       lines.push(`      <WorkType>${wType}</WorkType>`);
       lines.push(`      <SourceID>${esc(p.created_by || '1')}</SourceID>`);
       lines.push(`      <SystemEntryDate>${entryDate}</SystemEntryDate>`);
-      lines.push(`      <TransactionID/>`);
       lines.push(`      <CustomerID>${esc(supplierId)}</CustomerID>`);
       if (items.length > 0) {
         items.forEach((item, idx) => {
-          const pid = String(item.product_id || '0');
-          const rate = Number(item.tax_rate ?? item.taxa ?? 14);
+          const pid = String(item.product_id || item.product_code || item.id || '0');
+          const rate = Number(item.tax_rate ?? 14);
           const taxCode = rate === 0 ? 'ISE' : rate === 5 ? 'RED' : 'NOR';
           const qty = Number(item.quantity || 1);
-          const unitPrice = Number(item.unit_price || 0);
+          const unitPrice = Number(item.unit_price || (item.total ? item.total / qty : 0));
           const lineTotal = Number(item.total || qty * unitPrice);
           lines.push(`      <Line>`);
           lines.push(`        <LineNumber>${idx + 1}</LineNumber>`);
           lines.push(`        <ProductCode>${esc(pid)}</ProductCode>`);
           lines.push(`        <ProductDescription>${esc(item.description || 'Produto')}</ProductDescription>`);
           lines.push(`        <Quantity>${n8(qty)}</Quantity>`);
-          lines.push(`        <UnitOfMeasure>${esc(item.unit || 'Un')}</UnitOfMeasure>`);
+          lines.push(`        <UnitOfMeasure>${esc(item.unit || 'UN')}</UnitOfMeasure>`);
           lines.push(`        <UnitPrice>${n8(unitPrice)}</UnitPrice>`);
           lines.push(`        <TaxPointDate>${pDate}</TaxPointDate>`);
           lines.push(`        <Description>${esc(item.description || 'Produto')}</Description>`);
@@ -564,7 +531,7 @@ const buildSaftXml = (
         lines.push(`        <ProductCode>0</ProductCode>`);
         lines.push(`        <ProductDescription>Compra/Serviço</ProductDescription>`);
         lines.push(`        <Quantity>1.00000000</Quantity>`);
-        lines.push(`        <UnitOfMeasure>Un</UnitOfMeasure>`);
+        lines.push(`        <UnitOfMeasure>UN</UnitOfMeasure>`);
         lines.push(`        <UnitPrice>${n8(lineTotal / 1.14)}</UnitPrice>`);
         lines.push(`        <TaxPointDate>${pDate}</TaxPointDate>`);
         lines.push(`        <Description>Compra/Serviço</Description>`);
@@ -593,9 +560,6 @@ const buildSaftXml = (
   return lines.join('\n');
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Download helper
-// ─────────────────────────────────────────────────────────────────────────────
 const downloadXml = (xml: string, filename: string) => {
   const blob = new Blob([xml], { type: 'application/xml;charset=utf-8' });
   const url = URL.createObjectURL(blob);
@@ -607,38 +571,136 @@ const downloadXml = (xml: string, filename: string) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Main component
+// Main Component
 // ─────────────────────────────────────────────────────────────────────────────
-const SaftExportForm: React.FC<Props> = ({
-  invoices = [],
-  purchases = [],
-  clients = [],
-  products = [],
+export const SaftExportForm: React.FC<Props> = ({
+  invoices: initialInvoices = [],
+  purchases: initialPurchases = [],
+  clients: initialClients = [],
+  products: initialProducts = [],
   companyData,
+  user,
   onBack,
   defaultYear,
   defaultMonth,
 }) => {
+  const empresaId = companyData?.empresa_id || companyData?.id || user?.empresa_id;
+  const currentFiscalYear = defaultYear || String(new Date().getFullYear());
+
+  const [selectedYear, setSelectedYear] = useState<string>(currentFiscalYear);
+  const [selectedMonth, setSelectedMonth] = useState<string>(defaultMonth || 'all');
   const [saftType, setSaftType] = useState<SaftType>('F');
-  const [startDate, setStartDate] = useState(() => {
-    const y = defaultYear || String(new Date().getFullYear());
-    const m = defaultMonth || String(new Date().getMonth() + 1).padStart(2, '0');
-    return `${y}-${m}-01`;
-  });
-  const [endDate, setEndDate] = useState(() => {
-    const y = defaultYear || String(new Date().getFullYear());
-    const m = defaultMonth || String(new Date().getMonth() + 1).padStart(2, '0');
-    const lastDay = new Date(Number(y), Number(m), 0).getDate();
-    return `${y}-${m}-${String(lastDay).padStart(2, '0')}`;
-  });
+
+  const [startDate, setStartDate] = useState(`${selectedYear}-01-01`);
+  const [endDate, setEndDate] = useState(`${selectedYear}-12-31`);
+
+  // Documentos carregados diretamente da base de dados Supabase
+  const [dbInvoices, setDbInvoices] = useState<Invoice[]>(initialInvoices);
+  const [dbPurchases, setDbPurchases] = useState<Purchase[]>(initialPurchases);
+  const [dbClients, setDbClients] = useState<Client[]>(initialClients);
+  const [dbProducts, setDbProducts] = useState<Product[]>(initialProducts);
+  const [loadingDb, setLoadingDb] = useState(false);
+
   const [previewXml, setPreviewXml] = useState('');
   const [showPreview, setShowPreview] = useState(false);
-  const [generated, setGenerated] = useState(false);
+  const [showTable, setShowTable] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
 
-  const fmt = (v: number) =>
-    new Intl.NumberFormat('pt-AO', { minimumFractionDigits: 2 }).format(v);
+  // Sincronizar datas quando o Ano ou Mês mudam
+  useEffect(() => {
+    if (selectedMonth === 'all') {
+      setStartDate(`${selectedYear}-01-01`);
+      setEndDate(`${selectedYear}-12-31`);
+    } else {
+      const m = selectedMonth.padStart(2, '0');
+      const lastDay = new Date(Number(selectedYear), Number(selectedMonth), 0).getDate();
+      setStartDate(`${selectedYear}-${m}-01`);
+      setEndDate(`${selectedYear}-${m}-${String(lastDay).padStart(2, '0')}`);
+    }
+    setPreviewXml('');
+  }, [selectedYear, selectedMonth]);
 
-  // ── Period filter ──────────────────────────────────────────────────────────
+  // Consulta REAL e DIRECTA à base de dados para o ano e período seleccionados
+  const fetchDbData = useCallback(async () => {
+    if (!empresaId) return;
+    setLoadingDb(true);
+    try {
+      // 1. Carrega faturas do período da tabela documentos_emitidos
+      const [invRes, purRes, clientRes, prodRes] = await Promise.all([
+        supabase
+          .from('documentos_emitidos')
+          .select('*')
+          .eq('empresa_id', empresaId)
+          .gte('data_emissao', `${startDate}T00:00:00`)
+          .lte('data_emissao', `${endDate}T23:59:59`)
+          .order('data_emissao', { ascending: true }),
+        supabase
+          .from('compras')
+          .select('*')
+          .eq('empresa_id', empresaId)
+          .gte('date', startDate)
+          .lte('date', `${endDate}T23:59:59`)
+          .order('date', { ascending: true }),
+        supabase
+          .from('clientes')
+          .select('*')
+          .eq('empresa_id', empresaId),
+        supabase
+          .from('produtos')
+          .select('*')
+          .eq('empresa_id', empresaId),
+      ]);
+
+      if (Array.isArray(invRes.data) && invRes.data.length > 0) {
+        const mapped: Invoice[] = invRes.data.map((d: any) => ({
+          id: d.id,
+          client_id: d.cliente_id || d.client_id || 0,
+          client_name: d.cliente_nome || d.client_name || 'Consumidor Final',
+          invoice_number: (d.numero_documento || d.invoice_number || `FT-${d.id}`).split('-')[0].trim(),
+          date: d.data_emissao || d.date || new Date().toISOString(),
+          due_date: d.data_vencimento || d.due_date || new Date().toISOString(),
+          status: (d.estado || d.status || 'ativo').toLowerCase() as any,
+          total: Number(d.total || d.valor_total || 0),
+          items: d.detalhes?.items || d.items || [],
+          client_nif: d.cliente_nif || d.client_nif,
+          client_address: d.cliente_morada || d.client_address,
+          document_type: d.tipo_documento || d.document_type || 'FT',
+          hash: d.hash || d.hash_documento || d.hash_fiscal || '',
+          created_at: d.created_at || d.data_emissao
+        }));
+        setDbInvoices(mapped);
+      } else if (initialInvoices.length > 0) {
+        setDbInvoices(initialInvoices);
+      } else {
+        setDbInvoices([]);
+      }
+
+      if (Array.isArray(purRes.data) && purRes.data.length > 0) {
+        setDbPurchases(purRes.data);
+      } else if (initialPurchases.length > 0) {
+        setDbPurchases(initialPurchases);
+      } else {
+        setDbPurchases([]);
+      }
+
+      if (Array.isArray(clientRes.data) && clientRes.data.length > 0) {
+        setDbClients(clientRes.data);
+      }
+      if (Array.isArray(prodRes.data) && prodRes.data.length > 0) {
+        setDbProducts(prodRes.data);
+      }
+    } catch (err) {
+      console.warn('[SaftExportForm] Erro ao carregar dados do Supabase:', err);
+    } finally {
+      setLoadingDb(false);
+    }
+  }, [empresaId, startDate, endDate, initialInvoices, initialPurchases]);
+
+  useEffect(() => {
+    fetchDbData();
+  }, [fetchDbData]);
+
+  // Documentos filtrados pelo período actual
   const filterByPeriod = (date: string): boolean => {
     if (!startDate && !endDate) return true;
     const d = date ? date.substring(0, 10) : '';
@@ -647,505 +709,366 @@ const SaftExportForm: React.FC<Props> = ({
     return true;
   };
 
-  const filteredInv = useMemo(
-    () => invoices.filter(i => filterByPeriod(i.date || i.data_emissao || '')),
-    [invoices, startDate, endDate]
-  );
-  const filteredPur = useMemo(
-    () => purchases.filter(p => filterByPeriod(p.date || p.data_emissao || '')),
-    [purchases, startDate, endDate]
+  const activeInvoices = useMemo(
+    () => dbInvoices.filter(i => filterByPeriod(i.date || i.data_emissao || '')),
+    [dbInvoices, startDate, endDate]
   );
 
-  const totalInv = filteredInv.reduce((s, i) => s + Number(i.total || 0), 0);
-  const totalPur = filteredPur.reduce((s, p) => s + Number(p.total || 0), 0);
-  const uniqueClients = new Set(filteredInv.map(i => i.client_id)).size;
-  const totalItems = filteredInv.reduce((s, i) => s + (i.items?.length || 0), 0);
+  const activePurchases = useMemo(
+    () => dbPurchases.filter(p => filterByPeriod(p.date || p.data_emissao || (p as any).data_compra || '')),
+    [dbPurchases, startDate, endDate]
+  );
 
-  const byType: Record<string, { count: number; total: number }> = {};
-  filteredInv.forEach(inv => {
-    const tp = inv.document_type || inv.tipo_documento || 'Fatura';
-    if (!byType[tp]) byType[tp] = { count: 0, total: 0 };
-    byType[tp].count++;
-    byType[tp].total += Number(inv.total || 0);
-  });
+  const totalInv = activeInvoices.reduce((s, i) => s + Number(i.total || 0), 0);
+  const totalPur = activePurchases.reduce((s, p) => s + Number(p.total || 0), 0);
+  const ivaEstimadoInv = totalInv - totalInv / 1.14;
+  const ivaEstimadoPur = totalPur - totalPur / 1.14;
 
-  // Active counts/totals depending on type
-  const activeCount = saftType === 'F' ? filteredInv.length : filteredPur.length;
-  const activeTotal = saftType === 'F' ? totalInv : totalPur;
+  const currentCount = saftType === 'F' ? activeInvoices.length : activePurchases.length;
+  const currentTotal = saftType === 'F' ? totalInv : totalPur;
+  const currentIva = saftType === 'F' ? ivaEstimadoInv : ivaEstimadoPur;
+
+  const fmt = (v: number) =>
+    new Intl.NumberFormat('pt-AO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
 
   const handleGenerate = () => {
-    const xml = buildSaftXml(invoices, purchases, clients, products, companyData, startDate, endDate, saftType);
+    const xml = buildSaftXml(
+      activeInvoices,
+      activePurchases,
+      dbClients,
+      dbProducts,
+      companyData,
+      startDate,
+      endDate,
+      saftType
+    );
     setPreviewXml(xml);
-    setGenerated(true);
+    setShowPreview(true);
   };
 
   const handleDownload = () => {
-    const xml = buildSaftXml(invoices, purchases, clients, products, companyData, startDate, endDate, saftType);
+    const xml = buildSaftXml(
+      activeInvoices,
+      activePurchases,
+      dbClients,
+      dbProducts,
+      companyData,
+      startDate,
+      endDate,
+      saftType
+    );
     const nif = companyData?.nif || '000000000';
-    const sd = startDate || new Date().toISOString().substring(0, 10);
-    const ed = endDate || new Date().toISOString().substring(0, 10);
-    downloadXml(xml, `SAF-T_${saftType}_AO_${nif}_${sd}_${ed}.xml`);
+    downloadXml(xml, `SAF-T_${saftType}_AO_${nif}_${startDate}_${endDate}.xml`);
   };
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  const anosDisponiveis = [
+    String(new Date().getFullYear()),
+    String(new Date().getFullYear() - 1),
+    String(new Date().getFullYear() - 2),
+    String(new Date().getFullYear() - 3)
+  ];
+
+  const meses = [
+    { num: 'all', nome: 'Ano Completo' },
+    { num: '1', nome: 'Jan' },
+    { num: '2', nome: 'Fev' },
+    { num: '3', nome: 'Mar' },
+    { num: '4', nome: 'Abr' },
+    { num: '5', nome: 'Mai' },
+    { num: '6', nome: 'Jun' },
+    { num: '7', nome: 'Jul' },
+    { num: '8', nome: 'Ago' },
+    { num: '9', nome: 'Set' },
+    { num: '10', nome: 'Out' },
+    { num: '11', nome: 'Nov' },
+    { num: '12', nome: 'Dez' },
+  ];
+
   return (
-    <div className="bg-zinc-100 min-h-screen p-6 space-y-6">
-      {/* Header */}
-      <div className="bg-[#003366] text-white p-5 flex items-center gap-4 shadow-xl">
-        {onBack && (
-          <button onClick={onBack} className="p-2 hover:bg-white/10 rounded transition-colors">
-            <ChevronLeft size={22} />
-          </button>
-        )}
-        <FileCode size={28} />
-        <div>
-          <h1 className="text-lg font-black uppercase tracking-tight">
-            Ficheiro SAF-T (Standard Audit File for Tax) — Angola
-          </h1>
-          <p className="text-[10px] font-bold opacity-70 uppercase tracking-widest">
-            Formato: AO_1.01_01 | urn:OECD:StandardAuditFile-Tax:AO_1.01_01
-          </p>
-        </div>
-        <div className="ml-auto flex gap-2">
-          <span className="bg-white/20 border border-white/30 px-3 py-1 text-[10px] font-black uppercase tracking-widest">
-            {filteredInv.length} FATURAS
-          </span>
-          <span className="bg-white/20 border border-white/30 px-3 py-1 text-[10px] font-black uppercase tracking-widest">
-            {filteredPur.length} COMPRAS
-          </span>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-12 gap-6">
-        {/* Left panel: controls */}
-        <div className="col-span-4 space-y-4">
-
-          {/* SAF-T Type selector — dropdown with arrow */}
-          <div className="bg-white border border-zinc-200 shadow-sm p-5 space-y-3">
-            <div className="flex items-center gap-2 border-b border-zinc-100 pb-3">
-              <FileCode size={16} className="text-[#003366]" />
-              <h2 className="text-[11px] font-black uppercase text-[#003366] tracking-widest">
-                Tipo de Ficheiro SAF-T
-              </h2>
-            </div>
-            <div className="relative">
-              <select
-                value={saftType}
-                onChange={e => {
-                  setSaftType(e.target.value as SaftType);
-                  setGenerated(false);
-                  setShowPreview(false);
-                  setPreviewXml('');
-                }}
-                className="w-full appearance-none border border-zinc-300 bg-zinc-50 px-4 py-3 pr-10 text-xs font-black uppercase tracking-widest text-[#003366] focus:outline-none focus:border-[#003366] cursor-pointer"
-              >
-                <option value="F">SAF-T F — Faturas de Venda</option>
-                <option value="A">SAF-T A — Compras / Aquisições</option>
-              </select>
-              <ChevronDown
-                size={16}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#003366] pointer-events-none"
-              />
-            </div>
-            <div className="flex items-center gap-2 bg-zinc-50 border border-zinc-200 px-3 py-2">
-              <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">TaxAccountingBasis:</span>
-              <span className="text-sm font-black text-[#003366] font-mono">{saftType}</span>
-              <span className="ml-auto text-[9px] font-bold text-zinc-500 uppercase">
-                {activeCount} documentos · {fmt(activeTotal)} AOA
+    <div className="bg-zinc-50 min-h-screen p-4 md:p-6 space-y-5 text-slate-800">
+      {/* Cabeçalho Compacto e Oficial */}
+      <div className="bg-white border border-zinc-200 rounded-lg p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          {onBack && (
+            <button onClick={onBack} className="p-2 hover:bg-zinc-100 rounded text-slate-600 transition-colors" title="Voltar">
+              <ChevronLeft size={20} />
+            </button>
+          )}
+          <div className="w-12 h-12 rounded-lg bg-[#003366] text-white flex items-center justify-center shadow-xs">
+            <FileCode size={24} />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-base font-bold text-slate-900 tracking-tight">Ficheiro SAF-T AO (Standard Audit File for Tax)</h1>
+              <span className="bg-blue-100 text-[#003366] text-[10px] font-black px-2 py-0.5 rounded uppercase">
+                Versão 1.01_01 / AGT
               </span>
             </div>
+            <p className="text-xs text-slate-500 font-medium">
+              Contribuinte: <strong className="text-slate-700">{companyData?.name || companyData?.nome_empresa || 'Empresa'}</strong> | NIF: <span className="font-mono text-slate-700 font-bold">{companyData?.nif || '—'}</span>
+            </p>
           </div>
-
-          {/* Period */}
-          <div className="bg-white border border-zinc-200 shadow-sm p-5 space-y-4">
-            <div className="flex items-center gap-2 border-b border-zinc-100 pb-3">
-              <Calendar size={16} className="text-[#003366]" />
-              <h2 className="text-[11px] font-black uppercase text-[#003366] tracking-widest">
-                Período de Exportação
-              </h2>
-            </div>
-            <div className="space-y-3">
-              <div>
-                <label className="text-[9px] font-black uppercase text-zinc-400 tracking-widest block mb-1">
-                  Data Início
-                </label>
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={e => { setStartDate(e.target.value); setGenerated(false); }}
-                  className="w-full border border-zinc-200 p-2 text-xs font-mono focus:outline-none focus:border-[#003366]"
-                />
-              </div>
-              <div>
-                <label className="text-[9px] font-black uppercase text-zinc-400 tracking-widest block mb-1">
-                  Data Fim
-                </label>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={e => { setEndDate(e.target.value); setGenerated(false); }}
-                  className="w-full border border-zinc-200 p-2 text-xs font-mono focus:outline-none focus:border-[#003366]"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Company info */}
-          <div className="bg-white border border-zinc-200 shadow-sm p-5 space-y-3">
-            <div className="flex items-center gap-2 border-b border-zinc-100 pb-3">
-              <FileText size={16} className="text-[#003366]" />
-              <h2 className="text-[11px] font-black uppercase text-[#003366] tracking-widest">
-                Dados da Empresa
-              </h2>
-            </div>
-            <div className="space-y-2 text-[10px]">
-              <div className="flex justify-between">
-                <span className="text-zinc-400 font-bold uppercase">Nome</span>
-                <span className="font-black text-zinc-900 text-right max-w-[60%] truncate">
-                  {companyData?.name || companyData?.nome_empresa || '—'}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-400 font-bold uppercase">NIF</span>
-                <span className="font-mono font-black text-[#003366]">
-                  {companyData?.nif || '—'}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-400 font-bold uppercase">Morada</span>
-                <span className="font-black text-zinc-900 text-right max-w-[60%] truncate">
-                  {companyData?.address || companyData?.morada || '—'}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-400 font-bold uppercase">Regime</span>
-                <span className="font-black text-zinc-900">
-                  {companyData?.regime || 'F'}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Stats */}
-          <div className="bg-white border border-zinc-200 shadow-sm p-5 space-y-3">
-            <div className="flex items-center gap-2 border-b border-zinc-100 pb-3">
-              <CheckCircle2 size={16} className="text-emerald-600" />
-              <h2 className="text-[11px] font-black uppercase text-[#003366] tracking-widest">
-                Conteúdo a Exportar
-              </h2>
-            </div>
-            <div className="space-y-2">
-              {saftType === 'F' ? (
-                <>
-                  {[
-                    { icon: <FileText size={14} className="text-blue-600" />, label: 'Faturas / Documentos', value: filteredInv.length },
-                    { icon: <Users size={14} className="text-purple-600" />, label: 'Clientes únicos', value: uniqueClients },
-                    { icon: <Package size={14} className="text-amber-600" />, label: 'Linhas de produto', value: totalItems },
-                  ].map((stat, i) => (
-                    <div key={i} className="flex items-center justify-between py-1.5 border-b border-zinc-50">
-                      <div className="flex items-center gap-2 text-[10px] font-bold text-zinc-600 uppercase">
-                        {stat.icon}
-                        {stat.label}
-                      </div>
-                      <span className="font-black text-[#003366] text-sm font-mono">{stat.value}</span>
-                    </div>
-                  ))}
-                  <div className="pt-2 space-y-1">
-                    <div className="flex justify-between text-[10px]">
-                      <span className="text-zinc-400 font-bold uppercase">Total Vendas</span>
-                      <span className="font-black text-blue-700 font-mono">{fmt(totalInv)} AOA</span>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <>
-                  {[
-                    { icon: <ShoppingCart size={14} className="text-emerald-600" />, label: 'Compras', value: filteredPur.length },
-                  ].map((stat, i) => (
-                    <div key={i} className="flex items-center justify-between py-1.5 border-b border-zinc-50">
-                      <div className="flex items-center gap-2 text-[10px] font-bold text-zinc-600 uppercase">
-                        {stat.icon}
-                        {stat.label}
-                      </div>
-                      <span className="font-black text-[#003366] text-sm font-mono">{stat.value}</span>
-                    </div>
-                  ))}
-                  <div className="pt-2 space-y-1">
-                    <div className="flex justify-between text-[10px]">
-                      <span className="text-zinc-400 font-bold uppercase">Total Compras</span>
-                      <span className="font-black text-emerald-700 font-mono">{fmt(totalPur)} AOA</span>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Buttons */}
-          <div className="space-y-2">
-            <button
-              onClick={handleGenerate}
-              className="w-full bg-[#003366] text-white py-4 text-[11px] font-black uppercase tracking-[0.2em] hover:bg-[#002244] transition-all flex items-center justify-center gap-2 shadow-xl"
-            >
-              <FileCode size={18} />
-              Gerar XML SAF-T {saftType} AO
-            </button>
-            <button
-              onClick={handleDownload}
-              className="w-full bg-emerald-600 text-white py-4 text-[11px] font-black uppercase tracking-[0.2em] hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 shadow-xl"
-            >
-              <Download size={18} />
-              Descarregar Ficheiro .xml
-            </button>
-            {generated && (
-              <button
-                onClick={() => setShowPreview(!showPreview)}
-                className="w-full border-2 border-[#003366] text-[#003366] py-3 text-[11px] font-black uppercase tracking-[0.2em] hover:bg-blue-50 transition-all flex items-center justify-center gap-2"
-              >
-                {showPreview ? 'Ocultar' : 'Pré-visualizar'} XML
-              </button>
-            )}
-          </div>
-
-          {generated && (
-            <div className="flex items-center gap-3 bg-emerald-50 border border-emerald-200 p-3">
-              <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
-              <p className="text-[10px] font-black uppercase text-emerald-700 tracking-wide">
-                Ficheiro SAF-T {saftType} gerado com sucesso. Pronto para descarregar.
-              </p>
-            </div>
-          )}
         </div>
 
-        {/* Right panel: summary table + preview */}
-        <div className="col-span-8 space-y-4">
-          {/* SAF-T F — Summary by document type */}
-          {saftType === 'F' && (
-            <div className="bg-white border border-zinc-200 shadow-sm overflow-hidden">
-              <div className="bg-[#003366] text-white p-3 flex items-center gap-3">
-                <FileText size={16} />
-                <h2 className="text-[11px] font-black uppercase tracking-widest">
-                  Resumo por Tipo de Documento — Vendas
-                </h2>
-              </div>
-              <table className="w-full text-[10px] border-collapse font-bold uppercase">
-                <thead>
-                  <tr className="bg-zinc-50 border-b border-zinc-200 text-zinc-500">
-                    <th className="px-4 py-3 text-left">Tipo Documento</th>
-                    <th className="px-4 py-3 text-center">Nº Docs</th>
-                    <th className="px-4 py-3 text-right">Total Bruto (AOA)</th>
-                    <th className="px-4 py-3 text-right">IVA (14%)</th>
-                    <th className="px-4 py-3 text-right">Total Líquido</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100">
-                  {Object.keys(byType).length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="py-12 text-center text-zinc-300 italic">
-                        Sem documentos no período seleccionado
-                      </td>
-                    </tr>
-                  ) : (
-                    Object.entries(byType).map(([tp, stat]) => {
-                      const iva = stat.total - stat.total / 1.14;
-                      const net = stat.total / 1.14;
-                      return (
-                        <tr key={tp} className="hover:bg-zinc-50 transition-colors">
-                          <td className="px-4 py-3 text-zinc-900 font-black">{tp}</td>
-                          <td className="px-4 py-3 text-center text-[#003366] font-black">{stat.count}</td>
-                          <td className="px-4 py-3 text-right font-mono">{fmt(stat.total)}</td>
-                          <td className="px-4 py-3 text-right font-mono text-blue-600">{fmt(iva)}</td>
-                          <td className="px-4 py-3 text-right font-mono text-zinc-600">{fmt(net)}</td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-                <tfoot className="bg-[#003366] text-white">
-                  <tr>
-                    <td className="px-4 py-3 font-black uppercase tracking-widest">TOTAL</td>
-                    <td className="px-4 py-3 text-center font-black">{filteredInv.length}</td>
-                    <td className="px-4 py-3 text-right font-mono font-black">{fmt(totalInv)}</td>
-                    <td className="px-4 py-3 text-right font-mono text-yellow-300">{fmt(totalInv - totalInv / 1.14)}</td>
-                    <td className="px-4 py-3 text-right font-mono">{fmt(totalInv / 1.14)}</td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          )}
-
-          {/* SAF-T F — Individual invoice list */}
-          {saftType === 'F' && (
-            <div className="bg-white border border-zinc-200 shadow-sm overflow-hidden">
-              <div className="bg-[#003366] text-white p-3 flex items-center gap-3">
-                <FileText size={16} />
-                <h2 className="text-[11px] font-black uppercase tracking-widest">
-                  Lista de Faturas de Venda — {filteredInv.length} documento{filteredInv.length !== 1 ? 's' : ''}
-                </h2>
-              </div>
-              <table className="w-full text-[10px] border-collapse font-bold uppercase">
-                <thead>
-                  <tr className="bg-zinc-50 border-b border-zinc-200 text-zinc-500">
-                    <th className="px-3 py-3 text-left">Nº Documento</th>
-                    <th className="px-3 py-3 text-left">Cliente</th>
-                    <th className="px-3 py-3 text-left">NIF Cliente</th>
-                    <th className="px-3 py-3 text-center">Data</th>
-                    <th className="px-3 py-3 text-center">Tipo</th>
-                    <th className="px-3 py-3 text-right">Total Bruto</th>
-                    <th className="px-3 py-3 text-right">IVA</th>
-                    <th className="px-3 py-3 text-right">Base Trib.</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100">
-                  {filteredInv.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="py-12 text-center text-zinc-300 italic">
-                        Sem faturas no período seleccionado
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredInv.slice(0, 50).map((inv, i) => {
-                      const gross = Number(inv.total || 0);
-                      const storedTax = Number(inv.imposto || (inv as any).vat_amount || 0);
-                      const iva = storedTax > 0 ? storedTax : gross - gross / 1.14;
-                      const net = gross - iva;
-                      const isAnulado = inv.is_anulado || inv.status === 'anulado';
-                      return (
-                        <tr key={i} className={`hover:bg-zinc-50 transition-colors ${isAnulado ? 'opacity-40 line-through' : ''}`}>
-                          <td className="px-3 py-2 font-mono text-[#003366]">
-                            {inv.invoice_number || (inv as any).numero_documento || `DOC-${inv.id}`}
-                          </td>
-                          <td className="px-3 py-2 text-zinc-900 truncate max-w-[160px]">
-                            {(inv as any).client_name || (inv as any).cliente_nome || '—'}
-                          </td>
-                          <td className="px-3 py-2 font-mono text-zinc-500">
-                            {(inv as any).client_nif || (inv as any).cliente_nif || '—'}
-                          </td>
-                          <td className="px-3 py-2 text-center">{inv.date || (inv as any).data_emissao || '—'}</td>
-                          <td className="px-3 py-2 text-center">
-                            <span className="bg-blue-100 text-blue-800 px-1.5 py-0.5 text-[9px] font-black">
-                              {inv.document_type || (inv as any).tipo_documento || 'FT'}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2 text-right font-mono">{fmt(gross)}</td>
-                          <td className="px-3 py-2 text-right font-mono text-blue-600">{fmt(iva)}</td>
-                          <td className="px-3 py-2 text-right font-mono text-zinc-600">{fmt(net)}</td>
-                        </tr>
-                      );
-                    })
-                  )}
-                  {filteredInv.length > 50 && (
-                    <tr>
-                      <td colSpan={8} className="py-2 text-center text-zinc-400 italic text-[9px]">
-                        ... e mais {filteredInv.length - 50} documentos no ficheiro XML
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-                <tfoot className="bg-[#003366] text-white">
-                  <tr>
-                    <td colSpan={5} className="px-3 py-3 font-black uppercase tracking-widest">TOTAL FATURAS</td>
-                    <td className="px-3 py-3 text-right font-mono font-black">{fmt(totalInv)}</td>
-                    <td className="px-3 py-3 text-right font-mono text-yellow-200">{fmt(totalInv - totalInv / 1.14)}</td>
-                    <td className="px-3 py-3 text-right font-mono">{fmt(totalInv / 1.14)}</td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          )}
-
-          {/* SAF-T A — Purchases summary */}
-          {saftType === 'A' && (
-            <div className="bg-white border border-zinc-200 shadow-sm overflow-hidden">
-              <div className="bg-emerald-700 text-white p-3 flex items-center gap-3">
-                <ShoppingCart size={16} />
-                <h2 className="text-[11px] font-black uppercase tracking-widest">
-                  Resumo de Compras — WorkingDocuments
-                </h2>
-              </div>
-              <table className="w-full text-[10px] border-collapse font-bold uppercase">
-                <thead>
-                  <tr className="bg-zinc-50 border-b border-zinc-200 text-zinc-500">
-                    <th className="px-4 py-3 text-left">Nº Documento</th>
-                    <th className="px-4 py-3 text-left">Fornecedor</th>
-                    <th className="px-4 py-3 text-center">Data</th>
-                    <th className="px-4 py-3 text-right">Valor (AOA)</th>
-                    <th className="px-4 py-3 text-right">IVA</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100">
-                  {filteredPur.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="py-12 text-center text-zinc-300 italic">
-                        Sem compras no período seleccionado
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredPur.slice(0, 20).map((p, i) => {
-                      const gross = Number(p.total || 0);
-                      const iva = gross - gross / 1.14;
-                      return (
-                        <tr key={i} className="hover:bg-zinc-50 transition-colors">
-                          <td className="px-4 py-2 font-mono text-zinc-700">
-                            {p.purchase_number || p.invoice_number || `PUR-${p.id}`}
-                          </td>
-                          <td className="px-4 py-2 text-zinc-900 truncate max-w-[180px]">{p.supplier_name}</td>
-                          <td className="px-4 py-2 text-center">{p.date}</td>
-                          <td className="px-4 py-2 text-right font-mono">{fmt(gross)}</td>
-                          <td className="px-4 py-2 text-right font-mono text-blue-600">{fmt(iva)}</td>
-                        </tr>
-                      );
-                    })
-                  )}
-                  {filteredPur.length > 20 && (
-                    <tr>
-                      <td colSpan={5} className="py-2 text-center text-zinc-400 italic text-[9px]">
-                        ... e mais {filteredPur.length - 20} documentos no ficheiro XML
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-                <tfoot className="bg-emerald-700 text-white">
-                  <tr>
-                    <td colSpan={3} className="px-4 py-3 font-black uppercase tracking-widest">TOTAL COMPRAS</td>
-                    <td className="px-4 py-3 text-right font-mono font-black">{fmt(totalPur)}</td>
-                    <td className="px-4 py-3 text-right font-mono text-yellow-200">{fmt(totalPur - totalPur / 1.14)}</td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          )}
-
-          {/* XML Preview */}
-          {showPreview && previewXml && (
-            <div className="bg-white border border-zinc-200 shadow-sm overflow-hidden">
-              <div className="bg-zinc-800 text-white p-3 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <FileCode size={16} />
-                  <span className="text-[11px] font-black uppercase tracking-widest">
-                    Pré-visualização XML SAF-T
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[9px] font-bold opacity-60">
-                    {Math.round(previewXml.length / 1024)} KB
-                  </span>
-                  <AlertCircle size={14} className="text-yellow-400" />
-                  <span className="text-[9px] text-yellow-400 font-bold">
-                    Apenas para verificação
-                  </span>
-                </div>
-              </div>
-              <pre className="p-4 text-[9px] font-mono text-zinc-700 overflow-x-auto max-h-[500px] overflow-y-auto bg-zinc-950 text-green-400 leading-relaxed">
-                {previewXml.substring(0, 8000)}
-                {previewXml.length > 8000 && (
-                  `\n\n... [${Math.round((previewXml.length - 8000) / 1024)} KB restantes — descarregue o ficheiro para ver completo]`
-                )}
-              </pre>
-            </div>
-          )}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={fetchDbData}
+            disabled={loadingDb}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded border border-zinc-200 transition-colors disabled:opacity-60"
+            title="Recarregar dados do banco de dados"
+          >
+            <RefreshCw size={14} className={loadingDb ? 'animate-spin' : ''} />
+            {loadingDb ? 'A sincronizar BD...' : 'Actualizar'}
+          </button>
+          <button
+            onClick={handleDownload}
+            className="flex items-center gap-1.5 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded shadow-xs transition-colors"
+          >
+            <Download size={15} /> Descarregar XML
+          </button>
         </div>
       </div>
+
+      {/* Seletores Rápidos de Período e Tipo */}
+      <div className="bg-white border border-zinc-200 rounded-lg p-4 shadow-xs space-y-4">
+        {/* Linha 1: Seleção de Tipo e Ano */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 pb-3">
+          {/* Tipo de SAF-T (Vendas vs Compras) */}
+          <div className="flex items-center bg-zinc-100 p-1 rounded border border-zinc-200">
+            <button
+              onClick={() => { setSaftType('F'); setPreviewXml(''); }}
+              className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded transition-all ${
+                saftType === 'F' ? 'bg-[#003366] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <FileText size={14} /> SAF-T F (Faturação de Vendas)
+            </button>
+            <button
+              onClick={() => { setSaftType('A'); setPreviewXml(''); }}
+              className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded transition-all ${
+                saftType === 'A' ? 'bg-[#003366] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <ShoppingCart size={14} /> SAF-T A (Compras & Aquisições)
+            </button>
+          </div>
+
+          {/* Anos Fiscais */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Exercício Fiscal:</span>
+            {anosDisponiveis.map(ano => (
+              <button
+                key={ano}
+                onClick={() => setSelectedYear(ano)}
+                className={`px-3 py-1 text-xs font-bold rounded transition-colors ${
+                  selectedYear === ano ? 'bg-[#003366] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {ano}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Linha 2: Meses rápidos e Datas personalizadas */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-1">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">Período:</span>
+            {meses.map(m => (
+              <button
+                key={m.num}
+                onClick={() => setSelectedMonth(m.num)}
+                className={`px-2.5 py-1 text-xs font-medium rounded transition-colors ${
+                  selectedMonth === m.num ? 'bg-teal-700 text-white font-bold' : 'bg-zinc-100 text-slate-600 hover:bg-zinc-200'
+                }`}
+              >
+                {m.nome}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2 text-xs">
+            <Calendar size={14} className="text-slate-400" />
+            <input
+              type="date"
+              value={startDate}
+              onChange={e => setStartDate(e.target.value)}
+              className="border border-zinc-300 rounded px-2 py-1 font-mono text-xs focus:outline-none focus:border-[#003366]"
+            />
+            <span className="text-slate-400 font-semibold">até</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={e => setEndDate(e.target.value)}
+              className="border border-zinc-300 rounded px-2 py-1 font-mono text-xs focus:outline-none focus:border-[#003366]"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Cartões de Indicadores do Período */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="bg-white border border-zinc-200 rounded-lg p-4 shadow-xs">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+            {saftType === 'F' ? 'Faturas Emitidas' : 'Documentos de Compra'}
+          </span>
+          <div className="flex items-baseline justify-between">
+            <span className="text-2xl font-black text-slate-900 font-mono">{currentCount}</span>
+            <span className="text-xs text-slate-500 font-medium">{startDate} a {endDate}</span>
+          </div>
+        </div>
+
+        <div className="bg-white border border-zinc-200 rounded-lg p-4 shadow-xs">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Volume Total Ilíquido</span>
+          <div className="flex items-baseline justify-between">
+            <span className="text-lg font-black text-[#003366] font-mono">{fmt(currentTotal)}</span>
+            <span className="text-xs text-slate-500 font-bold">AKZ</span>
+          </div>
+        </div>
+
+        <div className="bg-white border border-zinc-200 rounded-lg p-4 shadow-xs">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">IVA Total Apurado</span>
+          <div className="flex items-baseline justify-between">
+            <span className="text-lg font-black text-blue-700 font-mono">{fmt(currentIva)}</span>
+            <span className="text-xs text-slate-500 font-bold">AKZ</span>
+          </div>
+        </div>
+
+        <div className="bg-white border border-zinc-200 rounded-lg p-4 shadow-xs">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Base de Dados</span>
+          <div className="flex items-baseline justify-between">
+            <span className="text-xs font-bold text-emerald-700">✓ Sincronizado</span>
+            <span className="text-[11px] text-slate-400 font-mono">AO_1.01_01</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Ações e Alternador de Pré-visualização */}
+      <div className="flex items-center justify-between bg-white border border-zinc-200 rounded-lg p-4 shadow-xs">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowTable(!showTable)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded border border-zinc-200 hover:bg-zinc-100 transition-colors text-slate-700"
+          >
+            {showTable ? <EyeOff size={14} /> : <Eye size={14} />}
+            {showTable ? 'Ocultar Documentos' : `Ver Documentos Elegíveis (${currentCount})`}
+          </button>
+          <button
+            onClick={handleGenerate}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded border border-[#003366] text-[#003366] hover:bg-blue-50 transition-colors"
+          >
+            <FileCode size={14} /> {showPreview && previewXml ? 'Actualizar Pré-visualização' : 'Pré-visualizar XML'}
+          </button>
+        </div>
+
+        <button
+          onClick={handleDownload}
+          className="flex items-center gap-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded shadow-xs transition-colors"
+        >
+          <Download size={16} /> Descarregar SAF-T {saftType} AO (.xml)
+        </button>
+      </div>
+
+      {/* Tabela de Documentos Incluídos (quando ativada) */}
+      {showTable && (
+        <div className="bg-white border border-zinc-200 rounded-lg shadow-xs overflow-hidden">
+          <div className="p-3 bg-slate-100 border-b border-zinc-200 flex items-center justify-between">
+            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+              Documentos Selecionados para o SAF-T {saftType} ({currentCount})
+            </h3>
+            <span className="text-[11px] text-slate-500 font-mono">
+              Total: {fmt(currentTotal)} AKZ
+            </span>
+          </div>
+
+          <div className="overflow-x-auto max-h-96">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-slate-50 text-slate-600 font-bold uppercase text-[10px] tracking-wider border-b border-zinc-200 sticky top-0">
+                  <th className="py-2 px-3">Nº Documento</th>
+                  <th className="py-2 px-3">{saftType === 'F' ? 'Cliente' : 'Fornecedor'}</th>
+                  <th className="py-2 px-3">NIF</th>
+                  <th className="py-2 px-3 text-center">Data</th>
+                  <th className="py-2 px-3 text-center">Tipo</th>
+                  <th className="py-2 px-3 text-right">Valor Total (AKZ)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {currentCount === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-8 text-center text-slate-400 italic">
+                      Nenhum documento encontrado para o período seleccionado na base de dados.
+                    </td>
+                  </tr>
+                ) : saftType === 'F' ? (
+                  activeInvoices.slice(0, 100).map((inv, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                      <td className="py-2 px-3 font-mono font-bold text-[#003366]">
+                        {inv.invoice_number || (inv as any).numero_documento || `DOC-${inv.id}`}
+                      </td>
+                      <td className="py-2 px-3 text-slate-900 font-medium truncate max-w-xs">
+                        {inv.client_name || (inv as any).cliente_nome || 'Consumidor Final'}
+                      </td>
+                      <td className="py-2 px-3 font-mono text-slate-500">
+                        {inv.client_nif || (inv as any).cliente_nif || '999999999'}
+                      </td>
+                      <td className="py-2 px-3 text-center font-mono">
+                        {(inv.date || inv.data_emissao || '').substring(0, 10)}
+                      </td>
+                      <td className="py-2 px-3 text-center">
+                        <span className="bg-blue-50 text-blue-800 text-[10px] font-bold px-1.5 py-0.5 rounded">
+                          {inv.document_type || 'FT'}
+                        </span>
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono font-bold text-slate-800">
+                        {fmt(Number(inv.total || 0))}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  activePurchases.slice(0, 100).map((pur, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                      <td className="py-2 px-3 font-mono font-bold text-[#003366]">
+                        {pur.purchase_number || pur.invoice_number || `PUR-${pur.id}`}
+                      </td>
+                      <td className="py-2 px-3 text-slate-900 font-medium truncate max-w-xs">
+                        {pur.supplier_name || 'Fornecedor Registado'}
+                      </td>
+                      <td className="py-2 px-3 font-mono text-slate-500">
+                        {(pur as any).supplier_nif || '—'}
+                      </td>
+                      <td className="py-2 px-3 text-center font-mono">
+                        {(pur.date || pur.data_emissao || (pur as any).data_compra || '').substring(0, 10)}
+                      </td>
+                      <td className="py-2 px-3 text-center">
+                        <span className="bg-emerald-50 text-emerald-800 text-[10px] font-bold px-1.5 py-0.5 rounded">
+                          COMPRA
+                        </span>
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono font-bold text-slate-800">
+                        {fmt(Number(pur.total || 0))}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Pré-visualização do XML */}
+      {showPreview && previewXml && (
+        <div className="bg-slate-900 text-green-400 rounded-lg p-4 font-mono text-xs overflow-x-auto max-h-96 shadow-inner">
+          <div className="flex justify-between items-center pb-2 border-b border-slate-700 mb-2 text-slate-400 text-[11px]">
+            <span>Estrutura XML SAF-T AO (primeiros 10.000 caracteres)</span>
+            <button onClick={() => setShowPreview(false)} className="text-slate-300 hover:text-white">
+              ✕ Fechar Pré-visualização
+            </button>
+          </div>
+          <pre>{previewXml.substring(0, 10000)}</pre>
+        </div>
+      )}
     </div>
   );
 };

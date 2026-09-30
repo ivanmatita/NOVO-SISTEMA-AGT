@@ -104,25 +104,8 @@ export const ApuramentoResultadosModule: React.FC<ApuramentoResultadosProps> = (
       if (stored) {
         setRegistos(JSON.parse(stored));
       } else {
-        // Inicializa com dados de demonstração
-        const demo: ApuramentoRegisto[] = [
-          {
-            id: 'apur-1',
-            tipo: 'operacional',
-            movNo: '0001',
-            diarioPeriodo: '9999 / 12',
-            oldRegConta: '82',
-            dataValor: `31/12/${currentYear}`,
-            dataDocumento: `31/12/${currentYear}`,
-            descricao: 'Apuramento de Resultados Operacionais do Exercício',
-            debito: 2645844108.11,
-            credito: 2645844108.11,
-            saldo: 0,
-            dataCriacao: new Date().toISOString()
-          }
-        ];
-        setRegistos(demo);
-        localStorage.setItem(`agt_apuramento_resultados_${currentYear}`, JSON.stringify(demo));
+        // Sem dados de demonstração - apenas lançamentos reais da empresa
+        setRegistos([]);
       }
     } catch (e) {
       console.warn('Erro ao carregar apuramentos:', e);

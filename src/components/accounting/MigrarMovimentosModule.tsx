@@ -148,7 +148,7 @@ export const MigrarMovimentosModule: React.FC<MigrarMovimentosProps> = ({
     }
   };
 
-  const companyName = companyData?.name || 'YGSUNAC INDUSTRIA - PRESTAÇÃO DE SERVIÇO E COMERCIO GERAL, LDA';
+  const companyName = companyData?.name || companyData?.nome_empresa || '—';
 
   return (
     <div className="bg-white min-h-screen text-slate-800 p-4 md:p-6 font-sans">

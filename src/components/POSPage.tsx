@@ -10,7 +10,7 @@ import {
   Coffee, Shirt, RefreshCw, History, PieChart, ChevronDown, RotateCw, Percent, Sparkles,
   Brain, Bot, Lightbulb, TrendingDown, DollarSign, FileSpreadsheet, Eye, EyeOff, ShieldCheck,
   FileCheck, Landmark, Receipt, Truck, Filter, Calendar, UserPlus, LogIn, Settings, KeyRound,
-  Pill, Car, Bed, Warehouse as WarehouseIcon
+  Pill, Car, Bed, Warehouse as WarehouseIcon, Save
 } from 'lucide-react';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,

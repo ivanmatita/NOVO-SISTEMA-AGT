@@ -1,6 +1,6 @@
 ﻿/**
  * DemonstracaoResultadosModule.tsx
- * DemonstraÃ§Ã£o de Resultados por Natureza - Layout Oficial Afrogest / PGC Angolano
+ * DemonstraÃ§Ã£o de Resultados por Natureza - Layout Oficial IMATEC Software / PGC Angolano
  * Conforme referÃªncia visual media_1789594592508.png
  */
 

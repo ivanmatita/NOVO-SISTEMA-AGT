@@ -294,7 +294,7 @@ export const GestaoFinanceiraModule: React.FC<GestaoFinanceiraProps> = ({
           <div className="mb-4 pb-3 border-b border-slate-200 flex justify-between items-center">
             <div>
               <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <Tag className="w-5 h-5 text-[#003366]" /> Catálogo de Preços para Serviços & Produtos
+                <Tag className="w-5 h-5 text-[#003366]" /> Catálogo de Preços de Serviços & Produtos
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
                 Cálculo de margens comerciais, imposto de venda (IVA) e cotações cambiais oficiais.

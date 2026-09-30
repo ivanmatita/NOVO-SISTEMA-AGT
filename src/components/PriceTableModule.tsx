@@ -1,7 +1,7 @@
 /**
  * PriceTableModule.tsx
  * Tabela de Precos - layout classico conforme referencia visual tabela de preco.PNG
- * Super-headers: Informacao dos Produtos | Imposto na Venda | Valor de Venda Base | Cambio
+ * Super-headers: Informacao do Serviço | Imposto na Venda | Valor de Venda Base | Cambio
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -87,7 +87,7 @@ export const PriceTableModule: React.FC<PriceTableModuleProps> = ({
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
   const [form, setForm] = useState({
-    produto_id: '', serial_number: '', valor_unitario: '', unidade: '', tipo: 'produto',
+    produto_id: '', serial_number: '', valor_unitario: '', unidade: '', tipo: 'servico',
     desconto_linha_percentual: '', tax_code: '', imposto_id: '', rubrica_id: '',
     moeda: 'AOA', indice_inicial: '', status: true,
   });
@@ -140,7 +140,7 @@ export const PriceTableModule: React.FC<PriceTableModuleProps> = ({
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
   const resetForm = () => setForm({
-    produto_id: '', serial_number: '', valor_unitario: '', unidade: '', tipo: 'produto',
+    produto_id: '', serial_number: '', valor_unitario: '', unidade: '', tipo: 'servico',
     desconto_linha_percentual: '', tax_code: '', imposto_id: '', rubrica_id: '',
     moeda: 'AOA', indice_inicial: '', status: true,
   });
@@ -175,7 +175,7 @@ export const PriceTableModule: React.FC<PriceTableModuleProps> = ({
   };
 
   const handleSave = async () => {
-    if (!form.produto_id) { setMsg({ type: 'err', text: 'Seleccione um produto.' }); return; }
+    if (!form.produto_id) { setMsg({ type: 'err', text: 'Seleccione um serviço.' }); return; }
     if (!form.valor_unitario || isNaN(Number(form.valor_unitario))) { setMsg({ type: 'err', text: 'Valor unitario invalido.' }); return; }
     setSaving(true); setMsg(null);
     const selectedImp = impostos.find(i => i.id === form.imposto_id);
@@ -287,7 +287,7 @@ export const PriceTableModule: React.FC<PriceTableModuleProps> = ({
       <div className="flex items-center justify-between bg-white border border-zinc-200 px-5 py-3 shadow-sm">
         <div className="flex items-center gap-3">
           <Tag size={18} className="text-[#003366]" />
-          <span className="text-[11px] font-black uppercase tracking-widest text-[#003366]">Tabelas de Produtos</span>
+          <span className="text-[11px] font-black uppercase tracking-widest text-[#003366]">Catálogo de Preços de Serviços</span>
           <span className="text-[10px] text-zinc-400 font-medium">({filteredRows.length} registos)</span>
         </div>
         <div className="flex items-center gap-2">
@@ -319,12 +319,12 @@ export const PriceTableModule: React.FC<PriceTableModuleProps> = ({
         {loading ? (
           <div className="p-12 text-center text-zinc-400 text-xs italic">A carregar tabela de precos...</div>
         ) : filteredRows.length === 0 ? (
-          <div className="p-12 text-center text-zinc-400 text-xs italic">Sem registos. Clique em Novo para adicionar.</div>
+          <div className="p-12 text-center text-zinc-400 text-xs italic">Sem serviços registados. Clique em Novo para adicionar um serviço.</div>
         ) : (
           <table className="w-full border-collapse text-left" style={{minWidth:1400}}>
             <thead>
               <tr className="bg-[#002244] text-white text-[9px] font-black uppercase tracking-widest">
-                <th colSpan={5} className="px-3 py-2 border-r border-[#003366] text-center">Informacao dos Produtos</th>
+                <th colSpan={5} className="px-3 py-2 border-r border-[#003366] text-center">Informacao do Serviço</th>
                 <th colSpan={4} className="px-3 py-2 border-r border-[#003366] text-center">Imposto na Venda</th>
                 <th colSpan={4} className="px-3 py-2 border-r border-[#003366] text-center">Valor de Venda Base</th>
                 <th colSpan={3} className="px-3 py-2 text-center">Cambio</th>
@@ -391,20 +391,20 @@ export const PriceTableModule: React.FC<PriceTableModuleProps> = ({
             <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-200 bg-[#003366]">
               <div className="flex items-center gap-2 text-white">
                 <Tag size={16}/>
-                <span className="text-[11px] font-black uppercase tracking-widest">{editingRow?'Editar Preco':'Novo Registo de Preco'}</span>
+                <span className="text-[11px] font-black uppercase tracking-widest">{editingRow?'Editar Serviço':'Novo Serviço'}</span>
               </div>
               <button onClick={() => setShowModal(false)} className="text-white/70 hover:text-white"><X size={18}/></button>
             </div>
             <div className="p-5 space-y-4">
               <div>
-                <label className="block text-[9px] font-black uppercase tracking-widest text-zinc-500 mb-1">Descricao do Artigo <span className="text-red-500">*</span></label>
+                <label className="block text-[9px] font-black uppercase tracking-widest text-zinc-500 mb-1">Descrição do Serviço <span className="text-red-500">*</span></label>
                 <select value={form.produto_id} onChange={e => {
                   const pid = e.target.value;
                   const prod = produtos.find(p => String(p.id) === pid);
                   setForm(f => ({...f, produto_id: pid, valor_unitario: prod?String(prod.price||prod.preco||prod.preco_venda||''):f.valor_unitario, unidade: prod?(prod.unit||prod.unidade||f.unidade):f.unidade, tipo: prod?(prod.tipo||f.tipo):f.tipo}));
                 }} className="w-full border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs focus:outline-none focus:border-[#003366]">
-                  <option value="">Seleccionar produto</option>
-                  {produtos.map(p => <option key={p.id} value={p.id}>{p.name||p.nome}{p.codigo?' ('+p.codigo+')':''}</option>)}
+                  <option value="">Seleccionar serviço</option>
+                  {produtos.filter(p => !p.tipo || p.tipo === 'servico' || p.tipo === 'service').map(p => <option key={p.id} value={p.id}>{p.name||p.nome}{p.codigo?' ('+p.codigo+')':''}</option>)}
                 </select>
               </div>
               <div>
@@ -425,8 +425,7 @@ export const PriceTableModule: React.FC<PriceTableModuleProps> = ({
                 <div>
                   <label className="block text-[9px] font-black uppercase tracking-widest text-zinc-500 mb-1">Tipo de Artigo</label>
                   <select value={form.tipo} onChange={e => setForm(f => ({...f,tipo:e.target.value}))} className="w-full border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs focus:outline-none focus:border-[#003366]">
-                    <option value="produto">Produto</option>
-                    <option value="servico">Servico</option>
+                    <option value="servico">Serviço</option>
                     <option value="outro">Outro</option>
                   </select>
                 </div>

@@ -105,8 +105,8 @@ export const IPModule: React.FC<IPModuleProps> = ({ companyData, user, fiscalYea
     valor_patrimonial_tributario: 15000000,
     renda_mensal: 0,
     renda_anual_bruta: 0,
-    proprietario_nif: companyData?.nif || '5000732028',
-    proprietario_nome: companyData?.name || 'YGSUNAC INDUSTRIA',
+    proprietario_nif: companyData?.nif || '',
+    proprietario_nome: companyData?.name || '',
     ano_exercicio: currentYear,
     data_inscricao: new Date().toISOString().split('T')[0],
     estado_liquidacao: 'pendente'
@@ -172,67 +172,18 @@ export const IPModule: React.FC<IPModuleProps> = ({ companyData, user, fiscalYea
       const { data: dbImoveis, error } = await supabase
         .from('imoveis_ip')
         .select('*')
+        .eq('empresa_id', companyData?.empresa_id || companyData?.id || '')
         .order('created_at', { ascending: false });
 
       if (!error && dbImoveis && dbImoveis.length > 0) {
         setImoveis(dbImoveis);
       } else {
-        // Fallback to localStorage
+        // Fallback to localStorage (only real data, no demo data)
         const stored = localStorage.getItem('agt_imoveis_ip');
         if (stored) {
           setImoveis(JSON.parse(stored));
         } else {
-          // Initialize with demo data compliant with Angola standard
-          const initial: ImovelIP[] = [
-            {
-              id: 'ip-1',
-              matricula_predial: 'IP-LU-2024-00192',
-              denominacao: 'Edifício Sede & Instalações Comerciais',
-              tipo_predio: 'urbano',
-              afectacao: 'servicos',
-              situacao: 'nao_arrendado',
-              localizacao_provincia: 'Luanda',
-              localizacao_municipio: 'Talatona',
-              bairro_rua: 'Via AL14, Condomínio Belas Business Park',
-              numero_policia: 'Bloco C, Piso 3',
-              area_total_m2: 450,
-              area_coberta_m2: 450,
-              valor_patrimonial_tributario: 85000000,
-              renda_mensal: 0,
-              renda_anual_bruta: 0,
-              proprietario_nif: companyData?.nif || '5000732028',
-              proprietario_nome: companyData?.name || 'YGSUNAC INDUSTRIA',
-              ano_exercicio: currentYear,
-              data_inscricao: '2024-01-15',
-              imposto_calculado: 480000, // 0.6% sobre o excesso
-              estado_liquidacao: 'liquidado'
-            },
-            {
-              id: 'ip-2',
-              matricula_predial: 'IP-LU-2025-00411',
-              denominacao: 'Armazém Logístico Viana Polo Industrial',
-              tipo_predio: 'urbano',
-              afectacao: 'industrial',
-              situacao: 'arrendado',
-              localizacao_provincia: 'Luanda',
-              localizacao_municipio: 'Viana',
-              bairro_rua: 'Zona Industrial de Viana, Rua 4',
-              numero_policia: 'Lote 12',
-              area_total_m2: 1200,
-              area_coberta_m2: 950,
-              valor_patrimonial_tributario: 120000000,
-              renda_mensal: 1500000,
-              renda_anual_bruta: 18000000,
-              proprietario_nif: companyData?.nif || '5000732028',
-              proprietario_nome: companyData?.name || 'YGSUNAC INDUSTRIA',
-              ano_exercicio: currentYear,
-              data_inscricao: '2025-02-10',
-              imposto_calculado: 2700000, // 15% sobre renda bruta anual
-              estado_liquidacao: 'pendente'
-            }
-          ];
-          setImoveis(initial);
-          localStorage.setItem('agt_imoveis_ip', JSON.stringify(initial));
+          setImoveis([]);
         }
       }
 
@@ -335,8 +286,8 @@ export const IPModule: React.FC<IPModuleProps> = ({ companyData, user, fiscalYea
       valor_patrimonial_tributario: Number(novoImovel.valor_patrimonial_tributario) || 0,
       renda_mensal: Number(novoImovel.renda_mensal) || 0,
       renda_anual_bruta: (Number(novoImovel.renda_mensal) || 0) * 12,
-      proprietario_nif: novoImovel.proprietario_nif || companyData?.nif || '5000732028',
-      proprietario_nome: novoImovel.proprietario_nome || companyData?.name || 'YGSUNAC INDUSTRIA',
+      proprietario_nif: novoImovel.proprietario_nif || companyData?.nif || '',
+      proprietario_nome: novoImovel.proprietario_nome || companyData?.name || '',
       ano_exercicio: currentYear,
       data_inscricao: new Date().toISOString().split('T')[0],
       imposto_calculado: calc.imposto,
@@ -345,7 +296,7 @@ export const IPModule: React.FC<IPModuleProps> = ({ companyData, user, fiscalYea
 
     try {
       // Save to Supabase
-      await supabase.from('imoveis_ip').insert([novo]);
+      await supabase.from('imoveis_ip').insert([{ ...novo, empresa_id: companyData?.empresa_id || companyData?.id || '' }]);
     } catch (err) {
       console.warn('Fallback para armazenamento local:', err);
     }
@@ -455,7 +406,7 @@ export const IPModule: React.FC<IPModuleProps> = ({ companyData, user, fiscalYea
     doc.setFontSize(8);
     doc.setTextColor(120, 120, 120);
     doc.text('Este documento constitui comprovativo oficial de liquidação tributária nos termos do Código do Imposto Predial de Angola.', 14, finalY + 15);
-    doc.text(`Emitido automaticamente pelo Sistema AGT - ${companyData?.name || 'YGSUNAC INDUSTRIA'}`, 14, finalY + 22);
+    doc.text(`Emitido automaticamente pelo Sistema AGT - ${companyData?.name || companyData?.nome_empresa || '—'}`, 14, finalY + 22);
 
     doc.save(`DUC_IP_${imovel.matricula_predial}_${liq.numero_duc}.pdf`);
   };
@@ -490,11 +441,11 @@ export const IPModule: React.FC<IPModuleProps> = ({ companyData, user, fiscalYea
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-                {companyData?.name || 'YGSUNAC INDUSTRIA - PRESTAÇÃO DE SERVIÇO E COMERCIO GERAL, LDA'}
+                {companyData?.name || companyData?.nome_empresa || '—'}
               </h1>
             </div>
             <p className="text-sm text-slate-500 font-medium mt-0.5">
-              NIF: <span className="font-semibold text-slate-700">{companyData?.nif || '5000732028'}</span> | Contabilidade Geral & Gestão Tributária
+              NIF: <span className="font-semibold text-slate-700">{companyData?.nif || '—'}</span> | Contabilidade Geral & Gestão Tributária
             </p>
           </div>
         </div>

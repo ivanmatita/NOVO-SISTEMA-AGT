@@ -451,7 +451,7 @@ export const DeclaracaoAnualForm: React.FC<DeclaracaoAnualFormProps> = ({
       <div className="bg-white border border-zinc-300 shadow-sm p-6 sm:p-10 font-sans print:border-none print:shadow-none print:p-0">
         {/* Top Header Box */}
         <div className="border border-blue-900 grid grid-cols-1 md:grid-cols-3 items-center py-4 px-6 mb-4">
-          {/* Left section: System Branding (strictly NO Afrogest logo) */}
+          {/* Left section: System Branding (strictly NO IMATEC Software logo) */}
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded bg-blue-50 border border-blue-200 flex items-center justify-center text-[#003366]">
               <CheckCircle2 size={24} className="text-[#003366]" />

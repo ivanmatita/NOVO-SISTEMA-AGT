@@ -716,7 +716,7 @@ const PrintA4: React.FC<PrintA4Props> = ({
                         {invoice.operator_name && <div>Operador: <span className="font-semibold text-zinc-700">{invoice.operator_name}</span></div>}
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="font-bold uppercase tracking-wider text-zinc-400">Powered By AFROGEST V.1</span>
+                        <span className="font-bold uppercase tracking-wider text-zinc-400">IMATEC Software</span>
                         <QRCodeSVG value={qrValue} size={40} level="L" />
                       </div>
                     </div>

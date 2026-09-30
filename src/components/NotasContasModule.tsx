@@ -1,6 +1,6 @@
 ﻿/**
  * NotasContasModule.tsx
- * Notas Ã  DemonstraÃ§Ã£o de Resultados (Notas 22 a 35) - Layout Oficial Afrogest / AGT
+ * Notas Ã  DemonstraÃ§Ã£o de Resultados (Notas 22 a 35) - Layout Oficial IMATEC Software / AGT
  * Conforme imagens de referÃªncia media_1789594592507.png (PÃ¡ginas 1 a 5)
  */
 
@@ -216,7 +216,7 @@ export const NotasContasModule: React.FC<NotasContasModuleProps> = ({
         <div className="flex items-center gap-3">
           <div className="border border-zinc-400 px-3 py-1 text-center bg-zinc-50">
             <div className="text-[10px] font-black text-zinc-800 uppercase">V.1</div>
-            <div className="text-[8px] font-bold text-zinc-500 uppercase">AFROGEST</div>
+            <div className="text-[8px] font-bold text-zinc-500 uppercase">IMATEC Software</div>
           </div>
           <div>
             <h2 className="text-xs font-black text-blue-950 uppercase tracking-wider">NOTAS Ã€</h2>

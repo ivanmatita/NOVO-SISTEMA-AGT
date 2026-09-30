@@ -1,6 +1,6 @@
 ﻿/**
  * MapaAmortizacaoModule.tsx
- * Mapa de AmortizaÃ§Ãµes e ReintegraÃ§Ãµes - Layout Oficial AGT / Afrogest
+ * Mapa de AmortizaÃ§Ãµes e ReintegraÃ§Ãµes - Layout Oficial AGT / IMATEC Software
  */
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -366,9 +366,9 @@ export const MapaAmortizacaoModule: React.FC<MapaAmortizacaoModuleProps> = ({
           <div className="grid grid-cols-12 border-b-2 border-blue-900 pb-3 mb-2">
             <div className="col-span-3 flex flex-col items-center justify-center border-r border-blue-900 pr-3">
               <div className="text-[#003366] font-black text-lg tracking-wider flex items-center gap-1">
-                <span className="text-blue-600 text-2xl">ðŸ“Š</span> Afrogestâ„¢
+                <span className="text-blue-600 text-2xl">ðŸ“Š</span> IMATEC Softwareâ„¢
               </div>
-              <span className="text-[8px] text-zinc-500 font-bold uppercase tracking-widest">Powered By Afrogestâ„¢</span>
+              <span className="text-[8px] text-zinc-500 font-bold uppercase tracking-widest">IMATEC Software</span>
             </div>
 
             <div className="col-span-6 flex flex-col items-center justify-center text-center px-4">
@@ -383,7 +383,7 @@ export const MapaAmortizacaoModule: React.FC<MapaAmortizacaoModuleProps> = ({
             <div className="col-span-3 flex flex-col items-center justify-center border-l border-blue-900 pl-3">
               <div className="border border-zinc-400 px-3 py-1 text-center bg-zinc-50">
                 <div className="text-[10px] font-black text-zinc-800 uppercase">V.1</div>
-                <div className="text-[8px] font-bold text-zinc-500 uppercase tracking-tight">AFROGEST</div>
+                <div className="text-[8px] font-bold text-zinc-500 uppercase tracking-tight">IMATEC Software</div>
               </div>
             </div>
           </div>

@@ -38,6 +38,7 @@ import { StockSalesReport } from './components/Reports/StockSalesReport';
 import { PriceTableModule } from './components/PriceTableModule';
 import { InventoryReport } from './components/Reports/InventoryReport';
 import { CashFlowReport } from './components/Reports/CashFlowReport';
+import { loadTenantImpostos, loadTenantProdutos, clearTenantCache } from './lib/tenantDataLoader';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
   BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area 
@@ -34020,11 +34021,8 @@ export default function App() {
       const companyId = explicitId || user?.empresa_id;
       if (!companyId) return;
       
-      // Try to load active taxes
-      const { data, error } = await supabase
-        .from('impostos')
-        .select('*')
-        .eq('empresa_id', companyId);
+      // REGRA 6: Deduplicação e cache multitenant seguro
+      const { data, error } = await loadTenantImpostos(companyId);
         
       if (error) {
         throw error;
@@ -34230,11 +34228,8 @@ export default function App() {
       if (!companyId) return;
 
       console.log(`[App] Buscando Produtos para ${companyId}...`);
-      const { data, error } = await supabase
-        .from('produtos')
-        .select('*')
-        .eq('empresa_id', companyId)
-        .order('name');
+      // REGRA 6: Deduplicação e cache multitenant seguro
+      const { data, error } = await loadTenantProdutos(companyId, { tipo: 'all' });
 
       if (error) throw error;
       const safeData = Array.isArray(data) ? data : [];

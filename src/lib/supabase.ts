@@ -98,9 +98,23 @@ function makeSafePromise(promise: Promise<any>, description: string): Promise<an
         if (result && result.error) {
           const errCode = String(result.error.code);
           const errMsg = String(result.error.message || '');
+
+          // REGRA 9 & 10: NUNCA retentar se recursos estiverem esgotados ou se o pedido foi cancelado/abortado
+          const isResourceExhausted = errMsg.includes('INSUFFICIENT_RESOURCES') || errMsg.includes('ERR_INSUFFICIENT_RESOURCES');
+          const isAborted = errMsg.includes('aborted') || errMsg.includes('AbortError') || (result.error as any)?.name === 'AbortError';
+
+          if (isResourceExhausted || isAborted) {
+            if (!resolved) {
+              resolved = true;
+              clearTimeout(timer);
+              resolve(result);
+              return;
+            }
+          }
+
           const isTransient = errCode === '503' || errCode === '502' || errMsg.includes('FetchError') || errMsg.includes('Failed to fetch') || errMsg.includes('NetworkError');
           
-          if (isTransient && attempts < maxAttempts) {
+          if (isTransient && attempts < maxAttempts && !resolved) {
             console.warn(`[SafeSupabase Retry] Transient issue in '${description}'. Retrying in ${delay}ms... (Attempt ${attempts}/${maxAttempts})`);
             await new Promise(r => setTimeout(r, delay));
             delay *= 2;
@@ -117,9 +131,29 @@ function makeSafePromise(promise: Promise<any>, description: string): Promise<an
       } catch (err: any) {
         const errMsg = String(err?.message || '');
         console.error(`[SafeSupabase Exception] on '${description}':`, err);
+
+        // REGRA 9 & 10: NUNCA retentar se recursos estiverem esgotados ou se for cancelado/abortado
+        const isResourceExhausted = errMsg.includes('INSUFFICIENT_RESOURCES') || errMsg.includes('ERR_INSUFFICIENT_RESOURCES');
+        const isAborted = errMsg.includes('aborted') || errMsg.includes('AbortError') || err?.name === 'AbortError';
+
+        if (isResourceExhausted || isAborted) {
+          if (!resolved) {
+            resolved = true;
+            clearTimeout(timer);
+            resolve({
+              data: null,
+              error: {
+                message: isAborted ? 'Pedido cancelado.' : 'Recursos de rede insuficientes.',
+                code: isAborted ? 'ABORTED' : 'ERR_INSUFFICIENT_RESOURCES',
+                details: err
+              }
+            });
+            return;
+          }
+        }
         
         const isTransient = errMsg.includes('Failed to fetch') || errMsg.includes('network') || errMsg.includes('server unreachable') || errMsg.includes('fetch');
-        if (isTransient && attempts < maxAttempts) {
+        if (isTransient && attempts < maxAttempts && !resolved) {
           console.warn(`[SafeSupabase Exception Retry] Attempting recovery for '${description}' (Attempt ${attempts}/${maxAttempts})...`);
           await new Promise(r => setTimeout(r, delay));
           delay *= 2;

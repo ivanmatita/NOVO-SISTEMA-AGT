@@ -10,6 +10,14 @@ import {
   RefreshCw, X, Save, AlertCircle, CheckCircle, Briefcase, PlusCircle, Search
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import {
+  loadTenantImpostos,
+  loadTenantProdutos,
+  loadTenantTabelaPrecos,
+  loadTenantPgcPlanoContas,
+  abortTenantRequests,
+  isValidTenantId
+} from '../lib/tenantDataLoader';
 
 interface PriceTableModuleProps {
   user: any;
@@ -63,14 +71,17 @@ const DEFAULT_TAXES = [
 export const PriceTableModule: React.FC<PriceTableModuleProps> = ({ 
   user, 
   companyData,
-  products: passedProducts = [],
-  activeTaxes: passedTaxes = [],
+  products: passedProducts,
+  activeTaxes: passedTaxes,
   onProductUpdated
 }) => {
-  const empresaId = user?.empresa_id || companyData?.empresa_id || (companyData?.id && companyData?.id !== user?.id ? companyData?.id : null) || user?.company_id;
+  // REGRA 3 & 5: Extração estável do ID da empresa em formato primitivo
+  const rawEmpresaId = user?.empresa_id || companyData?.empresa_id || (companyData?.id && companyData?.id !== user?.id ? companyData?.id : null) || user?.company_id;
+  const empresaId = typeof rawEmpresaId === 'string' && rawEmpresaId.trim().length > 0 ? rawEmpresaId.trim() : '';
+
   const [rows, setRows] = useState<PriceRow[]>([]);
   const [servicos, setServicos] = useState<any[]>([]);
-  const [impostos, setImpostos] = useState<any[]>(passedTaxes.length > 0 ? passedTaxes : DEFAULT_TAXES);
+  const [impostos, setImpostos] = useState<any[]>(DEFAULT_TAXES);
   const [pgcContas, setPgcContas] = useState<any[]>(DEFAULT_PGC_ACCOUNTS);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
@@ -100,54 +111,37 @@ export const PriceTableModule: React.FC<PriceTableModuleProps> = ({
     status: true,
   });
 
-  const fetchAll = useCallback(async () => {
-    if (!empresaId) {
+  // REGRA 6, 7 & 8: Carregamento deduplicado e controlado sem recriações desnecessárias
+  const fetchData = useCallback(async (force = false) => {
+    if (!isValidTenantId(empresaId)) {
       setLoading(false);
       return;
     }
     setLoading(true);
     try {
       const [tpRes, prodRes, impRes, pgcRes] = await Promise.all([
-        supabase
-          .from('tabela_precos')
-          .select('*')
-          .eq('empresa_id', empresaId)
-          .or("tipo.eq.servico,tipo.eq.service,tipo.eq.serviço,tipo.is.null")
-          .order('descricao'),
-        supabase
-          .from('produtos')
-          .select('id, name, nome, codigo, barcode, unit, unidade, price, preco, preco_venda, tipo, is_active, ativo')
-          .eq('empresa_id', empresaId)
-          .in('tipo', ['servico', 'service', 'serviço'])
-          .order('name'),
-        supabase
-          .from('impostos')
-          .select('id, nome, taxa, codigo_imposto, tipo_imposto, tipo, ativo, padrao')
-          .eq('empresa_id', empresaId),
-        supabase
-          .from('pgc_plano_contas')
-          .select('id, conta, descricao, codigo, nivel')
-          .or(`empresa_id.eq.${empresaId},empresa_id.is.null`)
-          .order('conta'),
+        loadTenantTabelaPrecos(empresaId, { tipo: 'servico', force }),
+        loadTenantProdutos(empresaId, { tipo: 'servico', force }),
+        loadTenantImpostos(empresaId, { force }),
+        loadTenantPgcPlanoContas(empresaId, { force }),
       ]);
 
-      // Filtrar estritamente apenas serviços
-      const rawRows = Array.isArray(tpRes.data) ? tpRes.data : [];
-      const serviceRows = rawRows.filter(r => !r.tipo || r.tipo === 'servico' || r.tipo === 'service' || r.tipo === 'serviço');
-      setRows(serviceRows);
+      if (tpRes.data) {
+        const serviceRows = tpRes.data.filter(r => !r.tipo || r.tipo === 'servico' || r.tipo === 'service' || r.tipo === 'serviço');
+        setRows(serviceRows);
+      }
       
-      const loadedServices = Array.isArray(prodRes.data) ? prodRes.data : [];
-      setServicos(loadedServices);
+      if (prodRes.data) {
+        setServicos(prodRes.data);
+      }
 
-      if (Array.isArray(impRes.data) && impRes.data.length > 0) {
+      if (impRes.data && impRes.data.length > 0) {
         setImpostos(impRes.data);
-      } else if (passedTaxes && passedTaxes.length > 0) {
-        setImpostos(passedTaxes);
       } else {
         setImpostos(DEFAULT_TAXES);
       }
 
-      if (Array.isArray(pgcRes.data) && pgcRes.data.length > 0) {
+      if (pgcRes.data && pgcRes.data.length > 0) {
         const map = new Map<string, any>();
         DEFAULT_PGC_ACCOUNTS.forEach(acc => map.set(String(acc.conta), acc));
         pgcRes.data.forEach((acc: any) => map.set(String(acc.conta || acc.codigo || acc.id), acc));
@@ -160,9 +154,23 @@ export const PriceTableModule: React.FC<PriceTableModuleProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [empresaId, passedTaxes]);
+  }, [empresaId]);
 
-  useEffect(() => { fetchAll(); }, [fetchAll]);
+  // REGRA 7, 8 & 10: useEffect com dependência única no ID estável e cancelamento no unmount/troca
+  useEffect(() => {
+    let isCurrent = true;
+    if (!isValidTenantId(empresaId)) {
+      setLoading(false);
+      return;
+    }
+
+    fetchData(false);
+
+    return () => {
+      isCurrent = false;
+      abortTenantRequests(empresaId);
+    };
+  }, [empresaId, fetchData]);
 
   const resetForm = () => {
     setIsNewServiceMode(servicos.length === 0);
@@ -352,7 +360,7 @@ export const PriceTableModule: React.FC<PriceTableModuleProps> = ({
       }
 
       setMsg({ type: 'ok', text: 'Preço de serviço gravado com sucesso!' });
-      await fetchAll();
+      await fetchData(true);
       setTimeout(() => { setShowModal(false); setMsg(null); }, 1000);
     } catch (e: any) {
       setMsg({ type: 'err', text: e.message || 'Erro ao gravar preço do serviço.' });
@@ -466,7 +474,7 @@ export const PriceTableModule: React.FC<PriceTableModuleProps> = ({
           <button onClick={() => window.print()} className="p-2 border border-zinc-200 bg-zinc-50 hover:bg-zinc-100 text-zinc-600 rounded transition-all" title="Imprimir">
             <Printer size={15} />
           </button>
-          <button onClick={fetchAll} className="p-2 border border-zinc-200 bg-zinc-50 hover:bg-zinc-100 text-zinc-600 rounded transition-all" title="Actualizar">
+          <button onClick={() => fetchData(true)} className="p-2 border border-zinc-200 bg-zinc-50 hover:bg-zinc-100 text-zinc-600 rounded transition-all" title="Actualizar">
             <RefreshCw size={15} />
           </button>
         </div>

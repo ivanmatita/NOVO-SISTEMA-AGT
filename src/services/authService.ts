@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { User } from '../types';
+import { clearTenantCache } from '../lib/tenantDataLoader';
 
 let sessionCache: any = null;
 let sessionLoading = false;
@@ -331,6 +332,7 @@ export const authService = {
 
   async logout() {
     try {
+      clearTenantCache();
       await supabase.auth.signOut();
       sessionCache = null;
     } catch (err) {

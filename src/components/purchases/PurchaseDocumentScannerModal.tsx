@@ -877,6 +877,76 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
   // -------------------------------------------------------------------------
   const handleTransferToManual = () => {
     if (onTransferToManualForm) {
+      // Resolver tax_id para cada item a partir de activeTaxes (exigido pelo formulário pai)
+      const resolveTaxForItem = (it: ScannedPurchaseItem) => {
+        // 1. Já tem tax_id — usar diretamente
+        if (it.tax_id) {
+          const found = activeTaxes.find((t) => String(t.id) === String(it.tax_id));
+          if (found) {
+            return {
+              tax_id: found.id,
+              tax_rate: Number(found.taxa),
+              tax: `${found.nome || found.codigo_imposto} (${found.taxa}%)`,
+              tax_type: found.tipo_imposto || found.tipo || it.tax_type || 'IVA',
+            };
+          }
+        }
+        // 2. Tentar por taxa (rate) e tipo de imposto
+        const taxType = (it.tax_type || it.tipo_imposto || 'IVA').toUpperCase();
+        const taxRate = Number(it.tax_rate ?? 0);
+        // Prioridade: correspondência exata taxa + tipo
+        let found = activeTaxes.find(
+          (t) =>
+            Math.abs(Number(t.taxa) - taxRate) < 0.01 &&
+            (
+              (t.tipo_imposto || '').toUpperCase().includes(taxType) ||
+              (t.codigo_imposto || '').toUpperCase().includes(taxType)
+            )
+        );
+        // Fallback: apenas por taxa
+        if (!found) {
+          found = activeTaxes.find((t) => Math.abs(Number(t.taxa) - taxRate) < 0.01);
+        }
+        // Fallback: primeira taxa disponível
+        if (!found && activeTaxes.length > 0) {
+          found = activeTaxes[0];
+        }
+        if (found) {
+          return {
+            tax_id: found.id,
+            tax_rate: Number(found.taxa),
+            tax: `${found.nome || found.codigo_imposto} (${found.taxa}%)`,
+            tax_type: found.tipo_imposto || found.tipo || 'IVA',
+          };
+        }
+        return {
+          tax_id: null,
+          tax_rate: taxRate,
+          tax: `${taxRate}%`,
+          tax_type: it.tax_type || 'IVA',
+        };
+      };
+
+      const mappedItems = items.map((it) => {
+        const taxInfo = resolveTaxForItem(it);
+        // total da linha = qty * unit_price - desconto (sem IVA, o formulário recalcula)
+        const qty = Number(it.quantity) || 1;
+        const price = Number(it.unit_price) || 0;
+        const desconto = Number(it.desconto) || 0;
+        const lineTotal = Math.round((qty * price - desconto) * 100) / 100;
+        return {
+          description: it.description || '',
+          quantity: qty,
+          unit_price: price,
+          total: lineTotal,
+          desconto: desconto,
+          tipo_artigo: 'produto',
+          tipologia: 'Mercadoria',
+          unidade_medida: it.unidade_medida || 'QUANTIDADE (Qtd)',
+          ...taxInfo,
+        };
+      });
+
       onTransferToManualForm({
         supplier_id: supplierId,
         supplier_name: supplierName,
@@ -888,16 +958,7 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
         date: date,
         data_compra: date,
         due_date: dueDate,
-        items: items.map((it) => ({
-          description: it.description,
-          quantity: it.quantity,
-          unit_price: it.unit_price,
-          total: it.total,
-          tax_rate: it.tax_rate,
-          tax_type: it.tax_type,
-          unidade_medida: it.unidade_medida,
-          desconto: it.desconto,
-        })),
+        items: mappedItems,
         global_discount: globalDiscount,
         caixa: cashBox,
         payment_method: paymentMethod,
@@ -906,10 +967,9 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
     onClose();
   };
 
-  // Taxas de imposto da empresa para o seletor da tabela
+  // Taxas de imposto da empresa para o seletor da tabela (inclui IVA, IS e outros)
   const taxRateOptions = (() => {
     const fromDb = activeTaxes
-      .filter((t) => t.tipo_imposto === 'IVA' || t.codigo_imposto?.startsWith('IVA'))
       .map((t) => ({ rate: Number(t.taxa), label: `${t.taxa}% — ${t.nome || t.codigo_imposto}` }));
     if (fromDb.length > 0) return fromDb;
     return [

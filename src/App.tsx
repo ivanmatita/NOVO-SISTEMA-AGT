@@ -1,4 +1,4 @@
-import { emitirDocumentoFiscal } from './services/fiscalEngine';
+﻿import { emitirDocumentoFiscal } from './services/fiscalEngine';
 import { StagingBadge } from './components/StagingBadge';
 import { isProductionEnvironment, isStagingEnvironment } from './lib/envProtection';
 import { CentralHomologacaoModule } from './components/CentralHomologacaoModule';
@@ -27660,10 +27660,54 @@ const CreatePurchase = ({ suppliers, products, workSites, fiscalSeries, activeTa
             if (scanned.invoice_number) setInvoiceNumber(scanned.invoice_number);
             if (scanned.date) setDate(scanned.date);
             if (scanned.due_date) setDueDate(scanned.due_date);
-            if (scanned.items && scanned.items.length > 0) setItems(scanned.items);
+            if (scanned.items && scanned.items.length > 0) {
+              const resolvedItems = scanned.items.map((it: any) => {
+                let taxId = it.tax_id || null;
+                let taxRate = Number(it.tax_rate ?? 0);
+                let taxLabel = it.tax || '';
+                let taxType = it.tax_type || 'IVA';
+                if (!taxId && activeTaxes.length > 0) {
+                  const itTaxType = (it.tax_type || it.tipo_imposto || '').toUpperCase();
+                  let match = activeTaxes.find(
+                    (t: any) =>
+                      Math.abs(Number(t.taxa) - taxRate) < 0.01 &&
+                      (itTaxType === '' ||
+                        (t.tipo_imposto || '').toUpperCase().includes(itTaxType) ||
+                        (t.codigo_imposto || '').toUpperCase().includes(itTaxType))
+                  );
+                  if (!match) match = activeTaxes.find((t: any) => Math.abs(Number(t.taxa) - taxRate) < 0.01);
+                  if (!match) match = activeTaxes[0];
+                  if (match) {
+                    taxId = match.id;
+                    taxRate = Number(match.taxa);
+                    taxLabel = (match.nome || match.codigo_imposto) + ' (' + match.taxa + '%)';
+                    taxType = match.tipo_imposto || match.tipo || 'IVA';
+                  }
+                }
+                const qty = Number(it.quantity) || 1;
+                const price = Number(it.unit_price) || 0;
+                const desconto = Number(it.desconto) || 0;
+                return {
+                  description: it.description || '',
+                  quantity: qty,
+                  unit_price: price,
+                  total: Math.round((qty * price - desconto) * 100) / 100,
+                  desconto,
+                  tax_id: taxId,
+                  tax_rate: taxRate,
+                  tax: taxLabel,
+                  tax_type: taxType,
+                  tipo_artigo: it.tipo_artigo || 'produto',
+                  tipologia: it.tipologia || 'Mercadoria',
+                  unidade_medida: it.unidade_medida || 'QUANTIDADE (Qtd)',
+                };
+              });
+              setItems(resolvedItems);
+            }
             if (scanned.global_discount) setGlobalDiscount(String(scanned.global_discount));
             if (scanned.caixa) setCashBox(scanned.caixa);
             if (scanned.payment_method) setPaymentMethod(scanned.payment_method);
+            setIsScannerModalOpen(false);
           }}
           user={user}
           companyData={companyData}

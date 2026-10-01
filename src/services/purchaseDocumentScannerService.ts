@@ -71,7 +71,6 @@ export interface ScannedPurchaseData {
 export function parseNumericValue(valStr: string | number | undefined | null): number {
   if (typeof valStr === 'number') return isNaN(valStr) ? 0 : valStr;
   if (!valStr) return 0;
-  // Remove currency signs, letters, and spaces but keep digits, commas, dots, minuses
   const cleaned = String(valStr)
     .trim()
     .replace(/[^\d.,-]/g, '');
@@ -80,10 +79,8 @@ export function parseNumericValue(valStr: string | number | undefined | null): n
   // Se tiver ambos vírgula e ponto (ex: 1.250,50 ou 1,250.50)
   if (cleaned.includes('.') && cleaned.includes(',')) {
     if (cleaned.lastIndexOf(',') > cleaned.lastIndexOf('.')) {
-      // Formato português / europeu: 1.250,50 -> 1250.50
       return parseFloat(cleaned.replace(/\./g, '').replace(',', '.'));
     } else {
-      // Formato anglo-saxónico: 1,250.50 -> 1250.50
       return parseFloat(cleaned.replace(/,/g, ''));
     }
   }
@@ -119,13 +116,12 @@ function mapAgtDocType(code: string): string {
 /**
  * Decodifica QR Code padrão da AGT (Administração Geral Tributária de Angola)
  * Formato padrão: A:NIF*B:NIF*C:PAIS*D:TIPO*E:ESTADO*F:DATA*G:NUMERO*H:HASH*...
- * Também suporta delimitadores alternativos (;, |, \n) ou formato URL/JSON.
  */
 export function parseAgtQrCode(rawQr: string): Partial<ScannedPurchaseData> | null {
   if (!rawQr || typeof rawQr !== 'string') return null;
   let trimmed = rawQr.trim();
 
-  // 1. Tentar formato JSON estruturado
+  // 1. Formato JSON
   if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
     try {
       const json = JSON.parse(trimmed);
@@ -143,7 +139,7 @@ export function parseAgtQrCode(rawQr: string): Partial<ScannedPurchaseData> | nu
         supplier_name: json.fornecedor || json.supplier_name || '',
         supplier_nif: json.nif || json.supplier_nif || '',
         subtotal: subtotal > 0 ? subtotal : (total > 0 && vat > 0 ? Math.round((total - vat) * 100) / 100 : Math.round((total / 1.14) * 100) / 100),
-        vat_amount: vat > 0 ? vat : (total > 0 && subtotal > 0 ? Math.round((total - subtotal) * 100) / 100 : Math.round((total - (total / 1.14)) * 100) / 100),
+        vat_amount: vat > 0 ? vat : (total > 0 && subtotal > 0 ? Math.round((total - subtotal) * 100) / 100 : 0),
         total: total,
         raw_qr_data: trimmed,
         confidence_fields: {
@@ -157,7 +153,7 @@ export function parseAgtQrCode(rawQr: string): Partial<ScannedPurchaseData> | nu
     } catch {}
   }
 
-  // 2. Se for URL (ex: https://agt.minfin.gov.ao/portal/validar?A=... ou similar)
+  // 2. Se for URL (ex: https://agt.minfin.gov.ao/... com query params)
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
     try {
       const url = new URL(trimmed);
@@ -169,8 +165,7 @@ export function parseAgtQrCode(rawQr: string): Partial<ScannedPurchaseData> | nu
     } catch {}
   }
 
-  // 3. Formato AGT chave-valor: A:NIF*B:NIF*C:PAIS*D:TIPO*...
-  // Detectar delimitador: '*' (padrão oficial AGT), ou ';' ou '|' ou quebra de linha
+  // 3. Formato AGT chave-valor
   let delimiter = '*';
   if (!trimmed.includes('*')) {
     if (trimmed.includes(';')) delimiter = ';';
@@ -198,12 +193,6 @@ export function parseAgtQrCode(rawQr: string): Partial<ScannedPurchaseData> | nu
     const hashCode = map['H'] || map['R'] || '';
     const country = map['C'] || 'AO';
 
-    // Regras AGT para valores:
-    // I6: Base de incidência taxa normal (14%)
-    // I7: Taxa percentual (ex: 14)
-    // I8: Imposto liquidado taxa normal
-    // N: Total de imposto do documento
-    // O: Total do documento com impostos
     const taxaIvaNum = parseNumericValue(map['I7'] || '14') || 14;
     const totalGeral = parseNumericValue(map['O'] || '0');
     const totalImposto = parseNumericValue(map['N'] || map['I8'] || '0');
@@ -228,7 +217,7 @@ export function parseAgtQrCode(rawQr: string): Partial<ScannedPurchaseData> | nu
 
     const tipoDoc = mapAgtDocType(rawTipo);
 
-    // Formatar data (YYYYMMDD -> YYYY-MM-DD ou DD/MM/YYYY)
+    // Formatar data (YYYYMMDD -> YYYY-MM-DD)
     let formattedDate = new Date().toISOString().split('T')[0];
     if (dataRaw.length === 8 && /^\d{8}$/.test(dataRaw)) {
       formattedDate = `${dataRaw.slice(0, 4)}-${dataRaw.slice(4, 6)}-${dataRaw.slice(6, 8)}`;
@@ -242,11 +231,10 @@ export function parseAgtQrCode(rawQr: string): Partial<ScannedPurchaseData> | nu
       } catch {}
     }
 
-    // Extrair série do documento se aplicável (ex: "FT FT2024/001" -> "FT2024")
     let serieDoc = '';
     if (numeroDoc.includes('/')) {
-      const parts = numeroDoc.split('/');
-      serieDoc = parts[0].trim().replace(/^(FT|FR|NC|ND)\s*/i, '');
+      const p = numeroDoc.split('/');
+      serieDoc = p[0].trim().replace(/^(FT|FR|NC|ND)\s*/i, '');
     }
 
     return {
@@ -276,6 +264,121 @@ export function parseAgtQrCode(rawQr: string): Partial<ScannedPurchaseData> | nu
 }
 
 /**
+ * Analisa uma linha individual da tabela de artigos utilizando relações matemáticas
+ * Invariante à ordem em que as colunas foram lidas pelo OCR
+ */
+function parseSmartItemLine(line: string): ScannedPurchaseItem | null {
+  const up = line.toUpperCase();
+  // Ignorar linhas de cabeçalho da tabela ou resumos
+  if (
+    up.includes('DESCRIÇÃO') ||
+    up.includes('DESCRICAO') ||
+    up.includes('PREÇO UNIT') ||
+    up.includes('PRECO UNIT') ||
+    up.includes('SUBTOTAL') ||
+    up.includes('TOTAIS') ||
+    up.includes('VALOR DE') ||
+    up.includes('PORTAL DO') ||
+    up.includes('COORDENADAS') ||
+    up.includes('PÁGINA') ||
+    up.includes('PAGINA')
+  ) {
+    return null;
+  }
+
+  const tokens = line.trim().split(/\s+/);
+  const numbers: { raw: string; val: number }[] = [];
+  const textWords: string[] = [];
+
+  for (const t of tokens) {
+    // Apenas números isolados (sem letras anexadas como "25kg", "12litros")
+    const isNum =
+      /^[+-]?\d{1,3}(?:\.\d{3})*(?:,\d+)?$/.test(t) ||
+      /^[+-]?\d+(?:[.,]\d+)?$/.test(t);
+
+    if (isNum) {
+      const v = parseNumericValue(t);
+      if (!isNaN(v)) numbers.push({ raw: t, val: v });
+    } else {
+      textWords.push(t);
+    }
+  }
+
+  const description = textWords.join(' ').trim();
+  if (description.length < 2 || numbers.length < 2) return null;
+
+  // Procurar par (quantidade, preço unitário) tal que q * p == subtotal
+  for (let i = 0; i < numbers.length; i++) {
+    for (let j = 0; j < numbers.length; j++) {
+      if (i === j) continue;
+      const q = numbers[i].val;
+      const p = numbers[j].val;
+      if (q <= 0 || p <= 0) continue;
+
+      const expectedSub = Math.round(q * p * 100) / 100;
+      const subMatch = numbers.find(
+        (n, idx) => idx !== i && idx !== j && Math.abs(n.val - expectedSub) < 0.05
+      );
+
+      if (subMatch) {
+        let tot = expectedSub;
+        let tax = 0;
+
+        // Se houver um número ligeiramente maior que expectedSub, é o total com imposto
+        const totMatch = numbers.find(
+          (n, idx) =>
+            idx !== i &&
+            idx !== j &&
+            n.val > expectedSub &&
+            n.val - expectedSub <= expectedSub * 0.35
+        );
+
+        if (totMatch) {
+          tot = totMatch.val;
+          tax = Math.round((tot - expectedSub) * 100) / 100;
+        }
+
+        const taxRate =
+          expectedSub > 0 && tax > 0 ? Math.round((tax / expectedSub) * 100) : 0;
+
+        return {
+          description,
+          quantity: q,
+          unit_price: p,
+          total: tot,
+          tax_rate: taxRate,
+          tax_type: taxRate > 0 ? (taxRate === 1 ? 'IS' : 'IVA') : 'Isento',
+          tipo_imposto: taxRate > 0 ? (taxRate === 1 ? 'IS' : 'IVA') : 'Isento',
+          desconto: 0,
+          unidade_medida: 'QUANTIDADE (Qtd)',
+          confidence: 'high',
+        };
+      }
+    }
+  }
+
+  // Fallback para linha simples: Descrição + Qtd + Preço Unitário + Total
+  if (numbers.length >= 2) {
+    const lastNum = numbers[numbers.length - 1].val;
+    const secondLast = numbers[numbers.length - 2].val;
+    return {
+      description,
+      quantity: 1,
+      unit_price: secondLast > 0 ? secondLast : lastNum,
+      total: lastNum,
+      tax_rate: 0,
+      tax_type: 'Isento',
+      tipo_imposto: 'Isento',
+      desconto: 0,
+      unidade_medida: 'QUANTIDADE (Qtd)',
+      confidence: 'medium',
+    };
+  }
+
+  return null;
+}
+
+/**
  * Analisador inteligente de texto extraído por OCR de faturas de compra de Angola
  */
 export function parseInvoiceOcrText(rawText: string): Partial<ScannedPurchaseData> {
@@ -289,327 +392,186 @@ export function parseInvoiceOcrText(rawText: string): Partial<ScannedPurchaseDat
     .split('\n')
     .map((l) => l.trim())
     .filter(Boolean);
-  const textUpper = rawText.toUpperCase();
   const confidence: { [key: string]: 'high' | 'medium' | 'low' | 'unidentified' } = {};
 
   // 1. Tipo de documento
   let detectedType = 'Fatura de Compra';
   confidence.document_type = 'low';
 
-  if (
-    textUpper.includes('FATURA-RECIBO') ||
-    textUpper.includes('FATURA RECIBO') ||
-    textUpper.includes('FACTURA RECIBO') ||
-    textUpper.includes('FACTURA-RECIBO') ||
-    textUpper.includes('VENDA A DINHEIRO')
-  ) {
+  if (/FATURA[\s-]RECIBO|FACTURA[\s-]RECIBO|VENDA A DINHEIRO/i.test(rawText)) {
     detectedType = 'Fatura Recibo de Compra';
     confidence.document_type = 'high';
-  } else if (textUpper.includes('NOTA DE CRÉDITO') || textUpper.includes('NOTA DE CREDITO')) {
+  } else if (/NOTA DE CR[EÉ]DITO/i.test(rawText)) {
     detectedType = 'Nota de Crédito de Fornecedor';
     confidence.document_type = 'high';
-  } else if (textUpper.includes('NOTA DE DÉBITO') || textUpper.includes('NOTA DE DEBITO')) {
+  } else if (/NOTA DE D[EÉ]BITO/i.test(rawText)) {
     detectedType = 'Nota de Débito de Fornecedor';
     confidence.document_type = 'high';
-  } else if (
-    textUpper.includes('GUIA DE ENTRADA') ||
-    textUpper.includes('GUIA DE REMESSA') ||
-    textUpper.includes('GUIA DE TRANSPORTE')
-  ) {
+  } else if (/GUIA DE (?:ENTRADA|REMESSA|TRANSPORTE)/i.test(rawText)) {
     detectedType = 'Guia de Entrada';
     confidence.document_type = 'high';
-  } else if (textUpper.includes('FATURA') || textUpper.includes('FACTURA')) {
+  } else if (/FATURA|FACTURA/i.test(rawText)) {
     detectedType = 'Fatura de Compra';
     confidence.document_type = 'high';
-  } else if (textUpper.includes('RECIBO')) {
-    detectedType = 'Fatura Recibo de Compra';
-    confidence.document_type = 'medium';
   }
 
   // 2. Número de documento
   let detectedNumber = '';
   confidence.invoice_number = 'unidentified';
 
-  // Padrões de faturas de Angola: "FT SERIE/123", "FT 2026/001", "FR 2026/12", "FT.2026/01", "Nº FT 2026/12"
-  const numPatterns = [
-    /\b((?:FT|FR|NC|ND|VD|TV|GE)[\s.:_-]*[A-Z0-9_-]{1,10}\/[\d]{1,8})\b/i,
-    /(?:FATURA|FACTURA|FT|FR|NC|ND|DOC|DOCUMENTO)[\s.:º#Nnº]+([A-Z0-9_\-\.\/]{3,25})/i,
-    /(?:Nº|N\.|NUMERO|NÚMERO)[\s.:º#]+([A-Z0-9_\-\.\/]{3,25})/i,
-    /\b([A-Z]{2,4}[\s\-_]*\d{4}\/[\d]{1,8})\b/i,
-    /\b(\d{4}\/[\d]{1,8})\b/,
-  ];
+  const numMatch =
+    rawText.match(/(?:Factura|Fatura)[\sºnNº#]*([A-Z0-9_\-\.\/\s]+?)(?:\s+Data|\n|$)/i) ||
+    rawText.match(/\b((?:FT|FR|NC|ND)[\s.:_-]*[A-Z0-9_-]{1,10}\/[\d]{1,8})\b/i);
 
-  for (const pat of numPatterns) {
-    const match = rawText.match(pat);
-    if (match && match[1]) {
-      const candidate = match[1].trim();
-      // Não pode ser uma data
-      if (!candidate.match(/^\d{2}[\/\-]\d{2}[\/\-]\d{4}$/) && candidate.length >= 3) {
-        detectedNumber = candidate;
-        confidence.invoice_number = 'high';
-        break;
-      }
-    }
+  if (numMatch && numMatch[1]) {
+    detectedNumber = numMatch[1].trim();
+    confidence.invoice_number = 'high';
   }
 
-  // 3. Série
   let detectedSerie = '';
   if (detectedNumber.includes('/')) {
-    detectedSerie = detectedNumber.split('/')[0].trim();
-  } else {
-    const serieMatch = rawText.match(/(?:SÉRIE|SERIE)[\s.:]*([A-Z0-9_\-]{1,10})/i);
-    if (serieMatch) detectedSerie = serieMatch[1].trim();
+    detectedSerie = detectedNumber.split('/')[0].trim().replace(/^(FT|FR|NC|ND)\s*/i, '');
   }
 
-  // 4. Data de Emissão
+  // 3. Data de Emissão
   let detectedDate = '';
   confidence.date = 'unidentified';
-  const datePatterns = [
-    /(?:DATA|DATA DE EMISSÃO|EMISSÃO|EMISSAO|DATA EMISSÃO)[\s.:]*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
-    /(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4})/,
-  ];
-
-  for (const pat of datePatterns) {
-    const match = rawText.match(pat);
-    if (match && match[1]) {
-      const rawDateStr = match[1].replace(/\./g, '/').replace(/-/g, '/');
-      const parts = rawDateStr.split('/');
-      if (parts.length === 3) {
-        let y = parts[2];
-        let m = parts[1].padStart(2, '0');
-        let d = parts[0].padStart(2, '0');
-        // Se primeiro número for o ano
-        if (parts[0].length === 4) {
-          y = parts[0];
-          m = parts[1].padStart(2, '0');
-          d = parts[2].padStart(2, '0');
-        }
-        if (y.length === 2) y = '20' + y;
-        const testDate = new Date(`${y}-${m}-${d}`);
-        if (!isNaN(testDate.getTime())) {
-          detectedDate = `${y}-${m}-${d}`;
-          confidence.date = 'high';
-          break;
-        }
+  const dateMatch = rawText.match(
+    /(?:Data de emissão|Data emissão|Data)[\s.:]*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i
+  );
+  if (dateMatch && dateMatch[1]) {
+    const raw = dateMatch[1].replace(/\./g, '-').replace(/\//g, '-');
+    const p = raw.split('-');
+    if (p.length === 3) {
+      let y = p[2].length === 2 ? '20' + p[2] : p[2];
+      let m = p[1].padStart(2, '0');
+      let d = p[0].padStart(2, '0');
+      if (p[0].length === 4) {
+        y = p[0];
+        m = p[1].padStart(2, '0');
+        d = p[2].padStart(2, '0');
       }
+      detectedDate = `${y}-${m}-${d}`;
+      confidence.date = 'high';
     }
   }
 
-  // 5. Data de Vencimento
+  // 4. Data de Vencimento
   let detectedDueDate = '';
   const dueMatch = rawText.match(
-    /(?:VENCIMENTO|DATA DE VENCIMENTO|VALIDADE|VENCE A)[\s.:]*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i
+    /(?:Vencimento|Data de Vencimento|Validade|Vence a)[\s.:]*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i
   );
   if (dueMatch && dueMatch[1]) {
-    const rawDateStr = dueMatch[1].replace(/\./g, '/').replace(/-/g, '/');
-    const parts = rawDateStr.split('/');
-    if (parts.length === 3) {
-      let y = parts[2].length === 2 ? '20' + parts[2] : parts[2];
-      let m = parts[1].padStart(2, '0');
-      let d = parts[0].padStart(2, '0');
+    const raw = dueMatch[1].replace(/\./g, '-').replace(/\//g, '-');
+    const p = raw.split('-');
+    if (p.length === 3) {
+      const y = p[2].length === 2 ? '20' + p[2] : p[2];
+      const m = p[1].padStart(2, '0');
+      const d = p[0].padStart(2, '0');
       detectedDueDate = `${y}-${m}-${d}`;
     }
   }
 
-  // 6. NIF do Fornecedor (Emitente)
-  // O NIF do fornecedor aparece normalmente no topo/cabeçalho da fatura
+  // 5. NIF do Fornecedor (Emitente)
   let detectedNif = '';
   confidence.supplier_nif = 'unidentified';
 
-  // Buscar NIF nas primeiras 20 linhas (cabeçalho do emitente)
-  const headerLines = lines.slice(0, 20).join(' ');
-  const nifMatch =
-    headerLines.match(
-      /(?:NIF|N\.I\.F\.|CONTRIBUINTE|NIF\s*EMITENTE)[\s.:º]*([0-9]{10}|[0-9]{9}[A-Z]{2}[0-9]{3}|[0-9]{9,14})/i
-    ) ||
-    rawText.match(
+  // Buscar NIF explicitamente associado ao Fornecedor / Contribuinte
+  const supNifMatch =
+    rawText.match(/N[ºo\.]*\s*de\s*Contribuinte[\s.:]*([0-9]{9,14})/i) ||
+    rawText.match(/Identificação do Fornecedor[\s\S]*?(?:NIF|Contribuinte)[\s.:]*([0-9]{9,14})/i);
+
+  if (supNifMatch && supNifMatch[1]) {
+    detectedNif = supNifMatch[1].trim();
+    confidence.supplier_nif = 'high';
+  } else {
+    // Fallback: buscar NIF nas primeiras 20 linhas
+    const nifGenMatch = rawText.match(
       /(?:NIF|N\.I\.F\.|CONTRIBUINTE)[\s.:º]*([0-9]{10}|[0-9]{9}[A-Z]{2}[0-9]{3}|[0-9]{9,14})/i
     );
-
-  if (nifMatch && nifMatch[1]) {
-    detectedNif = nifMatch[1].trim();
-    confidence.supplier_nif = 'high';
+    if (nifGenMatch && nifGenMatch[1]) {
+      detectedNif = nifGenMatch[1].trim();
+      confidence.supplier_nif = 'medium';
+    }
   }
 
-  // 7. Nome Fornecedor (Emitente)
+  // 6. Nome do Fornecedor
   let detectedSupplierName = '';
   confidence.supplier_name = 'unidentified';
 
-  // Palavras indicadoras de empresas em Angola
-  const companyKeywords = [
-    'LDA',
-    'LIMITADA',
-    'S.A.',
-    'SA',
-    'E.P.',
-    'EP',
-    'SU',
-    'UNIPESSOAL',
-    'COMERCIAL',
-    'SERVIÇOS',
-    'SERVICOS',
-    'SOCIEDADE',
-    'EMPREENDIMENTOS',
-    'DISTRIBUIDORA',
-    'ANGOLA',
-    'FARMACIA',
-    'FARMÁCIA',
-    'STAND',
-    'SUPERMERCADO',
-    'LOGISTICA',
-    'LOGÍSTICA',
-    'CONSULTORIA',
-  ];
+  const supplierPattern =
+    /\b(LDA|LIMITADA|S\.A\.|SU|DISTRIBUIDORA|COMERCIO|SERVIÇOS|SERVICOS|EMPREENDIMENTOS|SOCIEDADE|CONSULTORIA|FARMACIA)\b/i;
 
-  // Ignorar slogans e cabeçalhos governamentais
-  const ignoredHeaderKeywords = [
-    'REPÚBLICA',
-    'REPUBLICA',
-    'ADMINISTRAÇÃO GERAL',
-    'ADMINISTRACAO GERAL',
-    'MINISTÉRIO',
-    'MINISTERIO',
-    'SOFTWARE CERTIFICADO',
-    'PRODUTO CERTIFICADO',
-    'AGT',
-    'ORIGINAL',
-    'DUPLICADO',
-    'TRIPLICADO',
-  ];
-
-  for (const line of lines.slice(0, 15)) {
+  for (const line of lines.slice(0, 25)) {
     const up = line.toUpperCase();
-    const isIgnored = ignoredHeaderKeywords.some((ign) => up.includes(ign));
-    if (!isIgnored) {
-      if (companyKeywords.some((kw) => up.includes(kw)) && line.length > 3 && line.length < 80) {
-        detectedSupplierName = line.trim();
-        confidence.supplier_name = 'medium';
-        break;
-      }
+    if (
+      supplierPattern.test(up) &&
+      !up.includes('DIRECÇÃO') &&
+      !up.includes('DIRECCAO') &&
+      !up.includes('MINISTÉRIO') &&
+      !up.includes('MINISTERIO') &&
+      !up.includes('ADMINISTRAÇÃO') &&
+      !up.includes('ADMINISTRACAO') &&
+      !up.includes('AVENIDA') &&
+      !up.includes('RUA')
+    ) {
+      detectedSupplierName = line.trim();
+      confidence.supplier_name = 'high';
+      break;
     }
   }
 
-  // Se não encontrou por keyword, pega na primeira linha não vazia válida do cabeçalho
-  if (!detectedSupplierName && lines.length > 0) {
-    for (const line of lines.slice(0, 5)) {
-      const up = line.toUpperCase();
-      if (
-        !ignoredHeaderKeywords.some((ign) => up.includes(ign)) &&
-        !up.includes('FATURA') &&
-        !up.includes('FACTURA') &&
-        line.length > 4 &&
-        line.length < 60
-      ) {
-        detectedSupplierName = line.trim();
-        confidence.supplier_name = 'low';
-        break;
-      }
-    }
+  // 7. Extração de Artigos e Linhas
+  const detectedItems: ScannedPurchaseItem[] = [];
+  for (const line of lines) {
+    const it = parseSmartItemLine(line);
+    if (it) detectedItems.push(it);
   }
 
-  // 8. Totais do Documento
-  let detectedTotal = 0;
+  // 8. Totais
   let detectedSubtotal = 0;
   let detectedVat = 0;
+  let detectedTotal = 0;
   let detectedDiscount = 0;
 
-  confidence.total = 'unidentified';
+  // Total calculado a partir das linhas extraídas
+  const calcSub = detectedItems.reduce((s, it) => s + (it.unit_price * it.quantity), 0);
+  const calcTax = detectedItems.reduce((s, it) => s + (it.total - (it.unit_price * it.quantity)), 0);
+  const calcTot = detectedItems.reduce((s, it) => s + it.total, 0);
 
-  // Total geral
-  const totalMatch = rawText.match(
-    /(?:TOTAL A PAGAR|TOTAL GERAL|TOTAL DOCUMENTO|VALOR TOTAL|TOTAL LÍQUIDO|TOTAL LIQUIDO|TOTAL)\s*(?:AOA|KZ)?[\s.:]*([\d\s.,]+)/i
+  // Subtotal / Incidência lido no documento
+  const subMatch = rawText.match(
+    /(?:Prestação de Serviços|Mercadorias e Bens|Total sem impostos|Subtotal|Incidência|Incidencia)[\s.:]*([\d.,]+)/i
   );
-  if (totalMatch && totalMatch[1]) {
-    const parsedTot = parseNumericValue(totalMatch[1]);
-    if (parsedTot > 0) {
-      detectedTotal = parsedTot;
-      confidence.total = 'high';
-    }
-  }
+  if (subMatch) detectedSubtotal = parseNumericValue(subMatch[1]);
 
-  // Subtotal / Incidência
-  const subtotalMatch = rawText.match(
-    /(?:SUBTOTAL|INCIDÊNCIA|INCIDENCIA|BASE TRIBUTÁVEL|BASE TRIBUTAVEL|MERCADORIA\/SERVIÇOS)\s*(?:AOA|KZ)?[\s.:]*([\d\s.,]+)/i
+  // Impostos lidos no documento
+  const taxMatch = rawText.match(
+    /(?:Imposto de Selo\s*(?:\(IS\))?|Valor de Impostos|Total IVA|IVA)[\s.:]*([\d.,]+)/i
   );
-  if (subtotalMatch && subtotalMatch[1]) {
-    detectedSubtotal = parseNumericValue(subtotalMatch[1]);
+  if (taxMatch) detectedVat = parseNumericValue(taxMatch[1]);
+
+  // Total geral lido no documento
+  const totMatch =
+    rawText.match(/Valores em Kwanzas\s*\n\s*([\d.,]{4,})/i) ||
+    rawText.match(/Valor Total do Documento[^\d]*?([\d.,]{4,})/i) ||
+    rawText.match(/(?:Total a Pagar|Total Geral|Total Líquido|Total Liquido)[\s.:]*([\d.,]+)/i);
+
+  if (totMatch) detectedTotal = parseNumericValue(totMatch[1]);
+
+  // Descontos
+  const discMatch = rawText.match(/(?:Valor de descontos|Desconto Total|Descontos)[\s.:]*([\d.,]+)/i);
+  if (discMatch) detectedDiscount = parseNumericValue(discMatch[1]);
+
+  // Reconciliação dos totais
+  if (detectedSubtotal === 0 && calcSub > 0) detectedSubtotal = Math.round(calcSub * 100) / 100;
+  if (detectedVat === 0 && calcTax > 0) detectedVat = Math.round(calcTax * 100) / 100;
+  if (detectedTotal === 0 && calcTot > 0) detectedTotal = Math.round(calcTot * 100) / 100;
+  if (detectedTotal === 0 && detectedSubtotal > 0) {
+    detectedTotal = Math.round((detectedSubtotal + detectedVat - detectedDiscount) * 100) / 100;
   }
 
-  // IVA
-  const vatMatch = rawText.match(
-    /(?:TOTAL IVA|VALOR DO IVA|IMPOSTO IVA|TOTAL IMPOSTO|IVA\s*(?:\(14%\)|14%)?)\s*(?:AOA|KZ)?[\s.:]*([\d\s.,]+)/i
-  );
-  if (vatMatch && vatMatch[1]) {
-    detectedVat = parseNumericValue(vatMatch[1]);
-  }
-
-  // Desconto
-  const discMatch = rawText.match(
-    /(?:DESCONTO TOTAL|DESCONTO COMERCIAL|DESCONTO)\s*(?:AOA|KZ)?[\s.:]*([\d\s.,]+)/i
-  );
-  if (discMatch && discMatch[1]) {
-    detectedDiscount = parseNumericValue(discMatch[1]);
-  }
-
-  // Reconciliação inteligente de impostos e totais
-  if (detectedTotal > 0 && detectedSubtotal > 0 && detectedVat === 0) {
-    detectedVat = Math.round((detectedTotal - detectedSubtotal) * 100) / 100;
-  } else if (detectedTotal > 0 && detectedSubtotal === 0 && detectedVat > 0) {
-    detectedSubtotal = Math.round((detectedTotal - detectedVat) * 100) / 100;
-  } else if (detectedTotal > 0 && detectedSubtotal === 0 && detectedVat === 0) {
-    detectedSubtotal = Math.round((detectedTotal / 1.14) * 100) / 100;
-    detectedVat = Math.round((detectedTotal - detectedSubtotal) * 100) / 100;
-  }
-
-  // 9. Extração de Artigos / Linhas do Documento
-  const detectedItems: ScannedPurchaseItem[] = [];
-
-  // Padrões flexíveis de artigos com suporte a acentos, unidades e múltiplos formatos
-  // Ex: "Papel A4 5.00 4.500,00 22.500,00" ou "Serviço Consultoria 1 150000 150000"
-  const itemLineRegex =
-    /^([A-Za-zÀ-ÖØ-öø-ÿ0-9\s.,\-_/()&]{3,50}?)\s+(\d+(?:[.,]\d+)?)\s*(?:UN|KG|QTD|CX|LT|M2|HR|HRS)?\s+([\d.,]+)\s*(?:[\d.,]+%?)?\s*([\d.,]+)$/i;
-
-  for (const line of lines) {
-    const upLine = line.toUpperCase();
-    // Ignorar linhas de cabeçalho da tabela ou resumos
-    if (
-      upLine.includes('DESCRIÇÃO') ||
-      upLine.includes('DESCRICAO') ||
-      upLine.includes('PREÇO UNIT') ||
-      upLine.includes('SUBTOTAL') ||
-      upLine.includes('TOTAL') ||
-      upLine.includes('INCIDÊNCIA') ||
-      upLine.includes('INCIDENCIA') ||
-      upLine.includes('IMPOSTO') ||
-      upLine.includes('HASH') ||
-      upLine.includes('CERTIFICADO')
-    ) {
-      continue;
-    }
-
-    const match = line.match(itemLineRegex);
-    if (match) {
-      const desc = match[1].trim();
-      const qty = parseNumericValue(match[2]) || 1;
-      const price = parseNumericValue(match[3]) || 0;
-      const tot = parseNumericValue(match[4]) || qty * price;
-
-      if (desc.length >= 2 && price > 0) {
-        detectedItems.push({
-          description: desc,
-          quantity: qty,
-          unit_price: price,
-          tax_rate: 14,
-          tax_type: 'IVA',
-          tipo_imposto: 'IVA',
-          desconto: 0,
-          total: tot,
-          unidade_medida: 'QUANTIDADE (Qtd)',
-          confidence: 'medium',
-        });
-      }
-    }
-  }
+  confidence.total = detectedTotal > 0 ? 'high' : 'unidentified';
 
   return {
     document_type: detectedType,
@@ -665,7 +627,8 @@ export function validateDocumentDiscrepancy(
     calculatedSubtotal + calculatedVat - Number(globalDiscount || 0)
   );
   const diff = Math.abs(calculatedTotal - identifiedTotal);
-  const hasDiscrepancy = identifiedTotal > 0 && diff > 0.05;
+  // Tolerância de arredondamento de 0.50 Kz
+  const hasDiscrepancy = identifiedTotal > 0 && diff > 0.50;
 
   let message: string | undefined = undefined;
   if (hasDiscrepancy) {
@@ -748,7 +711,6 @@ export async function uploadPurchaseOriginalFile(
     const sanitizedName = `${Date.now()}_doc_compra_${Math.random().toString(36).substring(2, 8)}.${cleanExt}`;
     const storagePath = `${empresaId}/compras/${purchaseId}/${sanitizedName}`;
 
-    // Upload para bucket 'media'
     const { error: uploadError } = await supabase.storage
       .from('media')
       .upload(storagePath, file, {
@@ -764,7 +726,6 @@ export async function uploadPurchaseOriginalFile(
     const { data: urlData } = supabase.storage.from('media').getPublicUrl(storagePath);
     const publicUrl = urlData?.publicUrl || '';
 
-    // Registar em media_arquivos
     await supabase
       .from('media_arquivos')
       .insert([

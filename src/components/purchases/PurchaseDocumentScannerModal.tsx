@@ -8,34 +8,22 @@ import {
   CheckCircle,
   AlertTriangle,
   RefreshCw,
-  Search,
   Plus,
   Trash2,
-  Eye,
-  Sliders,
   Check,
-  Building2,
-  DollarSign,
   ArrowRight,
-  ShieldCheck,
-  FileCheck,
-  Calendar,
-  Layers,
-  Sparkles
 } from 'lucide-react';
 import jsQR from 'jsqr';
 import { createWorker } from 'tesseract.js';
 import { supabase } from '../../lib/supabase';
 import { Supplier, Product, Caixa } from '../../types';
 import {
-  ScannedPurchaseData,
   ScannedPurchaseItem,
   parseAgtQrCode,
   parseInvoiceOcrText,
   validateDocumentDiscrepancy,
   checkDuplicatePurchase,
   uploadPurchaseOriginalFile,
-  parseNumericValue
 } from '../../services/purchaseDocumentScannerService';
 
 interface PurchaseDocumentScannerModalProps {
@@ -53,7 +41,94 @@ interface PurchaseDocumentScannerModalProps {
   fiscalYear?: string | number;
 }
 
-type ScanMode = 'select' | 'camera_scan' | 'camera_qr' | 'upload_file' | 'analyzing' | 'review';
+type ScanMode = 'select' | 'camera_scan' | 'camera_qr' | 'analyzing' | 'review';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Render the first page of a PDF Blob to an ImageData using pdf.js (CDN) */
+async function renderPdfPageToImageData(pdfBlob: Blob): Promise<ImageData | null> {
+  try {
+    // Dynamically load pdf.js from CDN if not already loaded
+    if (!(window as any).pdfjsLib) {
+      await new Promise<void>((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js';
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error('pdf.js load failed'));
+        document.head.appendChild(script);
+      });
+    }
+
+    const pdfjsLib = (window as any).pdfjsLib;
+    if (!pdfjsLib) return null;
+
+    // Point worker to CDN
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+
+    const arrayBuffer = await pdfBlob.arrayBuffer();
+    const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+    const pdf = await loadingTask.promise;
+    const page = await pdf.getPage(1);
+
+    // Scale to ~1600px wide for good OCR quality
+    const viewport = page.getViewport({ scale: 2.0 });
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d')!;
+    await page.render({ canvasContext: ctx, viewport }).promise;
+
+    return ctx.getImageData(0, 0, canvas.width, canvas.height);
+  } catch (err: any) {
+    console.warn('[renderPdfPageToImageData] Falha ao renderizar PDF:', err.message);
+    return null;
+  }
+}
+
+/** Extract embedded text from a PDF (works for text-based PDFs) */
+async function extractPdfText(pdfBlob: Blob): Promise<string> {
+  try {
+    if (!(window as any).pdfjsLib) {
+      await new Promise<void>((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js';
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error('pdf.js load failed'));
+        document.head.appendChild(script);
+      });
+    }
+
+    const pdfjsLib = (window as any).pdfjsLib;
+    if (!pdfjsLib) return '';
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+
+    const arrayBuffer = await pdfBlob.arrayBuffer();
+    const pdf = await (pdfjsLib.getDocument({ data: arrayBuffer })).promise;
+    const numPages = pdf.numPages;
+    let fullText = '';
+
+    for (let i = 1; i <= Math.min(numPages, 3); i++) {
+      const page = await pdf.getPage(i);
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items.map((item: any) => item.str).join(' ');
+      fullText += pageText + '\n';
+    }
+
+    return fullText.trim();
+  } catch (err: any) {
+    console.warn('[extractPdfText] Falha ao extrair texto de PDF:', err.message);
+    return '';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
 export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModalProps> = ({
   isOpen,
@@ -67,23 +142,29 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
   activeTaxes = [],
   caixas = [],
   addMovement,
-  fiscalYear
+  fiscalYear,
 }) => {
   if (!isOpen) return null;
 
-  const currentEmpresaId = user?.empresa_id || user?.company_id || companyData?.empresa_id || '';
+  // Empresa ID comes ONLY from authenticated session — never hardcoded
+  const currentEmpresaId: string =
+    (user?.empresa_id as string) ||
+    (user?.company_id as string) ||
+    (companyData?.empresa_id as string) ||
+    '';
 
-  // Estados de navegação
+  // Navigation state
   const [mode, setMode] = useState<ScanMode>('select');
   const [analyzingStep, setAnalyzingStep] = useState<number>(1);
+  const [analyzingLabel, setAnalyzingLabel] = useState<string>('');
   const [analysisError, setAnalysisError] = useState<string | null>(null);
 
-  // Ficheiro capturado / carregado
+  // Captured file
   const [capturedFile, setCapturedFile] = useState<File | Blob | null>(null);
   const [capturedFileName, setCapturedFileName] = useState<string>('');
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
-  // Dados extraídos e editáveis
+  // Extracted & editable fields
   const [docType, setDocType] = useState<string>('Fatura de Compra');
   const [invoiceNumber, setInvoiceNumber] = useState<string>('');
   const [serie, setSerie] = useState<string>('');
@@ -92,37 +173,50 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
   const [hashCode, setHashCode] = useState<string>('');
   const [countryCode, setCountryCode] = useState<string>('AO');
 
-  // Fornecedor
+  // Supplier
   const [supplierId, setSupplierId] = useState<string | number | ''>('');
   const [supplierName, setSupplierName] = useState<string>('');
   const [supplierNif, setSupplierNif] = useState<string>('');
   const [isExistingSupplier, setIsExistingSupplier] = useState<boolean>(false);
   const [createNewSupplier, setCreateNewSupplier] = useState<boolean>(false);
 
-  // Itens
+  // Items
   const [items, setItems] = useState<ScannedPurchaseItem[]>([]);
   const [globalDiscount, setGlobalDiscount] = useState<number>(0);
 
-  // Totais
+  // Totals
   const [identifiedTotal, setIdentifiedTotal] = useState<number>(0);
   const [cashBox, setCashBox] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<string>('Transferência');
 
-  // Duplicados e avisos
+  // Alerts
   const [duplicateAlert, setDuplicateAlert] = useState<any | null>(null);
-  const [confidenceFields, setConfidenceFields] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState<boolean>(false);
 
-  // Refs de vídeo / canvas
+  // Media refs
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Limpeza de recursos
+  // *** FIX: use a ref for mode to avoid stale closure in requestAnimationFrame ***
+  const modeRef = useRef<ScanMode>('select');
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+
+  // Default tax rate from activeTaxes (IVA general = 14%, fallback)
+  const defaultTaxRate = (() => {
+    const ivaGeral = activeTaxes.find(
+      (t) => t.tipo_imposto === 'IVA' && (t.taxa === 14 || t.codigo_imposto === 'IVA14')
+    );
+    return ivaGeral ? Number(ivaGeral.taxa) : 14;
+  })();
+
+  // Stop camera
   const stopCamera = useCallback(() => {
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
   }, []);
@@ -133,13 +227,15 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
     };
   }, [stopCamera]);
 
-  // Iniciar câmara para foto do documento
+  // -------------------------------------------------------------------------
+  // Camera — scan document photo
+  // -------------------------------------------------------------------------
   const startCameraScan = async () => {
     setAnalysisError(null);
     setMode('camera_scan');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
       });
       streamRef.current = stream;
       if (videoRef.current) {
@@ -153,30 +249,37 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
     }
   };
 
-  // Iniciar câmara para leitor de QR Code em tempo real
+  // -------------------------------------------------------------------------
+  // Camera — real-time QR scanner (fixed stale closure)
+  // -------------------------------------------------------------------------
   const startCameraQr = async () => {
     setAnalysisError(null);
     setMode('camera_qr');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' } }
+        video: { facingMode: { ideal: 'environment' } },
       });
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.play();
+        // Start QR scan loop after video plays
+        videoRef.current.onplaying = () => {
+          requestAnimationFrame(scanQrFrame);
+        };
       }
-      requestAnimationFrame(scanQrFrame);
     } catch (err: any) {
-      console.error('Erro ao aceder à câmara:', err);
+      console.error('Erro ao aceder à câmara QR:', err);
       setAnalysisError('Não foi possível aceder à câmara para ler o QR Code.');
       setMode('select');
     }
   };
 
-  // Loop de digitalização contínua de QR Code no vídeo
-  const scanQrFrame = () => {
-    if (!videoRef.current || !canvasRef.current || mode !== 'camera_qr') return;
+  // QR frame loop — uses modeRef to avoid stale closure
+  const scanQrFrame = useCallback(() => {
+    if (modeRef.current !== 'camera_qr') return;
+    if (!videoRef.current || !canvasRef.current) return;
+
     const video = videoRef.current;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -188,23 +291,22 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
       const code = jsQR(imageData.data, imageData.width, imageData.height, {
-        inversionAttempts: 'dontInvert'
+        inversionAttempts: 'dontInvert',
       });
 
       if (code && code.data) {
-        // Encontrou QR Code!
         stopCamera();
         handleProcessQrData(code.data);
         return;
       }
     }
 
-    if (mode === 'camera_qr') {
-      requestAnimationFrame(scanQrFrame);
-    }
-  };
+    requestAnimationFrame(scanQrFrame);
+  }, [stopCamera]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Capturar foto da câmara
+  // -------------------------------------------------------------------------
+  // Capture photo from camera
+  // -------------------------------------------------------------------------
   const capturePhoto = () => {
     if (!videoRef.current || !canvasRef.current) return;
     const video = videoRef.current;
@@ -216,33 +318,37 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
       canvas.height = video.videoHeight;
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      canvas.toBlob((blob) => {
-        if (blob) {
-          stopCamera();
-          const fileName = `captura_cam_${Date.now()}.jpg`;
-          setCapturedFile(blob);
-          setCapturedFileName(fileName);
-          setPreviewUrl(URL.createObjectURL(blob));
-          processCapturedDocument(blob, fileName);
-        }
-      }, 'image/jpeg', 0.92);
+      canvas.toBlob(
+        (blob) => {
+          if (blob) {
+            stopCamera();
+            const fileName = `captura_cam_${Date.now()}.jpg`;
+            setCapturedFile(blob);
+            setCapturedFileName(fileName);
+            setPreviewUrl(URL.createObjectURL(blob));
+            processCapturedDocument(blob, fileName);
+          }
+        },
+        'image/jpeg',
+        0.92
+      );
     }
   };
 
-  // Manipular upload de ficheiro (PDF, JPG, PNG, WEBP)
+  // -------------------------------------------------------------------------
+  // File upload handler
+  // -------------------------------------------------------------------------
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validação de formato e tamanho
     const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
     if (!allowedTypes.includes(file.type) && !file.name.match(/\.(pdf|jpe?g|png|webp)$/i)) {
-      alert('Formato de ficheiro não suportado. Por favor, envie um documento PDF, JPG, PNG ou WEBP.');
+      alert('Formato não suportado. Envie um documento PDF, JPG, PNG ou WEBP.');
       return;
     }
-
     if (file.size > 25 * 1024 * 1024) {
-      alert('O ficheiro ultrapassa o limite de 25MB.');
+      alert('O ficheiro ultrapassa o limite de 25 MB.');
       return;
     }
 
@@ -252,25 +358,32 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
     processCapturedDocument(file, file.name);
   };
 
-  // Processar dados do QR Code
+  // -------------------------------------------------------------------------
+  // Process QR Code data (AGT format or JSON)
+  // -------------------------------------------------------------------------
   const handleProcessQrData = async (qrText: string) => {
     setMode('analyzing');
     setAnalyzingStep(1);
+    setAnalyzingLabel('QR Code recebido');
 
     const parsed = parseAgtQrCode(qrText);
     if (!parsed) {
-      setAnalysisError('Código QR não identificado ou formato não reconhecido.');
+      setAnalysisError('Código QR não identificado ou formato não reconhecido pelo sistema.');
       setMode('select');
       return;
     }
 
-    setAnalyzingStep(3); // Identificação do fornecedor
-    let matchedSup: Supplier | undefined = undefined;
+    setAnalyzingStep(3);
+    setAnalyzingLabel('A identificar fornecedor...');
+    let matchedSup: Supplier | undefined;
     if (parsed.supplier_nif) {
-      matchedSup = suppliers.find(s => s.nif && String(s.nif).trim() === String(parsed.supplier_nif).trim());
+      matchedSup = suppliers.find(
+        (s) => s.nif && String(s.nif).trim() === String(parsed.supplier_nif).trim()
+      );
     }
 
-    setAnalyzingStep(4); // Identificação do documento
+    setAnalyzingStep(4);
+    setAnalyzingLabel('A preencher dados do documento...');
     if (parsed.document_type) setDocType(parsed.document_type);
     if (parsed.invoice_number) setInvoiceNumber(parsed.invoice_number);
     if (parsed.serie) setSerie(parsed.serie);
@@ -283,108 +396,157 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
       setSupplierName(matchedSup.name);
       setSupplierNif(matchedSup.nif || '');
       setIsExistingSupplier(true);
+      setCreateNewSupplier(false);
     } else {
       setSupplierId('');
-      setSupplierName(parsed.supplier_name || 'Fornecedor Identificado');
+      setSupplierName(parsed.supplier_name || '');
       setSupplierNif(parsed.supplier_nif || '');
       setIsExistingSupplier(false);
-      setCreateNewSupplier(true);
+      setCreateNewSupplier(Boolean(parsed.supplier_nif || parsed.supplier_name));
     }
 
-    setAnalyzingStep(5); // Itens
-    // Se o QR Code trouxer itens ou valores
+    setAnalyzingStep(5);
+    setAnalyzingLabel('A processar artigos...');
     const initialItems: ScannedPurchaseItem[] = [];
     if (parsed.subtotal && parsed.subtotal > 0) {
       initialItems.push({
-        description: `Aquisição s/ ${parsed.invoice_number || 'Documento'}`,
+        description: `Aquisição conf. ${parsed.invoice_number || 'Documento'}`,
         quantity: 1,
         unit_price: parsed.subtotal,
-        tax_rate: 14,
+        tax_rate: defaultTaxRate,
         tax_type: 'IVA',
         tipo_imposto: 'IVA',
         desconto: 0,
-        total: parsed.total || parsed.subtotal * 1.14,
-        confidence: 'high'
+        total: parsed.subtotal, // net value; IVA calculated on display
+        confidence: 'high',
       });
     }
     setItems(initialItems);
     setIdentifiedTotal(parsed.total || 0);
 
-    setAnalyzingStep(6); // Validação de duplicados
-    if (parsed.invoice_number) {
-      const dup = await checkDuplicatePurchase(currentEmpresaId, matchedSup?.id, parsed.supplier_nif, parsed.invoice_number);
+    setAnalyzingStep(6);
+    setAnalyzingLabel('A verificar duplicados...');
+    if (parsed.invoice_number && currentEmpresaId) {
+      const dup = await checkDuplicatePurchase(
+        currentEmpresaId,
+        matchedSup?.id,
+        parsed.supplier_nif,
+        parsed.invoice_number
+      );
       if (dup.isDuplicate) setDuplicateAlert(dup.existingRecord);
     }
 
-    setAnalyzingStep(8); // Pronto para conferência
-    setConfidenceFields(parsed.confidence_fields || {});
+    setAnalyzingStep(8);
+    setAnalyzingLabel('Pronto para conferência');
     setMode('review');
   };
 
-  // Processar documento via OCR e QR Code combinado
+  // -------------------------------------------------------------------------
+  // Main document processing (OCR + QR combined)
+  // -------------------------------------------------------------------------
   const processCapturedDocument = async (fileOrBlob: File | Blob, fileName: string) => {
     setMode('analyzing');
     setAnalysisError(null);
-    setAnalyzingStep(1); // 1. Documento recebido ✓
+    setAnalyzingStep(1);
+    setAnalyzingLabel('Documento recebido');
 
     try {
-      // 2. Tentar decodificar QR Code diretamente da imagem (se for imagem)
+      // --- Step 2: Try QR on image first ---
       if (fileOrBlob.type.startsWith('image/')) {
-        const imageBitmap = await createImageBitmap(fileOrBlob);
-        const canvas = document.createElement('canvas');
-        canvas.width = imageBitmap.width;
-        canvas.height = imageBitmap.height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(imageBitmap, 0, 0);
-          const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const qr = jsQR(imgData.data, imgData.width, imgData.height);
-          if (qr && qr.data) {
-            handleProcessQrData(qr.data);
-            return;
+        setAnalyzingStep(2);
+        setAnalyzingLabel('A procurar QR Code na imagem...');
+        try {
+          const imageBitmap = await createImageBitmap(fileOrBlob);
+          const tmpCanvas = document.createElement('canvas');
+          tmpCanvas.width = imageBitmap.width;
+          tmpCanvas.height = imageBitmap.height;
+          const tmpCtx = tmpCanvas.getContext('2d');
+          if (tmpCtx) {
+            tmpCtx.drawImage(imageBitmap, 0, 0);
+            const imgData = tmpCtx.getImageData(0, 0, tmpCanvas.width, tmpCanvas.height);
+            const qr = jsQR(imgData.data, imgData.width, imgData.height);
+            if (qr && qr.data) {
+              handleProcessQrData(qr.data);
+              return;
+            }
           }
+        } catch (qrErr) {
+          console.warn('[QR image scan] Falha, a continuar com OCR:', qrErr);
         }
       }
 
-      setAnalyzingStep(2); // 2. Leitura OCR
+      // --- Step 2: OCR ---
+      setAnalyzingStep(2);
+      setAnalyzingLabel('A executar leitura OCR...');
       let extractedText = '';
 
       if (fileOrBlob.type === 'application/pdf') {
-        // Tentar extrair texto embutido do PDF via FileReader
-        const buffer = await fileOrBlob.arrayBuffer();
-        const decoder = new TextDecoder('utf-8', { fatal: false });
-        extractedText = decoder.decode(buffer);
-      }
+        // 1. Try embedded text extraction (fast, for text-based PDFs)
+        setAnalyzingLabel('A extrair texto do PDF...');
+        extractedText = await extractPdfText(fileOrBlob);
 
-      // Se não tiver texto ou for imagem, executar OCR com Tesseract
-      if (!extractedText || extractedText.length < 50) {
+        // 2. If little or no text found, render page and run Tesseract OCR
+        if (!extractedText || extractedText.length < 50) {
+          setAnalyzingLabel('A renderizar PDF para OCR...');
+          const imgData = await renderPdfPageToImageData(fileOrBlob);
+          if (imgData) {
+            setAnalyzingLabel('A executar OCR na imagem do PDF...');
+            try {
+              const worker = await createWorker('por');
+              const ret = await worker.recognize(
+                // Convert ImageData to a canvas blob for Tesseract
+                await (async () => {
+                  const c = document.createElement('canvas');
+                  c.width = imgData.width;
+                  c.height = imgData.height;
+                  c.getContext('2d')!.putImageData(imgData, 0, 0);
+                  return new Promise<Blob>((res) => c.toBlob((b) => res(b!), 'image/png'));
+                })()
+              );
+              extractedText = ret.data.text;
+              await worker.terminate();
+            } catch (ocrErr: any) {
+              console.warn('[OCR PDF worker]:', ocrErr.message);
+            }
+          }
+        }
+      } else {
+        // Image: run Tesseract OCR directly
+        setAnalyzingLabel('A reconhecer texto na imagem...');
         try {
           const worker = await createWorker('por');
           const ret = await worker.recognize(fileOrBlob);
           extractedText = ret.data.text;
           await worker.terminate();
         } catch (ocrErr: any) {
-          console.warn('[OCR Worker warning]:', ocrErr.message);
+          console.warn('[OCR image worker]:', ocrErr.message);
         }
       }
 
-      setAnalyzingStep(3); // 3. Identificação do fornecedor
+      // --- Step 3: Supplier identification ---
+      setAnalyzingStep(3);
+      setAnalyzingLabel('A identificar fornecedor...');
       const parsedOcr = parseInvoiceOcrText(extractedText);
 
-      // Verificar Fornecedor
-      let matchedSupplier: Supplier | undefined = undefined;
+      let matchedSupplier: Supplier | undefined;
       if (parsedOcr.supplier_nif) {
         matchedSupplier = suppliers.find(
-          s => s.nif && String(s.nif).trim().toLowerCase() === String(parsedOcr.supplier_nif).trim().toLowerCase()
+          (s) =>
+            s.nif &&
+            String(s.nif).trim().toLowerCase() === String(parsedOcr.supplier_nif).trim().toLowerCase()
         );
       }
       if (!matchedSupplier && parsedOcr.supplier_name) {
         matchedSupplier = suppliers.find(
-          s => s.name && s.name.trim().toLowerCase().includes(parsedOcr.supplier_name!.trim().toLowerCase())
+          (s) =>
+            s.name &&
+            s.name.trim().toLowerCase().includes(parsedOcr.supplier_name!.trim().toLowerCase())
         );
       }
 
-      setAnalyzingStep(4); // 4. Identificação do documento
+      // --- Step 4: Document fields ---
+      setAnalyzingStep(4);
+      setAnalyzingLabel('A preencher dados do documento...');
       if (parsedOcr.document_type) setDocType(parsedOcr.document_type);
       if (parsedOcr.invoice_number) setInvoiceNumber(parsedOcr.invoice_number);
       if (parsedOcr.serie) setSerie(parsedOcr.serie);
@@ -405,38 +567,48 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
         setCreateNewSupplier(Boolean(parsedOcr.supplier_nif || parsedOcr.supplier_name));
       }
 
-      setAnalyzingStep(5); // 5. Identificação dos artigos
-      let finalItems = parsedOcr.items || [];
+      // --- Step 5: Items ---
+      setAnalyzingStep(5);
+      setAnalyzingLabel('A identificar artigos...');
+      let finalItems = (parsedOcr.items || []).map((item) => ({
+        ...item,
+        tax_rate: item.tax_rate ?? defaultTaxRate,
+        total: item.total ?? Number(item.quantity) * Number(item.unit_price), // net
+      }));
+
+      // If no line items found, create a single line from the totals
       if (finalItems.length === 0 && parsedOcr.subtotal && parsedOcr.subtotal > 0) {
-        finalItems = [{
-          description: `Mercadoria / Serviço conf. ${parsedOcr.invoice_number || 'Documento'}`,
-          quantity: 1,
-          unit_price: parsedOcr.subtotal,
-          tax_rate: 14,
-          tax_type: 'IVA',
-          tipo_imposto: 'IVA',
-          desconto: 0,
-          total: parsedOcr.total || parsedOcr.subtotal * 1.14,
-          confidence: 'medium'
-        }];
+        finalItems = [
+          {
+            description: `Mercadoria / Serviço conf. ${parsedOcr.invoice_number || 'Documento'}`,
+            quantity: 1,
+            unit_price: parsedOcr.subtotal,
+            tax_rate: defaultTaxRate,
+            tax_type: 'IVA',
+            tipo_imposto: 'IVA',
+            desconto: 0,
+            total: parsedOcr.subtotal, // net
+            confidence: 'medium' as const,
+          },
+        ];
       }
 
-      // Tentar associar artigos com produtos existentes
-      const mappedItems = finalItems.map(item => {
-        const itemDescLower = item.description.toLowerCase();
-        const matchedProd = products.find(p => 
-          (p.barcode && p.barcode.toLowerCase() === itemDescLower) ||
-          (p.referente && p.referente.toLowerCase() === itemDescLower) ||
-          p.name.toLowerCase().includes(itemDescLower) ||
-          itemDescLower.includes(p.name.toLowerCase())
+      // Try matching items to existing products (by name/barcode)
+      const mappedItems = finalItems.map((item) => {
+        const descLower = item.description.toLowerCase();
+        const matchedProd = products.find(
+          (p) =>
+            (p.barcode && p.barcode.toLowerCase() === descLower) ||
+            (p.referente && p.referente.toLowerCase() === descLower) ||
+            p.name.toLowerCase().includes(descLower.slice(0, 8)) ||
+            descLower.includes(p.name.toLowerCase().slice(0, 8))
         );
-
         if (matchedProd) {
           return {
             ...item,
             matched_product_id: matchedProd.id,
             matched_product_name: matchedProd.name,
-            product_id: matchedProd.id
+            product_id: matchedProd.id,
           };
         }
         return item;
@@ -445,53 +617,65 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
       setItems(mappedItems);
       setIdentifiedTotal(parsedOcr.total || 0);
 
-      setAnalyzingStep(6); // 6. Validação dos valores e duplicados
-      if (parsedOcr.invoice_number) {
-        const dup = await checkDuplicatePurchase(currentEmpresaId, matchedSupplier?.id, parsedOcr.supplier_nif, parsedOcr.invoice_number);
+      // --- Step 6: Duplicate check ---
+      setAnalyzingStep(6);
+      setAnalyzingLabel('A verificar duplicados...');
+      if (parsedOcr.invoice_number && currentEmpresaId) {
+        const dup = await checkDuplicatePurchase(
+          currentEmpresaId,
+          matchedSupplier?.id,
+          parsedOcr.supplier_nif,
+          parsedOcr.invoice_number
+        );
         if (dup.isDuplicate) setDuplicateAlert(dup.existingRecord);
       }
 
-      setAnalyzingStep(7); // 7. Preparação do formulário
-      setConfidenceFields(parsedOcr.confidence_fields || {});
-
-      setAnalyzingStep(8); // 8. Conferência
+      setAnalyzingStep(7);
+      setAnalyzingLabel('A preparar formulário...');
+      setAnalyzingStep(8);
+      setAnalyzingLabel('Conferência');
       setMode('review');
     } catch (err: any) {
-      console.error('Erro na análise:', err);
-      setAnalysisError('Não foi possível identificar automaticamente todas as informações. Pode preencher os dados manualmente.');
+      console.error('[processCapturedDocument] Erro:', err);
+      setAnalysisError(
+        'Não foi possível identificar automaticamente todas as informações. Preencha os dados manualmente.'
+      );
       setMode('review');
     }
   };
 
-  // Recalcular totais actuais dos itens
+  // -------------------------------------------------------------------------
+  // Discrepancy check (calculated from items)
+  // -------------------------------------------------------------------------
   const discrepancyCheck = validateDocumentDiscrepancy(items, identifiedTotal, globalDiscount);
 
-  // Manipular adição de nova linha de artigo
+  // -------------------------------------------------------------------------
+  // Item management
+  // -------------------------------------------------------------------------
   const handleAddItemRow = () => {
-    setItems(prev => [
+    setItems((prev) => [
       ...prev,
       {
-        description: 'Novo Artigo / Serviço',
+        description: '',
         quantity: 1,
         unit_price: 0,
-        tax_rate: 14,
+        tax_rate: defaultTaxRate,
         tax_type: 'IVA',
         tipo_imposto: 'IVA',
         desconto: 0,
         total: 0,
         unidade_medida: 'QUANTIDADE (Qtd)',
-        confidence: 'high'
-      }
+        confidence: 'high' as const,
+      },
     ]);
   };
 
-  // Manipular alteração de linha de artigo
   const handleUpdateItemRow = (index: number, field: keyof ScannedPurchaseItem, value: any) => {
-    setItems(prev => {
+    setItems((prev) => {
       const updated = [...prev];
       const item = { ...updated[index], [field]: value };
 
-      // Se alterou quantidade, preço ou desconto, recalcular total
+      // Recalculate net total when qty, price or discount changes
       if (field === 'quantity' || field === 'unit_price' || field === 'desconto') {
         const qty = Number(item.quantity) || 1;
         const price = Number(item.unit_price) || 0;
@@ -499,15 +683,13 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
         item.total = Math.round(qty * price * (1 - desc / 100) * 100) / 100;
       }
 
-      // Se associou a um produto existente
+      // Link to existing product
       if (field === 'matched_product_id') {
-        const prod = products.find(p => String(p.id) === String(value));
+        const prod = products.find((p) => String(p.id) === String(value));
         if (prod) {
           item.matched_product_name = prod.name;
           item.product_id = prod.id;
-          if (!item.description || item.description === 'Novo Artigo / Serviço') {
-            item.description = prod.name;
-          }
+          if (!item.description) item.description = prod.name;
         } else {
           item.matched_product_id = null;
           item.matched_product_name = null;
@@ -520,13 +702,18 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
     });
   };
 
-  // Remover linha
   const handleRemoveItemRow = (index: number) => {
-    setItems(prev => prev.filter((_, i) => i !== index));
+    setItems((prev) => prev.filter((_, i) => i !== index));
   };
 
-  // Gravação Real da Compra no Supabase
+  // -------------------------------------------------------------------------
+  // Save purchase to Supabase
+  // -------------------------------------------------------------------------
   const handleConfirmAndRegisterPurchase = async () => {
+    if (!currentEmpresaId) {
+      alert('Erro: empresa não identificada. Faça login novamente.');
+      return;
+    }
     if (!invoiceNumber.trim()) {
       alert('Por favor, informe o Número do Documento antes de registar.');
       return;
@@ -544,7 +731,7 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
     try {
       let finalSupplierId = supplierId;
 
-      // Se selecionou registar novo fornecedor e não tem ID
+      // Create new supplier if not found and user opted in
       if (!finalSupplierId && createNewSupplier && supplierName) {
         const newSupPayload: any = {
           company_id: currentEmpresaId,
@@ -554,7 +741,7 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
           nif: supplierNif || null,
           pais: countryCode === 'AO' ? 'Angola' : countryCode,
           tipo_fornecedor: 'Normal',
-          created_at: new Date().toISOString()
+          created_at: new Date().toISOString(),
         };
 
         const { data: createdSup, error: supErr } = await supabase
@@ -574,16 +761,16 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
       const subtotalAmount = discrepancyCheck.calculatedSubtotal;
       const vatTotalAmount = discrepancyCheck.calculatedVat;
 
-      const formattedItems = items.map(it => ({
+      const formattedItems = items.map((it) => ({
         description: it.description,
         quantity: Number(it.quantity) || 1,
         unit_price: Number(it.unit_price) || 0,
         total: Number(it.total) || 0,
         desconto: Number(it.desconto) || 0,
-        tax_rate: Number(it.tax_rate) || 14,
+        tax_rate: Number(it.tax_rate) ?? defaultTaxRate,
         tax_type: it.tax_type || 'IVA',
         unidade_medida: it.unidade_medida || 'QUANTIDADE (Qtd)',
-        product_id: it.product_id || it.matched_product_id || null
+        product_id: it.product_id || it.matched_product_id || null,
       }));
 
       const purchaseData: any = {
@@ -616,7 +803,7 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
           document_type: docType,
           supplier_name: supplierName,
           hash_code: hashCode || null,
-          scanner_source: 'ocr_scanner_qr'
+          scanner_source: 'ocr_scanner_qr',
         },
         subtotal: subtotalAmount,
         total: finalTotalAmount,
@@ -635,7 +822,7 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
         estado: 'pendente',
         saldo_pendente: finalTotalAmount,
         created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
       };
 
       const { data: savedPurchase, error: saveErr } = await supabase
@@ -646,7 +833,7 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
 
       if (saveErr) throw saveErr;
 
-      // Upload do ficheiro original para o Storage se existir
+      // Upload original file to Storage
       if (capturedFile && savedPurchase?.id) {
         try {
           const uploadRes = await uploadPurchaseOriginalFile(
@@ -657,26 +844,21 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
             savedPurchase.id,
             purchaseNum
           );
-
           if (uploadRes) {
             await supabase
               .from('compras')
-              .update({
-                document_url: uploadRes.publicUrl,
-                document_path: uploadRes.storagePath
-              })
+              .update({ document_url: uploadRes.publicUrl, document_path: uploadRes.storagePath })
               .eq('id', savedPurchase.id);
           }
         } catch (uploadErr) {
-          console.warn('[Storage upload warning]:', uploadErr);
+          console.warn('[Storage upload]:', uploadErr);
         }
       }
 
-      // Se for documento a pronto pagamento (Fatura Recibo) e houver caixa selecionado
+      // Cash movement for immediate-payment document types
       const isCashDoc = ['Fatura Recibo de Compra', 'Pagamento', 'Recibo', 'Fatura Recibo'].some(
-        t => t.toLowerCase() === docType.trim().toLowerCase()
+        (t) => t.toLowerCase() === docType.trim().toLowerCase()
       );
-
       if (isCashDoc && cashBox && addMovement) {
         try {
           await addMovement({
@@ -691,24 +873,24 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
             referencia: invoiceNumber,
             documento_id: savedPurchase?.id,
             moeda: 'AOA',
-            date: new Date().toISOString()
+            date: new Date().toISOString(),
           });
         } catch (movErr) {
-          console.warn('[Movimento Caixa warning]:', movErr);
+          console.warn('[Movimento Caixa]:', movErr);
         }
       }
 
       onSuccess(savedPurchase);
       onClose();
     } catch (err: any) {
-      console.error('Erro ao gravar compra digitalizada:', err);
+      console.error('[handleConfirmAndRegisterPurchase] Erro:', err);
       alert('Erro ao registar documento de compra: ' + (err.message || err));
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Transferir dados para o formulário manual padrão do sistema
+  // Transfer data to manual form
   const handleTransferToManual = () => {
     if (onTransferToManualForm) {
       onTransferToManualForm({
@@ -722,7 +904,7 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
         date: date,
         data_compra: date,
         due_date: dueDate,
-        items: items.map(it => ({
+        items: items.map((it) => ({
           description: it.description,
           quantity: it.quantity,
           unit_price: it.unit_price,
@@ -730,31 +912,52 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
           tax_rate: it.tax_rate,
           tax_type: it.tax_type,
           unidade_medida: it.unidade_medida,
-          desconto: it.desconto
+          desconto: it.desconto,
         })),
         global_discount: globalDiscount,
         caixa: cashBox,
-        payment_method: paymentMethod
+        payment_method: paymentMethod,
       });
     }
     onClose();
   };
 
+  // -------------------------------------------------------------------------
+  // Tax rate options (from activeTaxes + fallbacks)
+  // -------------------------------------------------------------------------
+  const taxRateOptions = (() => {
+    const fromDb = activeTaxes
+      .filter((t) => t.tipo_imposto === 'IVA' || t.codigo_imposto?.startsWith('IVA'))
+      .map((t) => ({ rate: Number(t.taxa), label: `${t.taxa}% — ${t.nome || t.codigo_imposto}` }));
+    if (fromDb.length > 0) return fromDb;
+    // Angola IVA fallback rates
+    return [
+      { rate: 14, label: '14% (Taxa Geral)' },
+      { rate: 7, label: '7% (Taxa Reduzida)' },
+      { rate: 5, label: '5% (Taxa Intermédia)' },
+      { rate: 2, label: '2% (Construção Civil)' },
+      { rate: 0, label: '0% (Isento / Não Sujeito)' },
+    ];
+  })();
+
+  // -------------------------------------------------------------------------
+  // Render
+  // -------------------------------------------------------------------------
   return (
     <div className="fixed inset-0 z-[250] flex items-center justify-center p-3 bg-zinc-950/75 backdrop-blur-sm overflow-y-auto">
       <div className="bg-white border border-zinc-200 shadow-2xl w-full max-w-5xl my-6 flex flex-col max-h-[92vh]">
-        {/* Top Header */}
-        <div className="bg-[#003366] text-white px-5 py-3 flex items-center justify-between">
+        {/* Header */}
+        <div className="bg-[#003366] text-white px-5 py-3 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-white/10 rounded-none">
+            <div className="p-2 bg-white/10">
               <Camera size={20} className="text-white" />
             </div>
             <div>
               <h2 className="text-base font-bold tracking-tight">
-                Registar documento por Scanner / Imagem / QR Code
+                Registar Documento por Scanner / Imagem / QR Code
               </h2>
               <p className="text-xs text-blue-200">
-                Digitalização de faturas, faturas-recibo, notas e recibos com OCR e validação fiscal
+                Digitalização de faturas com OCR e validação fiscal — dados da empresa autenticada
               </p>
             </div>
           </div>
@@ -767,9 +970,11 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
           </button>
         </div>
 
-        {/* Modal Body */}
+        {/* Body */}
         <div className="p-5 overflow-y-auto flex-1 space-y-4">
-          {/* MODO 1: SELECÇÃO DO MÉTODO DE ENTRADA */}
+          {/* ---------------------------------------------------------------- */}
+          {/* MODE: select                                                      */}
+          {/* ---------------------------------------------------------------- */}
           {mode === 'select' && (
             <div className="space-y-6 py-4">
               <div className="text-center max-w-xl mx-auto">
@@ -777,7 +982,8 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                   Como deseja registar o documento de compra?
                 </h3>
                 <p className="text-xs text-zinc-500 mt-1">
-                  Selecione uma das opções abaixo para ler automaticamente os dados do fornecedor, artigos, valores e impostos.
+                  Selecione uma opção para ler automaticamente os dados do fornecedor, artigos, valores e
+                  impostos.
                 </p>
               </div>
 
@@ -789,7 +995,7 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
               )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 max-w-4xl mx-auto">
-                {/* Opção A: Digitalizar documento com a câmara */}
+                {/* Option A: Camera scan */}
                 <button
                   type="button"
                   onClick={startCameraScan}
@@ -803,7 +1009,7 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                       📷 Digitalizar documento
                     </h4>
                     <p className="text-[11px] text-zinc-500 mt-1 leading-relaxed">
-                      Utilize a câmara ou scanner do dispositivo para fotografar a fatura em tempo real.
+                      Fotografe a fatura com a câmara do dispositivo em tempo real.
                     </p>
                   </div>
                   <span className="text-[10px] font-bold text-[#003366] uppercase tracking-wider flex items-center gap-1">
@@ -811,7 +1017,7 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                   </span>
                 </button>
 
-                {/* Opção B: Carregar documento PDF/Arquivo */}
+                {/* Option B: Upload PDF */}
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
@@ -825,7 +1031,7 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                       📄 Carregar documento
                     </h4>
                     <p className="text-[11px] text-zinc-500 mt-1 leading-relaxed">
-                      Carregue o ficheiro PDF digital da fatura fornecido pelo emissor.
+                      Carregue o ficheiro PDF digital da fatura fornecida pelo emissor.
                     </p>
                   </div>
                   <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider flex items-center gap-1">
@@ -833,7 +1039,7 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                   </span>
                 </button>
 
-                {/* Opção C: Carregar imagem do documento */}
+                {/* Option C: Upload image */}
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
@@ -847,7 +1053,7 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                       🖼️ Carregar imagem
                     </h4>
                     <p className="text-[11px] text-zinc-500 mt-1 leading-relaxed">
-                      Envie uma fotografia ou scan do documento em formato JPG, PNG ou WEBP.
+                      Envie uma fotografia ou scan em formato JPG, PNG ou WEBP.
                     </p>
                   </div>
                   <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider flex items-center gap-1">
@@ -855,7 +1061,7 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                   </span>
                 </button>
 
-                {/* Opção D: Ler Código QR da fatura */}
+                {/* Option D: QR Code camera */}
                 <button
                   type="button"
                   onClick={startCameraQr}
@@ -869,7 +1075,7 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                       ▣ Ler código QR
                     </h4>
                     <p className="text-[11px] text-zinc-500 mt-1 leading-relaxed">
-                      Aponte a câmara para o QR Code impresso na fatura fiscal certificada pela AGT.
+                      Aponte a câmara para o QR Code impresso na fatura certificada pela AGT.
                     </p>
                   </div>
                   <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider flex items-center gap-1">
@@ -878,7 +1084,6 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                 </button>
               </div>
 
-              {/* Input escondido para upload de arquivos */}
               <input
                 ref={fileInputRef}
                 type="file"
@@ -889,12 +1094,13 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
             </div>
           )}
 
-          {/* MODO 2: VISOR DA CÂMARA (DIGITALIZAR DOCUMENTO) */}
+          {/* ---------------------------------------------------------------- */}
+          {/* MODE: camera_scan                                                 */}
+          {/* ---------------------------------------------------------------- */}
           {mode === 'camera_scan' && (
             <div className="flex flex-col items-center space-y-4">
               <div className="relative w-full max-w-xl aspect-[4/3] bg-black border-2 border-zinc-300 overflow-hidden shadow-inner">
                 <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
-                {/* Moldura guia para alinhar a fatura */}
                 <div className="absolute inset-6 border-2 border-dashed border-white/80 pointer-events-none flex flex-col justify-between p-2">
                   <span className="text-[10px] bg-black/60 text-white px-2 py-0.5 self-start">
                     Alinhe a fatura na área indicada
@@ -904,7 +1110,6 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                   </span>
                 </div>
               </div>
-
               <div className="flex gap-3">
                 <button
                   type="button"
@@ -924,12 +1129,13 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
             </div>
           )}
 
-          {/* MODO 3: VISOR DA CÂMARA PARA QR CODE */}
+          {/* ---------------------------------------------------------------- */}
+          {/* MODE: camera_qr                                                   */}
+          {/* ---------------------------------------------------------------- */}
           {mode === 'camera_qr' && (
             <div className="flex flex-col items-center space-y-4">
               <div className="relative w-full max-w-md aspect-square bg-black border-2 border-emerald-500 overflow-hidden shadow-inner">
                 <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
-                {/* Moldura de mira de QR Code */}
                 <div className="absolute inset-12 border-2 border-emerald-400 pointer-events-none animate-pulse flex items-center justify-center">
                   <div className="w-16 h-16 border-t-4 border-l-4 border-emerald-300 absolute top-0 left-0" />
                   <div className="w-16 h-16 border-t-4 border-r-4 border-emerald-300 absolute top-0 right-0" />
@@ -940,7 +1146,6 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                   </span>
                 </div>
               </div>
-
               <button
                 type="button"
                 onClick={() => { stopCamera(); setMode('select'); }}
@@ -951,7 +1156,9 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
             </div>
           )}
 
-          {/* MODO 4: ESTADO DE PROCESSAMENTO COM ETAPAS VISUAIS (SEÇÃO 21) */}
+          {/* ---------------------------------------------------------------- */}
+          {/* MODE: analyzing                                                   */}
+          {/* ---------------------------------------------------------------- */}
           {mode === 'analyzing' && (
             <div className="py-12 flex flex-col items-center max-w-md mx-auto space-y-6">
               <div className="w-16 h-16 bg-[#003366]/10 text-[#003366] flex items-center justify-center animate-spin">
@@ -961,12 +1168,9 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                 <h3 className="text-base font-black text-zinc-800 tracking-tight">
                   A analisar documento...
                 </h3>
-                <p className="text-xs text-zinc-500 mt-0.5">
-                  Processando dados fiscais com validação estruturada
-                </p>
+                <p className="text-xs text-zinc-500 mt-0.5">Processamento de dados fiscais com validação</p>
               </div>
 
-              {/* Checklist de 8 etapas conforme especificado na Seção 21 */}
               <div className="w-full bg-zinc-50 border border-zinc-200 p-4 space-y-2 text-xs">
                 {[
                   { step: 1, label: 'Documento recebido' },
@@ -974,9 +1178,9 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                   { step: 3, label: 'Identificação do fornecedor' },
                   { step: 4, label: 'Identificação do documento' },
                   { step: 5, label: 'Identificação dos artigos' },
-                  { step: 6, label: 'Validação dos valores e duplicados' },
+                  { step: 6, label: 'Validação e verificação de duplicados' },
                   { step: 7, label: 'Preparação do formulário' },
-                  { step: 8, label: 'Conferência' }
+                  { step: 8, label: 'Conferência final' },
                 ].map(({ step, label }) => {
                   const isDone = analyzingStep > step;
                   const isCurrent = analyzingStep === step;
@@ -989,8 +1193,12 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                       ) : (
                         <div className="w-3.5 h-3.5 rounded-full border border-zinc-300 shrink-0" />
                       )}
-                      <span className={`${isDone ? 'text-zinc-800 font-semibold' : isCurrent ? 'text-[#003366] font-bold' : 'text-zinc-400'}`}>
-                        {label} {isDone && '✓'}
+                      <span
+                        className={`${isDone ? 'text-zinc-800 font-semibold' : isCurrent ? 'text-[#003366] font-bold' : 'text-zinc-400'}`}
+                      >
+                        {label}
+                        {isCurrent && analyzingLabel ? ` — ${analyzingLabel}` : ''}
+                        {isDone ? ' ✓' : ''}
                       </span>
                     </div>
                   );
@@ -999,23 +1207,32 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
             </div>
           )}
 
-          {/* MODO 5: CONFERÊNCIA OBRIGATÓRIA ("CONFERIR DADOS IDENTIFICADOS") */}
+          {/* ---------------------------------------------------------------- */}
+          {/* MODE: review                                                      */}
+          {/* ---------------------------------------------------------------- */}
           {mode === 'review' && (
             <div className="space-y-4">
-              {/* Alerta de Documento Duplicado (Seção 10) */}
+              {/* Duplicate alert */}
               {duplicateAlert && (
                 <div className="bg-amber-50 border-l-4 border-amber-500 p-3 text-xs text-amber-900 flex items-start gap-2.5">
                   <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
                   <div>
                     <strong className="font-bold">Aviso de Duplicação Potencial:</strong>
                     <p className="mt-0.5">
-                      Este documento pode já estar registado no sistema (Nº {duplicateAlert.numero_documento || duplicateAlert.invoice_number}, data {duplicateAlert.data_compra || duplicateAlert.date}, valor {Number(duplicateAlert.valor_total || duplicateAlert.total || 0).toLocaleString('pt-PT', { minimumFractionDigits: 2 })} Kz). Verifique com atenção se pretende continuar o registo.
+                      Este documento pode já estar registado (Nº{' '}
+                      {duplicateAlert.numero_documento || duplicateAlert.invoice_number}, data{' '}
+                      {duplicateAlert.data_compra || duplicateAlert.date}, valor{' '}
+                      {Number(duplicateAlert.valor_total || duplicateAlert.total || 0).toLocaleString(
+                        'pt-PT',
+                        { minimumFractionDigits: 2 }
+                      )}{' '}
+                      Kz). Verifique antes de continuar.
                     </p>
                   </div>
                 </div>
               )}
 
-              {/* Alerta de Discrepância nos Totais (Seção 9) */}
+              {/* Discrepancy alert */}
               {discrepancyCheck.hasDiscrepancy && (
                 <div className="bg-blue-50 border-l-4 border-blue-600 p-3 text-xs text-blue-900 flex items-start gap-2.5">
                   <AlertTriangle size={18} className="text-blue-600 shrink-0 mt-0.5" />
@@ -1026,40 +1243,44 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                 </div>
               )}
 
+              {/* Analysis error info */}
+              {analysisError && (
+                <div className="bg-zinc-50 border border-zinc-300 p-3 text-xs text-zinc-700 flex items-center gap-2">
+                  <AlertTriangle size={15} className="text-zinc-500 shrink-0" />
+                  <span>{analysisError} Pode preencher os campos manualmente abaixo.</span>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                {/* COLUNA ESQUERDA: Pré-visualização do ficheiro capturado */}
+                {/* Left: document preview */}
                 <div className="lg:col-span-1 bg-zinc-50 border border-zinc-200 p-3 space-y-2">
                   <h4 className="text-[11px] font-bold text-zinc-600 uppercase tracking-wider flex items-center justify-between">
                     <span>Documento Original</span>
                     <span className="text-[10px] text-zinc-400">{capturedFileName || 'Digitalização'}</span>
                   </h4>
-
-                  <div className="border border-zinc-200 bg-white min-h-[220px] max-h-[360px] overflow-hidden flex items-center justify-center relative">
+                  <div className="border border-zinc-200 bg-white min-h-[220px] max-h-[360px] overflow-hidden flex items-center justify-center">
                     {previewUrl ? (
                       <img src={previewUrl} alt="Documento" className="w-full h-full object-contain" />
                     ) : (
                       <div className="p-6 text-center text-zinc-400">
                         <FileText size={48} className="mx-auto text-zinc-300 mb-2" />
-                        <span className="text-xs font-medium">Documento em formato PDF ou digital</span>
+                        <span className="text-xs font-medium">Ficheiro PDF ou digital</span>
                         <p className="text-[10px] text-zinc-400 mt-1">{capturedFileName}</p>
                       </div>
                     )}
                   </div>
-
-                  <div className="pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setMode('select')}
-                      className="w-full text-xs text-zinc-600 hover:text-zinc-900 border border-zinc-300 py-1.5 font-bold hover:bg-zinc-100 transition-colors"
-                    >
-                      ↺ Digitalizar Outro Ficheiro
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setMode('select')}
+                    className="w-full text-xs text-zinc-600 hover:text-zinc-900 border border-zinc-300 py-1.5 font-bold hover:bg-zinc-100 transition-colors"
+                  >
+                    ↺ Digitalizar Outro Ficheiro
+                  </button>
                 </div>
 
-                {/* COLUNA DIREITA: Formulário Estruturado de Conferência */}
+                {/* Right: form */}
                 <div className="lg:col-span-2 space-y-3">
-                  {/* Bloco 1: Identificação do Documento */}
+                  {/* Block 1: Document identification */}
                   <div className="bg-white border border-zinc-200 p-3 shadow-sm space-y-2">
                     <h4 className="text-[10px] font-black text-[#0f2a4a] border-b border-zinc-100 pb-1 uppercase tracking-widest flex items-center justify-between">
                       <span>1. Identificação do Documento</span>
@@ -1067,10 +1288,11 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                         Conferência Obrigatória
                       </span>
                     </h4>
-
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                       <div>
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Tipo Documento *</label>
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">
+                          Tipo Documento *
+                        </label>
                         <select
                           value={docType}
                           onChange={(e) => setDocType(e.target.value)}
@@ -1083,9 +1305,10 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                           <option value="Guia de Entrada">Guia de Entrada</option>
                         </select>
                       </div>
-
                       <div>
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Nº Documento *</label>
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">
+                          Nº Documento *
+                        </label>
                         <input
                           type="text"
                           value={invoiceNumber}
@@ -1095,9 +1318,10 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                           className="w-full bg-zinc-50 border border-zinc-200 px-2 py-1 text-xs font-semibold h-7 mt-0.5 text-zinc-800"
                         />
                       </div>
-
                       <div>
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Data de Emissão *</label>
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">
+                          Data de Emissão *
+                        </label>
                         <input
                           type="date"
                           value={date}
@@ -1106,9 +1330,10 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                           className="w-full bg-zinc-50 border border-zinc-200 px-2 py-1 text-xs h-7 mt-0.5 text-zinc-800"
                         />
                       </div>
-
                       <div>
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Data Vencimento</label>
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">
+                          Data Vencimento
+                        </label>
                         <input
                           type="date"
                           value={dueDate}
@@ -1119,7 +1344,7 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                     </div>
                   </div>
 
-                  {/* Bloco 2: Fornecedor */}
+                  {/* Block 2: Supplier */}
                   <div className="bg-white border border-zinc-200 p-3 shadow-sm space-y-2">
                     <h4 className="text-[10px] font-black text-[#0f2a4a] border-b border-zinc-100 pb-1 uppercase tracking-widest flex items-center justify-between">
                       <span>2. Dados do Fornecedor</span>
@@ -1133,17 +1358,18 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                         </span>
                       )}
                     </h4>
-
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                       <div>
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase">NIF do Fornecedor *</label>
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">NIF *</label>
                         <input
                           type="text"
                           value={supplierNif}
                           onChange={(e) => {
                             const val = e.target.value;
                             setSupplierNif(val);
-                            const found = suppliers.find(s => s.nif && String(s.nif).trim() === val.trim());
+                            const found = suppliers.find(
+                              (s) => s.nif && String(s.nif).trim() === val.trim()
+                            );
                             if (found) {
                               setSupplierId(found.id);
                               setSupplierName(found.name);
@@ -1153,13 +1379,14 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                               setIsExistingSupplier(false);
                             }
                           }}
-                          placeholder="Ex: 5000000001"
+                          placeholder="5000000001"
                           className="w-full bg-zinc-50 border border-zinc-200 px-2 py-1 text-xs font-semibold h-7 mt-0.5 text-zinc-800"
                         />
                       </div>
-
                       <div>
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Nome / Razão Social *</label>
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">
+                          Nome / Razão Social *
+                        </label>
                         <input
                           type="text"
                           value={supplierName}
@@ -1168,15 +1395,16 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                           className="w-full bg-zinc-50 border border-zinc-200 px-2 py-1 text-xs font-semibold h-7 mt-0.5 text-zinc-800"
                         />
                       </div>
-
                       <div>
-                        <label className="text-[10px] font-bold text-zinc-500 uppercase">Selecionar Cadastrado</label>
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase">
+                          Selecionar Cadastrado
+                        </label>
                         <select
                           value={supplierId || ''}
                           onChange={(e) => {
                             const id = e.target.value;
                             setSupplierId(id);
-                            const found = suppliers.find(s => String(s.id) === String(id));
+                            const found = suppliers.find((s) => String(s.id) === String(id));
                             if (found) {
                               setSupplierName(found.name);
                               setSupplierNif(found.nif || '');
@@ -1187,7 +1415,7 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                           className="w-full bg-zinc-50 border border-zinc-200 px-2 py-1 text-xs h-7 mt-0.5 text-zinc-800"
                         >
                           <option value="">Selecione da Lista</option>
-                          {suppliers.map(s => (
+                          {suppliers.map((s) => (
                             <option key={String(s.id)} value={s.id}>
                               {s.name} ({s.nif || 'S/NIF'})
                             </option>
@@ -1195,7 +1423,6 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                         </select>
                       </div>
                     </div>
-
                     {!isExistingSupplier && (
                       <div className="flex items-center gap-2 pt-1">
                         <input
@@ -1206,13 +1433,13 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                           className="rounded border-zinc-300 text-[#003366]"
                         />
                         <label htmlFor="chkNewSupplier" className="text-xs text-zinc-700 font-medium">
-                          Cadastrar este fornecedor na base de dados após confirmação
+                          Cadastrar este fornecedor após confirmação
                         </label>
                       </div>
                     )}
                   </div>
 
-                  {/* Se for Fatura Recibo / Pronto Pagamento: Caixa */}
+                  {/* Block 3: Cash box (cash payment types) */}
                   {(docType === 'Fatura Recibo de Compra' || docType === 'Recibo') && (
                     <div className="bg-white border border-zinc-200 p-3 shadow-sm space-y-2">
                       <h4 className="text-[10px] font-black text-[#0f2a4a] border-b border-zinc-100 pb-1 uppercase tracking-widest">
@@ -1227,13 +1454,17 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                             className="w-full bg-zinc-50 border border-zinc-200 px-2 py-1 text-xs h-7 mt-0.5 text-zinc-800"
                           >
                             <option value="">Selecione o Caixa</option>
-                            {caixas.map(c => (
-                              <option key={c.id} value={c.id}>{c.name}</option>
+                            {caixas.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.name}
+                              </option>
                             ))}
                           </select>
                         </div>
                         <div>
-                          <label className="text-[10px] font-bold text-zinc-500 uppercase">Forma de Pagamento</label>
+                          <label className="text-[10px] font-bold text-zinc-500 uppercase">
+                            Forma de Pagamento
+                          </label>
                           <select
                             value={paymentMethod}
                             onChange={(e) => setPaymentMethod(e.target.value)}
@@ -1251,12 +1482,12 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                 </div>
               </div>
 
-              {/* Bloco 3: Tabela de Artigos e Linhas */}
+              {/* Block 4: Items table */}
               <div className="bg-white border border-zinc-200 p-3 shadow-sm space-y-2">
                 <div className="flex justify-between items-center border-b border-zinc-100 pb-2">
                   <h4 className="text-[10px] font-black text-[#0f2a4a] uppercase tracking-widest flex items-center gap-2">
                     <span>Artigos e Linhas do Documento</span>
-                    <span className="text-[9px] bg-blue-100 text-blue-800 px-1.5 py-0.2 font-semibold">
+                    <span className="text-[9px] bg-blue-100 text-blue-800 px-1.5 font-semibold">
                       {items.length} linha(s)
                     </span>
                   </h4>
@@ -1270,23 +1501,26 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                 </div>
 
                 <div className="overflow-x-auto">
-                  <table className="w-full text-xs border-collapse" style={{ minWidth: '760px' }}>
+                  <table className="w-full text-xs border-collapse" style={{ minWidth: '780px' }}>
                     <thead>
                       <tr className="bg-[#0f2a4a] text-white text-[11px]">
-                        <th className="px-2 py-1.5 text-left font-semibold w-8">#</th>
-                        <th className="px-2 py-1.5 text-left font-semibold">Descrição do Bem / Serviço</th>
-                        <th className="px-2 py-1.5 text-left font-semibold w-48">Associar a Produto de Stock</th>
-                        <th className="px-2 py-1.5 text-center font-semibold w-16">Qtd</th>
+                        <th className="px-2 py-1.5 text-left font-semibold w-7">#</th>
+                        <th className="px-2 py-1.5 text-left font-semibold">Descrição</th>
+                        <th className="px-2 py-1.5 text-left font-semibold w-44">Associar Produto</th>
+                        <th className="px-2 py-1.5 text-center font-semibold w-14">Qtd</th>
                         <th className="px-2 py-1.5 text-right font-semibold w-24">Preço Unit.</th>
-                        <th className="px-2 py-1.5 text-center font-semibold w-20">IVA (%)</th>
-                        <th className="px-2 py-1.5 text-right font-semibold w-24">Total</th>
-                        <th className="px-2 py-1.5 text-center font-semibold w-12">Ação</th>
+                        <th className="px-2 py-1.5 text-center font-semibold w-24">IVA</th>
+                        <th className="px-2 py-1.5 text-right font-semibold w-24">Total (Líq.)</th>
+                        <th className="px-2 py-1.5 text-center font-semibold w-10">✕</th>
                       </tr>
                     </thead>
                     <tbody>
                       {items.length === 0 ? (
                         <tr>
-                          <td colSpan={8} className="py-6 text-center text-zinc-400 italic border border-dashed border-zinc-200">
+                          <td
+                            colSpan={8}
+                            className="py-6 text-center text-zinc-400 italic border border-dashed border-zinc-200"
+                          >
                             Nenhum artigo adicionado. Clique em &quot;Adicionar Linha&quot; para preencher.
                           </td>
                         </tr>
@@ -1299,19 +1533,22 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                                 type="text"
                                 value={item.description}
                                 onChange={(e) => handleUpdateItemRow(idx, 'description', e.target.value)}
+                                placeholder="Descrição do bem ou serviço"
                                 className="w-full bg-transparent border border-transparent hover:border-zinc-300 focus:border-[#003366] px-1 py-0.5 text-xs text-zinc-800"
                               />
                             </td>
                             <td className="px-2 py-1.5 border-b border-zinc-100">
                               <select
                                 value={item.matched_product_id || ''}
-                                onChange={(e) => handleUpdateItemRow(idx, 'matched_product_id', e.target.value)}
+                                onChange={(e) =>
+                                  handleUpdateItemRow(idx, 'matched_product_id', e.target.value)
+                                }
                                 className="w-full bg-white border border-zinc-200 px-1 py-0.5 text-[11px] text-zinc-700"
                               >
-                                <option value="">Não associado (Artigo avulso)</option>
-                                {products.map(p => (
+                                <option value="">Não associado</option>
+                                {products.map((p) => (
                                   <option key={String(p.id)} value={p.id}>
-                                    {p.name} {p.barcode ? `(${p.barcode})` : ''}
+                                    {p.name}
                                   </option>
                                 ))}
                               </select>
@@ -1322,7 +1559,9 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                                 step="any"
                                 min="0.01"
                                 value={item.quantity}
-                                onChange={(e) => handleUpdateItemRow(idx, 'quantity', parseFloat(e.target.value) || 1)}
+                                onChange={(e) =>
+                                  handleUpdateItemRow(idx, 'quantity', parseFloat(e.target.value) || 1)
+                                }
                                 className="w-14 text-center border border-zinc-200 px-1 py-0.5 text-xs font-bold text-zinc-800"
                               />
                             </td>
@@ -1332,24 +1571,30 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                                 step="any"
                                 min="0"
                                 value={item.unit_price}
-                                onChange={(e) => handleUpdateItemRow(idx, 'unit_price', parseFloat(e.target.value) || 0)}
+                                onChange={(e) =>
+                                  handleUpdateItemRow(idx, 'unit_price', parseFloat(e.target.value) || 0)
+                                }
                                 className="w-20 text-right border border-zinc-200 px-1 py-0.5 text-xs font-bold text-zinc-800"
                               />
                             </td>
                             <td className="px-2 py-1.5 text-center border-b border-zinc-100">
                               <select
                                 value={item.tax_rate}
-                                onChange={(e) => handleUpdateItemRow(idx, 'tax_rate', parseFloat(e.target.value) || 0)}
+                                onChange={(e) =>
+                                  handleUpdateItemRow(idx, 'tax_rate', parseFloat(e.target.value) || 0)
+                                }
                                 className="border border-zinc-200 px-1 py-0.5 text-xs text-zinc-800"
                               >
-                                <option value="14">14% (Geral)</option>
-                                <option value="7">7% (Reduzida)</option>
-                                <option value="5">5% (Intermédia)</option>
-                                <option value="0">0% (Isento)</option>
+                                {taxRateOptions.map((opt) => (
+                                  <option key={opt.rate} value={opt.rate}>
+                                    {opt.label}
+                                  </option>
+                                ))}
                               </select>
                             </td>
                             <td className="px-2 py-1.5 text-right font-bold text-zinc-800 border-b border-zinc-100">
-                              {Number(item.total || 0).toLocaleString('pt-PT', { minimumFractionDigits: 2 })} Kz
+                              {Number(item.total || 0).toLocaleString('pt-PT', { minimumFractionDigits: 2 })}{' '}
+                              Kz
                             </td>
                             <td className="px-2 py-1.5 text-center border-b border-zinc-100">
                               <button
@@ -1367,12 +1612,15 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                   </table>
                 </div>
 
-                {/* Resumo de Totais */}
+                {/* Totals summary */}
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pt-3 border-t border-zinc-100 gap-4">
                   <div className="text-xs text-zinc-500">
                     {identifiedTotal > 0 && (
                       <span className="inline-block bg-zinc-100 px-2 py-1 text-[11px]">
-                        Total lido no documento: <strong>{identifiedTotal.toLocaleString('pt-PT', { minimumFractionDigits: 2 })} Kz</strong>
+                        Total lido no documento:{' '}
+                        <strong>
+                          {identifiedTotal.toLocaleString('pt-PT', { minimumFractionDigits: 2 })} Kz
+                        </strong>
                       </span>
                     )}
                   </div>
@@ -1380,21 +1628,42 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                   <div className="w-full sm:w-72 bg-zinc-50 border border-zinc-200 p-3 space-y-1.5">
                     <div className="flex justify-between text-xs text-zinc-600 font-semibold">
                       <span>Subtotal (Incidência):</span>
-                      <span>{discrepancyCheck.calculatedSubtotal.toLocaleString('pt-PT', { minimumFractionDigits: 2 })} Kz</span>
+                      <span>
+                        {discrepancyCheck.calculatedSubtotal.toLocaleString('pt-PT', {
+                          minimumFractionDigits: 2,
+                        })}{' '}
+                        Kz
+                      </span>
                     </div>
                     <div className="flex justify-between text-xs text-blue-700 font-semibold">
                       <span>IVA Liquidado:</span>
-                      <span>+{discrepancyCheck.calculatedVat.toLocaleString('pt-PT', { minimumFractionDigits: 2 })} Kz</span>
+                      <span>
+                        +{discrepancyCheck.calculatedVat.toLocaleString('pt-PT', { minimumFractionDigits: 2 })}{' '}
+                        Kz
+                      </span>
                     </div>
+                    {globalDiscount > 0 && (
+                      <div className="flex justify-between text-xs text-red-600 font-semibold">
+                        <span>Desconto Global:</span>
+                        <span>
+                          -{globalDiscount.toLocaleString('pt-PT', { minimumFractionDigits: 2 })} Kz
+                        </span>
+                      </div>
+                    )}
                     <div className="border-t border-zinc-200 pt-1.5 flex justify-between text-sm font-black text-[#003366]">
                       <span>Total Final:</span>
-                      <span>{discrepancyCheck.calculatedTotal.toLocaleString('pt-PT', { minimumFractionDigits: 2 })} Kz</span>
+                      <span>
+                        {discrepancyCheck.calculatedTotal.toLocaleString('pt-PT', {
+                          minimumFractionDigits: 2,
+                        })}{' '}
+                        Kz
+                      </span>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Botões de Ação Finais (Seção 8 e 11) */}
+              {/* Action buttons */}
               <div className="flex flex-wrap justify-end gap-3 pt-3 border-t border-zinc-200">
                 <button
                   type="button"
@@ -1422,7 +1691,7 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
                 >
                   {submitting ? (
                     <>
-                      <RefreshCw size={14} className="animate-spin" /> A registar no Supabase...
+                      <RefreshCw size={14} className="animate-spin" /> A registar...
                     </>
                   ) : (
                     <>
@@ -1435,7 +1704,7 @@ export const PurchaseDocumentScannerModal: React.FC<PurchaseDocumentScannerModal
           )}
         </div>
 
-        {/* Canvas invisível para processamento de fotogramas e QR codes */}
+        {/* Hidden canvas for QR frame processing */}
         <canvas ref={canvasRef} className="hidden" />
       </div>
     </div>

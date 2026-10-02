@@ -53,7 +53,7 @@ class RealtimeManager {
     }
     this.listeners.get(channelName)!.add(onUpdate);
 
-    // If already subscribed or subscribing, stop here
+    // If already subscribed or channel already stored, return it immediately
     if (this.channels.has(channelName)) {
       return this.channels.get(channelName)!;
     }
@@ -96,8 +96,10 @@ class RealtimeManager {
         }
       );
 
+    // Register channel immediately in map so no leak or duplicate channel is ever created
+    this.channels.set(channelName, channel);
+
     return new Promise((resolve) => {
-      // Small delay to prevent "WebSocket closed without opened" if called during rapid re-renders
       const subTimeout = setTimeout(() => {
         this.timeouts.delete(channelName);
         channel.subscribe(async (status) => {
@@ -105,20 +107,18 @@ class RealtimeManager {
           
           if (status === 'SUBSCRIBED') {
             console.log(`[RealtimeManager] Subscribed successfully to ${channelName}`);
-            this.channels.set(channelName, channel);
             this.retryCounts.set(channelName, 0);
             resolve(channel);
-          } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
-            console.warn(`[RealtimeManager] Status ${status} para ${channelName}. Certifique-se que a tabela está na publicação 'supabase_realtime'.`);
-            
-            // Supabase Safe Proxy in src/lib/supabase.ts already handles reconnection logic. 
-            // We just resolve(null) to avoid infinite loops and unhandled promise rejections.
-            this.channels.delete(channelName);
-            this.subscribing.delete(channelName);
+          } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            // Keep the channel in this.channels! Do NOT delete it, because:
+            // 1) The channel auto-rejoins when connection is restored
+            // 2) Deleting it here causes duplicate channel subscriptions and leaks
+            resolve(channel);
+          } else if (status === 'CLOSED') {
             resolve(null);
           }
         });
-      }, 200); // Slightly longer delay
+      }, 50);
       this.timeouts.set(channelName, subTimeout);
     });
   }
@@ -152,12 +152,13 @@ class RealtimeManager {
       console.log(`[RealtimeManager] Removing channel ${channelName} as no listeners remain.`);
       try {
         await supabase.removeChannel(channel);
+      } catch (err) {
+        console.error(`[RealtimeManager] Error removing ${channelName}:`, err);
+      } finally {
         this.channels.delete(channelName);
         this.listeners.delete(channelName);
         this.retryCounts.delete(channelName);
         this.subscribing.delete(channelName);
-      } catch (err) {
-        console.error(`[RealtimeManager] Error removing ${channelName}:`, err);
       }
     }
   }

@@ -57,14 +57,17 @@ export function useRealtime(table: string, onChange: (payload: any) => void) {
         }
       )
       .subscribe((status, err) => {
-        console.log(`Realtime [${table}] status:`, status, err || "");
-        
-        if (err) {
-          console.error(`Erro no subscribe [${table}]:`, err);
+        const errMsg = err?.message || String(err || '');
+        const isTransportError = errMsg.includes('transport failure') || errMsg.includes('WebSocket');
+
+        if (status === 'SUBSCRIBED') {
+          console.log(`Realtime [${table}] ativo.`);
+        } else if (err && !isTransportError) {
+          console.warn(`Aviso no subscribe [${table}]:`, err);
         }
 
-        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-          console.error(`Falha no Realtime da tabela: ${table}`);
+        if ((status === "CHANNEL_ERROR" || status === "TIMED_OUT") && !isTransportError) {
+          console.warn(`Realtime temporariamente indisponível para tabela: ${table}`);
         }
       });
 

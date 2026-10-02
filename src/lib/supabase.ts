@@ -13,6 +13,7 @@ const supabaseUrl = isStaging ? STAGING_URL : PROD_URL;
 const supabaseAnonKey = isStaging ? STAGING_ANON : PROD_ANON;
 
 const isBrowser = typeof window !== 'undefined';
+let isPageSuspended = false;
 
 // Executa a validação rigorosa de isolamento de ambiente (Staging vs Produção)
 try {
@@ -228,10 +229,11 @@ class SafeRealtimeChannel {
   private listeners: { type: string; filter: any; callback: any }[] = [];
   private isSubscribed = false;
   private retryCount = 0;
-  private maxRetries = 10;
+  private maxRetries = 3;
   private isClosed = false;
   private realSubClient: any;
   private reconnectTimeout: any = null;
+  private lastLoggedStatus = '';
 
   constructor(baseChannel: any, name: string, creatorClient: any) {
     this.baseChannel = baseChannel;
@@ -261,16 +263,40 @@ class SafeRealtimeChannel {
     try {
       this.baseChannel.subscribe((status: string, err?: any) => {
         if (this.isClosed) return;
-        console.log(`[SafeSupabase Realtime] Event status '${status}' on channel '${this.channelName}'`, err || '');
-        
-        // Reconnect ONLY on actual connection failure. CLOSED is a normal terminal state.
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          this.handleReconnection();
-        } else if (status === 'SUBSCRIBED') {
+
+        const errMsg = err?.message || (typeof err === 'string' ? err : '');
+        const isTransportError = errMsg.includes('transport failure') || 
+                                errMsg.includes('WebSocket') || 
+                                errMsg.includes('Back-Forward Cache') ||
+                                (this.realSubClient?.realtime && !this.realSubClient.realtime.isConnected());
+
+        // Deduplicate logs to prevent flooding the console during network/cache transitions
+        const logKey = `${status}:${errMsg}`;
+        if (this.lastLoggedStatus !== logKey) {
+          this.lastLoggedStatus = logKey;
+          if (status === 'SUBSCRIBED') {
+            console.log(`[SafeSupabase Realtime] Subscribed to '${this.channelName}'`);
+          } else if (isTransportError) {
+            console.log(`[SafeSupabase Realtime] Transport offline for '${this.channelName}'. Auto-reconnect active.`);
+          } else {
+            console.warn(`[SafeSupabase Realtime] Event status '${status}' on channel '${this.channelName}'`, err || '');
+          }
+        }
+
+        if (status === 'SUBSCRIBED') {
           this.retryCount = 0; // reset
           if (this.reconnectTimeout) {
             clearTimeout(this.reconnectTimeout);
             this.reconnectTimeout = null;
+          }
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          // If this is a transport drop (socket closed, bfcache, offline), Phoenix Channel
+          // automatically rejoins via its internal rejoinTimer as soon as the socket reconnects.
+          // Tearing down and recreating the channel here damages Phoenix's built-in reconnection!
+          // Only attempt manual channel recreation if the socket is already connected and healthy,
+          // but the channel itself was rejected or timed out.
+          if (!isTransportError) {
+            this.handleReconnection();
           }
         }
 
@@ -292,18 +318,23 @@ class SafeRealtimeChannel {
   private handleReconnection() {
     if (this.isClosed) return;
     if (this.reconnectTimeout) return; // Prevent duplicate reconnection timers
+    if (typeof window !== 'undefined' && (!navigator.onLine || isPageSuspended || document.hidden)) {
+      return;
+    }
     if (this.retryCount >= this.maxRetries) {
-      console.warn(`[SafeSupabase Realtime] Subscription '${this.channelName}' max reconnection attempts reached. Continuing offline fallback.`);
+      console.warn(`[SafeSupabase Realtime] Subscription '${this.channelName}' max reconnection attempts reached (${this.maxRetries}).`);
       return;
     }
 
-    const delay = Math.min(1000 * Math.pow(1.5, this.retryCount), 15000);
+    const delay = Math.min(2000 * Math.pow(1.5, this.retryCount), 15000);
     this.retryCount++;
     console.log(`[SafeSupabase Realtime] Reconnecting channel '${this.channelName}' in ${delay.toFixed(0)}ms (Attempt ${this.retryCount}/${this.maxRetries})`);
 
     this.reconnectTimeout = setTimeout(() => {
       this.reconnectTimeout = null;
       if (this.isClosed) return;
+      if (typeof window !== 'undefined' && (!navigator.onLine || isPageSuspended || document.hidden)) return;
+
       try {
         console.log(`[SafeSupabase Realtime] Doing resubscribe of '${this.channelName}'`);
         
@@ -586,4 +617,63 @@ export const supabase = realClientInstance
 // Ensure global sharing of single instance
 if (typeof window !== 'undefined') {
   (globalThis as any).__supabase = supabase;
+
+  // Realtime reconnect helper
+  const reconnectRealtimeIfOffline = () => {
+    if (!realClientInstance?.realtime) return;
+    if (!navigator.onLine || isPageSuspended) return;
+
+    try {
+      if (!realClientInstance.realtime.isConnected() && !realClientInstance.realtime.isConnecting()) {
+        console.log('[SafeSupabase] Re-establishing Realtime connection...');
+        realClientInstance.realtime.connect();
+      }
+    } catch (err) {
+      // Ignore harmless connection race
+    }
+  };
+
+  // 1. Pagehide: page entering Back-Forward Cache (bfcache) or navigating away
+  window.addEventListener('pagehide', () => {
+    isPageSuspended = true;
+    if (realClientInstance?.realtime) {
+      try {
+        // Clean disconnect prevents browser from forcibly severing the WebSocket and throwing
+        // "WebSocket connection to '...' failed: Page entered Back-Forward Cache"
+        realClientInstance.realtime.disconnect();
+      } catch (err) {}
+    }
+  });
+
+  // 2. Pageshow: page restored from Back-Forward Cache (bfcache) or newly shown
+  window.addEventListener('pageshow', (e: PageTransitionEvent) => {
+    isPageSuspended = false;
+    // When restored from bfcache (e.persisted === true), WebSocket must be reconnected cleanly
+    if (e.persisted || (realClientInstance?.realtime && !realClientInstance.realtime.isConnected())) {
+      console.log('[SafeSupabase] Page restored from cache / shown. Reconnecting Realtime...');
+      setTimeout(reconnectRealtimeIfOffline, 150);
+    }
+  });
+
+  // 3. Tab visibility changes (user switches back to tab)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      isPageSuspended = false;
+      setTimeout(reconnectRealtimeIfOffline, 150);
+    } else {
+      isPageSuspended = true;
+    }
+  });
+
+  // 4. Online/Offline network events
+  window.addEventListener('online', () => {
+    isPageSuspended = false;
+    console.log('[SafeSupabase] Network restored (online). Reconnecting Realtime...');
+    setTimeout(reconnectRealtimeIfOffline, 200);
+  });
+
+  window.addEventListener('offline', () => {
+    isPageSuspended = true;
+  });
 }
+

@@ -52,6 +52,8 @@ interface IVMRegistoRow {
 interface IVMModuleProps {
   user: any;
   companyData?: any;
+  fiscalYear?: string | number;
+  onBack?: () => void;
 }
 
 // ─── IVM Calculation Engine ──────────────────────────────────────────────────

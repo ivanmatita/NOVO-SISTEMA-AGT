@@ -124,6 +124,7 @@ export interface Client {
   saldo_inicial?: number;
   empresa_id: string;
   created_at: string;
+  nome?: string; // alias for name (PT column)
 }
 
 export interface Product {
@@ -148,6 +149,8 @@ export interface Product {
   image?: string;
   image_url?: string;
   image_path?: string;
+  nome?: string; // alias for name (PT column)
+  tipo?: string; // 'produto' | 'servico' | 'outro'
 }
 
 export interface InvoiceItem {
@@ -799,7 +802,17 @@ export interface StandVeiculo {
   frota_veiculo_id?: string;
   created_at?: string;
   updated_at?: string;
+  // Documentação e trânsito
+  numero_livrete?: string;
+  numero_titulo_propriedade?: string;
+  situacao_transito?: string;
+  posto_dnvt?: string;
+  // IVM
+  cilindrada_cc?: number;
+  valor_ivm_calculado?: number;
+  ivm_pago?: boolean;
 }
+
 
 export interface StandProcessoImportacao {
   id: string;

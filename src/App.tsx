@@ -24547,7 +24547,7 @@ const AccountingModule = ({ invoices, clients, fiscalSeries, onRefresh, employee
       case 'imposto-industrial-retencao-anual':
         return <ImpostoIndustrialRetencaoAnual purchases={purchases} suppliers={suppliers} companyData={companyData} fiscalYear={fiscalYear} onBack={() => setActiveSubTab(null)} />;
       case 'saft':
-        return <SaftExportForm companyData={companyData} user={user} invoices={invoices} purchases={purchases} clients={clients} products={products} defaultYear={String(fiscalYear || new Date().getFullYear())} onBack={() => setActiveSubTab(null)} />;
+        return <SaftExportForm companyData={companyData} user={user} invoices={invoices} purchases={purchases} clients={clients} products={[] as any[]} defaultYear={String(fiscalYear || new Date().getFullYear())} onBack={() => setActiveSubTab(null)} />;
       default:
         return null;
     }
@@ -26430,7 +26430,7 @@ const CreateInvoice = ({ clients, products, workSites, fiscalSeries, activeTaxes
   const [isAgtItemModalOpen, setIsAgtItemModalOpen] = useState(false);
   const [editingAgtItemIndex, setEditingAgtItemIndex] = useState<number | null>(null);
   const [editingAgtItemData, setEditingAgtItemData] = useState<AgtItemData | null>(null);
-  const [clientNifSearch, setClientNifSearch] = useState(initialData?.cliente_nif || (initialData as any)?.customer_tax_id || (initialData as any)?.nif || '');
+  const [clientNifSearch, setClientNifSearch] = useState(initialData?.client_nif || (initialData as any)?.customer_tax_id || (initialData as any)?.nif || '');
 
    // Helper to match series type with currently selected documentType
   const filteredSeries = fiscalSeries.filter(s => {

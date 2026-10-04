@@ -236,7 +236,7 @@ export const TaxCalculationsDetailedReport: React.FC<TaxCalculationsDetailedRepo
       'ID': '' as any,
       'Data': '',
       'Doc Nº': '',
-      'Estado': '',
+      'Estado': '' as any,
       'Cliente': 'TOTAIS GLOBAIS',
       'Crédito (AKZ)': totalCreditos,
       'Débito (AKZ)': totalDebitos,

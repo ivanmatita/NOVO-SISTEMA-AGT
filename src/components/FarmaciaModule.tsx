@@ -507,7 +507,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
   }, [farmaciaProdutos, lotes, dispensacoes, receitas]);
 
   // ─── FEFO (FIRST EXPIRE, FIRST OUT) ────────────────────────────────────────
-  const getFefoLoteForProduct = useCallback((produtoId: string) => {
+  const getFefoLoteForProduct = useCallback((produtoId: string | number) => {
     const hoje = new Date().toISOString().split('T')[0];
     const availableLotes = lotes
       .filter(l => l.produto_id?.toString() === produtoId.toString())
@@ -889,7 +889,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
           tax_rate: Number((item.produto as any).iva_taxa || 14),
           tax_code: 'NOR',
           discount: 0,
-          code: item.lote.numero_lote || item.produto.id.slice(0, 8)
+          code: item.lote.numero_lote || String(item.produto.id).slice(0, 8)
         })),
         notes: `Dispensação Farmacêutica${receitaObj ? ` referente à Receita Médica Nº ${receitaObj.numero_receita} (Dr. ${receitaObj.prescritor_nome || 'N/D'})` : ''}. Paciente: ${clientObj?.name || 'Utente Balcão'}`
       });

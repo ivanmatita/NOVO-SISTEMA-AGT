@@ -361,7 +361,7 @@ export const CashFlowStatementModule: React.FC<CashFlowStatementModuleProps> = (
       // Saldos Finais
       [{ content: 'Aumento líquido de caixa e seus equivalentes', styles: { fontStyle: 'bold' as const } }, '', formatVal(curr.aumentoLiquidoCaixa), formatVal(pri.aumentoLiquidoCaixa)],
       ['Caixa e seus equivalentes no início do período', '43, 47', formatVal(currentYearData.caixaInicio), formatVal(priorYearData.caixaInicio)],
-      [{ content: 'Caixa e seus equivalentes no fim do período', styles: { fontStyle: 'bold' as const, textColor: [0, 107, 130] } }, '43, 47', formatVal(curr.caixaFim), formatVal(pri.caixaFim)],
+      [{ content: 'Caixa e seus equivalentes no fim do período', styles: { fontStyle: 'bold' as const, textColor: [0, 107, 130] as [number, number, number] } }, '43, 47', formatVal(curr.caixaFim), formatVal(pri.caixaFim)],
       [{ content: 'Fim de Demonstração', colSpan: 4, styles: { halign: 'center' as const, fontStyle: 'italic' as const } }]
     ];
 

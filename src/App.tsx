@@ -23,6 +23,8 @@ import ApuramentoResultadosModule from './components/accounting/ApuramentoResult
 import CalculosImpostoModule from './components/accounting/CalculosImpostoModule';
 import GestaoFinanceiraModule from './components/GestaoFinanceiraModule';
 import { PurchaseDocumentScannerModal } from './components/purchases/PurchaseDocumentScannerModal';
+import { GestaoComprasList, CompraDoc } from './components/purchases/GestaoComprasList';
+import { GestaoComprasForm } from './components/purchases/GestaoComprasForm';
 
 
 import ProjectManagementModule from './components/ProjectManagementModule';
@@ -29230,204 +29232,43 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
       </div>
 
       {activeSubTab === 'historico' && (
-        <>
-          <div className="bg-white border border-zinc-200 rounded-none shadow-sm flex flex-wrap gap-4 items-end p-4">
-            <div className="space-y-1.5 flex-1 min-w-[180px]">
-              <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Tipo de Documento</label>
-              <select 
-                value={filterDocType} 
-                onChange={(e) => setFilterDocType(e.target.value)}
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-xs font-bold text-zinc-800 focus:outline-none focus:border-[#003366]"
-              >
-                <option value="">Todos os Tipos</option>
-                <option value="Fatura de Compra">Fatura de Compra</option>
-                <option value="Fatura Recibo de Compra">Fatura Recibo de Compra</option>
-                <option value="Recibo">Recibo</option>
-                <option value="Nota de Crédito de Fornecedor">Nota de Crédito de Fornecedor</option>
-                <option value="Nota de Débito de Fornecedor">Nota de Débito de Fornecedor</option>
-                <option value="Guia de Entrada">Guia de Entrada</option>
-              </select>
-            </div>
-
-            <div className="space-y-1.5 flex-1 min-w-[180px]">
-              <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Fornecedor</label>
-              <select 
-                value={filterSupplierId} 
-                onChange={(e) => setFilterSupplierId(e.target.value)}
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-xs font-bold text-zinc-800 focus:outline-none focus:border-[#003366]"
-              >
-                <option value="">Todos os Fornecedores</option>
-                {(suppliers || []).map(s => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-1.5 flex-1 min-w-[180px]">
-              <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Centro de Custo / Local</label>
-              <select 
-                value={filterWorkSiteId} 
-                onChange={(e) => setFilterWorkSiteId(e.target.value)}
-                className="w-full bg-zinc-50 border border-zinc-200 rounded-none px-3 py-2 text-xs font-bold text-zinc-800 focus:outline-none focus:border-[#003366]"
-              >
-                <option value="">Todos os Centros de Custo</option>
-                {(workSites || []).map(w => (
-                  <option key={w.id} value={w.id}>{w.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-1.5 flex-1 min-w-[180px]">
-              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Pesquisar Compra</label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
-                <input 
-                  type="text" 
-                  placeholder="Nº Compra, Ref..." 
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 bg-zinc-50 border border-zinc-200 rounded-none text-xs font-medium focus:outline-none focus:border-[#003366]"
-                />
-              </div>
-            </div>
-
-            <button 
-              onClick={() => handleDownloadPurchasesPDF(filteredHistoricoPurchases, "Relatório da Gestão de Compras")}
-              className="bg-[#003366] text-white font-bold px-4 py-2 rounded-none flex items-center gap-2 hover:bg-[#002244] transition-all text-xs uppercase tracking-wider shadow-md"
-            >
-              <FileDown size={16} />
-              Baixar Lista em PDF
-            </button>
-          </div>
-
-          <div className="bg-white border border-zinc-200 rounded-none overflow-hidden shadow-sm overflow-x-auto">
-            <table className="w-full text-left border-collapse whitespace-nowrap">
-              <thead>
-                <tr className="bg-[#003366] text-white text-[13px] uppercase tracking-wider font-bold">
-                  <th className="px-6 py-5">Data Emissão /<br/>Vencimento</th>
-                  <th className="px-6 py-5 border-r border-[#004488]">Tipo /<br/>Nº Doc Fornecedor</th>
-                  <th className="px-6 py-5">Nº Interno</th>
-                  <th className="px-6 py-5">Fornecedor</th>
-                  <th className="px-6 py-5">Centro de Custo /<br/>Local Trabalho</th>
-                  <th className="px-6 py-5 text-center">M</th>
-                  <th className="px-6 py-5 text-right">Valor Total</th>
-                  <th className="px-6 py-5 border-l border-[#004488] text-center">Status</th>
-                  <th className="px-6 py-5 text-center">PDF</th>
-                  <th className="px-6 py-5 text-right">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
-                {filteredHistoricoPurchases
-                  .map((p, pIndex) => (
-                    <tr key={p.id || pIndex} className={`hover:bg-zinc-50 transition-colors text-[13px] border-b border-zinc-50 group ${p.status === 'cancelled' ? 'opacity-50' : ''}`}>
-                       <td className="px-6 py-4">
-                        <div className="font-bold text-zinc-900">{new Date(p.date).toLocaleDateString('pt-PT')}</div>
-                        <div className="text-red-600 font-bold mt-1">{p.due_date ? new Date(p.due_date).toLocaleDateString('pt-PT') : '-'}</div>
-                      </td>
-                      <td className="px-6 py-4 border-r border-zinc-100">
-                        {['Recibo', 'Pagamento'].includes(p.document_type || '') ? (
-                          <div className="space-y-1">
-                            <span className="inline-flex items-center px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 rounded-sm">
-                              RECIBO EMITIDO
-                            </span>
-                            <div className="text-[10px] font-black text-zinc-600 whitespace-nowrap mt-1">
-                              Fatura Ref: <span className="font-mono text-[#003366] text-xs font-bold underline">{p.invoice_number || p.numero_fatura || '-'}</span>
-                            </div>
-                          </div>
-                        ) : (
-                          <>
-                            <div className={`font-black uppercase whitespace-nowrap ${p.status === 'cancelled' ? 'text-red-600' : 'text-[#003366]'}`}>
-                              {p.document_type || 'Compra'}
-                              {p.status === 'cancelled' && ' (ANULADO)'}
-                            </div>
-                            <div className="text-zinc-500 font-bold mt-1">{p.invoice_number || '-'}</div>
-                          </>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 font-mono text-[#003366] font-black">{p.purchase_number || p.codigo || '-'}</td>
-                      <td className="px-6 py-4 font-black text-zinc-900 uppercase">{p.supplier_name || p.client_name || '-'}</td>
-                      <td className="px-6 py-4">
-                        <div className="text-zinc-600 uppercase font-black">{p.work_site || (p as any).work_site_name || '-'}</div>
-                        <div className="text-zinc-400 font-mono text-[9px] uppercase mt-1">
-                          {p.hash ? 'H • ' + p.hash.substring(0, 8) : '-'}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-center text-zinc-600 font-medium">{p.currency || 'AOA'}</td>
-                      <td className="px-6 py-4 text-right font-black text-[#003366] text-sm">{formatCurrency(p.total)}</td>
-                      <td className="px-6 py-4 border-l border-zinc-50">
-                        {(() => {
-                          const st = getPurchaseStatus(p);
-                          return (
-                            <div className={`flex items-center justify-center gap-1.5 px-2 py-1 rounded-none ${st.bgColor}`}>
-                              <div className={`w-1.5 h-1.5 rounded-full ${st.dotColor}`} />
-                              <span className={`font-black uppercase text-[9px] tracking-widest ${st.textColor}`}>
-                                {st.label}
-                              </span>
-                            </div>
-                          );
-                        })()}
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <button 
-                          onClick={() => setShowFileModal(p)}
-                          className={`p-2 transition-all ${p.document_url ? 'bg-emerald-100 text-emerald-700 border border-emerald-200 shadow-sm' : 'bg-zinc-50 text-zinc-400 border border-zinc-200 hover:bg-blue-50 hover:text-blue-600'}`}
-                        >
-                          <FileText size={16} />
-                        </button>
-                      </td>
-                      <td className="px-6 py-4 text-right pr-8">
-                        <div className="flex items-center justify-end gap-3">
-                          <UserIssuerButton doc={p} globalUsers={globalUsers} />
-                          <button 
-                            onClick={() => handleUpdate(p)}
-                            className="bg-amber-100 text-amber-700 p-2 hover:bg-amber-200 transition-all"
-                            title="Editar"
-                          >
-                            <Edit size={16} />
-                          </button>
-                          {(() => {
-                            const isAnuladoRow = ['anulado', 'cancelled'].includes((p.status || '').toLowerCase()) || 
-                                                 ['anulado', 'cancelled'].includes(((p as any).estado || '').toLowerCase());
-                            const hasReceiptRow = p.recibo_emitido === true || (p as any).tem_recibo === true;
-                            if (isAnuladoRow || hasReceiptRow) {
-                              return (
-                                <button
-                                  disabled
-                                  title={isAnuladoRow ? 'Documento anulado — não pode ser eliminado' : 'Recibo emitido — elimine primeiro o recibo'}
-                                  className="bg-zinc-100 text-zinc-300 p-2 cursor-not-allowed"
-                                >
-                                  <Trash2 size={16} />
-                                </button>
-                              );
-                            }
-                            return (
-                              <button 
-                                onClick={() => handleDeletePurchase(p.id)}
-                                className="bg-red-100 text-red-600 p-2 hover:bg-red-200 transition-all"
-                                title="Eliminar"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            );
-                          })()}
-                          <button 
-                            onClick={() => setSelectedPurchase(p)}
-                            className="bg-blue-600 text-white p-2 shadow-lg hover:bg-blue-700 active:scale-95 transition-all"
-                            title="Opções do Documento"
-                          >
-                            <MoreHorizontal size={18} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-            {filteredHistoricoPurchases.length === 0 && (
-              <div className="p-12 text-center text-zinc-400 text-sm italic uppercase font-black tracking-widest bg-zinc-50/20">Nenhuma compra encontrada com os filtros selecionados.</div>
-            )}
-          </div>
-        </>
+        <GestaoComprasList
+          suppliers={suppliers}
+          workSites={workSites}
+          caixas={caixas}
+          fiscalYear={fiscalYear}
+          onNewPurchase={() => handleStartCreate(null, undefined)}
+          onEditPurchase={(doc) => {
+            if (doc.id) {
+              handleUpdate(doc as any);
+            } else {
+              handleStartCreate(doc as any, undefined);
+            }
+          }}
+          onViewPurchase={(doc) => {
+            supabase
+              .from('compras')
+              .select('*')
+              .eq('id', doc.id)
+              .single()
+              .then(({ data, error }) => {
+                if (error || !data) {
+                  toast.error('Erro ao carregar dados detalhados.');
+                  return;
+                }
+                const normalized = {
+                  ...data,
+                  supplier_name: data.fornecedor_nome || data.supplier_name || 'Fornecedor',
+                  items: typeof data.itens === 'string' ? JSON.parse(data.itens) : (data.itens || data.items || [])
+                };
+                setShowReportModal(normalized);
+              });
+          }}
+          onOpenAttachments={(doc) => {
+            setShowFileModal(doc as any);
+          }}
+          companyData={companyData}
+        />
       )}
 
       {activeSubTab === 'pendentes' && (

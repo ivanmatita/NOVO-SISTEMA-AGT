@@ -8,7 +8,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   ChevronLeft, Plus, Trash2, Save, AlertCircle,
-  Search, Package, RefreshCw, Info, CheckCircle2
+  Search, Package, RefreshCw, Info, CheckCircle2,
+  Paperclip, ExternalLink, FileText
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -325,6 +326,8 @@ export const GestaoComprasForm: React.FC<Props> = ({
   const [supplierSearch, setSupplierSearch] = useState('');
   const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
   const [dupWarning, setDupWarning] = useState('');
+  const [supportFile, setSupportFile] = useState<File | null>(null);
+  const [currentDocumentUrl, setCurrentDocumentUrl] = useState<string | null>(initialData?.document_url || null);
 
   // ── Totals ──────────────────────────────────────────────────────────────
   const calcTotals = useCallback(() => {
@@ -555,6 +558,50 @@ export const GestaoComprasForm: React.FC<Props> = ({
         created_by_nome: user?.nome || user?.name || null,
       };
 
+      // ── Upload Documento de Suporte se fornecido ─────────────────────────
+      let docUrl = currentDocumentUrl;
+      let docPath = initialData?.document_path || null;
+
+      if (supportFile) {
+        try {
+          const fileExt = supportFile.name.split('.').pop() || 'pdf';
+          const safeName = supportFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const fileName = `${empresaId}/compras/${Date.now()}_${safeName}`;
+          const { data: uploadData, error: uploadErr } = await supabase.storage
+            .from('media')
+            .upload(fileName, supportFile, { upsert: false });
+
+          if (!uploadErr && uploadData) {
+            const { data: urlData } = supabase.storage.from('media').getPublicUrl(uploadData.path);
+            docUrl = urlData?.publicUrl || null;
+            docPath = uploadData.path;
+
+            await supabase.from('media_arquivos').insert([{
+              empresa_id: empresaId,
+              utilizador_id: user?.id || null,
+              tipo: 'documento_suporte',
+              nome_arquivo: fileName,
+              nome_original: supportFile.name,
+              bucket: 'media',
+              caminho_arquivo: uploadData.path,
+              url_publica: urlData?.publicUrl,
+              mime_type: supportFile.type,
+              tamanho_bytes: supportFile.size,
+              extensao: fileExt,
+              entidade: 'compras',
+              entidade_id: String(initialData?.id || 'new'),
+              observacao: `Documento de suporte: ${form.numero_documento}`,
+              ativo: true
+            }]);
+          }
+        } catch (uErr) {
+          console.warn('[GestaoComprasForm] upload warning:', uErr);
+        }
+      }
+
+      payload.document_url = docUrl;
+      payload.document_path = docPath;
+
       let savedDoc: any;
 
       if (isEditing && initialData?.id) {
@@ -586,6 +633,9 @@ export const GestaoComprasForm: React.FC<Props> = ({
       // ── Stock movements ─────────────────────────────────────────────────
       await processStockMovements(savedDoc, itensCalc, empresaId, isEditing);
 
+      // ── Mapa de Amortização (Meios Fixos e Investimentos) ───────────────
+      await processAmortizacaoAtivos(savedDoc, itensCalc, empresaId, isEditing);
+
       // ── Caixa movement for cash purchases ───────────────────────────────
       const isCashDoc = ['Fatura Recibo de Compra', 'Pagamento', 'Recibo', 'Fatura Recibo'].some(
         t => t.toLowerCase() === form.tipo_documento.trim().toLowerCase()
@@ -616,6 +666,45 @@ export const GestaoComprasForm: React.FC<Props> = ({
       toast.error(`Erro ao guardar: ${err.message || 'Erro desconhecido'}`);
     } finally {
       setSaving(false);
+    }
+  };
+
+  // ── Mapa de Amortização (Meios Fixos e Investimentos) ─────────────────────
+  const processAmortizacaoAtivos = async (doc: any, itens: LineItem[], empresaId: string, isUpdate: boolean) => {
+    for (const item of itens) {
+      if (item.tipologia_custo !== 'Meios Fixos e Investimentos') continue;
+      try {
+        if (isUpdate) {
+          await supabase
+            .from('ativos_imobilizados')
+            .delete()
+            .eq('empresa_id', empresaId)
+            .ilike('observacoes', `%${form.numero_documento}%`);
+        }
+
+        const valorAq = round2(item.total_linha || (item.quantidade * item.valor_unitario));
+        await supabase
+          .from('ativos_imobilizados')
+          .insert([{
+            empresa_id: empresaId,
+            conta: item.rubrica_id ? (item.rubrica_label.split('—')[0]?.trim() || item.rubrica_id) : '11.1',
+            serial_number: item.serial_number || null,
+            descricao: item.descricao || 'Ativo Fixo / Investimento',
+            data_aquisicao: form.data_documento || form.data_valor || new Date().toISOString().slice(0, 10),
+            ano_aquisicao: ano,
+            quantidade: item.quantidade || 1,
+            valor_unitario: item.valor_unitario || valorAq,
+            valor_aquisicao: valorAq,
+            taxa_amortizacao: 20,
+            vida_util: 5,
+            metodo: 'Linhas Rectas',
+            valor_residual: 0,
+            status: 'Em Serviço',
+            observacoes: `Origem Compra Doc: ${form.numero_documento} | Fornecedor: ${form.fornecedor_nome}`,
+          }]);
+      } catch (amortErr) {
+        console.warn('[GestaoComprasForm] amortizacao integration warning:', amortErr);
+      }
     }
   };
 
@@ -1028,6 +1117,54 @@ export const GestaoComprasForm: React.FC<Props> = ({
                   </option>
                 ))}
               </select>
+            </div>
+          </div>
+        </div>
+
+        {/* ─── SECÇÃO: Documento de Suporte ──────────────────────────── */}
+        <div className="bg-white border border-zinc-200 shadow-sm">
+          <div className="px-3 py-1.5 border-b border-zinc-100 bg-zinc-50 flex items-center justify-between">
+            <h3 className="text-[9px] font-black text-zinc-500 uppercase tracking-widest flex items-center gap-1.5">
+              <Paperclip size={12} /> Documento de Suporte (Fatura / Comprovativo)
+            </h3>
+            {currentDocumentUrl && (
+              <a
+                href={currentDocumentUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[10px] text-[#003366] hover:underline font-bold inline-flex items-center gap-1"
+              >
+                <ExternalLink size={10} /> Ver anexo gravado
+              </a>
+            )}
+          </div>
+          <div className="p-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="cursor-pointer inline-flex items-center gap-2 px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 border border-zinc-300 text-xs font-bold text-zinc-700 transition-colors">
+                <Paperclip size={14} />
+                <span>{supportFile ? supportFile.name : 'Seleccionar Ficheiro (PDF ou Imagem)'}</span>
+                <input
+                  type="file"
+                  accept="application/pdf,image/*"
+                  className="hidden"
+                  onChange={e => {
+                    const f = e.target.files?.[0];
+                    if (f) setSupportFile(f);
+                  }}
+                />
+              </label>
+              {supportFile && (
+                <button
+                  type="button"
+                  onClick={() => setSupportFile(null)}
+                  className="text-red-500 hover:text-red-700 text-xs font-bold"
+                >
+                  Remover
+                </button>
+              )}
+              <span className="text-[10px] text-zinc-400 font-medium">
+                Formatos aceites: PDF, JPG, PNG. Armazenamento seguro no Supabase.
+              </span>
             </div>
           </div>
         </div>

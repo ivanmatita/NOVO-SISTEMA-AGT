@@ -879,36 +879,49 @@ export const GestaoComprasList: React.FC<Props> = ({
       </div>
 
       {/* ------------------------------------------------------------------ */}
+      {/* Header Banner - Visual Reference "Factura/recibo FORNECEDORES"     */}
+      {/* ------------------------------------------------------------------ */}
+      <div className="w-full bg-gradient-to-b from-[#e8ecf1] via-[#d5dbe3] to-[#c2cbd6] border border-[#a8b5c4] rounded-t-md py-2 px-4 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+        <h2 className="text-xs md:text-sm font-bold text-zinc-900 tracking-wide uppercase">
+          Factura/recibo FORNECEDORES
+        </h2>
+      </div>
+
+      {/* ------------------------------------------------------------------ */}
       {/* Compact Table (Reference Image Structure) */}
       {/* ------------------------------------------------------------------ */}
-      <div className="bg-white border border-zinc-200 overflow-x-auto shadow-sm">
+      <div className="bg-white border border-[#a8b5c4] border-t-0 overflow-x-auto shadow-sm">
         <table className="w-full border-collapse text-left whitespace-nowrap" style={{ minWidth: 950 }}>
           <thead>
-            <tr className="bg-[#003366] text-white text-[11px] uppercase tracking-wider font-black">
-              <th className="px-3 py-2 border-r border-[#004488] text-center w-16">MovID</th>
-              <th className="px-3 py-2 border-r border-[#004488]">Data Valor</th>
-              <th className="px-3 py-2 border-r border-[#004488]">Data</th>
-              <th className="px-3 py-2 border-r border-[#004488]">Centro Custos / Caixa</th>
-              <th className="px-3 py-2 border-r border-[#004488]">DOC Nº</th>
-              <th className="px-3 py-2 border-r border-[#004488]">Fornecedor</th>
-              <th className="px-3 py-2 border-r border-[#004488] text-right">Valor</th>
-              <th className="px-3 py-2 border-r border-[#004488] text-center">Moeda</th>
-              <th className="px-3 py-2 border-r border-[#004488] text-center">Hash</th>
-              <th className="px-3 py-2 border-r border-[#004488] text-center">RSA</th>
+            <tr className="bg-white text-zinc-900 text-[11px] font-bold border-b border-zinc-200">
+              <th className="px-3 py-2 border-r border-zinc-200 text-center w-16">MovID</th>
+              <th className="px-3 py-2 border-r border-zinc-200">Data Valor</th>
+              <th className="px-3 py-2 border-r border-zinc-200">Data</th>
+              <th className="px-3 py-2 border-r border-zinc-200">
+                <div className="leading-tight">
+                  <div>Centro Custos</div>
+                  <div>Caixa</div>
+                </div>
+              </th>
+              <th className="px-3 py-2 border-r border-zinc-200">DOC Nº</th>
+              <th className="px-3 py-2 border-r border-zinc-200">Fornecedor</th>
+              <th className="px-3 py-2 border-r border-zinc-200 text-right">Valor</th>
+              <th className="px-3 py-2 border-r border-zinc-200 text-center">Hash</th>
+              <th className="px-3 py-2 border-r border-zinc-200 text-center">RSA</th>
               <th className="px-3 py-2 text-right">Ações</th>
             </tr>
           </thead>
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={11} className="px-4 py-8 text-center text-zinc-400 text-xs font-bold uppercase tracking-wider">
+                <td colSpan={10} className="px-4 py-8 text-center text-zinc-400 text-xs font-bold uppercase tracking-wider">
                   A carregar compras reais do banco de dados...
                 </td>
               </tr>
             )}
             {!loading && docs.length === 0 && (
               <tr>
-                <td colSpan={11} className="px-4 py-12 text-center text-zinc-400 text-xs font-bold uppercase tracking-widest italic">
+                <td colSpan={10} className="px-4 py-12 text-center text-zinc-400 text-xs font-bold uppercase tracking-widest italic">
                   Nenhum documento de compra encontrado para os filtros selecionados.
                 </td>
               </tr>
@@ -925,40 +938,40 @@ export const GestaoComprasList: React.FC<Props> = ({
                 <tr
                   key={doc.id}
                   className={`
-                    border-b border-zinc-100 text-[11px] group transition-colors leading-tight
-                    ${isEven ? 'bg-white' : 'bg-zinc-50/70'}
+                    border-b border-zinc-200/80 text-[11px] group transition-colors leading-tight
+                    ${isEven ? 'bg-white' : 'bg-zinc-50/50'}
                     ${anulado ? 'opacity-50 bg-red-50/20' : 'hover:bg-blue-50/40'}
                   `}
                 >
                   {/* 1. MovID */}
-                  <td className="px-3 py-1.5 border-r border-zinc-100 text-center text-zinc-600 font-mono font-bold text-[10px]" title={`ID BD: ${doc.id}`}>
-                    {getMovId(doc)}
+                  <td className="px-3 py-1.5 border-r border-zinc-100 text-center">
+                    <span
+                      className="inline-flex items-center justify-center min-w-[38px] bg-zinc-100 hover:bg-zinc-200 border border-zinc-300 rounded-full px-2 py-0.5 font-bold text-[11px] text-zinc-800 font-mono shadow-xs transition-colors"
+                      title={`ID BD: ${doc.id}`}
+                    >
+                      {getMovId(doc)}
+                    </span>
                   </td>
 
                   {/* 2. Data Valor */}
-                  <td className="px-3 py-1.5 border-r border-zinc-100">
-                    <span className="font-bold text-zinc-700">{fmtDate(getDocValorDate(doc))}</span>
+                  <td className="px-3 py-1.5 border-r border-zinc-100 text-zinc-800">
+                    {fmtDate(getDocValorDate(doc))}
                   </td>
 
                   {/* 3. Data */}
-                  <td className="px-3 py-1.5 border-r border-zinc-100">
-                    <span className="text-zinc-600">{fmtDate(getDocDate(doc))}</span>
+                  <td className="px-3 py-1.5 border-r border-zinc-100 text-zinc-800">
+                    {fmtDate(getDocDate(doc))}
                   </td>
 
                   {/* 4. Centro Custos / Caixa (two lines when both exist) */}
                   <td className="px-3 py-1.5 border-r border-zinc-100 max-w-[180px]">
-                    {cc ? (
-                      <div className="font-black text-zinc-800 uppercase text-[10px] truncate">{cc}</div>
-                    ) : null}
-                    {caixa ? (
-                      <div className="text-zinc-500 text-[9px] uppercase tracking-wide truncate">{caixa}</div>
-                    ) : null}
-                    {!cc && !caixa && <span className="text-zinc-300">—</span>}
+                    <div className="font-bold text-zinc-900 text-[11px] truncate uppercase">{cc || 'Obra Genérica'}</div>
+                    <div className="text-zinc-600 text-[10px] truncate uppercase tracking-tight">{caixa || 'Caixa Central'}</div>
                   </td>
 
                   {/* 5. DOC Nº */}
                   <td className="px-3 py-1.5 border-r border-zinc-100">
-                    <span className={`font-bold ${anulado ? 'text-red-500' : 'text-[#003366]'}`}>
+                    <span className={`font-bold ${anulado ? 'text-red-500' : 'text-zinc-900'}`}>
                       {getDocNum(doc)}
                     </span>
                     {anulado && (
@@ -967,66 +980,85 @@ export const GestaoComprasList: React.FC<Props> = ({
                   </td>
 
                   {/* 6. Fornecedor */}
-                  <td className="px-3 py-1.5 border-r border-zinc-100 max-w-[220px]">
-                    <span className="font-black text-zinc-800 uppercase text-[11px] truncate block" title={doc.fornecedor_nome || doc.supplier_name}>
+                  <td className="px-3 py-1.5 border-r border-zinc-100 max-w-[240px]">
+                    <span className="font-bold text-zinc-900 uppercase text-[11px] truncate block" title={doc.fornecedor_nome || doc.supplier_name}>
                       {doc.fornecedor_nome || doc.supplier_name || '—'}
                     </span>
                   </td>
 
-                  {/* 7. Valor */}
-                  <td className="px-3 py-1.5 border-r border-zinc-100 text-right">
-                    <span className="font-black text-zinc-900 text-[12px]">
+                  {/* 7. Valor + Moeda */}
+                  <td className="px-3 py-1.5 border-r border-zinc-100 text-right whitespace-nowrap">
+                    <span className="font-bold text-zinc-900 text-[12px] tabular-nums font-mono">
                       {fmtNum(getTotal(doc))}
                     </span>
-                  </td>
-
-                  {/* 8. Moeda */}
-                  <td className="px-3 py-1.5 border-r border-zinc-100 text-center">
-                    <span className={`inline-flex items-center justify-center px-1.5 py-0.5 text-[9px] font-black uppercase rounded-none ${getMoeda(doc) === 'AOA' ? 'bg-zinc-100 text-zinc-700' : 'bg-amber-100 text-amber-800'}`}>
+                    <span className="ml-1.5 text-[10px] font-bold text-zinc-600">
                       {getMoeda(doc)}
                     </span>
                   </td>
 
-                  {/* 9. Hash (truncated visually, click to copy) */}
+                  {/* 8. Hash (4 chars like image, click to copy full hash) */}
                   <td className="px-3 py-1.5 border-r border-zinc-100 text-center">
                     {hashVal ? (
                       <button
                         title={`Clique para copiar Hash completo: ${hashVal}`}
-                        className="font-mono text-[10px] text-indigo-700 hover:text-indigo-900 hover:underline font-bold transition-colors cursor-pointer"
+                        className="font-mono text-[11px] text-zinc-800 hover:text-indigo-600 font-bold transition-colors cursor-pointer"
                         onClick={() => {
                           navigator.clipboard?.writeText(hashVal);
                           toast.success('Hash copiado com sucesso!', { duration: 1500 });
                         }}
                       >
-                        {hashShort ? `${hashShort}...` : hashVal}
+                        {hashShort || hashVal.substring(0, 4)}
                       </button>
                     ) : (
-                      <span className="text-zinc-300 text-[10px]">—</span>
+                      <span className="text-zinc-300 text-[10px]">----</span>
                     )}
                   </td>
 
-                  {/* 10. RSA (compact status: ● or ○) */}
+                  {/* 9. RSA (circular radio indicator) */}
                   <td className="px-3 py-1.5 border-r border-zinc-100 text-center">
-                    {rsa ? (
-                      <span title="Documento com Assinatura RSA" className="text-emerald-600 text-sm font-black leading-none">
-                        ●
-                      </span>
-                    ) : (
-                      <span title="Documento Não Certificado" className="text-zinc-300 text-sm font-black leading-none">
-                        ○
-                      </span>
-                    )}
+                    <span
+                      title={rsa ? 'Documento Certificado RSA' : 'Documento Não Certificado'}
+                      className={`inline-block w-3 h-3 rounded-full border transition-all ${
+                        rsa
+                          ? 'bg-emerald-500 border-emerald-600 shadow-xs'
+                          : 'bg-zinc-200 border-zinc-300'
+                      }`}
+                    />
                   </td>
 
-                  {/* 11. Ações (⋮ button) */}
-                  <td className="px-3 py-1.5 text-right">
-                    <button
-                      onClick={() => setSelectedDoc(doc)}
-                      className="inline-flex items-center justify-center w-6 h-6 bg-[#003366] text-white hover:bg-[#002244] active:scale-95 transition-all shadow-sm"
-                      title="Opções do Documento"
-                    >
-                      <MoreVertical size={13} />
-                    </button>
+                  {/* 10. Ações: Document preview icon, blue chart icon, ⋮ button */}
+                  <td className="px-3 py-1.5 text-right whitespace-nowrap">
+                    <div className="flex items-center justify-end gap-1.5">
+                      {/* Document icon with badge */}
+                      <button
+                        onClick={() => onViewPurchase(doc)}
+                        className="relative p-1 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 border border-zinc-200 rounded-none transition-all"
+                        title="Ver Documento"
+                      >
+                        <FileText size={13} />
+                        <span className="absolute -bottom-1 -right-1 bg-zinc-600 text-white text-[7px] font-black rounded-full px-0.5 leading-none">
+                          0
+                        </span>
+                      </button>
+
+                      {/* Blue bar chart icon (Impactos Contabilísticos) */}
+                      <button
+                        onClick={() => setAccountingModalDoc(doc)}
+                        className="p-1 bg-[#38bdf8] text-white hover:bg-[#0ea5e9] rounded-none transition-all shadow-xs"
+                        title="Impactos Contabilísticos"
+                      >
+                        <BarChart2 size={13} />
+                      </button>
+
+                      {/* ⋮ More options drawer */}
+                      <button
+                        onClick={() => setSelectedDoc(doc)}
+                        className="p-1 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 border border-zinc-200 rounded-none transition-all"
+                        title="Opções do Documento"
+                      >
+                        <MoreVertical size={13} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );

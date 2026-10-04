@@ -28978,13 +28978,13 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
 
   if (isCreating) {
     return (
-      <CreatePurchase 
-        suppliers={suppliers} 
-        products={products} 
-        workSites={workSites} 
-        fiscalSeries={fiscalSeries} 
+      <GestaoComprasForm
+        suppliers={suppliers}
+        products={products}
+        workSites={workSites}
+        fiscalSeries={fiscalSeries}
         activeTaxes={activeTaxes}
-        onBack={() => setIsCreating(false)} 
+        onBack={() => setIsCreating(false)}
         onSuccess={(savedData) => {
           setIsCreating(false);
           fetchPurchases();
@@ -28992,7 +28992,7 @@ const PurchasesModule = ({ user, suppliers, products, activeTaxes, workSites, fi
           if (createType === 'Pagamento' && savedData) {
             setCompletedReceipt(savedData);
           }
-        }} 
+        }}
         caixas={caixas}
         initialData={createData}
         fixedDocumentType={createType}

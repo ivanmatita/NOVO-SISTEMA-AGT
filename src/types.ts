@@ -74,18 +74,34 @@ export interface Caixa {
   data_abertura?: string;
   data_fechamento?: string;
   updated_at?: string;
+  permitted_users?: string[];
 }
 
 export interface CaixaMovement {
   id: string;
   caixaId: string;
+  caixa_id?: string;
   type: 'entrada' | 'saida' | 'transferencia';
+  tipo?: 'entrada' | 'saida' | 'transferencia';
   amount: number;
+  valor?: number;
   description: string;
+  descricao?: string;
   date: string;
+  data?: string;
+  data_valor?: string;
   moeda?: string;
   targetCaixaId?: string; // For transfers
+  target_caixa_id?: string;
   empresa_id?: string;
+  referencia?: string;
+  documento_id?: string;
+  utilizador_id?: string;
+  created_by_nome?: string;
+  created_by_username?: string;
+  ano?: number;
+  status?: string;
+  saldo_progressivo?: number;
 }
 
 export interface Client {

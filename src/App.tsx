@@ -1,4 +1,4 @@
-﻿import { emitirDocumentoFiscal } from './services/fiscalEngine';
+import { emitirDocumentoFiscal } from './services/fiscalEngine';
 import { StagingBadge } from './components/StagingBadge';
 import { isProductionEnvironment, isStagingEnvironment } from './lib/envProtection';
 import { CentralHomologacaoModule } from './components/CentralHomologacaoModule';
@@ -13637,7 +13637,14 @@ const FinancialModule = ({
         </div>
       </div>
 
-      {activeSubTab === 'caixa' && <CaixaModule />}
+      {activeSubTab === 'caixa' && (
+        <CaixaModule
+          fiscalYear={fiscalYear}
+          companyData={companyData}
+          onNavigateToSalary={() => setActiveSubTab('irt_inss_map')}
+          onNavigateToTax={() => setActiveSubTab('retencao-fonte')}
+        />
+      )}
 
       {activeSubTab === 'irt_inss_map' && (
         <MapaSalarios 
@@ -36011,7 +36018,14 @@ export default function App() {
                             case 'cashier':
                               return <CashierModule issuedDocuments={issuedDocuments} />;
                             case 'caixa':
-                              return <CaixaModule />;
+                              return (
+                                <CaixaModule
+                                  fiscalYear={fiscalYear}
+                                  companyData={companyData}
+                                  onNavigateToSalary={() => setActiveTab('hr')}
+                                  onNavigateToTax={() => setActiveTab('accounting')}
+                                />
+                              );
                             case 'security':
                               return (
                                 <SecurityModule 

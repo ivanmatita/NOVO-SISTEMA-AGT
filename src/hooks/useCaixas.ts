@@ -34,10 +34,24 @@ export const useCaixas = () => {
         return;
       }
 
+      // Fetch caixas permissions
+      const { data: userPerms } = await supabase
+        .from('caixas_utilizadores')
+        .select('caixa_id, utilizador_id')
+        .eq('empresa_id', fetchEmpresaId)
+        .eq('activo', true);
+
+      const permsMap = new Map<string, string[]>();
+      (userPerms || []).forEach((p: any) => {
+        const list = permsMap.get(p.caixa_id) || [];
+        list.push(p.utilizador_id);
+        permsMap.set(p.caixa_id, list);
+      });
+
       const visible = (data || []).filter(item => item.is_deleted !== true);
       const mappedData = visible.map(item => ({
         id: item.id,
-        name: item.nome_caixa,
+        name: item.nome_caixa || item.nome || '',
         initialBalance: Number(item.saldo_inicial !== undefined && item.saldo_inicial !== null ? item.saldo_inicial : item.valor_inicial) || 0,
         currentBalance: Number(item.current_balance !== undefined && item.current_balance !== null ? item.current_balance : (item.saldo_actual ?? 0)) || 0,
         responsible: item.responsavel_caixa || item.responsavel || '',
@@ -47,11 +61,12 @@ export const useCaixas = () => {
         empresa_id: item.empresa_id,
         account: item.numero_conta || item.account || '',
         moeda: item.moeda || 'AOA',
-        codigo_caixa: item.codigo_caixa || '',
+        codigo_caixa: item.codigo_caixa || item.codigo || '',
         activo: item.activo !== false,
         data_abertura: item.data_abertura || '',
         data_fechamento: item.data_fechamento || '',
-        updated_at: item.updated_at || ''
+        updated_at: item.updated_at || '',
+        permitted_users: permsMap.get(item.id) || []
       })) as Caixa[];
       
       setCaixas(mappedData);
@@ -67,15 +82,26 @@ export const useCaixas = () => {
         setMovements(movData.map(m => ({
           id: m.id,
           caixaId: m.caixa_id,
+          caixa_id: m.caixa_id,
           targetCaixaId: m.target_caixa_id,
+          target_caixa_id: m.target_caixa_id,
           type: (m.type || m.tipo || 'entrada') as any,
+          tipo: (m.tipo || m.type || 'entrada') as any,
           amount: Number(m.amount ?? m.valor ?? m.valor_movimento ?? 0),
+          valor: Number(m.valor ?? m.amount ?? 0),
           description: m.description || m.descricao || '',
-          date: m.date || m.created_at,
+          descricao: m.descricao || m.description || '',
+          date: m.date || m.data || m.created_at,
+          data: m.data || m.date || m.created_at,
           empresa_id: m.empresa_id,
-          moeda: m.moeda,
+          moeda: m.moeda || 'AOA',
           referencia: m.referencia || '',
-          documento_id: m.documento_id || null
+          documento_id: m.documento_id || null,
+          utilizador_id: m.utilizador_id || m.created_by,
+          created_by_nome: m.created_by_nome,
+          created_by_username: m.created_by_username,
+          ano: m.ano,
+          status: m.status
         })));
       }
 
@@ -441,12 +467,183 @@ export const useCaixas = () => {
         }
       }
 
-      // Synchronize and force immediate UI updates
       await fetchCaixas();
     } catch (e) {
       console.error('Error adding movement:', e);
       throw e;
     }
+  };
+
+  const canUserOperateCaixa = (caixaId: string): boolean => {
+    if (!authUser) return false;
+    const role = (authUser.role || '').toLowerCase();
+    if (role === 'admin' || role === 'superadmin' || role === 'super_admin' || authUser.is_admin) {
+      return true;
+    }
+
+    const caixa = caixas.find(c => c.id === caixaId);
+    if (!caixa) return false;
+
+    // If no permitted_users configured, allow company users by default
+    if (!caixa.permitted_users || caixa.permitted_users.length === 0) {
+      return true;
+    }
+
+    return caixa.permitted_users.includes(authUser.id);
+  };
+
+  const saveCaixaPermissions = async (caixaId: string, userIds: string[]) => {
+    try {
+      const currentEmpresaId = authUser?.empresa_id;
+      if (!currentEmpresaId) throw new Error('Empresa não identificada');
+
+      // 1. Remove existing permissions for this caixa
+      await supabase
+        .from('caixas_utilizadores')
+        .delete()
+        .eq('empresa_id', currentEmpresaId)
+        .eq('caixa_id', caixaId);
+
+      // 2. Insert active user permissions
+      if (userIds.length > 0) {
+        const rows = userIds.map(uid => ({
+          empresa_id: currentEmpresaId,
+          caixa_id: caixaId,
+          utilizador_id: uid,
+          user_id: uid,
+          activo: true,
+          estado: 'ativo'
+        }));
+
+        const { error } = await supabase
+          .from('caixas_utilizadores')
+          .insert(rows);
+
+        if (error) throw error;
+      }
+
+      await fetchCaixas();
+    } catch (err) {
+      console.error('Error saving caixa permissions:', err);
+      throw err;
+    }
+  };
+
+  const transferirCaixas = async ({
+    fromCaixaId,
+    toCaixaId,
+    amount,
+    moeda = 'AOA',
+    description = ''
+  }: {
+    fromCaixaId: string;
+    toCaixaId: string;
+    amount: number;
+    moeda?: string;
+    description?: string;
+  }) => {
+    const currentEmpresaId = authUser?.empresa_id;
+    if (!currentEmpresaId) throw new Error('Empresa não identificada');
+
+    if (!canUserOperateCaixa(fromCaixaId)) {
+      throw new Error('Este utilizador não possui permissão para realizar movimentos neste Caixa de origem.');
+    }
+
+    try {
+      // 1. Try atomic PostgreSQL RPC
+      const { data: rpcData, error: rpcErr } = await supabase.rpc('transferir_entre_caixas', {
+        p_empresa_id: currentEmpresaId,
+        p_from_caixa_id: fromCaixaId,
+        p_to_caixa_id: toCaixaId,
+        p_valor: amount,
+        p_moeda: moeda,
+        p_descricao: description,
+        p_utilizador_id: authUser?.id
+      });
+
+      if (!rpcErr && rpcData) {
+        await fetchCaixas();
+        return rpcData;
+      }
+      if (rpcErr) {
+        console.warn('RPC transferir_entre_caixas fallback:', rpcErr);
+      }
+    } catch (rpcEx) {
+      console.warn('RPC exception, falling back to atomic sequence:', rpcEx);
+    }
+
+    // Fallback: atomic sequence with single shared reference
+    const transfId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const fromCaixa = caixas.find(c => c.id === fromCaixaId);
+    const toCaixa = caixas.find(c => c.id === toCaixaId);
+    const ref = `TRANSF-${transfId.substring(0, 8).toUpperCase()}`;
+
+    // Saida
+    const { error: errSaida } = await supabase.from('caixa_movimentacoes').insert([{
+      empresa_id: currentEmpresaId,
+      caixa_id: fromCaixaId,
+      target_caixa_id: toCaixaId,
+      tipo: 'transferencia',
+      type: 'saida',
+      valor: amount,
+      amount: amount,
+      descricao: description || `Transferência para ${toCaixa?.name || 'Caixa'}`,
+      description: description || `Transferência para ${toCaixa?.name || 'Caixa'}`,
+      referencia: ref,
+      documento_id: transfId,
+      moeda,
+      data: now,
+      date: now,
+      ano: new Date().getFullYear(),
+      utilizador_id: authUser?.id,
+      created_by: authUser?.id
+    }]);
+
+    if (errSaida) throw errSaida;
+
+    // Entrada
+    const { error: errEntrada } = await supabase.from('caixa_movimentacoes').insert([{
+      empresa_id: currentEmpresaId,
+      caixa_id: toCaixaId,
+      target_caixa_id: fromCaixaId,
+      tipo: 'transferencia',
+      type: 'entrada',
+      valor: amount,
+      amount: amount,
+      descricao: `Transferência recebida de ${fromCaixa?.name || 'Caixa'}${description ? ': ' + description : ''}`,
+      description: `Transferência recebida de ${fromCaixa?.name || 'Caixa'}${description ? ': ' + description : ''}`,
+      referencia: ref,
+      documento_id: transfId,
+      moeda,
+      data: now,
+      date: now,
+      ano: new Date().getFullYear(),
+      utilizador_id: authUser?.id,
+      created_by: authUser?.id
+    }]);
+
+    if (errEntrada) throw errEntrada;
+
+    // Update balances
+    if (fromCaixa) {
+      await supabase.from('caixas').update({
+        current_balance: Number(fromCaixa.currentBalance) - amount,
+        saldo_actual: Number(fromCaixa.currentBalance) - amount,
+        updated_at: now
+      }).eq('id', fromCaixaId);
+    }
+
+    if (toCaixa) {
+      await supabase.from('caixas').update({
+        current_balance: Number(toCaixa.currentBalance) + amount,
+        saldo_actual: Number(toCaixa.currentBalance) + amount,
+        updated_at: now
+      }).eq('id', toCaixaId);
+    }
+
+    await fetchCaixas();
+    return { success: true, transferencia_id: transfId, referencia: ref };
   };
 
   return {
@@ -458,6 +655,9 @@ export const useCaixas = () => {
     createCaixa,
     updateCaixa,
     deleteCaixa,
-    addMovement
+    addMovement,
+    canUserOperateCaixa,
+    saveCaixaPermissions,
+    transferirCaixas
   };
 };

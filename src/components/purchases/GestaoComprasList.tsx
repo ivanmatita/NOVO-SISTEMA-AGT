@@ -566,7 +566,7 @@ export const GestaoComprasList: React.FC<Props> = ({
       let query = supabase
         .from('compras')
         .select(
-          'id, empresa_id, fornecedor_id, fornecedor_nome, supplier_name, numero_documento, purchase_number, numero_fatura, invoice_number, tipo_documento, document_type, data_compra, data, date, data_valor, data_servico, data_emissao, data_vencimento, due_date, valor_total, total, moeda, currency, hash, hash_documento, status, estado, recibo_emitido, tem_recibo, caixa_id, caixa, work_site, work_site_name, local_obra, taxa_retencao, saldo_pendente, valor_pago, document_url, document_path, ano, created_at, assinatura_digital, numero, codigo, numero_compra',
+          'id, empresa_id, fornecedor_id, fornecedor_nome, supplier_name, numero_documento, purchase_number, numero_fatura, invoice_number, numero_compra, tipo_documento, document_type, data_compra, data, date, data_valor, data_servico, data_emissao, data_vencimento, due_date, valor_total, total, moeda, currency, hash, hash_documento, status, estado, recibo_emitido, tem_recibo, caixa_id, caixa, work_site, work_site_name, work_site_id, local_obra, centro_custo_id, taxa_retencao, saldo_pendente, valor_pago, document_url, document_path, ano, created_at, assinatura_digital, numero, codigo',
           { count: 'exact' }
         )
         .eq('empresa_id', empresaId)
@@ -716,16 +716,23 @@ export const GestaoComprasList: React.FC<Props> = ({
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
-  // Centro custo / Caixa display
+  // Centro custo / Caixa display — resolve nome pelo ID se disponível
   const getCentroDisplay = (doc: CompraDoc) => {
-    const cc = doc.work_site || doc.work_site_name || doc.local_obra || '';
+    const wsId = (doc as any).work_site_id || (doc as any).centro_custo_id || '';
+    const wsResolved = wsId ? workSites.find(ws => String(ws.id) === String(wsId)) : null;
+    const cc = wsResolved
+      ? (wsResolved.name || wsResolved.title || '')
+      : (doc.work_site || doc.work_site_name || doc.local_obra || '');
     const caixa = caixas.find(c => c.id === doc.caixa_id)?.name || doc.caixa || '';
     return { cc, caixa };
   };
 
-  // MovID: Identificador real do documento no banco
-  const getMovId = (doc: CompraDoc) => {
-    return doc.numero || doc.purchase_number || doc.codigo || (doc.id ? String(doc.id).substring(0, 8).toUpperCase() : '—');
+  // MovID: número sequencial descendente baseado em posição na página
+  const getMovId = (doc: CompraDoc, idx: number) => {
+    const globalIdx = page * PAGE_SIZE + idx;
+    const seqNum = totalCount - globalIdx;
+    if (seqNum > 0) return String(seqNum);
+    return doc.numero_compra || doc.numero || (doc.id ? String(doc.id).substring(0, 6).toUpperCase() : '—');
   };
 
   return (
@@ -949,7 +956,7 @@ export const GestaoComprasList: React.FC<Props> = ({
                       className="inline-flex items-center justify-center min-w-[38px] bg-zinc-100 hover:bg-zinc-200 border border-zinc-300 rounded-full px-2 py-0.5 font-bold text-[11px] text-zinc-800 font-mono shadow-xs transition-colors"
                       title={`ID BD: ${doc.id}`}
                     >
-                      {getMovId(doc)}
+                      {getMovId(doc, idx)}
                     </span>
                   </td>
 

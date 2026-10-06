@@ -365,8 +365,8 @@ export const GestaoComprasForm: React.FC<Props> = ({
       try {
         const [mRes, aRes, lRes, pRes] = await Promise.all([
           supabase.from('metrics').select('id, sigla, descricao, type').eq('empresa_id', empresaId),
-          supabase.from('armazens').select('id, nome, name').eq('empresa_id', empresaId),
-          supabase.from('locais_trabalho').select('id, nome, name').eq('empresa_id', empresaId),
+          supabase.from('armazens').select('id, name').eq('empresa_id', empresaId),
+          supabase.from('locais_trabalho').select('id, nome').eq('empresa_id', empresaId),
           supabase.from('pgc_plano_contas').select('id, codigo, conta, descricao').or(`empresa_id.eq.${empresaId},is_system.eq.true`).order('codigo'),
         ]);
         setMetrics(mRes.data || []);
@@ -505,6 +505,7 @@ export const GestaoComprasForm: React.FC<Props> = ({
         purchase_number: form.numero_documento,
         numero_fatura: form.numero_documento,
         invoice_number: form.numero_documento,
+        numero_compra: form.numero_documento,
         fornecedor_id: form.fornecedor_id || null,
         supplier_id: form.fornecedor_id || null,
         fornecedor_nome: form.fornecedor_nome,
@@ -515,8 +516,7 @@ export const GestaoComprasForm: React.FC<Props> = ({
         data_emissao: form.data_documento,
         date: form.data_documento,
         data: form.data_documento,
-        data_valor: form.data_valor,
-        data_servico: form.data_valor,
+        data_servico: form.data_valor || form.data_documento,
         data_vencimento: form.data_vencimento || null,
         due_date: form.data_vencimento || null,
         moeda: form.moeda,
@@ -532,7 +532,7 @@ export const GestaoComprasForm: React.FC<Props> = ({
         caixa: form.caixa_id || null,
         metodo_pagamento: form.metodo_pagamento || null,
         payment_method: form.metodo_pagamento || null,
-        work_site_id: form.centro_custo_id || null,
+        work_site: form.centro_custo_id || null,
         observacoes: form.observacoes || null,
         observacao: form.observacoes || null,
         // Financials

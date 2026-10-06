@@ -32,13 +32,13 @@ export interface CompraDoc {
   purchase_number?: string;
   numero_fatura?: string;
   invoice_number?: string;
+  numero_compra?: string;
   tipo_documento?: string;
   document_type?: string;
   data_compra?: string;
   data?: string;
   date?: string;
-  data_valor?: string;
-  data_servico?: string;
+  data_servico?: string;   // "data valor" — existe na tabela
   data_emissao?: string;
   data_vencimento?: string;
   due_date?: string;
@@ -61,15 +61,13 @@ export interface CompraDoc {
   saldo_pendente?: number;
   valor_pago?: number;
   document_url?: string;
-  document_path?: string;
   ano?: number;
   created_at?: string;
-  assinatura_digital?: string;
-  certified?: boolean;
   codigo?: string;
   numero?: string;
-  numero_compra?: string;
 }
+
+
 
 interface Filters {
   search: string;
@@ -117,8 +115,9 @@ const fmtNum = (v?: number | string | null): string => {
 const getDocDate = (d: CompraDoc) =>
   d.data_compra || d.data || d.date || d.data_emissao || d.created_at || '';
 
+// data_servico = "Data Valor" real da tabela (data em que o serviço foi prestado)
 const getDocValorDate = (d: CompraDoc) =>
-  d.data_valor || d.data_servico || d.data_compra || d.date || '';
+  d.data_servico || d.data_compra || d.date || '';
 
 const getDocNum = (d: CompraDoc) => {
   const tipo = d.tipo_documento || d.document_type || 'FC';
@@ -140,7 +139,8 @@ const getMoeda = (d: CompraDoc) => {
 
 const getHash = (d: CompraDoc) => d.hash || d.hash_documento || '';
 
-const isRSA = (d: CompraDoc) => !!(d.assinatura_digital || d.certified || (getHash(d).length > 8));
+// RSA: baseado no hash (campo assinatura_digital não existe na tabela compras)
+const isRSA = (d: CompraDoc) => getHash(d).length > 8;
 
 const isAnulado = (d: CompraDoc) =>
   ['anulado', 'cancelled', 'void'].includes((d.status || d.estado || '').toLowerCase());
@@ -566,7 +566,7 @@ export const GestaoComprasList: React.FC<Props> = ({
       let query = supabase
         .from('compras')
         .select(
-          'id, empresa_id, fornecedor_id, fornecedor_nome, supplier_name, numero_documento, purchase_number, numero_fatura, invoice_number, numero_compra, tipo_documento, document_type, data_compra, data, date, data_valor, data_servico, data_emissao, data_vencimento, due_date, valor_total, total, moeda, currency, hash, hash_documento, status, estado, recibo_emitido, tem_recibo, caixa_id, caixa, work_site, work_site_name, work_site_id, local_obra, centro_custo_id, taxa_retencao, saldo_pendente, valor_pago, document_url, document_path, ano, created_at, assinatura_digital, numero, codigo',
+          'id, empresa_id, fornecedor_id, fornecedor_nome, supplier_name, numero_documento, purchase_number, numero_fatura, invoice_number, numero_compra, tipo_documento, document_type, data_compra, data, date, data_servico, data_emissao, data_vencimento, due_date, valor_total, total, moeda, currency, hash, hash_documento, status, estado, recibo_emitido, tem_recibo, caixa_id, caixa, work_site, work_site_name, local_obra, taxa_retencao, saldo_pendente, valor_pago, document_url, ano, created_at, numero, codigo',
           { count: 'exact' }
         )
         .eq('empresa_id', empresaId)
@@ -716,13 +716,10 @@ export const GestaoComprasList: React.FC<Props> = ({
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
-  // Centro custo / Caixa display — resolve nome pelo ID se disponível
+  // Centro custo / Caixa display — usa colunas reais da tabela
   const getCentroDisplay = (doc: CompraDoc) => {
-    const wsId = (doc as any).work_site_id || (doc as any).centro_custo_id || '';
-    const wsResolved = wsId ? workSites.find(ws => String(ws.id) === String(wsId)) : null;
-    const cc = wsResolved
-      ? (wsResolved.name || wsResolved.title || '')
-      : (doc.work_site || doc.work_site_name || doc.local_obra || '');
+    // work_site e work_site_name existem na tabela; local_obra também
+    const cc = doc.work_site_name || doc.work_site || doc.local_obra || '';
     const caixa = caixas.find(c => c.id === doc.caixa_id)?.name || doc.caixa || '';
     return { cc, caixa };
   };

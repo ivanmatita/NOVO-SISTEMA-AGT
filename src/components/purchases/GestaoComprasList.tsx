@@ -1021,6 +1021,7 @@ export const GestaoComprasList: React.FC<Props> = ({
             )}
             {!loading && docs.map((doc, idx) => {
               const anulado = isAnulado(doc);
+              const temRecibo = !!(doc.recibo_emitido || doc.tem_recibo);
               const hashVal = getHash(doc);
               const hashShort = hashVal ? hashVal.substring(0, 4) : '';
               const rsa = isRSA(doc);

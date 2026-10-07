@@ -670,35 +670,39 @@ export default function HotelModule({ user, companyData, onEmitirFatura, onNavig
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="bg-white border border-zinc-200 p-5">
                   <h3 className="text-xs font-black text-zinc-800 uppercase tracking-wider mb-4">Receita Mensal (6 Meses)</h3>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <AreaChart data={monthlyRevenue}>
-                      <defs>
-                        <linearGradient id="colorHotel" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#4338ca" stopOpacity={0.3} />
-                          <stop offset="95%" stopColor="#4338ca" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-                      <YAxis tick={{ fontSize: 10 }} />
-                      <Tooltip formatter={(v: any) => fmt(v)} />
-                      <Area type="monotone" dataKey="receita" stroke="#4338ca" fill="url(#colorHotel)" name="Receita" />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                  <div className="h-[220px] w-full min-w-[100px] min-h-[220px]">
+                    <ResponsiveContainer width="100%" height={220} minWidth={100} minHeight={220} debounce={50}>
+                      <AreaChart data={monthlyRevenue}>
+                        <defs>
+                          <linearGradient id="colorHotel" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#4338ca" stopOpacity={0.3} />
+                            <stop offset="95%" stopColor="#4338ca" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                        <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                        <YAxis tick={{ fontSize: 10 }} />
+                        <Tooltip formatter={(v: any) => fmt(v)} />
+                        <Area type="monotone" dataKey="receita" stroke="#4338ca" fill="url(#colorHotel)" name="Receita" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
 
                 <div className="bg-white border border-zinc-200 p-5">
                   <h3 className="text-xs font-black text-zinc-800 uppercase tracking-wider mb-4">Estado dos Quartos</h3>
                   {roomStatusData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={220}>
-                      <PieChart>
-                        <Pie data={roomStatusData} cx="50%" cy="50%" outerRadius={80} dataKey="value" label={({ name, value }) => `${name}: ${value}`} labelLine={false}>
-                          {roomStatusData.map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                        </Pie>
-                        <Tooltip />
-                        <Legend />
-                      </PieChart>
-                    </ResponsiveContainer>
+                    <div className="h-[220px] w-full min-w-[100px] min-h-[220px]">
+                      <ResponsiveContainer width="100%" height={220} minWidth={100} minHeight={220} debounce={50}>
+                        <PieChart>
+                          <Pie data={roomStatusData} cx="50%" cy="50%" outerRadius={80} dataKey="value" label={({ name, value }) => `${name}: ${value}`} labelLine={false}>
+                            {roomStatusData.map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                          </Pie>
+                          <Tooltip />
+                          <Legend />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
                   ) : (
                     <div className="h-[220px] flex items-center justify-center text-zinc-400 italic text-sm">Adicione quartos para ver o gráfico.</div>
                   )}
